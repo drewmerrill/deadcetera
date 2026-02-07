@@ -36,11 +36,11 @@ function showSongDetails(songId) {
             <a href="https://moises.ai/" target="_blank" class="tool-button">
                 🎛️ Open Moises.ai - Separate Stems
             </a>
-            <a href="https://moises.ai/tools/vocals-remover" target="_blank" class="tool-button">
-                🎤 Isolate Vocals Only
+            <a href="https://moises.ai/features/vocal-remover/" target="_blank" class="tool-button">
+                🎤 Learn About Vocal Removal
             </a>
-            <a href="https://moises.ai/tools/guitar-remover" target="_blank" class="tool-button">
-                🎸 Isolate Guitar Parts
+            <a href="https://studio.moises.ai/" target="_blank" class="tool-button">
+                🎸 Open Moises Studio (Web App)
             </a>
             <div class="tip" style="margin-top: 15px;">
                 <strong>How to use:</strong> Upload your recording of "${song.title}" to Moises.ai, and it will separate the vocals, guitar, bass, and drums into individual tracks. Perfect for learning Bob's exact guitar parts or isolating the harmony vocals!
