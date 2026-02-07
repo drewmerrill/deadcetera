@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadcetera - Song Reference Tool</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎸 Deadcetera Song Reference 🎸</h1>
+            <p class="subtitle">Your guide to nailing those Dead tunes</p>
+        </header>
+
+        <div class="song-list" id="songList">
+            <!-- Songs will be populated here -->
+        </div>
+
+        <div class="song-details" id="songDetails">
+            <button class="back-button" onclick="showSongList()">← Back to Song List</button>
+            <div id="detailsContent"></div>
+        </div>
+    </div>
+
+    <script src="songs-data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
