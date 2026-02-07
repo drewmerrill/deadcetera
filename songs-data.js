@@ -99,15 +99,20 @@ const songs = [
                 venue: "Europe '72 (album version)",
                 date: "1972",
                 url: "https://archive.org/details/gd1972-04-08.sbd.miller.97143.sbeok.flac16",
-                notes: "Crystal clear harmonies, great reference for vocal parts"
+                notes: "Crystal clear harmonies, great reference for vocal parts",
+                downloadUrl: "https://archive.org/download/gd1972-04-08.sbd.miller.97143.sbeok.flac16/gd72-04-08d1t03.mp3"
             },
             {
                 venue: "Barton Hall, Cornell",
                 date: "May 8, 1977",
                 url: "https://archive.org/details/gd77-05-08.sbd.hicks.4982.sbeok.shnf",
-                notes: "Excellent sound quality for studying Bob's guitar work"
+                notes: "Excellent sound quality for studying Bob's guitar work",
+                downloadUrl: "https://archive.org/download/gd77-05-08.sbd.hicks.4982.sbeok.shnf/gd77-05-08d1t03.mp3"
             }
-        ]
+        ],
+        
+        // Archive.org search URL for finding more versions of this song
+        archiveSearchUrl: "https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22Friend+of+the+Devil%22&sort=-downloads"
     }
     
     // ADD MORE SONGS HERE!
@@ -192,10 +197,14 @@ const songs = [
             venue: "Concert venue or album name",
             date: "Date",
             url: "https://archive.org/details/...",
-            notes: "Why this recording is useful"
+            notes: "Why this recording is useful",
+            downloadUrl: "https://archive.org/download/.../filename.mp3"  // Direct MP3 download link
         }
         // Add more reference recordings as needed
-    ]
+    ],
+    
+    // Song-specific Archive.org search (replace SONG+NAME with your song)
+    archiveSearchUrl: "https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22SONG+NAME%22&sort=-downloads"
 }
 
 */

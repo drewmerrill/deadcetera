@@ -48,13 +48,25 @@ function showSongDetails(songId) {
             ${song.archiveReferences ? `
                 <h4 style="color: #3498db; margin-top: 20px; margin-bottom: 10px;">📼 Recommended Reference Recordings:</h4>
                 ${song.archiveReferences.map(ref => `
-                    <div style="margin: 10px 0;">
-                        <a href="${ref.url}" target="_blank" style="color: #3498db; text-decoration: none;">
+                    <div style="margin: 15px 0; padding: 15px; background: rgba(52, 152, 219, 0.1); border-radius: 8px;">
+                        <a href="${ref.url}" target="_blank" style="color: #3498db; text-decoration: none; font-weight: bold;">
                             📻 ${ref.venue} (${ref.date})
                         </a>
-                        <div style="color: #95a5a6; font-size: 0.9em; margin-left: 20px;">${ref.notes}</div>
+                        <div style="color: #95a5a6; font-size: 0.9em; margin: 8px 0 12px 20px;">${ref.notes}</div>
+                        ${ref.downloadUrl ? `
+                            <a href="${ref.downloadUrl}" download class="tool-button" style="background: #3498db; font-size: 0.9em; padding: 8px 16px; margin-left: 20px;">
+                                ⬇️ Download MP3
+                            </a>
+                        ` : ''}
                     </div>
                 `).join('')}
+                ${song.archiveSearchUrl ? `
+                    <div style="margin-top: 15px;">
+                        <a href="${song.archiveSearchUrl}" target="_blank" class="tool-button" style="background: #9b59b6;">
+                            🔍 Find More "${song.title}" Recordings on Archive.org
+                        </a>
+                    </div>
+                ` : ''}
             ` : ''}
         </div>
 
