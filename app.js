@@ -729,8 +729,100 @@ function displayYouTubeResults(results, songTitle) {
     `).join('');
 }
 
-// Download from YouTube
+// Show YouTube download options
 async function handleYouTubeDownload(videoId, title) {
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    // Create options modal
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+    
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 16px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 1.5em; color: #2d3748;">🎥 Download YouTube Audio</h2>
+                <button onclick="this.closest('.modal').remove()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #718096; line-height: 1;">&times;</button>
+            </div>
+            
+            <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
+                <strong style="color: #2d3748;">${title}</strong>
+            </div>
+            
+            <div style="margin-bottom: 25px; padding: 20px; background: #f0fff4; border-left: 4px solid #48bb78; border-radius: 8px;">
+                <div style="font-weight: bold; color: #22543d; margin-bottom: 10px;">🟢 OPTION 1: Browser Extension (Recommended)</div>
+                <p style="color: #2f855a; margin-bottom: 15px; font-size: 0.95em;">
+                    Install a browser extension for one-click YouTube downloads:
+                </p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="https://chromewebstore.google.com/search/youtube%20audio%20downloader" target="_blank" style="background: #48bb78; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">
+                        📦 Find Extension
+                    </a>
+                    <button onclick="copyToClipboard('${youtubeUrl}'); alert('✅ YouTube URL copied! Now install extension and use it on YouTube.');" style="background: #38a169; color: white; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 500;">
+                        📋 Copy URL
+                    </button>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 25px; padding: 20px; background: #fffaf0; border-left: 4px solid #ed8936; border-radius: 8px;">
+                <div style="font-weight: bold; color: #7c2d12; margin-bottom: 10px;">🟡 OPTION 2: Online Converter</div>
+                <p style="color: #9c4221; margin-bottom: 15px; font-size: 0.95em;">
+                    Use a free converter website (opens video in converter):
+                </p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="https://ytmp3.nu/Y6sN/?url=${encodeURIComponent(youtubeUrl)}" target="_blank" style="background: #ed8936; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">
+                        🔄 YTMP3.nu
+                    </a>
+                    <a href="https://y2mate.com/youtube/${videoId}" target="_blank" style="background: #dd6b20; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">
+                        🔄 Y2Mate
+                    </a>
+                </div>
+                <p style="color: #9c4221; margin-top: 10px; font-size: 0.85em;">
+                    Note: You may need to click "Convert" on their site
+                </p>
+            </div>
+            
+            <div style="padding: 20px; background: #fff5f7; border-left: 4px solid #f56565; border-radius: 8px;">
+                <div style="font-weight: bold; color: #742a2a; margin-bottom: 10px;">🔴 OPTION 3: Manual Copy</div>
+                <p style="color: #9b2c2c; margin-bottom: 15px; font-size: 0.95em;">
+                    Copy URL and use your own preferred downloader:
+                </p>
+                <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 10px; font-family: monospace; font-size: 0.85em; word-break: break-all;">
+                    ${youtubeUrl}
+                </div>
+                <button onclick="copyToClipboard('${youtubeUrl}'); alert('✅ URL copied to clipboard!');" style="background: #f56565; color: white; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 500; width: 100%;">
+                    📋 Copy YouTube URL
+                </button>
+            </div>
+            
+            <div style="margin-top: 25px; padding: 15px; background: #edf2f7; border-radius: 8px; text-align: center;">
+                <p style="color: #4a5568; font-size: 0.9em; margin: 0;">
+                    💡 <strong>Pro Tip:</strong> Archive.org downloads (green button) usually have better quality for jam band shows!
+                </p>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+// Helper function to copy text to clipboard
+function copyToClipboard(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text);
+    } else {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+    }
+}
+
+// OLD CODE REMOVED - Download from YouTube (server-side blocked by YouTube)
+async function OLD_handleYouTubeDownload_REMOVED(videoId, title) {
     try {
         const confirm = window.confirm(
             `📥 DOWNLOAD FROM YOUTUBE\n\n` +
@@ -738,50 +830,6 @@ async function handleYouTubeDownload(videoId, title) {
             `This will:\n` +
             `1. Download audio from YouTube\n` +
             `2. Convert to MP3\n` +
-            `3. Save to your Downloads\n\n` +
-            `Ready for Moises!\n\n` +
-            `Continue?`
-        );
-        
-        if (!confirm) return;
-        
-        // Show progress
-        updateProgress('Downloading from YouTube...', 30);
-        
-        // Download through worker
-        const workerUrl = 'https://deadcetera-youtube.drewmerrill.workers.dev';
-        const downloadUrl = `${workerUrl}/api/youtube/download?videoId=${videoId}`;
-        
-        // Open download (worker will redirect to yt-dlp server)
-        window.open(downloadUrl, '_blank');
-        
-        updateProgress('Opening download...', 100);
-        
-        setTimeout(() => {
-            alert(
-                `✅ DOWNLOAD STARTED!\n\n` +
-                `The audio file will download shortly.\n\n` +
-                `NEXT STEPS:\n` +
-                `1. Wait for download to complete\n` +
-                `2. Click "Open Moises.ai Studio"\n` +
-                `3. Upload the MP3\n` +
-                `4. Separate stems\n` +
-                `5. Practice!`
-            );
-        }, 1000);
-        
-    } catch (error) {
-        console.error('YouTube download error:', error);
-        alert(
-            `❌ DOWNLOAD FAILED\n\n` +
-            `Error: ${error.message}\n\n` +
-            `Make sure you've deployed:\n` +
-            `• Cloudflare Worker\n` +
-            `• yt-dlp server (Render)\n\n` +
-            `See INTEGRATION-GUIDE.md for setup!`
-        );
-    }
-}
 
 // Close YouTube modal
 function closeYoutubeModal() {
