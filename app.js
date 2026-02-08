@@ -88,25 +88,111 @@ function showTop5Versions(songTitle) {
     
     const versions = top5Database[songTitle];
     
+    // Get band name for resource links
+    const songData = allSongs.find(s => s.title === songTitle);
+    const bandName = songData ? songData.band : 'Grateful Dead';
+    
     container.innerHTML = versions.map(version => {
         const urls = generateArchiveUrls(version.archiveId, version.trackNumber);
+        
+        // Format difficulty display
+        const difficultyStars = version.difficulty ? '⭐'.repeat(version.difficulty) : '';
+        const difficultyLabel = version.difficulty === 1 ? 'Beginner' : 
+                               version.difficulty === 2 ? 'Intermediate' : 
+                               version.difficulty === 3 ? 'Advanced' : '';
+        
+        // Generate resource links
+        const resourceLinks = generateResourceLinks(songTitle, version, bandName);
+        
         return `
             <div class="version-card" onclick="selectVersion('${songTitle}', ${version.rank})">
                 <span class="version-rank rank-${version.rank}">#${version.rank}</span>
                 <div class="version-info">
                     <div class="version-venue">${version.venue}</div>
                     <div class="version-date">${version.date}</div>
+                    
+                    ${version.bpm || version.key || version.length ? `
+                        <div style="margin-top: 8px; display: flex; gap: 15px; flex-wrap: wrap; color: #4a5568; font-size: 0.9em;">
+                            ${version.key ? `<span>🎵 <strong>Key:</strong> ${version.key}</span>` : ''}
+                            ${version.bpm ? `<span>⚡ <strong>BPM:</strong> ${version.bpm}</span>` : ''}
+                            ${version.length ? `<span>⏱️ <strong>Length:</strong> ${version.length}</span>` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    ${version.difficulty ? `
+                        <div style="margin-top: 8px; color: #805ad5; font-weight: 600; font-size: 0.9em;">
+                            ${difficultyStars} ${difficultyLabel}
+                        </div>
+                    ` : ''}
+                    
                     <div class="version-notes">${version.notes}</div>
+                    
+                    ${version.practiceNotes ? `
+                        <div style="margin-top: 10px; padding: 10px; background: #f0fff4; border-left: 4px solid #48bb78; border-radius: 6px;">
+                            <div style="color: #22543d; font-weight: 600; font-size: 0.85em; margin-bottom: 4px;">💡 Practice Tip:</div>
+                            <div style="color: #2f855a; font-size: 0.9em;">${version.practiceNotes}</div>
+                        </div>
+                    ` : ''}
+                    
+                    ${version.features && version.features.length > 0 ? `
+                        <div style="margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap;">
+                            ${version.features.map(f => `<span style="padding: 4px 10px; background: #edf2f7; border-radius: 12px; font-size: 0.8em; color: #4a5568;">✨ ${f}</span>`).join('')}
+                        </div>
+                    ` : ''}
+                    
                     <div style="margin-top: 10px; padding: 8px; background: #edf2f7; border-radius: 6px; border-left: 4px solid #667eea;">
                         <strong style="color: #667eea;">📂 Track ${version.trackNumber}</strong> • 
                         <span class="version-quality">${version.quality} Quality</span>
                     </div>
+                    
+                    ${resourceLinks ? `
+                        <div style="margin-top: 12px; padding-top: 12px; border-top: 2px dashed #e2e8f0;">
+                            <div style="color: #4a5568; font-weight: 600; font-size: 0.85em; margin-bottom: 8px;">🎸 Resources for Musicians:</div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                ${resourceLinks}
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
     }).join('');
     
     step2.classList.remove('hidden');
+}
+
+// Generate resource links based on band and available data
+function generateResourceLinks(songTitle, version, bandName) {
+    const links = [];
+    const songSlug = songTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const dateSlug = version.date ? version.date.replace(/,/g, '').split(' ').reverse().join('-').toLowerCase() : '';
+    
+    // Relisten.net (available for all bands)
+    if (version.relistenLink || dateSlug) {
+        const relistenUrl = version.relistenLink || `https://relisten.net/${bandName.toLowerCase().replace(' ', '-')}/${version.archiveId.match(/\d{4}-\d{2}-\d{2}/)?.[0] || dateSlug}/${songSlug}`;
+        links.push(`<a href="${relistenUrl}" target="_blank" style="padding: 6px 12px; background: #4299e1; color: white; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: 500;">🎧 Stream</a>`);
+    }
+    
+    // Band-specific rating sites
+    if (bandName === 'Grateful Dead' && version.headyversionLink) {
+        links.push(`<a href="${version.headyversionLink}" target="_blank" style="padding: 6px 12px; background: #9f7aea; color: white; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: 500;">📊 HeadyVersion</a>`);
+    } else if (bandName === 'Phish' && version.phishnetLink) {
+        links.push(`<a href="${version.phishnetLink}" target="_blank" style="padding: 6px 12px; background: #9f7aea; color: white; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: 500;">📊 Phish.net</a>`);
+    } else if (bandName === 'Widespread Panic' && version.panicstreamLink) {
+        links.push(`<a href="${version.panicstreamLink}" target="_blank" style="padding: 6px 12px; background: #9f7aea; color: white; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: 500;">📊 PanicStream</a>`);
+    }
+    
+    // Chords
+    if (version.chordsLink) {
+        links.push(`<a href="${version.chordsLink}" target="_blank" style="padding: 6px 12px; background: #48bb78; color: white; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: 500;">🎵 Chords</a>`);
+    }
+    
+    // Tabs
+    if (version.tabsLink) {
+        links.push(`<a href="${version.tabsLink}" target="_blank" style="padding: 6px 12px; background: #ed8936; color: white; text-decoration: none; border-radius: 6px; font-size: 0.85em; font-weight: 500;">🎸 Tabs</a>`);
+    }
+    
+    return links.join('');
 }
 
 // Show message when no versions available yet
