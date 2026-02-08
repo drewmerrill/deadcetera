@@ -1,163 +1,225 @@
 // ============================================================================
-// DEADCETERA APP - Main Application Logic
-// ============================================================================
-// This file handles rendering and interaction. You shouldn't need to edit this.
-// To add songs, edit songs-data.js instead!
+// DEADCETERA WORKFLOW APP
 // ============================================================================
 
-function renderSongList() {
-    const songList = document.getElementById('songList');
-    songList.innerHTML = songs.map(song => `
-        <div class="song-card" onclick="showSongDetails('${song.id}')">
-            <div class="song-title">${song.title}</div>
-            <div class="song-meta">Key: ${song.key}</div>
-            <div class="song-meta">${song.capo || 'No capo'}</div>
+let selectedSong = null;
+let selectedVersion = null;
+let currentFilter = 'all';
+
+// Initialize app
+document.addEventListener('DOMContentLoaded', function() {
+    renderSongs();
+    setupSearchAndFilters();
+});
+
+// Render songs in dropdown
+function renderSongs(filter = 'all', searchTerm = '') {
+    const dropdown = document.getElementById('songDropdown');
+    
+    let filtered = allSongs.filter(song => {
+        const matchesFilter = filter === 'all' || song.band === filter;
+        const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
+        return matchesFilter && matchesSearch;
+    });
+    
+    if (filtered.length === 0) {
+        dropdown.innerHTML = '<div style="padding: 20px; text-align: center; color: #718096;">No songs found</div>';
+        return;
+    }
+    
+    dropdown.innerHTML = filtered.map(song => `
+        <div class="song-item" onclick="selectSong('${song.title}')">
+            <span class="song-name">${song.title}</span>
+            <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
 }
 
-function showSongDetails(songId) {
-    const song = songs.find(s => s.id === songId);
-    if (!song) return;
-
-    const detailsContent = document.getElementById('detailsContent');
+// Setup search and filter handlers
+function setupSearchAndFilters() {
+    const searchInput = document.getElementById('songSearch');
+    const filterBtns = document.querySelectorAll('.filter-btn');
     
-    detailsContent.innerHTML = `
-        <h1 style="color: #e74c3c; margin-bottom: 20px;">${song.title}</h1>
-        <div style="display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap;">
-            <div><strong>Key:</strong> ${song.key}</div>
-            <div><strong>Capo:</strong> ${song.capo}</div>
-            <div><strong>Tempo:</strong> ${song.tempo}</div>
-        </div>
+    searchInput.addEventListener('input', (e) => {
+        renderSongs(currentFilter, e.target.value);
+    });
+    
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = btn.dataset.filter;
+            renderSongs(currentFilter, searchInput.value);
+        });
+    });
+}
 
-        <div class="tools-section">
-            <h3 style="color: #2ecc71; margin-bottom: 15px;">🎵 Practice Tools</h3>
-            <p style="margin-bottom: 15px;">Use these tools to isolate and practice individual parts:</p>
-            <a href="https://moises.ai/" target="_blank" class="tool-button">
-                🎛️ Open Moises.ai - Separate Stems
-            </a>
-            <a href="https://moises.ai/features/vocal-remover/" target="_blank" class="tool-button">
-                🎤 Learn About Vocal Removal
-            </a>
-            <a href="https://studio.moises.ai/" target="_blank" class="tool-button">
-                🎸 Open Moises Studio (Web App)
-            </a>
-            <div class="tip" style="margin-top: 15px;">
-                <strong>How to use:</strong> Upload your recording of "${song.title}" to Moises.ai, and it will separate the vocals, guitar, bass, and drums into individual tracks. Perfect for learning Bob's exact guitar parts or isolating the harmony vocals!
-            </div>
-            ${song.archiveReferences ? `
-                <h4 style="color: #3498db; margin-top: 20px; margin-bottom: 10px;">📼 Recommended Reference Recordings:</h4>
-                ${song.archiveReferences.map(ref => `
-                    <div style="margin: 15px 0; padding: 15px; background: rgba(52, 152, 219, 0.1); border-radius: 8px;">
-                        <a href="${ref.url}" target="_blank" style="color: #3498db; text-decoration: none; font-weight: bold;">
-                            📻 ${ref.venue} (${ref.date})
-                        </a>
-                        <div style="color: #95a5a6; font-size: 0.9em; margin: 8px 0 12px 20px;">${ref.notes}</div>
-                        ${ref.downloadUrl ? `
-                            <a href="${ref.downloadUrl}" download class="tool-button" style="background: #3498db; font-size: 0.9em; padding: 8px 16px; margin-left: 20px;">
-                                ⬇️ Download MP3
-                            </a>
-                        ` : ''}
-                    </div>
-                `).join('')}
-                ${song.archiveSearchUrl ? `
-                    <div style="margin-top: 15px;">
-                        <a href="${song.archiveSearchUrl}" target="_blank" class="tool-button" style="background: #9b59b6;">
-                            🔍 Find More "${song.title}" Recordings on Archive.org
-                        </a>
-                    </div>
-                ` : ''}
-            ` : ''}
-        </div>
+// Select a song
+function selectSong(songTitle) {
+    selectedSong = songTitle;
+    
+    // Highlight selected song
+    document.querySelectorAll('.song-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    event.target.closest('.song-item').classList.add('selected');
+    
+    // Check if we have top 5 versions for this song
+    if (top5Database[songTitle]) {
+        showTop5Versions(songTitle);
+    } else {
+        showNoVersionsMessage(songTitle);
+    }
+    
+    // Scroll to step 2
+    setTimeout(() => {
+        document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+}
 
-        <div class="section">
-            <h2>🎸 Bob Weir's Guitar Part</h2>
-            <p>${song.guitarNotes.overview}</p>
-            
-            <h3>Chord Progression</h3>
-            ${song.guitarNotes.chordProgression.map(prog => 
-                `<div class="chord-line">${prog}</div>`
-            ).join('')}
-            
-            <h3>Rhythm Pattern</h3>
-            <div class="tip">${song.guitarNotes.rhythmPattern}</div>
-            
-            <h3>Key Techniques</h3>
-            <ul>
-                ${song.guitarNotes.techniques.map(tech => `<li>${tech}</li>`).join('')}
-            </ul>
-            
-            <h3>Weir-isms (Bob's specific style notes)</h3>
-            <ul>
-                ${song.guitarNotes.weirTips.map(tip => `<li>${tip}</li>`).join('')}
-            </ul>
-        </div>
-
-        <div class="section">
-            <h2>🎤 Vocal Harmonies</h2>
-            <p>${song.harmonyNotes.overview}</p>
-            
-            ${song.harmonyNotes.vocals.map(vocal => `
-                <div class="harmony-part">
-                    <strong>${vocal.part}</strong><br>
-                    <strong>Lead:</strong> ${vocal.lead}<br>
-                    <strong>Harmony:</strong> ${vocal.harmony}<br>
-                    <em>${vocal.notes}</em>
-                </div>
-            `).join('')}
-            
-            <h3>Harmonization Tips</h3>
-            <ul>
-                ${song.harmonyNotes.harmonizationTips.map(tip => `<li>${tip}</li>`).join('')}
-            </ul>
-            
-            <div class="tip">
-                <strong>Vocal Range:</strong> ${song.harmonyNotes.vocalRange}
-            </div>
-        </div>
-
-        ${song.harmonyNotation ? `
-        <div class="section">
-            <h2>🎼 Harmony Notation</h2>
-            <p style="margin-bottom: 20px;">${song.harmonyNotation.notes}</p>
-            
-            <div class="harmony-notation">
-                <div class="notation-label">Verse Example: "${song.harmonyNotation.verse.lyrics}"</div>
-                <div class="notation-container">
-                    <div class="notation-staff">Lead (Jerry):    ${song.harmonyNotation.verse.lead}</div>
-                    <div class="notation-staff">Harmony (Bob):  ${song.harmonyNotation.verse.bobHarmony}</div>
-                    <div style="color: #95a5a6; margin-top: 10px; font-size: 0.9em;">Interval: ${song.harmonyNotation.verse.interval}</div>
+// Show top 5 versions
+function showTop5Versions(songTitle) {
+    const step2 = document.getElementById('step2');
+    const container = document.getElementById('versionsContainer');
+    
+    const versions = top5Database[songTitle];
+    
+    container.innerHTML = versions.map(version => {
+        const urls = generateArchiveUrls(version.archiveId, version.trackNumber);
+        return `
+            <div class="version-card" onclick="selectVersion('${songTitle}', ${version.rank})">
+                <span class="version-rank rank-${version.rank}">#${version.rank}</span>
+                <div class="version-info">
+                    <div class="version-venue">${version.venue}</div>
+                    <div class="version-date">${version.date}</div>
+                    <div class="version-notes">${version.notes}</div>
+                    <span class="version-quality">${version.quality} Quality</span>
                 </div>
             </div>
+        `;
+    }).join('');
+    
+    step2.classList.remove('hidden');
+}
 
-            <div class="harmony-notation">
-                <div class="notation-label">Chorus: "${song.harmonyNotation.chorus.lyrics}"</div>
-                <div class="notation-container">
-                    <div class="notation-staff">Lead (Jerry):    ${song.harmonyNotation.chorus.lead}</div>
-                    <div class="notation-staff">Harmony (Bob):  ${song.harmonyNotation.chorus.bobHarmony}</div>
-                    <div style="color: #95a5a6; margin-top: 10px; font-size: 0.9em;">Interval: ${song.harmonyNotation.chorus.interval}</div>
-                </div>
-            </div>
-
-            <div class="tip">
-                <strong>Practice Tip:</strong> Sing through these note patterns slowly, then match them to the lyrics. Use a piano or guitar to find the starting pitches. The actual Dead recordings have more rhythmic freedom, but these melodic contours will get you in the ballpark!
-            </div>
+// Show message when no versions available yet
+function showNoVersionsMessage(songTitle) {
+    const step2 = document.getElementById('step2');
+    const container = document.getElementById('versionsContainer');
+    
+    container.innerHTML = `
+        <div style="text-align: center; padding: 40px; background: #f7fafc; border-radius: 12px;">
+            <p style="font-size: 1.2em; color: #4a5568; margin-bottom: 15px;">
+                <strong>"${songTitle}"</strong> is in our catalog!
+            </p>
+            <p style="color: #718096; margin-bottom: 20px;">
+                We haven't researched the top 5 versions yet.
+            </p>
+            <p style="color: #718096;">
+                <strong>Want to help?</strong> Search Archive.org for "${songTitle}" and find 5 great soundboard versions. 
+                Then add them to the app!
+            </p>
+            <a href="https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22${encodeURIComponent(songTitle)}%22+soundboard&sort=-downloads" 
+               target="_blank" 
+               style="display: inline-block; margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 10px; font-weight: 600;">
+                🔍 Search Archive.org
+            </a>
         </div>
-        ` : ''}
     `;
-
-    document.getElementById('songList').style.display = 'none';
-    document.getElementById('songDetails').classList.add('active');
-    window.scrollTo(0, 0);
+    
+    step2.classList.remove('hidden');
 }
 
-function showSongList() {
-    document.getElementById('songList').style.display = 'grid';
-    document.getElementById('songDetails').classList.remove('active');
-    window.scrollTo(0, 0);
+// Select a version
+function selectVersion(songTitle, rank) {
+    const version = top5Database[songTitle][rank - 1];
+    selectedVersion = version;
+    
+    // Highlight selected version
+    document.querySelectorAll('.version-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    event.target.closest('.version-card').classList.add('selected');
+    
+    // Show download step
+    showDownloadStep(songTitle, version);
+    
+    // Scroll to step 3
+    setTimeout(() => {
+        document.getElementById('step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
 }
 
-// Initialize the app when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    renderSongList();
-});
+// Show download and Moises step
+function showDownloadStep(songTitle, version) {
+    const step3 = document.getElementById('step3');
+    const step4 = document.getElementById('step4');
+    const resetContainer = document.getElementById('resetContainer');
+    const infoDiv = document.getElementById('selectedInfo');
+    
+    infoDiv.innerHTML = `
+        <div class="selected-song-name">${songTitle}</div>
+        <div class="selected-version-name">${version.venue} (${version.date})</div>
+    `;
+    
+    // Setup download button
+    const downloadBtn = document.getElementById('downloadBtn');
+    const urls = generateArchiveUrls(version.archiveId, version.trackNumber);
+    
+    downloadBtn.onclick = () => {
+        // Open Archive.org download page
+        window.open(urls.download, '_blank');
+        
+        // Show instructions
+        alert(`📥 DOWNLOAD INSTRUCTIONS:\n\n1. Look for "${songTitle}" in the file list\n2. Find the MP3 or VBR MP3 format\n3. Right-click the file → "Save Link As..."\n4. Save to your Downloads folder\n\nThen click "Open Moises.ai Studio" to upload it!`);
+        
+        // Show step 4
+        step4.classList.remove('hidden');
+        resetContainer.classList.remove('hidden');
+    };
+    
+    // Setup Moises button
+    const moisesBtn = document.getElementById('moisesBtn');
+    moisesBtn.onclick = () => {
+        window.open('https://studio.moises.ai/', '_blank');
+        
+        // Show helpful message
+        setTimeout(() => {
+            alert(`🎛️ MOISES WORKFLOW:\n\n1. Click "Upload" in Moises Studio\n2. Select the MP3 you just downloaded\n3. Choose "5 Stems" or "6 Stems" separation\n4. Wait for processing (1-2 minutes)\n5. Solo your instrument:\n   • Vocals → Lead & harmonies\n   • Guitar 1 → Jerry's lead\n   • Guitar 2 → Bob's rhythm\n   • Bass → Phil's part\n   • Drums → Beat\n   • Keys → Atmospheric parts\n\nYou can adjust volume, tempo, and loop sections!\n\n💡 Tip: Create a Moises account to save your separated tracks!`);
+        }, 1000);
+        
+        step4.classList.remove('hidden');
+        resetContainer.classList.remove('hidden');
+    };
+    
+    step3.classList.remove('hidden');
+}
+
+// Reset workflow
+function resetWorkflow() {
+    selectedSong = null;
+    selectedVersion = null;
+    
+    // Hide steps
+    document.getElementById('step2').classList.add('hidden');
+    document.getElementById('step3').classList.add('hidden');
+    document.getElementById('step4').classList.add('hidden');
+    document.getElementById('resetContainer').classList.add('hidden');
+    
+    // Clear selections
+    document.querySelectorAll('.song-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    
+    document.getElementById('songSearch').value = '';
+    renderSongs();
+    
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Utility: Search Archive.org for a song
+function searchArchive(songTitle) {
+    const url = `https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22${encodeURIComponent(songTitle)}%22+soundboard&sort=-downloads`;
+    window.open(url, '_blank');
+}
