@@ -177,6 +177,10 @@ function showDownloadStep(songTitle, version) {
     const downloadBtn = document.getElementById('downloadBtn');
     const urls = generateArchiveUrls(version.archiveId, version.trackNumber);
     
+    // Setup Smart Download button
+    const smartDownloadBtn = document.getElementById('smartDownloadBtn');
+    smartDownloadBtn.onclick = () => handleSmartDownload(songTitle, version);
+    
     downloadBtn.onclick = () => {
         // Open Archive.org download page
         window.open(urls.download, '_blank');
@@ -308,6 +312,20 @@ WHY THIS HELPS:
 TIP: Use the setlist to scrub through the MP3 in Moises
 and find exactly where "${songTitle}" starts!`);
         }, 500);
+    };
+    
+    // Setup YouTube Search button
+    const youtubeSearchBtn = document.getElementById('youtubeSearchBtn');
+    youtubeSearchBtn.onclick = () => {
+        // Determine band name
+        let bandName = 'Grateful Dead';
+        if (version.archiveId.startsWith('wsp')) {
+            bandName = 'Widespread Panic';
+        } else if (version.archiveId.startsWith('phish')) {
+            bandName = 'Phish';
+        }
+        
+        handleYouTubeSearch(songTitle, bandName);
     };
     
     step3.classList.remove('hidden');
@@ -499,4 +517,241 @@ function showSearchError(songTitle) {
             </button>
         </div>
     `;
+}
+
+// ============================================================================
+// SMART DOWNLOAD & YOUTUBE INTEGRATION
+// ============================================================================
+
+// Initialize Audio Splitter
+let audioSplitter = null;
+
+function initializeAudioSplitter() {
+    if (!audioSplitter && typeof AudioSplitter !== 'undefined') {
+        audioSplitter = new AudioSplitter();
+        audioSplitter.onProgress(updateProgress);
+    }
+}
+
+// Update progress UI
+function updateProgress(message, percent) {
+    const container = document.getElementById('progressContainer');
+    const messageEl = document.getElementById('progressMessage');
+    const barEl = document.getElementById('progressBar');
+    
+    if (container) {
+        container.classList.remove('hidden');
+        messageEl.textContent = message;
+        barEl.style.width = `${percent}%`;
+        
+        // Hide after completion
+        if (percent >= 100) {
+            setTimeout(() => {
+                container.classList.add('hidden');
+            }, 2000);
+        }
+    }
+}
+
+// Smart Download Handler (added in showDownloadStep)
+async function handleSmartDownload(songTitle, version) {
+    try {
+        initializeAudioSplitter();
+        
+        if (!audioSplitter) {
+            alert('❌ Audio Splitter not loaded. Please refresh the page.');
+            return;
+        }
+        
+        // Confirm action
+        const confirm = window.confirm(
+            `⚡ SMART DOWNLOAD\n\n` +
+            `This will extract just "${songTitle}" from the full show:\n` +
+            `${version.venue} (${version.date})\n\n` +
+            `Estimated time: 1-2 minutes\n` +
+            `File size: ~10-15 MB\n\n` +
+            `This clip will be perfect for Moises (under 20-min limit)!\n\n` +
+            `Continue?`
+        );
+        
+        if (!confirm) return;
+        
+        // Extract song
+        const audioBlob = await audioSplitter.extractSongFromArchive(
+            version.archiveId,
+            songTitle,
+            parseInt(version.trackNumber),
+            7 // estimated duration in minutes
+        );
+        
+        // Download
+        const url = URL.createObjectURL(audioBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${songTitle.replace(/[^a-z0-9]/gi, '-')}-${version.date.replace(/[^a-z0-9]/gi, '-')}.wav`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        // Show success
+        setTimeout(() => {
+            alert(
+                `✅ SUCCESS!\n\n` +
+                `Downloaded: ${songTitle}\n` +
+                `Format: WAV audio\n\n` +
+                `NEXT STEPS:\n` +
+                `1. Click "Open Moises.ai Studio" below\n` +
+                `2. Upload the WAV file\n` +
+                `3. Separate stems (6 stems = $4/month)\n` +
+                `4. Practice!\n\n` +
+                `💡 TIP: WAV files work great in Moises!`
+            );
+        }, 500);
+        
+    } catch (error) {
+        console.error('Smart download error:', error);
+        alert(
+            `❌ EXTRACTION FAILED\n\n` +
+            `Error: ${error.message}\n\n` +
+            `TRY INSTEAD:\n` +
+            `• Click "Download Full Show" button\n` +
+            `• Use Setlist.fm to find song timing\n` +
+            `• Upload to Moises and trim there\n\n` +
+            `Or report this issue!`
+        );
+    }
+}
+
+// YouTube Search Handler
+async function handleYouTubeSearch(songTitle, bandName) {
+    try {
+        // Open modal
+        const modal = document.getElementById('youtubeModal');
+        const resultsContainer = document.getElementById('youtubeSearchResults');
+        
+        modal.classList.remove('hidden');
+        resultsContainer.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner" style="margin: 0 auto;"></div><p style="margin-top: 15px;">Searching YouTube...</p></div>';
+        
+        // Construct search query
+        const query = `${bandName} ${songTitle} live`;
+        
+        // Call YouTube API through Cloudflare Worker
+        // YOU'LL NEED TO REPLACE THIS URL WITH YOUR DEPLOYED WORKER
+        const workerUrl = 'YOUR_CLOUDFLARE_WORKER_URL'; // e.g., https://deadcetera-youtube.workers.dev
+        const searchUrl = `${workerUrl}/api/youtube/search?q=${encodeURIComponent(query)}`;
+        
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+        
+        if (!response.ok || !data.results) {
+            throw new Error('YouTube search failed');
+        }
+        
+        // Display results
+        displayYouTubeResults(data.results, songTitle);
+        
+    } catch (error) {
+        console.error('YouTube search error:', error);
+        
+        const resultsContainer = document.getElementById('youtubeSearchResults');
+        resultsContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px; background: #fff5f5; border-radius: 12px;">
+                <p style="font-size: 1.2em; color: #c53030; margin-bottom: 15px;">
+                    ❌ YouTube Search Failed
+                </p>
+                <p style="color: #744210; margin-bottom: 20px;">
+                    ${error.message}
+                </p>
+                <p style="color: #718096; font-size: 0.9em;">
+                    Make sure you've deployed the Cloudflare Worker and updated the URL in app.js
+                </p>
+            </div>
+        `;
+    }
+}
+
+// Display YouTube search results
+function displayYouTubeResults(results, songTitle) {
+    const resultsContainer = document.getElementById('youtubeSearchResults');
+    
+    if (!results || results.length === 0) {
+        resultsContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <p style="color: #718096;">No results found for "${songTitle}"</p>
+            </div>
+        `;
+        return;
+    }
+    
+    resultsContainer.innerHTML = results.map(video => `
+        <div class="youtube-result" onclick="handleYouTubeDownload('${video.videoId}', '${video.title.replace(/'/g, "\\'")}')">
+            <img src="${video.thumbnail}" alt="${video.title}" class="youtube-thumbnail">
+            <div class="youtube-info">
+                <div class="youtube-title">${video.title}</div>
+                <div class="youtube-channel">${video.channel}</div>
+                <span class="youtube-duration">🎥 Click to Download Audio</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Download from YouTube
+async function handleYouTubeDownload(videoId, title) {
+    try {
+        const confirm = window.confirm(
+            `📥 DOWNLOAD FROM YOUTUBE\n\n` +
+            `Video: ${title}\n\n` +
+            `This will:\n` +
+            `1. Download audio from YouTube\n` +
+            `2. Convert to MP3\n` +
+            `3. Save to your Downloads\n\n` +
+            `Ready for Moises!\n\n` +
+            `Continue?`
+        );
+        
+        if (!confirm) return;
+        
+        // Show progress
+        updateProgress('Downloading from YouTube...', 30);
+        
+        // Download through worker
+        const workerUrl = 'YOUR_CLOUDFLARE_WORKER_URL'; // Replace with your worker URL
+        const downloadUrl = `${workerUrl}/api/youtube/download?videoId=${videoId}`;
+        
+        // Open download (worker will redirect to yt-dlp server)
+        window.open(downloadUrl, '_blank');
+        
+        updateProgress('Opening download...', 100);
+        
+        setTimeout(() => {
+            alert(
+                `✅ DOWNLOAD STARTED!\n\n` +
+                `The audio file will download shortly.\n\n` +
+                `NEXT STEPS:\n` +
+                `1. Wait for download to complete\n` +
+                `2. Click "Open Moises.ai Studio"\n` +
+                `3. Upload the MP3\n` +
+                `4. Separate stems\n` +
+                `5. Practice!`
+            );
+        }, 1000);
+        
+    } catch (error) {
+        console.error('YouTube download error:', error);
+        alert(
+            `❌ DOWNLOAD FAILED\n\n` +
+            `Error: ${error.message}\n\n` +
+            `Make sure you've deployed:\n` +
+            `• Cloudflare Worker\n` +
+            `• yt-dlp server (Render)\n\n` +
+            `See INTEGRATION-GUIDE.md for setup!`
+        );
+    }
+}
+
+// Close YouTube modal
+function closeYoutubeModal() {
+    const modal = document.getElementById('youtubeModal');
+    modal.classList.add('hidden');
 }
