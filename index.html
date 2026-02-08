@@ -58,8 +58,11 @@
                     <!-- Selected song and version info -->
                 </div>
                 <div class="action-buttons">
+                    <button class="primary-btn smart-download-btn" id="smartDownloadBtn" style="background: #10b981;">
+                        ⚡ Smart Download (Just This Song!)
+                    </button>
                     <button class="primary-btn" id="downloadBtn">
-                        ⬇️ Download MP3 from Archive.org
+                        ⬇️ Download Full Show from Archive.org
                     </button>
                     <button class="primary-btn moises-btn" id="moisesBtn">
                         🎛️ Open Moises.ai Studio
@@ -67,6 +70,20 @@
                     <button class="primary-btn" id="setlistBtn" style="background: #48bb78;">
                         📋 View Setlist (Song Order & Timing)
                     </button>
+                    <button class="primary-btn youtube-btn" id="youtubeSearchBtn" style="background: #ef4444;">
+                        🎥 Search YouTube for This Song
+                    </button>
+                </div>
+                <div id="progressContainer" class="hidden" style="margin-top: 15px; padding: 15px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner"></div>
+                        <div>
+                            <strong id="progressMessage">Processing...</strong>
+                            <div style="margin-top: 5px; height: 8px; background: #dbeafe; border-radius: 4px; overflow: hidden;">
+                                <div id="progressBar" style="height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="workflow-guide">
                     <h3>📋 Your Practice Workflow:</h3>
@@ -144,6 +161,21 @@
                 ↺ Start Over with New Song
             </button>
         </div>
+        
+        <!-- YouTube Search Modal -->
+        <div id="youtubeModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🎥 Search YouTube</h2>
+                    <button class="close-btn" onclick="closeYoutubeModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div id="youtubeSearchResults" class="youtube-results">
+                        <!-- Results populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <footer>
@@ -151,6 +183,7 @@
     </footer>
 
     <script src="data.js"></script>
+    <script src="audio-splitter.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
