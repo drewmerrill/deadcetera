@@ -58,6 +58,23 @@ class AudioSplitter {
                 endTime = estimated.endTime;
                 console.log(`⚠️ Using estimated timestamps: ${(startTime/60).toFixed(1)}min - ${(endTime/60).toFixed(1)}min`);
             }
+            
+            // VALIDATE TIMESTAMPS
+            if (isNaN(startTime) || isNaN(endTime)) {
+                throw new Error(`Invalid timestamps: start=${startTime}, end=${endTime}. Cannot extract audio.`);
+            }
+            
+            if (startTime < 0 || endTime < 0) {
+                throw new Error(`Negative timestamps: start=${startTime}s, end=${endTime}s. This indicates corrupted data.`);
+            }
+            
+            if (endTime <= startTime) {
+                throw new Error(`End time (${endTime}s) must be after start time (${startTime}s). Cannot extract audio.`);
+            }
+            
+            if ((endTime - startTime) > 1200) { // 20 minutes max
+                throw new Error(`Extraction too long: ${((endTime - startTime)/60).toFixed(1)} minutes. Maximum is 20 minutes. This usually means bad timestamp data.`);
+            }
 
             // Step 5: Fetch and extract audio segment
             this.updateProgress('Downloading audio segment...', 40);
@@ -347,6 +364,15 @@ class AudioSplitter {
         const startSample = Math.floor(startTime * sampleRate);
         const endSample = Math.floor(adjustedEndTime * sampleRate);
         const duration = endSample - startSample;
+        
+        // CRITICAL SAFETY CHECK: Validate duration
+        if (duration <= 0) {
+            throw new Error(`Invalid extraction range: start=${startTime}s, end=${adjustedEndTime}s. Start must be before end.`);
+        }
+        
+        if (duration > sampleRate * 60 * 20) { // Max 20 minutes
+            throw new Error(`Extraction too long: ${(duration / sampleRate / 60).toFixed(1)} minutes. Maximum is 20 minutes. This usually means bad timestamp data.`);
+        }
         
         console.log(`Extracting: ${(startTime / 60).toFixed(1)}min to ${(adjustedEndTime / 60).toFixed(1)}min (${(duration / sampleRate / 60).toFixed(1)}min total)`);
         
