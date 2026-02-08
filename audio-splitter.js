@@ -49,7 +49,17 @@ class AudioSplitter {
                 this.updateProgress('Using real track data...', 35);
                 startTime = trackInfo.start;
                 endTime = trackInfo.end || (startTime + (estimatedDuration * 60));
-                console.log(`✅ Found real timestamps: ${(startTime/60).toFixed(1)}min - ${(endTime/60).toFixed(1)}min`);
+                
+                // VALIDATE: If timestamps are backwards, fall back to estimation
+                if (endTime <= startTime) {
+                    console.warn(`⚠️ Invalid track timestamps (end=${endTime}s before start=${startTime}s). Falling back to estimation.`);
+                    const estimated = this.estimateTimestamp(songPosition, estimatedDuration);
+                    startTime = estimated.startTime;
+                    endTime = estimated.endTime;
+                    console.log(`⚠️ Using estimated timestamps: ${(startTime/60).toFixed(1)}min - ${(endTime/60).toFixed(1)}min`);
+                } else {
+                    console.log(`✅ Found real timestamps: ${(startTime/60).toFixed(1)}min - ${(endTime/60).toFixed(1)}min`);
+                }
             } else {
                 // Fall back to estimation
                 this.updateProgress('Estimating song position...', 35);
@@ -69,7 +79,7 @@ class AudioSplitter {
             }
             
             if (endTime <= startTime) {
-                throw new Error(`End time (${endTime}s) must be after start time (${startTime}s). Cannot extract audio.`);
+                throw new Error(`Invalid extraction range: start=${startTime}s, end=${endTime}s. Start must be before end.`);
             }
             
             if ((endTime - startTime) > 1200) { // 20 minutes max
