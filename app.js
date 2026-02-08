@@ -216,40 +216,98 @@ function showDownloadStep(songTitle, version) {
         
         // Show DETAILED, CLEAR Moises workflow
         setTimeout(() => {
-            alert(`🎛️ MOISES.AI UPLOAD & PRACTICE WORKFLOW:
+            alert(`🎛️ MOISES.AI - UPLOAD & STEM SEPARATION
 
 📤 STEP 1: Upload Your MP3
-   → Click "Upload" or drag the MP3 into Moises
-   → Select: ${version.archiveId}.mp3 from your Downloads
+   → Go to https://studio.moises.ai/
+   → Click "Upload" or drag the MP3 file
+   → Select: ${version.archiveId}.mp3 from Downloads
+
+💰 MOISES PRICING (Important!):
+   → FREE: 2 stems only (vocals + instrumental)
+   → PAID ($4/month): 6 stems separation
+      • Vocals (lead & harmonies)
+      • Guitar 1 (lead guitar)
+      • Guitar 2 (rhythm guitar)  
+      • Bass
+      • Drums
+      • Keys
+   → Recommended: Get paid plan for full practice power!
 
 ⚙️ STEP 2: Choose Stem Separation
-   → Select "6 Stems" (recommended for practice)
+   → Select "6 Stems" (requires paid plan)
    → Click "Separate"
    → Wait 1-2 minutes for AI processing
 
 🎸 STEP 3: Isolate Your Instrument
-   → Click "Solo" on your part:
-      • Vocals → Lead vocals & harmonies
-      • Guitar 1 → Jerry Garcia's lead guitar
-      • Guitar 2 → Bob Weir's rhythm guitar
-      • Bass → Phil Lesh's bass line
-      • Drums → Full drum kit
-      • Keys → Brent/Vince keyboard parts
+   → Click "Solo" to hear just your part
+   → Or "Mute" other instruments
+   → Adjust volume sliders for perfect mix
 
 🎵 STEP 4: Practice!
-   → Adjust tempo (slow it down to learn)
-   → Loop difficult sections
-   → Adjust volume to hear your part better
+   → Slow down tempo to learn (25-100%)
+   → Loop difficult sections (A-B repeat)
+   → Adjust pitch if needed
    → Play along and nail it!
 
-💡 PRO TIP: The MP3 has the full show. Track ${version.trackNumber} is "${songTitle}". 
-You can use Moises timeline to jump to that track, or just play through!
+📍 FIND YOUR SONG:
+   → Full show MP3 = all songs
+   → Track ${version.trackNumber} is "${songTitle}"
+   → Use Moises timeline to scrub to your song
+   → Or check setlist.fm for song order/timing
 
-🔐 Save your work: Create a free Moises account to keep your separated tracks!`);
+💡 PRO TIP: The full show gives you bonus practice material!
+You can learn multiple songs from one download!`);
         }, 1000);
         
         step4.classList.remove('hidden');
         resetContainer.classList.remove('hidden');
+    };
+    
+    // Setup Setlist.fm button
+    const setlistBtn = document.getElementById('setlistBtn');
+    setlistBtn.onclick = () => {
+        // Extract date from version.date (e.g., "March 14, 1981" -> "1981-03-14")
+        const dateStr = version.date;
+        const dateParts = dateStr.split(' ');
+        const months = {
+            'January': '01', 'February': '02', 'March': '03', 'April': '04',
+            'May': '05', 'June': '06', 'July': '07', 'August': '08',
+            'September': '09', 'October': '10', 'November': '11', 'December': '12'
+        };
+        const month = months[dateParts[0]];
+        const day = dateParts[1].replace(',', '').padStart(2, '0');
+        const year = dateParts[2];
+        const formattedDate = `${year}-${month}-${day}`;
+        
+        // Determine band name for setlist.fm
+        let bandName = 'Grateful Dead';
+        if (version.archiveId.startsWith('wsp')) {
+            bandName = 'Widespread Panic';
+        } else if (version.archiveId.startsWith('phish')) {
+            bandName = 'Phish';
+        }
+        
+        // Open setlist.fm search
+        const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent(bandName + ' ' + formattedDate)}`;
+        window.open(setlistUrl, '_blank');
+        
+        // Show helpful message
+        setTimeout(() => {
+            alert(`📋 SETLIST.FM - FIND YOUR SONG
+
+You'll see the setlist (song order) for this show:
+${bandName} - ${version.date}
+
+WHY THIS HELPS:
+→ See which song is Track ${version.trackNumber}
+→ See song order to navigate the MP3
+→ Estimate timing (most songs = 5-10 mins)
+→ Find other songs you might want to learn!
+
+TIP: Use the setlist to scrub through the MP3 in Moises
+and find exactly where "${songTitle}" starts!`);
+        }, 500);
     };
     
     step3.classList.remove('hidden');
