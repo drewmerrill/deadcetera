@@ -93,7 +93,10 @@ function showTop5Versions(songTitle) {
                     <div class="version-venue">${version.venue}</div>
                     <div class="version-date">${version.date}</div>
                     <div class="version-notes">${version.notes}</div>
-                    <span class="version-quality">${version.quality} Quality</span>
+                    <div style="margin-top: 10px; padding: 8px; background: #edf2f7; border-radius: 6px; border-left: 4px solid #667eea;">
+                        <strong style="color: #667eea;">📂 Track ${version.trackNumber}</strong> • 
+                        <span class="version-quality">${version.quality} Quality</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -162,6 +165,12 @@ function showDownloadStep(songTitle, version) {
     infoDiv.innerHTML = `
         <div class="selected-song-name">${songTitle}</div>
         <div class="selected-version-name">${version.venue} (${version.date})</div>
+        <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+            <strong style="color: #92400e;">📂 YOU NEED: Track ${version.trackNumber}</strong>
+            <div style="color: #78350f; font-size: 0.9em; margin-top: 5px;">
+                Look for file: <code style="background: #fde68a; padding: 2px 6px; border-radius: 3px;">${version.archiveId}.mp3</code>
+            </div>
+        </div>
     `;
     
     // Setup download button
@@ -172,8 +181,28 @@ function showDownloadStep(songTitle, version) {
         // Open Archive.org download page
         window.open(urls.download, '_blank');
         
-        // Show instructions
-        alert(`📥 DOWNLOAD INSTRUCTIONS:\n\n1. Look for "${songTitle}" in the file list\n2. Find the MP3 or VBR MP3 format\n3. Right-click the file → "Save Link As..."\n4. Save to your Downloads folder\n\nThen click "Open Moises.ai Studio" to upload it!`);
+        // Show VERY CLEAR instructions
+        setTimeout(() => {
+            alert(`🎯 CRYSTAL CLEAR DOWNLOAD STEPS:
+
+📂 FIND THIS FILE: ${version.archiveId}.mp3
+
+✅ STEP 1: On Archive.org page
+   → Look for "${version.archiveId}.mp3" in the file list
+   → It's usually one of the larger files (100-200MB)
+
+✅ STEP 2: Download the MP3
+   → Right-click on the filename
+   → Select "Save Link As..." or "Download Linked File"
+   → Save to your Downloads folder
+
+✅ STEP 3: Note the Track Number
+   → You need Track ${version.trackNumber} (${songTitle})
+   → The full show MP3 contains all tracks
+   → Moises will let you isolate just this track!
+
+📍 NEXT: Click "Open Moises.ai Studio" below to upload!`);
+        }, 500);
         
         // Show step 4
         step4.classList.remove('hidden');
@@ -185,9 +214,38 @@ function showDownloadStep(songTitle, version) {
     moisesBtn.onclick = () => {
         window.open('https://studio.moises.ai/', '_blank');
         
-        // Show helpful message
+        // Show DETAILED, CLEAR Moises workflow
         setTimeout(() => {
-            alert(`🎛️ MOISES WORKFLOW:\n\n1. Click "Upload" in Moises Studio\n2. Select the MP3 you just downloaded\n3. Choose "5 Stems" or "6 Stems" separation\n4. Wait for processing (1-2 minutes)\n5. Solo your instrument:\n   • Vocals → Lead & harmonies\n   • Guitar 1 → Jerry's lead\n   • Guitar 2 → Bob's rhythm\n   • Bass → Phil's part\n   • Drums → Beat\n   • Keys → Atmospheric parts\n\nYou can adjust volume, tempo, and loop sections!\n\n💡 Tip: Create a Moises account to save your separated tracks!`);
+            alert(`🎛️ MOISES.AI UPLOAD & PRACTICE WORKFLOW:
+
+📤 STEP 1: Upload Your MP3
+   → Click "Upload" or drag the MP3 into Moises
+   → Select: ${version.archiveId}.mp3 from your Downloads
+
+⚙️ STEP 2: Choose Stem Separation
+   → Select "6 Stems" (recommended for practice)
+   → Click "Separate"
+   → Wait 1-2 minutes for AI processing
+
+🎸 STEP 3: Isolate Your Instrument
+   → Click "Solo" on your part:
+      • Vocals → Lead vocals & harmonies
+      • Guitar 1 → Jerry Garcia's lead guitar
+      • Guitar 2 → Bob Weir's rhythm guitar
+      • Bass → Phil Lesh's bass line
+      • Drums → Full drum kit
+      • Keys → Brent/Vince keyboard parts
+
+🎵 STEP 4: Practice!
+   → Adjust tempo (slow it down to learn)
+   → Loop difficult sections
+   → Adjust volume to hear your part better
+   → Play along and nail it!
+
+💡 PRO TIP: The MP3 has the full show. Track ${version.trackNumber} is "${songTitle}". 
+You can use Moises timeline to jump to that track, or just play through!
+
+🔐 Save your work: Create a free Moises account to keep your separated tracks!`);
         }, 1000);
         
         step4.classList.remove('hidden');
