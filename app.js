@@ -173,44 +173,76 @@ function showDownloadStep(songTitle, version) {
         </div>
     `;
     
-    // Setup download button
-    const downloadBtn = document.getElementById('downloadBtn');
-    const urls = generateArchiveUrls(version.archiveId, version.trackNumber);
-    
     // Setup Smart Download button
     const smartDownloadBtn = document.getElementById('smartDownloadBtn');
     smartDownloadBtn.onclick = () => handleSmartDownload(songTitle, version);
     
-    downloadBtn.onclick = () => {
-        // Open Archive.org download page
-        window.open(urls.download, '_blank');
-        
-        // Show VERY CLEAR instructions
-        setTimeout(() => {
-            alert(`🎯 CRYSTAL CLEAR DOWNLOAD STEPS:
+    // Setup download button - will use best Archive version
+    const downloadBtn = document.getElementById('downloadBtn');
+    
+    downloadBtn.onclick = async () => {
+        try {
+            // Show loading
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = '🔍 Finding best version...';
+            
+            // Use the same auto-search logic to find best version
+            const audioSplitter = new AudioSplitter();
+            const bestArchiveId = await audioSplitter.findBestArchiveVersion(version.archiveId);
+            
+            // Generate URLs with the BEST version
+            const urls = {
+                details: `https://archive.org/details/${bestArchiveId}`,
+                download: `https://archive.org/download/${bestArchiveId}/`
+            };
+            
+            // Reset button
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = '⬇️ Download Full Show from Archive.org';
+            
+            // Open best version download page
+            window.open(urls.download, '_blank');
+            
+            // Show instructions
+            setTimeout(() => {
+                alert(`🎯 FULL SHOW DOWNLOAD:
 
-📂 FIND THIS FILE: ${version.archiveId}.mp3
+📂 BEST VERSION FOUND: ${bestArchiveId.substring(0, 40)}...
 
 ✅ STEP 1: On Archive.org page
-   → Look for "${version.archiveId}.mp3" in the file list
-   → It's usually one of the larger files (100-200MB)
+   → Look for the MP3 file (usually 100-200MB)
+   → It will be named something like: ${bestArchiveId}.mp3
 
 ✅ STEP 2: Download the MP3
-   → Right-click on the filename
+   → Right-click on the MP3 filename
    → Select "Save Link As..." or "Download Linked File"
    → Save to your Downloads folder
 
-✅ STEP 3: Note the Track Number
-   → You need Track ${version.trackNumber} (${songTitle})
-   → The full show MP3 contains all tracks
-   → Moises will let you isolate just this track!
+✅ STEP 3: Find Your Song
+   → Track ${version.trackNumber} is "${songTitle}"
+   → Use Setlist.fm to see song order
+   → Upload to Moises and scrub to find the song
 
-📍 NEXT: Click "Open Moises.ai Studio" below to upload!`);
-        }, 500);
-        
-        // Show step 4
-        step4.classList.remove('hidden');
-        resetContainer.classList.remove('hidden');
+💡 TIP: Smart Download (green button) extracts just the song automatically!`);
+            }, 500);
+            
+            // Show step 4
+            step4.classList.remove('hidden');
+            resetContainer.classList.remove('hidden');
+            
+        } catch (error) {
+            console.error('Error finding best version:', error);
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = '⬇️ Download Full Show from Archive.org';
+            
+            // Fallback to basic URL
+            const basicUrl = `https://archive.org/download/${version.archiveId}/`;
+            window.open(basicUrl, '_blank');
+            
+            alert(`⚠️ Could not auto-find best version, opening basic URL.
+            
+Look for any MP3 file on the Archive.org page to download.`);
+        }
     };
     
     // Setup Moises button
@@ -314,19 +346,21 @@ and find exactly where "${songTitle}" starts!`);
         }, 500);
     };
     
-    // Setup YouTube Search button
+    // Setup YouTube Search button (if enabled)
     const youtubeSearchBtn = document.getElementById('youtubeSearchBtn');
-    youtubeSearchBtn.onclick = () => {
-        // Determine band name
-        let bandName = 'Grateful Dead';
-        if (version.archiveId.startsWith('wsp')) {
-            bandName = 'Widespread Panic';
-        } else if (version.archiveId.startsWith('phish')) {
-            bandName = 'Phish';
-        }
-        
-        handleYouTubeSearch(songTitle, bandName);
-    };
+    if (youtubeSearchBtn) {
+        youtubeSearchBtn.onclick = () => {
+            // Determine band name
+            let bandName = 'Grateful Dead';
+            if (version.archiveId.startsWith('wsp')) {
+                bandName = 'Widespread Panic';
+            } else if (version.archiveId.startsWith('phish')) {
+                bandName = 'Phish';
+            }
+            
+            handleYouTubeSearch(songTitle, bandName);
+        };
+    }
     
     step3.classList.remove('hidden');
 }
@@ -637,8 +671,7 @@ async function handleYouTubeSearch(songTitle, bandName) {
         const query = `${bandName} ${songTitle} live`;
         
         // Call YouTube API through Cloudflare Worker
-        // YOU'LL NEED TO REPLACE THIS URL WITH YOUR DEPLOYED WORKER
-        const workerUrl = 'YOUR_CLOUDFLARE_WORKER_URL'; // e.g., https://deadcetera-youtube.workers.dev
+        const workerUrl = 'https://deadcetera-youtube.drewmerrill.workers.dev';
         const searchUrl = `${workerUrl}/api/youtube/search?q=${encodeURIComponent(query)}`;
         
         const response = await fetch(searchUrl);
@@ -716,7 +749,7 @@ async function handleYouTubeDownload(videoId, title) {
         updateProgress('Downloading from YouTube...', 30);
         
         // Download through worker
-        const workerUrl = 'YOUR_CLOUDFLARE_WORKER_URL'; // Replace with your worker URL
+        const workerUrl = 'https://deadcetera-youtube.drewmerrill.workers.dev';
         const downloadUrl = `${workerUrl}/api/youtube/download?videoId=${videoId}`;
         
         // Open download (worker will redirect to yt-dlp server)
