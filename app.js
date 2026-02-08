@@ -58,6 +58,10 @@ function setupSearchAndFilters() {
 function selectSong(songTitle) {
     selectedSong = songTitle;
     
+    // Get band info from allSongs
+    const songData = allSongs.find(s => s.title === songTitle);
+    const bandName = songData ? songData.band : 'Grateful Dead';
+    
     // Highlight selected song
     document.querySelectorAll('.song-item').forEach(item => {
         item.classList.remove('selected');
@@ -68,7 +72,7 @@ function selectSong(songTitle) {
     if (top5Database[songTitle]) {
         showTop5Versions(songTitle);
     } else {
-        showNoVersionsMessage(songTitle);
+        showNoVersionsMessage(songTitle, bandName);
     }
     
     // Scroll to step 2
@@ -106,25 +110,25 @@ function showTop5Versions(songTitle) {
 }
 
 // Show message when no versions available yet
-function showNoVersionsMessage(songTitle) {
+function showNoVersionsMessage(songTitle, bandName = 'Grateful Dead') {
     const step2 = document.getElementById('step2');
     const container = document.getElementById('versionsContainer');
     
     container.innerHTML = `
         <div style="text-align: center; padding: 40px; background: #f7fafc; border-radius: 12px;">
             <p style="font-size: 1.2em; color: #4a5568; margin-bottom: 15px;">
-                <strong>"${songTitle}"</strong> is in our catalog!
+                <strong>"${songTitle}"</strong> by <strong>${bandName}</strong> is in our catalog!
             </p>
             <p style="color: #718096; margin-bottom: 20px;">
                 We haven't pre-loaded the top 5 versions for this song yet.
             </p>
-            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle}')" style="margin-bottom: 15px;">
+            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle}', '${bandName}')" style="margin-bottom: 15px;">
                 🔍 Find Best Versions on Archive.org
             </button>
             <p style="color: #718096; font-size: 0.9em;">
                 This will search Archive.org for popular downloadable versions
             </p>
-            <a href="https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22${encodeURIComponent(songTitle)}%22+soundboard&sort=-downloads" 
+            <a href="https://archive.org/search.php?query=creator%3A%22${encodeURIComponent(bandName)}%22+AND+%22${encodeURIComponent(songTitle)}%22+soundboard&sort=-downloads" 
                target="_blank" 
                style="display: inline-block; margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 10px; font-weight: 600;">
                 🔍 Search Archive.org
@@ -399,7 +403,7 @@ function searchArchive(songTitle) {
 // ============================================================================
 
 // Search Archive.org API for best versions of a song
-async function searchArchiveForSong(songTitle) {
+async function searchArchiveForSong(songTitle, bandName = 'Grateful Dead') {
     const container = document.getElementById('versionsContainer');
     
     // Show loading state
@@ -407,7 +411,7 @@ async function searchArchiveForSong(songTitle) {
         <div style="text-align: center; padding: 60px;">
             <div class="spinner"></div>
             <p style="color: #718096; margin-top: 20px; font-size: 1.1em;">
-                Searching Archive.org for best versions of "${songTitle}"...
+                Searching Archive.org for best versions of "${songTitle}" by ${bandName}...
             </p>
             <p style="color: #a0aec0; margin-top: 10px; font-size: 0.9em;">
                 Looking for soundboard recordings with MP3 downloads
@@ -416,16 +420,16 @@ async function searchArchiveForSong(songTitle) {
     `;
     
     try {
-        // Query Archive.org API for Grateful Dead shows with this song
+        // Query Archive.org API for shows with this song by this band
         // Sorted by downloads (popularity), filtered for soundboard quality
-        const query = `creator:"Grateful Dead" AND "${songTitle}" AND soundboard AND format:MP3`;
+        const query = `creator:"${bandName}" AND "${songTitle}" AND soundboard AND format:MP3`;
         const apiUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl=identifier,title,date,downloads,avg_rating&sort[]=downloads+desc&sort[]=avg_rating+desc&rows=10&output=json`;
         
         const response = await fetch(apiUrl);
         const data = await response.json();
         
         if (!data.response || !data.response.docs || data.response.docs.length === 0) {
-            showNoResultsFound(songTitle);
+            showNoResultsFound(songTitle, bandName);
             return;
         }
         
@@ -437,7 +441,7 @@ async function searchArchiveForSong(songTitle) {
         
     } catch (error) {
         console.error('Archive.org search error:', error);
-        showSearchError(songTitle);
+        showSearchError(songTitle, bandName);
     }
 }
 
@@ -515,7 +519,7 @@ function formatDate(dateString) {
 }
 
 // Show no results message
-function showNoResultsFound(songTitle) {
+function showNoResultsFound(songTitle, bandName = 'Grateful Dead') {
     const container = document.getElementById('versionsContainer');
     container.innerHTML = `
         <div style="text-align: center; padding: 40px; background: #fff5f5; border-radius: 12px; border: 2px dashed #fc8181;">
@@ -523,9 +527,9 @@ function showNoResultsFound(songTitle) {
                 😕 No soundboard recordings found
             </p>
             <p style="color: #744210; margin-bottom: 20px;">
-                Archive.org doesn't have any downloadable soundboard versions of "${songTitle}" in their database.
+                Archive.org doesn't have any downloadable soundboard versions of "${songTitle}" by ${bandName} in their database.
             </p>
-            <button class="primary-btn" onclick="window.open('https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22${encodeURIComponent(songTitle)}%22', '_blank')">
+            <button class="primary-btn" onclick="window.open('https://archive.org/search.php?query=creator%3A%22${encodeURIComponent(bandName)}%22+AND+%22${encodeURIComponent(songTitle)}%22', '_blank')">
                 🔍 Search All Versions on Archive.org
             </button>
         </div>
@@ -533,7 +537,7 @@ function showNoResultsFound(songTitle) {
 }
 
 // Show search error
-function showSearchError(songTitle) {
+function showSearchError(songTitle, bandName = 'Grateful Dead') {
     const container = document.getElementById('versionsContainer');
     container.innerHTML = `
         <div style="text-align: center; padding: 40px; background: #fff5f5; border-radius: 12px;">
@@ -543,10 +547,10 @@ function showSearchError(songTitle) {
             <p style="color: #744210; margin-bottom: 20px;">
                 Couldn't connect to Archive.org. Please try again or search manually.
             </p>
-            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle}')">
+            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle}', '${bandName}')">
                 🔄 Try Again
             </button>
-            <button class="secondary-btn" onclick="window.open('https://archive.org/search.php?query=creator%3A%22Grateful+Dead%22+AND+%22${encodeURIComponent(songTitle)}%22', '_blank')" style="margin-left: 10px;">
+            <button class="secondary-btn" onclick="window.open('https://archive.org/search.php?query=creator%3A%22${encodeURIComponent(bandName)}%22+AND+%22${encodeURIComponent(songTitle)}%22', '_blank')" style="margin-left: 10px;">
                 🔍 Manual Search
             </button>
         </div>
