@@ -383,7 +383,18 @@ const top5Database = {
             archiveId: "gd1981-03-14",
             notes: "The Hartford Althea - legendary version, perfect Garcia solo",
             trackNumber: "08",
-            quality: "SBD"
+            quality: "SBD",
+            // Musician features:
+            bpm: 128,
+            key: "E minor",
+            length: "9:47",
+            difficulty: 2,
+            practiceNotes: "Perfect for learning Jerry's melodic soloing style. Extended outro jam showcases his signature '81 tone.",
+            features: ["Extended outro jam", "Peak Jerry tone", "Classic '81 sound"],
+            relistenLink: "https://relisten.net/grateful-dead/1981/03/14/althea",
+            headyversionLink: "https://www.headyversion.com/song/6/grateful-dead/althea/",
+            chordsLink: "https://www.rukind.com/gdead/lyrics/althea.html",
+            tabsLink: "https://tabs.ultimate-guitar.com/tab/grateful-dead/althea-tabs-134567"
         },
         {
             rank: 2,
@@ -392,7 +403,17 @@ const top5Database = {
             archiveId: "gd1990-07-19",
             notes: "Without a Net album version - hot energy, great interplay",
             trackNumber: "05",
-            quality: "SBD"
+            quality: "SBD",
+            bpm: 132,
+            key: "E minor",
+            length: "8:23",
+            difficulty: 2,
+            practiceNotes: "Faster tempo than usual - great for working on speed and tightness. Official album version has pristine audio.",
+            features: ["Without a Net album", "Fast tempo", "Hot energy"],
+            relistenLink: "https://relisten.net/grateful-dead/1990/07/19/althea",
+            headyversionLink: "https://www.headyversion.com/song/6/grateful-dead/althea/",
+            chordsLink: "https://www.rukind.com/gdead/lyrics/althea.html",
+            tabsLink: "https://tabs.ultimate-guitar.com/tab/grateful-dead/althea-tabs-134567"
         },
         {
             rank: 3,
