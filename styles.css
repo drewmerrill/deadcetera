@@ -55,6 +55,10 @@ h1 {
     transition: all 0.3s ease;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .step-card.hidden {
     display: none;
 }
