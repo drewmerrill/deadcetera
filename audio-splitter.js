@@ -273,13 +273,17 @@ class AudioSplitter {
      */
     async fetchArchiveMetadata(archiveId) {
         const metadataUrl = `https://archive.org/metadata/${archiveId}`;
+        console.log(`Fetching metadata from: ${metadataUrl}`);
         const response = await fetch(metadataUrl);
         
         if (!response.ok) {
             throw new Error('Failed to fetch show metadata');
         }
         
-        return await response.json();
+        const metadata = await response.json();
+        console.log(`Metadata received for identifier: ${metadata.metadata?.identifier || 'unknown'}`);
+        console.log(`Metadata has ${metadata.files?.length || 0} files`);
+        return metadata;
     }
 
     /**
