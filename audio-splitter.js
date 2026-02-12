@@ -271,21 +271,49 @@ class AudioSplitter {
     findBestMP3(metadata) {
         const files = metadata.files || [];
         
-        // Try to find VBR MP3 (usually best quality)
+        // IMPORTANT: Avoid individual track files (they have patterns like d1t01, d2t05)
+        // We want the FULL SHOW MP3 file
+        const isFullShowMP3 = (f) => {
+            // Exclude files with track patterns (d1t01, d2t05, etc.)
+            if (/d\d+t\d+/i.test(f.name)) {
+                return false;
+            }
+            // Must be MP3
+            if (!f.name.endsWith('.mp3')) {
+                return false;
+            }
+            // Must be large enough (full shows are usually > 100MB)
+            // But don't filter by size if we can't tell
+            return true;
+        };
+        
+        // Try to find VBR MP3 full show (usually best quality)
         let mp3File = files.find(f => 
             f.format === 'VBR MP3' && 
-            f.name.endsWith('.mp3')
+            isFullShowMP3(f)
         );
         
-        // Fallback to regular MP3
+        // Fallback to regular MP3 full show
         if (!mp3File) {
             mp3File = files.find(f => 
-                f.format === 'MP3' || 
-                f.name.endsWith('.mp3')
+                (f.format === 'MP3' || f.format === 'VBR MP3') && 
+                isFullShowMP3(f)
             );
         }
         
-        // Last resort: any audio file
+        // If still nothing, just get any MP3 that's not a track file
+        if (!mp3File) {
+            mp3File = files.find(f => 
+                f.name.endsWith('.mp3') && 
+                !(/d\d+t\d+/i.test(f.name))
+            );
+        }
+        
+        if (mp3File) {
+            console.log(`Selected MP3: ${mp3File.name} (${(mp3File.size / 1024 / 1024).toFixed(1)}MB)`);
+        }
+        
+        return mp3File;
         if (!mp3File) {
             mp3File = files.find(f => 
                 f.format && 
