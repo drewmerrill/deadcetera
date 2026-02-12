@@ -392,14 +392,6 @@ class AudioSplitter {
         console.error('💡 This show may only have individual track files.');
         return null;
     }
-            mp3File = files.find(f => 
-                f.format && 
-                (f.format.includes('MP3') || f.format.includes('Audio'))
-            );
-        }
-        
-        return mp3File;
-    }
 
     /**
      * Estimate timestamp for song based on setlist position
