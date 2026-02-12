@@ -731,7 +731,7 @@ async function handleSmartDownload(songTitle, version) {
         
         // For Archive search results, get track position from Setlist.fm
         let trackPosition = parseInt(version.trackNumber);
-        if (version.isArchiveSearchResult) {
+        if (version.isArchiveSearchResult && !version._skipPositionDialog) {
             console.log(`Archive search result - fetching setlist from Setlist.fm...`);
             
             // Show loading message
@@ -877,8 +877,11 @@ async function handleSmartDownload(songTitle, version) {
         );
         
         // Show preview dialog with audio player
-        const filename = `${songTitle.replace(/[^a-z0-9]/gi, '-')}-${version.date.replace(/[^a-z0-9]/gi, '-')}.wav`;
+        const filename = `${songTitle.replace(/[^a-z0-9]/gi, '-')}-${version.date.replace(/[^a-z0-9]/gi, '-')}.mp3`;
         const url = URL.createObjectURL(audioBlob);
+        const fileSizeMB = (audioBlob.size / (1024 * 1024)).toFixed(1);
+        
+        console.log(`Preview: ${filename}, Size: ${fileSizeMB}MB, Type: ${audioBlob.type}`);
         
         const showPreviewDialog = () => {
             const dialog = document.createElement('div');
@@ -889,13 +892,14 @@ async function handleSmartDownload(songTitle, version) {
                     <strong>Listen to verify this is the correct song:</strong>
                 </p>
                 <audio controls autoplay style="width: 100%; margin-bottom: 20px;" id="previewAudio">
-                    <source src="${url}" type="audio/wav">
+                    <source src="${url}">
                 </audio>
                 <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px;">
                     <div style="color: #2d3748; margin-bottom: 5px;"><strong>Song:</strong> ${songTitle}</div>
                     <div style="color: #2d3748; margin-bottom: 5px;"><strong>Position:</strong> Track #${trackPosition}</div>
                     <div style="color: #2d3748; margin-bottom: 5px;"><strong>Show:</strong> ${version.venue}</div>
-                    <div style="color: #2d3748;"><strong>Date:</strong> ${version.date}</div>
+                    <div style="color: #2d3748; margin-bottom: 5px;"><strong>Date:</strong> ${version.date}</div>
+                    <div style="color: ${fileSizeMB < 1 ? '#dc2626' : '#10b981'}; font-weight: 600; margin-top: 8px;"><strong>Size:</strong> ${fileSizeMB} MB ${fileSizeMB < 1 ? '⚠️ TOO SMALL!' : '✓'}</div>
                 </div>
                 <p style="margin-bottom: 15px; color: #dc2626; font-size: 13px; font-weight: 600;">
                     ⚠️ <strong>Wrong song?</strong> Try the next or previous track:
@@ -974,17 +978,25 @@ async function handleSmartDownload(songTitle, version) {
         if (action === 'prev') {
             console.log('User wants previous track');
             URL.revokeObjectURL(url);
-            // Recursively call handleSmartDownload with previous position
-            version.trackNumber = String(trackPosition - 1);
-            return handleSmartDownload(songTitle, version);
+            // Create modified version with new position and skip dialog
+            const newVersion = {
+                ...version,
+                trackNumber: String(trackPosition - 1),
+                _skipPositionDialog: true // Skip asking for position again
+            };
+            return handleSmartDownload(songTitle, newVersion);
         }
         
         if (action === 'next') {
             console.log('User wants next track');
             URL.revokeObjectURL(url);
-            // Recursively call handleSmartDownload with next position
-            version.trackNumber = String(trackPosition + 1);
-            return handleSmartDownload(songTitle, version);
+            // Create modified version with new position and skip dialog
+            const newVersion = {
+                ...version,
+                trackNumber: String(trackPosition + 1),
+                _skipPositionDialog: true // Skip asking for position again
+            };
+            return handleSmartDownload(songTitle, newVersion);
         }
         
         // Download the file
