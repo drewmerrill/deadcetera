@@ -336,6 +336,18 @@ class AudioSplitter {
         
         console.log(`Searching for audio file among ${files.length} files...`);
         
+        // DEBUG: Log what audio files we actually have
+        const audioFiles = files.filter(f => 
+            (f.name.endsWith('.mp3') || f.name.includes('.flac')) && 
+            !f.name.endsWith('.txt')
+        );
+        console.log(`Found ${audioFiles.length} audio files total`);
+        audioFiles.forEach(f => {
+            const sizeMB = getSizeMB(f).toFixed(1);
+            const isTrack = isTrackFile(f.name);
+            console.log(`  - ${f.name} (${sizeMB}MB) ${isTrack ? '[TRACK FILE]' : '[FULL SHOW?]'}`);
+        });
+        
         // PRIORITY 1: Full show MP3 (VBR preferred)
         let mp3File = files.find(f => 
             f.format === 'VBR MP3' && 
