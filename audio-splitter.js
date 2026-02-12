@@ -304,9 +304,10 @@ class AudioSplitter {
             
             if (firstAudioFile) {
                 // Extract base identifier from filename (e.g., "gd1981-03-14.motb.0029" from "gd1981-03-14.motb.0029.d1t01.mp3")
-                const match = firstAudioFile.name.match(/^([^d]+?)(?:\.d\d+t\d+|$)/i);
+                // Match everything up to the .dXtYY disc/track pattern
+                const match = firstAudioFile.name.match(/^(.+?)\.d\d+t\d+/i);
                 if (match) {
-                    const actualArchiveId = match[1].replace(/\.$/, ''); // Remove trailing dot
+                    const actualArchiveId = match[1];
                     if (actualArchiveId !== archiveId) {
                         console.warn(`⚠️ Archive.org returned files from DIFFERENT version!`);
                         console.warn(`   Requested: ${archiveId}`);
