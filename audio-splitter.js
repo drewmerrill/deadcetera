@@ -32,7 +32,7 @@ class AudioSplitter {
             
             // Step 3: Check if individual track file exists (EASIEST PATH!)
             this.updateProgress('Looking for individual track file...', 20);
-            const trackFile = this.findIndividualTrackFile(metadata, songPosition);
+            const trackFile = this.findIndividualTrackFile(metadata, songTitle, songPosition);
             
             if (trackFile) {
                 // PERFECT! We have the individual track file - just download it directly!
@@ -291,20 +291,62 @@ class AudioSplitter {
      * This is the BEST case - just download the track directly!
      * Note: We search across all discs (d1, d2, d3) since we don't know which disc the song is on
      */
-    findIndividualTrackFile(metadata, songPosition) {
+    findIndividualTrackFile(metadata, songTitle, songPosition) {
         const files = metadata.files || [];
         
-        console.log(`Looking for track #${songPosition} across all discs...`);
+        console.log(`Looking for "${songTitle}" (position ${songPosition}) across all discs...`);
+        
+        // STRATEGY 1: Try to find by song name in filename (MOST RELIABLE!)
+        console.log(`Strategy 1: Searching filenames for "${songTitle}"...`);
+        const songSlug = songTitle.toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '') // Remove special chars
+            .replace(/\s+/g, ''); // Remove spaces
+        
+        // Try MP3 files with song name
+        for (const file of files) {
+            if (!file.name.endsWith('.mp3')) continue;
+            
+            const filename = file.name.toLowerCase()
+                .replace(/[^a-z0-9\s]/g, '')
+                .replace(/\s+/g, '');
+            
+            if (filename.includes(songSlug)) {
+                const sizeMB = file.size ? (file.size / 1024 / 1024).toFixed(1) : '?';
+                console.log(`✅ Found by song name: ${file.name} (${sizeMB}MB)`);
+                return file;
+            }
+        }
+        
+        // Try FLAC files with song name
+        for (const file of files) {
+            if (!file.name.includes('.flac') || file.name.endsWith('.txt')) continue;
+            
+            const filename = file.name.toLowerCase()
+                .replace(/[^a-z0-9\s]/g, '')
+                .replace(/\s+/g, '');
+            
+            if (filename.includes(songSlug)) {
+                const sizeMB = file.size ? (file.size / 1024 / 1024).toFixed(1) : '?';
+                console.log(`✅ Found by song name: ${file.name} (${sizeMB}MB)`);
+                return file;
+            }
+        }
+        
+        console.log(`Strategy 1 failed - no files with "${songTitle}" in name`);
+        
+        // STRATEGY 2: Try exact track number patterns
+        console.log(`Strategy 2: Looking for track #${songPosition} across all discs...`);
         
         // Try multiple disc/track combinations
         // songPosition might be the overall setlist position, not the disc track number
         const trackPadded = String(songPosition).padStart(2, '0');
         
-        // Search patterns: d1t08, d2t08, d3t08, or just t08
+        // Search patterns: d1t08, d2t08, d3t08, d4t08, or just t08
         const patterns = [
             new RegExp(`d1t${trackPadded}`, 'i'),
             new RegExp(`d2t${trackPadded}`, 'i'),
             new RegExp(`d3t${trackPadded}`, 'i'),
+            new RegExp(`d4t${trackPadded}`, 'i'),
             new RegExp(`[^d]t${trackPadded}`, 'i'), // Matches "t08" without a disc prefix
         ];
         
@@ -336,9 +378,41 @@ class AudioSplitter {
             }
         }
         
-        console.log(`❌ No individual track file found for position ${songPosition} on any disc`);
+        console.log(`Strategy 2 failed - no track #${songPosition} found`);
         
-        // FALLBACK: Try to find by counting tracks sequentially across discs
+        // STRATEGY 3: Try track numbers ±1 (off by one errors)
+        console.log(`Strategy 3: Trying nearby track numbers (±1, ±2)...`);
+        const nearbyTracks = [songPosition - 1, songPosition + 1, songPosition - 2, songPosition + 2];
+        
+        for (const tryTrack of nearbyTracks) {
+            if (tryTrack < 1) continue;
+            
+            const tryPadded = String(tryTrack).padStart(2, '0');
+            const tryPatterns = [
+                new RegExp(`d1t${tryPadded}`, 'i'),
+                new RegExp(`d2t${tryPadded}`, 'i'),
+                new RegExp(`d3t${tryPadded}`, 'i'),
+                new RegExp(`d4t${tryPadded}`, 'i'),
+            ];
+            
+            for (const pattern of tryPatterns) {
+                const track = files.find(f => 
+                    (f.name.endsWith('.mp3') || (f.name.includes('.flac') && !f.name.endsWith('.txt'))) &&
+                    pattern.test(f.name)
+                );
+                
+                if (track) {
+                    const sizeMB = track.size ? (track.size / 1024 / 1024).toFixed(1) : '?';
+                    console.log(`⚠️ Found nearby track #${tryTrack}: ${track.name} (${sizeMB}MB)`);
+                    console.log(`⚠️ WARNING: This might not be "${songTitle}" - track number may be off by ${Math.abs(songPosition - tryTrack)}`);
+                    return track;
+                }
+            }
+        }
+        
+        console.log(`Strategy 3 failed - no nearby tracks found`);
+        
+        // STRATEGY 4: Try to find by counting tracks sequentially across discs
         // Sometimes songPosition is the overall position in the show, not the disc track number
         console.log(`Attempting to find by counting tracks sequentially...`);
         
@@ -377,7 +451,8 @@ class AudioSplitter {
             }
         }
         
-        console.log(`❌ Could not find track ${songPosition} by any method`);
+        console.log(`Strategy 4 failed - not enough tracks for sequential counting`);
+        console.log(`❌ Could not find "${songTitle}" by any method`);
         return null;
     }
 
