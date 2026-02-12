@@ -887,6 +887,46 @@ async function handleSmartDownload(songTitle, version) {
         
         console.log(`Preview: ${filename}, Size: ${fileSizeMB}MB, Type: ${audioBlob.type}`);
         
+        // If file is too small (< 1MB), it's probably tuning/crowd, not a real song
+        // Try to find a better Archive version automatically
+        if (fileSizeMB < 1 && version.isArchiveSearchResult) {
+            console.warn(`⚠️ File too small (${fileSizeMB}MB) - might be wrong Archive version`);
+            
+            // Show warning dialog suggesting to search for better version
+            const tryAgain = confirm(
+                `⚠️ SMALL FILE DETECTED\n\n` +
+                `Track #${trackPosition} is only ${fileSizeMB}MB (too small for a full song).\n\n` +
+                `This Archive.org version might only have crowd noise/tuning tracks.\n\n` +
+                `OPTIONS:\n` +
+                `• Click OK to search for a DIFFERENT Archive version\n` +
+                `• Click Cancel to try different track positions on this version\n\n` +
+                `Recommendation: Search for a different version!`
+            );
+            
+            if (tryAgain) {
+                URL.revokeObjectURL(url);
+                
+                // Search Archive.org for ALL versions of this show
+                const showDate = version.archiveId.match(/(\d{4}-\d{2}-\d{2})/)[0];
+                const searchUrl = `https://archive.org/search?query=grateful+dead+${showDate}&sort=-downloads`;
+                
+                alert(
+                    `🔍 SEARCHING FOR BETTER VERSIONS\n\n` +
+                    `Opening Archive.org search for all versions of this ${showDate} show.\n\n` +
+                    `💡 LOOK FOR:\n` +
+                    `• Versions with "SBD" or "soundboard"\n` +
+                    `• Higher download counts (100,000+)\n` +
+                    `• Copy the Archive ID and try it!\n\n` +
+                    `Current version: ${version.archiveId}\n` +
+                    `(This one has small files)`
+                );
+                
+                window.open(searchUrl, '_blank');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+        }
+        
         const showPreviewDialog = () => {
             const dialog = document.createElement('div');
             dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 10000; max-width: 550px;';
