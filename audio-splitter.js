@@ -294,13 +294,30 @@ class AudioSplitter {
     findIndividualTrackFile(metadata, songTitle, songPosition) {
         const files = metadata.files || [];
         
-        console.log(`Looking for "${songTitle}" (position ${songPosition}) across all discs...`);
+        console.log(`========================================`);
+        console.log(`SEARCHING FOR: "${songTitle}" (position ${songPosition})`);
+        console.log(`Total files in show: ${files.length}`);
+        console.log(`========================================`);
+        
+        // Log ALL audio files to see what's available
+        const audioFiles = files.filter(f => 
+            (f.name.endsWith('.mp3') || f.name.includes('.flac')) && 
+            !f.name.endsWith('.txt')
+        );
+        console.log(`Found ${audioFiles.length} audio files:`);
+        audioFiles.forEach((f, idx) => {
+            const sizeMB = f.size ? (f.size / 1024 / 1024).toFixed(1) : '?';
+            console.log(`  [${idx + 1}] ${f.name} (${sizeMB}MB)`);
+        });
+        console.log(`========================================`);
         
         // STRATEGY 1: Try to find by song name in filename (MOST RELIABLE!)
         console.log(`Strategy 1: Searching filenames for "${songTitle}"...`);
         const songSlug = songTitle.toLowerCase()
             .replace(/[^a-z0-9\s]/g, '') // Remove special chars
             .replace(/\s+/g, ''); // Remove spaces
+        
+        console.log(`  Looking for slug: "${songSlug}"`);
         
         // Try MP3 files with song name
         for (const file of files) {
@@ -312,7 +329,7 @@ class AudioSplitter {
             
             if (filename.includes(songSlug)) {
                 const sizeMB = file.size ? (file.size / 1024 / 1024).toFixed(1) : '?';
-                console.log(`✅ Found by song name: ${file.name} (${sizeMB}MB)`);
+                console.log(`✅ Strategy 1 SUCCESS: Found by song name: ${file.name} (${sizeMB}MB)`);
                 return file;
             }
         }
@@ -327,12 +344,13 @@ class AudioSplitter {
             
             if (filename.includes(songSlug)) {
                 const sizeMB = file.size ? (file.size / 1024 / 1024).toFixed(1) : '?';
-                console.log(`✅ Found by song name: ${file.name} (${sizeMB}MB)`);
+                console.log(`✅ Strategy 1 SUCCESS: Found by song name: ${file.name} (${sizeMB}MB)`);
                 return file;
             }
         }
         
-        console.log(`Strategy 1 failed - no files with "${songTitle}" in name`);
+        console.log(`❌ Strategy 1 FAILED - no files with "${songTitle}" in name`);
+        console.log(`========================================`);
         
         // STRATEGY 2: Try exact track number patterns
         console.log(`Strategy 2: Looking for track #${songPosition} across all discs...`);
