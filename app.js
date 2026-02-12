@@ -594,11 +594,12 @@ function selectArchiveVersion(archiveId, songTitle) {
     // Create a version object similar to curated versions
     const version = {
         archiveId: archiveId,
-        trackNumber: '01', // Default - will be auto-detected by Smart Download
+        trackNumber: '01', // Placeholder - will use sequential counting instead
         venue: 'Archive.org Search Result',
         date: archiveId,
         notes: 'Auto-discovered from Archive.org search',
-        quality: 'SBD'
+        quality: 'SBD',
+        isArchiveSearchResult: true // Flag to skip individual track search
     };
     
     selectedVersion = version;
@@ -733,7 +734,8 @@ async function handleSmartDownload(songTitle, version) {
             version.archiveId,
             songTitle,
             parseInt(version.trackNumber),
-            7 // estimated duration in minutes
+            7, // estimated duration in minutes
+            version.isArchiveSearchResult // Flag to skip individual track search
         );
         
         // Download
