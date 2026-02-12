@@ -589,9 +589,17 @@ function displayArchiveResults(songTitle, shows) {
 
 // Select an Archive.org version
 function selectArchiveVersion(archiveId, songTitle) {
+    console.log('Selected Archive version:', archiveId, songTitle);
+    
+    // Store selected version
     selectedVersion = {
         archiveId: archiveId,
-        songTitle: songTitle
+        songTitle: songTitle,
+        trackNumber: '01', // Default - will be auto-detected by Smart Download
+        venue: 'Archive.org Search Result',
+        date: archiveId,
+        notes: 'Auto-discovered from Archive.org search',
+        quality: 'SBD'
     };
     
     // Highlight selected version
@@ -600,8 +608,43 @@ function selectArchiveVersion(archiveId, songTitle) {
     });
     event.target.closest('.version-card').classList.add('selected');
     
-    // Show download section
-    showDownloadSection(archiveId);
+    // Show Step 3 with download options
+    const step3 = document.getElementById('step3');
+    const container = document.getElementById('downloadOptions');
+    
+    const urls = generateArchiveUrls(archiveId, '01');
+    
+    container.innerHTML = `
+        <h3 style="color: #2d3748; margin-bottom: 15px;">📥 Download Options</h3>
+        <p style="color: #4a5568; margin-bottom: 20px;">
+            <strong>Selected:</strong> ${songTitle} from ${archiveId}
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <button class="download-btn smart-download-btn" onclick="handleSmartDownload('${songTitle}')">
+                ⚡ Smart Download (Just This Song!)
+            </button>
+            
+            <button class="download-btn" onclick="window.open('${urls.archivePage}', '_blank')">
+                📦 Download Full Show from Archive.org
+            </button>
+            
+            <button class="download-btn moises-btn" onclick="handleMoisesUpload()">
+                🎵 Open Moises.ai Studio
+            </button>
+            
+            <button class="download-btn" onclick="window.open('https://www.setlist.fm/search?query=${encodeURIComponent('Grateful Dead ' + archiveId)}', '_blank')">
+                📋 View Setlist (Song Order & Timing)
+            </button>
+            
+            <button class="download-btn youtube-btn" onclick="handleYouTubeSearch('${songTitle}')">
+                🎥 Search YouTube for This Song
+            </button>
+        </div>
+    `;
+    
+    step3.style.display = 'block';
+    step3.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // Format date from Archive.org
