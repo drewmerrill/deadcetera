@@ -174,10 +174,11 @@ class AudioSplitter {
             const versions = data.response.docs;
             console.log(`Found ${versions.length} versions of this show`);
             
-            // Scoring system to find best version:
-            // Priority 1: Has individual track files (look for multiple files)
+            // ENHANCED SCORING SYSTEM
+            // Priority 1: Versions with individual track files that include song names
             // Priority 2: Soundboard (SBD) > Audience (AUD)
-            // Priority 3: Higher download count = better quality
+            // Priority 3: FLAC > MP3
+            // Priority 4: Higher download count
             
             let bestVersion = null;
             let bestScore = -1;
@@ -186,25 +187,42 @@ class AudioSplitter {
                 let score = 0;
                 const id = version.identifier;
                 
-                // Check if this version likely has individual tracks
-                // (we'll verify this when we fetch metadata)
+                // CRITICAL: Prefer versions that split songs (more likely to have song names in files)
                 if (id.includes('sbd') || id.includes('soundboard')) {
-                    score += 50; // SBD quality
+                    score += 100; // SBD quality (highest priority)
                 }
                 
+                // Avoid audience recordings
+                if (id.includes('aud') || id.includes('audience')) {
+                    score -= 50; // Penalty for audience
+                }
+                
+                // Prefer FLAC (lossless)
                 if (id.includes('flac')) {
-                    score += 30; // FLAC format
+                    score += 40;
                 }
                 
+                // MP3 is okay
                 if (id.includes('mp3') || id.includes('vbr')) {
-                    score += 20; // MP3 available
+                    score += 20;
+                }
+                
+                // Prefer known good tapers/sources
+                if (id.includes('miller') || id.includes('bertha') || id.includes('dusborne') || 
+                    id.includes('clugston') || id.includes('tobin') || id.includes('scotton')) {
+                    score += 30; // Known quality tapers
+                }
+                
+                // Avoid versions with only disc numbers (no individual tracks)
+                if (id.includes('.motb.0029') || id.includes('.shnf')) {
+                    score -= 30; // These often have only crowd/tuning
                 }
                 
                 // Download count (popularity = usually better quality)
                 const downloads = parseInt(version.downloads) || 0;
-                score += Math.min(downloads / 100, 100); // Cap at 100 points
+                score += Math.min(downloads / 1000, 100); // Cap at 100 points
                 
-                console.log(`Version: ${id.substring(0, 50)}... Score: ${score}`);
+                console.log(`Version: ${id.substring(0, 60)}... Score: ${score}`);
                 
                 if (score > bestScore) {
                     bestScore = score;
@@ -344,10 +362,33 @@ class AudioSplitter {
         console.log(`Strategy 4: Counting tracks sequentially to find position ${songPosition}...`);
         
         // Get all track files sorted by disc and track number
-        const trackFiles = files.filter(f => 
-            (f.name.endsWith('.mp3') || f.name.includes('.flac')) &&
-            /d\d+t\d+/i.test(f.name)
-        ).sort((a, b) => {
+        // FILTER OUT: crowd, tuning, banter files (usually < 3MB)
+        const trackFiles = files.filter(f => {
+            // Must be audio file
+            if (!f.name.endsWith('.mp3') && !f.name.includes('.flac')) return false;
+            
+            // Must have disc/track pattern
+            if (!/d\d+t\d+/i.test(f.name)) return false;
+            
+            // Filter out known non-song files by name
+            const nameLower = f.name.toLowerCase();
+            if (nameLower.includes('crowd') || 
+                nameLower.includes('tuning') || 
+                nameLower.includes('banter') ||
+                nameLower.includes('noise')) {
+                console.log(`  Skipping non-song: ${f.name}`);
+                return false;
+            }
+            
+            // Filter out tiny files (< 3MB = likely crowd/tuning)
+            const sizeMB = f.size ? (f.size / 1024 / 1024) : 0;
+            if (sizeMB > 0 && sizeMB < 3) {
+                console.log(`  Skipping small file (${sizeMB.toFixed(1)}MB): ${f.name}`);
+                return false;
+            }
+            
+            return true;
+        }).sort((a, b) => {
             // Extract disc and track numbers for sorting
             const aMatch = a.name.match(/d(\d+)t(\d+)/i);
             const bMatch = b.name.match(/d(\d+)t(\d+)/i);
@@ -362,7 +403,7 @@ class AudioSplitter {
             return aTrack - bTrack;
         });
         
-        console.log(`  Found ${trackFiles.length} track files sorted by disc/track`);
+        console.log(`  Found ${trackFiles.length} valid tracks (filtered out crowd/tuning)`);
         
         // Get the Nth track (songPosition - 1 because arrays are 0-indexed)
         if (trackFiles.length >= songPosition) {
@@ -375,7 +416,7 @@ class AudioSplitter {
                 
                 const selectedTrack = mp3Version || flacVersion || targetTrack;
                 const sizeMB = selectedTrack.size ? (selectedTrack.size / 1024 / 1024).toFixed(1) : '?';
-                console.log(`✅ Strategy 4 SUCCESS: Found by sequential counting: ${selectedTrack.name} (${sizeMB}MB)`);
+                console.log(`✅ Strategy 4 SUCCESS: ${selectedTrack.name} (${sizeMB}MB)`);
                 return selectedTrack;
             }
         }
