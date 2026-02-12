@@ -309,9 +309,9 @@ class AudioSplitter {
             return mp3Track;
         }
         
-        // Try FLAC if no MP3
+        // Try FLAC if no MP3 (includes .flac, .flac16, .flac24, .flac1644, etc.)
         const flacTrack = files.find(f => 
-            f.name.endsWith('.flac') && 
+            (f.name.includes('.flac') && !f.name.endsWith('.txt')) &&
             trackPattern.test(f.name)
         );
         
@@ -362,8 +362,9 @@ class AudioSplitter {
         }
         
         // PRIORITY 3: FLAC file (Archive.org can stream these)
+        // Note: Archive.org has various FLAC formats: .flac, .flac16, .flac24, .flac1644, etc.
         const flacFile = files.find(f => 
-            f.name.endsWith('.flac') &&
+            (f.name.includes('.flac') && !f.name.endsWith('.txt')) &&
             !isTrackFile(f.name) &&
             getSizeMB(f) > 50
         );
@@ -376,7 +377,7 @@ class AudioSplitter {
         
         // PRIORITY 5: Last resort - largest audio file > 50MB
         const largeFiles = files.filter(f => 
-            (f.name.endsWith('.mp3') || f.name.endsWith('.flac')) &&
+            ((f.name.endsWith('.mp3') || f.name.includes('.flac')) && !f.name.endsWith('.txt')) &&
             getSizeMB(f) > 50 &&
             !isTrackFile(f.name)
         );
