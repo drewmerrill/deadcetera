@@ -30,15 +30,33 @@ class AudioSplitter {
             this.updateProgress('Fetching show metadata...', 10);
             const metadata = await this.fetchArchiveMetadata(bestArchiveId);
             
-            // Step 3: Find MP3 file
-            this.updateProgress('Finding audio file...', 20);
+            // Step 3: Check if individual track file exists (EASIEST PATH!)
+            this.updateProgress('Looking for individual track file...', 20);
+            const trackFile = this.findIndividualTrackFile(metadata, songPosition);
+            
+            if (trackFile) {
+                // PERFECT! We have the individual track file - just download it directly!
+                console.log(`✅ Found individual track file: ${trackFile.name} - downloading directly!`);
+                this.updateProgress('Downloading track file directly...', 50);
+                
+                const trackUrl = `https://archive.org/download/${bestArchiveId}/${trackFile.name}`;
+                const response = await fetch(trackUrl);
+                const blob = await response.blob();
+                
+                this.updateProgress('Complete!', 100);
+                console.log(`✅ Direct download complete! No extraction needed.`);
+                return blob;
+            }
+            
+            // Step 4: No individual track - need to find full show and extract
+            this.updateProgress('Finding full show file...', 25);
             const mp3File = this.findBestMP3(metadata);
             
             if (!mp3File) {
                 throw new Error('No MP3 file found for this show');
             }
 
-            // Step 4: Try to get REAL track timestamps from Archive.org
+            // Step 5: Try to get REAL track timestamps from Archive.org
             this.updateProgress('Looking for track timestamps...', 30);
             const trackInfo = await this.findTrackTimestamps(metadata, songTitle, songPosition);
             
@@ -268,6 +286,45 @@ class AudioSplitter {
      * Find the best MP3 file from metadata
      * Prefers: VBR MP3 > MP3 > Any audio file
      */
+    /**
+     * Find individual track file (e.g., d1t08.mp3 for track 8)
+     * This is the BEST case - just download the track directly!
+     */
+    findIndividualTrackFile(metadata, songPosition) {
+        const files = metadata.files || [];
+        
+        // Look for track file pattern: d1t08, d2t03, etc.
+        // Format: d[disc]t[track with leading zero]
+        const trackPattern = new RegExp(`d\\d+t${String(songPosition).padStart(2, '0')}`, 'i');
+        
+        // Try to find MP3 track file
+        const mp3Track = files.find(f => 
+            f.name.endsWith('.mp3') && 
+            trackPattern.test(f.name)
+        );
+        
+        if (mp3Track) {
+            const sizeMB = mp3Track.size ? (mp3Track.size / 1024 / 1024).toFixed(1) : '?';
+            console.log(`Found MP3 track file: ${mp3Track.name} (${sizeMB}MB)`);
+            return mp3Track;
+        }
+        
+        // Try FLAC if no MP3
+        const flacTrack = files.find(f => 
+            f.name.endsWith('.flac') && 
+            trackPattern.test(f.name)
+        );
+        
+        if (flacTrack) {
+            const sizeMB = flacTrack.size ? (flacTrack.size / 1024 / 1024).toFixed(1) : '?';
+            console.log(`Found FLAC track file: ${flacTrack.name} (${sizeMB}MB)`);
+            return flacTrack;
+        }
+        
+        console.log(`No individual track file found for position ${songPosition}`);
+        return null;
+    }
+
     findBestMP3(metadata) {
         const files = metadata.files || [];
         
@@ -316,28 +373,25 @@ class AudioSplitter {
             return flacFile;
         }
         
-        // PRIORITY 4: Largest MP3 file (even if it's a track or segment)
-        const allMP3s = files.filter(f => f.name.endsWith('.mp3') && getSizeMB(f) > 1);
-        if (allMP3s.length > 0) {
-            // Sort by size, get largest
-            allMP3s.sort((a, b) => getSizeMB(b) - getSizeMB(a));
-            mp3File = allMP3s[0];
-            console.log(`⚠️ Using largest MP3 found: ${mp3File.name} (${getSizeMB(mp3File).toFixed(1)}MB)`);
-            return mp3File;
+        
+        // PRIORITY 5: Last resort - largest audio file > 50MB
+        const largeFiles = files.filter(f => 
+            (f.name.endsWith('.mp3') || f.name.endsWith('.flac')) &&
+            getSizeMB(f) > 50 &&
+            !isTrackFile(f.name)
+        );
+        
+        if (largeFiles.length > 0) {
+            largeFiles.sort((a, b) => getSizeMB(b) - getSizeMB(a));
+            const file = largeFiles[0];
+            console.log(`⚠️ Using largest audio file: ${file.name} (${getSizeMB(file).toFixed(1)}MB)`);
+            return file;
         }
         
-        // PRIORITY 5: Largest FLAC file
-        const allFLACs = files.filter(f => f.name.endsWith('.flac') && getSizeMB(f) > 1);
-        if (allFLACs.length > 0) {
-            allFLACs.sort((a, b) => getSizeMB(b) - getSizeMB(a));
-            const flac = allFLACs[0];
-            console.log(`⚠️ Using largest FLAC found: ${flac.name} (${getSizeMB(flac).toFixed(1)}MB)`);
-            return flac;
-        }
-        
-        console.error('❌ No suitable audio file found!');
+        console.error('❌ No suitable full-show audio file found for extraction.');
+        console.error('💡 This show may only have individual track files.');
         return null;
-        if (!mp3File) {
+    }
             mp3File = files.find(f => 
                 f.format && 
                 (f.format.includes('MP3') || f.format.includes('Audio'))
