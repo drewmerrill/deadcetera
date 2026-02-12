@@ -289,39 +289,54 @@ class AudioSplitter {
     /**
      * Find individual track file (e.g., d1t08.mp3 for track 8)
      * This is the BEST case - just download the track directly!
+     * Note: We search across all discs (d1, d2, d3) since we don't know which disc the song is on
      */
     findIndividualTrackFile(metadata, songPosition) {
         const files = metadata.files || [];
         
-        // Look for track file pattern: d1t08, d2t03, etc.
-        // Format: d[disc]t[track with leading zero]
-        const trackPattern = new RegExp(`d\\d+t${String(songPosition).padStart(2, '0')}`, 'i');
+        console.log(`Looking for track #${songPosition} across all discs...`);
         
-        // Try to find MP3 track file
-        const mp3Track = files.find(f => 
-            f.name.endsWith('.mp3') && 
-            trackPattern.test(f.name)
-        );
+        // Try multiple disc/track combinations
+        // songPosition might be the overall setlist position, not the disc track number
+        const trackPadded = String(songPosition).padStart(2, '0');
         
-        if (mp3Track) {
-            const sizeMB = mp3Track.size ? (mp3Track.size / 1024 / 1024).toFixed(1) : '?';
-            console.log(`Found MP3 track file: ${mp3Track.name} (${sizeMB}MB)`);
-            return mp3Track;
+        // Search patterns: d1t08, d2t08, d3t08, or just t08
+        const patterns = [
+            new RegExp(`d1t${trackPadded}`, 'i'),
+            new RegExp(`d2t${trackPadded}`, 'i'),
+            new RegExp(`d3t${trackPadded}`, 'i'),
+            new RegExp(`[^d]t${trackPadded}`, 'i'), // Matches "t08" without a disc prefix
+        ];
+        
+        // Try to find MP3 track file with any pattern
+        for (const pattern of patterns) {
+            const mp3Track = files.find(f => 
+                f.name.endsWith('.mp3') && 
+                pattern.test(f.name)
+            );
+            
+            if (mp3Track) {
+                const sizeMB = mp3Track.size ? (mp3Track.size / 1024 / 1024).toFixed(1) : '?';
+                console.log(`✅ Found MP3 track file: ${mp3Track.name} (${sizeMB}MB)`);
+                return mp3Track;
+            }
         }
         
         // Try FLAC if no MP3 (includes .flac, .flac16, .flac24, .flac1644, etc.)
-        const flacTrack = files.find(f => 
-            (f.name.includes('.flac') && !f.name.endsWith('.txt')) &&
-            trackPattern.test(f.name)
-        );
-        
-        if (flacTrack) {
-            const sizeMB = flacTrack.size ? (flacTrack.size / 1024 / 1024).toFixed(1) : '?';
-            console.log(`Found FLAC track file: ${flacTrack.name} (${sizeMB}MB)`);
-            return flacTrack;
+        for (const pattern of patterns) {
+            const flacTrack = files.find(f => 
+                (f.name.includes('.flac') && !f.name.endsWith('.txt')) &&
+                pattern.test(f.name)
+            );
+            
+            if (flacTrack) {
+                const sizeMB = flacTrack.size ? (flacTrack.size / 1024 / 1024).toFixed(1) : '?';
+                console.log(`✅ Found FLAC track file: ${flacTrack.name} (${sizeMB}MB)`);
+                return flacTrack;
+            }
         }
         
-        console.log(`No individual track file found for position ${songPosition}`);
+        console.log(`❌ No individual track file found for position ${songPosition} on any disc`);
         return null;
     }
 
