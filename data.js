@@ -382,7 +382,7 @@ const top5Database = {
             date: "March 14, 1981",
             archiveId: "gd1981-03-14.nak700.glassberg.motb.84826.sbeok.flac16",  // Glassberg version - has FULL show (both sets)
             notes: "The Hartford Althea - legendary version, perfect Garcia solo",
-            trackNumber: "07",  // Althea is the 7th song overall (Set 1, track 7)
+            trackNumber: "08",  // Trying 08 - track 07 gave us See See Rider (one song before Althea)
             quality: "SBD",
             // Musician features:
             bpm: 128,
