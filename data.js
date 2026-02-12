@@ -380,9 +380,9 @@ const top5Database = {
             rank: 1,
             venue: "Hartford Civic Center, Hartford CT",
             date: "March 14, 1981",
-            archiveId: "gd1981-03-14",
+            archiveId: "gd1981-03-14.nak700.glassberg.motb.84826.sbeok.flac16",  // Glassberg version - has FULL show (both sets)
             notes: "The Hartford Althea - legendary version, perfect Garcia solo",
-            trackNumber: "08",
+            trackNumber: "07",  // Althea is the 7th song overall (Set 1, track 7)
             quality: "SBD",
             // Musician features:
             bpm: 128,
