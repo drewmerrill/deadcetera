@@ -1,5 +1,6 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP
+// DEADCETERA WORKFLOW APP v2.1
+// Last updated: 2026-02-12 - Auto Setlist.fm lookup with manual fallback
 // ============================================================================
 
 let selectedSong = null;
@@ -739,9 +740,23 @@ async function handleSmartDownload(songTitle, version) {
             console.log(`Archive search result - fetching setlist from Setlist.fm...`);
             
             // Extract date FIRST (before try/catch so it's available in catch block)
-            const dateMatch = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/);
+            // Handle both formats: "gd1973-02-15" and "gd73-02-15"
+            let dateMatch = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/); // Try 4-digit year first
+            
             if (!dateMatch) {
-                alert('❌ Could not extract date from Archive ID');
+                // Try 2-digit year format (e.g., "gd73-02-15")
+                const shortDateMatch = version.archiveId.match(/gd(\d{2})-(\d{2})-(\d{2})/);
+                if (shortDateMatch) {
+                    const [_, shortYear, month, day] = shortDateMatch;
+                    // Convert 2-digit year to 4-digit (73 -> 1973, 90 -> 1990)
+                    const fullYear = parseInt(shortYear) >= 60 ? `19${shortYear}` : `20${shortYear}`;
+                    dateMatch = [null, fullYear, month, day]; // Fake a match array
+                    console.log(`Converted short date gd${shortYear}-${month}-${day} to ${fullYear}-${month}-${day}`);
+                }
+            }
+            
+            if (!dateMatch) {
+                alert('❌ Could not extract date from Archive ID: ' + version.archiveId);
                 return;
             }
             
