@@ -490,6 +490,20 @@ function searchArchive(songTitle) {
 
 // Search Archive.org API for best versions of a song
 async function searchArchiveForSong(songTitle, bandName = 'Grateful Dead') {
+    // Map band abbreviations to full names for Archive.org
+    const bandNameMapping = {
+        'GD': 'Grateful Dead',
+        'Grateful Dead': 'Grateful Dead',
+        'Phish': 'Phish',
+        'WSP': 'Widespread Panic',
+        'Widespread Panic': 'Widespread Panic',
+        'JGB': 'Jerry Garcia Band',
+        'Jerry Garcia Band': 'Jerry Garcia Band'
+    };
+    
+    const fullBandName = bandNameMapping[bandName] || bandName;
+    console.log('Searching Archive.org for:', songTitle, 'by', fullBandName);
+    
     const container = document.getElementById('versionsContainer');
     
     // Show loading state
@@ -497,7 +511,7 @@ async function searchArchiveForSong(songTitle, bandName = 'Grateful Dead') {
         <div style="text-align: center; padding: 60px;">
             <div class="spinner"></div>
             <p style="color: #718096; margin-top: 20px; font-size: 1.1em;">
-                Searching Archive.org for best versions of "${songTitle}" by ${bandName}...
+                Searching Archive.org for best versions of "${songTitle}" by ${fullBandName}...
             </p>
             <p style="color: #a0aec0; margin-top: 10px; font-size: 0.9em;">
                 Looking for soundboard recordings with MP3 downloads
@@ -508,14 +522,14 @@ async function searchArchiveForSong(songTitle, bandName = 'Grateful Dead') {
     try {
         // Query Archive.org API for shows with this song by this band
         // Sorted by downloads (popularity), filtered for soundboard quality
-        const query = `creator:"${bandName}" AND "${songTitle}" AND soundboard AND format:MP3`;
+        const query = `creator:"${fullBandName}" AND "${songTitle}" AND soundboard AND format:MP3`;
         const apiUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl=identifier,title,date,downloads,avg_rating&sort[]=downloads+desc&sort[]=avg_rating+desc&rows=10&output=json`;
         
         const response = await fetch(apiUrl);
         const data = await response.json();
         
         if (!data.response || !data.response.docs || data.response.docs.length === 0) {
-            showNoResultsFound(songTitle, bandName);
+            showNoResultsFound(songTitle, fullBandName);
             return;
         }
         
