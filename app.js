@@ -876,14 +876,92 @@ async function handleSmartDownload(songTitle, version) {
             version.isArchiveSearchResult // Flag to skip individual track search
         );
         
-        // Download
+        // Show preview dialog with audio player
+        const filename = `${songTitle.replace(/[^a-z0-9]/gi, '-')}-${version.date.replace(/[^a-z0-9]/gi, '-')}.wav`;
         const url = URL.createObjectURL(audioBlob);
+        
+        const showPreviewDialog = () => {
+            const dialog = document.createElement('div');
+            dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 10000; max-width: 550px;';
+            dialog.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Preview Track</h3>
+                <p style="margin-bottom: 15px; color: #4a5568;">
+                    <strong>Listen to verify this is the correct song:</strong>
+                </p>
+                <audio controls autoplay style="width: 100%; margin-bottom: 20px;" id="previewAudio">
+                    <source src="${url}" type="audio/wav">
+                </audio>
+                <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px;">
+                    <div style="color: #2d3748; margin-bottom: 5px;"><strong>Song:</strong> ${songTitle}</div>
+                    <div style="color: #2d3748; margin-bottom: 5px;"><strong>Show:</strong> ${version.venue}</div>
+                    <div style="color: #2d3748;"><strong>Date:</strong> ${version.date}</div>
+                </div>
+                <p style="margin-bottom: 15px; color: #dc2626; font-size: 13px; font-weight: 600;">
+                    ⚠️ <strong>Wrong song?</strong> Click Cancel and try a different track position.
+                </p>
+                <div style="display: flex; gap: 10px;">
+                    <button id="cancelBtn" style="flex: 1; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                        ❌ Cancel
+                    </button>
+                    <button id="downloadBtn" style="flex: 1; background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                        💾 Download
+                    </button>
+                    <button id="moisesBtn" style="flex: 1; background: #10b981; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                        🎛️ Moises
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(dialog);
+            
+            return new Promise((resolve) => {
+                document.getElementById('cancelBtn').onclick = () => {
+                    const audio = document.getElementById('previewAudio');
+                    audio.pause();
+                    document.body.removeChild(dialog);
+                    URL.revokeObjectURL(url);
+                    resolve('cancel');
+                };
+                
+                document.getElementById('downloadBtn').onclick = () => {
+                    const audio = document.getElementById('previewAudio');
+                    audio.pause();
+                    document.body.removeChild(dialog);
+                    resolve('download');
+                };
+                
+                document.getElementById('moisesBtn').onclick = () => {
+                    const audio = document.getElementById('previewAudio');
+                    audio.pause();
+                    document.body.removeChild(dialog);
+                    resolve('moises');
+                };
+            });
+        };
+        
+        const action = await showPreviewDialog();
+        
+        if (action === 'cancel') {
+            console.log('User cancelled after preview');
+            URL.revokeObjectURL(url);
+            return;
+        }
+        
+        // Download the file
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${songTitle.replace(/[^a-z0-9]/gi, '-')}-${version.date.replace(/[^a-z0-9]/gi, '-')}.wav`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        
+        if (action === 'download') {
+            // Just download, don't open Moises
+            URL.revokeObjectURL(url);
+            alert('✅ File downloaded! You can upload it to Moises.ai manually.');
+            return;
+        }
+        
+        // action === 'moises' - show success and continue
         URL.revokeObjectURL(url);
         
         // Show success
