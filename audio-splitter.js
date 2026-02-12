@@ -39,7 +39,11 @@ class AudioSplitter {
                 console.log(`✅ Found individual track file: ${trackFile.name} - downloading directly!`);
                 this.updateProgress('Downloading track file directly...', 50);
                 
-                const trackUrl = `https://archive.org/download/${bestArchiveId}/${trackFile.name}`;
+                // Use actual archive ID from metadata if available (fixes Archive.org version mismatch)
+                const downloadArchiveId = metadata._actualArchiveId || bestArchiveId;
+                console.log(`Downloading from archive: ${downloadArchiveId}`);
+                
+                const trackUrl = `https://archive.org/download/${downloadArchiveId}/${trackFile.name}`;
                 const response = await fetch(trackUrl);
                 const blob = await response.blob();
                 
@@ -106,7 +110,12 @@ class AudioSplitter {
 
             // Step 5: Fetch and extract audio segment
             this.updateProgress('Downloading audio segment...', 40);
-            const mp3Url = `https://archive.org/download/${bestArchiveId}/${mp3File.name}`;
+            
+            // Use actual archive ID from metadata if available (fixes Archive.org version mismatch)
+            const downloadArchiveId = metadata._actualArchiveId || bestArchiveId;
+            console.log(`Downloading full show from archive: ${downloadArchiveId}`);
+            
+            const mp3Url = `https://archive.org/download/${downloadArchiveId}/${mp3File.name}`;
             
             const extractedBlob = await this.extractAudioSegment(
                 mp3Url,
@@ -283,6 +292,34 @@ class AudioSplitter {
         const metadata = await response.json();
         console.log(`Metadata received for identifier: ${metadata.metadata?.identifier || 'unknown'}`);
         console.log(`Metadata has ${metadata.files?.length || 0} files`);
+        
+        // CRITICAL FIX: Archive.org sometimes returns files from multiple versions in one metadata response
+        // We need to detect the ACTUAL archiveId from the file names, not trust the metadata identifier
+        if (metadata.files && metadata.files.length > 0) {
+            // Look at first audio file to detect actual archive ID prefix
+            const firstAudioFile = metadata.files.find(f => 
+                (f.name.endsWith('.mp3') || f.name.includes('.flac')) && 
+                !f.name.endsWith('.txt')
+            );
+            
+            if (firstAudioFile) {
+                // Extract base identifier from filename (e.g., "gd1981-03-14.motb.0029" from "gd1981-03-14.motb.0029.d1t01.mp3")
+                const match = firstAudioFile.name.match(/^([^d]+?)(?:\.d\d+t\d+|$)/i);
+                if (match) {
+                    const actualArchiveId = match[1].replace(/\.$/, ''); // Remove trailing dot
+                    if (actualArchiveId !== archiveId) {
+                        console.warn(`⚠️ Archive.org returned files from DIFFERENT version!`);
+                        console.warn(`   Requested: ${archiveId}`);
+                        console.warn(`   Got files from: ${actualArchiveId}`);
+                        console.warn(`   Using actual version for downloads...`);
+                        
+                        // Store the actual archive ID in metadata for download URLs
+                        metadata._actualArchiveId = actualArchiveId;
+                    }
+                }
+            }
+        }
+        
         return metadata;
     }
 
