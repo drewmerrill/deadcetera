@@ -337,6 +337,47 @@ class AudioSplitter {
         }
         
         console.log(`❌ No individual track file found for position ${songPosition} on any disc`);
+        
+        // FALLBACK: Try to find by counting tracks sequentially across discs
+        // Sometimes songPosition is the overall position in the show, not the disc track number
+        console.log(`Attempting to find by counting tracks sequentially...`);
+        
+        // Get all track files sorted by disc and track number
+        const trackFiles = files.filter(f => 
+            (f.name.endsWith('.mp3') || f.name.includes('.flac')) &&
+            /d\d+t\d+/i.test(f.name)
+        ).sort((a, b) => {
+            // Extract disc and track numbers for sorting
+            const aMatch = a.name.match(/d(\d+)t(\d+)/i);
+            const bMatch = b.name.match(/d(\d+)t(\d+)/i);
+            if (!aMatch || !bMatch) return 0;
+            
+            const aDisc = parseInt(aMatch[1]);
+            const bDisc = parseInt(bMatch[1]);
+            const aTrack = parseInt(aMatch[2]);
+            const bTrack = parseInt(bMatch[2]);
+            
+            if (aDisc !== bDisc) return aDisc - bDisc;
+            return aTrack - bTrack;
+        });
+        
+        // Get the Nth track (songPosition - 1 because arrays are 0-indexed)
+        if (trackFiles.length >= songPosition) {
+            const targetTrack = trackFiles[songPosition - 1];
+            if (targetTrack) {
+                // Prefer MP3 version if available
+                const baseName = targetTrack.name.replace(/\.(mp3|flac.*)/i, '');
+                const mp3Version = files.find(f => f.name === baseName + '.mp3');
+                const flacVersion = files.find(f => f.name.startsWith(baseName + '.flac'));
+                
+                const selectedTrack = mp3Version || flacVersion || targetTrack;
+                const sizeMB = selectedTrack.size ? (selectedTrack.size / 1024 / 1024).toFixed(1) : '?';
+                console.log(`✅ Found track by sequential counting: ${selectedTrack.name} (${sizeMB}MB)`);
+                return selectedTrack;
+            }
+        }
+        
+        console.log(`❌ Could not find track ${songPosition} by any method`);
         return null;
     }
 
