@@ -738,6 +738,22 @@ async function handleSmartDownload(songTitle, version) {
         if (version.isArchiveSearchResult && !version._skipPositionDialog) {
             console.log(`Archive search result - fetching setlist from Setlist.fm...`);
             
+            // Extract date FIRST (before try/catch so it's available in catch block)
+            const dateMatch = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/);
+            if (!dateMatch) {
+                alert('❌ Could not extract date from Archive ID');
+                return;
+            }
+            
+            const [_, year, month, day] = dateMatch;
+            const showDate = `${year}-${month}-${day}`; // YYYY-MM-DD format
+            const bandName = 'Grateful Dead';
+            const bandSlug = 'grateful-dead';
+            const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent(bandName + ' ' + year + '-' + month + '-' + day)}`;
+            
+            console.log(`Show date: ${showDate}`);
+            console.log(`Setlist URL: ${setlistUrl}`);
+            
             // Show loading message
             const loadingMsg = document.createElement('div');
             loadingMsg.id = 'setlistLoading';
@@ -746,19 +762,6 @@ async function handleSmartDownload(songTitle, version) {
             document.body.appendChild(loadingMsg);
             
             try {
-                // Extract date from archiveId (e.g., "gd1981-03-14" -> "1981-03-14")
-                const dateMatch = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/);
-                if (!dateMatch) {
-                    throw new Error('Could not extract date from Archive ID');
-                }
-                
-                const [_, year, month, day] = dateMatch;
-                const showDate = `${year}-${month}-${day}`; // YYYY-MM-DD format
-                
-                // Get band name (default to Grateful Dead)
-                const bandName = 'Grateful Dead';
-                const bandSlug = 'grateful-dead';
-                
                 // Try to fetch setlist from Relisten API (has setlists, no auth required!)
                 console.log(`Fetching setlist from Relisten API for ${showDate}...`);
                 const relistenUrl = `https://api.relisten.net/api/v2/artists/${bandSlug}/years/${year}`;
@@ -834,8 +837,7 @@ async function handleSmartDownload(songTitle, version) {
                 if (loadingEl) document.body.removeChild(loadingEl);
                 
                 // Fallback to manual entry with Setlist.fm link
-                const [_, year, month, day] = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/) || [];
-                const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent('Grateful Dead ' + year + '-' + month + '-' + day)}`;
+                // Date variables (year, month, day, setlistUrl) already extracted above
                 
                 // Create custom dialog with setlist.fm link
                 const manualDialog = document.createElement('div');
