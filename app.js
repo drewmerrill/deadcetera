@@ -1097,37 +1097,54 @@ async function handleSmartDownload(songTitle, version) {
         }
         
         // Download the file
+        console.log(`Creating download link: ${filename}, Size: ${(audioBlob.size / 1024 / 1024).toFixed(1)}MB`);
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
-        a.click();
+        
+        try {
+            a.click();
+            console.log('✅ Download link clicked');
+        } catch (clickError) {
+            console.error('❌ Download click failed:', clickError);
+            alert(`Download failed: ${clickError.message}`);
+        }
+        
         document.body.removeChild(a);
         
         if (action === 'download') {
             // Just download, don't open Moises
             URL.revokeObjectURL(url);
-            alert('✅ File downloaded! You can upload it to Moises.ai manually.');
+            alert('✅ File downloaded! Check your Downloads folder.');
             return;
         }
         
-        // action === 'moises' - show success and continue
-        URL.revokeObjectURL(url);
+        if (action === 'moises') {
+            // action === 'moises' - show success and continue to Moises
+            URL.revokeObjectURL(url);
+            
+            // Show success
+            setTimeout(() => {
+                alert(
+                    `✅ SUCCESS!\n\n` +
+                    `Downloaded: ${songTitle}\n` +
+                    `Format: MP3 audio\n\n` +
+                    `NEXT STEPS:\n` +
+                    `1. Click "Open Moises.ai Studio" below\n` +
+                    `2. Upload the MP3 file\n` +
+                    `3. Separate stems (6 stems = $4/month)\n` +
+                    `4. Practice!\n\n` +
+                    `💡 TIP: MP3 files work great in Moises!`
+                );
+            }, 500);
+        }
         
-        // Show success
-        setTimeout(() => {
-            alert(
-                `✅ SUCCESS!\n\n` +
-                `Downloaded: ${songTitle}\n` +
-                `Format: WAV audio\n\n` +
-                `NEXT STEPS:\n` +
-                `1. Click "Open Moises.ai Studio" below\n` +
-                `2. Upload the WAV file\n` +
-                `3. Separate stems (6 stems = $4/month)\n` +
-                `4. Practice!\n\n` +
-                `💡 TIP: WAV files work great in Moises!`
-            );
-        }, 500);
+        if (action === 'cancel') {
+            URL.revokeObjectURL(url);
+            console.log('User cancelled');
+            return;
+        }
         
     } catch (error) {
         console.error('Smart download error:', error);
