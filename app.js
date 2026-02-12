@@ -884,7 +884,7 @@ async function handleSmartDownload(songTitle, version) {
             const dialog = document.createElement('div');
             dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 10000; max-width: 550px;';
             dialog.innerHTML = `
-                <h3 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Preview Track</h3>
+                <h3 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Preview Track #${trackPosition}</h3>
                 <p style="margin-bottom: 15px; color: #4a5568;">
                     <strong>Listen to verify this is the correct song:</strong>
                 </p>
@@ -893,12 +893,21 @@ async function handleSmartDownload(songTitle, version) {
                 </audio>
                 <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px;">
                     <div style="color: #2d3748; margin-bottom: 5px;"><strong>Song:</strong> ${songTitle}</div>
+                    <div style="color: #2d3748; margin-bottom: 5px;"><strong>Position:</strong> Track #${trackPosition}</div>
                     <div style="color: #2d3748; margin-bottom: 5px;"><strong>Show:</strong> ${version.venue}</div>
                     <div style="color: #2d3748;"><strong>Date:</strong> ${version.date}</div>
                 </div>
                 <p style="margin-bottom: 15px; color: #dc2626; font-size: 13px; font-weight: 600;">
-                    ⚠️ <strong>Wrong song?</strong> Click Cancel and try a different track position.
+                    ⚠️ <strong>Wrong song?</strong> Try the next or previous track:
                 </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <button id="prevBtn" style="background: #f59e0b; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                        ⬅️ Track ${trackPosition - 1}
+                    </button>
+                    <button id="nextBtn" style="background: #f59e0b; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                        Track ${trackPosition + 1} ➡️
+                    </button>
+                </div>
                 <div style="display: flex; gap: 10px;">
                     <button id="cancelBtn" style="flex: 1; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
                         ❌ Cancel
@@ -920,6 +929,22 @@ async function handleSmartDownload(songTitle, version) {
                     document.body.removeChild(dialog);
                     URL.revokeObjectURL(url);
                     resolve('cancel');
+                };
+                
+                document.getElementById('prevBtn').onclick = () => {
+                    const audio = document.getElementById('previewAudio');
+                    audio.pause();
+                    document.body.removeChild(dialog);
+                    URL.revokeObjectURL(url);
+                    resolve('prev');
+                };
+                
+                document.getElementById('nextBtn').onclick = () => {
+                    const audio = document.getElementById('previewAudio');
+                    audio.pause();
+                    document.body.removeChild(dialog);
+                    URL.revokeObjectURL(url);
+                    resolve('next');
                 };
                 
                 document.getElementById('downloadBtn').onclick = () => {
@@ -944,6 +969,22 @@ async function handleSmartDownload(songTitle, version) {
             console.log('User cancelled after preview');
             URL.revokeObjectURL(url);
             return;
+        }
+        
+        if (action === 'prev') {
+            console.log('User wants previous track');
+            URL.revokeObjectURL(url);
+            // Recursively call handleSmartDownload with previous position
+            version.trackNumber = String(trackPosition - 1);
+            return handleSmartDownload(songTitle, version);
+        }
+        
+        if (action === 'next') {
+            console.log('User wants next track');
+            URL.revokeObjectURL(url);
+            // Recursively call handleSmartDownload with next position
+            version.trackNumber = String(trackPosition + 1);
+            return handleSmartDownload(songTitle, version);
         }
         
         // Download the file
