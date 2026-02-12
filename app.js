@@ -753,109 +753,95 @@ async function handleSmartDownload(songTitle, version) {
                 }
                 
                 const [_, year, month, day] = dateMatch;
-                const showDate = `${day}-${month}-${year}`; // Setlist.fm format: dd-mm-yyyy
+                const showDate = `${year}-${month}-${day}`; // YYYY-MM-DD format
                 
                 // Get band name (default to Grateful Dead)
                 const bandName = 'Grateful Dead';
-                const bandSlug = 'grateful-dead'; // Setlist.fm URL slug
+                const bandSlug = 'grateful-dead';
                 
-                // Construct Setlist.fm URL
-                const setlistUrl = `https://www.setlist.fm/setlist/${bandSlug}/${showDate}.html`;
-                console.log(`Fetching setlist from: ${setlistUrl}`);
+                // Try to fetch setlist from Relisten API (has setlists, no auth required!)
+                console.log(`Fetching setlist from Relisten API for ${showDate}...`);
+                const relistenUrl = `https://api.relisten.net/api/v2/artists/${bandSlug}/years/${year}`;
                 
-                // Fetch the page (this will fail due to CORS, so we'll use a proxy or direct search)
-                // Instead, let's use Setlist.fm's search page which doesn't require API key
-                const searchUrl = `https://www.setlist.fm/search?query=${encodeURIComponent(bandName + ' ' + year + '-' + month + '-' + day)}`;
-                
-                // Since we can't scrape due to CORS, let's just open Setlist.fm and ask user
-                console.log(`Opening Setlist.fm for user to check: ${searchUrl}`);
-                
-                // Show a more helpful dialog
-                const showSetlistDialog = () => {
-                    // Remove loading message
-                    const loadingEl = document.getElementById('setlistLoading');
-                    if (loadingEl) document.body.removeChild(loadingEl);
-                    
-                    // Create custom dialog
-                    const dialog = document.createElement('div');
-                    dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 10000; max-width: 500px;';
-                    dialog.innerHTML = `
-                        <h3 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Find Track Position</h3>
-                        <p style="margin-bottom: 15px; color: #4a5568;">
-                            We need to know which track "${songTitle}" is in this show.
-                        </p>
-                        <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                            <p style="margin: 0 0 10px 0; color: #2d3748; font-weight: 600;">
-                                Show: ${bandName} - ${showDate}
-                            </p>
-                            <button onclick="window.open('${searchUrl}', '_blank')" style="background: #9333ea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px;">
-                                📋 Open Setlist.fm
-                            </button>
-                        </div>
-                        <p style="margin-bottom: 15px; color: #718096; font-size: 14px;">
-                            Enter the track number (1 = first song, 2 = second song, etc.):
-                        </p>
-                        <input type="number" id="trackPositionInput" min="1" value="1" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 16px; margin-bottom: 15px;">
-                        <div style="display: flex; gap: 10px;">
-                            <button id="cancelBtn" style="flex: 1; background: #e2e8f0; color: #4a5568; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-size: 14px;">
-                                Cancel
-                            </button>
-                            <button id="confirmBtn" style="flex: 1; background: #10b981; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-size: 14px;">
-                                Continue
-                            </button>
-                        </div>
-                    `;
-                    document.body.appendChild(dialog);
-                    
-                    return new Promise((resolve, reject) => {
-                        document.getElementById('confirmBtn').onclick = () => {
-                            const position = parseInt(document.getElementById('trackPositionInput').value);
-                            document.body.removeChild(dialog);
-                            if (isNaN(position) || position < 1) {
-                                reject(new Error('Invalid position'));
+                try {
+                    const relistenResponse = await fetch(relistenUrl);
+                    if (relistenResponse.ok) {
+                        const yearData = await relistenResponse.json();
+                        // Find the show on this date
+                        const show = yearData.shows?.find(s => s.display_date === showDate);
+                        
+                        if (show && show.sources && show.sources.length > 0) {
+                            // Get the first source's tracks
+                            const tracks = show.sources[0].sets.flatMap(set => set.tracks);
+                            
+                            // Find the song in the tracklist
+                            let foundPosition = null;
+                            for (let i = 0; i < tracks.length; i++) {
+                                const track = tracks[i];
+                                const trackTitle = track.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                const searchTitle = songTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                
+                                if (trackTitle === searchTitle || 
+                                    trackTitle.includes(searchTitle) ||
+                                    searchTitle.includes(trackTitle)) {
+                                    foundPosition = i + 1; // 1-indexed
+                                    console.log(`✅ Found "${songTitle}" at position ${foundPosition} via Relisten API`);
+                                    break;
+                                }
+                            }
+                            
+                            if (foundPosition) {
+                                // Remove loading message
+                                const loadingEl = document.getElementById('setlistLoading');
+                                if (loadingEl) document.body.removeChild(loadingEl);
+                                
+                                // Show confirmation dialog with auto-detected position
+                                const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent(bandName + ' ' + showDate)}`;
+                                const confirmed = confirm(
+                                    `🎵 AUTO-DETECTED TRACK POSITION\n\n` +
+                                    `Found "${songTitle}" at position ${foundPosition} in the setlist.\n\n` +
+                                    `Click OK to use position ${foundPosition}\n` +
+                                    `Click Cancel to enter manually\n\n` +
+                                    `(You can verify at setlist.fm if needed)`
+                                );
+                                
+                                if (confirmed) {
+                                    trackPosition = foundPosition;
+                                    console.log(`Using auto-detected position: ${trackPosition}`);
+                                } else {
+                                    // User wants to enter manually
+                                    throw new Error('User wants manual entry');
+                                }
                             } else {
-                                resolve(position);
+                                throw new Error('Song not found in setlist');
                             }
-                        };
-                        
-                        document.getElementById('cancelBtn').onclick = () => {
-                            document.body.removeChild(dialog);
-                            reject(new Error('User cancelled'));
-                        };
-                        
-                        // Focus input and select it
-                        const input = document.getElementById('trackPositionInput');
-                        input.focus();
-                        input.select();
-                        
-                        // Allow Enter key to submit
-                        input.addEventListener('keypress', (e) => {
-                            if (e.key === 'Enter') {
-                                document.getElementById('confirmBtn').click();
-                            }
-                        });
-                    });
-                };
-                
-                trackPosition = await showSetlistDialog();
-                console.log(`User specified track position: ${trackPosition}`);
+                        } else {
+                            throw new Error('No setlist data available');
+                        }
+                    } else {
+                        throw new Error('Relisten API failed');
+                    }
+                } catch (apiError) {
+                    console.warn('Relisten API lookup failed:', apiError);
+                    throw apiError; // Fall through to manual entry
+                }
                 
             } catch (error) {
-                console.warn('Setlist lookup error:', error);
+                console.warn('Auto-detect failed:', error);
                 
                 // Remove loading message if still present
                 const loadingEl = document.getElementById('setlistLoading');
                 if (loadingEl) document.body.removeChild(loadingEl);
                 
-                if (error.message === 'User cancelled') {
-                    return; // User cancelled, stop here
-                }
+                // Fallback to manual entry with Setlist.fm link
+                const [_, year, month, day] = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/) || [];
+                const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent('Grateful Dead ' + year + '-' + month + '-' + day)}`;
                 
-                // Fallback to simple manual entry
                 const userPosition = prompt(
-                    `⚠️ Please enter track position\n\n` +
+                    `⚠️ Could not auto-detect track position\n\n` +
                     `Which track is "${songTitle}"?\n` +
-                    `(1 = first song, 2 = second song, etc.)`,
+                    `(1 = first song, 2 = second song, etc.)\n\n` +
+                    `💡 Check setlist.fm: We'll open it for you after you click OK`,
                     '1'
                 );
                 
@@ -866,6 +852,9 @@ async function handleSmartDownload(songTitle, version) {
                     alert('❌ Invalid track position. Please try again.');
                     return;
                 }
+                
+                // Open Setlist.fm for reference
+                window.open(setlistUrl, '_blank');
                 
                 console.log(`Using manual track position: ${trackPosition}`);
             }
