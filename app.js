@@ -837,24 +837,71 @@ async function handleSmartDownload(songTitle, version) {
                 const [_, year, month, day] = version.archiveId.match(/(\d{4})-(\d{2})-(\d{2})/) || [];
                 const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent('Grateful Dead ' + year + '-' + month + '-' + day)}`;
                 
-                const userPosition = prompt(
-                    `⚠️ Could not auto-detect track position\n\n` +
-                    `Which track is "${songTitle}"?\n` +
-                    `(1 = first song, 2 = second song, etc.)\n\n` +
-                    `💡 Check setlist.fm: We'll open it for you after you click OK`,
-                    '1'
-                );
+                // Create custom dialog with setlist.fm link
+                const manualDialog = document.createElement('div');
+                manualDialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 10000; max-width: 500px;';
+                manualDialog.innerHTML = `
+                    <h3 style="margin: 0 0 15px 0; color: #2d3748;">⚠️ Could not auto-detect track position</h3>
+                    <p style="margin-bottom: 15px; color: #4a5568;">
+                        Which track is "${songTitle}"?<br>
+                        <span style="font-size: 14px; color: #718096;">(1 = first song, 2 = second song, etc.)</span>
+                    </p>
+                    <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f59e0b;">
+                        <p style="margin: 0 0 10px 0; color: #92400e; font-weight: 600;">
+                            💡 Check the setlist to find the position:
+                        </p>
+                        <button onclick="window.open('${setlistUrl}', '_blank')" style="background: #9333ea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;">
+                            📋 Open Setlist.fm in New Tab
+                        </button>
+                    </div>
+                    <p style="margin-bottom: 10px; color: #2d3748; font-weight: 600; font-size: 14px;">
+                        Enter track number:
+                    </p>
+                    <input type="number" id="manualTrackInput" min="1" value="1" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 18px; margin-bottom: 15px; font-weight: 600;">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="manualCancelBtn" style="flex: 1; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                            Cancel
+                        </button>
+                        <button id="manualOkBtn" style="flex: 1; background: #10b981; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+                            Continue
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(manualDialog);
                 
-                if (!userPosition) return;
+                trackPosition = await new Promise((resolve, reject) => {
+                    document.getElementById('manualOkBtn').onclick = () => {
+                        const position = parseInt(document.getElementById('manualTrackInput').value);
+                        document.body.removeChild(manualDialog);
+                        if (isNaN(position) || position < 1) {
+                            alert('❌ Invalid track position');
+                            reject(new Error('Invalid position'));
+                        } else {
+                            resolve(position);
+                        }
+                    };
+                    
+                    document.getElementById('manualCancelBtn').onclick = () => {
+                        document.body.removeChild(manualDialog);
+                        reject(new Error('User cancelled'));
+                    };
+                    
+                    // Focus and select input
+                    const input = document.getElementById('manualTrackInput');
+                    setTimeout(() => {
+                        input.focus();
+                        input.select();
+                    }, 100);
+                    
+                    // Allow Enter key
+                    input.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            document.getElementById('manualOkBtn').click();
+                        }
+                    });
+                });
                 
-                trackPosition = parseInt(userPosition);
-                if (isNaN(trackPosition) || trackPosition < 1) {
-                    alert('❌ Invalid track position. Please try again.');
-                    return;
-                }
-                
-                // Open Setlist.fm for reference
-                window.open(setlistUrl, '_blank');
+                if (!trackPosition) return;
                 
                 console.log(`Using manual track position: ${trackPosition}`);
             }
