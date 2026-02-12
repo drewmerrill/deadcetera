@@ -20,8 +20,16 @@ class AudioSplitter {
      * @param {number} estimatedDuration - Estimated song length in minutes (default: 7)
      * @returns {Promise<Blob>} - Extracted audio as MP3 blob
      */
-    async extractSongFromArchive(archiveId, songTitle, songPosition, estimatedDuration = 7) {
+    async extractSongFromArchive(archiveId, songTitle, songPosition, estimatedDuration = 7, isArchiveSearchResult = false) {
         try {
+            console.log(`========================================`);
+            console.log(`EXTRACT SONG FROM ARCHIVE`);
+            console.log(`  archiveId: ${archiveId}`);
+            console.log(`  songTitle: ${songTitle}`);
+            console.log(`  songPosition: ${songPosition}`);
+            console.log(`  isArchiveSearchResult: ${isArchiveSearchResult}`);
+            console.log(`========================================`);
+            
             // Step 1: Search for best version if archiveId is simplified (e.g., "gd1981-03-14")
             this.updateProgress('Finding best show version...', 5);
             const bestArchiveId = await this.findBestArchiveVersion(archiveId);
@@ -32,7 +40,7 @@ class AudioSplitter {
             
             // Step 3: Check if individual track file exists (EASIEST PATH!)
             this.updateProgress('Looking for individual track file...', 20);
-            const trackFile = this.findIndividualTrackFile(metadata, songTitle, songPosition);
+            const trackFile = this.findIndividualTrackFile(metadata, songTitle, songPosition, isArchiveSearchResult);
             
             if (trackFile) {
                 // PERFECT! We have the individual track file - just download it directly!
@@ -329,16 +337,67 @@ class AudioSplitter {
      * Prefers: VBR MP3 > MP3 > Any audio file
      */
     /**
+     * Find track by counting sequentially across all discs
+     * Used when track numbers don't match setlist positions
+     */
+    findTrackBySequentialCount(files, songPosition) {
+        console.log(`Strategy 4: Counting tracks sequentially to find position ${songPosition}...`);
+        
+        // Get all track files sorted by disc and track number
+        const trackFiles = files.filter(f => 
+            (f.name.endsWith('.mp3') || f.name.includes('.flac')) &&
+            /d\d+t\d+/i.test(f.name)
+        ).sort((a, b) => {
+            // Extract disc and track numbers for sorting
+            const aMatch = a.name.match(/d(\d+)t(\d+)/i);
+            const bMatch = b.name.match(/d(\d+)t(\d+)/i);
+            if (!aMatch || !bMatch) return 0;
+            
+            const aDisc = parseInt(aMatch[1]);
+            const bDisc = parseInt(bMatch[1]);
+            const aTrack = parseInt(aMatch[2]);
+            const bTrack = parseInt(bMatch[2]);
+            
+            if (aDisc !== bDisc) return aDisc - bDisc;
+            return aTrack - bTrack;
+        });
+        
+        console.log(`  Found ${trackFiles.length} track files sorted by disc/track`);
+        
+        // Get the Nth track (songPosition - 1 because arrays are 0-indexed)
+        if (trackFiles.length >= songPosition) {
+            const targetTrack = trackFiles[songPosition - 1];
+            if (targetTrack) {
+                // Prefer MP3 version if available
+                const baseName = targetTrack.name.replace(/\.(mp3|flac.*)/i, '');
+                const mp3Version = files.find(f => f.name === baseName + '.mp3');
+                const flacVersion = files.find(f => f.name.startsWith(baseName + '.flac'));
+                
+                const selectedTrack = mp3Version || flacVersion || targetTrack;
+                const sizeMB = selectedTrack.size ? (selectedTrack.size / 1024 / 1024).toFixed(1) : '?';
+                console.log(`✅ Strategy 4 SUCCESS: Found by sequential counting: ${selectedTrack.name} (${sizeMB}MB)`);
+                return selectedTrack;
+            }
+        }
+        
+        console.log(`❌ Strategy 4 FAILED: Not enough tracks (need ${songPosition}, have ${trackFiles.length})`);
+        return null;
+    }
+
+    /**
      * Find individual track file (e.g., d1t08.mp3 for track 8)
      * This is the BEST case - just download the track directly!
      * Note: We search across all discs (d1, d2, d3) since we don't know which disc the song is on
      */
-    findIndividualTrackFile(metadata, songTitle, songPosition) {
+    findIndividualTrackFile(metadata, songTitle, songPosition, isArchiveSearchResult = false) {
         const files = metadata.files || [];
         
         console.log(`========================================`);
         console.log(`SEARCHING FOR: "${songTitle}" (position ${songPosition})`);
         console.log(`Total files in show: ${files.length}`);
+        if (isArchiveSearchResult) {
+            console.log(`⚠️ Archive search result - will prioritize sequential counting`);
+        }
         console.log(`========================================`);
         
         // Log ALL audio files to see what's available
@@ -352,6 +411,16 @@ class AudioSplitter {
             console.log(`  [${idx + 1}] ${f.name} (${sizeMB}MB)`);
         });
         console.log(`========================================`);
+        
+        // FOR ARCHIVE SEARCH RESULTS: Skip to Strategy 4 (sequential counting) immediately
+        if (isArchiveSearchResult) {
+            console.log(`Skipping Strategies 1-3, going straight to Strategy 4 (sequential counting)...`);
+            const track = this.findTrackBySequentialCount(files, songPosition);
+            if (track) return track;
+            console.log(`❌ Sequential counting failed`);
+            console.log(`❌ Could not find "${songTitle}" by any method`);
+            return null;
+        }
         
         // STRATEGY 1: Try to find by song name in filename (MOST RELIABLE!)
         console.log(`Strategy 1: Searching filenames for "${songTitle}"...`);
