@@ -13,6 +13,18 @@
             <img src="logo.png" alt="Deadcetera" class="logo" onerror="this.style.display='none'">
             <h1>🎸 Deadcetera Practice Tool</h1>
             <p class="subtitle">Pick a song → Find the best version → Download → Practice your part</p>
+            
+            <!-- Instrument Selector - Always Visible -->
+            <div class="instrument-selector">
+                <label for="instrumentSelect">I play:</label>
+                <select id="instrumentSelect" class="instrument-dropdown">
+                    <option value="bass">Bass</option>
+                    <option value="rhythm_guitar">Rhythm Guitar</option>
+                    <option value="lead_guitar">Lead Guitar</option>
+                    <option value="keyboards">Keyboards</option>
+                    <option value="vocals">Vocals</option>
+                </select>
+            </div>
         </header>
 
         <!-- Step 1: Song Selection -->
@@ -39,9 +51,48 @@
             </div>
         </div>
 
-        <!-- Step 2: Version Selection (hidden until song selected) -->
+        <!-- Step 2: Learning Resources (NEW!) -->
         <div class="step-card hidden" id="step2">
             <div class="step-number">2</div>
+            <h2>Learning Resources</h2>
+            <p class="step-description" id="resourcesSongTitle">Get tabs, chords, and lessons for this song</p>
+            
+            <div class="resources-container">
+                <!-- Tab/Chart Section -->
+                <div class="resource-section">
+                    <h3>📝 <span id="tabTypeLabel">Tab/Chart</span></h3>
+                    <div id="tabResourceContent">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+                
+                <!-- Instructional Videos Section -->
+                <div class="resource-section">
+                    <h3>🎥 Instructional Videos</h3>
+                    <p class="resource-description">Save 1-2 lesson links (YouTube, etc.)</p>
+                    <div id="lessonsResourceContent">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+                
+                <!-- Reference Recordings Section -->
+                <div class="resource-section">
+                    <h3>🎸 Reference Recordings</h3>
+                    <p class="resource-description">Save favorite performances to reference</p>
+                    <div id="referencesResourceContent">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+            
+            <button class="primary-btn" id="continueToVersionsBtn" style="margin-top: 20px;">
+                Continue to Version Selection →
+            </button>
+        </div>
+
+        <!-- Step 3: Version Selection (renumbered from Step 2) -->
+        <div class="step-card hidden" id="step3">
+            <div class="step-number">3</div>
             <h2>Top 5 Live Versions</h2>
             <p class="step-description">Based on community rankings and sound quality</p>
             <div id="versionsContainer">
@@ -49,9 +100,9 @@
             </div>
         </div>
 
-        <!-- Step 3: Download (hidden until version selected) -->
-        <div class="step-card hidden" id="step3">
-            <div class="step-number">3</div>
+        <!-- Step 4: Download (renumbered from Step 3) -->
+        <div class="step-card hidden" id="step4">
+            <div class="step-number">4</div>
             <h2>Download & Upload to Moises</h2>
             <div class="download-card">
                 <div class="selected-info" id="selectedInfo">
@@ -117,9 +168,9 @@
             </div>
         </div>
 
-        <!-- Step 4: Part Selection Guide -->
-        <div class="step-card hidden" id="step4">
-            <div class="step-number">4</div>
+        <!-- Step 5: Part Selection Guide (renumbered from Step 4) -->
+        <div class="step-card hidden" id="step5">
+            <div class="step-number">5</div>
             <h2>Isolate Your Part in Moises</h2>
             <div class="parts-grid">
                 <div class="part-card">
@@ -172,6 +223,24 @@
                 <div class="modal-body">
                     <div id="youtubeSearchResults" class="youtube-results">
                         <!-- Results populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Add Resource Modal -->
+        <div id="addResourceModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="addResourceTitle">Add Resource</h2>
+                    <button class="close-btn" onclick="closeAddResourceModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <p id="addResourceInstructions"></p>
+                    <input type="text" id="resourceUrlInput" class="search-input" placeholder="Paste URL here...">
+                    <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;">
+                        <button class="secondary-btn" onclick="closeAddResourceModal()">Cancel</button>
+                        <button class="primary-btn" onclick="saveResource()">Save</button>
                     </div>
                 </div>
             </div>
