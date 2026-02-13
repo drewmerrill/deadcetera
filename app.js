@@ -1,6 +1,6 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v2.2
-// Last updated: 2026-02-12 - Fixed band detection for Setlist.fm lookup
+// DEADCETERA WORKFLOW APP v2.3
+// Last updated: 2026-02-13 - Fixed apostrophe escaping in song titles
 // ============================================================================
 
 let selectedSong = null;
@@ -32,7 +32,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     }
     
     dropdown.innerHTML = filtered.map(song => `
-        <div class="song-item" onclick="selectSong('${song.title}')">
+        <div class="song-item" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
             <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
@@ -110,7 +110,7 @@ function showTop5Versions(songTitle) {
         const resourceLinks = generateResourceLinks(songTitle, version, bandName);
         
         return `
-            <div class="version-card" onclick="selectVersion('${songTitle}', ${version.rank})">
+            <div class="version-card" onclick="selectVersion('${songTitle.replace(/'/g, "\\'")}', ${version.rank})">
                 <span class="version-rank rank-${version.rank}">#${version.rank}</span>
                 <div class="version-info">
                     <div class="version-venue">${version.venue}</div>
@@ -213,7 +213,7 @@ function showNoVersionsMessage(songTitle, bandName = 'Grateful Dead') {
             <p style="color: #718096; margin-bottom: 20px;">
                 We haven't pre-loaded the top 5 versions for this song yet.
             </p>
-            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle}', '${bandName}')" style="margin-bottom: 15px;">
+            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle.replace(/'/g, "\\'")}', '${bandName}')" style="margin-bottom: 15px;">
                 🔍 Find Best Versions on Archive.org
             </button>
             <p style="color: #718096; font-size: 0.9em;">
@@ -569,7 +569,7 @@ function displayArchiveResults(songTitle, shows) {
             const rating = show.avg_rating ? `⭐ ${show.avg_rating.toFixed(1)}` : '';
             
             return `
-                <div class="version-card" onclick="selectArchiveVersion('${archiveId}', '${songTitle}')">
+                <div class="version-card" onclick="selectArchiveVersion('${archiveId}', '${songTitle.replace(/'/g, "\\'")}')">
                     <span class="version-rank rank-${index + 1}">#${index + 1}</span>
                     <div class="version-info">
                         <div class="version-venue">${venue}</div>
@@ -667,7 +667,7 @@ function showSearchError(songTitle, bandName = 'Grateful Dead') {
             <p style="color: #744210; margin-bottom: 20px;">
                 Couldn't connect to Archive.org. Please try again or search manually.
             </p>
-            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle}', '${bandName}')">
+            <button class="primary-btn" onclick="searchArchiveForSong('${songTitle.replace(/'/g, "\\'")}', '${bandName}')">
                 🔄 Try Again
             </button>
             <button class="secondary-btn" onclick="window.open('https://archive.org/search.php?query=creator%3A%22${encodeURIComponent(bandName)}%22+AND+%22${encodeURIComponent(songTitle)}%22', '_blank')" style="margin-left: 10px;">
@@ -763,24 +763,34 @@ async function handleSmartDownload(songTitle, version) {
             const [_, year, month, day] = dateMatch;
             const showDate = `${year}-${month}-${day}`; // YYYY-MM-DD format
             
-            // Detect band from Archive ID prefix
+            // Detect band from Archive ID (check anywhere in ID, not just start)
             let bandName = 'Grateful Dead';
             let bandSlug = 'grateful-dead';
             
-            if (version.archiveId.toLowerCase().startsWith('phish')) {
+            const archiveIdLower = version.archiveId.toLowerCase();
+            console.log(`🔍 Detecting band from Archive ID: "${version.archiveId}"`);
+            
+            if (archiveIdLower.includes('phish') || archiveIdLower.startsWith('pt')) {
                 bandName = 'Phish';
                 bandSlug = 'phish';
-            } else if (version.archiveId.toLowerCase().startsWith('jgb') || 
-                       version.archiveId.toLowerCase().includes('garcia')) {
+                console.log(`✅ Detected: Phish`);
+            } else if (archiveIdLower.includes('jgb') || archiveIdLower.includes('garcia')) {
                 bandName = 'Jerry Garcia Band';
                 bandSlug = 'jerry-garcia-band';
-            } else if (version.archiveId.toLowerCase().startsWith('wsp') || 
-                       version.archiveId.toLowerCase().includes('widespread')) {
+                console.log(`✅ Detected: Jerry Garcia Band`);
+            } else if (archiveIdLower.includes('wsp') || archiveIdLower.includes('widespread') || archiveIdLower.includes('panic')) {
                 bandName = 'Widespread Panic';
                 bandSlug = 'widespread-panic';
+                console.log(`✅ Detected: Widespread Panic`);
+            } else if (archiveIdLower.startsWith('gd') || archiveIdLower.includes('grateful') || archiveIdLower.includes('dead')) {
+                bandName = 'Grateful Dead';
+                bandSlug = 'grateful-dead';
+                console.log(`✅ Detected: Grateful Dead`);
+            } else {
+                console.log(`⚠️ Unknown band in Archive ID, defaulting to: Grateful Dead`);
             }
             
-            console.log(`Detected band: ${bandName} from Archive ID: ${version.archiveId}`);
+            console.log(`Final band selection: ${bandName} (${bandSlug})`);
             const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent(bandName + ' ' + year + '-' + month + '-' + day)}`;
             
             console.log(`Show date: ${showDate}`);
