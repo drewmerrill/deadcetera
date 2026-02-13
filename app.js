@@ -1,6 +1,6 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v2.1
-// Last updated: 2026-02-12 - Auto Setlist.fm lookup with manual fallback
+// DEADCETERA WORKFLOW APP v2.2
+// Last updated: 2026-02-12 - Fixed band detection for Setlist.fm lookup
 // ============================================================================
 
 let selectedSong = null;
@@ -762,8 +762,25 @@ async function handleSmartDownload(songTitle, version) {
             
             const [_, year, month, day] = dateMatch;
             const showDate = `${year}-${month}-${day}`; // YYYY-MM-DD format
-            const bandName = 'Grateful Dead';
-            const bandSlug = 'grateful-dead';
+            
+            // Detect band from Archive ID prefix
+            let bandName = 'Grateful Dead';
+            let bandSlug = 'grateful-dead';
+            
+            if (version.archiveId.toLowerCase().startsWith('phish')) {
+                bandName = 'Phish';
+                bandSlug = 'phish';
+            } else if (version.archiveId.toLowerCase().startsWith('jgb') || 
+                       version.archiveId.toLowerCase().includes('garcia')) {
+                bandName = 'Jerry Garcia Band';
+                bandSlug = 'jerry-garcia-band';
+            } else if (version.archiveId.toLowerCase().startsWith('wsp') || 
+                       version.archiveId.toLowerCase().includes('widespread')) {
+                bandName = 'Widespread Panic';
+                bandSlug = 'widespread-panic';
+            }
+            
+            console.log(`Detected band: ${bandName} from Archive ID: ${version.archiveId}`);
             const setlistUrl = `https://www.setlist.fm/search?query=${encodeURIComponent(bandName + ' ' + year + '-' + month + '-' + day)}`;
             
             console.log(`Show date: ${showDate}`);
