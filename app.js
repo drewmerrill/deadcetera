@@ -1041,43 +1041,68 @@ async function handleSmartDownload(songTitle, version) {
             document.body.appendChild(dialog);
             
             return new Promise((resolve) => {
-                document.getElementById('cancelBtn').onclick = () => {
-                    const audio = document.getElementById('previewAudio');
-                    audio.pause();
-                    document.body.removeChild(dialog);
-                    URL.revokeObjectURL(url);
-                    resolve('cancel');
-                };
-                
-                document.getElementById('prevBtn').onclick = () => {
-                    const audio = document.getElementById('previewAudio');
-                    audio.pause();
-                    document.body.removeChild(dialog);
-                    URL.revokeObjectURL(url);
-                    resolve('prev');
-                };
-                
-                document.getElementById('nextBtn').onclick = () => {
-                    const audio = document.getElementById('previewAudio');
-                    audio.pause();
-                    document.body.removeChild(dialog);
-                    URL.revokeObjectURL(url);
-                    resolve('next');
-                };
-                
-                document.getElementById('downloadBtn').onclick = () => {
-                    const audio = document.getElementById('previewAudio');
-                    audio.pause();
-                    document.body.removeChild(dialog);
-                    resolve('download');
-                };
-                
-                document.getElementById('moisesBtn').onclick = () => {
-                    const audio = document.getElementById('previewAudio');
-                    audio.pause();
-                    document.body.removeChild(dialog);
-                    resolve('moises');
-                };
+                // Wait for DOM to be ready
+                setTimeout(() => {
+                    const cancelBtn = document.getElementById('cancelBtn');
+                    const prevBtn = document.getElementById('prevBtn');
+                    const nextBtn = document.getElementById('nextBtn');
+                    const downloadBtn = document.getElementById('downloadBtn');
+                    const moisesBtn = document.getElementById('moisesBtn');
+                    
+                    if (!cancelBtn || !downloadBtn || !moisesBtn) {
+                        console.error('❌ Buttons not found in DOM!');
+                        console.log('cancelBtn:', cancelBtn);
+                        console.log('downloadBtn:', downloadBtn);
+                        console.log('moisesBtn:', moisesBtn);
+                        resolve('cancel');
+                        return;
+                    }
+                    
+                    console.log('✅ All buttons found, attaching handlers...');
+                    
+                    cancelBtn.onclick = () => {
+                        console.log('❌ Cancel button clicked!');
+                        const audio = document.getElementById('previewAudio');
+                        audio.pause();
+                        document.body.removeChild(dialog);
+                        URL.revokeObjectURL(url);
+                        resolve('cancel');
+                    };
+                    
+                    prevBtn.onclick = () => {
+                        console.log('⬅️ Previous button clicked!');
+                        const audio = document.getElementById('previewAudio');
+                        audio.pause();
+                        document.body.removeChild(dialog);
+                        URL.revokeObjectURL(url);
+                        resolve('prev');
+                    };
+                    
+                    nextBtn.onclick = () => {
+                        console.log('➡️ Next button clicked!');
+                        const audio = document.getElementById('previewAudio');
+                        audio.pause();
+                        document.body.removeChild(dialog);
+                        URL.revokeObjectURL(url);
+                        resolve('next');
+                    };
+                    
+                    downloadBtn.onclick = () => {
+                        console.log('💾 Download button clicked!');
+                        const audio = document.getElementById('previewAudio');
+                        audio.pause();
+                        document.body.removeChild(dialog);
+                        resolve('download');
+                    };
+                    
+                    moisesBtn.onclick = () => {
+                        console.log('🎛️ Moises button clicked!');
+                        const audio = document.getElementById('previewAudio');
+                        audio.pause();
+                        document.body.removeChild(dialog);
+                        resolve('moises');
+                    };
+                }, 100); // Small delay to ensure DOM is ready
             });
         };
         
