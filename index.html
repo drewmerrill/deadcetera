@@ -228,6 +228,22 @@
             </div>
         </div>
         
+        <!-- YouTube Search Modal (In-App) -->
+        <div id="youtubeSearchModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🔍 Search YouTube</h2>
+                    <button class="close-btn" onclick="closeYouTubeSearchModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="youtubeSearchInput" class="search-input" placeholder="Search YouTube..." readonly style="margin-bottom: 15px;">
+                    <div id="youtubeSearchResultsContainer">
+                        <!-- Results populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Add Resource Modal -->
         <div id="addResourceModal" class="modal hidden">
             <div class="modal-content">
