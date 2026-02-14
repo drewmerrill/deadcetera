@@ -1080,3 +1080,142 @@ function generateArchiveUrls(archiveId, trackNumber) {
         mp3: `https://archive.org/download/${archiveId}/${archiveId.replace(/\./g, '-')}-t${trackNumber}.mp3`
     };
 }
+
+// ============================================================================
+// BAND KNOWLEDGE SYSTEM
+// Collaborative song resources for the whole band
+// ============================================================================
+
+// Band member configuration
+const bandMembers = {
+    brian: { name: "Brian", role: "Lead Guitar", sings: true, harmonies: true },
+    chris: { name: "Chris", role: "Bass", sings: false, harmonies: true },
+    drew: { name: "Drew", role: "Rhythm Guitar", sings: true, leadVocals: true, harmonies: true },
+    pierce: { name: "Pierce", role: "Keyboard", sings: true, leadVocals: true, harmonies: true },
+    jay: { name: "Jay", role: "Drums", sings: false, harmonies: false }
+};
+
+// Collaborative song knowledge base
+const bandKnowledgeBase = {
+    "Tweezer Reprise": {
+        // Basic info
+        artist: "Phish",
+        
+        // SHARED CHORD CHART - Google Doc
+        chordChart: {
+            googleDocId: null, // Create in Google Docs and add ID here
+            editUrl: null,
+            viewUrl: null,
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/phish/tweezer-reprise-chords-1234567",
+            lastUpdated: null,
+            updatedBy: null,
+            bandNotes: []
+        },
+        
+        // SPOTIFY VERSIONS - Democratic voting
+        spotifyVersions: [
+            {
+                id: "version_1",
+                title: "A Live One - 12/31/94 Boston",
+                spotifyUrl: "", // Add your Spotify URL here
+                votes: {
+                    brian: false,
+                    chris: false,
+                    drew: false,
+                    pierce: false,
+                    jay: false
+                },
+                totalVotes: 0,
+                isDefault: false,
+                addedBy: "drew",
+                notes: "Add notes about this version"
+            }
+        ],
+        
+        // PRACTICE TRACKS - By instrument
+        practiceTracks: {
+            bass: [],
+            leadGuitar: [],
+            rhythmGuitar: [],
+            keys: [],
+            drums: []
+        },
+        
+        // MOISES STEMS - Your Google Drive folder!
+        moisesParts: {
+            sourceVersion: "TBD - Upload stems to Drive first",
+            googleDriveFolder: "https://drive.google.com/drive/folders/1ooMNihe08o08RKy11q617iqYoFJKaa32",
+            stems: {
+                bass: null,
+                drums: null,
+                guitar: null,
+                keys: null,
+                vocals: null
+            },
+            uploadedBy: null,
+            dateCreated: null,
+            notes: "Separate in Moises and upload to Moises Stems/Tweezer Reprise/"
+        },
+        
+        // HARMONY PARTS - THE CRITICAL SECTION!
+        harmonies: {
+            sections: [
+                {
+                    id: "harmony_1",
+                    lyric: "Won't you step into the freezer",
+                    timing: "Verse 1 (0:15-0:22)",
+                    parts: [
+                        {
+                            singer: "drew",
+                            part: "lead",
+                            notes: "Main melody"
+                        },
+                        {
+                            singer: "pierce",
+                            part: "harmony_high",
+                            notes: "Third above"
+                        },
+                        {
+                            singer: "brian",
+                            part: "harmony_low",
+                            notes: "Fifth below"
+                        },
+                        {
+                            singer: "chris",
+                            part: "doubling",
+                            notes: "Double lead softly"
+                        }
+                    ],
+                    referenceRecording: null,
+                    practiceNotes: [],
+                    workedOut: false,
+                    soundsGood: false
+                }
+            ],
+            generalNotes: [
+                "Tweezer Reprise is all about energy",
+                "Harmonies should be LOUD",
+                "Don't worry about perfection, go for the vibe"
+            ]
+        },
+        
+        // SONG STRUCTURE
+        structure: {
+            tempo: 138,
+            key: "D major",
+            timeSignature: "4/4",
+            form: "Intro-Verse-Chorus-Solo-Verse-Chorus-Outro"
+        },
+        
+        // REHEARSAL NOTES
+        rehearsalNotes: [],
+        
+        // GIG NOTES
+        gigNotes: [
+            "HIGH ENERGY song - crowd pleaser!",
+            "Jay counts in with sticks",
+            "Watch Brian for solo ending",
+            "Hard stop on final downbeat"
+        ]
+    }
+};
