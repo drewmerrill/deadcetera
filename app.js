@@ -1,6 +1,7 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v2.4.1
-// Last updated: 2026-02-13 - Fixed band names and added YouTube thumbnails
+// DEADCETERA WORKFLOW APP v2.4.4 FINAL
+// Complete feature set with Learning Resources, YouTube/Spotify, Top 5 Database
+// Last updated: 2026-02-14
 // ============================================================================
 
 let selectedSong = null;
