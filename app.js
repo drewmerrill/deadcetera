@@ -266,27 +266,47 @@ function renderTabSection(songTitle, instrument, resources) {
     }
 }
 
-function renderLessonsSection(songTitle, instrument, resources) {
+async function renderLessonsSection(songTitle, instrument, resources) {
     const container = document.getElementById('lessonsResourceContent');
     
     if (resources.lessons.length > 0) {
-        container.innerHTML = resources.lessons.map((url, index) => {
-            const thumbnail = getYouTubeThumbnail(url);
-            const videoId = getYouTubeVideoId(url);
-            return `
+        // Fetch titles for all YouTube videos
+        const lessonsWithTitles = await Promise.all(
+            resources.lessons.map(async (url, index) => {
+                const thumbnail = getYouTubeThumbnail(url);
+                const videoId = getYouTubeVideoId(url);
+                const spotifyId = getSpotifyTrackId(url);
+                
+                let title = 'Loading...';
+                let platform = 'YouTube';
+                
+                if (videoId) {
+                    const fetchedTitle = await getYouTubeTitle(url);
+                    title = fetchedTitle || `YouTube: ${videoId}`;
+                    platform = 'YouTube';
+                } else if (spotifyId) {
+                    title = `Spotify Track: ${spotifyId}`;
+                    platform = 'Spotify';
+                }
+                
+                return { url, thumbnail, title, platform, index };
+            })
+        );
+        
+        container.innerHTML = lessonsWithTitles.map(({ url, thumbnail, title, platform, index }) => `
             <div class="resource-item-with-thumbnail">
                 ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
                 <div style="flex: 1;">
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        🎥 YouTube: ${videoId || 'Video'}
+                        ${platform === 'YouTube' ? '🎥' : '🎵'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">Click to open video</div>
+                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} • Click to open</div>
                 </div>
                 <div class="resource-actions">
                     <button class="resource-btn remove-btn" onclick="removeLesson(${index})">✕</button>
                 </div>
             </div>
-        `}).join('');
+        `).join('');
         
         // Add button if less than 2 lessons
         if (resources.lessons.length < 2) {
@@ -295,8 +315,11 @@ function renderLessonsSection(songTitle, instrument, resources) {
                     <button class="add-resource-btn" onclick="searchYouTubeForLesson()" style="flex: 1;">
                         🔍 Search YouTube for Lessons
                     </button>
+                    <button class="add-resource-btn" onclick="searchSpotifyForLesson()" style="flex: 1;">
+                        🎵 Search Spotify
+                    </button>
                     <button class="add-resource-btn" onclick="addLesson()" style="flex: 1;">
-                        + Paste URL Manually
+                        + Paste URL
                     </button>
                 </div>
             `;
@@ -305,47 +328,73 @@ function renderLessonsSection(songTitle, instrument, resources) {
         container.innerHTML = `
             <div style="display: flex; gap: 10px;">
                 <button class="add-resource-btn" onclick="searchYouTubeForLesson()" style="flex: 1;">
-                    🔍 Search YouTube for Lessons
+                    🔍 YouTube Lessons
+                </button>
+                <button class="add-resource-btn" onclick="searchSpotifyForLesson()" style="flex: 1;">
+                    🎵 Spotify
                 </button>
                 <button class="add-resource-btn" onclick="addLesson()" style="flex: 1;">
-                    + Paste URL Manually
+                    + Paste URL
                 </button>
             </div>
         `;
     }
 }
 
-function renderReferencesSection(songTitle, instrument, resources) {
+async function renderReferencesSection(songTitle, instrument, resources) {
     const container = document.getElementById('referencesResourceContent');
     
     if (resources.references.length > 0) {
-        container.innerHTML = resources.references.map((url, index) => {
-            const thumbnail = getYouTubeThumbnail(url);
-            const videoId = getYouTubeVideoId(url);
-            return `
+        // Fetch titles for all videos/tracks
+        const referencesWithTitles = await Promise.all(
+            resources.references.map(async (url, index) => {
+                const thumbnail = getYouTubeThumbnail(url);
+                const videoId = getYouTubeVideoId(url);
+                const spotifyId = getSpotifyTrackId(url);
+                
+                let title = 'Loading...';
+                let platform = 'YouTube';
+                
+                if (videoId) {
+                    const fetchedTitle = await getYouTubeTitle(url);
+                    title = fetchedTitle || `YouTube: ${videoId}`;
+                    platform = 'YouTube';
+                } else if (spotifyId) {
+                    title = `Spotify Track: ${spotifyId}`;
+                    platform = 'Spotify';
+                }
+                
+                return { url, thumbnail, title, platform, index };
+            })
+        );
+        
+        container.innerHTML = referencesWithTitles.map(({ url, thumbnail, title, platform, index }) => `
             <div class="resource-item-with-thumbnail">
-                ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
+                ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail" class="youtube-thumbnail-small">` : ''}
                 <div style="flex: 1;">
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        🎥 YouTube: ${videoId || 'Video'}
+                        ${platform === 'YouTube' ? '🎥' : '🎵'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">Click to open performance</div>
+                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} • Click to open</div>
                 </div>
                 <div class="resource-actions">
                     <button class="resource-btn remove-btn" onclick="removeReference(${index})">✕</button>
                 </div>
             </div>
-        `}).join('');
+        `).join('');
         
         // Add button if less than 2 references
         if (resources.references.length < 2) {
             container.innerHTML += `
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <button class="add-resource-btn" onclick="searchYouTubeForReference()" style="flex: 1;">
-                        🔍 Search YouTube for Performances
+                        🔍 YouTube Performances
+                    </button>
+                    <button class="add-resource-btn" onclick="searchSpotifyForReference()" style="flex: 1;">
+                        🎵 Spotify
                     </button>
                     <button class="add-resource-btn" onclick="addReference()" style="flex: 1;">
-                        + Paste URL Manually
+                        + Paste URL
                     </button>
                 </div>
             `;
@@ -354,10 +403,13 @@ function renderReferencesSection(songTitle, instrument, resources) {
         container.innerHTML = `
             <div style="display: flex; gap: 10px;">
                 <button class="add-resource-btn" onclick="searchYouTubeForReference()" style="flex: 1;">
-                    🔍 Search YouTube for Performances
+                    🔍 YouTube Performances
+                </button>
+                <button class="add-resource-btn" onclick="searchSpotifyForReference()" style="flex: 1;">
+                    🎵 Spotify
                 </button>
                 <button class="add-resource-btn" onclick="addReference()" style="flex: 1;">
-                    + Paste URL Manually
+                    + Paste URL
                 </button>
             </div>
         `;
@@ -420,6 +472,40 @@ function getYouTubeThumbnail(url) {
         return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
     }
     return null;
+}
+
+// Fetch YouTube video title using oEmbed API
+async function getYouTubeTitle(url) {
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) return null;
+    
+    try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+        const response = await fetch(oembedUrl);
+        const data = await response.json();
+        return data.title;
+    } catch (e) {
+        console.error('Error fetching YouTube title:', e);
+        return null;
+    }
+}
+
+// Get Spotify track ID from URL
+function getSpotifyTrackId(url) {
+    try {
+        const urlObj = new URL(url);
+        const hostname = urlObj.hostname.replace('www.', '');
+        
+        // open.spotify.com/track/TRACK_ID
+        if (hostname.includes('spotify.com')) {
+            const match = urlObj.pathname.match(/\/track\/([a-zA-Z0-9]+)/);
+            return match ? match[1] : null;
+        }
+        
+        return null;
+    } catch (e) {
+        return null;
+    }
 }
 
 // ============================================================================
@@ -486,6 +572,21 @@ function searchYouTubeForLesson() {
     showYouTubeSearchModal(searchTerm);
 }
 
+function searchSpotifyForLesson() {
+    if (!selectedSong) return;
+    
+    const songData = allSongs.find(s => s.title === selectedSong);
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
+    
+    const searchTerm = `${bandName} ${selectedSong}`;
+    const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(searchTerm)}`;
+    
+    // Show manual paste modal with Spotify instructions
+    currentResourceType = 'lesson';
+    showSpotifyPasteModal(spotifyUrl, 'lesson');
+}
+
 function removeLesson(index) {
     if (!selectedSong) return;
     
@@ -519,6 +620,21 @@ function searchYouTubeForReference() {
     // Show YouTube search modal
     currentResourceType = 'reference';
     showYouTubeSearchModal(searchTerm);
+}
+
+function searchSpotifyForReference() {
+    if (!selectedSong) return;
+    
+    const songData = allSongs.find(s => s.title === selectedSong);
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
+    
+    const searchTerm = `${bandName} ${selectedSong}`;
+    const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(searchTerm)}`;
+    
+    // Show manual paste modal with Spotify instructions
+    currentResourceType = 'reference';
+    showSpotifyPasteModal(spotifyUrl, 'reference');
 }
 
 function removeReference(index) {
@@ -712,6 +828,87 @@ function saveFromYouTubeSearch() {
     closeYouTubeSearchModal();
     
     console.log('✅ Video saved from YouTube search:', url);
+}
+
+// ============================================================================
+// SPOTIFY INTEGRATION
+// ============================================================================
+
+function showSpotifyPasteModal(searchUrl, type) {
+    const modal = document.getElementById('youtubeSearchModal');
+    const searchInput = document.getElementById('youtubeSearchInput');
+    const resultsContainer = document.getElementById('youtubeSearchResultsContainer');
+    
+    // Set search term
+    searchInput.value = 'Spotify Search';
+    
+    // Show modal
+    modal.classList.remove('hidden');
+    
+    // Show Spotify instructions
+    resultsContainer.innerHTML = `
+        <div style="text-align: center; padding: 30px;">
+            <p style="margin-bottom: 20px; color: #4a5568;">
+                Search Spotify for: <strong>"${selectedSong}"</strong>
+            </p>
+            <button class="primary-btn" onclick="window.open('${searchUrl}', '_blank')" style="margin-bottom: 20px;">
+                🎵 Search on Spotify
+            </button>
+            <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; text-align: left;">
+                <strong style="color: #2d3748; display: block; margin-bottom: 10px;">How to use:</strong>
+                <ol style="color: #4a5568; line-height: 1.8; margin-left: 20px;">
+                    <li>Click "Search on Spotify" above</li>
+                    <li>Find the track you want</li>
+                    <li>Click the three dots (•••) on the track</li>
+                    <li>Select "Share" → "Copy Song Link"</li>
+                    <li>Come back here and paste it below:</li>
+                </ol>
+                <input type="text" id="youtubeQuickPasteInput" class="search-input" placeholder="Paste Spotify URL here..." style="margin-top: 15px;">
+                <button class="primary-btn" onclick="saveFromSpotifySearch()" style="margin-top: 10px; width: 100%; background: #1db954;">
+                    💾 Save This Track
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function saveFromSpotifySearch() {
+    const input = document.getElementById('youtubeQuickPasteInput');
+    const url = input.value.trim();
+    
+    if (!url) {
+        alert('Please paste a Spotify URL');
+        return;
+    }
+    
+    // Validate it's a Spotify URL
+    const trackId = getSpotifyTrackId(url);
+    if (!trackId) {
+        alert('Please enter a valid Spotify track URL');
+        return;
+    }
+    
+    // Save based on current resource type
+    const resources = loadResources(selectedSong, currentInstrument);
+    
+    switch(currentResourceType) {
+        case 'lesson':
+            if (resources.lessons.length < 2) {
+                resources.lessons.push(url);
+            }
+            break;
+        case 'reference':
+            if (resources.references.length < 2) {
+                resources.references.push(url);
+            }
+            break;
+    }
+    
+    saveResources(selectedSong, currentInstrument, resources);
+    renderLearningResources(selectedSong, currentInstrument);
+    closeYouTubeSearchModal();
+    
+    console.log('✅ Track saved from Spotify search:', url);
 }
 
 function saveResource() {
