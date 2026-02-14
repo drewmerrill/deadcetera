@@ -285,7 +285,7 @@ async function renderLessonsSection(songTitle, instrument, resources) {
                     title = fetchedTitle || `YouTube: ${videoId}`;
                     platform = 'YouTube';
                 } else if (spotifyId) {
-                    title = `Spotify Track: ${spotifyId}`;
+                    const fetchedTitle = await getSpotifyTrackName(url); title = fetchedTitle || `Spotify Track: ${spotifyId}`;
                     platform = 'Spotify';
                 }
                 
@@ -360,7 +360,7 @@ async function renderReferencesSection(songTitle, instrument, resources) {
                     title = fetchedTitle || `YouTube: ${videoId}`;
                     platform = 'YouTube';
                 } else if (spotifyId) {
-                    title = `Spotify Track: ${spotifyId}`;
+                    const fetchedTitle = await getSpotifyTrackName(url); title = fetchedTitle || `Spotify Track: ${spotifyId}`;
                     platform = 'Spotify';
                 }
                 
@@ -504,6 +504,22 @@ function getSpotifyTrackId(url) {
         
         return null;
     } catch (e) {
+        return null;
+    }
+}
+
+// Fetch Spotify track name using oEmbed API
+async function getSpotifyTrackName(url) {
+    const trackId = getSpotifyTrackId(url);
+    if (!trackId) return null;
+    
+    try {
+        const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
+        const response = await fetch(oembedUrl);
+        const data = await response.json();
+        return data.title || null;
+    } catch (e) {
+        console.error('Error fetching Spotify track name:', e);
         return null;
     }
 }
@@ -735,7 +751,14 @@ function showYouTubeSearchModal(searchTerm) {
     const searchInput = document.getElementById('youtubeSearchInput');
     const resultsContainer = document.getElementById('youtubeSearchResultsContainer');
     
-    // Set search term
+    // Reset modal title to "Search YouTube"
+    const modalTitle = modal.querySelector('.modal-header h2');
+    if (modalTitle) {
+        modalTitle.textContent = '🔍 Search YouTube';
+    }
+    
+    // Show and set search term
+    searchInput.style.display = 'block';
     searchInput.value = searchTerm;
     
     // Show modal
@@ -839,19 +862,25 @@ function showSpotifyPasteModal(searchUrl, type) {
     const searchInput = document.getElementById('youtubeSearchInput');
     const resultsContainer = document.getElementById('youtubeSearchResultsContainer');
     
-    // Set search term
-    searchInput.value = 'Spotify Search';
+    // Hide the search input for Spotify (confusing UX)
+    searchInput.style.display = 'none';
     
     // Show modal
     modal.classList.remove('hidden');
     
+    // Change modal title to "Search Spotify"
+    const modalTitle = modal.querySelector('.modal-header h2');
+    if (modalTitle) {
+        modalTitle.textContent = '🎵 Search Spotify';
+    }
+    
     // Show Spotify instructions
     resultsContainer.innerHTML = `
         <div style="text-align: center; padding: 30px;">
-            <p style="margin-bottom: 20px; color: #4a5568;">
+            <p style="margin-bottom: 20px; color: #4a5568; font-size: 1.1em;">
                 Search Spotify for: <strong>"${selectedSong}"</strong>
             </p>
-            <button class="primary-btn" onclick="window.open('${searchUrl}', '_blank')" style="margin-bottom: 20px;">
+            <button class="primary-btn" onclick="window.open('${searchUrl}', '_blank')" style="margin-bottom: 20px; background: #1db954;">
                 🎵 Search on Spotify
             </button>
             <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; text-align: left;">
