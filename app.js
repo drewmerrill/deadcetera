@@ -1,6 +1,6 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v2.4
-// Last updated: 2026-02-13 - Added Learning Resources feature
+// DEADCETERA WORKFLOW APP v2.4.1
+// Last updated: 2026-02-13 - Fixed band names and added YouTube thumbnails
 // ============================================================================
 
 let selectedSong = null;
@@ -9,6 +9,20 @@ let currentFilter = 'all';
 let currentInstrument = 'bass'; // Default instrument
 let currentResourceType = null; // For modal state
 let currentResourceIndex = null; // For editing resources
+
+// ============================================================================
+// BAND NAME CONVERTER
+// ============================================================================
+
+function getFullBandName(bandAbbr) {
+    const bandMap = {
+        'GD': 'Grateful Dead',
+        'JGB': 'Jerry Garcia Band',
+        'WSP': 'Widespread Panic',
+        'Phish': 'Phish'
+    };
+    return bandMap[bandAbbr] || bandAbbr;
+}
 
 // ============================================================================
 // LEARNING RESOURCES STORAGE
@@ -148,7 +162,8 @@ function selectSong(songTitle) {
     
     // Get band info from allSongs
     const songData = allSongs.find(s => s.title === songTitle);
-    const bandName = songData ? songData.band : 'Grateful Dead';
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
     
     // Highlight selected song
     document.querySelectorAll('.song-item').forEach(item => {
@@ -217,7 +232,7 @@ function renderLearningResources(songTitle, instrument) {
 function renderTabSection(songTitle, instrument, resources) {
     const container = document.getElementById('tabResourceContent');
     const songData = allSongs.find(s => s.title === songTitle);
-    const bandName = songData ? songData.band : 'Grateful Dead';
+    const bandAbbr = songData ? songData.band : 'GD';
     
     if (resources.tab) {
         // Show saved tab/chart
@@ -245,8 +260,11 @@ function renderLessonsSection(songTitle, instrument, resources) {
     const container = document.getElementById('lessonsResourceContent');
     
     if (resources.lessons.length > 0) {
-        container.innerHTML = resources.lessons.map((url, index) => `
-            <div class="resource-item">
+        container.innerHTML = resources.lessons.map((url, index) => {
+            const thumbnail = getYouTubeThumbnail(url);
+            return `
+            <div class="resource-item-with-thumbnail">
+                ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
                 <a href="${url}" target="_blank" class="resource-link" title="${url}">
                     ${getResourceDisplayName(url)}
                 </a>
@@ -254,7 +272,7 @@ function renderLessonsSection(songTitle, instrument, resources) {
                     <button class="resource-btn remove-btn" onclick="removeLesson(${index})">✕</button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
         
         // Add button if less than 2 lessons
         if (resources.lessons.length < 2) {
@@ -277,8 +295,11 @@ function renderReferencesSection(songTitle, instrument, resources) {
     const container = document.getElementById('referencesResourceContent');
     
     if (resources.references.length > 0) {
-        container.innerHTML = resources.references.map((url, index) => `
-            <div class="resource-item">
+        container.innerHTML = resources.references.map((url, index) => {
+            const thumbnail = getYouTubeThumbnail(url);
+            return `
+            <div class="resource-item-with-thumbnail">
+                ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
                 <a href="${url}" target="_blank" class="resource-link" title="${url}">
                     ${getResourceDisplayName(url)}
                 </a>
@@ -286,7 +307,7 @@ function renderReferencesSection(songTitle, instrument, resources) {
                     <button class="resource-btn remove-btn" onclick="removeReference(${index})">✕</button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
         
         // Add button if less than 2 references
         if (resources.references.length < 2) {
@@ -331,6 +352,38 @@ function getResourceDisplayName(url) {
     }
 }
 
+// Get YouTube video ID from URL
+function getYouTubeVideoId(url) {
+    try {
+        const urlObj = new URL(url);
+        const hostname = urlObj.hostname.replace('www.', '');
+        
+        // youtube.com/watch?v=VIDEO_ID
+        if (hostname.includes('youtube.com')) {
+            return urlObj.searchParams.get('v');
+        }
+        
+        // youtu.be/VIDEO_ID
+        if (hostname.includes('youtu.be')) {
+            return urlObj.pathname.substring(1);
+        }
+        
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Get YouTube thumbnail URL
+function getYouTubeThumbnail(url) {
+    const videoId = getYouTubeVideoId(url);
+    if (videoId) {
+        // Use high quality thumbnail
+        return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    }
+    return null;
+}
+
 // ============================================================================
 // TAB FUNCTIONS
 // ============================================================================
@@ -339,7 +392,8 @@ function findTab() {
     if (!selectedSong) return;
     
     const songData = allSongs.find(s => s.title === selectedSong);
-    const bandName = songData ? songData.band : 'Grateful Dead';
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
     
     // Construct Ultimate Guitar search URL
     const searchQuery = encodeURIComponent(`${bandName} ${selectedSong}`);
@@ -419,12 +473,50 @@ function showAddResourceModal(type) {
             break;
     }
     
-    // Clear input
+    // Clear input and preview
     input.value = '';
+    updateUrlPreview('');
     
     // Show modal
     modal.classList.remove('hidden');
     input.focus();
+    
+    // Add event listener for URL preview
+    input.removeEventListener('input', handleUrlPreview);
+    input.addEventListener('input', handleUrlPreview);
+}
+
+function handleUrlPreview(e) {
+    updateUrlPreview(e.target.value);
+}
+
+function updateUrlPreview(url) {
+    const previewContainer = document.getElementById('urlPreviewContainer');
+    if (!previewContainer) return;
+    
+    if (!url || url.trim() === '') {
+        previewContainer.innerHTML = '';
+        return;
+    }
+    
+    // Check if it's a YouTube URL
+    const videoId = getYouTubeVideoId(url);
+    if (videoId) {
+        const thumbnail = getYouTubeThumbnail(url);
+        previewContainer.innerHTML = `
+            <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border: 2px solid #e2e8f0;">
+                <div style="font-weight: 600; color: #4a5568; margin-bottom: 10px;">Preview:</div>
+                <img src="${thumbnail}" alt="Video preview" style="width: 100%; max-width: 320px; border-radius: 8px;">
+                <div style="margin-top: 8px; color: #718096; font-size: 0.9em;">Video ID: ${videoId}</div>
+            </div>
+        `;
+    } else {
+        previewContainer.innerHTML = `
+            <div style="margin-top: 15px; padding: 10px; background: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                <div style="color: #92400e; font-size: 0.9em;">URL detected (preview not available)</div>
+            </div>
+        `;
+    }
 }
 
 function closeAddResourceModal() {
