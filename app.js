@@ -1954,11 +1954,11 @@ async function renderPracticeTracksSimplified(songTitle) {
                 const thumbnail = track.thumbnail || getYouTubeThumbnail(url);
                 const icon = instrumentIcons[track.instrument] || '🎵';
                 const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
-                const isStored = track.source === 'localStorage';
+                const isUserAdded = track.source !== 'data.js';
                 
                 return `
                     <div class="practice-track-card" style="position: relative;">
-                        ${isStored ? `
+                        ${isUserAdded ? `
                             <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
                                 style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;"
                                 title="Delete track">×</button>
@@ -3969,9 +3969,13 @@ console.log('✅ Comprehensive Google Drive storage system loaded');
 
 async function findOrCreateFolder(folderName, parentFolderId) {
     try {
+        // Escape single quotes and backslashes for Drive API
+        const escapedFolderName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedParentId = parentFolderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        
         // Search for existing folder
         const response = await gapi.client.drive.files.list({
-            q: `name='${folderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            q: `name='${escapedFolderName}' and '${escapedParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
             fields: 'files(id, name)',
             spaces: 'drive'
         });
@@ -4001,11 +4005,12 @@ async function findOrCreateFolder(folderName, parentFolderId) {
 
 async function findFileInFolder(fileName, folderId) {
     try {
-        // Escape single quotes in filename by doubling them
-        const escapedFileName = fileName.replace(/'/g, "\\'");
+        // Escape single quotes and backslashes for Drive API
+        const escapedFileName = fileName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedFolderId = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         
         const response = await gapi.client.drive.files.list({
-            q: `name='${escapedFileName}' and '${folderId}' in parents and trashed=false`,
+            q: `name='${escapedFileName}' and '${escapedFolderId}' in parents and trashed=false`,
             fields: 'files(id, name)',
             spaces: 'drive'
         });
