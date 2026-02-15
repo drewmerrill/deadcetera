@@ -1730,171 +1730,270 @@ function renderGigNotes(songTitle, bandData) {
 }
 
 // ============================================================================
-// PRACTICE TRACK SEARCH & CLASSIFICATION
+// ============================================================================
+// SIMPLIFIED PRACTICE TRACK SYSTEM
+// Auto-fetch titles, thumbnails, save to localStorage - NO GITHUB NEEDED!
 // ============================================================================
 
-async function searchOrAddPracticeTrack() {
-    const input = document.getElementById('practiceTrackSearchInput').value.trim();
-    const resultsContainer = document.getElementById('practiceTrackSearchResults');
+// Store practice tracks in localStorage per song
+function savePracticeTrack(songTitle, track) {
+    const key = `deadcetera_practice_tracks_${songTitle}`;
+    const existing = localStorage.getItem(key);
+    const tracks = existing ? JSON.parse(existing) : [];
     
-    if (!input) {
-        alert('Please enter a search term or paste a video URL');
-        return;
-    }
-    
-    // Check if input is a URL
-    const isURL = input.startsWith('http://') || input.startsWith('https://') || input.includes('youtube.com') || input.includes('youtu.be') || input.includes('vimeo.com');
-    
-    if (isURL) {
-        // It's a URL - go straight to add form with URL pre-filled
-        showAddPracticeTrackForm(input);
-    } else {
-        // It's a search term - show search options
-        searchPracticeTracks(input);
+    tracks.push(track);
+    localStorage.setItem(key, JSON.stringify(tracks));
+}
+
+function loadPracticeTracksFromStorage(songTitle) {
+    const key = `deadcetera_practice_tracks_${songTitle}`;
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+}
+
+function deletePracticeTrack(songTitle, index) {
+    const key = `deadcetera_practice_tracks_${songTitle}`;
+    const existing = localStorage.getItem(key);
+    if (existing) {
+        const tracks = JSON.parse(existing);
+        tracks.splice(index, 1);
+        localStorage.setItem(key, JSON.stringify(tracks));
     }
 }
 
-async function searchPracticeTracks(query) {
-    const resultsContainer = document.getElementById('practiceTrackSearchResults');
+// Extract YouTube video ID from any YouTube URL format
+function extractYouTubeId(url) {
+    // Handle youtube.com/watch?v=
+    const match1 = url.match(/[?&]v=([^&]+)/);
+    if (match1) return match1[1];
     
-    resultsContainer.innerHTML = '<p style="color: #6b7280; padding: 10px;">🔍 Searching...</p>';
+    // Handle youtu.be/
+    const match2 = url.match(/youtu\.be\/([^?]+)/);
+    if (match2) return match2[1];
     
-    // Use YouTube search
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    // Handle youtube.com/shorts/
+    const match3 = url.match(/youtube\.com\/shorts\/([^?]+)/);
+    if (match3) return match3[1];
     
-    resultsContainer.innerHTML = `
-        <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
-            <p style="margin-bottom: 10px;"><strong>Search Instructions:</strong></p>
-            <ol style="margin-left: 20px; line-height: 1.8;">
-                <li>Click button below to search YouTube</li>
-                <li>Find the video you want</li>
-                <li>Copy the video URL (works with YouTube, YouTube Shorts, Vimeo, etc.)</li>
-                <li>Paste the URL in the search box above</li>
-                <li>Click "Search/Add" to classify it</li>
-            </ol>
-            <button class="chart-btn chart-btn-primary" onclick="window.open('${searchUrl}', '_blank')" style="margin-top: 10px;">
-                🔍 Open YouTube Search
-            </button>
+    return null;
+}
+
+// Auto-fetch video title and thumbnail from URL
+async function fetchVideoMetadata(url) {
+    try {
+        // For YouTube videos and Shorts
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            const videoId = extractYouTubeId(url);
+            if (videoId) {
+                // Use oEmbed API to get title
+                const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+                const data = await response.json();
+                
+                return {
+                    title: data.title,
+                    thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+                    success: true
+                };
+            }
+        }
+        
+        // For other URLs, try to extract domain
+        try {
+            const urlObj = new URL(url);
+            return {
+                title: `Video from ${urlObj.hostname}`,
+                thumbnail: null,
+                success: false
+            };
+        } catch {
+            return {
+                title: 'Video Track',
+                thumbnail: null,
+                success: false
+            };
+        }
+    } catch (error) {
+        console.error('Error fetching video metadata:', error);
+        return {
+            title: 'Video Track',
+            thumbnail: null,
+            success: false
+        };
+    }
+}
+
+// Simple add track flow with auto-fetch
+async function addPracticeTrackSimple() {
+    const url = document.getElementById('practiceTrackUrlInput').value.trim();
+    const instrument = document.getElementById('practiceTrackInstrument').value;
+    const notes = document.getElementById('practiceTrackNotes').value.trim();
+    
+    if (!url) {
+        alert('Please paste a video URL');
+        return;
+    }
+    
+    if (!instrument) {
+        alert('Please select an instrument');
+        return;
+    }
+    
+    // Show loading
+    const addButton = document.getElementById('addPracticeTrackBtn');
+    const originalText = addButton.innerHTML;
+    addButton.innerHTML = '🔄 Fetching video info...';
+    addButton.disabled = true;
+    
+    try {
+        // Fetch metadata
+        const metadata = await fetchVideoMetadata(url);
+        
+        const track = {
+            title: metadata.title,
+            videoUrl: url,
+            instrument: instrument,
+            notes: notes,
+            uploadedBy: 'drew',
+            dateAdded: new Date().toISOString().split('T')[0],
+            thumbnail: metadata.thumbnail
+        };
+        
+        // Save to localStorage
+        savePracticeTrack(selectedSong.title, track);
+        
+        // Show success message
+        const message = document.createElement('div');
+        message.style.cssText = 'background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; color: #065f46; font-weight: 600;';
+        message.textContent = `✅ Added: ${metadata.title}`;
+        document.getElementById('practiceTrackAddForm').appendChild(message);
+        
+        // Clear form
+        document.getElementById('practiceTrackUrlInput').value = '';
+        document.getElementById('practiceTrackNotes').value = '';
+        
+        // Remove success message after 2 seconds
+        setTimeout(() => message.remove(), 2000);
+        
+        // Refresh the practice tracks display
+        renderPracticeTracksSimplified(selectedSong.title);
+        
+    } catch (error) {
+        alert('Error adding track: ' + error.message);
+    } finally {
+        addButton.innerHTML = originalText;
+        addButton.disabled = false;
+    }
+}
+
+// Render practice tracks (combines localStorage + data.js)
+function renderPracticeTracksSimplified(songTitle) {
+    const container = document.getElementById('practiceTracksContainer');
+    const bandData = bandKnowledgeBase[songTitle];
+    
+    // Get tracks from both sources
+    const storedTracks = loadPracticeTracksFromStorage(songTitle);
+    const dataTracks = [];
+    
+    // Get tracks from data.js if they exist
+    if (bandData && bandData.practiceTracks) {
+        Object.entries(bandData.practiceTracks).forEach(([instrument, trackList]) => {
+            trackList.forEach(track => {
+                dataTracks.push({ ...track, instrument, source: 'data.js' });
+            });
+        });
+    }
+    
+    // Add source marker to stored tracks
+    const storedWithSource = storedTracks.map(t => ({ ...t, source: 'localStorage' }));
+    
+    // Combine all tracks
+    const allTracks = [...dataTracks, ...storedWithSource];
+    
+    if (allTracks.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No practice tracks yet - add your first one above!</div>';
+        return;
+    }
+    
+    // Instrument icons and names
+    const instrumentIcons = {
+        bass: '🎸',
+        leadGuitar: '🎸',
+        lead_guitar: '🎸',
+        rhythmGuitar: '🎸',
+        rhythm_guitar: '🎸',
+        keys: '🎹',
+        keyboards: '🎹',
+        drums: '🥁',
+        vocals: '🎤'
+    };
+    
+    const instrumentNames = {
+        bass: 'Bass',
+        leadGuitar: 'Lead Guitar',
+        lead_guitar: 'Lead Guitar',
+        rhythmGuitar: 'Rhythm Guitar',
+        rhythm_guitar: 'Rhythm Guitar',
+        keys: 'Keys',
+        keyboards: 'Keyboards',
+        drums: 'Drums',
+        vocals: 'Vocals'
+    };
+    
+    container.innerHTML = `
+        <div class="practice-tracks-grid">
+            ${allTracks.map((track, index) => {
+                const url = track.videoUrl || track.youtubeUrl;
+                const thumbnail = track.thumbnail || getYouTubeThumbnail(url);
+                const icon = instrumentIcons[track.instrument] || '🎵';
+                const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
+                const isStored = track.source === 'localStorage';
+                
+                return `
+                    <div class="practice-track-card" style="position: relative;">
+                        ${isStored ? `
+                            <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
+                                style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;"
+                                title="Delete track">×</button>
+                        ` : ''}
+                        
+                        ${thumbnail ? `
+                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden;">
+                                <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
+                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                    <span style="color: white; font-size: 20px;">▶</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span style="font-size: 1.5em;">${icon}</span>
+                            <div style="font-weight: 600; color: #667eea;">${instName}</div>
+                        </div>
+                        
+                        <h4 style="margin: 0 0 8px 0; font-size: 0.95em; color: #2d3748; line-height: 1.4;">
+                            ${track.title}
+                        </h4>
+                        
+                        ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
+                        
+                        <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${url}', '_blank')">
+                            ▶ Watch Video
+                        </button>
+                        
+                        <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">
+                            Added by ${track.uploadedBy || 'unknown'}
+                            ${isStored ? ' <span style="color: #10b981;">• Saved locally</span>' : ''}
+                        </p>
+                    </div>
+                `;
+            }).join('')}
         </div>
     `;
 }
 
-function showAddPracticeTrackForm(prefilledUrl = '') {
-    const resultsContainer = document.getElementById('practiceTrackSearchResults');
-    
-    resultsContainer.innerHTML = `
-        <div style="background: white; padding: 20px; border-radius: 8px; border: 2px solid #667eea;">
-            <h4 style="margin: 0 0 15px 0;">Add Practice Track</h4>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Video URL:</label>
-                <input type="text" id="newTrackUrl" value="${prefilledUrl}" placeholder="https://www.youtube.com/watch?v=... or YouTube Shorts, Vimeo, etc." 
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">✅ Works with: YouTube, YouTube Shorts, Vimeo, and any video URL</p>
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Video Title:</label>
-                <input type="text" id="newTrackTitle" placeholder="E.g., Tweezer Reprise Bass Lesson" 
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Instrument/Part:</label>
-                <select id="newTrackInstrument" 
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                    <option value="">-- Select Instrument --</option>
-                    <option value="bass">🎸 Bass</option>
-                    <option value="leadGuitar">🎸 Lead Guitar</option>
-                    <option value="rhythmGuitar">🎸 Rhythm Guitar</option>
-                    <option value="keys">🎹 Keys/Keyboards</option>
-                    <option value="drums">🥁 Drums</option>
-                    <option value="vocals">🎤 Vocals</option>
-                </select>
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes (optional):</label>
-                <input type="text" id="newTrackNotes" placeholder="E.g., Great breakdown of the bass line" 
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-            </div>
-            
-            <div style="background: #fef3c7; padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f59e0b;">
-                <p style="font-size: 0.9em; margin: 0;"><strong>Note:</strong> This will show you the code to add to data.js. We can't save directly to the file, but I'll format it for easy copy/paste!</p>
-            </div>
-            
-            <div style="display: flex; gap: 10px;">
-                <button class="chart-btn chart-btn-primary" onclick="generatePracticeTrackCode()">
-                    Generate Code
-                </button>
-                <button class="chart-btn chart-btn-secondary" onclick="document.getElementById('practiceTrackSearchResults').innerHTML = ''">
-                    Cancel
-                </button>
-            </div>
-            
-            <div id="generatedTrackCode" style="margin-top: 15px;"></div>
-        </div>
-    `;
-}
-
-function generatePracticeTrackCode() {
-    const url = document.getElementById('newTrackUrl').value;
-    const title = document.getElementById('newTrackTitle').value;
-    const instrument = document.getElementById('newTrackInstrument').value;
-    const notes = document.getElementById('newTrackNotes').value;
-    
-    if (!url || !title || !instrument) {
-        alert('Please fill in URL, Title, and Instrument');
-        return;
+function deletePracticeTrackConfirm(songTitle, index) {
+    if (confirm('Delete this practice track?')) {
+        deletePracticeTrack(songTitle, index);
+        renderPracticeTracksSimplified(songTitle);
     }
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    const code = `{
-    title: "${title}",
-    videoUrl: "${url}",  // Works with YouTube, Shorts, Vimeo, etc.
-    uploadedBy: "YOUR_NAME",  // Replace with your name
-    dateAdded: "${today}",
-    notes: "${notes || 'Practice track'}"
-}`;
-    
-    const fullInstructions = `
-<div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border: 2px solid #10b981;">
-    <h4 style="margin: 0 0 10px 0; color: #065f46;">✅ Code Generated!</h4>
-    
-    <p style="margin-bottom: 10px;"><strong>Add to instrument: <span style="color: #667eea;">${instrument}</span></strong></p>
-    
-    <div style="background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-family: monospace; font-size: 0.85em; overflow-x: auto;">
-        <pre style="margin: 0; white-space: pre-wrap;">${code}</pre>
-    </div>
-    
-    <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
-        <p style="margin: 0 0 10px 0; font-weight: 600;">Instructions:</p>
-        <ol style="margin-left: 20px; line-height: 1.8; font-size: 0.9em;">
-            <li>Open your data.js file</li>
-            <li>Find the song: <code>"Tweezer Reprise"</code></li>
-            <li>Find the <code>practiceTracks</code> section</li>
-            <li>Find the <code>${instrument}: [</code> array</li>
-            <li>Add the code above to the array (don't forget commas!)</li>
-            <li>Replace <code>YOUR_NAME</code> with your actual name</li>
-            <li>Upload data.js to GitHub</li>
-            <li>Refresh the page!</li>
-        </ol>
-    </div>
-    
-    <button class="chart-btn chart-btn-primary" onclick="copyPracticeTrackCode(\`${code.replace(/`/g, '\\`')}\`)" style="margin-top: 15px;">
-        📋 Copy Code
-    </button>
-</div>
-    `;
-    
-    document.getElementById('generatedTrackCode').innerHTML = fullInstructions;
-}
-
-function copyPracticeTrackCode(code) {
-    navigator.clipboard.writeText(code).then(() => {
-        alert('✅ Code copied to clipboard! Paste it into data.js');
-    }).catch(err => {
-        alert('Could not copy. Please select and copy manually.');
-    });
 }
