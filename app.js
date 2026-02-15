@@ -2772,6 +2772,9 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
         // Load audio snippets for this section
         const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
         
+        const savedAbc = localStorage.getItem(`deadcetera_abc_${songTitle}_section${sectionIndex}`);
+        const sheetMusicButtonText = savedAbc ? '🎼 View/Edit Sheet Music' : '🎼 Create Sheet Music';
+        
         return `
             <div class="harmony-card ${statusClass}">
                 <div class="harmony-header">
@@ -2779,7 +2782,7 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <button class="chart-btn chart-btn-secondary" onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
                             style="padding: 6px 12px; font-size: 0.85em;">
-                            🎼 Sheet Music
+                            ${sheetMusicButtonText}
                         </button>
                         <div class="harmony-status ${statusBadgeClass}">${statusText}</div>
                     </div>
@@ -3023,7 +3026,7 @@ function previewABC() {
 
 function loadABCJS(callback) {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.2.3/dist/abcjs-basic-min.js';
+    script.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/dist/abcjs-basic-min.js';
     script.onload = callback;
     script.onerror = () => {
         alert('Could not load sheet music renderer. Check your internet connection.');
@@ -3035,23 +3038,53 @@ function renderABCPreview(abc, container) {
     container.innerHTML = '';
     
     try {
-        // Render with abcjs
-        ABCJS.renderAbc(container, abc, {
+        // Create container for sheet music
+        const sheetContainer = document.createElement('div');
+        sheetContainer.id = 'abcSheetMusic';
+        container.appendChild(sheetContainer);
+        
+        // Render the sheet music
+        const visualObj = ABCJS.renderAbc(sheetContainer, abc, {
             responsive: 'resize',
             staffwidth: container.offsetWidth - 40,
-            scale: 1.2
-        });
+            scale: 1.2,
+            add_classes: true
+        })[0];
         
-        // Add playback controls if available
-        if (ABCJS.renderMidi) {
-            const midiContainer = document.createElement('div');
-            midiContainer.style.marginTop = '20px';
-            container.appendChild(midiContainer);
-            
-            ABCJS.renderMidi(midiContainer, abc, {
-                animate: true,
-                generateDownload: false
-            });
+        // Add playback controls
+        const controlsContainer = document.createElement('div');
+        controlsContainer.style.cssText = 'margin-top: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;';
+        controlsContainer.innerHTML = `
+            <div style="margin-bottom: 10px; font-weight: 600; color: #2d3748;">🎵 Playback Controls:</div>
+            <div id="abcAudioControls"></div>
+            <div id="abcAudioWarnings" style="margin-top: 10px; color: #f59e0b; font-size: 0.85em;"></div>
+        `;
+        container.appendChild(controlsContainer);
+        
+        // Initialize synth for playback
+        if (window.ABCJS && window.ABCJS.synth && visualObj) {
+            try {
+                const synthControl = new ABCJS.synth.SynthController();
+                synthControl.load('#abcAudioControls', null, {
+                    displayLoop: true,
+                    displayRestart: true,
+                    displayPlay: true,
+                    displayProgress: true,
+                    displayWarp: true
+                });
+                
+                synthControl.setTune(visualObj, false).then(() => {
+                    console.log('✅ Audio ready for playback');
+                }).catch((error) => {
+                    console.warn('Audio setup failed:', error);
+                    document.getElementById('abcAudioWarnings').textContent = 
+                        '⚠️ Audio playback may not work in all browsers. The sheet music is still valid.';
+                });
+            } catch (error) {
+                console.warn('Synth not available:', error);
+                document.getElementById('abcAudioWarnings').textContent = 
+                    'ℹ️ Audio playback not available. You can still edit and save the notation.';
+            }
         }
     } catch (error) {
         container.innerHTML = `
