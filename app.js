@@ -4126,22 +4126,50 @@ async function saveSongStructure() {
 console.log('✅ Song Structure functions loaded');
 
 // Initialize the shared band resources folder
+// ============================================================================
+// SHARED FOLDER CONFIGURATION
+// ============================================================================
+
+// IMPORTANT: Set this to the folder ID after the owner creates it
+// Leave as null for the first person (owner) to create the folder
+// After creation, copy the folder ID here so everyone uses the SAME folder
+const SHARED_FOLDER_ID = null; // Owner will update this after creating folder
+
+// Band member emails who should have access (owner should update this list)
+const BAND_MEMBER_EMAILS = [
+    'drew.merrill@gmail.com',     // Drew
+    'pierce@example.com',          // Pierce - UPDATE THIS
+    'brian@example.com',           // Brian - UPDATE THIS
+    'chris@example.com'            // Chris - UPDATE THIS
+];
+
 async function initializeSharedFolder() {
     try {
-        console.log('🔄 Finding or creating Deadcetera Band Resources folder...');
+        console.log('🔄 Initializing shared band folder...');
         
-        // Search for existing folder
+        // If we have a hardcoded folder ID, use it
+        if (SHARED_FOLDER_ID) {
+            sharedFolderId = SHARED_FOLDER_ID;
+            console.log('✅ Using configured shared folder:', sharedFolderId);
+            return;
+        }
+        
+        // Otherwise, search for existing folder
         const response = await gapi.client.drive.files.list({
             q: "name='Deadcetera Band Resources' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            fields: 'files(id, name)',
+            fields: 'files(id, name, owners)',
             spaces: 'drive'
         });
         
         if (response.result.files && response.result.files.length > 0) {
             sharedFolderId = response.result.files[0].id;
             console.log('✅ Found existing folder:', sharedFolderId);
+            console.log('📋 OWNER: Copy this folder ID to SHARED_FOLDER_ID in app.js');
+            console.log('📋 Folder ID:', sharedFolderId);
         } else {
-            // Create folder
+            // Create folder as OWNER
+            console.log('🎸 Creating NEW shared folder (you are the OWNER)...');
+            
             const fileMetadata = {
                 name: 'Deadcetera Band Resources',
                 mimeType: 'application/vnd.google-apps.folder'
@@ -4154,10 +4182,115 @@ async function initializeSharedFolder() {
             
             sharedFolderId = folder.result.id;
             console.log('✅ Created new folder:', sharedFolderId);
+            console.log('');
+            console.log('═══════════════════════════════════════════════════════');
+            console.log('🎸 YOU ARE THE FOLDER OWNER!');
+            console.log('═══════════════════════════════════════════════════════');
+            console.log('');
+            console.log('📋 COPY THIS FOLDER ID:');
+            console.log(sharedFolderId);
+            console.log('');
+            console.log('📝 NEXT STEPS:');
+            console.log('1. Copy the folder ID above');
+            console.log('2. Update SHARED_FOLDER_ID in app.js');
+            console.log('3. Update band member emails in BAND_MEMBER_EMAILS');
+            console.log('4. Re-upload app.js');
+            console.log('5. Click "Share Folder with Band" button below');
+            console.log('');
+            console.log('═══════════════════════════════════════════════════════');
+            
+            // Show UI to share folder
+            showFolderSharingInstructions(sharedFolderId);
         }
     } catch (error) {
         console.error('❌ Failed to initialize shared folder:', error);
     }
+}
+
+async function shareFolderWithBand() {
+    if (!sharedFolderId) {
+        alert('No folder to share yet! Please connect to Google Drive first.');
+        return;
+    }
+    
+    console.log('🔄 Sharing folder with band members...');
+    
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (const email of BAND_MEMBER_EMAILS) {
+        try {
+            // Skip placeholder emails
+            if (email.includes('example.com')) {
+                console.log(`⏭️  Skipping placeholder: ${email}`);
+                continue;
+            }
+            
+            // Create permission for this band member
+            const permission = {
+                type: 'user',
+                role: 'writer', // Can edit files
+                emailAddress: email
+            };
+            
+            await gapi.client.drive.permissions.create({
+                fileId: sharedFolderId,
+                resource: permission,
+                sendNotificationEmail: true,
+                emailMessage: '🎸 You now have access to the Deadcetera Band Resources folder! Open the app and connect your Google Drive to start collaborating.'
+            });
+            
+            console.log(`✅ Shared with: ${email}`);
+            successCount++;
+        } catch (error) {
+            console.error(`❌ Failed to share with ${email}:`, error);
+            failCount++;
+        }
+    }
+    
+    const message = `
+Folder shared!
+
+✅ Success: ${successCount} members
+${failCount > 0 ? `❌ Failed: ${failCount} members (check console)` : ''}
+
+Band members will receive an email invitation.
+    `.trim();
+    
+    alert(message);
+}
+
+function showFolderSharingInstructions(folderId) {
+    // Add a temporary banner at the top of the page
+    const banner = document.createElement('div');
+    banner.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #667eea;
+        color: white;
+        padding: 20px;
+        text-align: center;
+        z-index: 10000;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    `;
+    
+    banner.innerHTML = `
+        <div style="max-width: 800px; margin: 0 auto;">
+            <h2 style="margin: 0 0 10px 0;">🎸 You Created the Shared Folder!</h2>
+            <p style="margin: 0 0 15px 0;">Folder ID: <code style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 4px;">${folderId}</code></p>
+            <p style="margin: 0 0 15px 0; font-size: 0.9em;">Copy this ID and update <code>SHARED_FOLDER_ID</code> in app.js, then update band member emails and re-upload.</p>
+            <button onclick="shareFolderWithBand()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 10px;">
+                📧 Share Folder with Band
+            </button>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    `;
+    
+    document.body.insertBefore(banner, document.body.firstChild);
 }
 
 console.log('✅ Shared folder initialization loaded');
