@@ -1139,7 +1139,13 @@ const bandKnowledgeBase = {
         // PRACTICE TRACKS - By instrument
         practiceTracks: {
             bass: [],
-            leadGuitar: [],
+            leadGuitar: [{
+    title: "Tweezer Reprise Lead Guitar instruction (tab, picking style, etc.)",
+    videoUrl: "https://youtube.com/shorts/0Y3u0njFXo0?si=lDLOMYim9230F922",  // Works with YouTube, Shorts, Vimeo, etc.
+    uploadedBy: "Drew_Merrill",  // Replace with your name
+    dateAdded: "2026-02-15",
+    notes: "Brian - best one out there!  Simple, short, get 'er done."
+}],
             rhythmGuitar: [],
             keys: [],
             drums: []
