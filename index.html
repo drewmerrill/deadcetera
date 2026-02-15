@@ -172,14 +172,16 @@
     <div class="resource-section" id="rehearsalNotesSection">
         <div class="section-header">
             <h3>📋 Rehearsal Notes</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Band feedback and tips</p>
+            <p style="color: #6b7280; font-size: 0.9em;">Band feedback and tips - anyone can add!</p>
         </div>
+        
+        <div id="rehearsalNoteFormContainer"></div>
         
         <div id="rehearsalNotesContainer">
             <!-- Dynamically populated -->
         </div>
         
-        <button class="secondary-btn" id="addRehearsalNoteBtn" style="margin-top: 12px;">
+        <button class="secondary-btn" onclick="showRehearsalNoteForm()" style="margin-top: 12px;">
             + Add Note
         </button>
     </div>
