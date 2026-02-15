@@ -1150,16 +1150,24 @@ const bandKnowledgeBase = {
             sourceVersion: "Tweezer Reprise - Separated in Moises",
             googleDriveFolder: "https://drive.google.com/drive/folders/1TsGjHAqAbvc_6MbARAQ-cGMhdGip9LnX",
             stems: {
-                // Note: Check folder to see which file is which part
-                stem1: "https://drive.google.com/file/d/1U15OOxCLwKC98F5K-Hc2jGt8eZMZ98or/view?usp=sharing",
-                stem2: "https://drive.google.com/file/d/1oBkp9LOhdEGNeZ9J2XPh1jp-NBBV_ZRu/view?usp=sharing",
-                stem3: "https://drive.google.com/file/d/1KaQDTcYB9ZPigvwVLukwZN23-tQfFbLd/view?usp=sharing",
-                stem4: "https://drive.google.com/file/d/1bE86lzxNJROqOeurU9a6qfejWnNf11oa/view?usp=sharing",
-                stem5: "https://drive.google.com/file/d/1N0XO1NNO-kwEYt0trfxujplh85EII7VB/view?usp=sharing"
+                // TO FIX: Check your Drive folder and assign each URL to the correct part
+                // Then replace these URLs with the correct instrument names
+                bass: null,  // Replace with correct URL
+                drums: null,  // Replace with correct URL
+                guitar: null,  // Replace with correct URL  
+                keys: null,  // Replace with correct URL
+                vocals: null  // Replace with correct URL
+                
+                // YOUR 5 STEM URLs (assign to correct parts above):
+                // https://drive.google.com/file/d/1U15OOxCLwKC98F5K-Hc2jGt8eZMZ98or/view?usp=sharing
+                // https://drive.google.com/file/d/1oBkp9LOhdEGNeZ9J2XPh1jp-NBBV_ZRu/view?usp=sharing
+                // https://drive.google.com/file/d/1KaQDTcYB9ZPigvwVLukwZN23-tQfFbLd/view?usp=sharing
+                // https://drive.google.com/file/d/1bE86lzxNJROqOeurU9a6qfejWnNf11oa/view?usp=sharing
+                // https://drive.google.com/file/d/1N0XO1NNO-kwEYt0trfxujplh85EII7VB/view?usp=sharing
             },
             uploadedBy: "drew",
             dateCreated: "2024-02-14",
-            notes: "All 5 stems separated in Moises and uploaded! Click folder link to see which is which."
+            notes: "Check Drive folder to identify which file is which part, then update data.js"
         },
         
         // HARMONY PARTS - THE CRITICAL SECTION!

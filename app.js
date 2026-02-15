@@ -1533,19 +1533,69 @@ function renderPracticeTracks(songTitle, bandData) {
         return;
     }
     
+    // Instrument icons
+    const instrumentIcons = {
+        bass: '🎸',
+        leadGuitar: '🎸',
+        lead_guitar: '🎸',
+        rhythmGuitar: '🎸',
+        rhythm_guitar: '🎸',
+        keys: '🎹',
+        keyboards: '🎹',
+        drums: '🥁',
+        vocals: '🎤'
+    };
+    
+    // Instrument display names
+    const instrumentNames = {
+        bass: 'Bass',
+        leadGuitar: 'Lead Guitar',
+        lead_guitar: 'Lead Guitar',
+        rhythmGuitar: 'Rhythm Guitar',
+        rhythm_guitar: 'Rhythm Guitar',
+        keys: 'Keys',
+        keyboards: 'Keyboards',
+        drums: 'Drums',
+        vocals: 'Vocals'
+    };
+    
     container.innerHTML = `
         <div class="practice-tracks-grid">
-            ${allTracks.map(track => `
-                <div class="practice-track-card">
-                    <h4>${track.title}</h4>
-                    <div class="practice-track-meta">For: ${track.instrument.replace('_', ' ')}</div>
-                    ${track.notes ? `<p style="font-size: 0.9em; margin-bottom: 10px;">${track.notes}</p>` : ''}
-                    <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${track.youtubeUrl}', '_blank')">
-                        ▶ Play Track
-                    </button>
-                    <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">Uploaded by ${track.uploadedBy}</p>
-                </div>
-            `).join('')}
+            ${allTracks.map(track => {
+                const thumbnail = getYouTubeThumbnail(track.youtubeUrl);
+                const icon = instrumentIcons[track.instrument] || '🎵';
+                const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
+                
+                return `
+                    <div class="practice-track-card">
+                        ${thumbnail ? `
+                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden;">
+                                <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
+                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                    <span style="color: white; font-size: 20px;">▶</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span style="font-size: 1.5em;">${icon}</span>
+                            <div style="font-weight: 600; color: #667eea;">${instName}</div>
+                        </div>
+                        
+                        <h4 style="margin: 0 0 8px 0; font-size: 0.95em; color: #2d3748; line-height: 1.4;">
+                            ${track.title}
+                        </h4>
+                        
+                        ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
+                        
+                        <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${track.youtubeUrl}', '_blank')">
+                            ▶ Watch Lesson
+                        </button>
+                        
+                        <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">Added by ${track.uploadedBy}</p>
+                    </div>
+                `;
+            }).join('')}
         </div>
     `;
 }
