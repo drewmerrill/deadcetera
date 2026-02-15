@@ -3094,7 +3094,7 @@ const GOOGLE_DRIVE_CONFIG = {
     apiKey: 'REDACTED',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
     discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-    scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata'
+    scope: 'https://www.googleapis.com/auth/drive.file'
 };
 
 // Folder structure in Google Drive
