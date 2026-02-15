@@ -1,8 +1,10 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v2.4.4 FINAL
-// Complete feature set with Learning Resources, YouTube/Spotify, Top 5 Database
-// Last updated: 2026-02-14
+// DEADCETERA WORKFLOW APP v2.8.0 - GOOGLE DRIVE COMPLETE
+// All fixes applied: Query escaping, delete buttons, metadata persistence
+// Last updated: 2026-02-15
 // ============================================================================
+
+console.log('🎸 Deadcetera v2.8.0 loaded - Google Drive edition');
 
 let selectedSong = null;
 let selectedVersion = null;
