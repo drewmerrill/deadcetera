@@ -1345,8 +1345,10 @@ function showBandResources(songTitle) {
     renderSongStructure(songTitle);
     renderGigNotes(songTitle, bandData);
     
-    // Populate song metadata (lead singer, has harmonies)
-    setTimeout(() => populateSongMetadata(songTitle), 100);
+    // Populate song metadata (lead singer, has harmonies) - with longer delay to ensure DOM is ready
+    setTimeout(async () => {
+        await populateSongMetadata(songTitle);
+    }, 200);
 }
 
 function showNoBandResourcesMessage(songTitle) {
@@ -1990,7 +1992,7 @@ async function renderPracticeTracksSimplified(songTitle) {
                         
                         <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">
                             Added by ${track.uploadedBy || 'unknown'}
-                            ${isStored ? ' <span style="color: #10b981;">• Saved locally</span>' : ''}
+                            ${track.source === 'Google Drive' ? ' <span style="color: #10b981;">• Google Drive</span>' : ''}
                         </p>
                     </div>
                 `;
