@@ -43,6 +43,19 @@
                 <button class="filter-btn" data-filter="WSP">Widespread Panic</button>
                 <button class="filter-btn" data-filter="Phish">Phish</button>
             </div>
+            
+            <!-- HARMONY FILTER -->
+            <div class="harmony-filters" style="margin: 15px 0; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="filter-btn active" onclick="filterSongs('all')" 
+                    style="padding: 8px 16px; border: 2px solid #667eea; background: #667eea; color: white; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                    All Songs
+                </button>
+                <button class="filter-btn" onclick="filterSongs('harmonies')" 
+                    style="padding: 8px 16px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                    🎤 Harmony Songs Only
+                </button>
+            </div>
+            
             <div class="song-dropdown" id="songDropdown">
                 <!-- Songs populated here -->
             </div>
@@ -53,6 +66,32 @@
     <div class="step-number">2</div>
     <h2>🎸 Band Resources</h2>
     <p class="subtitle" id="bandResourcesSubtitle">Collaborative resources for your band</p>
+    
+    <!-- SONG METADATA -->
+    <div class="song-metadata" style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <div style="display: flex; gap: 30px; flex-wrap: wrap; align-items: center;">
+            <div class="meta-item">
+                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎤 Lead Singer:</span>
+                <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" 
+                    style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer;">
+                    <option value="">Select...</option>
+                    <option value="drew">Drew</option>
+                    <option value="chris">Chris</option>
+                    <option value="brian">Brian</option>
+                    <option value="pierce">Pierce</option>
+                    <option value="drew,chris">Drew & Chris (trading)</option>
+                </select>
+            </div>
+            
+            <div class="meta-item">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span style="font-weight: 600; color: #6b7280;">🎵 Has Harmonies</span>
+                </label>
+            </div>
+        </div>
+    </div>
     
     <!-- SPOTIFY REFERENCE VERSION - Voting -->
     <div class="resource-section" id="spotifySection">
