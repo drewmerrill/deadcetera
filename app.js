@@ -3353,6 +3353,7 @@ let isGoogleDriveInitialized = false;
 let isUserSignedIn = false;
 let accessToken = null;
 let tokenClient = null;
+let sharedFolderId = null; // ID of the "Deadcetera Band Resources" folder
 
 // ============================================================================
 // INITIALIZATION WITH NEW GOOGLE IDENTITY SERVICES
@@ -3429,6 +3430,9 @@ async function initGoogleDrive() {
                 gapi.client.setToken({ access_token: accessToken });
                 updateSignInStatus(true);
                 console.log('✅ User signed in');
+                
+                // Create or find the shared folder
+                initializeSharedFolder();
             }
         });
         
@@ -4160,3 +4164,40 @@ async function saveSongStructure() {
 }
 
 console.log('✅ Song Structure functions loaded');
+
+// Initialize the shared band resources folder
+async function initializeSharedFolder() {
+    try {
+        console.log('🔄 Finding or creating Deadcetera Band Resources folder...');
+        
+        // Search for existing folder
+        const response = await gapi.client.drive.files.list({
+            q: "name='Deadcetera Band Resources' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            fields: 'files(id, name)',
+            spaces: 'drive'
+        });
+        
+        if (response.result.files && response.result.files.length > 0) {
+            sharedFolderId = response.result.files[0].id;
+            console.log('✅ Found existing folder:', sharedFolderId);
+        } else {
+            // Create folder
+            const fileMetadata = {
+                name: 'Deadcetera Band Resources',
+                mimeType: 'application/vnd.google-apps.folder'
+            };
+            
+            const folder = await gapi.client.drive.files.create({
+                resource: fileMetadata,
+                fields: 'id'
+            });
+            
+            sharedFolderId = folder.result.id;
+            console.log('✅ Created new folder:', sharedFolderId);
+        }
+    } catch (error) {
+        console.error('❌ Failed to initialize shared folder:', error);
+    }
+}
+
+console.log('✅ Shared folder initialization loaded');
