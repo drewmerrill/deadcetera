@@ -1882,7 +1882,7 @@ async function addPracticeTrackSimple() {
         setTimeout(() => message.remove(), 2000);
         
         // Refresh the practice tracks display
-        renderPracticeTracksSimplified(selectedSong.title);
+        await renderPracticeTracksSimplified(selectedSong.title);
         
     } catch (error) {
         alert('Error adding track: ' + error.message);
@@ -1893,12 +1893,12 @@ async function addPracticeTrackSimple() {
 }
 
 // Render practice tracks (combines localStorage + data.js)
-function renderPracticeTracksSimplified(songTitle) {
+async function renderPracticeTracksSimplified(songTitle) {
     const container = document.getElementById('practiceTracksContainer');
     const bandData = bandKnowledgeBase[songTitle];
     
     // Get tracks from both sources
-    const storedTracks = loadPracticeTracksFromStorage(songTitle);
+    const storedTracks = await loadPracticeTracksFromStorage(songTitle);
     const dataTracks = [];
     
     // Get tracks from data.js if they exist
@@ -1911,7 +1911,7 @@ function renderPracticeTracksSimplified(songTitle) {
     }
     
     // Add source marker to stored tracks
-    const storedWithSource = storedTracks.map(t => ({ ...t, source: 'localStorage' }));
+    const storedWithSource = (storedTracks || []).map(t => ({ ...t, source: 'Google Drive' }));
     
     // Combine all tracks
     const allTracks = [...dataTracks, ...storedWithSource];
@@ -1998,10 +1998,10 @@ function renderPracticeTracksSimplified(songTitle) {
     `;
 }
 
-function deletePracticeTrackConfirm(songTitle, index) {
+async function deletePracticeTrackConfirm(songTitle, index) {
     if (confirm('Delete this practice track?')) {
-        deletePracticeTrack(songTitle, index);
-        renderPracticeTracksSimplified(songTitle);
+        await deletePracticeTrack(songTitle, index);
+        await renderPracticeTracksSimplified(songTitle);
     }
 }
 // ============================================================================
@@ -2749,32 +2749,21 @@ function renderAudioSnippetsOnly(songTitle, container) {
 }
 
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
-function renderHarmoniesEnhanced(songTitle, bandData) {
+async function renderHarmoniesEnhanced(songTitle, bandData) {
     const container = document.getElementById('harmoniesContainer');
     
-    // Check if bandData exists
-    if (!bandData) {
-        // No bandData, but we can still show audio snippets if any exist
-        renderAudioSnippetsOnly(songTitle, container);
+    // Check if song has harmonies
+    const hasHarmonies = await loadHasHarmonies(songTitle);
+    
+    if (!hasHarmonies || !bandData || !bandData.harmonies) {
+        container.innerHTML = '<div style="padding: 20px; color: #9ca3af; text-align: center; font-style: italic;">This song doesn\'t have harmony parts documented. Check "Has Harmonies" above if this song needs harmonies.</div>';
         return;
     }
     
-    const harmonies = bandData.harmonies;
+    const sections = bandData.harmonies.sections;
     
-    if (!harmonies || !harmonies.sections || harmonies.sections.length === 0) {
-        // No harmony sections, but we can still show audio snippets if any exist
-        renderAudioSnippetsOnly(songTitle, container);
-        return;
-    }
-    
-    const sections = harmonies.sections.map((section, sectionIndex) => {
-        const statusClass = section.workedOut ? 'worked-out' : 'needs-work';
-        const statusText = section.workedOut ? (section.soundsGood ? '✓ Sounds Great' : '⚠ Needs Polish') : '⚠ Needs Work';
-        const statusBadgeClass = section.soundsGood ? 'status-good' : 'status-needs-work';
-        
-        // Load audio snippets for this section
+    const sectionsHTML = await Promise.all(sections.map(async (section, sectionIndex) => {
         const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
-        
         const savedAbc = localStorage.getItem(`deadcetera_abc_${songTitle}_section${sectionIndex}`);
         const sheetMusicExists = savedAbc && savedAbc.length > 0;
         const sheetMusicButtonText = sheetMusicExists ? '🎼 ✅ View Sheet Music' : '🎼 Create Sheet Music';
@@ -2782,84 +2771,42 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
             'padding: 6px 12px; font-size: 0.85em; background: #10b981; color: white;' : 
             'padding: 6px 12px; font-size: 0.85em;';
         
+        // Render parts with metadata
+        const partsHTML = await renderHarmonyPartsWithMetadata(songTitle, sectionIndex, section.parts);
+        
         return `
-            <div class="harmony-card ${statusClass}">
-                <div class="harmony-header">
-                    <div class="harmony-lyric">"${section.lyric}"</div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="chart-btn ${sheetMusicExists ? '' : 'chart-btn-secondary'}" 
-                            onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
-                            style="${sheetMusicButtonStyle}">
-                            ${sheetMusicButtonText}
-                        </button>
-                    </div>
+            <div class="harmony-card" style="background: #fff5f5; border: 2px solid #fecaca; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                <div class="harmony-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div class="harmony-lyric" style="font-size: 1.2em; font-weight: 600; font-style: italic; color: #991b1b;">"${section.lyric}"</div>
+                    <button class="chart-btn ${sheetMusicExists ? '' : 'chart-btn-secondary'}" 
+                        onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
+                        style="${sheetMusicButtonStyle}">
+                        ${sheetMusicButtonText}
+                    </button>
                 </div>
                 
-                <div class="harmony-timing">${section.timing}</div>
-                
-                <div class="parts-list">
-                    ${section.parts.map((part, partIndex) => {
-                        const customNotes = loadPartNotes(songTitle, sectionIndex, part.singer);
-                        return `
-                        <div class="part-row" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #f9fafb; border-radius: 8px; margin-bottom: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div style="display: flex; gap: 12px; align-items: center; flex: 1;">
-                                    <div class="part-singer" style="font-weight: 600; color: #667eea;">${bandMembers[part.singer]?.name || part.singer}</div>
-                                    <div class="part-role" style="color: #6b7280;">${part.part.replace('_', ' ')}</div>
-                                    <div class="part-notes" style="color: #4b5563;">${part.notes}</div>
-                                </div>
-                                <button onclick="addPartNote('${songTitle}', ${sectionIndex}, '${part.singer}')" 
-                                    style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                    + Note
-                                </button>
-                            </div>
-                            ${customNotes && customNotes.length > 0 ? `
-                                <div style="margin-top: 8px;">
-                                    <strong style="font-size: 0.85em; color: #6b7280;">📝 Practice Notes:</strong>
-                                    <ul style="margin: 8px 0 0 20px; padding: 0;">
-                                        ${customNotes.map((note, noteIndex) => `
-                                            <li style="margin: 4px 0; font-size: 0.9em; color: #4b5563;">
-                                                ${note}
-                                                <button onclick="editPartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
-                                                    style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea;">✏️</button>
-                                                <button onclick="deletePartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
-                                                    style="background: none; border: none; cursor: pointer; color: #ef4444;">×</button>
-                                            </li>
-                                        `).join('')}
-                                    </ul>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
-                    }).join('')}
-                </div>
+                ${partsHTML}
                 
                 ${section.practiceNotes && section.practiceNotes.length > 0 ? `
-                    <div class="practice-notes-box">
-                        <strong>Practice Notes:</strong>
-                        <ul style="margin-left: 20px; margin-top: 8px;">
-                            ${section.practiceNotes.map(note => `<li>${note}</li>`).join('')}
+                    <div class="practice-notes-box" style="background: #fffbeb; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #f59e0b;">
+                        <strong style="color: #92400e;">📝 General Practice Notes:</strong>
+                        <ul style="margin: 8px 0 0 20px; padding: 0;">
+                            ${section.practiceNotes.map(note => `<li style="margin: 4px 0; color: #78350f;">${note}</li>`).join('')}
                         </ul>
                     </div>
                 ` : ''}
                 
-                ${section.referenceRecording ? `
-                    <button class="chart-btn chart-btn-primary" style="margin-top: 12px;" onclick="window.open('${section.referenceRecording}', '_blank')">
-                        🎧 Play Reference Recording
-                    </button>
-                ` : ''}
-                
-                <!-- Audio Snippets Section -->
-                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
+                <!-- Audio Snippets -->
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #fee2e2;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <strong style="color: #2d3748;">🎵 Audio Snippets</strong>
+                        <strong style="color: #991b1b;">🎵 Audio Snippets</strong>
                         <div style="display: flex; gap: 8px;">
-                            <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(${sectionIndex})" 
-                                style="padding: 8px 16px; font-size: 0.9em;">
+                            <button onclick="startMicrophoneRecording(${sectionIndex})" 
+                                style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
                                 🎤 Record Now
                             </button>
-                            <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
-                                style="padding: 8px 16px; font-size: 0.9em;">
+                            <button onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
+                                style="background: #4b5563; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
                                 📱 Upload File
                             </button>
                         </div>
@@ -2868,29 +2815,25 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
                     <div id="harmonyAudioFormContainer${sectionIndex}"></div>
                     
                     ${audioSnippets.length > 0 ? `
-                        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
                             ${audioSnippets.map((snippet, snippetIndex) => `
-                                <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
+                                <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border: 2px solid #e5e7eb;">
                                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
                                         <div>
-                                            <strong style="color: #2d3748;">${snippet.name}</strong>
+                                            <strong style="color: #1f2937;">${snippet.name}</strong>
                                             ${snippet.notes ? `<p style="margin: 5px 0 0 0; font-size: 0.85em; color: #6b7280;">${snippet.notes}</p>` : ''}
                                         </div>
                                         <div style="display: flex; gap: 8px;">
                                             <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                                style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                                ✏️ Rename
-                                            </button>
+                                                style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">✏️</button>
                                             <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                                ×
-                                            </button>
+                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">×</button>
                                         </div>
                                     </div>
                                     <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                     <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
                                         ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} • ${snippet.uploadedDate}
-                                        ${snippet.isRecording ? ' • 🎤 Recorded in browser' : ''}
+                                        ${snippet.isRecording ? ' • 🎤 Recorded' : ''}
                                     </p>
                                 </div>
                             `).join('')}
@@ -2903,22 +2846,144 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
                 </div>
             </div>
         `;
-    }).join('');
+    }));
     
-    let generalNotesHTML = '';
-    if (harmonies.generalNotes && harmonies.generalNotes.length > 0) {
-        generalNotesHTML = `
-            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                <strong>General Harmony Notes:</strong>
-                <ul style="margin-left: 20px; margin-top: 8px;">
-                    ${harmonies.generalNotes.map(note => `<li>${note}</li>`).join('')}
-                </ul>
-            </div>
-        `;
-    }
-    
-    container.innerHTML = sections + generalNotesHTML;
+    container.innerHTML = (await Promise.all(sectionsHTML)).join('');
 }
+
+async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
+    // Load metadata from Drive
+    const metadata = await loadHarmonyMetadataFromDrive(songTitle, sectionIndex) || {};
+    
+    // Sort parts by order (highest to lowest pitch)
+    const sortedParts = [...parts].sort((a, b) => {
+        const orderA = metadata[a.singer]?.order !== undefined ? metadata[a.singer].order : 999;
+        const orderB = metadata[b.singer]?.order !== undefined ? metadata[b.singer].order : 999;
+        return orderA - orderB;
+    });
+    
+    const partsHTML = await Promise.all(sortedParts.map(async (part, partIndex) => {
+        const customNotes = await loadPartNotes(songTitle, sectionIndex, part.singer);
+        const partMeta = metadata[part.singer] || {};
+        const isLead = partMeta.isLead || false;
+        const startingNote = partMeta.startingNote || '';
+        
+        return `
+        <div class="part-row" style="display: flex; flex-direction: column; gap: 12px; padding: 15px; background: #ffffff; border-radius: 8px; margin-bottom: 12px; border: 2px solid #e5e7eb;">
+            <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 10px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                        <div style="font-weight: 700; font-size: 1.1em; color: #667eea;">${bandMembers[part.singer]?.name || part.singer}</div>
+                        <div style="color: #6b7280; font-size: 0.95em;">${part.part.replace('_', ' ')}</div>
+                        <div style="color: #4b5563; font-size: 0.9em;">${part.notes}</div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" ${isLead ? 'checked' : ''} 
+                                onchange="updatePartMetadata('${songTitle}', ${sectionIndex}, '${part.singer}', 'isLead', this.checked)"
+                                style="width: 16px; height: 16px; cursor: pointer;">
+                            <span style="font-size: 0.9em; color: #6b7280; font-weight: 600;">🎤 Lead</span>
+                        </label>
+                        
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 0.9em; color: #6b7280; font-weight: 600;">Starting Note:</span>
+                            <select onchange="updatePartMetadata('${songTitle}', ${sectionIndex}, '${part.singer}', 'startingNote', this.value)"
+                                style="padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white; cursor: pointer; font-size: 0.9em;">
+                                <option value="">-</option>
+                                ${['A', 'A#/Bb', 'B', 'C', 'C#/Db', 'D', 'D#/Eb', 'E', 'F', 'F#/Gb', 'G', 'G#/Ab'].map(note => 
+                                    `<option value="${note}" ${startingNote === note ? 'selected' : ''}>${note}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 0.85em; color: #6b7280;">Sort:</span>
+                            <button onclick="movePartUp('${songTitle}', ${sectionIndex}, '${part.singer}')" 
+                                style="background: #e5e7eb; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">↑</button>
+                            <button onclick="movePartDown('${songTitle}', ${sectionIndex}, '${part.singer}')" 
+                                style="background: #e5e7eb; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">↓</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <button onclick="addPartNote('${songTitle}', ${sectionIndex}, '${part.singer}')" 
+                    style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em; white-space: nowrap;">
+                    + Note
+                </button>
+            </div>
+            
+            ${customNotes && customNotes.length > 0 ? `
+                <div style="margin-top: 8px; background: #f9fafb; padding: 12px; border-radius: 6px;">
+                    <strong style="font-size: 0.9em; color: #374151;">📝 Practice Notes:</strong>
+                    <ul style="margin: 8px 0 0 20px; padding: 0;">
+                        ${customNotes.map((note, noteIndex) => `
+                            <li style="margin: 6px 0; font-size: 0.9em; color: #4b5563;">
+                                ${note}
+                                <button onclick="editPartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
+                                    style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea; font-size: 0.85em;">✏️</button>
+                                <button onclick="deletePartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
+                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">×</button>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    }));
+    
+    return (await Promise.all(partsHTML)).join('');
+}
+
+// Helper functions for part metadata
+async function updatePartMetadata(songTitle, sectionIndex, singer, field, value) {
+    const metadata = await loadHarmonyMetadataFromDrive(songTitle, sectionIndex) || {};
+    
+    if (!metadata[singer]) metadata[singer] = {};
+    metadata[singer][field] = value;
+    
+    await saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata);
+    
+    // Refresh display
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    }
+}
+
+async function movePartUp(songTitle, sectionIndex, singer) {
+    const metadata = await loadHarmonyMetadataFromDrive(songTitle, sectionIndex) || {};
+    const currentOrder = metadata[singer]?.order !== undefined ? metadata[singer].order : 0;
+    
+    if (!metadata[singer]) metadata[singer] = {};
+    metadata[singer].order = currentOrder - 1;
+    
+    await saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata);
+    
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    }
+}
+
+async function movePartDown(songTitle, sectionIndex, singer) {
+    const metadata = await loadHarmonyMetadataFromDrive(songTitle, sectionIndex) || {};
+    const currentOrder = metadata[singer]?.order !== undefined ? metadata[singer].order : 0;
+    
+    if (!metadata[singer]) metadata[singer] = {};
+    metadata[singer].order = currentOrder + 1;
+    
+    await saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata);
+    
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    }
+}
+
+console.log('✅ Comprehensive harmony parts rendering loaded');
+
 // ============================================================================
 // ENHANCED ABC EDITOR
 // Edit ABC notation in-app, preview rendered sheet music, save to harmony
@@ -3868,3 +3933,60 @@ async function loadHarmonyMetadataFromDrive(songTitle, sectionIndex) {
 }
 
 console.log('✅ Comprehensive Google Drive storage system loaded');
+
+// ============================================================================
+// GOOGLE DRIVE HELPER FUNCTIONS
+// ============================================================================
+
+async function findOrCreateFolder(folderName, parentFolderId) {
+    try {
+        // Search for existing folder
+        const response = await gapi.client.drive.files.list({
+            q: `name='${folderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            fields: 'files(id, name)',
+            spaces: 'drive'
+        });
+        
+        if (response.result.files && response.result.files.length > 0) {
+            return response.result.files[0].id;
+        }
+        
+        // Create folder if it doesn't exist
+        const fileMetadata = {
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [parentFolderId]
+        };
+        
+        const folder = await gapi.client.drive.files.create({
+            resource: fileMetadata,
+            fields: 'id'
+        });
+        
+        return folder.result.id;
+    } catch (error) {
+        console.error('Error finding/creating folder:', error);
+        throw error;
+    }
+}
+
+async function findFileInFolder(fileName, folderId) {
+    try {
+        const response = await gapi.client.drive.files.list({
+            q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
+            fields: 'files(id, name)',
+            spaces: 'drive'
+        });
+        
+        if (response.result.files && response.result.files.length > 0) {
+            return response.result.files[0];
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error finding file:', error);
+        return null;
+    }
+}
+
+console.log('✅ Google Drive helper functions loaded');
