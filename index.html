@@ -101,22 +101,49 @@
     <div class="resource-section" id="practiceTracksSection">
         <div class="section-header">
             <h3>🎵 Practice Tracks</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Backing tracks and lessons by instrument</p>
+            <p style="color: #6b7280; font-size: 0.9em;">Add videos instantly - auto-fetches title & thumbnail!</p>
         </div>
         
-        <!-- Search & Add UI -->
-        <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <input type="text" id="practiceTrackSearchInput" placeholder="Search or paste any video URL (YouTube, Shorts, Vimeo, etc.)" 
-                    style="flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
-                <button class="chart-btn chart-btn-primary" onclick="searchOrAddPracticeTrack()" style="padding: 10px 20px;">
-                    🔍 Search/Add
-                </button>
+        <!-- Simple Add Form -->
+        <div id="practiceTrackAddForm" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0;">
+            <h4 style="margin: 0 0 15px 0; color: #2d3748;">Add Practice Track</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Video URL:</label>
+                <input type="text" id="practiceTrackUrlInput" 
+                    placeholder="Paste YouTube, YouTube Shorts, Vimeo, or any video URL" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
             </div>
-            <p style="font-size: 0.85em; color: #6b7280; margin: 0;">
-                💡 Paste a video URL directly, or enter search terms to find videos
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Instrument:</label>
+                <select id="practiceTrackInstrument" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+                    <option value="">-- Select Instrument --</option>
+                    <option value="bass">🎸 Bass</option>
+                    <option value="leadGuitar">🎸 Lead Guitar</option>
+                    <option value="rhythmGuitar">🎸 Rhythm Guitar</option>
+                    <option value="keys">🎹 Keys/Keyboards</option>
+                    <option value="drums">🥁 Drums</option>
+                    <option value="vocals">🎤 Vocals</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Notes (optional):</label>
+                <input type="text" id="practiceTrackNotes" 
+                    placeholder="E.g., Great breakdown of the bass line" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            </div>
+            
+            <button id="addPracticeTrackBtn" class="chart-btn chart-btn-primary" onclick="addPracticeTrackSimple()" 
+                style="width: 100%; padding: 14px; font-size: 1em;">
+                ✨ Add Track (Auto-Fetch Title & Thumbnail)
+            </button>
+            
+            <p style="margin: 12px 0 0 0; font-size: 0.85em; color: #6b7280;">
+                💡 Just paste URL & select instrument - we'll fetch the rest automatically!
             </p>
-            <div id="practiceTrackSearchResults"></div>
         </div>
         
         <!-- Saved Tracks -->
