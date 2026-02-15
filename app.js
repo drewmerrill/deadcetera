@@ -3037,11 +3037,30 @@ function loadABCJS(callback) {
 function renderABCPreview(abc, container) {
     container.innerHTML = '';
     
+    // Load ABCjs audio CSS if not already loaded
+    if (!document.getElementById('abcjs-audio-css')) {
+        const cssLink = document.createElement('link');
+        cssLink.id = 'abcjs-audio-css';
+        cssLink.rel = 'stylesheet';
+        cssLink.href = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/abcjs-audio.css';
+        document.head.appendChild(cssLink);
+    }
+    
     try {
         // Create container for sheet music
         const sheetContainer = document.createElement('div');
         sheetContainer.id = 'abcSheetMusic';
         container.appendChild(sheetContainer);
+        
+        // Parse ABC to detect voices
+        const voiceMatches = abc.match(/V:\d+\s+clef=treble\s+name="([^"]+)"/g) || [];
+        const voices = voiceMatches.map((match, index) => {
+            const nameMatch = match.match(/name="([^"]+)"/);
+            return {
+                index: index,
+                name: nameMatch ? nameMatch[1] : `Voice ${index + 1}`
+            };
+        });
         
         // Render the sheet music
         const visualObj = ABCJS.renderAbc(sheetContainer, abc, {
@@ -3051,20 +3070,50 @@ function renderABCPreview(abc, container) {
             add_classes: true
         })[0];
         
+        // Add voice selection if multiple voices
+        let voiceControlsHTML = '';
+        if (voices.length > 1) {
+            voiceControlsHTML = `
+                <div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 6px; border: 2px solid #e2e8f0;">
+                    <strong style="color: #2d3748;">🎤 Select Parts to Play:</strong>
+                    <div style="display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap;">
+                        ${voices.map(voice => `
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="checkbox" class="voice-checkbox" data-voice="${voice.index}" checked 
+                                    style="width: 18px; height: 18px; cursor: pointer;">
+                                <span style="color: #4b5563; font-weight: 500;">${voice.name}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <button onclick="updateVoiceSelection()" 
+                        style="margin-top: 10px; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
+                        🔄 Update Playback
+                    </button>
+                </div>
+            `;
+        }
+        
         // Add playback controls
         const controlsContainer = document.createElement('div');
         controlsContainer.style.cssText = 'margin-top: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;';
         controlsContainer.innerHTML = `
             <div style="margin-bottom: 10px; font-weight: 600; color: #2d3748;">🎵 Playback Controls:</div>
+            ${voiceControlsHTML}
             <div id="abcAudioControls"></div>
             <div id="abcAudioWarnings" style="margin-top: 10px; color: #f59e0b; font-size: 0.85em;"></div>
         `;
         container.appendChild(controlsContainer);
         
+        // Store for voice selection updates
+        window.currentVisualObj = visualObj;
+        window.currentSynthControl = null;
+        
         // Initialize synth for playback
         if (window.ABCJS && window.ABCJS.synth && visualObj) {
             try {
                 const synthControl = new ABCJS.synth.SynthController();
+                window.currentSynthControl = synthControl;
+                
                 synthControl.load('#abcAudioControls', null, {
                     displayLoop: true,
                     displayRestart: true,
@@ -3073,7 +3122,17 @@ function renderABCPreview(abc, container) {
                     displayWarp: true
                 });
                 
-                synthControl.setTune(visualObj, false).then(() => {
+                // Get selected voices (all by default)
+                const selectedVoices = getSelectedVoices();
+                
+                synthControl.setTune(visualObj, false, {
+                    chordsOff: true,
+                    voicesOff: selectedVoices.length > 0 ? 
+                        voices.map((v, i) => !selectedVoices.includes(i)).reduce((acc, off, i) => {
+                            if (off) acc.push(i);
+                            return acc;
+                        }, []) : []
+                }).then(() => {
                     console.log('✅ Audio ready for playback');
                 }).catch((error) => {
                     console.warn('Audio setup failed:', error);
@@ -3094,6 +3153,47 @@ function renderABCPreview(abc, container) {
                 <p style="font-size: 0.9em; margin-top: 10px;">Check your ABC notation syntax.</p>
             </div>
         `;
+    }
+}
+
+// Helper functions for voice selection
+function getSelectedVoices() {
+    const checkboxes = document.querySelectorAll('.voice-checkbox:checked');
+    return Array.from(checkboxes).map(cb => parseInt(cb.dataset.voice));
+}
+
+function updateVoiceSelection() {
+    if (!window.currentVisualObj || !window.currentSynthControl) {
+        console.warn('No synth available');
+        return;
+    }
+    
+    try {
+        const selectedVoices = getSelectedVoices();
+        const allVoices = document.querySelectorAll('.voice-checkbox').length;
+        
+        // Create array of voices to turn off
+        const voicesOff = [];
+        for (let i = 0; i < allVoices; i++) {
+            if (!selectedVoices.includes(i)) {
+                voicesOff.push(i);
+            }
+        }
+        
+        console.log('Selected voices:', selectedVoices);
+        console.log('Voices off:', voicesOff);
+        
+        // Reinitialize with new voice selection
+        window.currentSynthControl.setTune(window.currentVisualObj, false, {
+            chordsOff: true,
+            voicesOff: voicesOff
+        }).then(() => {
+            console.log('✅ Voice selection updated');
+        }).catch((error) => {
+            console.error('Failed to update voices:', error);
+        });
+    } catch (error) {
+        console.error('Error updating voice selection:', error);
     }
 }
 
