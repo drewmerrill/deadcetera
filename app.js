@@ -1342,6 +1342,7 @@ function showBandResources(songTitle) {
     renderPracticeTracks(songTitle, bandData);
     renderHarmoniesEnhanced(songTitle, bandData);
     renderRehearsalNotesWithStorage(songTitle);
+    renderSongStructure(songTitle);
     renderGigNotes(songTitle, bandData);
     
     // Populate song metadata (lead singer, has harmonies)
@@ -2874,8 +2875,6 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
                 <div style="flex: 1; min-width: 200px;">
                     <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
                         <div style="font-weight: 700; font-size: 1.1em; color: #667eea;">${bandMembers[part.singer]?.name || part.singer}</div>
-                        <div style="color: #6b7280; font-size: 0.95em;">${part.part.replace('_', ' ')}</div>
-                        <div style="color: #4b5563; font-size: 0.9em;">${part.notes}</div>
                     </div>
                     
                     <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
@@ -3990,3 +3989,174 @@ async function findFileInFolder(fileName, folderId) {
 }
 
 console.log('✅ Google Drive helper functions loaded');
+
+// ============================================================================
+// SONG STRUCTURE - Who starts, how it starts, who cues ending, how it ends
+// ============================================================================
+
+async function renderSongStructure(songTitle) {
+    const container = document.getElementById('songStructureContainer');
+    
+    // Load from Google Drive
+    const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
+    
+    if (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No song structure info yet - click "Edit" to add it!</div>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 2px solid #e5e7eb;">
+            ${structure.whoStarts && structure.whoStarts.length > 0 ? `
+                <div style="margin-bottom: 15px;">
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎬 Who Starts the Song:</strong>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        ${structure.whoStarts.map(member => 
+                            `<span style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
+                                ${bandMembers[member]?.name || member}
+                            </span>`
+                        ).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${structure.howStarts ? `
+                <div style="margin-bottom: 15px;">
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">▶️ How It Starts:</strong>
+                    <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
+                        ${structure.howStarts}
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${structure.whoCuesEnding ? `
+                <div style="margin-bottom: 15px;">
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">👉 Who Cues the Ending:</strong>
+                    <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; display: inline-block; font-weight: 600;">
+                        ${bandMembers[structure.whoCuesEnding]?.name || structure.whoCuesEnding}
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${structure.howEnds ? `
+                <div>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🏁 How It Ends:</strong>
+                    <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
+                        ${structure.howEnds}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function showSongStructureForm() {
+    if (!selectedSong || !selectedSong.title) return;
+    
+    const formContainer = document.getElementById('songStructureFormContainer');
+    const button = document.getElementById('editSongStructureBtn');
+    
+    // Load existing data
+    loadBandDataFromDrive(selectedSong.title, 'song_structure').then(structure => {
+        structure = structure || {};
+        
+        formContainer.innerHTML = `
+            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 2px solid #667eea;">
+                <h4 style="margin-top: 0; color: #667eea;">Edit Song Structure</h4>
+                
+                <div style="margin-bottom: 15px;">
+                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">🎬 Who Starts the Song? (check all)</strong>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${Object.keys(bandMembers).map(key => `
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" value="${key}" 
+                                    ${structure.whoStarts && structure.whoStarts.includes(key) ? 'checked' : ''}
+                                    class="who-starts-checkbox"
+                                    style="width: 16px; height: 16px; cursor: pointer;">
+                                <span>${bandMembers[key].name}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
+                        ▶️ How Is It Started?
+                    </label>
+                    <textarea id="howStartsInput" 
+                        style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
+                        rows="2"
+                        placeholder="E.g., Count off by Drew, Cold start, Guitar intro...">${structure.howStarts || ''}</textarea>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">👉 Who Cues the Ending? (select one)</strong>
+                    <select id="whoCuesEndingSelect" 
+                        style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">
+                        <option value="">- Select -</option>
+                        ${Object.keys(bandMembers).map(key => `
+                            <option value="${key}" ${structure.whoCuesEnding === key ? 'selected' : ''}>
+                                ${bandMembers[key].name}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
+                        🏁 How Does the Song End?
+                    </label>
+                    <textarea id="howEndsInput" 
+                        style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
+                        rows="2"
+                        placeholder="E.g., Big finish on 1, Fade out, Abrupt stop...">${structure.howEnds || ''}</textarea>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="saveSongStructure()" 
+                        style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                        💾 Save
+                    </button>
+                    <button onclick="hideSongStructureForm()" 
+                        style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        formContainer.style.display = 'block';
+        button.style.display = 'none';
+    });
+}
+
+function hideSongStructureForm() {
+    document.getElementById('songStructureFormContainer').style.display = 'none';
+    document.getElementById('editSongStructureBtn').style.display = 'block';
+}
+
+async function saveSongStructure() {
+    if (!selectedSong || !selectedSong.title) return;
+    
+    // Get all checked "who starts"
+    const whoStarts = Array.from(document.querySelectorAll('.who-starts-checkbox:checked'))
+        .map(cb => cb.value);
+    
+    const structure = {
+        whoStarts: whoStarts,
+        howStarts: document.getElementById('howStartsInput').value.trim(),
+        whoCuesEnding: document.getElementById('whoCuesEndingSelect').value,
+        howEnds: document.getElementById('howEndsInput').value.trim()
+    };
+    
+    // Save to Google Drive
+    await saveBandDataToDrive(selectedSong.title, 'song_structure', structure);
+    
+    alert('✅ Song structure saved to Google Drive!');
+    
+    // Hide form and refresh display
+    hideSongStructureForm();
+    renderSongStructure(selectedSong.title);
+}
+
+console.log('✅ Song Structure functions loaded');
