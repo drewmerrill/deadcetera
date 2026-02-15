@@ -1143,18 +1143,19 @@ const bandKnowledgeBase = {
         
         // MOISES STEMS - Your Google Drive folder!
         moisesParts: {
-            sourceVersion: "TBD - Upload stems to Drive first",
-            googleDriveFolder: "https://drive.google.com/drive/folders/1ooMNihe08o08RKy11q617iqYoFJKaa32",
+            sourceVersion: "Tweezer Reprise - Separated in Moises",
+            googleDriveFolder: "https://drive.google.com/drive/folders/1TsGjHAqAbvc_6MbARAQ-cGMhdGip9LnX",
             stems: {
-                bass: null,
-                drums: null,
-                guitar: null,
-                keys: null,
-                vocals: null
+                // Note: Check folder to see which file is which part
+                stem1: "https://drive.google.com/file/d/1U15OOxCLwKC98F5K-Hc2jGt8eZMZ98or/view?usp=sharing",
+                stem2: "https://drive.google.com/file/d/1oBkp9LOhdEGNeZ9J2XPh1jp-NBBV_ZRu/view?usp=sharing",
+                stem3: "https://drive.google.com/file/d/1KaQDTcYB9ZPigvwVLukwZN23-tQfFbLd/view?usp=sharing",
+                stem4: "https://drive.google.com/file/d/1bE86lzxNJROqOeurU9a6qfejWnNf11oa/view?usp=sharing",
+                stem5: "https://drive.google.com/file/d/1N0XO1NNO-kwEYt0trfxujplh85EII7VB/view?usp=sharing"
             },
-            uploadedBy: null,
-            dateCreated: null,
-            notes: "Separate in Moises and upload to Moises Stems/Tweezer Reprise/"
+            uploadedBy: "drew",
+            dateCreated: "2024-02-14",
+            notes: "All 5 stems separated in Moises and uploaded! Click folder link to see which is which."
         },
         
         // HARMONY PARTS - THE CRITICAL SECTION!
