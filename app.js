@@ -3893,7 +3893,7 @@ async function loadBandDataFromDrive(songTitle, dataType) {
             console.log(`✅ Loaded ${dataType} from Drive`);
             return response.result;
         } catch (error) {
-            console.error('Failed to load from Drive:', error);
+            console.log(`ℹ️ No Drive data for ${dataType}, using localStorage`);
             return loadFromLocalStorageFallback(songTitle, dataType);
         }
     }
@@ -4001,8 +4001,11 @@ async function findOrCreateFolder(folderName, parentFolderId) {
 
 async function findFileInFolder(fileName, folderId) {
     try {
+        // Escape single quotes in filename by doubling them
+        const escapedFileName = fileName.replace(/'/g, "\\'");
+        
         const response = await gapi.client.drive.files.list({
-            q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
+            q: `name='${escapedFileName}' and '${folderId}' in parents and trashed=false`,
             fields: 'files(id, name)',
             spaces: 'drive'
         });
@@ -4013,7 +4016,7 @@ async function findFileInFolder(fileName, folderId) {
         
         return null;
     } catch (error) {
-        console.error('Error finding file:', error);
+        console.log(`ℹ️ Could not find file: ${fileName}`);
         return null;
     }
 }
