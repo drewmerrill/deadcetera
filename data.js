@@ -1103,32 +1103,36 @@ const bandKnowledgeBase = {
         
         // SHARED CHORD CHART - Google Doc
         chordChart: {
-            googleDocId: null, // Create in Google Docs and add ID here
-            editUrl: null,
-            viewUrl: null,
-            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/phish/tweezer-reprise-chords-1234567",
-            lastUpdated: null,
-            updatedBy: null,
-            bandNotes: []
+            googleDocId: "1D_1At83u7NX37nsmJolDyZygJqIVEBp4",
+            editUrl: "https://docs.google.com/document/d/1D_1At83u7NX37nsmJolDyZygJqIVEBp4/edit",
+            viewUrl: "https://docs.google.com/document/d/1D_1At83u7NX37nsmJolDyZygJqIVEBp4/view",
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/phish/tweezer-reprise-tabs-3392057",
+            lastUpdated: "2024-02-14",
+            updatedBy: "drew",
+            bandNotes: [
+                "Drew: Watch D→G transition in main riff",
+                "Brian: Solo section is 16 bars",
+                "Pierce: Follow bass line in verse"
+            ]
         },
         
         // SPOTIFY VERSIONS - Democratic voting
         spotifyVersions: [
             {
                 id: "version_1",
-                title: "A Live One - 12/31/94 Boston",
-                spotifyUrl: "", // Add your Spotify URL here
+                title: "Tweezer Reprise - Live",
+                spotifyUrl: "https://open.spotify.com/track/5EPfDGkdwRx801NTxrnpia",
                 votes: {
                     brian: false,
                     chris: false,
-                    drew: false,
+                    drew: true,  // Drew voted for this version!
                     pierce: false,
                     jay: false
                 },
-                totalVotes: 0,
-                isDefault: false,
+                totalVotes: 1,
+                isDefault: false,  // Need 3+ votes for majority
                 addedBy: "drew",
-                notes: "Add notes about this version"
+                notes: "Drew's preferred version - waiting for band votes"
             }
         ],
         
