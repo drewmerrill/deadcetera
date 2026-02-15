@@ -101,9 +101,25 @@
     <div class="resource-section" id="practiceTracksSection">
         <div class="section-header">
             <h3>🎵 Practice Tracks</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Backing tracks by instrument</p>
+            <p style="color: #6b7280; font-size: 0.9em;">Backing tracks and lessons by instrument</p>
         </div>
         
+        <!-- Search & Add UI -->
+        <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <input type="text" id="practiceTrackSearchInput" placeholder="Search or paste any video URL (YouTube, Shorts, Vimeo, etc.)" 
+                    style="flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+                <button class="chart-btn chart-btn-primary" onclick="searchOrAddPracticeTrack()" style="padding: 10px 20px;">
+                    🔍 Search/Add
+                </button>
+            </div>
+            <p style="font-size: 0.85em; color: #6b7280; margin: 0;">
+                💡 Paste a video URL directly, or enter search terms to find videos
+            </p>
+            <div id="practiceTrackSearchResults"></div>
+        </div>
+        
+        <!-- Saved Tracks -->
         <div id="practiceTracksContainer">
             <!-- Dynamically populated -->
         </div>
