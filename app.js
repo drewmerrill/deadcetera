@@ -172,8 +172,8 @@ function selectSong(songTitle) {
     });
     event.target.closest('.song-item').classList.add('selected');
     
-    // Show Step 2: Learning Resources
-    showLearningResources(songTitle, bandName);
+    // Show Step 2: Band Resources
+    showBandResources(songTitle);
     
     // Hide later steps until user continues
     document.getElementById('step3').classList.add('hidden');
@@ -1306,3 +1306,368 @@ function resetWorkflow() {
 // ============================================================================
 // END OF APP.JS
 // ============================================================================
+// ============================================================================
+// BAND RESOURCES SYSTEM
+// Renders collaborative band resources from bandKnowledgeBase
+// ============================================================================
+
+function showBandResources(songTitle) {
+    const step2 = document.getElementById('step2');
+    step2.classList.remove('hidden');
+    
+    // Update subtitle
+    document.getElementById('bandResourcesSubtitle').textContent = 
+        `Collaborative resources for "${songTitle}"`;
+    
+    // Check if song has band resources
+    const bandData = bandKnowledgeBase[songTitle];
+    
+    if (!bandData) {
+        // No band resources yet - show message
+        showNoBandResourcesMessage(songTitle);
+        return;
+    }
+    
+    // Render each section
+    renderSpotifyVersions(songTitle, bandData);
+    renderChordChart(songTitle, bandData);
+    renderMoisesStems(songTitle, bandData);
+    renderPracticeTracks(songTitle, bandData);
+    renderHarmonies(songTitle, bandData);
+    renderRehearsalNotes(songTitle, bandData);
+    renderGigNotes(songTitle, bandData);
+}
+
+function showNoBandResourcesMessage(songTitle) {
+    const step2 = document.getElementById('step2');
+    step2.innerHTML = `
+        <div class="step-number">2</div>
+        <h2>🎸 Band Resources</h2>
+        <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <div class="empty-state-text">No band resources yet for "${songTitle}"</div>
+            <div class="empty-state-subtext">This song hasn't been set up with collaborative resources</div>
+            <button class="primary-btn" style="margin-top: 20px;" onclick="skipToBandResources()">
+                Skip to Version Selection →
+            </button>
+        </div>
+    `;
+}
+
+function skipToBandResources() {
+    document.getElementById('step3').classList.remove('hidden');
+    document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ============================================================================
+// SPOTIFY VERSIONS & VOTING
+// ============================================================================
+
+function renderSpotifyVersions(songTitle, bandData) {
+    const container = document.getElementById('spotifyVersionsContainer');
+    const versions = bandData.spotifyVersions || [];
+    
+    if (versions.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Spotify versions added yet</div>';
+        return;
+    }
+    
+    container.innerHTML = versions.map(version => {
+        const voteCount = version.totalVotes || 0;
+        const totalMembers = Object.keys(bandMembers).length;
+        const isDefault = version.isDefault;
+        
+        return `
+            <div class="spotify-version-card ${isDefault ? 'default' : ''}">
+                <div class="version-header">
+                    <div class="version-title">${version.title}</div>
+                    ${isDefault ? '<div class="version-badge">✓ BAND CHOICE (' + voteCount + '/' + totalMembers + ')</div>' : ''}
+                </div>
+                
+                <div class="votes-container">
+                    ${Object.entries(version.votes).map(([member, voted]) => `
+                        <span class="vote-chip ${voted ? 'yes' : 'no'}">
+                            ${voted ? '✓ ' : ''}${bandMembers[member].name}
+                        </span>
+                    `).join('')}
+                </div>
+                
+                ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
+                
+                <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')">
+                    ▶ Play on Spotify
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+// ============================================================================
+// CHORD CHART
+// ============================================================================
+
+function renderChordChart(songTitle, bandData) {
+    const container = document.getElementById('chordChartContainer');
+    const chart = bandData.chordChart;
+    
+    if (!chart || !chart.googleDocId) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No chord chart created yet</div>';
+        return;
+    }
+    
+    let bandNotesHTML = '';
+    if (chart.bandNotes && chart.bandNotes.length > 0) {
+        bandNotesHTML = `
+            <div class="band-notes-box">
+                <strong>Band Notes:</strong>
+                ${chart.bandNotes.map(note => `<div class="band-note-item">• ${note}</div>`).join('')}
+            </div>
+        `;
+    }
+    
+    container.innerHTML = `
+        <div class="chord-chart-actions">
+            <button class="chart-btn chart-btn-primary" onclick="window.open('${chart.viewUrl}', '_blank')">
+                📱 Open iPad View
+            </button>
+            <button class="chart-btn chart-btn-secondary" onclick="window.open('${chart.editUrl}', '_blank')">
+                ✏️ Edit Chart
+            </button>
+            ${chart.ultimateGuitarUrl ? `
+                <button class="chart-btn chart-btn-secondary" onclick="window.open('${chart.ultimateGuitarUrl}', '_blank')">
+                    🎸 View on Ultimate Guitar
+                </button>
+            ` : ''}
+        </div>
+        
+        ${chart.lastUpdated ? `
+            <p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">
+                Last updated: ${chart.lastUpdated} by ${chart.updatedBy}
+            </p>
+        ` : ''}
+        
+        ${bandNotesHTML}
+    `;
+}
+
+// ============================================================================
+// MOISES STEMS
+// ============================================================================
+
+function renderMoisesStems(songTitle, bandData) {
+    const container = document.getElementById('moisesStemsContainer');
+    const stems = bandData.moisesParts;
+    
+    if (!stems || !stems.googleDriveFolder) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Moises stems uploaded yet</div>';
+        return;
+    }
+    
+    // Check if we have individual stem links or just folder
+    const hasStems = stems.stems && Object.values(stems.stems).some(url => url !== null);
+    
+    if (hasStems) {
+        // Render individual stem buttons
+        const stemButtons = Object.entries(stems.stems)
+            .filter(([key, url]) => url !== null)
+            .map(([key, url]) => {
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                return `
+                    <button class="stem-button" onclick="window.open('${url}', '_blank')">
+                        <div class="stem-label">🎵 ${label}</div>
+                        <div class="stem-info">Click to download</div>
+                    </button>
+                `;
+            }).join('');
+        
+        container.innerHTML = `
+            ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Separated from: <strong>${stems.sourceVersion}</strong></p>` : ''}
+            
+            <div class="stems-grid">
+                ${stemButtons}
+            </div>
+            
+            <button class="drive-folder-btn" onclick="window.open('${stems.googleDriveFolder}', '_blank')">
+                📁 Open Google Drive Folder
+            </button>
+            
+            ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
+        `;
+    } else {
+        // Just show folder link
+        container.innerHTML = `
+            ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
+            
+            <button class="drive-folder-btn" onclick="window.open('${stems.googleDriveFolder}', '_blank')">
+                📁 Open Google Drive Folder
+            </button>
+            
+            ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
+        `;
+    }
+}
+
+// ============================================================================
+// PRACTICE TRACKS
+// ============================================================================
+
+function renderPracticeTracks(songTitle, bandData) {
+    const container = document.getElementById('practiceTracksContainer');
+    const tracks = bandData.practiceTracks;
+    
+    if (!tracks) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No practice tracks yet</div>';
+        return;
+    }
+    
+    // Get all tracks across all instruments
+    const allTracks = [];
+    Object.entries(tracks).forEach(([instrument, trackList]) => {
+        trackList.forEach(track => {
+            allTracks.push({ ...track, instrument });
+        });
+    });
+    
+    if (allTracks.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No practice tracks uploaded yet</div>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="practice-tracks-grid">
+            ${allTracks.map(track => `
+                <div class="practice-track-card">
+                    <h4>${track.title}</h4>
+                    <div class="practice-track-meta">For: ${track.instrument.replace('_', ' ')}</div>
+                    ${track.notes ? `<p style="font-size: 0.9em; margin-bottom: 10px;">${track.notes}</p>` : ''}
+                    <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${track.youtubeUrl}', '_blank')">
+                        ▶ Play Track
+                    </button>
+                    <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">Uploaded by ${track.uploadedBy}</p>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// ============================================================================
+// HARMONIES
+// ============================================================================
+
+function renderHarmonies(songTitle, bandData) {
+    const container = document.getElementById('harmoniesContainer');
+    const harmonies = bandData.harmonies;
+    
+    if (!harmonies || !harmonies.sections || harmonies.sections.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No harmony parts documented yet</div>';
+        return;
+    }
+    
+    const sections = harmonies.sections.map(section => {
+        const statusClass = section.workedOut ? 'worked-out' : 'needs-work';
+        const statusText = section.workedOut ? (section.soundsGood ? '✓ Sounds Great' : '⚠ Needs Polish') : '⚠ Needs Work';
+        const statusBadgeClass = section.soundsGood ? 'status-good' : 'status-needs-work';
+        
+        return `
+            <div class="harmony-card ${statusClass}">
+                <div class="harmony-header">
+                    <div class="harmony-lyric">"${section.lyric}"</div>
+                    <div class="harmony-status ${statusBadgeClass}">${statusText}</div>
+                </div>
+                
+                <div class="harmony-timing">${section.timing}</div>
+                
+                <div class="parts-list">
+                    ${section.parts.map(part => `
+                        <div class="part-row">
+                            <div class="part-singer">${bandMembers[part.singer]?.name || part.singer}</div>
+                            <div class="part-role">${part.part.replace('_', ' ')}</div>
+                            <div class="part-notes">${part.notes}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                ${section.practiceNotes && section.practiceNotes.length > 0 ? `
+                    <div class="practice-notes-box">
+                        <strong>Practice Notes:</strong>
+                        <ul style="margin-left: 20px; margin-top: 8px;">
+                            ${section.practiceNotes.map(note => `<li>${note}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+                
+                ${section.referenceRecording ? `
+                    <button class="chart-btn chart-btn-primary" style="margin-top: 12px;" onclick="window.open('${section.referenceRecording}', '_blank')">
+                        🎧 Play Reference Recording
+                    </button>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+    
+    let generalNotesHTML = '';
+    if (harmonies.generalNotes && harmonies.generalNotes.length > 0) {
+        generalNotesHTML = `
+            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                <strong>General Harmony Notes:</strong>
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                    ${harmonies.generalNotes.map(note => `<li>${note}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = sections + generalNotesHTML;
+}
+
+// ============================================================================
+// REHEARSAL NOTES
+// ============================================================================
+
+function renderRehearsalNotes(songTitle, bandData) {
+    const container = document.getElementById('rehearsalNotesContainer');
+    const notes = bandData.rehearsalNotes;
+    
+    if (!notes || notes.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No rehearsal notes yet</div>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="rehearsal-notes-list">
+            ${notes.map(note => `
+                <div class="rehearsal-note-card ${note.priority === 'high' ? 'high' : ''}">
+                    <div class="note-header">
+                        <span>${note.author} • ${note.date}</span>
+                        <span style="color: ${note.priority === 'high' ? '#ef4444' : '#667eea'}; font-weight: 600;">
+                            ${note.priority.toUpperCase()} PRIORITY
+                        </span>
+                    </div>
+                    <div class="note-content">${note.note}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// ============================================================================
+// GIG NOTES
+// ============================================================================
+
+function renderGigNotes(songTitle, bandData) {
+    const container = document.getElementById('gigNotesContainer');
+    const notes = bandData.gigNotes;
+    
+    if (!notes || notes.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No gig notes yet</div>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="gig-notes-box">
+            <ul>
+                ${notes.map(note => `<li>${note}</li>`).join('')}
+            </ul>
+        </div>
+    `;
+}
