@@ -2793,7 +2793,6 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
                             style="${sheetMusicButtonStyle}">
                             ${sheetMusicButtonText}
                         </button>
-                        <div class="harmony-status ${statusBadgeClass}">${statusText}</div>
                     </div>
                 </div>
                 
