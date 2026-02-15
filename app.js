@@ -3085,80 +3085,99 @@ function generateSheetMusic(sectionIndex, section) {
     generateSheetMusicEnhanced(sectionIndex, section);
 }
 // ============================================================================
-// GOOGLE DRIVE API INTEGRATION
-// Share recordings, notes, and data across all band members
+// ============================================================================
+// GOOGLE DRIVE INTEGRATION - NEW GOOGLE IDENTITY SERVICES (GIS)
+// Using the modern Google Auth library instead of deprecated gapi.auth2
 // ============================================================================
 
-// Google Drive API configuration
 const GOOGLE_DRIVE_CONFIG = {
     apiKey: 'REDACTED',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
     scope: 'https://www.googleapis.com/auth/drive.file'
-};
-
-// Folder structure in Google Drive
-const DRIVE_FOLDERS = {
-    root: 'Deadcetera Band Resources',
-    audio: 'Audio Recordings',
-    metadata: 'Metadata'
 };
 
 let isGoogleDriveInitialized = false;
 let isUserSignedIn = false;
-let sharedFolderId = null;
+let accessToken = null;
+let tokenClient = null;
 
 // ============================================================================
-// INITIALIZATION
+// INITIALIZATION WITH NEW GOOGLE IDENTITY SERVICES
 // ============================================================================
 
 function loadGoogleDriveAPI() {
     return new Promise((resolve, reject) => {
-        // Check if already loaded
-        if (window.gapi) {
-            gapi.load('client:auth2', () => {
-                initGoogleDrive().then(resolve).catch(reject);
-            });
-            return;
-        }
+        console.log('🔄 Loading Google Drive API...');
         
-        // Load Google API client library
-        const script = document.createElement('script');
-        script.src = 'https://apis.google.com/js/api.js';
-        script.onload = () => {
-            console.log('✅ Google API script loaded');
-            gapi.load('client:auth2', () => {
-                console.log('✅ Google API client loaded');
+        // Load both Google API and Google Identity Services
+        const loadGAPI = new Promise((res, rej) => {
+            if (window.gapi) {
+                res();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://apis.google.com/js/api.js';
+            script.onload = res;
+            script.onerror = rej;
+            document.head.appendChild(script);
+        });
+        
+        const loadGIS = new Promise((res, rej) => {
+            if (window.google?.accounts?.oauth2) {
+                res();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://accounts.google.com/gsi/client';
+            script.onload = res;
+            script.onerror = rej;
+            document.head.appendChild(script);
+        });
+        
+        Promise.all([loadGAPI, loadGIS])
+            .then(() => {
+                console.log('✅ Google scripts loaded');
                 initGoogleDrive().then(resolve).catch(reject);
-            });
-        };
-        script.onerror = () => {
-            console.error('❌ Failed to load Google API script');
-            reject(new Error('Failed to load Google API script'));
-        };
-        document.head.appendChild(script);
+            })
+            .catch(reject);
     });
 }
 
 async function initGoogleDrive() {
     try {
         console.log('🔄 Initializing Google Drive API...');
-        console.log('Config:', GOOGLE_DRIVE_CONFIG);
+        
+        // Initialize gapi client
+        await new Promise((resolve, reject) => {
+            gapi.load('client', {
+                callback: resolve,
+                onerror: reject
+            });
+        });
         
         await gapi.client.init({
             apiKey: GOOGLE_DRIVE_CONFIG.apiKey,
-            clientId: GOOGLE_DRIVE_CONFIG.clientId,
-            discoveryDocs: GOOGLE_DRIVE_CONFIG.discoveryDocs,
-            scope: GOOGLE_DRIVE_CONFIG.scope
+            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
         });
         
-        console.log('✅ gapi.client.init complete');
+        console.log('✅ gapi.client initialized');
         
-        // Listen for sign-in state changes
-        gapi.auth2.getAuthInstance().isSignedIn.listen(updateSignInStatus);
-        
-        // Handle initial sign-in state
-        updateSignInStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
+        // Initialize Google Identity Services token client
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_DRIVE_CONFIG.clientId,
+            scope: GOOGLE_DRIVE_CONFIG.scope,
+            callback: (response) => {
+                if (response.error) {
+                    console.error('Token error:', response);
+                    updateSignInStatus(false);
+                    return;
+                }
+                accessToken = response.access_token;
+                gapi.client.setToken({ access_token: accessToken });
+                updateSignInStatus(true);
+                console.log('✅ User signed in');
+            }
+        });
         
         isGoogleDriveInitialized = true;
         console.log('✅ Google Drive API initialized');
@@ -3166,22 +3185,12 @@ async function initGoogleDrive() {
         return true;
     } catch (error) {
         console.error('❌ Google Drive initialization failed:', error);
-        console.error('Error details:', error.details);
         throw error;
     }
 }
 
-function updateSignInStatus(isSignedIn) {
-    isUserSignedIn = isSignedIn;
-    
-    if (isSignedIn) {
-        console.log('✅ User signed in to Google Drive');
-        ensureFolderStructure();
-    } else {
-        console.log('ℹ️ User not signed in to Google Drive');
-    }
-    
-    // Update UI
+function updateSignInStatus(signedIn) {
+    isUserSignedIn = signedIn;
     updateDriveAuthButton();
 }
 
@@ -3199,7 +3208,7 @@ function updateDriveAuthButton() {
 }
 
 // ============================================================================
-// AUTHENTICATION
+// AUTHENTICATION WITH NEW GOOGLE IDENTITY SERVICES
 // ============================================================================
 
 async function handleGoogleDriveAuth() {
@@ -3209,85 +3218,33 @@ async function handleGoogleDriveAuth() {
             await loadGoogleDriveAPI();
         } catch (error) {
             console.error('Failed to load Google Drive:', error);
-            alert('Failed to load Google Drive.\n\nError: ' + error.message + '\n\nPlease check the browser console for details.');
+            alert('Failed to load Google Drive.\n\nError: ' + error.message);
             return;
         }
     }
     
-    const authInstance = gapi.auth2.getAuthInstance();
-    
     if (isUserSignedIn) {
         // Sign out
-        await authInstance.signOut();
+        google.accounts.oauth2.revoke(accessToken, () => {
+            console.log('✅ User signed out');
+            accessToken = null;
+            gapi.client.setToken(null);
+            updateSignInStatus(false);
+        });
     } else {
-        // Sign in
+        // Sign in - request access token
         try {
-            console.log('🔄 Attempting sign-in...');
-            await authInstance.signIn();
-            console.log('✅ Sign-in successful');
+            console.log('🔄 Requesting access token...');
+            tokenClient.requestAccessToken({ prompt: '' });
         } catch (error) {
             console.error('Sign-in failed:', error);
-            alert('Google Drive sign-in failed.\n\nError: ' + error.error + '\n\nPlease try again.');
+            alert('Google Drive sign-in failed.\n\nError: ' + error.message);
         }
     }
 }
 
 // ============================================================================
-// FOLDER MANAGEMENT
-// ============================================================================
-
-async function ensureFolderStructure() {
-    try {
-        // Find or create root folder
-        sharedFolderId = await findOrCreateFolder(DRIVE_FOLDERS.root);
-        
-        // Create subfolders
-        await findOrCreateFolder(DRIVE_FOLDERS.audio, sharedFolderId);
-        await findOrCreateFolder(DRIVE_FOLDERS.metadata, sharedFolderId);
-        
-        console.log('✅ Folder structure ready:', sharedFolderId);
-    } catch (error) {
-        console.error('Error setting up folders:', error);
-    }
-}
-
-async function findOrCreateFolder(folderName, parentId = null) {
-    // Search for existing folder
-    let query = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    if (parentId) {
-        query += ` and '${parentId}' in parents`;
-    }
-    
-    const response = await gapi.client.drive.files.list({
-        q: query,
-        fields: 'files(id, name)',
-        spaces: 'drive'
-    });
-    
-    if (response.result.files && response.result.files.length > 0) {
-        return response.result.files[0].id;
-    }
-    
-    // Create folder if doesn't exist
-    const fileMetadata = {
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder'
-    };
-    
-    if (parentId) {
-        fileMetadata.parents = [parentId];
-    }
-    
-    const createResponse = await gapi.client.drive.files.create({
-        resource: fileMetadata,
-        fields: 'id'
-    });
-    
-    return createResponse.result.id;
-}
-
-// ============================================================================
-// UPLOAD AUDIO TO GOOGLE DRIVE
+// UPLOAD AUDIO TO GOOGLE DRIVE (Using new auth)
 // ============================================================================
 
 async function uploadAudioToDrive(audioBlob, fileName, metadata) {
@@ -3297,61 +3254,53 @@ async function uploadAudioToDrive(audioBlob, fileName, metadata) {
     }
     
     try {
-        // Get audio folder ID
-        const audioFolderId = await findOrCreateFolder(DRIVE_FOLDERS.audio, sharedFolderId);
+        console.log('📤 Uploading to Google Drive:', fileName);
         
-        // Prepare file metadata
+        // Create file metadata
         const fileMetadata = {
             name: fileName,
-            parents: [audioFolderId],
             description: JSON.stringify(metadata)
         };
         
         // Convert blob to base64
         const base64Data = await blobToBase64(audioBlob);
-        const contentType = audioBlob.type;
         
-        // Upload using multipart
+        // Upload using Google Drive API v3
         const boundary = '-------314159265358979323846';
         const delimiter = "\r\n--" + boundary + "\r\n";
         const close_delim = "\r\n--" + boundary + "--";
         
         const multipartRequestBody =
             delimiter +
-            'Content-Type: application/json\r\n\r\n' +
+            'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
             JSON.stringify(fileMetadata) +
             delimiter +
-            'Content-Type: ' + contentType + '\r\n' +
-            'Content-Transfer-Encoding: base64\r\n' +
-            '\r\n' +
+            'Content-Type: ' + audioBlob.type + '\r\n' +
+            'Content-Transfer-Encoding: base64\r\n\r\n' +
             base64Data.split(',')[1] +
             close_delim;
         
-        const request = gapi.client.request({
-            path: '/upload/drive/v3/files',
+        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
             method: 'POST',
-            params: { uploadType: 'multipart' },
             headers: {
-                'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+                'Authorization': 'Bearer ' + accessToken,
+                'Content-Type': 'multipart/related; boundary=' + boundary
             },
             body: multipartRequestBody
         });
         
-        const response = await request;
+        const result = await response.json();
         
-        // Make file accessible to anyone with link
-        await gapi.client.drive.permissions.create({
-            fileId: response.result.id,
-            resource: {
-                role: 'reader',
-                type: 'anyone'
-            }
-        });
+        if (!response.ok) {
+            throw new Error(result.error?.message || 'Upload failed');
+        }
+        
+        console.log('✅ Upload successful:', result);
         
         return {
-            id: response.result.id,
-            name: response.result.name,
-            webViewLink: `https://drive.google.com/file/d/${response.result.id}/view`
+            id: result.id,
+            name: result.name,
+            webViewLink: `https://drive.google.com/file/d/${result.id}/view`
         };
     } catch (error) {
         console.error('Upload failed:', error);
@@ -3360,141 +3309,14 @@ async function uploadAudioToDrive(audioBlob, fileName, metadata) {
     }
 }
 
-// ============================================================================
-// SAVE/LOAD METADATA (Notes, Track Links, etc.)
-// ============================================================================
-
-async function saveMetadataToDrive(dataType, songTitle, data) {
-    if (!isUserSignedIn) {
-        console.log('Not signed in, using localStorage fallback');
-        return false;
-    }
-    
-    try {
-        const metadataFolderId = await findOrCreateFolder(DRIVE_FOLDERS.metadata, sharedFolderId);
-        
-        const fileName = `${songTitle}_${dataType}.json`;
-        const content = JSON.stringify(data, null, 2);
-        
-        // Check if file exists
-        const existingFile = await findFileInFolder(fileName, metadataFolderId);
-        
-        if (existingFile) {
-            // Update existing file
-            await gapi.client.request({
-                path: `/upload/drive/v3/files/${existingFile.id}`,
-                method: 'PATCH',
-                params: { uploadType: 'media' },
-                body: content
-            });
-        } else {
-            // Create new file
-            const fileMetadata = {
-                name: fileName,
-                parents: [metadataFolderId]
-            };
-            
-            await gapi.client.request({
-                path: '/upload/drive/v3/files',
-                method: 'POST',
-                params: { uploadType: 'multipart' },
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ...fileMetadata,
-                    mimeType: 'application/json'
-                }) + '\n\n' + content
-            });
-        }
-        
-        return true;
-    } catch (error) {
-        console.error('Failed to save metadata:', error);
-        return false;
-    }
-}
-
-async function loadMetadataFromDrive(dataType, songTitle) {
-    if (!isUserSignedIn) {
-        return null;
-    }
-    
-    try {
-        const metadataFolderId = await findOrCreateFolder(DRIVE_FOLDERS.metadata, sharedFolderId);
-        const fileName = `${songTitle}_${dataType}.json`;
-        
-        const file = await findFileInFolder(fileName, metadataFolderId);
-        if (!file) return null;
-        
-        const response = await gapi.client.drive.files.get({
-            fileId: file.id,
-            alt: 'media'
-        });
-        
-        return response.result;
-    } catch (error) {
-        console.error('Failed to load metadata:', error);
-        return null;
-    }
-}
-
-async function findFileInFolder(fileName, folderId) {
-    const response = await gapi.client.drive.files.list({
-        q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
-        fields: 'files(id, name)',
-        spaces: 'drive'
+// Helper function
+async function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
     });
-    
-    return response.result.files && response.result.files.length > 0 
-        ? response.result.files[0] 
-        : null;
 }
 
-// ============================================================================
-// LIST AUDIO FILES FROM DRIVE
-// ============================================================================
-
-async function listAudioFromDrive(songTitle, sectionIndex) {
-    if (!isUserSignedIn) {
-        return [];
-    }
-    
-    try {
-        const audioFolderId = await findOrCreateFolder(DRIVE_FOLDERS.audio, sharedFolderId);
-        
-        const query = `'${audioFolderId}' in parents and trashed=false`;
-        
-        const response = await gapi.client.drive.files.list({
-            q: query,
-            fields: 'files(id, name, description, webViewLink, createdTime)',
-            orderBy: 'createdTime desc'
-        });
-        
-        // Filter by song and section
-        const files = response.result.files || [];
-        return files
-            .map(file => {
-                try {
-                    const metadata = JSON.parse(file.description || '{}');
-                    return {
-                        ...metadata,
-                        driveId: file.id,
-                        webViewLink: file.webViewLink,
-                        source: 'drive'
-                    };
-                } catch {
-                    return null;
-                }
-            })
-            .filter(file => 
-                file && 
-                file.songTitle === songTitle && 
-                file.sectionIndex === sectionIndex
-            );
-    } catch (error) {
-        console.error('Failed to list audio:', error);
-        return [];
-    }
-}
-
+console.log('✅ Google Drive integration loaded (New GIS)');
