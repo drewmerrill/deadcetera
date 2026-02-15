@@ -159,7 +159,11 @@ function setupSearchAndFilters() {
 // ============================================================================
 
 function selectSong(songTitle) {
-    selectedSong = songTitle;
+    // Store as object with title property for consistency
+    selectedSong = {
+        title: songTitle,
+        band: allSongs.find(s => s.title === songTitle)?.band || 'GD'
+    };
     
     // Get band info from allSongs
     const songData = allSongs.find(s => s.title === songTitle);
@@ -1576,7 +1580,7 @@ function renderPracticeTracks(songTitle, bandData) {
                 return `
                     <div class="practice-track-card">
                         ${thumbnail ? `
-                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden;">
+                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden; max-width: 200px;">
                                 <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
                                 <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                                     <span style="color: white; font-size: 20px;">▶</span>
@@ -1957,7 +1961,7 @@ function renderPracticeTracksSimplified(songTitle) {
                         ` : ''}
                         
                         ${thumbnail ? `
-                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden;">
+                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden; max-width: 200px;">
                                 <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
                                 <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                                     <span style="color: white; font-size: 20px;">▶</span>
