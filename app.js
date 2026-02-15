@@ -129,6 +129,9 @@ function renderSongs(filter = 'all', searchTerm = '') {
             <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
+    
+    // Add harmony badges after rendering
+    setTimeout(() => addHarmonyBadges(), 50);
 }
 
 // ============================================================================
@@ -1340,6 +1343,9 @@ function showBandResources(songTitle) {
     renderHarmoniesEnhanced(songTitle, bandData);
     renderRehearsalNotesWithStorage(songTitle);
     renderGigNotes(songTitle, bandData);
+    
+    // Populate song metadata (lead singer, has harmonies)
+    setTimeout(() => populateSongMetadata(songTitle), 100);
 }
 
 function showNoBandResourcesMessage(songTitle) {
@@ -2799,13 +2805,40 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
                 <div class="harmony-timing">${section.timing}</div>
                 
                 <div class="parts-list">
-                    ${section.parts.map(part => `
-                        <div class="part-row">
-                            <div class="part-singer">${bandMembers[part.singer]?.name || part.singer}</div>
-                            <div class="part-role">${part.part.replace('_', ' ')}</div>
-                            <div class="part-notes">${part.notes}</div>
+                    ${section.parts.map((part, partIndex) => {
+                        const customNotes = loadPartNotes(songTitle, sectionIndex, part.singer);
+                        return `
+                        <div class="part-row" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #f9fafb; border-radius: 8px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; gap: 12px; align-items: center; flex: 1;">
+                                    <div class="part-singer" style="font-weight: 600; color: #667eea;">${bandMembers[part.singer]?.name || part.singer}</div>
+                                    <div class="part-role" style="color: #6b7280;">${part.part.replace('_', ' ')}</div>
+                                    <div class="part-notes" style="color: #4b5563;">${part.notes}</div>
+                                </div>
+                                <button onclick="addPartNote('${songTitle}', ${sectionIndex}, '${part.singer}')" 
+                                    style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                                    + Note
+                                </button>
+                            </div>
+                            ${customNotes && customNotes.length > 0 ? `
+                                <div style="margin-top: 8px;">
+                                    <strong style="font-size: 0.85em; color: #6b7280;">📝 Practice Notes:</strong>
+                                    <ul style="margin: 8px 0 0 20px; padding: 0;">
+                                        ${customNotes.map((note, noteIndex) => `
+                                            <li style="margin: 4px 0; font-size: 0.9em; color: #4b5563;">
+                                                ${note}
+                                                <button onclick="editPartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
+                                                    style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea;">✏️</button>
+                                                <button onclick="deletePartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
+                                                    style="background: none; border: none; cursor: pointer; color: #ef4444;">×</button>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
                         </div>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </div>
                 
                 ${section.practiceNotes && section.practiceNotes.length > 0 ? `
@@ -3171,35 +3204,57 @@ function getSelectedVoices() {
 }
 
 function updateVoiceSelection() {
-    if (!window.currentVisualObj || !window.currentSynthControl) {
-        console.warn('No synth available');
+    // Get the textarea with ABC notation
+    const textarea = document.getElementById('abcEditorTextarea');
+    if (!textarea) {
+        console.warn('No ABC textarea found');
         return;
     }
     
     try {
         const selectedVoices = getSelectedVoices();
-        const allVoices = document.querySelectorAll('.voice-checkbox').length;
+        const abc = textarea.value;
+        const lines = abc.split('\n');
         
-        // Create array of voices to turn off
-        const voicesOff = [];
-        for (let i = 0; i < allVoices; i++) {
-            if (!selectedVoices.includes(i)) {
-                voicesOff.push(i);
+        // Process each line to add/remove comments
+        const newLines = lines.map(line => {
+            // Check for voice definition: V:1 or V:2, etc.
+            const voiceDefMatch = line.match(/^(% )?V:(\d+)/);
+            // Check for voice content: [V:1] or [V:2], etc.
+            const voiceContentMatch = line.match(/^(% )?\[V:(\d+)\]/);
+            
+            if (voiceDefMatch || voiceContentMatch) {
+                const voiceNum = parseInt(voiceDefMatch ? voiceDefMatch[2] : voiceContentMatch[2]) - 1;
+                const shouldMute = !selectedVoices.includes(voiceNum);
+                const isCommented = line.trim().startsWith('%');
+                
+                if (shouldMute && !isCommented) {
+                    // Mute: add % comment
+                    return '% ' + line;
+                } else if (!shouldMute && isCommented) {
+                    // Unmute: remove % comment
+                    return line.replace(/^% /, '');
+                }
             }
+            
+            return line;
+        });
+        
+        const newABC = newLines.join('\n');
+        
+        // Update textarea
+        textarea.value = newABC;
+        
+        // Store for later use
+        window.currentABCText = newABC;
+        
+        // Re-render preview
+        const previewContainer = document.getElementById('abcPreviewContainer');
+        if (previewContainer) {
+            renderABCPreview(newABC, previewContainer);
         }
         
-        console.log('Selected voices:', selectedVoices);
-        console.log('Voices off:', voicesOff);
-        
-        // Reinitialize with new voice selection
-        window.currentSynthControl.setTune(window.currentVisualObj, false, {
-            chordsOff: true,
-            voicesOff: voicesOff
-        }).then(() => {
-            console.log('✅ Voice selection updated');
-        }).catch((error) => {
-            console.error('Failed to update voices:', error);
-        });
+        console.log('✅ Voice selection updated via ABC comments');
     } catch (error) {
         console.error('Error updating voice selection:', error);
     }
@@ -3461,3 +3516,177 @@ async function blobToBase64(blob) {
 }
 
 console.log('✅ Google Drive integration loaded (New GIS)');
+
+// ============================================================================
+// EDITABLE HARMONY PART NOTES
+// ============================================================================
+
+function loadPartNotes(songTitle, sectionIndex, singer) {
+    const key = `deadcetera_part_notes_${songTitle}_section${sectionIndex}_${singer}`;
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+}
+
+function savePartNotes(songTitle, sectionIndex, singer, notes) {
+    const key = `deadcetera_part_notes_${songTitle}_section${sectionIndex}_${singer}`;
+    localStorage.setItem(key, JSON.stringify(notes));
+}
+
+function addPartNote(songTitle, sectionIndex, singer) {
+    const note = prompt(`Add practice note for ${singer}:`);
+    if (!note || note.trim() === '') return;
+    
+    const notes = loadPartNotes(songTitle, sectionIndex, singer);
+    notes.push(note.trim());
+    savePartNotes(songTitle, sectionIndex, singer, notes);
+    
+    // Refresh display
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    }
+}
+
+function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
+    const notes = loadPartNotes(songTitle, sectionIndex, singer);
+    const currentNote = notes[noteIndex];
+    const newNote = prompt('Edit note:', currentNote);
+    
+    if (newNote === null) return; // Cancelled
+    if (newNote.trim() === '') {
+        // Delete if empty
+        deletePartNote(songTitle, sectionIndex, singer, noteIndex);
+        return;
+    }
+    
+    notes[noteIndex] = newNote.trim();
+    savePartNotes(songTitle, sectionIndex, singer, notes);
+    
+    // Refresh display
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    }
+}
+
+function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
+    if (!confirm('Delete this note?')) return;
+    
+    const notes = loadPartNotes(songTitle, sectionIndex, singer);
+    notes.splice(noteIndex, 1);
+    savePartNotes(songTitle, sectionIndex, singer, notes);
+    
+    // Refresh display
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    }
+}
+
+// ============================================================================
+// LEAD SINGER & HARMONY METADATA
+// ============================================================================
+
+function updateLeadSinger(singer) {
+    if (!selectedSong || !selectedSong.title) return;
+    
+    const key = `deadcetera_lead_singer_${selectedSong.title}`;
+    localStorage.setItem(key, singer);
+    
+    console.log(`✅ Lead singer updated: ${singer}`);
+}
+
+function loadLeadSinger(songTitle) {
+    const key = `deadcetera_lead_singer_${songTitle}`;
+    return localStorage.getItem(key) || '';
+}
+
+function updateHasHarmonies(hasHarmonies) {
+    if (!selectedSong || !selectedSong.title) return;
+    
+    const key = `deadcetera_has_harmonies_${selectedSong.title}`;
+    localStorage.setItem(key, hasHarmonies ? 'true' : 'false');
+    
+    // Update badge on song list
+    addHarmonyBadges();
+    
+    console.log(`✅ Has harmonies: ${hasHarmonies}`);
+}
+
+function loadHasHarmonies(songTitle) {
+    const key = `deadcetera_has_harmonies_${songTitle}`;
+    return localStorage.getItem(key) === 'true';
+}
+
+function populateSongMetadata(songTitle) {
+    const leadSinger = loadLeadSinger(songTitle);
+    const hasHarmonies = loadHasHarmonies(songTitle);
+    
+    const leadSelect = document.getElementById('leadSingerSelect');
+    if (leadSelect) leadSelect.value = leadSinger;
+    
+    const harmoniesCheckbox = document.getElementById('hasHarmoniesCheckbox');
+    if (harmoniesCheckbox) harmoniesCheckbox.checked = hasHarmonies;
+}
+
+// ============================================================================
+// HARMONY SONG FILTERING
+// ============================================================================
+
+function filterSongs(type) {
+    // Update button states
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.background = 'white';
+        btn.style.color = '#667eea';
+    });
+    
+    const buttons = document.querySelectorAll('.filter-btn');
+    buttons.forEach(btn => {
+        if ((type === 'all' && btn.textContent.includes('All')) ||
+            (type === 'harmonies' && btn.textContent.includes('Harmony'))) {
+            btn.classList.add('active');
+            btn.style.background = '#667eea';
+            btn.style.color = 'white';
+        }
+    });
+    
+    // Filter songs
+    const songItems = document.querySelectorAll('.song-item');
+    songItems.forEach(item => {
+        const songTitle = item.querySelector('strong')?.textContent || item.textContent.trim();
+        const hasHarmonies = loadHasHarmonies(songTitle);
+        
+        if (type === 'all') {
+            item.style.display = 'block';
+        } else if (type === 'harmonies') {
+            item.style.display = hasHarmonies ? 'block' : 'none';
+        }
+    });
+}
+
+function addHarmonyBadges() {
+    const songItems = document.querySelectorAll('.song-item');
+    songItems.forEach(item => {
+        const songTitle = item.querySelector('strong')?.textContent || item.textContent.trim();
+        const hasHarmonies = loadHasHarmonies(songTitle);
+        
+        // Remove existing badge if present
+        const existingBadge = item.querySelector('.harmony-badge');
+        if (existingBadge) {
+            existingBadge.remove();
+        }
+        
+        // Add badge if song has harmonies
+        if (hasHarmonies) {
+            const badge = document.createElement('span');
+            badge.className = 'harmony-badge';
+            badge.textContent = '🎤';
+            badge.style.cssText = 'margin-left: 8px; font-size: 0.9em; opacity: 0.7;';
+            badge.title = 'This song has harmonies';
+            item.appendChild(badge);
+        }
+    });
+}
+
+console.log('✅ All 4 features loaded');
