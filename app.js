@@ -2351,8 +2351,12 @@ async function uploadHarmonyAudio(sectionIndex) {
         hideHarmonyAudioForm();
         
         // Refresh harmony display
-        renderHarmonies(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
-        
+        const bandData = bandKnowledgeBase[selectedSong.title];
+        if (bandData) {
+            renderHarmoniesEnhanced(selectedSong.title, bandData);
+        } else {
+            location.reload();
+        }
     } catch (error) {
         alert('Error uploading file: ' + error.message);
     } finally {
@@ -2394,7 +2398,12 @@ function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
         localStorage.setItem(key, JSON.stringify(snippets));
         
         // Refresh display
-        renderHarmonies(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+        const bandData = bandKnowledgeBase[selectedSong.title];
+        if (bandData) {
+            renderHarmoniesEnhanced(selectedSong.title, bandData);
+        } else {
+            location.reload();
+        }
     }
 }
 // ============================================================================
@@ -2573,9 +2582,18 @@ async function saveRecording(sectionIndex, base64Audio, fileSize) {
     
     alert(`✅ Recording saved: ${name}`);
     
-    // Clear form and refresh
+    // Clear form
     hideHarmonyAudioForm();
-    renderHarmoniesEnhanced(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+    
+    // Refresh harmony display if we have band data, otherwise just reload the page
+    const bandData = bandKnowledgeBase[selectedSong.title];
+    if (bandData && bandData.harmonies) {
+        renderHarmoniesEnhanced(selectedSong.title, bandData);
+    } else {
+        // No harmony data in bandKnowledgeBase, but recording is saved to localStorage
+        // Just refresh the page to show it
+        location.reload();
+    }
 }
 
 function discardRecording(sectionIndex) {
@@ -2597,7 +2615,13 @@ function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     if (newName && newName.trim()) {
         snippet.name = newName.trim();
         localStorage.setItem(key, JSON.stringify(snippets));
-        renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+        
+        const bandData = bandKnowledgeBase[songTitle];
+        if (bandData) {
+            renderHarmoniesEnhanced(songTitle, bandData);
+        } else {
+            location.reload();
+        }
     }
 }
 
@@ -2609,87 +2633,24 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
     snippets.splice(snippetIndex, 1);
     localStorage.setItem(key, JSON.stringify(snippets));
     
-    renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderHarmoniesEnhanced(songTitle, bandData);
+    } else {
+        location.reload();
+    }
 }
 
 // ============================================================================
 // SHEET MUSIC GENERATION
 // ============================================================================
 
-function generateSheetMusic(sectionIndex, section) {
-    // Using ABC notation to generate sheet music
-    // ABC notation is a simple text format that can be rendered as sheet music
-    
-    const parts = section.parts || [];
-    
-    // Map part types to ABC notation
-    const partToNote = {
-        'lead': 'C',           // Root
-        'harmony_high': 'E',   // Third above
-        'harmony_low': 'A,',   // Fifth below  
-        'doubling': 'C'        // Same as lead
-    };
-    
-    // Generate ABC notation
-    let abcNotation = `X:1
-T:${section.lyric || 'Harmony Section'}
-M:4/4
-L:1/4
-K:Dmaj
-`;
-    
-    parts.forEach(part => {
-        const note = partToNote[part.part] || 'C';
-        const memberName = bandMembers[part.singer]?.name || part.singer;
-        abcNotation += `%${memberName} (${part.part.replace('_', ' ')})\n`;
-        abcNotation += `${note}4 |\n`;
-    });
-    
-    // Show sheet music in modal
-    showSheetMusicModal(section.lyric, abcNotation);
-}
+// ============================================================================
+// ENHANCED ABC EDITOR - Integrated
+// ============================================================================
 
-function showSheetMusicModal(title, abcNotation) {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.8);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-    `;
-    
-    modal.innerHTML = `
-        <div style="background: white; padding: 30px; border-radius: 16px; max-width: 800px; max-height: 90vh; overflow: auto;">
-            <h3 style="margin: 0 0 20px 0;">🎼 Sheet Music: ${title}</h3>
-            
-            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; white-space: pre; overflow-x: auto;">
-${abcNotation}
-            </div>
-            
-            <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 20px;">
-                💡 <strong>Note:</strong> This is ABC notation. You can copy this and paste it into 
-                <a href="https://abcjs.net/abcjs-editor.html" target="_blank" style="color: #667eea;">ABCjs Editor</a> 
-                to see the rendered sheet music!
-            </p>
-            
-            <div style="display: flex; gap: 10px;">
-                <button class="chart-btn chart-btn-primary" onclick="copyToClipboard(\`${abcNotation.replace(/`/g, '\\`')}\`)">
-                    📋 Copy ABC Notation
-                </button>
-                <button class="chart-btn chart-btn-secondary" onclick="this.closest('[style*=fixed]').remove()">
-                    Close
-                </button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
+function generateSheetMusic(sectionIndex, section) {
+    generateSheetMusicEnhanced(sectionIndex, section);
 }
 
 function copyToClipboard(text) {
@@ -2703,6 +2664,13 @@ function copyToClipboard(text) {
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
 function renderHarmoniesEnhanced(songTitle, bandData) {
     const container = document.getElementById('harmoniesContainer');
+    
+    // Check if bandData exists
+    if (!bandData) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No band data available yet</div>';
+        return;
+    }
+    
     const harmonies = bandData.harmonies;
     
     if (!harmonies || !harmonies.sections || harmonies.sections.length === 0) {
@@ -2827,4 +2795,206 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
     }
     
     container.innerHTML = sections + generalNotesHTML;
+}
+// ============================================================================
+// ENHANCED ABC EDITOR
+// Edit ABC notation in-app, preview rendered sheet music, save to harmony
+// ============================================================================
+
+function generateSheetMusicEnhanced(sectionIndex, section) {
+    const parts = section.parts || [];
+    
+    // Map part types to ABC notation notes
+    const partToNote = {
+        'lead': 'C',           
+        'harmony_high': 'E',   
+        'harmony_low': 'A,',   
+        'doubling': 'C'        
+    };
+    
+    // Check if we have saved ABC notation already
+    const savedKey = `deadcetera_abc_${selectedSong.title}_section${sectionIndex}`;
+    const savedAbc = localStorage.getItem(savedKey);
+    
+    let abcNotation = savedAbc || generateDefaultABC(section, parts, partToNote);
+    
+    // Show editor modal
+    showABCEditorModal(section.lyric, abcNotation, sectionIndex);
+}
+
+function generateDefaultABC(section, parts, partToNote) {
+    let abc = `X:1
+T:${section.lyric || 'Harmony Section'}
+M:4/4
+L:1/4
+K:Dmaj
+`;
+    
+    parts.forEach(part => {
+        const note = partToNote[part.part] || 'C';
+        const memberName = bandMembers[part.singer]?.name || part.singer;
+        abc += `%${memberName} (${part.part.replace('_', ' ')})
+${note}4 |
+`;
+    });
+    
+    return abc;
+}
+
+function showABCEditorModal(title, initialAbc, sectionIndex) {
+    const modal = document.createElement('div');
+    modal.id = 'abcEditorModal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 20px;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 16px; max-width: 1200px; width: 100%; max-height: 95vh; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 25px; border-bottom: 2px solid #e2e8f0;">
+                <h3 style="margin: 0 0 10px 0;">🎼 Edit Sheet Music: ${title}</h3>
+                <p style="margin: 0; color: #6b7280; font-size: 0.9em;">
+                    Edit ABC notation below, then click "Preview" to see the rendered sheet music
+                    • <a href="https://abcnotation.com/wiki/abc:standard:v2.1" target="_blank" style="color: #667eea;">📖 ABC Tutorial</a>
+                    • <a href="https://abcjs.net/abcjs-editor.html" target="_blank" style="color: #667eea;">🔗 Full ABC Editor</a>
+                </p>
+            </div>
+            
+            <div style="flex: 1; overflow: auto; padding: 25px; display: flex; gap: 20px;">
+                <!-- Left: Editor -->
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">✏️ ABC Notation:</label>
+                    <textarea id="abcEditorTextarea" 
+                        style="flex: 1; font-family: 'Courier New', monospace; font-size: 0.95em; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; resize: none;"
+                    >${initialAbc}</textarea>
+                    
+                    <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <strong style="font-size: 0.9em;">💡 Quick Tips:</strong>
+                        <ul style="margin: 8px 0 0 20px; font-size: 0.85em; line-height: 1.6;">
+                            <li>C D E F G A B = Notes</li>
+                            <li>2 = half note, 4 = quarter note</li>
+                            <li>| = bar line</li>
+                            <li>' = octave up, , = octave down</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Right: Preview -->
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">👁️ Preview:</label>
+                    <div id="abcPreviewContainer" style="flex: 1; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto;">
+                        <p style="color: #9ca3af; text-align: center; margin-top: 40px;">Click "Preview" to render sheet music</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="padding: 20px; border-top: 2px solid #e2e8f0; display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="chart-btn chart-btn-secondary" onclick="document.getElementById('abcEditorModal').remove()">
+                    Cancel
+                </button>
+                <button class="chart-btn chart-btn-primary" onclick="previewABC()">
+                    👁️ Preview Sheet Music
+                </button>
+                <button class="chart-btn chart-btn-primary" onclick="saveABCNotation(${sectionIndex})" style="background: #10b981;">
+                    💾 Save & Close
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Auto-preview after a short delay
+    setTimeout(() => previewABC(), 500);
+}
+
+function previewABC() {
+    const abc = document.getElementById('abcEditorTextarea').value;
+    const container = document.getElementById('abcPreviewContainer');
+    
+    container.innerHTML = '<p style="color: #667eea; text-align: center;">Rendering...</p>';
+    
+    try {
+        // Load abcjs library if not already loaded
+        if (typeof ABCJS === 'undefined') {
+            loadABCJS(() => renderABCPreview(abc, container));
+        } else {
+            renderABCPreview(abc, container);
+        }
+    } catch (error) {
+        container.innerHTML = `<p style="color: #ef4444;">Error rendering: ${error.message}</p>`;
+    }
+}
+
+function loadABCJS(callback) {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.2.3/dist/abcjs-basic-min.js';
+    script.onload = callback;
+    script.onerror = () => {
+        alert('Could not load sheet music renderer. Check your internet connection.');
+    };
+    document.head.appendChild(script);
+}
+
+function renderABCPreview(abc, container) {
+    container.innerHTML = '';
+    
+    try {
+        // Render with abcjs
+        ABCJS.renderAbc(container, abc, {
+            responsive: 'resize',
+            staffwidth: container.offsetWidth - 40,
+            scale: 1.2
+        });
+        
+        // Add playback controls if available
+        if (ABCJS.renderMidi) {
+            const midiContainer = document.createElement('div');
+            midiContainer.style.marginTop = '20px';
+            container.appendChild(midiContainer);
+            
+            ABCJS.renderMidi(midiContainer, abc, {
+                animate: true,
+                generateDownload: false
+            });
+        }
+    } catch (error) {
+        container.innerHTML = `
+            <div style="color: #ef4444; padding: 20px;">
+                <strong>Error rendering sheet music:</strong>
+                <p>${error.message}</p>
+                <p style="font-size: 0.9em; margin-top: 10px;">Check your ABC notation syntax.</p>
+            </div>
+        `;
+    }
+}
+
+function saveABCNotation(sectionIndex) {
+    const abc = document.getElementById('abcEditorTextarea').value;
+    
+    // Save to localStorage
+    const key = `deadcetera_abc_${selectedSong.title}_section${sectionIndex}`;
+    localStorage.setItem(key, abc);
+    
+    alert('✅ Sheet music saved!');
+    
+    // Close modal
+    document.getElementById('abcEditorModal').remove();
+    
+    // Refresh harmony display to show updated sheet music button
+    renderHarmoniesEnhanced(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+}
+
+// Update the original generateSheetMusic to use the enhanced version
+function generateSheetMusic(sectionIndex, section) {
+    generateSheetMusicEnhanced(sectionIndex, section);
 }
