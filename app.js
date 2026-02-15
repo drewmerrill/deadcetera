@@ -91,6 +91,9 @@ document.addEventListener('DOMContentLoaded', function() {
 function setupInstrumentSelector() {
     const selector = document.getElementById('instrumentSelect');
     
+    // Safety check - element might not exist on all pages
+    if (!selector) return;
+    
     selector.addEventListener('change', (e) => {
         currentInstrument = e.target.value;
         localStorage.setItem('deadcetera_instrument', currentInstrument);
@@ -1337,20 +1340,20 @@ function showBandResources(songTitle) {
         return;
     }
     
-    // Render each section
-    renderSpotifyVersionsWithMetadata(songTitle, bandData);
-    renderChordChart(songTitle, bandData);
-    renderMoisesStems(songTitle, bandData);
-    renderPracticeTracks(songTitle, bandData);
-    renderHarmoniesEnhanced(songTitle, bandData);
-    renderRehearsalNotesWithStorage(songTitle);
-    renderSongStructure(songTitle);
-    renderGigNotes(songTitle, bandData);
-    
-    // Populate song metadata (lead singer, has harmonies) - with longer delay to ensure DOM is ready
-    setTimeout(async () => {
-        await populateSongMetadata(songTitle);
-    }, 200);
+    // Render each section IN PARALLEL for fast loading
+    Promise.all([
+        renderSpotifyVersionsWithMetadata(songTitle, bandData),
+        renderChordChart(songTitle, bandData),
+        renderMoisesStems(songTitle, bandData),
+        renderPracticeTracks(songTitle, bandData),
+        renderHarmoniesEnhanced(songTitle, bandData),
+        renderRehearsalNotesWithStorage(songTitle),
+        renderSongStructure(songTitle),
+        renderGigNotes(songTitle, bandData),
+        populateSongMetadata(songTitle)
+    ]).catch(error => {
+        console.error('Error rendering sections:', error);
+    });
 }
 
 function showNoBandResourcesMessage(songTitle) {
