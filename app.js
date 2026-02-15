@@ -3114,27 +3114,45 @@ let sharedFolderId = null;
 
 function loadGoogleDriveAPI() {
     return new Promise((resolve, reject) => {
+        // Check if already loaded
+        if (window.gapi) {
+            gapi.load('client:auth2', () => {
+                initGoogleDrive().then(resolve).catch(reject);
+            });
+            return;
+        }
+        
         // Load Google API client library
         const script = document.createElement('script');
         script.src = 'https://apis.google.com/js/api.js';
         script.onload = () => {
+            console.log('✅ Google API script loaded');
             gapi.load('client:auth2', () => {
+                console.log('✅ Google API client loaded');
                 initGoogleDrive().then(resolve).catch(reject);
             });
         };
-        script.onerror = reject;
+        script.onerror = () => {
+            console.error('❌ Failed to load Google API script');
+            reject(new Error('Failed to load Google API script'));
+        };
         document.head.appendChild(script);
     });
 }
 
 async function initGoogleDrive() {
     try {
+        console.log('🔄 Initializing Google Drive API...');
+        console.log('Config:', GOOGLE_DRIVE_CONFIG);
+        
         await gapi.client.init({
             apiKey: GOOGLE_DRIVE_CONFIG.apiKey,
             clientId: GOOGLE_DRIVE_CONFIG.clientId,
             discoveryDocs: GOOGLE_DRIVE_CONFIG.discoveryDocs,
             scope: GOOGLE_DRIVE_CONFIG.scope
         });
+        
+        console.log('✅ gapi.client.init complete');
         
         // Listen for sign-in state changes
         gapi.auth2.getAuthInstance().isSignedIn.listen(updateSignInStatus);
@@ -3148,6 +3166,7 @@ async function initGoogleDrive() {
         return true;
     } catch (error) {
         console.error('❌ Google Drive initialization failed:', error);
+        console.error('Error details:', error.details);
         throw error;
     }
 }
@@ -3186,9 +3205,11 @@ function updateDriveAuthButton() {
 async function handleGoogleDriveAuth() {
     if (!isGoogleDriveInitialized) {
         try {
+            console.log('🔄 Loading Google Drive API...');
             await loadGoogleDriveAPI();
         } catch (error) {
-            alert('Failed to load Google Drive. Check your API credentials.');
+            console.error('Failed to load Google Drive:', error);
+            alert('Failed to load Google Drive.\n\nError: ' + error.message + '\n\nPlease check the browser console for details.');
             return;
         }
     }
@@ -3201,10 +3222,12 @@ async function handleGoogleDriveAuth() {
     } else {
         // Sign in
         try {
+            console.log('🔄 Attempting sign-in...');
             await authInstance.signIn();
+            console.log('✅ Sign-in successful');
         } catch (error) {
             console.error('Sign-in failed:', error);
-            alert('Google Drive sign-in failed. Please try again.');
+            alert('Google Drive sign-in failed.\n\nError: ' + error.error + '\n\nPlease try again.');
         }
     }
 }
