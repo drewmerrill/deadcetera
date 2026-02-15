@@ -1463,48 +1463,54 @@ function renderMoisesStems(songTitle, bandData) {
         return;
     }
     
-    // Check if we have individual stem links or just folder
-    const hasStems = stems.stems && Object.values(stems.stems).some(url => url !== null);
+    // Check if we have individual stem links
+    const stemKeys = ['bass', 'drums', 'guitar', 'keys', 'vocals'];
+    const instrumentIcons = {
+        bass: '🎸',
+        drums: '🥁', 
+        guitar: '🎸',
+        keys: '🎹',
+        vocals: '🎤'
+    };
     
-    if (hasStems) {
-        // Render individual stem buttons
-        const stemButtons = Object.entries(stems.stems)
-            .filter(([key, url]) => url !== null)
-            .map(([key, url]) => {
-                const label = key.charAt(0).toUpperCase() + key.slice(1);
-                return `
-                    <button class="stem-button" onclick="window.open('${url}', '_blank')">
-                        <div class="stem-label">🎵 ${label}</div>
-                        <div class="stem-info">Click to download</div>
-                    </button>
-                `;
-            }).join('');
+    // Always show stem buttons (either with links or placeholders)
+    const stemButtons = stemKeys.map(key => {
+        const url = stems.stems && stems.stems[key];
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        const icon = instrumentIcons[key] || '🎵';
         
-        container.innerHTML = `
-            ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Separated from: <strong>${stems.sourceVersion}</strong></p>` : ''}
-            
-            <div class="stems-grid">
-                ${stemButtons}
-            </div>
-            
-            <button class="drive-folder-btn" onclick="window.open('${stems.googleDriveFolder}', '_blank')">
-                📁 Open Google Drive Folder
-            </button>
-            
-            ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
-        `;
-    } else {
-        // Just show folder link
-        container.innerHTML = `
-            ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
-            
-            <button class="drive-folder-btn" onclick="window.open('${stems.googleDriveFolder}', '_blank')">
-                📁 Open Google Drive Folder
-            </button>
-            
-            ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
-        `;
-    }
+        if (url && url !== null) {
+            // Has URL - clickable download
+            return `
+                <button class="stem-button" onclick="window.open('${url}', '_blank')">
+                    <div class="stem-label">${icon} ${label}</div>
+                    <div class="stem-info">Click to download</div>
+                </button>
+            `;
+        } else {
+            // No URL - show placeholder
+            return `
+                <button class="stem-button" style="opacity: 0.5; cursor: help;" title="Check Drive folder and add URL to data.js">
+                    <div class="stem-label">${icon} ${label}</div>
+                    <div class="stem-info" style="font-size: 0.75em;">Not assigned yet</div>
+                </button>
+            `;
+        }
+    }).join('');
+    
+    container.innerHTML = `
+        ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
+        
+        <div class="stems-grid">
+            ${stemButtons}
+        </div>
+        
+        <button class="drive-folder-btn" onclick="window.open('${stems.googleDriveFolder}', '_blank')">
+            📁 Open Google Drive Folder
+        </button>
+        
+        ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
+    `;
 }
 
 // ============================================================================
@@ -1562,7 +1568,8 @@ function renderPracticeTracks(songTitle, bandData) {
     container.innerHTML = `
         <div class="practice-tracks-grid">
             ${allTracks.map(track => {
-                const thumbnail = getYouTubeThumbnail(track.youtubeUrl);
+                const url = track.videoUrl || track.youtubeUrl; // Support both field names
+                const thumbnail = getYouTubeThumbnail(url);
                 const icon = instrumentIcons[track.instrument] || '🎵';
                 const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
                 
@@ -1588,8 +1595,8 @@ function renderPracticeTracks(songTitle, bandData) {
                         
                         ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
                         
-                        <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${track.youtubeUrl}', '_blank')">
-                            ▶ Watch Lesson
+                        <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${url}', '_blank')">
+                            ▶ Watch Video
                         </button>
                         
                         <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">Added by ${track.uploadedBy}</p>
@@ -1720,4 +1727,174 @@ function renderGigNotes(songTitle, bandData) {
             </ul>
         </div>
     `;
+}
+
+// ============================================================================
+// PRACTICE TRACK SEARCH & CLASSIFICATION
+// ============================================================================
+
+async function searchOrAddPracticeTrack() {
+    const input = document.getElementById('practiceTrackSearchInput').value.trim();
+    const resultsContainer = document.getElementById('practiceTrackSearchResults');
+    
+    if (!input) {
+        alert('Please enter a search term or paste a video URL');
+        return;
+    }
+    
+    // Check if input is a URL
+    const isURL = input.startsWith('http://') || input.startsWith('https://') || input.includes('youtube.com') || input.includes('youtu.be') || input.includes('vimeo.com');
+    
+    if (isURL) {
+        // It's a URL - go straight to add form with URL pre-filled
+        showAddPracticeTrackForm(input);
+    } else {
+        // It's a search term - show search options
+        searchPracticeTracks(input);
+    }
+}
+
+async function searchPracticeTracks(query) {
+    const resultsContainer = document.getElementById('practiceTrackSearchResults');
+    
+    resultsContainer.innerHTML = '<p style="color: #6b7280; padding: 10px;">🔍 Searching...</p>';
+    
+    // Use YouTube search
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    
+    resultsContainer.innerHTML = `
+        <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
+            <p style="margin-bottom: 10px;"><strong>Search Instructions:</strong></p>
+            <ol style="margin-left: 20px; line-height: 1.8;">
+                <li>Click button below to search YouTube</li>
+                <li>Find the video you want</li>
+                <li>Copy the video URL (works with YouTube, YouTube Shorts, Vimeo, etc.)</li>
+                <li>Paste the URL in the search box above</li>
+                <li>Click "Search/Add" to classify it</li>
+            </ol>
+            <button class="chart-btn chart-btn-primary" onclick="window.open('${searchUrl}', '_blank')" style="margin-top: 10px;">
+                🔍 Open YouTube Search
+            </button>
+        </div>
+    `;
+}
+
+function showAddPracticeTrackForm(prefilledUrl = '') {
+    const resultsContainer = document.getElementById('practiceTrackSearchResults');
+    
+    resultsContainer.innerHTML = `
+        <div style="background: white; padding: 20px; border-radius: 8px; border: 2px solid #667eea;">
+            <h4 style="margin: 0 0 15px 0;">Add Practice Track</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Video URL:</label>
+                <input type="text" id="newTrackUrl" value="${prefilledUrl}" placeholder="https://www.youtube.com/watch?v=... or YouTube Shorts, Vimeo, etc." 
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">✅ Works with: YouTube, YouTube Shorts, Vimeo, and any video URL</p>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Video Title:</label>
+                <input type="text" id="newTrackTitle" placeholder="E.g., Tweezer Reprise Bass Lesson" 
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Instrument/Part:</label>
+                <select id="newTrackInstrument" 
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <option value="">-- Select Instrument --</option>
+                    <option value="bass">🎸 Bass</option>
+                    <option value="leadGuitar">🎸 Lead Guitar</option>
+                    <option value="rhythmGuitar">🎸 Rhythm Guitar</option>
+                    <option value="keys">🎹 Keys/Keyboards</option>
+                    <option value="drums">🥁 Drums</option>
+                    <option value="vocals">🎤 Vocals</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes (optional):</label>
+                <input type="text" id="newTrackNotes" placeholder="E.g., Great breakdown of the bass line" 
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            </div>
+            
+            <div style="background: #fef3c7; padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f59e0b;">
+                <p style="font-size: 0.9em; margin: 0;"><strong>Note:</strong> This will show you the code to add to data.js. We can't save directly to the file, but I'll format it for easy copy/paste!</p>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="chart-btn chart-btn-primary" onclick="generatePracticeTrackCode()">
+                    Generate Code
+                </button>
+                <button class="chart-btn chart-btn-secondary" onclick="document.getElementById('practiceTrackSearchResults').innerHTML = ''">
+                    Cancel
+                </button>
+            </div>
+            
+            <div id="generatedTrackCode" style="margin-top: 15px;"></div>
+        </div>
+    `;
+}
+
+function generatePracticeTrackCode() {
+    const url = document.getElementById('newTrackUrl').value;
+    const title = document.getElementById('newTrackTitle').value;
+    const instrument = document.getElementById('newTrackInstrument').value;
+    const notes = document.getElementById('newTrackNotes').value;
+    
+    if (!url || !title || !instrument) {
+        alert('Please fill in URL, Title, and Instrument');
+        return;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    const code = `{
+    title: "${title}",
+    videoUrl: "${url}",  // Works with YouTube, Shorts, Vimeo, etc.
+    uploadedBy: "YOUR_NAME",  // Replace with your name
+    dateAdded: "${today}",
+    notes: "${notes || 'Practice track'}"
+}`;
+    
+    const fullInstructions = `
+<div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border: 2px solid #10b981;">
+    <h4 style="margin: 0 0 10px 0; color: #065f46;">✅ Code Generated!</h4>
+    
+    <p style="margin-bottom: 10px;"><strong>Add to instrument: <span style="color: #667eea;">${instrument}</span></strong></p>
+    
+    <div style="background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-family: monospace; font-size: 0.85em; overflow-x: auto;">
+        <pre style="margin: 0; white-space: pre-wrap;">${code}</pre>
+    </div>
+    
+    <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
+        <p style="margin: 0 0 10px 0; font-weight: 600;">Instructions:</p>
+        <ol style="margin-left: 20px; line-height: 1.8; font-size: 0.9em;">
+            <li>Open your data.js file</li>
+            <li>Find the song: <code>"Tweezer Reprise"</code></li>
+            <li>Find the <code>practiceTracks</code> section</li>
+            <li>Find the <code>${instrument}: [</code> array</li>
+            <li>Add the code above to the array (don't forget commas!)</li>
+            <li>Replace <code>YOUR_NAME</code> with your actual name</li>
+            <li>Upload data.js to GitHub</li>
+            <li>Refresh the page!</li>
+        </ol>
+    </div>
+    
+    <button class="chart-btn chart-btn-primary" onclick="copyPracticeTrackCode(\`${code.replace(/`/g, '\\`')}\`)" style="margin-top: 15px;">
+        📋 Copy Code
+    </button>
+</div>
+    `;
+    
+    document.getElementById('generatedTrackCode').innerHTML = fullInstructions;
+}
+
+function copyPracticeTrackCode(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        alert('✅ Code copied to clipboard! Paste it into data.js');
+    }).catch(err => {
+        alert('Could not copy. Please select and copy manually.');
+    });
 }
