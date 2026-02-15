@@ -4133,14 +4133,14 @@ console.log('✅ Song Structure functions loaded');
 // IMPORTANT: Set this to the folder ID after the owner creates it
 // Leave as null for the first person (owner) to create the folder
 // After creation, copy the folder ID here so everyone uses the SAME folder
-const SHARED_FOLDER_ID = null; // Owner will update this after creating folder
+const SHARED_FOLDER_ID = '1YGur4GdHb4GljnVfPqUpjscdI0lBcua0'; // Owner will update this after creating folder
 
 // Band member emails who should have access (owner should update this list)
 const BAND_MEMBER_EMAILS = [
-    'drew.merrill@gmail.com',     // Drew
-    'pierce@example.com',          // Pierce - UPDATE THIS
-    'brian@example.com',           // Brian - UPDATE THIS
-    'chris@example.com'            // Chris - UPDATE THIS
+    'drewmerrill1029@gmail.com',     // Drew
+    'pierce.d.hale@gmail.com',          // Pierce - UPDATE THIS
+    'brian@hrestoration.com',           // Brian - UPDATE THIS
+    'cmjalbert@gmail.com'            // Chris - UPDATE THIS
 ];
 
 async function initializeSharedFolder() {
