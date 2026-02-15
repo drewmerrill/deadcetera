@@ -3779,6 +3779,20 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
         return true;
     }
     
+    // Wait for shared folder to be initialized
+    if (!sharedFolderId) {
+        console.log('⏳ Waiting for shared folder to be initialized...');
+        await initializeSharedFolder();
+        
+        // If still no folder, fall back to localStorage
+        if (!sharedFolderId) {
+            console.log('❌ Could not initialize folder, using localStorage');
+            const key = `deadcetera_${dataType}_${songTitle}`;
+            localStorage.setItem(key, JSON.stringify(data));
+            return false;
+        }
+    }
+    
     try {
         const fileName = `${songTitle}_${dataType}.json`;
         const content = JSON.stringify(data, null, 2);
@@ -3849,6 +3863,18 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
 async function loadBandDataFromDrive(songTitle, dataType) {
     // Try Drive first
     if (isUserSignedIn) {
+        // Wait for shared folder to be initialized
+        if (!sharedFolderId) {
+            console.log('⏳ Waiting for shared folder to be initialized...');
+            await initializeSharedFolder();
+        }
+        
+        // If still no folder, fall back to localStorage
+        if (!sharedFolderId) {
+            console.log('❌ Could not initialize folder, using localStorage');
+            return loadFromLocalStorageFallback(songTitle, dataType);
+        }
+        
         try {
             const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
             const fileName = `${songTitle}_${dataType}.json`;
