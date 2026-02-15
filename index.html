@@ -51,45 +51,111 @@
             </div>
         </div>
 
-        <!-- Step 2: Learning Resources (NEW!) -->
-        <div class="step-card hidden" id="step2">
-            <div class="step-number">2</div>
-            <h2>Learning Resources</h2>
-            <p class="step-description" id="resourcesSongTitle">Get tabs, chords, and lessons for this song</p>
-            
-            <div class="resources-container">
-                <!-- Tab/Chart Section -->
-                <div class="resource-section">
-                    <h3>📝 <span id="tabTypeLabel">Tab/Chart</span></h3>
-                    <div id="tabResourceContent">
-                        <!-- Populated by JavaScript -->
-                    </div>
-                </div>
-                
-                <!-- Instructional Videos Section -->
-                <div class="resource-section">
-                    <h3>🎥 Instructional Videos</h3>
-                    <p class="resource-description">Save 1-2 lesson links (YouTube, etc.)</p>
-                    <div id="lessonsResourceContent">
-                        <!-- Populated by JavaScript -->
-                    </div>
-                </div>
-                
-                <!-- Reference Recordings Section -->
-                <div class="resource-section">
-                    <h3>🎸 Reference Recordings</h3>
-                    <p class="resource-description">Save favorite performances to reference</p>
-                    <div id="referencesResourceContent">
-                        <!-- Populated by JavaScript -->
-                    </div>
-                </div>
-            </div>
-            
-            <button class="primary-btn" id="continueToVersionsBtn" style="margin-top: 20px;">
-                Continue to Version Selection →
-            </button>
+<!-- Step 2: Band Resources (REPLACES Learning Resources) -->
+<div class="step-card hidden" id="step2">
+    <div class="step-number">2</div>
+    <h2>🎸 Band Resources</h2>
+    <p class="subtitle" id="bandResourcesSubtitle">Collaborative resources for your band</p>
+    
+    <!-- SPOTIFY REFERENCE VERSION - Voting -->
+    <div class="resource-section" id="spotifySection">
+        <div class="section-header">
+            <h3>🎵 Reference Version (Band Voted)</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Vote on which Spotify version to learn</p>
         </div>
-
+        
+        <div id="spotifyVersionsContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="secondary-btn" id="addSpotifyVersionBtn" style="margin-top: 12px;">
+            + Suggest Different Version
+        </button>
+    </div>
+    
+    <!-- CHORD CHART -->
+    <div class="resource-section" id="chordChartSection">
+        <div class="section-header">
+            <h3>📝 Chord Chart (Collaborative)</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Editable by all band members</p>
+        </div>
+        
+        <div id="chordChartContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <!-- MOISES STEMS -->
+    <div class="resource-section" id="moisesSection">
+        <div class="section-header">
+            <h3>🎚️ Moises Stems (Practice Parts)</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Download individual instrument tracks</p>
+        </div>
+        
+        <div id="moisesStemsContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <!-- PRACTICE TRACKS -->
+    <div class="resource-section" id="practiceTracksSection">
+        <div class="section-header">
+            <h3>🎵 Practice Tracks</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Backing tracks by instrument</p>
+        </div>
+        
+        <div id="practiceTracksContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <!-- HARMONIES -->
+    <div class="resource-section" id="harmoniesSection">
+        <div class="section-header">
+            <h3>🎤 Harmony Parts</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Who sings what, when</p>
+        </div>
+        
+        <div id="harmoniesContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="secondary-btn" id="addHarmonyBtn" style="margin-top: 12px;">
+            + Add Harmony Section
+        </button>
+    </div>
+    
+    <!-- REHEARSAL NOTES -->
+    <div class="resource-section" id="rehearsalNotesSection">
+        <div class="section-header">
+            <h3>📋 Rehearsal Notes</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Band feedback and tips</p>
+        </div>
+        
+        <div id="rehearsalNotesContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="secondary-btn" id="addRehearsalNoteBtn" style="margin-top: 12px;">
+            + Add Note
+        </button>
+    </div>
+    
+    <!-- GIG NOTES -->
+    <div class="resource-section" id="gigNotesSection">
+        <div class="section-header">
+            <h3>🎸 Performance Tips</h3>
+        </div>
+        
+        <div id="gigNotesContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <button class="primary-btn" id="continueToVersionsBtn" style="margin-top: 30px;">
+        Continue to Version Selection →
+    </button>
+</div>
         <!-- Step 3: Version Selection (renumbered from Step 2) -->
         <div class="step-card hidden" id="step3">
             <div class="step-number">3</div>

@@ -868,3 +868,435 @@ footer {
         justify-content: flex-end;
     }
 }
+/* ============================================================================
+   BAND RESOURCES STYLES
+   ============================================================================ */
+
+.resource-section {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 2px solid #e2e8f0;
+}
+
+.section-header h3 {
+    margin: 0 0 5px 0;
+    font-size: 1.3em;
+    color: #2d3748;
+}
+
+/* Spotify Version Cards */
+.spotify-version-card {
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 12px;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.spotify-version-card.default {
+    border-color: #1db954;
+    background: #f0fdf4;
+}
+
+.spotify-version-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.version-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.version-title {
+    font-weight: 600;
+    font-size: 1.1em;
+    color: #2d3748;
+}
+
+.version-badge {
+    background: #1db954;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.votes-container {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.vote-chip {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.vote-chip.yes {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.vote-chip.no {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.spotify-play-btn {
+    background: #1db954;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.spotify-play-btn:hover {
+    background: #1ed760;
+    transform: scale(1.05);
+}
+
+/* Chord Chart */
+.chord-chart-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.chart-btn {
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chart-btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.chart-btn-primary:hover {
+    background: #5568d3;
+}
+
+.chart-btn-secondary {
+    background: #e2e8f0;
+    color: #2d3748;
+}
+
+.chart-btn-secondary:hover {
+    background: #cbd5e0;
+}
+
+.band-notes-box {
+    margin-top: 15px;
+    background: #fef3c7;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #f59e0b;
+}
+
+.band-note-item {
+    margin-bottom: 8px;
+    font-size: 0.95em;
+    color: #78350f;
+}
+
+/* Moises Stems Grid */
+.stems-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.stem-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    font-weight: 600;
+}
+
+.stem-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.stem-label {
+    font-size: 1em;
+    margin-bottom: 5px;
+}
+
+.stem-info {
+    font-size: 0.8em;
+    opacity: 0.9;
+}
+
+.drive-folder-btn {
+    background: #4285f4;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.drive-folder-btn:hover {
+    background: #3367d6;
+}
+
+/* Practice Tracks */
+.practice-tracks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.practice-track-card {
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 15px;
+    background: white;
+}
+
+.practice-track-card h4 {
+    margin: 0 0 8px 0;
+    color: #667eea;
+    font-size: 1em;
+}
+
+.practice-track-meta {
+    font-size: 0.85em;
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+.practice-track-empty {
+    text-align: center;
+    padding: 30px;
+    color: #9ca3af;
+    border: 2px dashed #e2e8f0;
+    border-radius: 12px;
+}
+
+/* Harmonies */
+.harmony-card {
+    background: #fef3c7;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 15px;
+    border-left: 4px solid #f59e0b;
+}
+
+.harmony-card.worked-out {
+    background: #d1fae5;
+    border-left-color: #10b981;
+}
+
+.harmony-card.needs-work {
+    background: #fee2e2;
+    border-left-color: #ef4444;
+}
+
+.harmony-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.harmony-lyric {
+    font-size: 1.2em;
+    font-weight: 600;
+    font-style: italic;
+    color: #1f2937;
+}
+
+.harmony-status {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.status-good {
+    background: #10b981;
+    color: white;
+}
+
+.status-needs-work {
+    background: #ef4444;
+    color: white;
+}
+
+.harmony-timing {
+    color: #6b7280;
+    margin-bottom: 15px;
+    font-size: 0.9em;
+}
+
+.parts-list {
+    margin: 15px 0;
+}
+
+.part-row {
+    display: flex;
+    gap: 15px;
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.part-singer {
+    font-weight: 600;
+    min-width: 80px;
+    color: #667eea;
+}
+
+.part-role {
+    font-weight: 600;
+    min-width: 120px;
+    color: #6b7280;
+}
+
+.part-notes {
+    flex: 1;
+    color: #4b5563;
+}
+
+.practice-notes-box {
+    margin-top: 15px;
+    padding: 12px;
+    background: white;
+    border-radius: 8px;
+}
+
+.practice-notes-box li {
+    margin-bottom: 6px;
+    color: #4b5563;
+}
+
+/* Rehearsal Notes */
+.rehearsal-notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.rehearsal-note-card {
+    background: #f9fafb;
+    border-left: 4px solid #667eea;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.rehearsal-note-card.high {
+    border-left-color: #ef4444;
+    background: #fef2f2;
+}
+
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.85em;
+    color: #6b7280;
+}
+
+.note-content {
+    color: #1f2937;
+    line-height: 1.6;
+}
+
+/* Gig Notes */
+.gig-notes-box {
+    background: #fef3c7;
+    padding: 20px;
+    border-radius: 12px;
+    border-left: 4px solid #f59e0b;
+}
+
+.gig-notes-box ul {
+    margin-left: 20px;
+    line-height: 1.8;
+}
+
+.gig-notes-box li {
+    color: #78350f;
+    margin-bottom: 8px;
+}
+
+.gig-notes-box strong {
+    color: #92400e;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #9ca3af;
+}
+
+.empty-state-icon {
+    font-size: 3em;
+    margin-bottom: 10px;
+}
+
+.empty-state-text {
+    font-size: 1.1em;
+    margin-bottom: 5px;
+}
+
+.empty-state-subtext {
+    font-size: 0.9em;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .stems-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .practice-tracks-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .chord-chart-actions {
+        flex-direction: column;
+    }
+    
+    .chart-btn {
+        width: 100%;
+    }
+}
