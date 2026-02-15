@@ -2355,7 +2355,7 @@ async function uploadHarmonyAudio(sectionIndex) {
         if (bandData) {
             renderHarmoniesEnhanced(selectedSong.title, bandData);
         } else {
-            location.reload();
+            
         }
     } catch (error) {
         alert('Error uploading file: ' + error.message);
@@ -2402,7 +2402,7 @@ function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
         if (bandData) {
             renderHarmoniesEnhanced(selectedSong.title, bandData);
         } else {
-            location.reload();
+            
         }
     }
 }
@@ -2585,15 +2585,9 @@ async function saveRecording(sectionIndex, base64Audio, fileSize) {
     // Clear form
     hideHarmonyAudioForm();
     
-    // Refresh harmony display if we have band data, otherwise just reload the page
+    // Refresh harmony display
     const bandData = bandKnowledgeBase[selectedSong.title];
-    if (bandData && bandData.harmonies) {
-        renderHarmoniesEnhanced(selectedSong.title, bandData);
-    } else {
-        // No harmony data in bandKnowledgeBase, but recording is saved to localStorage
-        // Just refresh the page to show it
-        location.reload();
-    }
+    renderHarmoniesEnhanced(selectedSong.title, bandData);
 }
 
 function discardRecording(sectionIndex) {
@@ -2620,7 +2614,7 @@ function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
         if (bandData) {
             renderHarmoniesEnhanced(songTitle, bandData);
         } else {
-            location.reload();
+            
         }
     }
 }
@@ -2637,7 +2631,7 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
     if (bandData) {
         renderHarmoniesEnhanced(songTitle, bandData);
     } else {
-        location.reload();
+        
     }
 }
 
@@ -2661,20 +2655,112 @@ function copyToClipboard(text) {
     });
 }
 
+// Render audio snippets section even when there's no harmony data
+function renderAudioSnippetsOnly(songTitle, container) {
+    // Check if there are any audio snippets saved
+    let hasAnySnippets = false;
+    let snippetsHTML = '';
+    
+    // Check all possible section indices (0-9 should be enough)
+    for (let sectionIndex = 0; sectionIndex < 10; sectionIndex++) {
+        const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
+        
+        if (audioSnippets.length > 0) {
+            hasAnySnippets = true;
+            
+            snippetsHTML += `
+                <div style="margin-bottom: 30px; padding: 20px; background: #f9fafb; border-radius: 12px; border: 2px solid #e2e8f0;">
+                    <h4 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Audio Snippets - Section ${sectionIndex + 1}</h4>
+                    
+                    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                        <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(${sectionIndex})" 
+                            style="padding: 8px 16px; font-size: 0.9em;">
+                            🎤 Record Now
+                        </button>
+                        <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
+                            style="padding: 8px 16px; font-size: 0.9em;">
+                            📱 Upload File
+                        </button>
+                    </div>
+                    
+                    <div id="harmonyAudioFormContainer${sectionIndex}"></div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
+                        ${audioSnippets.map((snippet, snippetIndex) => `
+                            <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                                    <div>
+                                        <strong style="color: #2d3748;">${snippet.name}</strong>
+                                        ${snippet.notes ? `<p style="margin: 5px 0 0 0; font-size: 0.85em; color: #6b7280;">${snippet.notes}</p>` : ''}
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
+                                            style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                                            ✏️ Rename
+                                        </button>
+                                        <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
+                                            style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                                            ×
+                                        </button>
+                                    </div>
+                                </div>
+                                <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
+                                <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
+                                    ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} • ${snippet.uploadedDate}
+                                    ${snippet.isRecording ? ' • 🎤 Recorded in browser' : ''}
+                                </p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    if (hasAnySnippets) {
+        container.innerHTML = `
+            <div style="margin-bottom: 20px; padding: 15px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                <p style="margin: 0; font-size: 0.9em;"><strong>Note:</strong> This song doesn't have harmony parts documented yet, but you have audio snippets saved below.</p>
+            </div>
+            ${snippetsHTML}
+        `;
+    } else {
+        // No harmony data and no snippets - show a helpful message with record button
+        container.innerHTML = `
+            <div style="padding: 30px; text-align: center; background: #f9fafb; border-radius: 12px; border: 2px dashed #e2e8f0;">
+                <p style="color: #6b7280; margin-bottom: 20px;">No harmony parts documented yet, but you can still record audio snippets!</p>
+                
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(0)">
+                        🎤 Record Now
+                    </button>
+                    <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(0)">
+                        📱 Upload File
+                    </button>
+                </div>
+                
+                <div id="harmonyAudioFormContainer0" style="margin-top: 20px;"></div>
+            </div>
+        `;
+    }
+}
+
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
 function renderHarmoniesEnhanced(songTitle, bandData) {
     const container = document.getElementById('harmoniesContainer');
     
     // Check if bandData exists
     if (!bandData) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No band data available yet</div>';
+        // No bandData, but we can still show audio snippets if any exist
+        renderAudioSnippetsOnly(songTitle, container);
         return;
     }
     
     const harmonies = bandData.harmonies;
     
     if (!harmonies || !harmonies.sections || harmonies.sections.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No harmony parts documented yet</div>';
+        // No harmony sections, but we can still show audio snippets if any exist
+        renderAudioSnippetsOnly(songTitle, container);
         return;
     }
     
