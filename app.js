@@ -1335,19 +1335,16 @@ function showBandResources(songTitle) {
     document.getElementById('bandResourcesSubtitle').textContent = 
         `Collaborative resources for "${songTitle}"`;
     
-    // Check if song has band resources
-    const bandData = bandKnowledgeBase[songTitle];
+    // Get band data from data.js if available
+    const bandData = bandKnowledgeBase[songTitle] || {};
     
-    if (!bandData) {
-        // No band resources yet - show message
-        showNoBandResourcesMessage(songTitle);
-        return;
-    }
+    // ALWAYS show the interface - even if no data yet!
+    // Band members can add data collaboratively
     
     // Render each section IN PARALLEL for fast loading
     Promise.all([
         renderSpotifyVersionsWithMetadata(songTitle, bandData),
-        renderChordChart(songTitle, bandData),
+        renderPersonalTabs(songTitle),
         renderMoisesStems(songTitle, bandData),
         renderPracticeTracks(songTitle, bandData),
         renderHarmoniesEnhanced(songTitle, bandData),
@@ -1428,49 +1425,119 @@ function renderSpotifyVersions(songTitle, bandData) {
 // CHORD CHART
 // ============================================================================
 
-function renderChordChart(songTitle, bandData) {
-    const container = document.getElementById('chordChartContainer');
-    const chart = bandData.chordChart;
+// ============================================================================
+// PERSONAL TAB LINKS
+// ============================================================================
+
+async function renderPersonalTabs(songTitle) {
+    const container = document.getElementById('personalTabsContainer');
+    const tabs = await loadPersonalTabs(songTitle);
     
-    if (!chart || !chart.googleDocId) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No chord chart created yet</div>';
+    if (!tabs || tabs.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No tab links added yet. Be the first to add yours!</div>';
         return;
     }
     
-    let bandNotesHTML = '';
-    if (chart.bandNotes && chart.bandNotes.length > 0) {
-        bandNotesHTML = `
-            <div class="band-notes-box">
-                <strong>Band Notes:</strong>
-                ${chart.bandNotes.map(note => `<div class="band-note-item">• ${note}</div>`).join('')}
-            </div>
-        `;
-    }
-    
     container.innerHTML = `
-        <div class="chord-chart-actions">
-            <button class="chart-btn chart-btn-primary" onclick="window.open('${chart.viewUrl}', '_blank')">
-                📱 Open iPad View
-            </button>
-            <button class="chart-btn chart-btn-secondary" onclick="window.open('${chart.editUrl}', '_blank')">
-                ✏️ Edit Chart
-            </button>
-            ${chart.ultimateGuitarUrl ? `
-                <button class="chart-btn chart-btn-secondary" onclick="window.open('${chart.ultimateGuitarUrl}', '_blank')">
-                    🎸 View on Ultimate Guitar
-                </button>
-            ` : ''}
+        <div style="display: grid; gap: 15px;">
+            ${tabs.map((tab, index) => `
+                <div style="background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; position: relative;">
+                    ${tab.addedBy === currentUserEmail ? `
+                        <button onclick="deletePersonalTab('${songTitle}', ${index})" 
+                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">×</button>
+                    ` : ''}
+                    
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <span style="font-size: 1.2em;">🎸</span>
+                        <strong style="color: #667eea; font-size: 1.1em;">${bandMembers[tab.addedBy]?.name || tab.addedBy}</strong>
+                    </div>
+                    
+                    ${tab.notes ? `
+                        <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 12px; font-style: italic;">
+                            "${tab.notes}"
+                        </p>
+                    ` : ''}
+                    
+                    <button onclick="window.open('${tab.url}', '_blank')" 
+                        style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
+                        📖 Open ${bandMembers[tab.addedBy]?.name || 'Their'} Tab
+                    </button>
+                    
+                    <p style="margin-top: 8px; font-size: 0.85em; color: #9ca3af;">
+                        Added ${tab.dateAdded || 'recently'}
+                    </p>
+                </div>
+            `).join('')}
         </div>
-        
-        ${chart.lastUpdated ? `
-            <p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">
-                Last updated: ${chart.lastUpdated} by ${chart.updatedBy}
-            </p>
-        ` : ''}
-        
-        ${bandNotesHTML}
     `;
 }
+
+async function addPersonalTab() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) {
+        alert('Please select a song first!');
+        return;
+    }
+    
+    const urlInput = document.getElementById('tabUrlInput');
+    const notesInput = document.getElementById('tabNotesInput');
+    
+    const url = urlInput.value.trim();
+    if (!url) {
+        alert('Please paste a tab URL!');
+        return;
+    }
+    
+    // Validate URL
+    if (!url.startsWith('http')) {
+        alert('Please paste a valid URL starting with http:// or https://');
+        return;
+    }
+    
+    const tab = {
+        url: url,
+        notes: notesInput.value.trim(),
+        addedBy: currentUserEmail,
+        dateAdded: new Date().toLocaleDateString()
+    };
+    
+    // Load existing tabs
+    let tabs = await loadPersonalTabs(songTitle) || [];
+    
+    // Add new tab
+    tabs.push(tab);
+    
+    // Save to Drive
+    await savePersonalTabs(songTitle, tabs);
+    
+    // Clear form
+    urlInput.value = '';
+    notesInput.value = '';
+    
+    // Re-render
+    await renderPersonalTabs(songTitle);
+}
+
+async function deletePersonalTab(songTitle, index) {
+    if (!confirm('Delete this tab link?')) return;
+    
+    let tabs = await loadPersonalTabs(songTitle) || [];
+    tabs.splice(index, 1);
+    
+    await savePersonalTabs(songTitle, tabs);
+    await renderPersonalTabs(songTitle);
+}
+
+// Storage functions
+async function savePersonalTabs(songTitle, tabs) {
+    return await saveBandDataToDrive(songTitle, 'personal_tabs', tabs);
+}
+
+async function loadPersonalTabs(songTitle) {
+    return await loadBandDataFromDrive(songTitle, 'personal_tabs') || [];
+}
+
+console.log('✅ Personal tabs system loaded');
 
 // ============================================================================
 // MOISES STEMS
@@ -3280,6 +3347,7 @@ let isUserSignedIn = false;
 let accessToken = null;
 let tokenClient = null;
 let sharedFolderId = null; // ID of the "Deadcetera Band Resources" folder
+let currentUserEmail = null; // Current signed-in user's email
 
 // ============================================================================
 // INITIALIZATION WITH NEW GOOGLE IDENTITY SERVICES
@@ -3357,6 +3425,9 @@ async function initGoogleDrive() {
                 updateSignInStatus(true);
                 console.log('✅ User signed in');
                 
+                // Get user email
+                getCurrentUserEmail();
+                
                 // Create or find the shared folder
                 initializeSharedFolder();
             }
@@ -3375,6 +3446,19 @@ async function initGoogleDrive() {
 function updateSignInStatus(signedIn) {
     isUserSignedIn = signedIn;
     updateDriveAuthButton();
+}
+
+async function getCurrentUserEmail() {
+    try {
+        const response = await gapi.client.drive.about.get({
+            fields: 'user'
+        });
+        currentUserEmail = response.result.user.emailAddress;
+        console.log('👤 Signed in as:', currentUserEmail);
+    } catch (error) {
+        console.error('Could not get user email:', error);
+        currentUserEmail = 'unknown';
+    }
 }
 
 function updateDriveAuthButton() {
@@ -3620,15 +3704,15 @@ async function populateSongMetadata(songTitle) {
 // HARMONY SONG FILTERING
 // ============================================================================
 
-function filterSongs(type) {
+async function filterSongs(type) {
     // Update button states
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
         btn.classList.remove('active');
         btn.style.background = 'white';
         btn.style.color = '#667eea';
     });
     
-    const buttons = document.querySelectorAll('.filter-btn');
+    const buttons = document.querySelectorAll('.harmony-filters .filter-btn');
     buttons.forEach(btn => {
         if ((type === 'all' && btn.textContent.includes('All')) ||
             (type === 'harmonies' && btn.textContent.includes('Harmony'))) {
@@ -3640,23 +3724,23 @@ function filterSongs(type) {
     
     // Filter songs
     const songItems = document.querySelectorAll('.song-item');
-    songItems.forEach(item => {
+    for (const item of songItems) {
         const songTitle = item.querySelector('strong')?.textContent || item.textContent.trim();
-        const hasHarmonies = loadHasHarmonies(songTitle);
+        const hasHarmonies = await loadHasHarmonies(songTitle);
         
         if (type === 'all') {
             item.style.display = 'block';
         } else if (type === 'harmonies') {
             item.style.display = hasHarmonies ? 'block' : 'none';
         }
-    });
+    }
 }
 
-function addHarmonyBadges() {
+async function addHarmonyBadges() {
     const songItems = document.querySelectorAll('.song-item');
-    songItems.forEach(item => {
+    for (const item of songItems) {
         const songTitle = item.querySelector('strong')?.textContent || item.textContent.trim();
-        const hasHarmonies = loadHasHarmonies(songTitle);
+        const hasHarmonies = await loadHasHarmonies(songTitle);
         
         // Remove existing badge if present
         const existingBadge = item.querySelector('.harmony-badge');
@@ -3673,7 +3757,7 @@ function addHarmonyBadges() {
             badge.title = 'This song has harmonies';
             item.appendChild(badge);
         }
-    });
+    }
 }
 
 console.log('✅ All 4 features loaded');
@@ -4133,14 +4217,14 @@ console.log('✅ Song Structure functions loaded');
 // IMPORTANT: Set this to the folder ID after the owner creates it
 // Leave as null for the first person (owner) to create the folder
 // After creation, copy the folder ID here so everyone uses the SAME folder
-const SHARED_FOLDER_ID = '1YGur4GdHb4GljnVfPqUpjscdI0lBcua0'; // Owner will update this after creating folder
+const SHARED_FOLDER_ID = null; // Owner will update this after creating folder
 
 // Band member emails who should have access (owner should update this list)
 const BAND_MEMBER_EMAILS = [
-    'drewmerrill1029@gmail.com',     // Drew
-    'pierce.d.hale@gmail.com',          // Pierce - UPDATE THIS
-    'brian@hrestoration.com',           // Brian - UPDATE THIS
-    'cmjalbert@gmail.com'            // Chris - UPDATE THIS
+    'drew.merrill@gmail.com',     // Drew
+    'pierce@example.com',          // Pierce - UPDATE THIS
+    'brian@example.com',           // Brian - UPDATE THIS
+    'chris@example.com'            // Chris - UPDATE THIS
 ];
 
 async function initializeSharedFolder() {
