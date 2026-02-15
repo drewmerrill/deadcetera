@@ -2773,15 +2773,20 @@ function renderHarmoniesEnhanced(songTitle, bandData) {
         const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
         
         const savedAbc = localStorage.getItem(`deadcetera_abc_${songTitle}_section${sectionIndex}`);
-        const sheetMusicButtonText = savedAbc ? '🎼 View/Edit Sheet Music' : '🎼 Create Sheet Music';
+        const sheetMusicExists = savedAbc && savedAbc.length > 0;
+        const sheetMusicButtonText = sheetMusicExists ? '🎼 ✅ View Sheet Music' : '🎼 Create Sheet Music';
+        const sheetMusicButtonStyle = sheetMusicExists ? 
+            'padding: 6px 12px; font-size: 0.85em; background: #10b981; color: white;' : 
+            'padding: 6px 12px; font-size: 0.85em;';
         
         return `
             <div class="harmony-card ${statusClass}">
                 <div class="harmony-header">
                     <div class="harmony-lyric">"${section.lyric}"</div>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="chart-btn chart-btn-secondary" onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
-                            style="padding: 6px 12px; font-size: 0.85em;">
+                        <button class="chart-btn ${sheetMusicExists ? '' : 'chart-btn-secondary'}" 
+                            onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
+                            style="${sheetMusicButtonStyle}">
                             ${sheetMusicButtonText}
                         </button>
                         <div class="harmony-status ${statusBadgeClass}">${statusText}</div>
