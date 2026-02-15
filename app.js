@@ -1745,29 +1745,26 @@ function renderGigNotes(songTitle, bandData) {
 // Auto-fetch titles, thumbnails, save to localStorage - NO GITHUB NEEDED!
 // ============================================================================
 
-// Store practice tracks in localStorage per song
-function savePracticeTrack(songTitle, track) {
-    const key = `deadcetera_practice_tracks_${songTitle}`;
-    const existing = localStorage.getItem(key);
-    const tracks = existing ? JSON.parse(existing) : [];
-    
+// Store practice tracks in Google Drive (shared with all band members)
+async function savePracticeTrack(songTitle, track) {
+    const tracks = await loadPracticeTracksFromDrive(songTitle);
     tracks.push(track);
-    localStorage.setItem(key, JSON.stringify(tracks));
+    await savePracticeTracksToDrive(songTitle, tracks);
 }
 
-function loadPracticeTracksFromStorage(songTitle) {
-    const key = `deadcetera_practice_tracks_${songTitle}`;
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : [];
+async function loadPracticeTracksFromStorage(songTitle) {
+    return await loadPracticeTracksFromDrive(songTitle);
 }
 
-function deletePracticeTrack(songTitle, index) {
-    const key = `deadcetera_practice_tracks_${songTitle}`;
-    const existing = localStorage.getItem(key);
-    if (existing) {
-        const tracks = JSON.parse(existing);
-        tracks.splice(index, 1);
-        localStorage.setItem(key, JSON.stringify(tracks));
+async function deletePracticeTrack(songTitle, index) {
+    const tracks = await loadPracticeTracksFromDrive(songTitle);
+    tracks.splice(index, 1);
+    await savePracticeTracksToDrive(songTitle, tracks);
+    
+    // Refresh display
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) {
+        renderPracticeTracks(songTitle, bandData);
     }
 }
 
@@ -2156,7 +2153,7 @@ function hideRehearsalNoteForm() {
     document.getElementById('rehearsalNoteFormContainer').innerHTML = '';
 }
 
-function addRehearsalNote() {
+async function addRehearsalNote() {
     const author = document.getElementById('rehearsalNoteAuthor').value;
     const priority = document.getElementById('rehearsalNotePriority').value;
     const text = document.getElementById('rehearsalNoteText').value.trim();
@@ -2178,15 +2175,13 @@ function addRehearsalNote() {
         note: text
     };
     
-    // Save to localStorage
-    const key = `deadcetera_rehearsal_notes_${selectedSong.title}`;
-    const existing = localStorage.getItem(key);
-    const notes = existing ? JSON.parse(existing) : [];
+    // Save to Google Drive (shared with all band members)
+    const notes = await loadRehearsalNotesFromDrive(selectedSong.title);
     notes.push(note);
-    localStorage.setItem(key, JSON.stringify(notes));
+    await saveRehearsalNotesToDrive(selectedSong.title, notes);
     
     // Show success
-    alert(`✅ Note added by ${bandMembers[author].name}`);
+    alert(`✅ Note added by ${bandMembers[author].name} - saved to Google Drive!`);
     
     // Clear form
     hideRehearsalNoteForm();
@@ -2195,15 +2190,13 @@ function addRehearsalNote() {
     renderRehearsalNotesWithStorage(selectedSong.title);
 }
 
-function renderRehearsalNotesWithStorage(songTitle) {
+async function renderRehearsalNotesWithStorage(songTitle) {
     const container = document.getElementById('rehearsalNotesContainer');
     const bandData = bandKnowledgeBase[songTitle];
     
     // Get notes from both sources
     const dataJsNotes = (bandData && bandData.rehearsalNotes) || [];
-    const key = `deadcetera_rehearsal_notes_${songTitle}`;
-    const stored = localStorage.getItem(key);
-    const storedNotes = stored ? JSON.parse(stored) : [];
+    const storedNotes = await loadRehearsalNotesFromDrive(songTitle);
     
     // Combine and sort by date (newest first)
     const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) => 
@@ -3521,24 +3514,21 @@ console.log('✅ Google Drive integration loaded (New GIS)');
 // EDITABLE HARMONY PART NOTES
 // ============================================================================
 
-function loadPartNotes(songTitle, sectionIndex, singer) {
-    const key = `deadcetera_part_notes_${songTitle}_section${sectionIndex}_${singer}`;
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+async function loadPartNotes(songTitle, sectionIndex, singer) {
+    return await loadPartNotesFromDrive(songTitle, sectionIndex, singer);
 }
 
-function savePartNotes(songTitle, sectionIndex, singer, notes) {
-    const key = `deadcetera_part_notes_${songTitle}_section${sectionIndex}_${singer}`;
-    localStorage.setItem(key, JSON.stringify(notes));
+async function savePartNotes(songTitle, sectionIndex, singer, notes) {
+    await savePartNotesToDrive(songTitle, sectionIndex, singer, notes);
 }
 
-function addPartNote(songTitle, sectionIndex, singer) {
+async function addPartNote(songTitle, sectionIndex, singer) {
     const note = prompt(`Add practice note for ${singer}:`);
     if (!note || note.trim() === '') return;
     
-    const notes = loadPartNotes(songTitle, sectionIndex, singer);
+    const notes = await loadPartNotes(songTitle, sectionIndex, singer);
     notes.push(note.trim());
-    savePartNotes(songTitle, sectionIndex, singer, notes);
+    await savePartNotes(songTitle, sectionIndex, singer, notes);
     
     // Refresh display
     const bandData = bandKnowledgeBase[songTitle];
@@ -3547,8 +3537,8 @@ function addPartNote(songTitle, sectionIndex, singer) {
     }
 }
 
-function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
-    const notes = loadPartNotes(songTitle, sectionIndex, singer);
+async function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
+    const notes = await loadPartNotes(songTitle, sectionIndex, singer);
     const currentNote = notes[noteIndex];
     const newNote = prompt('Edit note:', currentNote);
     
@@ -3560,7 +3550,7 @@ function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
     }
     
     notes[noteIndex] = newNote.trim();
-    savePartNotes(songTitle, sectionIndex, singer, notes);
+    await savePartNotes(songTitle, sectionIndex, singer, notes);
     
     // Refresh display
     const bandData = bandKnowledgeBase[songTitle];
@@ -3569,12 +3559,12 @@ function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
     }
 }
 
-function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
+async function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
     if (!confirm('Delete this note?')) return;
     
-    const notes = loadPartNotes(songTitle, sectionIndex, singer);
+    const notes = await loadPartNotes(songTitle, sectionIndex, singer);
     notes.splice(noteIndex, 1);
-    savePartNotes(songTitle, sectionIndex, singer, notes);
+    await savePartNotes(songTitle, sectionIndex, singer, notes);
     
     // Refresh display
     const bandData = bandKnowledgeBase[songTitle];
@@ -3587,40 +3577,43 @@ function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
 // LEAD SINGER & HARMONY METADATA
 // ============================================================================
 
-function updateLeadSinger(singer) {
+async function updateLeadSinger(singer) {
     if (!selectedSong || !selectedSong.title) return;
     
-    const key = `deadcetera_lead_singer_${selectedSong.title}`;
-    localStorage.setItem(key, singer);
-    
-    console.log(`✅ Lead singer updated: ${singer}`);
+    await saveBandDataToDrive(selectedSong.title, 'lead_singer', { singer });
+    console.log(`✅ Lead singer updated: ${singer} - saved to Google Drive!`);
 }
 
-function loadLeadSinger(songTitle) {
-    const key = `deadcetera_lead_singer_${songTitle}`;
-    return localStorage.getItem(key) || '';
+async function loadLeadSinger(songTitle) {
+    const data = await loadBandDataFromDrive(songTitle, 'lead_singer');
+    return data ? data.singer : '';
 }
 
-function updateHasHarmonies(hasHarmonies) {
+async function updateHasHarmonies(hasHarmonies) {
     if (!selectedSong || !selectedSong.title) return;
     
-    const key = `deadcetera_has_harmonies_${selectedSong.title}`;
-    localStorage.setItem(key, hasHarmonies ? 'true' : 'false');
+    await saveBandDataToDrive(selectedSong.title, 'has_harmonies', { hasHarmonies });
     
     // Update badge on song list
     addHarmonyBadges();
     
-    console.log(`✅ Has harmonies: ${hasHarmonies}`);
+    // Refresh harmonies display
+    const bandData = bandKnowledgeBase[selectedSong.title];
+    if (bandData) {
+        renderHarmoniesEnhanced(selectedSong.title, bandData);
+    }
+    
+    console.log(`✅ Has harmonies: ${hasHarmonies} - saved to Google Drive!`);
 }
 
-function loadHasHarmonies(songTitle) {
-    const key = `deadcetera_has_harmonies_${songTitle}`;
-    return localStorage.getItem(key) === 'true';
+async function loadHasHarmonies(songTitle) {
+    const data = await loadBandDataFromDrive(songTitle, 'has_harmonies');
+    return data ? data.hasHarmonies : false;
 }
 
-function populateSongMetadata(songTitle) {
-    const leadSinger = loadLeadSinger(songTitle);
-    const hasHarmonies = loadHasHarmonies(songTitle);
+async function populateSongMetadata(songTitle) {
+    const leadSinger = await loadLeadSinger(songTitle);
+    const hasHarmonies = await loadHasHarmonies(songTitle);
     
     const leadSelect = document.getElementById('leadSingerSelect');
     if (leadSelect) leadSelect.value = leadSinger;
@@ -3690,3 +3683,188 @@ function addHarmonyBadges() {
 }
 
 console.log('✅ All 4 features loaded');
+// ============================================================================
+// COMPREHENSIVE GOOGLE DRIVE STORAGE - ALL BAND DATA SHARED
+// ============================================================================
+
+// Central storage for all band data types
+const BAND_DATA_TYPES = {
+    PRACTICE_TRACKS: 'practice_tracks',
+    REHEARSAL_NOTES: 'rehearsal_notes', 
+    SPOTIFY_URLS: 'spotify_urls',
+    HARMONY_METADATA: 'harmony_metadata',
+    PART_NOTES: 'part_notes',
+    LEAD_SINGER: 'lead_singer',
+    HAS_HARMONIES: 'has_harmonies'
+};
+
+// ============================================================================
+// SAVE TO GOOGLE DRIVE (Shared with all band members)
+// ============================================================================
+
+async function saveBandDataToDrive(songTitle, dataType, data) {
+    // Fallback to localStorage if not signed in
+    if (!isUserSignedIn) {
+        console.log('Not signed in, using localStorage fallback');
+        const key = `deadcetera_${dataType}_${songTitle}`;
+        localStorage.setItem(key, JSON.stringify(data));
+        return true;
+    }
+    
+    try {
+        const fileName = `${songTitle}_${dataType}.json`;
+        const content = JSON.stringify(data, null, 2);
+        
+        // Get or create metadata folder
+        const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
+        
+        // Check if file exists
+        const existingFile = await findFileInFolder(fileName, metadataFolderId);
+        
+        if (existingFile) {
+            // Update existing file
+            await gapi.client.request({
+                path: `/upload/drive/v3/files/${existingFile.id}`,
+                method: 'PATCH',
+                params: { uploadType: 'media' },
+                body: content
+            });
+            console.log(`✅ Updated ${dataType} for ${songTitle} in Drive`);
+        } else {
+            // Create new file
+            const fileMetadata = {
+                name: fileName,
+                parents: [metadataFolderId],
+                mimeType: 'application/json'
+            };
+            
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const close_delim = "\r\n--" + boundary + "--";
+            
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(fileMetadata) +
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                content +
+                close_delim;
+            
+            await gapi.client.request({
+                path: '/upload/drive/v3/files',
+                method: 'POST',
+                params: { uploadType: 'multipart' },
+                headers: {
+                    'Content-Type': 'multipart/related; boundary=' + boundary
+                },
+                body: multipartRequestBody
+            });
+            
+            console.log(`✅ Created ${dataType} for ${songTitle} in Drive`);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Failed to save to Drive:', error);
+        // Fallback to localStorage
+        const key = `deadcetera_${dataType}_${songTitle}`;
+        localStorage.setItem(key, JSON.stringify(data));
+        return false;
+    }
+}
+
+// ============================================================================
+// LOAD FROM GOOGLE DRIVE (Shared with all band members)
+// ============================================================================
+
+async function loadBandDataFromDrive(songTitle, dataType) {
+    // Try Drive first
+    if (isUserSignedIn) {
+        try {
+            const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
+            const fileName = `${songTitle}_${dataType}.json`;
+            
+            const file = await findFileInFolder(fileName, metadataFolderId);
+            if (!file) {
+                console.log(`No Drive data for ${dataType}`);
+                return loadFromLocalStorageFallback(songTitle, dataType);
+            }
+            
+            const response = await gapi.client.drive.files.get({
+                fileId: file.id,
+                alt: 'media'
+            });
+            
+            console.log(`✅ Loaded ${dataType} from Drive`);
+            return response.result;
+        } catch (error) {
+            console.error('Failed to load from Drive:', error);
+            return loadFromLocalStorageFallback(songTitle, dataType);
+        }
+    }
+    
+    // Fallback to localStorage
+    return loadFromLocalStorageFallback(songTitle, dataType);
+}
+
+function loadFromLocalStorageFallback(songTitle, dataType) {
+    const key = `deadcetera_${dataType}_${songTitle}`;
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+}
+
+// ============================================================================
+// SPECIFIC DATA TYPE WRAPPERS
+// ============================================================================
+
+// Practice Tracks
+async function savePracticeTracksToDrive(songTitle, tracks) {
+    return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS, tracks);
+}
+
+async function loadPracticeTracksFromDrive(songTitle) {
+    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS) || [];
+}
+
+// Rehearsal Notes
+async function saveRehearsalNotesToDrive(songTitle, notes) {
+    return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES, notes);
+}
+
+async function loadRehearsalNotesFromDrive(songTitle) {
+    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES) || [];
+}
+
+// Spotify URLs
+async function saveSpotifyUrlsToDrive(songTitle, urls) {
+    return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.SPOTIFY_URLS, urls);
+}
+
+async function loadSpotifyUrlsFromDrive(songTitle) {
+    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.SPOTIFY_URLS) || {};
+}
+
+// Part Notes
+async function savePartNotesToDrive(songTitle, sectionIndex, singer, notes) {
+    const key = `${songTitle}_section${sectionIndex}_${singer}`;
+    return await saveBandDataToDrive(key, BAND_DATA_TYPES.PART_NOTES, notes);
+}
+
+async function loadPartNotesFromDrive(songTitle, sectionIndex, singer) {
+    const key = `${songTitle}_section${sectionIndex}_${singer}`;
+    return await loadBandDataFromDrive(key, BAND_DATA_TYPES.PART_NOTES) || [];
+}
+
+// Harmony Metadata (starting notes, lead markers, sorting)
+async function saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata) {
+    const key = `${songTitle}_section${sectionIndex}`;
+    return await saveBandDataToDrive(key, BAND_DATA_TYPES.HARMONY_METADATA, metadata);
+}
+
+async function loadHarmonyMetadataFromDrive(songTitle, sectionIndex) {
+    const key = `${songTitle}_section${sectionIndex}`;
+    return await loadBandDataFromDrive(key, BAND_DATA_TYPES.HARMONY_METADATA) || {};
+}
+
+console.log('✅ Comprehensive Google Drive storage system loaded');
