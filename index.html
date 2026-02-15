@@ -14,16 +14,13 @@
             <h1>🎸 Deadcetera Practice Tool</h1>
             <p class="subtitle">Pick a song → Find the best version → Download → Practice your part</p>
             
-            <!-- Instrument Selector - Always Visible -->
-            <div class="instrument-selector">
-                <label for="instrumentSelect">I play:</label>
-                <select id="instrumentSelect" class="instrument-dropdown">
-                    <option value="bass">Bass</option>
-                    <option value="rhythm_guitar">Rhythm Guitar</option>
-                    <option value="lead_guitar">Lead Guitar</option>
-                    <option value="keyboards">Keyboards</option>
-                    <option value="vocals">Vocals</option>
-                </select>
+            <!-- Google Drive Connection -->
+            <div style="text-align: center; margin-top: 15px;">
+                <button id="googleDriveAuthBtn" onclick="handleGoogleDriveAuth()" 
+                    style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.95em; cursor: pointer; font-weight: 600;">
+                    🔗 Connect Google Drive
+                </button>
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Connect to share recordings with your band!</p>
             </div>
         </header>
 
@@ -162,10 +159,6 @@
         <div id="harmoniesContainer">
             <!-- Dynamically populated -->
         </div>
-        
-        <button class="secondary-btn" id="addHarmonyBtn" style="margin-top: 12px;">
-            + Add Harmony Section
-        </button>
     </div>
     
     <!-- REHEARSAL NOTES -->
