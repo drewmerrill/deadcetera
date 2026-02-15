@@ -1329,12 +1329,12 @@ function showBandResources(songTitle) {
     }
     
     // Render each section
-    renderSpotifyVersions(songTitle, bandData);
+    renderSpotifyVersionsWithMetadata(songTitle, bandData);
     renderChordChart(songTitle, bandData);
     renderMoisesStems(songTitle, bandData);
     renderPracticeTracks(songTitle, bandData);
-    renderHarmonies(songTitle, bandData);
-    renderRehearsalNotes(songTitle, bandData);
+    renderHarmoniesEnhanced(songTitle, bandData);
+    renderRehearsalNotesWithStorage(songTitle);
     renderGigNotes(songTitle, bandData);
 }
 
@@ -1996,4 +1996,835 @@ function deletePracticeTrackConfirm(songTitle, index) {
         deletePracticeTrack(songTitle, index);
         renderPracticeTracksSimplified(songTitle);
     }
+}
+// ============================================================================
+// SPOTIFY API INTEGRATION
+// Fetch real track names and metadata from Spotify
+// ============================================================================
+
+// Spotify API - Client Credentials Flow (public API)
+async function fetchSpotifyTrackInfo(trackUrl) {
+    try {
+        // Extract track ID from Spotify URL
+        const trackId = extractSpotifyTrackId(trackUrl);
+        if (!trackId) {
+            return { title: 'Spotify Track', success: false };
+        }
+        
+        // Use Spotify oEmbed endpoint (no auth required!)
+        const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`);
+        const data = await response.json();
+        
+        return {
+            title: data.title, // Returns "Song Name by Artist Name"
+            thumbnail: data.thumbnail_url,
+            success: true
+        };
+    } catch (error) {
+        console.error('Error fetching Spotify metadata:', error);
+        return { title: 'Spotify Track', success: false };
+    }
+}
+
+function extractSpotifyTrackId(url) {
+    const match = url.match(/track\/([a-zA-Z0-9]+)/);
+    return match ? match[1] : null;
+}
+
+// Update Spotify version rendering to fetch metadata
+async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
+    const container = document.getElementById('spotifyVersionsContainer');
+    const versions = bandData.spotifyVersions || [];
+    
+    if (versions.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Spotify versions added yet</div>';
+        return;
+    }
+    
+    // Show loading
+    container.innerHTML = '<p style="padding: 15px; color: #667eea;">🔄 Loading track info from Spotify...</p>';
+    
+    // Fetch metadata for all versions
+    const versionsWithMetadata = await Promise.all(
+        versions.map(async version => {
+            const metadata = await fetchSpotifyTrackInfo(version.spotifyUrl);
+            return {
+                ...version,
+                fetchedTitle: metadata.title,
+                thumbnail: metadata.thumbnail
+            };
+        })
+    );
+    
+    // Render with real titles
+    container.innerHTML = versionsWithMetadata.map(version => {
+        const voteCount = version.totalVotes || 0;
+        const totalMembers = Object.keys(bandMembers).length;
+        const isDefault = version.isDefault;
+        const displayTitle = version.fetchedTitle || version.title;
+        
+        return `
+            <div class="spotify-version-card ${isDefault ? 'default' : ''}">
+                ${version.thumbnail ? `
+                    <div style="margin-bottom: 12px;">
+                        <img src="${version.thumbnail}" alt="Album art" style="width: 100%; border-radius: 8px;">
+                    </div>
+                ` : ''}
+                
+                <div class="version-header">
+                    <div class="version-title">${displayTitle}</div>
+                    ${isDefault ? `<div class="version-badge">✓ BAND CHOICE (${voteCount}/${totalMembers})</div>` : ''}
+                </div>
+                
+                <div class="votes-container">
+                    ${Object.entries(version.votes).map(([member, voted]) => `
+                        <span class="vote-chip ${voted ? 'yes' : 'no'}">
+                            ${voted ? '✓ ' : ''}${bandMembers[member].name}
+                        </span>
+                    `).join('')}
+                </div>
+                
+                ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
+                
+                <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')">
+                    ▶ Play on Spotify
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+// ============================================================================
+// REHEARSAL NOTES FORM
+// Collaborative note-taking with band member attribution
+// ============================================================================
+
+function showRehearsalNoteForm() {
+    const formHTML = `
+        <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #667eea; margin-bottom: 15px;">
+            <h4 style="margin: 0 0 15px 0;">Add Rehearsal Note</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Band Member:</label>
+                <select id="rehearsalNoteAuthor" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <option value="">-- Who's saying this? --</option>
+                    ${Object.entries(bandMembers).map(([key, member]) => `
+                        <option value="${key}">${member.name}</option>
+                    `).join('')}
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Priority:</label>
+                <select id="rehearsalNotePriority" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <option value="low">🟢 Low - Nice to have</option>
+                    <option value="medium" selected>🟡 Medium - Should address</option>
+                    <option value="high">🔴 High - Must fix before gig</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Note:</label>
+                <textarea id="rehearsalNoteText" placeholder="E.g., Need to work on harmony entries - Chris coming in too early"
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; min-height: 80px; font-family: inherit; font-size: 0.95em;"></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="chart-btn chart-btn-primary" onclick="addRehearsalNote()" style="flex: 1;">
+                    ✅ Add Note
+                </button>
+                <button class="chart-btn chart-btn-secondary" onclick="hideRehearsalNoteForm()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('rehearsalNoteFormContainer').innerHTML = formHTML;
+}
+
+function hideRehearsalNoteForm() {
+    document.getElementById('rehearsalNoteFormContainer').innerHTML = '';
+}
+
+function addRehearsalNote() {
+    const author = document.getElementById('rehearsalNoteAuthor').value;
+    const priority = document.getElementById('rehearsalNotePriority').value;
+    const text = document.getElementById('rehearsalNoteText').value.trim();
+    
+    if (!author) {
+        alert('Please select who is making this note');
+        return;
+    }
+    
+    if (!text) {
+        alert('Please enter a note');
+        return;
+    }
+    
+    const note = {
+        author: author,
+        date: new Date().toISOString().split('T')[0],
+        priority: priority,
+        note: text
+    };
+    
+    // Save to localStorage
+    const key = `deadcetera_rehearsal_notes_${selectedSong.title}`;
+    const existing = localStorage.getItem(key);
+    const notes = existing ? JSON.parse(existing) : [];
+    notes.push(note);
+    localStorage.setItem(key, JSON.stringify(notes));
+    
+    // Show success
+    alert(`✅ Note added by ${bandMembers[author].name}`);
+    
+    // Clear form
+    hideRehearsalNoteForm();
+    
+    // Refresh display
+    renderRehearsalNotesWithStorage(selectedSong.title);
+}
+
+function renderRehearsalNotesWithStorage(songTitle) {
+    const container = document.getElementById('rehearsalNotesContainer');
+    const bandData = bandKnowledgeBase[songTitle];
+    
+    // Get notes from both sources
+    const dataJsNotes = (bandData && bandData.rehearsalNotes) || [];
+    const key = `deadcetera_rehearsal_notes_${songTitle}`;
+    const stored = localStorage.getItem(key);
+    const storedNotes = stored ? JSON.parse(stored) : [];
+    
+    // Combine and sort by date (newest first)
+    const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) => 
+        new Date(b.date) - new Date(a.date)
+    );
+    
+    if (allNotes.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No rehearsal notes yet - add your first one above!</div>';
+        return;
+    }
+    
+    const priorityColors = {
+        high: '#ef4444',
+        medium: '#f59e0b',
+        low: '#10b981'
+    };
+    
+    const priorityEmojis = {
+        high: '🔴',
+        medium: '🟡',
+        low: '🟢'
+    };
+    
+    container.innerHTML = `
+        <div class="rehearsal-notes-list">
+            ${allNotes.map(note => {
+                const memberName = bandMembers[note.author]?.name || note.author;
+                const priorityColor = priorityColors[note.priority] || '#667eea';
+                const priorityEmoji = priorityEmojis[note.priority] || '•';
+                
+                return `
+                    <div class="rehearsal-note-card ${note.priority === 'high' ? 'high' : ''}">
+                        <div class="note-header">
+                            <span><strong>${memberName}</strong> • ${note.date}</span>
+                            <span style="color: ${priorityColor}; font-weight: 600;">
+                                ${priorityEmoji} ${note.priority.toUpperCase()} PRIORITY
+                            </span>
+                        </div>
+                        <div class="note-content">${note.note}</div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+// ============================================================================
+// HARMONY AUDIO SNIPPETS
+// Upload audio files (Voice Memos, Soundtrap, etc.) with custom naming
+// Uses localStorage with base64 for immediate functionality
+// ============================================================================
+
+function showHarmonyAudioUploadForm(sectionIndex) {
+    const formHTML = `
+        <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #667eea; margin-top: 15px;">
+            <h4 style="margin: 0 0 15px 0;">Upload Harmony Audio Snippet</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</label>
+                <input type="file" id="harmonyAudioFile" accept="audio/*"
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
+                    📱 Accepts: MP3, M4A, WAV, Voice Memos, Soundtrap exports, etc. (Max 5MB)
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Snippet Name:</label>
+                <input type="text" id="harmonySnippetName" 
+                    placeholder="E.g., Drew lead vocal - first try"
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes:</label>
+                <input type="text" id="harmonySnippetNotes" 
+                    placeholder="E.g., Recorded on iPhone after practice"
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="chart-btn chart-btn-primary" onclick="uploadHarmonyAudio(${sectionIndex})" style="flex: 1;">
+                    ✨ Upload Audio
+                </button>
+                <button class="chart-btn chart-btn-secondary" onclick="hideHarmonyAudioForm()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('harmonyAudioFormContainer' + sectionIndex).innerHTML = formHTML;
+}
+
+function hideHarmonyAudioForm() {
+    // Hide all forms
+    document.querySelectorAll('[id^="harmonyAudioFormContainer"]').forEach(el => {
+        el.innerHTML = '';
+    });
+}
+
+async function uploadHarmonyAudio(sectionIndex) {
+    const fileInput = document.getElementById('harmonyAudioFile');
+    const name = document.getElementById('harmonySnippetName').value.trim();
+    const notes = document.getElementById('harmonySnippetNotes').value.trim();
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        alert('Please select an audio file');
+        return;
+    }
+    
+    if (!name) {
+        alert('Please enter a name for this snippet');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    
+    // Check file size (5MB limit for localStorage)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('File too large! Please use a file under 5MB.\n\nTip: You can compress audio files or use shorter clips.');
+        return;
+    }
+    
+    // Show loading
+    const uploadButton = event.target;
+    const originalText = uploadButton.innerHTML;
+    uploadButton.innerHTML = '🔄 Uploading...';
+    uploadButton.disabled = true;
+    
+    try {
+        // Convert to base64
+        const base64 = await fileToBase64(file);
+        
+        const snippet = {
+            name: name,
+            notes: notes,
+            filename: file.name,
+            type: file.type,
+            size: file.size,
+            data: base64,
+            uploadedBy: 'drew', // Could make this selectable
+            uploadedDate: new Date().toISOString().split('T')[0]
+        };
+        
+        // Save to localStorage
+        const key = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
+        const existing = localStorage.getItem(key);
+        const snippets = existing ? JSON.parse(existing) : [];
+        snippets.push(snippet);
+        localStorage.setItem(key, JSON.stringify(snippets));
+        
+        alert(`✅ Audio uploaded: ${name}`);
+        
+        // Clear form
+        hideHarmonyAudioForm();
+        
+        // Refresh harmony display
+        renderHarmonies(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+        
+    } catch (error) {
+        alert('Error uploading file: ' + error.message);
+    } finally {
+        uploadButton.innerHTML = originalText;
+        uploadButton.disabled = false;
+    }
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
+    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+}
+
+function playHarmonySnippet(base64Data) {
+    const audio = new Audio(base64Data);
+    audio.play().catch(err => {
+        alert('Error playing audio: ' + err.message);
+    });
+}
+
+function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
+    if (!confirm('Delete this audio snippet?')) return;
+    
+    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const existing = localStorage.getItem(key);
+    if (existing) {
+        const snippets = JSON.parse(existing);
+        snippets.splice(snippetIndex, 1);
+        localStorage.setItem(key, JSON.stringify(snippets));
+        
+        // Refresh display
+        renderHarmonies(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+    }
+}
+// ============================================================================
+// ENHANCED HARMONY SYSTEM
+// 1. Browser microphone recording
+// 2. Collaborative delete/rename
+// 3. Sheet music generation from notes
+// ============================================================================
+
+// ============================================================================
+// MICROPHONE RECORDING
+// ============================================================================
+
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingStream = null;
+
+async function startMicrophoneRecording(sectionIndex) {
+    try {
+        // Request microphone access
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Create recorder
+        mediaRecorder = new MediaRecorder(recordingStream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            // Create blob from chunks
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Convert to base64
+            const base64 = await blobToBase64(audioBlob);
+            
+            // Show save form with recorded audio
+            showSaveRecordingForm(sectionIndex, base64, audioBlob.size);
+            
+            // Stop all tracks
+            recordingStream.getTracks().forEach(track => track.stop());
+        };
+        
+        // Start recording
+        mediaRecorder.start();
+        
+        // Show recording UI
+        showRecordingUI(sectionIndex);
+        
+    } catch (error) {
+        alert('Microphone access denied or not available.\n\nError: ' + error.message);
+    }
+}
+
+function stopMicrophoneRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+    }
+}
+
+function showRecordingUI(sectionIndex) {
+    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
+    
+    let seconds = 0;
+    const timerInterval = setInterval(() => {
+        seconds++;
+        const display = document.getElementById('recordingTimer');
+        if (display) {
+            display.textContent = formatTime(seconds);
+        }
+    }, 1000);
+    
+    container.innerHTML = `
+        <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 25px; border-radius: 12px; color: white; text-align: center; margin-top: 15px;">
+            <div style="font-size: 3em; margin-bottom: 10px;">🎤</div>
+            <div style="font-size: 1.5em; font-weight: 600; margin-bottom: 10px;">Recording...</div>
+            <div id="recordingTimer" style="font-size: 2em; font-weight: 700; font-family: monospace;">0:00</div>
+            <button onclick="stopMicrophoneRecording(); clearInterval(${timerInterval})" 
+                style="background: white; color: #ef4444; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin-top: 20px; cursor: pointer; font-size: 1em;">
+                ⏹ Stop Recording
+            </button>
+        </div>
+    `;
+}
+
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function showSaveRecordingForm(sectionIndex, base64Audio, fileSize) {
+    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
+    
+    container.innerHTML = `
+        <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #10b981; margin-top: 15px;">
+            <h4 style="margin: 0 0 15px 0; color: #10b981;">✅ Recording Complete!</h4>
+            
+            <div style="margin-bottom: 15px; text-align: center;">
+                <audio controls src="${base64Audio}" style="width: 100%;"></audio>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Who recorded this?</label>
+                <select id="recordingAuthor" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    ${Object.entries(bandMembers).map(([key, member]) => `
+                        <option value="${key}">${member.name}</option>
+                    `).join('')}
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Name this recording:</label>
+                <input type="text" id="recordingName" 
+                    placeholder="E.g., Drew lead vocal - harmony practice"
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes (optional):</label>
+                <input type="text" id="recordingNotes" 
+                    placeholder="E.g., Trying the high harmony part"
+                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="chart-btn chart-btn-primary" onclick="saveRecording(${sectionIndex}, '${base64Audio}', ${fileSize})" style="flex: 1;">
+                    💾 Save Recording
+                </button>
+                <button class="chart-btn chart-btn-secondary" onclick="discardRecording(${sectionIndex})">
+                    🗑️ Discard
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function saveRecording(sectionIndex, base64Audio, fileSize) {
+    const author = document.getElementById('recordingAuthor').value;
+    const name = document.getElementById('recordingName').value.trim();
+    const notes = document.getElementById('recordingNotes').value.trim();
+    
+    if (!name) {
+        alert('Please enter a name for this recording');
+        return;
+    }
+    
+    const snippet = {
+        name: name,
+        notes: notes,
+        filename: 'recording.webm',
+        type: 'audio/webm',
+        size: fileSize,
+        data: base64Audio,
+        uploadedBy: author,
+        uploadedDate: new Date().toISOString().split('T')[0],
+        isRecording: true
+    };
+    
+    // Save to localStorage
+    const key = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
+    const existing = localStorage.getItem(key);
+    const snippets = existing ? JSON.parse(existing) : [];
+    snippets.push(snippet);
+    localStorage.setItem(key, JSON.stringify(snippets));
+    
+    alert(`✅ Recording saved: ${name}`);
+    
+    // Clear form and refresh
+    hideHarmonyAudioForm();
+    renderHarmoniesEnhanced(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+}
+
+function discardRecording(sectionIndex) {
+    if (confirm('Discard this recording?')) {
+        hideHarmonyAudioForm();
+    }
+}
+
+// ============================================================================
+// COLLABORATIVE EDIT (DELETE/RENAME BY ANYONE)
+// ============================================================================
+
+function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
+    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const snippets = JSON.parse(localStorage.getItem(key) || '[]');
+    const snippet = snippets[snippetIndex];
+    
+    const newName = prompt('Rename this audio snippet:', snippet.name);
+    if (newName && newName.trim()) {
+        snippet.name = newName.trim();
+        localStorage.setItem(key, JSON.stringify(snippets));
+        renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+    }
+}
+
+function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
+    if (!confirm('Delete this audio snippet? Anyone can delete.')) return;
+    
+    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const snippets = JSON.parse(localStorage.getItem(key) || '[]');
+    snippets.splice(snippetIndex, 1);
+    localStorage.setItem(key, JSON.stringify(snippets));
+    
+    renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+}
+
+// ============================================================================
+// SHEET MUSIC GENERATION
+// ============================================================================
+
+function generateSheetMusic(sectionIndex, section) {
+    // Using ABC notation to generate sheet music
+    // ABC notation is a simple text format that can be rendered as sheet music
+    
+    const parts = section.parts || [];
+    
+    // Map part types to ABC notation
+    const partToNote = {
+        'lead': 'C',           // Root
+        'harmony_high': 'E',   // Third above
+        'harmony_low': 'A,',   // Fifth below  
+        'doubling': 'C'        // Same as lead
+    };
+    
+    // Generate ABC notation
+    let abcNotation = `X:1
+T:${section.lyric || 'Harmony Section'}
+M:4/4
+L:1/4
+K:Dmaj
+`;
+    
+    parts.forEach(part => {
+        const note = partToNote[part.part] || 'C';
+        const memberName = bandMembers[part.singer]?.name || part.singer;
+        abcNotation += `%${memberName} (${part.part.replace('_', ' ')})\n`;
+        abcNotation += `${note}4 |\n`;
+    });
+    
+    // Show sheet music in modal
+    showSheetMusicModal(section.lyric, abcNotation);
+}
+
+function showSheetMusicModal(title, abcNotation) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 16px; max-width: 800px; max-height: 90vh; overflow: auto;">
+            <h3 style="margin: 0 0 20px 0;">🎼 Sheet Music: ${title}</h3>
+            
+            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; white-space: pre; overflow-x: auto;">
+${abcNotation}
+            </div>
+            
+            <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 20px;">
+                💡 <strong>Note:</strong> This is ABC notation. You can copy this and paste it into 
+                <a href="https://abcjs.net/abcjs-editor.html" target="_blank" style="color: #667eea;">ABCjs Editor</a> 
+                to see the rendered sheet music!
+            </p>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="chart-btn chart-btn-primary" onclick="copyToClipboard(\`${abcNotation.replace(/`/g, '\\`')}\`)">
+                    📋 Copy ABC Notation
+                </button>
+                <button class="chart-btn chart-btn-secondary" onclick="this.closest('[style*=fixed]').remove()">
+                    Close
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('✅ ABC notation copied to clipboard!\n\nPaste it into https://abcjs.net/abcjs-editor.html to see the sheet music.');
+    }).catch(err => {
+        alert('Could not copy. Please select and copy manually.');
+    });
+}
+
+// Enhanced harmony rendering with audio snippets, recording, and sheet music
+function renderHarmoniesEnhanced(songTitle, bandData) {
+    const container = document.getElementById('harmoniesContainer');
+    const harmonies = bandData.harmonies;
+    
+    if (!harmonies || !harmonies.sections || harmonies.sections.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No harmony parts documented yet</div>';
+        return;
+    }
+    
+    const sections = harmonies.sections.map((section, sectionIndex) => {
+        const statusClass = section.workedOut ? 'worked-out' : 'needs-work';
+        const statusText = section.workedOut ? (section.soundsGood ? '✓ Sounds Great' : '⚠ Needs Polish') : '⚠ Needs Work';
+        const statusBadgeClass = section.soundsGood ? 'status-good' : 'status-needs-work';
+        
+        // Load audio snippets for this section
+        const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
+        
+        return `
+            <div class="harmony-card ${statusClass}">
+                <div class="harmony-header">
+                    <div class="harmony-lyric">"${section.lyric}"</div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="chart-btn chart-btn-secondary" onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
+                            style="padding: 6px 12px; font-size: 0.85em;">
+                            🎼 Sheet Music
+                        </button>
+                        <div class="harmony-status ${statusBadgeClass}">${statusText}</div>
+                    </div>
+                </div>
+                
+                <div class="harmony-timing">${section.timing}</div>
+                
+                <div class="parts-list">
+                    ${section.parts.map(part => `
+                        <div class="part-row">
+                            <div class="part-singer">${bandMembers[part.singer]?.name || part.singer}</div>
+                            <div class="part-role">${part.part.replace('_', ' ')}</div>
+                            <div class="part-notes">${part.notes}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                ${section.practiceNotes && section.practiceNotes.length > 0 ? `
+                    <div class="practice-notes-box">
+                        <strong>Practice Notes:</strong>
+                        <ul style="margin-left: 20px; margin-top: 8px;">
+                            ${section.practiceNotes.map(note => `<li>${note}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+                
+                ${section.referenceRecording ? `
+                    <button class="chart-btn chart-btn-primary" style="margin-top: 12px;" onclick="window.open('${section.referenceRecording}', '_blank')">
+                        🎧 Play Reference Recording
+                    </button>
+                ` : ''}
+                
+                <!-- Audio Snippets Section -->
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <strong style="color: #2d3748;">🎵 Audio Snippets</strong>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(${sectionIndex})" 
+                                style="padding: 8px 16px; font-size: 0.9em;">
+                                🎤 Record Now
+                            </button>
+                            <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
+                                style="padding: 8px 16px; font-size: 0.9em;">
+                                📱 Upload File
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="harmonyAudioFormContainer${sectionIndex}"></div>
+                    
+                    ${audioSnippets.length > 0 ? `
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
+                            ${audioSnippets.map((snippet, snippetIndex) => `
+                                <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                                        <div>
+                                            <strong style="color: #2d3748;">${snippet.name}</strong>
+                                            ${snippet.notes ? `<p style="margin: 5px 0 0 0; font-size: 0.85em; color: #6b7280;">${snippet.notes}</p>` : ''}
+                                        </div>
+                                        <div style="display: flex; gap: 8px;">
+                                            <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
+                                                style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                                                ✏️ Rename
+                                            </button>
+                                            <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
+                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
+                                                ×
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
+                                    <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
+                                        ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} • ${snippet.uploadedDate}
+                                        ${snippet.isRecording ? ' • 🎤 Recorded in browser' : ''}
+                                    </p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div style="text-align: center; padding: 20px; color: #9ca3af; font-size: 0.9em;">
+                            No audio snippets yet. Record now or upload a file!
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    let generalNotesHTML = '';
+    if (harmonies.generalNotes && harmonies.generalNotes.length > 0) {
+        generalNotesHTML = `
+            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                <strong>General Harmony Notes:</strong>
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                    ${harmonies.generalNotes.map(note => `<li>${note}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = sections + generalNotesHTML;
 }
