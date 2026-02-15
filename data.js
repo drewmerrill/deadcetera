@@ -1150,16 +1150,15 @@ const bandKnowledgeBase = {
             sourceVersion: "Tweezer Reprise - Separated in Moises",
             googleDriveFolder: "https://drive.google.com/drive/folders/1TsGjHAqAbvc_6MbARAQ-cGMhdGip9LnX",
             stems: {
-                // Check Drive folder to identify which is which, then rename these keys
-                "Stem 1": "https://drive.google.com/file/d/1U15OOxCLwKC98F5K-Hc2jGt8eZMZ98or/view?usp=sharing",
-                "Stem 2": "https://drive.google.com/file/d/1oBkp9LOhdEGNeZ9J2XPh1jp-NBBV_ZRu/view?usp=sharing",
-                "Stem 3": "https://drive.google.com/file/d/1KaQDTcYB9ZPigvwVLukwZN23-tQfFbLd/view?usp=sharing",
-                "Stem 4": "https://drive.google.com/file/d/1bE86lzxNJROqOeurU9a6qfejWnNf11oa/view?usp=sharing",
-                "Stem 5": "https://drive.google.com/file/d/1N0XO1NNO-kwEYt0trfxujplh85EII7VB/view?usp=sharing"
+                bass: "https://drive.google.com/file/d/1U15OOxCLwKC98F5K-Hc2jGt8eZMZ98or/view?usp=sharing",
+                drums: "https://drive.google.com/file/d/1oBkp9LOhdEGNeZ9J2XPh1jp-NBBV_ZRu/view?usp=sharing",
+                guitar: "https://drive.google.com/file/d/1KaQDTcYB9ZPigvwVLukwZN23-tQfFbLd/view?usp=sharing",
+                keys: "https://drive.google.com/file/d/1bE86lzxNJROqOeurU9a6qfejWnNf11oa/view?usp=sharing",
+                vocals: "https://drive.google.com/file/d/1N0XO1NNO-kwEYt0trfxujplh85EII7VB/view?usp=sharing"
             },
             uploadedBy: "drew",
             dateCreated: "2024-02-14",
-            notes: "All 5 stems uploaded! Check folder to identify which is bass/drums/guitar/keys/vocals"
+            notes: "All stems separated from Moises - Bass, Drums, Guitar, Keys, Vocals"
         },
         
         // HARMONY PARTS - THE CRITICAL SECTION!
