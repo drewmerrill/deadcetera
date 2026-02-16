@@ -47,11 +47,11 @@
             
             <!-- HARMONY FILTER -->
             <div class="harmony-filters" style="margin: 15px 0; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="filter-btn active" onclick="filterSongs('all')" 
+                <button class="filter-btn active" onclick="filterSongsSync('all')" 
                     style="padding: 8px 16px; border: 2px solid #667eea; background: #667eea; color: white; border-radius: 8px; cursor: pointer; font-weight: 600;">
                     All Songs
                 </button>
-                <button class="filter-btn" onclick="filterSongs('harmonies')" 
+                <button class="filter-btn" onclick="filterSongsSync('harmonies')" 
                     style="padding: 8px 16px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600;">
                     🎤 Harmony Songs Only
                 </button>
@@ -98,7 +98,10 @@
     <div class="resource-section" id="spotifySection">
         <div class="section-header">
             <h3>🎵 Reference Version (Band Voted)</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Vote on which Spotify version to learn</p>
+            <p style="color: #6b7280; font-size: 0.9em;">
+                Vote on which Spotify version to learn
+                <a href="#" onclick="searchSpotify(); return false;" style="color: #667eea; margin-left: 15px; text-decoration: underline;">🔍 Search Spotify</a>
+            </p>
         </div>
         
         <div id="spotifyVersionsContainer">
@@ -114,7 +117,10 @@
     <div class="resource-section" id="personalTabsSection">
         <div class="section-header">
             <h3>📝 Personal Tab Links</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Each person can add their own Ultimate Guitar tab link</p>
+            <p style="color: #6b7280; font-size: 0.9em;">
+                Each person can add their own Ultimate Guitar tab link
+                <a href="#" onclick="searchUltimateGuitar(); return false;" style="color: #667eea; margin-left: 15px; text-decoration: underline;">🔍 Search Ultimate Guitar</a>
+            </p>
         </div>
         
         <div id="personalTabsContainer">
