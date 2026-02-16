@@ -4,10 +4,10 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.4.0 - Has Harmonies checkbox debugging');
-console.log('✅ Added logging to updateHasHarmonies');
-console.log('✅ Cache updates immediately when checkbox changes');
-console.log('👀 Check a song\'s Has Harmonies box and watch console');
+console.log('🎸 Deadcetera v3.5.0 - On-demand harmony loading (FAST!)');
+console.log('✅ No more pre-loading 358 songs!');
+console.log('✅ Filter checks songs on-demand');
+console.log('✅ Should be instant now!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -145,11 +145,8 @@ function renderSongs(filter = 'all', searchTerm = '') {
         </div>
     `).join('');
     
-    // Add harmony badges and preload harmony states for filtering
-    setTimeout(() => {
-        addHarmonyBadges();
-        preloadHarmonyStates();
-    }, 50);
+    // Add harmony badges after rendering
+    setTimeout(() => addHarmonyBadges(), 50);
 }
 
 // ============================================================================
@@ -3933,32 +3930,19 @@ async function populateSongMetadata(songTitle) {
 // ============================================================================
 
 // Wrapper for onclick calls
-// Cache for harmony states
+// Cache for harmony states - loads on demand
 let harmonyCache = {};
-let harmonyCacheLoaded = false;
 
-async function preloadHarmonyStates() {
-    console.log('🔄 Pre-loading harmony states for all songs...');
-    harmonyCacheLoaded = false;
-    const songItems = document.querySelectorAll('.song-item');
-    for (const item of songItems) {
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+// Don't pre-load - too slow! Just cache as songs are clicked
+async function cacheHarmonyState(songTitle) {
+    if (harmonyCache[songTitle] === undefined) {
         harmonyCache[songTitle] = await loadHasHarmonies(songTitle);
     }
-    harmonyCacheLoaded = true;
-    console.log(`✅ Loaded harmony states for ${Object.keys(harmonyCache).length} songs`);
-    console.log(`✅ Cache ready! Songs with harmonies:`, Object.keys(harmonyCache).filter(k => harmonyCache[k]));
+    return harmonyCache[songTitle];
 }
 
-function filterSongsSync(type) {
+async function filterSongsAsync(type) {
     console.log(`Filtering songs: ${type}`);
-    
-    if (!harmonyCacheLoaded) {
-        console.warn('⚠️ Harmony cache still loading, please wait...');
-        alert('Harmony data still loading, please wait a moment and try again.');
-        return;
-    }
     
     // Update button states
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
@@ -3977,33 +3961,39 @@ function filterSongsSync(type) {
         }
     });
     
-    // Filter songs using cache
+    if (type === 'all') {
+        // Simple - just show everything
+        document.querySelectorAll('.song-item').forEach(item => {
+            item.style.display = 'block';
+        });
+        console.log('✅ Showing all songs');
+        return;
+    }
+    
+    // For harmonies - check only visible songs
     const songItems = document.querySelectorAll('.song-item');
     let visibleCount = 0;
     
-    songItems.forEach(item => {
+    for (const item of songItems) {
         const songNameElement = item.querySelector('.song-name');
         const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
         
-        const hasHarmonies = harmonyCache[songTitle] || false;
+        const hasHarmonies = await cacheHarmonyState(songTitle);
         
-        console.log(`Song: "${songTitle}" - Has harmonies: ${hasHarmonies}`);
-        
-        if (type === 'all') {
+        if (hasHarmonies) {
             item.style.display = 'block';
             visibleCount++;
-        } else if (type === 'harmonies') {
-            if (hasHarmonies) {
-                item.style.display = 'block';
-                visibleCount++;
-                console.log(`  ✅ SHOWING: ${songTitle}`);
-            } else {
-                item.style.display = 'none';
-            }
+        } else {
+            item.style.display = 'none';
         }
-    });
+    }
     
-    console.log(`✅ Filter applied: showing ${visibleCount} songs`);
+    console.log(`✅ Filter applied: showing ${visibleCount} songs with harmonies`);
+}
+
+function filterSongsSync(type) {
+    // Call async version
+    filterSongsAsync(type);
 }
 
 // Old async version - keep for compatibility
