@@ -1221,5 +1221,217 @@ const bandKnowledgeBase = {
             "Watch Brian for solo ending",
             "Hard stop on final downbeat"
         ]
+    },
+    
+    // ==========================================================================
+    // PRIORITY SONGS - Pre-populated for band
+    // ==========================================================================
+    
+    "Fire on the Mountain": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/fire-on-the-mountain-chords-77504"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Terrapin Station": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/terrapin-station-chords-1134539"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Estimated Prophet": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/estimated-prophet-chords-1677341"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Touch of Grey": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/touch-of-grey-chords-73436"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Eyes of the World": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/eyes-of-the-world-chords-1677340"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Sugaree": {
+        artist: "Grateful Dead / Jerry Garcia Band",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/sugaree-chords-73435"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Brown Eyed Women": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/brown-eyed-women-chords-77506"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Friend of the Devil": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/friend-of-the-devil-chords-73434"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Althea": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/althea-chords-77508"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Mr. Charlie": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/mr-charlie-chords-1677349"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "All Time Low": {
+        artist: "Widespread Panic",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/widespread-panic/all-time-low-chords-3076267"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Ain't Life Grand": {
+        artist: "Widespread Panic",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/widespread-panic/aint-life-grand-chords-1245738"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Funky Bitch": {
+        artist: "Phish / Son Seals",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/phish/funky-bitch-chords-973863"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "Scarlet Begonias": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/scarlet-begonias-chords-1677345"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "China Cat Sunflower": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/china-cat-sunflower-chords-3230813"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
+    },
+    
+    "I Know You Rider": {
+        artist: "Grateful Dead",
+        chordChart: {
+            ultimateGuitarUrl: "https://tabs.ultimate-guitar.com/tab/grateful-dead/i-know-you-rider-chords-1677346"
+        },
+        spotifyVersions: [],
+        practiceTracks: { bass: [], leadGuitar: [], rhythmGuitar: [], keys: [], drums: [] },
+        moisesParts: {},
+        harmonies: { sections: [] },
+        rehearsalNotes: [],
+        gigNotes: []
     }
 };
