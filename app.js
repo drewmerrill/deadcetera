@@ -4,10 +4,10 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.3.0 - Harmony filter DEBUG VERSION');
-console.log('✅ Added extensive logging to debug filter');
-console.log('✅ Added cache ready check');
-console.log('👀 Watch console when clicking Harmony Songs Only');
+console.log('🎸 Deadcetera v3.4.0 - Has Harmonies checkbox debugging');
+console.log('✅ Added logging to updateHasHarmonies');
+console.log('✅ Cache updates immediately when checkbox changes');
+console.log('👀 Check a song\'s Has Harmonies box and watch console');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -3885,9 +3885,20 @@ async function loadLeadSinger(songTitle) {
 }
 
 async function updateHasHarmonies(hasHarmonies) {
-    if (!selectedSong || !selectedSong.title) return;
+    if (!selectedSong || !selectedSong.title) {
+        console.error('❌ Cannot update has harmonies - no song selected');
+        return;
+    }
+    
+    console.log(`🎤 Updating has harmonies for "${selectedSong.title}": ${hasHarmonies}`);
     
     await saveBandDataToDrive(selectedSong.title, 'has_harmonies', { hasHarmonies });
+    
+    console.log(`✅ Saved to Google Drive!`);
+    
+    // Update cache immediately
+    harmonyCache[selectedSong.title] = hasHarmonies;
+    console.log(`✅ Updated cache for "${selectedSong.title}"`);
     
     // Update badge on song list
     addHarmonyBadges();
