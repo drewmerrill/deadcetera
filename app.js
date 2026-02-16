@@ -4,13 +4,10 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.0.0 FINAL - ALL FEATURES LOADED - Google Drive edition');
-console.log('✅ If you see v3.0.0 FINAL, cache is cleared!');
-console.log('✅ Spotify adding: ENABLED');
-console.log('✅ Gig notes editing: ENABLED');
-console.log('✅ Song structure editing: ENABLED');
-console.log('✅ Harmony filter: FIXED');
-console.log('✅ Personal Tab Links: READY');
+console.log('🎸 Deadcetera v3.1.0 - Harmony filter FIXED + Search links added');
+console.log('✅ Harmony filter: NOW ACTUALLY WORKS');
+console.log('✅ Search Spotify: Direct link added');
+console.log('✅ Search Ultimate Guitar: Direct link added');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -2269,6 +2266,48 @@ async function loadSpotifyVersions(songTitle) {
 
 console.log('✅ Spotify versions system loaded');
 
+// Search helpers
+function searchSpotify() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) {
+        alert('Please select a song first!');
+        return;
+    }
+    
+    // Get band name
+    const songData = allSongs.find(s => s.title === songTitle);
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
+    
+    // Open Spotify search
+    const query = encodeURIComponent(`${songTitle} ${bandName}`);
+    window.open(`spotify:search:${query}`, '_blank');
+    
+    // Fallback to web if app doesn't open
+    setTimeout(() => {
+        window.open(`https://open.spotify.com/search/${query}`, '_blank');
+    }, 1000);
+}
+
+function searchUltimateGuitar() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) {
+        alert('Please select a song first!');
+        return;
+    }
+    
+    // Get band name  
+    const songData = allSongs.find(s => s.title === songTitle);
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
+    
+    // Open Ultimate Guitar search
+    const query = encodeURIComponent(`${songTitle} ${bandName}`);
+    window.open(`https://www.ultimate-guitar.com/search.php?search_type=title&value=${query}`, '_blank');
+}
+
+console.log('✅ Search helper functions loaded');
+
 // ============================================================================
 // REHEARSAL NOTES FORM
 // Collaborative note-taking with band member attribution
@@ -3878,6 +3917,11 @@ async function populateSongMetadata(songTitle) {
 // ============================================================================
 // HARMONY SONG FILTERING
 // ============================================================================
+
+// Wrapper for onclick calls
+function filterSongsSync(type) {
+    filterSongs(type); // Fire and forget
+}
 
 async function filterSongs(type) {
     // Update button states
