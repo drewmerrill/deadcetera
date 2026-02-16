@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSearchAndFilters();
     setupInstrumentSelector();
     setupContinueButton();
+    setupSpotifyAddButton();
     
     // Load saved instrument preference
     const savedInstrument = localStorage.getItem('deadcetera_instrument');
@@ -83,6 +84,12 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('instrumentSelect').value = savedInstrument;
     }
 });
+
+function setupSpotifyAddButton() {
+    const btn = document.getElementById('addSpotifyVersionBtn');
+    if (!btn) return;
+    btn.addEventListener('click', addSpotifyVersion);
+}
 
 // ============================================================================
 // INSTRUMENT SELECTOR
@@ -1715,23 +1722,75 @@ function renderRehearsalNotes(songTitle, bandData) {
 // GIG NOTES
 // ============================================================================
 
-function renderGigNotes(songTitle, bandData) {
+async function renderGigNotes(songTitle, bandData) {
     const container = document.getElementById('gigNotesContainer');
-    const notes = bandData.gigNotes;
+    const notes = await loadGigNotes(songTitle) || bandData.gigNotes || [];
     
-    if (!notes || notes.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No gig notes yet</div>';
+    if (notes.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <p>No performance tips yet</p>
+                <button onclick="addGigNote()" class="secondary-btn" style="margin-top: 10px;">+ Add First Tip</button>
+            </div>
+        `;
         return;
     }
     
     container.innerHTML = `
         <div class="gig-notes-box">
             <ul>
-                ${notes.map(note => `<li>${note}</li>`).join('')}
+                ${notes.map((note, index) => `
+                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+                        <span>${note}</span>
+                        <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">Delete</button>
+                    </li>
+                `).join('')}
             </ul>
+            <button onclick="addGigNote()" class="secondary-btn" style="margin-top: 12px;">+ Add Tip</button>
         </div>
     `;
 }
+
+async function addGigNote() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    const note = prompt('Performance tip / gig note:');
+    if (!note || !note.trim()) return;
+    
+    let notes = await loadGigNotes(songTitle) || [];
+    notes.push(note.trim());
+    
+    await saveGigNotes(songTitle, notes);
+    
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderGigNotes(songTitle, bandData);
+}
+
+async function deleteGigNote(index) {
+    if (!confirm('Delete this performance tip?')) return;
+    
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    let notes = await loadGigNotes(songTitle) || [];
+    notes.splice(index, 1);
+    
+    await saveGigNotes(songTitle, notes);
+    
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderGigNotes(songTitle, bandData);
+}
+
+async function saveGigNotes(songTitle, notes) {
+    return await saveBandDataToDrive(songTitle, 'gig_notes', notes);
+}
+
+async function loadGigNotes(songTitle) {
+    return await loadBandDataFromDrive(songTitle, 'gig_notes');
+}
+
+console.log('✅ Gig notes editor loaded');
 
 // ============================================================================
 // ============================================================================
@@ -2035,7 +2094,7 @@ function extractSpotifyTrackId(url) {
 // Update Spotify version rendering to fetch metadata
 async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     const container = document.getElementById('spotifyVersionsContainer');
-    const versions = bandData.spotifyVersions || [];
+    const versions = await loadSpotifyVersions(songTitle) || bandData.spotifyVersions || [];
     
     if (versions.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Spotify versions added yet</div>';
@@ -2058,14 +2117,20 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     );
     
     // Render with real titles
-    container.innerHTML = versionsWithMetadata.map(version => {
+    container.innerHTML = versionsWithMetadata.map((version, index) => {
         const voteCount = version.totalVotes || 0;
         const totalMembers = Object.keys(bandMembers).length;
         const isDefault = version.isDefault;
         const displayTitle = version.fetchedTitle || version.title;
+        const hasVoted = version.votes && version.votes[currentUserEmail];
         
         return `
-            <div class="spotify-version-card ${isDefault ? 'default' : ''}">
+            <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
+                ${version.addedBy === currentUserEmail ? `
+                    <button onclick="deleteSpotifyVersion(${index})" 
+                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">×</button>
+                ` : ''}
+                
                 ${version.thumbnail ? `
                     <div style="margin-bottom: 12px; text-align: center;">
                         <img src="${version.thumbnail}" alt="Album art" style="max-width: 200px; max-height: 200px; width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -2078,11 +2143,14 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
                 </div>
                 
                 <div class="votes-container">
-                    ${Object.entries(version.votes).map(([member, voted]) => `
-                        <span class="vote-chip ${voted ? 'yes' : 'no'}">
-                            ${voted ? '✓ ' : ''}${bandMembers[member].name}
-                        </span>
-                    `).join('')}
+                    ${Object.entries(bandMembers).map(([email, member]) => {
+                        const voted = version.votes && version.votes[email];
+                        return `
+                            <span class="vote-chip ${voted ? 'yes' : 'no'}" onclick="toggleSpotifyVote(${index}, '${email}')" style="cursor: pointer;">
+                                ${voted ? '✓ ' : ''}${member.name}
+                            </span>
+                        `;
+                    }).join('')}
                 </div>
                 
                 ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
@@ -2094,6 +2162,107 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
         `;
     }).join('');
 }
+
+async function addSpotifyVersion() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) {
+        alert('Please select a song first!');
+        return;
+    }
+    
+    const url = prompt('Paste Spotify track URL:');
+    if (!url || !url.includes('spotify.com')) {
+        if (url) alert('Please paste a valid Spotify URL');
+        return;
+    }
+    
+    const notes = prompt('Notes about this version (optional):');
+    
+    const version = {
+        id: 'version_' + Date.now(),
+        title: 'Loading...',
+        spotifyUrl: url,
+        votes: {},
+        totalVotes: 0,
+        isDefault: false,
+        addedBy: currentUserEmail,
+        notes: notes || '',
+        dateAdded: new Date().toLocaleDateString()
+    };
+    
+    // Initialize votes for all band members
+    Object.keys(bandMembers).forEach(email => {
+        version.votes[email] = false;
+    });
+    
+    // Load existing versions
+    let versions = await loadSpotifyVersions(songTitle) || [];
+    versions.push(version);
+    
+    // Save
+    await saveSpotifyVersions(songTitle, versions);
+    
+    // Re-render
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderSpotifyVersionsWithMetadata(songTitle, bandData);
+}
+
+async function toggleSpotifyVote(versionIndex, voterEmail) {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    if (voterEmail !== currentUserEmail) {
+        alert("You can only vote for yourself!");
+        return;
+    }
+    
+    let versions = await loadSpotifyVersions(songTitle) || [];
+    if (!versions[versionIndex]) return;
+    
+    // Toggle vote
+    versions[versionIndex].votes[voterEmail] = !versions[versionIndex].votes[voterEmail];
+    
+    // Recalculate total votes
+    versions[versionIndex].totalVotes = Object.values(versions[versionIndex].votes).filter(v => v).length;
+    
+    // Check if this becomes default (majority = 3+ votes)
+    const totalMembers = Object.keys(bandMembers).length;
+    const majority = Math.ceil(totalMembers / 2);
+    versions[versionIndex].isDefault = versions[versionIndex].totalVotes >= majority;
+    
+    // Save
+    await saveSpotifyVersions(songTitle, versions);
+    
+    // Re-render
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderSpotifyVersionsWithMetadata(songTitle, bandData);
+}
+
+async function deleteSpotifyVersion(versionIndex) {
+    if (!confirm('Delete this Spotify version?')) return;
+    
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    let versions = await loadSpotifyVersions(songTitle) || [];
+    versions.splice(versionIndex, 1);
+    
+    await saveSpotifyVersions(songTitle, versions);
+    
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderSpotifyVersionsWithMetadata(songTitle, bandData);
+}
+
+async function saveSpotifyVersions(songTitle, versions) {
+    return await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+}
+
+async function loadSpotifyVersions(songTitle) {
+    return await loadBandDataFromDrive(songTitle, 'spotify_versions');
+}
+
+console.log('✅ Spotify versions system loaded');
+
 // ============================================================================
 // REHEARSAL NOTES FORM
 // Collaborative note-taking with band member attribution
@@ -4055,12 +4224,19 @@ async function renderSongStructure(songTitle) {
     const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
     
     if (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No song structure info yet - click "Edit" to add it!</div>';
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <p>No song structure info yet</p>
+                <button onclick="editSongStructure()" class="secondary-btn" style="margin-top: 10px;">+ Add Structure</button>
+            </div>
+        `;
         return;
     }
     
     container.innerHTML = `
-        <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 2px solid #e5e7eb;">
+        <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 2px solid #e5e7eb; position: relative;">
+            <button onclick="editSongStructure()" style="position: absolute; top: 10px; right: 10px; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">Edit</button>
+            
             ${structure.whoStarts && structure.whoStarts.length > 0 ? `
                 <div style="margin-bottom: 15px;">
                     <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎬 Who Starts the Song:</strong>
@@ -4102,6 +4278,50 @@ async function renderSongStructure(songTitle) {
             ` : ''}
         </div>
     `;
+}
+
+async function editSongStructure() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
+    
+    const whoStarts = prompt('Who starts the song? (comma-separated names, e.g., Jay, Drew):', 
+        structure.whoStarts ? structure.whoStarts.map(email => bandMembers[email]?.name).join(', ') : '');
+    if (whoStarts === null) return; // Canceled
+    
+    const howStarts = prompt('How does it start? (e.g., Count off, Cold start, Guitar intro):', structure.howStarts || '');
+    if (howStarts === null) return;
+    
+    const whoCuesEnding = prompt('Who cues the ending? (name):', 
+        structure.whoCuesEnding ? bandMembers[structure.whoCuesEnding]?.name : '');
+    if (whoCuesEnding === null) return;
+    
+    const howEnds = prompt('How does it end? (e.g., Big finish, Fade out, Abrupt stop):', structure.howEnds || '');
+    if (howEnds === null) return;
+    
+    // Convert names back to emails
+    const whoStartsEmails = whoStarts.split(',').map(name => {
+        const trimmed = name.trim();
+        const entry = Object.entries(bandMembers).find(([email, member]) => 
+            member.name.toLowerCase() === trimmed.toLowerCase()
+        );
+        return entry ? entry[0] : null;
+    }).filter(Boolean);
+    
+    const whoCuesEndingEmail = Object.entries(bandMembers).find(([email, member]) => 
+        member.name.toLowerCase() === whoCuesEnding.trim().toLowerCase()
+    )?.[0];
+    
+    const newStructure = {
+        whoStarts: whoStartsEmails,
+        howStarts: howStarts.trim(),
+        whoCuesEnding: whoCuesEndingEmail || '',
+        howEnds: howEnds.trim()
+    };
+    
+    await saveBandDataToDrive(songTitle, 'song_structure', newStructure);
+    await renderSongStructure(songTitle);
 }
 
 function showSongStructureForm() {
