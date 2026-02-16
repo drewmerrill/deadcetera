@@ -4,10 +4,10 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.1.0 - Harmony filter FIXED + Search links added');
-console.log('✅ Harmony filter: NOW ACTUALLY WORKS');
-console.log('✅ Search Spotify: Direct link added');
-console.log('✅ Search Ultimate Guitar: Direct link added');
+console.log('🎸 Deadcetera v3.2.0 - Harmony filter TRULY FIXED + Search buttons');
+console.log('✅ Harmony filter: Pre-loads all states, instant filtering');
+console.log('✅ Search buttons: Fixed (no longer scroll to top)');
+console.log('✅ Watch console for harmony cache loading');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -145,8 +145,11 @@ function renderSongs(filter = 'all', searchTerm = '') {
         </div>
     `).join('');
     
-    // Add harmony badges after rendering
-    setTimeout(() => addHarmonyBadges(), 50);
+    // Add harmony badges and preload harmony states for filtering
+    setTimeout(() => {
+        addHarmonyBadges();
+        preloadHarmonyStates();
+    }, 50);
 }
 
 // ============================================================================
@@ -3919,10 +3922,67 @@ async function populateSongMetadata(songTitle) {
 // ============================================================================
 
 // Wrapper for onclick calls
-function filterSongsSync(type) {
-    filterSongs(type); // Fire and forget
+// Cache for harmony states
+let harmonyCache = {};
+
+async function preloadHarmonyStates() {
+    console.log('🔄 Pre-loading harmony states for all songs...');
+    const songItems = document.querySelectorAll('.song-item');
+    for (const item of songItems) {
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        harmonyCache[songTitle] = await loadHasHarmonies(songTitle);
+    }
+    console.log(`✅ Loaded harmony states for ${Object.keys(harmonyCache).length} songs`);
 }
 
+function filterSongsSync(type) {
+    console.log(`Filtering songs: ${type}`);
+    
+    // Update button states
+    document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.background = 'white';
+        btn.style.color = '#667eea';
+    });
+    
+    const buttons = document.querySelectorAll('.harmony-filters .filter-btn');
+    buttons.forEach(btn => {
+        if ((type === 'all' && btn.textContent.includes('All')) ||
+            (type === 'harmonies' && btn.textContent.includes('Harmony'))) {
+            btn.classList.add('active');
+            btn.style.background = '#667eea';
+            btn.style.color = 'white';
+        }
+    });
+    
+    // Filter songs using cache
+    const songItems = document.querySelectorAll('.song-item');
+    let visibleCount = 0;
+    
+    songItems.forEach(item => {
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        
+        const hasHarmonies = harmonyCache[songTitle] || false;
+        
+        if (type === 'all') {
+            item.style.display = 'block';
+            visibleCount++;
+        } else if (type === 'harmonies') {
+            if (hasHarmonies) {
+                item.style.display = 'block';
+                visibleCount++;
+            } else {
+                item.style.display = 'none';
+            }
+        }
+    });
+    
+    console.log(`✅ Filter applied: showing ${visibleCount} songs`);
+}
+
+// Old async version - keep for compatibility
 async function filterSongs(type) {
     // Update button states
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
