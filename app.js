@@ -3725,7 +3725,10 @@ async function filterSongs(type) {
     // Filter songs
     const songItems = document.querySelectorAll('.song-item');
     for (const item of songItems) {
-        const songTitle = item.querySelector('strong')?.textContent || item.textContent.trim();
+        // Extract song title from the song-name span
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        
         const hasHarmonies = await loadHasHarmonies(songTitle);
         
         if (type === 'all') {
@@ -3739,7 +3742,10 @@ async function filterSongs(type) {
 async function addHarmonyBadges() {
     const songItems = document.querySelectorAll('.song-item');
     for (const item of songItems) {
-        const songTitle = item.querySelector('strong')?.textContent || item.textContent.trim();
+        // Extract song title from the song-name span
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        
         const hasHarmonies = await loadHasHarmonies(songTitle);
         
         // Remove existing badge if present
