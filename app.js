@@ -4,10 +4,10 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.5.0 - On-demand harmony loading (FAST!)');
-console.log('✅ No more pre-loading 358 songs!');
-console.log('✅ Filter checks songs on-demand');
-console.log('✅ Should be instant now!');
+console.log('🎸 Deadcetera v3.6.0 - Moises Stems Editor Added!');
+console.log('✅ Chris can now add Moises stems!');
+console.log('✅ Click song → Scroll to Moises → Add Stems');
+console.log('✅ Paste Drive folder URL + individual track URLs');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -1553,32 +1553,40 @@ console.log('✅ Personal tabs system loaded');
 // MOISES STEMS
 // ============================================================================
 
-function renderMoisesStems(songTitle, bandData) {
+async function renderMoisesStems(songTitle, bandData) {
     const container = document.getElementById('moisesStemsContainer');
-    const stems = bandData.moisesParts;
     
-    if (!stems || !stems.googleDriveFolder) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Moises stems uploaded yet</div>';
+    // Load from Google Drive
+    const stems = await loadMoisesStems(songTitle) || bandData.moisesParts || {};
+    
+    if (!stems.folderUrl && (!stems.stems || Object.keys(stems.stems).length === 0)) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <p>No Moises stems uploaded yet</p>
+                <button onclick="addMoisesStems()" class="secondary-btn" style="margin-top: 10px;">+ Add Stems</button>
+            </div>
+        `;
         return;
     }
     
     // Check if we have individual stem links
-    const stemKeys = ['bass', 'drums', 'guitar', 'keys', 'vocals'];
+    const stemKeys = ['bass', 'drums', 'guitar', 'keys', 'vocals', 'other'];
     const instrumentIcons = {
         bass: '🎸',
         drums: '🥁', 
         guitar: '🎸',
         keys: '🎹',
-        vocals: '🎤'
+        vocals: '🎤',
+        other: '🎵'
     };
     
-    // Always show stem buttons (either with links or placeholders)
+    // Show stem buttons
     const stemButtons = stemKeys.map(key => {
         const url = stems.stems && stems.stems[key];
         const label = key.charAt(0).toUpperCase() + key.slice(1);
         const icon = instrumentIcons[key] || '🎵';
         
-        if (url && url !== null) {
+        if (url) {
             // Has URL - clickable download
             return `
                 <button class="stem-button" onclick="window.open('${url}', '_blank')">
@@ -1586,31 +1594,92 @@ function renderMoisesStems(songTitle, bandData) {
                     <div class="stem-info">Click to download</div>
                 </button>
             `;
-        } else {
-            // No URL - show placeholder
-            return `
-                <button class="stem-button" style="opacity: 0.5; cursor: help;" title="Check Drive folder and add URL to data.js">
-                    <div class="stem-label">${icon} ${label}</div>
-                    <div class="stem-info" style="font-size: 0.75em;">Not assigned yet</div>
-                </button>
-            `;
         }
-    }).join('');
+        return '';
+    }).filter(Boolean).join('');
     
     container.innerHTML = `
-        ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
-        
-        <div class="stems-grid">
-            ${stemButtons}
+        <div style="position: relative;">
+            <button onclick="editMoisesStems()" style="position: absolute; top: 0; right: 0; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">Edit</button>
+            
+            ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
+            
+            ${stemButtons ? `
+                <div class="stems-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px;">
+                    ${stemButtons}
+                </div>
+            ` : '<p style="color: #6b7280; margin-bottom: 15px;">No individual stems added yet</p>'}
+            
+            ${stems.folderUrl ? `
+                <button class="drive-folder-btn" onclick="window.open('${stems.folderUrl}', '_blank')" style="background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
+                    📁 Open Google Drive Folder
+                </button>
+            ` : ''}
+            
+            ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
         </div>
-        
-        <button class="drive-folder-btn" onclick="window.open('${stems.googleDriveFolder}', '_blank')">
-            📁 Open Google Drive Folder
-        </button>
-        
-        ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
     `;
 }
+
+async function addMoisesStems() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    editMoisesStems();
+}
+
+async function editMoisesStems() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    const stems = await loadMoisesStems(songTitle) || {};
+    
+    const folderUrl = prompt('Google Drive folder URL (where all stems are):', stems.folderUrl || '');
+    if (folderUrl === null) return; // Canceled
+    
+    const sourceVersion = prompt('Source version (optional, e.g., "11/3/1985 Richmond"):', stems.sourceVersion || '');
+    
+    // Individual stem URLs
+    const bass = prompt('Bass track URL (optional):', stems.stems?.bass || '');
+    const drums = prompt('Drums track URL (optional):', stems.stems?.drums || '');
+    const guitar = prompt('Guitar track URL (optional):', stems.stems?.guitar || '');
+    const keys = prompt('Keys track URL (optional):', stems.stems?.keys || '');
+    const vocals = prompt('Vocals track URL (optional):', stems.stems?.vocals || '');
+    const other = prompt('Other/Mix track URL (optional):', stems.stems?.other || '');
+    
+    const notes = prompt('Notes (optional):', stems.notes || '');
+    
+    const newStems = {
+        folderUrl: folderUrl.trim(),
+        sourceVersion: sourceVersion.trim(),
+        stems: {
+            bass: bass.trim(),
+            drums: drums.trim(),
+            guitar: guitar.trim(),
+            keys: keys.trim(),
+            vocals: vocals.trim(),
+            other: other.trim()
+        },
+        notes: notes.trim(),
+        uploadedBy: currentUserEmail,
+        dateAdded: new Date().toLocaleDateString()
+    };
+    
+    await saveMoisesStems(songTitle, newStems);
+    
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderMoisesStems(songTitle, bandData);
+}
+
+async function saveMoisesStems(songTitle, stems) {
+    return await saveBandDataToDrive(songTitle, 'moises_stems', stems);
+}
+
+async function loadMoisesStems(songTitle) {
+    return await loadBandDataFromDrive(songTitle, 'moises_stems');
+}
+
+console.log('✅ Moises stems editor loaded');
 
 // ============================================================================
 // PRACTICE TRACKS
