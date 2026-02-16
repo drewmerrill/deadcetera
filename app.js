@@ -4,10 +4,10 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.2.0 - Harmony filter TRULY FIXED + Search buttons');
-console.log('✅ Harmony filter: Pre-loads all states, instant filtering');
-console.log('✅ Search buttons: Fixed (no longer scroll to top)');
-console.log('✅ Watch console for harmony cache loading');
+console.log('🎸 Deadcetera v3.3.0 - Harmony filter DEBUG VERSION');
+console.log('✅ Added extensive logging to debug filter');
+console.log('✅ Added cache ready check');
+console.log('👀 Watch console when clicking Harmony Songs Only');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -3924,20 +3924,30 @@ async function populateSongMetadata(songTitle) {
 // Wrapper for onclick calls
 // Cache for harmony states
 let harmonyCache = {};
+let harmonyCacheLoaded = false;
 
 async function preloadHarmonyStates() {
     console.log('🔄 Pre-loading harmony states for all songs...');
+    harmonyCacheLoaded = false;
     const songItems = document.querySelectorAll('.song-item');
     for (const item of songItems) {
         const songNameElement = item.querySelector('.song-name');
         const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
         harmonyCache[songTitle] = await loadHasHarmonies(songTitle);
     }
+    harmonyCacheLoaded = true;
     console.log(`✅ Loaded harmony states for ${Object.keys(harmonyCache).length} songs`);
+    console.log(`✅ Cache ready! Songs with harmonies:`, Object.keys(harmonyCache).filter(k => harmonyCache[k]));
 }
 
 function filterSongsSync(type) {
     console.log(`Filtering songs: ${type}`);
+    
+    if (!harmonyCacheLoaded) {
+        console.warn('⚠️ Harmony cache still loading, please wait...');
+        alert('Harmony data still loading, please wait a moment and try again.');
+        return;
+    }
     
     // Update button states
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
@@ -3966,6 +3976,8 @@ function filterSongsSync(type) {
         
         const hasHarmonies = harmonyCache[songTitle] || false;
         
+        console.log(`Song: "${songTitle}" - Has harmonies: ${hasHarmonies}`);
+        
         if (type === 'all') {
             item.style.display = 'block';
             visibleCount++;
@@ -3973,6 +3985,7 @@ function filterSongsSync(type) {
             if (hasHarmonies) {
                 item.style.display = 'block';
                 visibleCount++;
+                console.log(`  ✅ SHOWING: ${songTitle}`);
             } else {
                 item.style.display = 'none';
             }
