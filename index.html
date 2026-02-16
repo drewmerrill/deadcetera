@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deadcetera - Song Practice Workflow</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Cache buster: v3.0.0-final-2026-02-15 -->
 </head>
 <body>
     <div class="container">
@@ -110,14 +111,41 @@
     </div>
     
     <!-- CHORD CHART -->
-    <div class="resource-section" id="chordChartSection">
+    <div class="resource-section" id="personalTabsSection">
         <div class="section-header">
-            <h3>📝 Chord Chart (Collaborative)</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Editable by all band members</p>
+            <h3>📝 Personal Tab Links</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Each person can add their own Ultimate Guitar tab link</p>
         </div>
         
-        <div id="chordChartContainer">
+        <div id="personalTabsContainer">
             <!-- Dynamically populated -->
+        </div>
+        
+        <!-- Add Your Tab Form -->
+        <div id="addTabForm" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-top: 20px; border: 2px solid #e2e8f0;">
+            <h4 style="margin: 0 0 15px 0; color: #2d3748;">Add Your Tab Link</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Tab URL:</label>
+                <input type="text" id="tabUrlInput" 
+                    placeholder="Paste your Ultimate Guitar tab link" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
+                    💡 Go to Ultimate Guitar, find your preferred tab, copy the full URL
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Notes (optional):</label>
+                <input type="text" id="tabNotesInput" 
+                    placeholder="E.g., Lead guitar tab, Bass with my edits, etc." 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            </div>
+            
+            <button onclick="addPersonalTab()" 
+                style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
+                ➕ Add My Tab Link
+            </button>
         </div>
     </div>
     
