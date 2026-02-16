@@ -4,10 +4,11 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v3.6.0 - Moises Stems Editor Added!');
-console.log('✅ Chris can now add Moises stems!');
-console.log('✅ Click song → Scroll to Moises → Add Stems');
-console.log('✅ Paste Drive folder URL + individual track URLs');
+console.log('🎸 Deadcetera v4.0.0 - FILE UPLOAD! Major Release!');
+console.log('✅ Upload Moises stems directly from app!');
+console.log('✅ No more manual Drive folder creation!');
+console.log('✅ Automatic file organization!');
+console.log('✅ Band-friendly interface!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -1563,7 +1564,8 @@ async function renderMoisesStems(songTitle, bandData) {
         container.innerHTML = `
             <div class="empty-state" style="padding: 20px;">
                 <p>No Moises stems uploaded yet</p>
-                <button onclick="addMoisesStems()" class="secondary-btn" style="margin-top: 10px;">+ Add Stems</button>
+                <button onclick="showMoisesUploadForm()" class="primary-btn" style="margin-top: 10px;">📤 Upload Stems from Computer</button>
+                <p style="margin-top: 10px; color: #6b7280; font-size: 0.85em;">Or <a href="#" onclick="addMoisesStems(); return false;" style="color: #667eea;">paste Drive links</a> if already uploaded</p>
             </div>
         `;
         return;
@@ -1589,9 +1591,9 @@ async function renderMoisesStems(songTitle, bandData) {
         if (url) {
             // Has URL - clickable download
             return `
-                <button class="stem-button" onclick="window.open('${url}', '_blank')">
-                    <div class="stem-label">${icon} ${label}</div>
-                    <div class="stem-info">Click to download</div>
+                <button class="stem-button" onclick="window.open('${url}', '_blank')" style="background: white; border: 2px solid #e2e8f0; padding: 12px; border-radius: 8px; cursor: pointer; text-align: center;">
+                    <div class="stem-label" style="font-weight: 600; margin-bottom: 4px;">${icon} ${label}</div>
+                    <div class="stem-info" style="font-size: 0.85em; color: #6b7280;">Click to download</div>
                 </button>
             `;
         }
@@ -1600,6 +1602,7 @@ async function renderMoisesStems(songTitle, bandData) {
     
     container.innerHTML = `
         <div style="position: relative;">
+            <button onclick="showMoisesUploadForm()" style="position: absolute; top: 0; right: 60px; background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">📤 Upload</button>
             <button onclick="editMoisesStems()" style="position: absolute; top: 0; right: 0; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">Edit</button>
             
             ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
@@ -1619,6 +1622,225 @@ async function renderMoisesStems(songTitle, bandData) {
             ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
         </div>
     `;
+}
+
+function showMoisesUploadForm() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    const container = document.getElementById('moisesStemsContainer');
+    container.innerHTML = `
+        <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 2px solid #667eea;">
+            <h4 style="margin: 0 0 15px 0; color: #667eea;">📤 Upload Moises Stems</h4>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
+                    Source Version (optional)
+                </label>
+                <input type="text" id="stemsSourceInput" 
+                    placeholder="e.g., Cornell 5/8/77, Studio version, etc."
+                    style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
+                    Select Stem Files
+                </label>
+                <p style="font-size: 0.85em; color: #6b7280; margin-bottom: 10px;">
+                    Select all your Moises-separated tracks (bass.mp3, drums.mp3, etc.)
+                </p>
+                <input type="file" id="stemsFileInput" multiple accept="audio/*,.mp3,.wav,.m4a,.aac"
+                    style="width: 100%; padding: 10px; border: 2px dashed #d1d5db; border-radius: 6px; background: white; cursor: pointer;">
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
+                    💡 Name your files clearly (e.g., bass.mp3, drums.mp3, guitar.mp3, keys.mp3, vocals.mp3)
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
+                    Notes (optional)
+                </label>
+                <textarea id="stemsNotesInput" 
+                    placeholder="e.g., Bass is really clear in this version"
+                    style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
+                    rows="2"></textarea>
+            </div>
+            
+            <div id="uploadProgress" style="display: none; margin-bottom: 15px;">
+                <div style="background: #e5e7eb; height: 30px; border-radius: 6px; overflow: hidden; position: relative;">
+                    <div id="uploadProgressBar" style="background: #10b981; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    <div id="uploadProgressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; color: #1f2937;"></div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button onclick="uploadMoisesStems()" 
+                    style="flex: 1; background: #10b981; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
+                    📤 Upload Stems
+                </button>
+                <button onclick="renderMoisesStems('${songTitle.replace(/'/g, "\\'")}', {})" 
+                    style="background: #6b7280; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function uploadMoisesStems() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    const fileInput = document.getElementById('stemsFileInput');
+    const sourceInput = document.getElementById('stemsSourceInput');
+    const notesInput = document.getElementById('stemsNotesInput');
+    
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Please select at least one stem file!');
+        return;
+    }
+    
+    // Show progress
+    const progressDiv = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const progressText = document.getElementById('uploadProgressText');
+    progressDiv.style.display = 'block';
+    
+    try {
+        // Create folder name
+        const folderName = `${songTitle} - Moises Stems`;
+        
+        progressText.textContent = 'Creating folder...';
+        progressBar.style.width = '10%';
+        
+        // Create folder in shared Drive folder
+        const folderId = await createDriveFolder(folderName, SHARED_FOLDER_ID);
+        
+        if (!folderId) {
+            throw new Error('Failed to create folder');
+        }
+        
+        console.log(`✅ Created folder: ${folderId}`);
+        
+        // Upload each file
+        const files = Array.from(fileInput.files);
+        const uploadedStems = {};
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const progress = ((i + 1) / files.length) * 80 + 10; // 10-90%
+            
+            progressText.textContent = `Uploading ${file.name}... (${i + 1}/${files.length})`;
+            progressBar.style.width = `${progress}%`;
+            
+            console.log(`Uploading ${file.name}...`);
+            
+            // Upload file to folder
+            const fileId = await uploadFileToDrive(file, folderId);
+            
+            if (fileId) {
+                // Determine instrument type from filename
+                const fileName = file.name.toLowerCase();
+                let instrument = 'other';
+                
+                if (fileName.includes('bass')) instrument = 'bass';
+                else if (fileName.includes('drum')) instrument = 'drums';
+                else if (fileName.includes('guitar')) instrument = 'guitar';
+                else if (fileName.includes('key') || fileName.includes('piano')) instrument = 'keys';
+                else if (fileName.includes('vocal') || fileName.includes('voice')) instrument = 'vocals';
+                
+                // Create shareable link
+                const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
+                uploadedStems[instrument] = fileUrl;
+                
+                console.log(`✅ Uploaded ${file.name} as ${instrument}: ${fileId}`);
+            }
+        }
+        
+        progressText.textContent = 'Saving metadata...';
+        progressBar.style.width = '95%';
+        
+        // Save stems metadata
+        const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
+        const stemsData = {
+            folderUrl: folderUrl,
+            folderId: folderId,
+            sourceVersion: sourceInput.value.trim(),
+            stems: uploadedStems,
+            notes: notesInput.value.trim(),
+            uploadedBy: currentUserEmail,
+            dateAdded: new Date().toLocaleDateString()
+        };
+        
+        await saveMoisesStems(songTitle, stemsData);
+        
+        progressText.textContent = 'Complete! ✅';
+        progressBar.style.width = '100%';
+        
+        console.log('✅ All stems uploaded successfully!');
+        
+        setTimeout(async () => {
+            const bandData = bandKnowledgeBase[songTitle] || {};
+            await renderMoisesStems(songTitle, bandData);
+        }, 1000);
+        
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Upload failed: ' + error.message);
+        progressDiv.style.display = 'none';
+    }
+}
+
+async function createDriveFolder(folderName, parentFolderId) {
+    try {
+        const metadata = {
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [parentFolderId]
+        };
+        
+        const response = await gapi.client.drive.files.create({
+            resource: metadata,
+            fields: 'id'
+        });
+        
+        return response.result.id;
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        return null;
+    }
+}
+
+async function uploadFileToDrive(file, parentFolderId) {
+    try {
+        // Use multipart upload for files
+        const metadata = {
+            name: file.name,
+            parents: [parentFolderId]
+        };
+        
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', file);
+        
+        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${gapi.auth.getToken().access_token}`
+            },
+            body: form
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Upload failed: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        return result.id;
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        return null;
+    }
 }
 
 async function addMoisesStems() {
