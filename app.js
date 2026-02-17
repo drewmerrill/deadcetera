@@ -4,11 +4,11 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v4.0.0 - FILE UPLOAD! Major Release!');
-console.log('✅ Upload Moises stems directly from app!');
-console.log('✅ No more manual Drive folder creation!');
-console.log('✅ Automatic file organization!');
-console.log('✅ Band-friendly interface!');
+console.log('🎸 Deadcetera v4.1.0 - Brian fixes! ABC sync, YouTube all formats, Edit tracks');
+console.log('✅ ABC notation now on Google Drive - whole band sees sheet music!');
+console.log('✅ YouTube: handles mobile, shorts, playlists, all URL formats');
+console.log('✅ Practice tracks: Edit button (✏️) to change URL or notes after adding');
+console.log('✅ Practice tracks: Delete still works too');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -2117,17 +2117,40 @@ async function deletePracticeTrack(songTitle, index) {
 
 // Extract YouTube video ID from any YouTube URL format
 function extractYouTubeId(url) {
+    if (!url) return null;
+    url = url.trim();
+    
     // Handle youtube.com/watch?v=
-    const match1 = url.match(/[?&]v=([^&]+)/);
+    const match1 = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
     if (match1) return match1[1];
     
-    // Handle youtu.be/
-    const match2 = url.match(/youtu\.be\/([^?]+)/);
+    // Handle youtu.be/VIDEO_ID
+    const match2 = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
     if (match2) return match2[1];
     
-    // Handle youtube.com/shorts/
-    const match3 = url.match(/youtube\.com\/shorts\/([^?]+)/);
+    // Handle youtube.com/shorts/VIDEO_ID
+    const match3 = url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
     if (match3) return match3[1];
+    
+    // Handle youtube.com/embed/VIDEO_ID
+    const match4 = url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+    if (match4) return match4[1];
+    
+    // Handle youtube.com/v/VIDEO_ID
+    const match5 = url.match(/youtube\.com\/v\/([a-zA-Z0-9_-]{11})/);
+    if (match5) return match5[1];
+    
+    // Handle mobile m.youtube.com
+    const match6 = url.match(/m\.youtube\.com.*[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (match6) return match6[1];
+    
+    // Handle music.youtube.com
+    const match7 = url.match(/music\.youtube\.com.*[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (match7) return match7[1];
+    
+    // Last resort - look for 11-char alphanumeric string after common patterns
+    const match8 = url.match(/(?:\/|%2F)([a-zA-Z0-9_-]{11})(?:[?&]|$)/);
+    if (match8 && url.includes('youtube')) return match8[1];
     
     return null;
 }
@@ -2305,9 +2328,14 @@ async function renderPracticeTracksSimplified(songTitle) {
                 return `
                     <div class="practice-track-card" style="position: relative;">
                         ${isUserAdded ? `
-                            <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
-                                style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;"
-                                title="Delete track">×</button>
+                            <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10;">
+                                <button onclick="editPracticeTrack('${songTitle}', ${index - dataTracks.length})" 
+                                    style="background: #667eea; color: white; border: none; border-radius: 4px; width: 28px; height: 24px; cursor: pointer; font-size: 12px;"
+                                    title="Edit track">✏️</button>
+                                <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
+                                    style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;"
+                                    title="Delete track">×</button>
+                            </div>
                         ` : ''}
                         
                         ${thumbnail ? `
@@ -2350,6 +2378,32 @@ async function deletePracticeTrackConfirm(songTitle, index) {
         await deletePracticeTrack(songTitle, index);
         await renderPracticeTracksSimplified(songTitle);
     }
+}
+
+async function editPracticeTrack(songTitle, index) {
+    const tracks = await loadPracticeTracksFromDrive(songTitle) || [];
+    const track = tracks[index];
+    if (!track) return;
+    
+    const newUrl = prompt('Edit video URL:', track.videoUrl || track.youtubeUrl || '');
+    if (newUrl === null) return; // Canceled
+    
+    const newNotes = prompt('Edit notes:', track.notes || '');
+    if (newNotes === null) return;
+    
+    // Re-fetch metadata with new URL
+    const metadata = await fetchVideoMetadata(newUrl);
+    
+    tracks[index] = {
+        ...track,
+        videoUrl: newUrl,
+        title: metadata.title || track.title,
+        thumbnail: metadata.thumbnail || track.thumbnail,
+        notes: newNotes.trim()
+    };
+    
+    await savePracticeTracksToDrive(songTitle, tracks);
+    await renderPracticeTracksSimplified(songTitle);
 }
 // ============================================================================
 // SPOTIFY API INTEGRATION
@@ -3263,7 +3317,8 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     
     const sectionsHTML = await Promise.all(sections.map(async (section, sectionIndex) => {
         const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
-        const savedAbc = localStorage.getItem(`deadcetera_abc_${songTitle}_section${sectionIndex}`);
+        // Load ABC from Google Drive first, fallback to localStorage
+        const savedAbc = await loadABCNotation(songTitle, sectionIndex);
         const sheetMusicExists = savedAbc && savedAbc.length > 0;
         const sheetMusicButtonText = sheetMusicExists ? '🎼 ✅ View Sheet Music' : '🎼 Create Sheet Music';
         const sheetMusicButtonStyle = sheetMusicExists ? 
@@ -3486,7 +3541,7 @@ console.log('✅ Comprehensive harmony parts rendering loaded');
 // Edit ABC notation in-app, preview rendered sheet music, save to harmony
 // ============================================================================
 
-function generateSheetMusicEnhanced(sectionIndex, section) {
+async function generateSheetMusicEnhanced(sectionIndex, section) {
     const parts = section.parts || [];
     
     // Map part types to ABC notation notes
@@ -3497,9 +3552,8 @@ function generateSheetMusicEnhanced(sectionIndex, section) {
         'doubling': 'C'        
     };
     
-    // Check if we have saved ABC notation already
-    const savedKey = `deadcetera_abc_${selectedSong.title}_section${sectionIndex}`;
-    const savedAbc = localStorage.getItem(savedKey);
+    // Check if we have saved ABC notation - load from Drive first
+    const savedAbc = await loadABCNotation(selectedSong.title, sectionIndex);
     
     let abcNotation = savedAbc || generateDefaultABC(section, parts, partToNote);
     
@@ -3815,20 +3869,38 @@ function updateVoiceSelection() {
     }
 }
 
-function saveABCNotation(sectionIndex) {
+async function saveABCNotation(sectionIndex) {
     const abc = document.getElementById('abcEditorTextarea').value;
+    const songTitle = selectedSong?.title || selectedSong;
     
-    // Save to localStorage
-    const key = `deadcetera_abc_${selectedSong.title}_section${sectionIndex}`;
-    localStorage.setItem(key, abc);
+    // Save to Google Drive (shared with all band members!)
+    const key = `abc_section_${sectionIndex}`;
+    await saveBandDataToDrive(songTitle, key, { abc, sectionIndex, updatedBy: currentUserEmail, updatedAt: new Date().toISOString() });
     
-    alert('✅ Sheet music saved!');
+    // Also keep localStorage as fallback
+    const localKey = `deadcetera_abc_${songTitle}_section${sectionIndex}`;
+    localStorage.setItem(localKey, abc);
+    
+    alert('✅ Sheet music saved to Google Drive! All band members can now see it.');
     
     // Close modal
-    document.getElementById('abcEditorModal').remove();
+    const modal = document.getElementById('abcEditorModal');
+    if (modal) modal.remove();
     
-    // Refresh harmony display to show updated sheet music button
-    renderHarmoniesEnhanced(selectedSong.title, bandKnowledgeBase[selectedSong.title]);
+    // Refresh harmony display
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    renderHarmoniesEnhanced(songTitle, bandData);
+}
+
+async function loadABCNotation(songTitle, sectionIndex) {
+    // Try Google Drive first
+    const key = `abc_section_${sectionIndex}`;
+    const driveData = await loadBandDataFromDrive(songTitle, key);
+    if (driveData && driveData.abc) return driveData.abc;
+    
+    // Fall back to localStorage
+    const localKey = `deadcetera_abc_${songTitle}_section${sectionIndex}`;
+    return localStorage.getItem(localKey);
 }
 
 // Update the original generateSheetMusic to use the enhanced version
