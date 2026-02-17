@@ -4,11 +4,11 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v4.1.0 - Brian fixes! ABC sync, YouTube all formats, Edit tracks');
-console.log('✅ ABC notation now on Google Drive - whole band sees sheet music!');
-console.log('✅ YouTube: handles mobile, shorts, playlists, all URL formats');
-console.log('✅ Practice tracks: Edit button (✏️) to change URL or notes after adding');
-console.log('✅ Practice tracks: Delete still works too');
+console.log('🎸 Deadcetera v4.2.0 - CRITICAL FIX: Harmony audio now on Drive!');
+console.log('🚨 IMPORTANT: Harmony audio snippets now save to Google Drive!');
+console.log('✅ Whole band can hear recorded harmony parts');
+console.log('✅ ABC notation on Drive (already fixed)');
+console.log('✅ All band data now shared properly');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -2894,14 +2894,17 @@ async function uploadHarmonyAudio(sectionIndex) {
             uploadedDate: new Date().toISOString().split('T')[0]
         };
         
-        // Save to localStorage
-        const key = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
-        const existing = localStorage.getItem(key);
-        const snippets = existing ? JSON.parse(existing) : [];
-        snippets.push(snippet);
-        localStorage.setItem(key, JSON.stringify(snippets));
+        // Save to Google Drive (shared with band!)
+        const key = `harmony_audio_section_${sectionIndex}`;
+        const existing = await loadBandDataFromDrive(selectedSong.title, key) || [];
+        existing.push(snippet);
+        await saveBandDataToDrive(selectedSong.title, key, existing);
         
-        alert(`✅ Audio uploaded: ${name}`);
+        // Also save to localStorage as backup
+        const localKey = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
+        localStorage.setItem(localKey, JSON.stringify(existing));
+        
+        alert(`✅ Audio uploaded to Google Drive! All band members can now hear it.`);
         
         // Clear form
         hideHarmonyAudioForm();
@@ -2930,9 +2933,15 @@ function fileToBase64(file) {
     });
 }
 
-function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
-    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
-    const stored = localStorage.getItem(key);
+async function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
+    // Load from Google Drive first
+    const key = `harmony_audio_section_${sectionIndex}`;
+    const driveData = await loadBandDataFromDrive(songTitle, key);
+    if (driveData && Array.isArray(driveData)) return driveData;
+    
+    // Fallback to localStorage
+    const localKey = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const stored = localStorage.getItem(localKey);
     return stored ? JSON.parse(stored) : [];
 }
 
@@ -2943,23 +2952,26 @@ function playHarmonySnippet(base64Data) {
     });
 }
 
-function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
+async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     if (!confirm('Delete this audio snippet?')) return;
     
-    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
-    const existing = localStorage.getItem(key);
-    if (existing) {
-        const snippets = JSON.parse(existing);
-        snippets.splice(snippetIndex, 1);
-        localStorage.setItem(key, JSON.stringify(snippets));
-        
-        // Refresh display
-        const bandData = bandKnowledgeBase[selectedSong.title];
-        if (bandData) {
-            renderHarmoniesEnhanced(selectedSong.title, bandData);
-        } else {
-            
-        }
+    // Load from Drive
+    const key = `harmony_audio_section_${sectionIndex}`;
+    const snippets = await loadBandDataFromDrive(songTitle, key) || [];
+    
+    snippets.splice(snippetIndex, 1);
+    
+    // Save back to Drive
+    await saveBandDataToDrive(songTitle, key, snippets);
+    
+    // Update localStorage backup
+    const localKey = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    localStorage.setItem(localKey, JSON.stringify(snippets));
+    
+    // Refresh display
+    const bandData = bandKnowledgeBase[selectedSong.title];
+    if (bandData) {
+        renderHarmoniesEnhanced(selectedSong.title, bandData);
     }
 }
 // ============================================================================
@@ -3212,14 +3224,14 @@ function copyToClipboard(text) {
 }
 
 // Render audio snippets section even when there's no harmony data
-function renderAudioSnippetsOnly(songTitle, container) {
+async function renderAudioSnippetsOnly(songTitle, container) {
     // Check if there are any audio snippets saved
     let hasAnySnippets = false;
     let snippetsHTML = '';
     
     // Check all possible section indices (0-9 should be enough)
     for (let sectionIndex = 0; sectionIndex < 10; sectionIndex++) {
-        const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
+        const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
         
         if (audioSnippets.length > 0) {
             hasAnySnippets = true;
@@ -3316,7 +3328,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     const sections = bandData.harmonies.sections;
     
     const sectionsHTML = await Promise.all(sections.map(async (section, sectionIndex) => {
-        const audioSnippets = loadHarmonyAudioSnippets(songTitle, sectionIndex);
+        const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
         // Load ABC from Google Drive first, fallback to localStorage
         const savedAbc = await loadABCNotation(songTitle, sectionIndex);
         const sheetMusicExists = savedAbc && savedAbc.length > 0;
