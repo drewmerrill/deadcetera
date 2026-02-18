@@ -154,8 +154,12 @@ function renderSongs(filter = 'all', searchTerm = '') {
     // Add harmony badges and status badges after rendering
     setTimeout(() => {
         addHarmonyBadges();
-        // Start loading statuses in background (non-blocking)
+        // Start loading statuses in background (only runs once)
         preloadAllStatuses();
+        // If already cached, apply badges to current view
+        if (statusCacheLoaded) {
+            addStatusBadges();
+        }
     }, 50);
 }
 
@@ -4450,18 +4454,22 @@ async function filterByStatus(status) {
     
     // Update button states
     document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
+                const originalColor = btn.dataset.color || btn.style.color || '#667eea';
+        btn.dataset.color = originalColor;
         btn.style.background = 'white';
-        const color = btn.style.color;
-        btn.style.color = color; // Keep original color
+        btn.style.color = originalColor;
     });
     
     // Highlight clicked button
-    event?.target?.style && (() => {
-        const btn = event.target;
-        const originalColor = btn.style.color;
-        btn.style.background = originalColor;
-        btn.style.color = 'white';
-    })();
+    if (event && event.target) {
+        const btn = event.target.closest('.filter-btn');
+        if (btn) {
+            const originalColor = btn.dataset.color || btn.style.color || '#667eea';
+            btn.dataset.color = originalColor;
+            btn.style.background = originalColor;
+            btn.style.color = 'white';
+        }
+    }
     
     if (status === 'all') {
         // Show all songs
@@ -4616,24 +4624,45 @@ let statusCache = {};
 let statusCacheLoaded = false;
 
 // Pre-load all song statuses in background (non-blocking)
+// FIX v5.1.1: Uses master allSongs array, NOT DOM elements
+let statusPreloadRunning = false;
+
 async function preloadAllStatuses() {
+    if (statusPreloadRunning) {
+        console.log('⏳ Status preload already running, skipping...');
+        return;
+    }
+    if (statusCacheLoaded) {
+        addStatusBadges();
+        return;
+    }
+    
+    statusPreloadRunning = true;
     console.log('🔄 Pre-loading song statuses in background...');
-    const songItems = document.querySelectorAll('.song-item');
-    const total = songItems.length;
+    
+    const total = allSongs.length;
     let loaded = 0;
     
-    // Load in batches of 20 to avoid overwhelming Drive API
     const batchSize = 20;
-    for (let i = 0; i < songItems.length; i += batchSize) {
-        const batch = Array.from(songItems).slice(i, i + batchSize);
+    for (let i = 0; i < allSongs.length; i += batchSize) {
+        const batch = allSongs.slice(i, i + batchSize);
         
-        await Promise.all(batch.map(async (item) => {
-            const songNameElement = item.querySelector('.song-name');
-            const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
-            if (songTitle) {
-                statusCache[songTitle] = await loadSongStatus(songTitle);
+        await Promise.all(batch.map(async (song) => {
+            if (song.title && statusCache[song.title] === undefined) {
+                statusCache[song.title] = await loadSongStatus(song.title);
                 loaded++;
             }
+        }));
+        
+        console.log(`📊 Loaded ${Math.min(i + batchSize, total)}/${total} song statuses...`);
+    }
+    
+    statusCacheLoaded = true;
+    statusPreloadRunning = false;
+    console.log(`✅ All ${total} song statuses cached!`);
+    
+    addStatusBadges();
+}
         }));
         
         console.log(`📊 Loaded ${loaded}/${total} song statuses...`);
