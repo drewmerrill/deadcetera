@@ -1,8 +1,19 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v2.8.0 - GOOGLE DRIVE COMPLETE
+// DEADCETERA WORKFLOW APP v5.2.1 - MASTER FILE + iOS AUDIO + CLEANUP
 // All fixes applied: Query escaping, delete buttons, metadata persistence
-// Last updated: 2026-02-15
+// Last updated: 2026-02-18
 // ============================================================================
+
+// Inject favicon to prevent 404 error
+(function() {
+    if (!document.querySelector('link[rel="icon"]')) {
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.type = 'image/svg+xml';
+        link.href = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjE1IiBmaWxsPSIjNjY3ZWVhIi8+Cjx0ZXh0IHg9IjE2IiB5PSIyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxOCIgZmlsbD0id2hpdGUiPuKZqjwvdGV4dD4KPC9zdmc+';
+        document.head.appendChild(link);
+    }
+})();
 
 console.log('🎸 Deadcetera v5.2.0 - MASTER FILE STATUS SYSTEM!');
 console.log('⚡ Statuses load from 1 file instead of 358 API calls');
