@@ -4663,17 +4663,7 @@ async function preloadAllStatuses() {
     
     addStatusBadges();
 }
-        }));
-        
-        console.log(`📊 Loaded ${loaded}/${total} song statuses...`);
-    }
-    
-    statusCacheLoaded = true;
-    console.log(`✅ All ${loaded} song statuses cached!`);
-    
-    // Add status badges now that cache is loaded
-    addStatusBadges();
-}
+
 
 // Get status from cache (instant!)
 function getStatusFromCache(songTitle) {
