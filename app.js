@@ -21,6 +21,7 @@ let currentFilter = 'all';
 let currentInstrument = 'bass'; // Default instrument
 let currentResourceType = null; // For modal state
 let currentResourceIndex = null; // For editing resources
+let activeStatusFilter = null; // Tracks which status filter is active
 
 // ============================================================================
 // BAND NAME CONVERTER
@@ -159,6 +160,10 @@ function renderSongs(filter = 'all', searchTerm = '') {
         // If already cached, apply badges to current view
         if (statusCacheLoaded) {
             addStatusBadges();
+        }
+        // Re-apply active status filter if one is set
+        if (activeStatusFilter && activeStatusFilter !== 'all') {
+            applyStatusFilter(activeStatusFilter);
         }
     }, 50);
 }
@@ -4453,23 +4458,20 @@ async function loadSongStatus(songTitle) {
 }
 
 async function filterByStatus(status) {
-    console.log(`Filtering by status: ${status}`);
+    console.log('Filtering by status:', status);
     
-    // If cache not loaded yet, show loading message
     if (!statusCacheLoaded) {
-        alert('Song statuses are still loading in the background. Please wait a moment and try again.');
+        alert('Song statuses are still loading. Please wait a moment.');
         return;
     }
     
-    // Update button states
+    // Update button styles
     document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
-                const originalColor = btn.dataset.color || btn.style.color || '#667eea';
+        const originalColor = btn.dataset.color || btn.style.color || '#667eea';
         btn.dataset.color = originalColor;
         btn.style.background = 'white';
         btn.style.color = originalColor;
     });
-    
-    // Highlight clicked button
     if (event && event.target) {
         const btn = event.target.closest('.filter-btn');
         if (btn) {
@@ -4480,26 +4482,32 @@ async function filterByStatus(status) {
         }
     }
     
+    // Track active filter so renderSongs can re-apply it
+    activeStatusFilter = status;
+    
     if (status === 'all') {
-        // Show all songs
+        activeStatusFilter = null;
         document.querySelectorAll('.song-item').forEach(item => {
             item.style.display = 'block';
         });
-        console.log('? Showing all songs');
         return;
     }
     
-    // Filter songs by status using cache (INSTANT!)
+    applyStatusFilter(status);
+}
+
+// Separate function so renderSongs can call it after re-rendering
+function applyStatusFilter(status) {
+    if (!status || status === 'all') return;
+    
     const songItems = document.querySelectorAll('.song-item');
     let visibleCount = 0;
     
     songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
         
-        const songStatus = getStatusFromCache(songTitle);
-        
-        if (songStatus === status) {
+        if (getStatusFromCache(songTitle) === status) {
             item.style.display = 'block';
             visibleCount++;
         } else {
@@ -4507,28 +4515,22 @@ async function filterByStatus(status) {
         }
     });
     
-    console.log(`? Showing ${visibleCount} songs with status: ${status}`);
+    console.log('Showing ' + visibleCount + ' songs with status: ' + status);
     
-    // If no songs found, show helpful message
     if (visibleCount === 0) {
-        const dropdown = document.getElementById('songDropdown');
         const statusNames = {
-            'this_week': '? This Week',
-            'gig_ready': '? Gig Ready',
-            'needs_polish': '?? Needs Polish',
-            'on_deck': '? On Deck'
+            'this_week': 'This Week',
+            'gig_ready': 'Gig Ready',
+            'needs_polish': 'Needs Polish',
+            'on_deck': 'On Deck'
         };
-        
-        dropdown.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: #6b7280;">
-                <div style="font-size: 2em; margin-bottom: 15px;">?</div>
-                <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No songs marked as "${statusNames[status]}"</div>
-                <div style="margin-bottom: 20px;">Click any song and set its status!</div>
-                <button onclick="filterByStatus('all')" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                    Show All Songs
-                </button>
-            </div>
-        `;
+        document.getElementById('songDropdown').innerHTML = 
+            '<div style="padding: 40px; text-align: center; color: #6b7280;">' +
+            '<div style="font-size: 2em; margin-bottom: 15px;">🎸</div>' +
+            '<div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No songs marked as "' + (statusNames[status] || status) + '"</div>' +
+            '<div style="margin-bottom: 20px;">Click any song and set its status!</div>' +
+            '<button onclick="filterByStatus(\'all\')" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">Show All Songs</button>' +
+            '</div>';
     }
 }
 
