@@ -15,6 +15,290 @@
     }
 })();
 
+// Inject responsive CSS for consistent rendering across mobile/desktop/incognito
+(function() {
+    if (document.getElementById('deadcetera-responsive-css')) return;
+    const style = document.createElement('style');
+    style.id = 'deadcetera-responsive-css';
+    style.textContent = `
+        /* ===== SONG LIST ===== */
+        .song-item {
+            display: flex !important;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            min-height: 44px; /* iOS tap target */
+            gap: 12px;
+        }
+        .song-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .song-badge {
+            flex-shrink: 0;
+            margin-left: auto;
+            font-size: 0.8em;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-weight: 700;
+            text-align: center;
+            min-width: 40px;
+        }
+        .harmony-badge {
+            flex-shrink: 0;
+        }
+        .status-badge {
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        /* ===== FILTER BUTTONS ===== */
+        .status-filters, .harmony-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .filter-btn {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 2px solid #e2e8f0;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ===== PRACTICE TRACKS GRID ===== */
+        .practice-tracks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .practice-track-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+            transition: box-shadow 0.15s ease;
+        }
+        .practice-track-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .practice-track-card img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        /* ===== SPOTIFY VERSION CARDS ===== */
+        .spotify-version-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .spotify-version-card.default {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+        .votes-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        .vote-chip {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+            border: 2px solid #e2e8f0;
+        }
+        .vote-chip.yes {
+            background: #d1fae5;
+            color: #065f46;
+            border-color: #10b981;
+        }
+        .vote-chip.no {
+            background: white;
+            color: #6b7280;
+        }
+        .vote-chip:hover {
+            transform: scale(1.05);
+        }
+        .version-badge {
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 700;
+            display: inline-block;
+            margin-bottom: 8px;
+        }
+
+        /* ===== MODALS ===== */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* ===== BUTTONS ===== */
+        .chart-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            font-size: 0.9em;
+            transition: all 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .chart-btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .chart-btn-primary:hover {
+            background: #5a6fd6;
+        }
+        .chart-btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .primary-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* ===== MOBILE RESPONSIVE ===== */
+        @media (max-width: 640px) {
+            .song-item {
+                padding: 10px 12px;
+                font-size: 0.95em;
+            }
+            .song-badge {
+                font-size: 0.7em;
+                padding: 2px 8px;
+            }
+            .practice-tracks-grid {
+                grid-template-columns: 1fr;
+            }
+            .practice-track-card {
+                padding: 12px;
+            }
+            .practice-track-card img {
+                max-width: 100%;
+            }
+            .filter-btn {
+                padding: 6px 12px;
+                font-size: 0.8em;
+            }
+            .vote-chip {
+                padding: 5px 10px;
+                font-size: 0.8em;
+            }
+            .chart-btn {
+                padding: 8px 14px;
+                font-size: 0.85em;
+            }
+            /* Ensure modals don't overflow on mobile */
+            .modal-overlay {
+                padding: 10px;
+            }
+            /* Make ABC editor modal scrollable on mobile */
+            #abcEditorModal > div {
+                max-height: 90vh;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            /* BPM/Warp display fix for mobile */
+            .abcjs-inline-audio {
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+        }
+
+        /* ===== TABLET ===== */
+        @media (min-width: 641px) and (max-width: 1024px) {
+            .practice-tracks-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* ===== TOUCH DEVICE IMPROVEMENTS ===== */
+        @media (hover: none) and (pointer: coarse) {
+            .song-item {
+                min-height: 48px;
+            }
+            .filter-btn {
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .vote-chip {
+                min-height: 36px;
+                display: flex;
+                align-items: center;
+            }
+            /* Prevent double-tap zoom on buttons */
+            button, .filter-btn, .vote-chip, .chart-btn {
+                touch-action: manipulation;
+            }
+        }
+
+        /* ===== SCROLLBAR STYLING ===== */
+        #songDropdown {
+            max-height: 60vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        #songDropdown::-webkit-scrollbar {
+            width: 6px;
+        }
+        #songDropdown::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 3px;
+        }
+
+        /* ===== SEARCH INPUT ===== */
+        #songSearch {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* ===== PRINT FRIENDLY ===== */
+        @media print {
+            .status-filters, .harmony-filters, .filter-btn,
+            button, .chart-btn, #googleDriveAuthBtn {
+                display: none !important;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
 console.log('🎸 Deadcetera v5.2.1 - MASTER FILE STATUS SYSTEM!');
 console.log('⚡ Statuses load from 1 file instead of 358 API calls');
 console.log('⚡ Filtering is INSTANT on page load');
