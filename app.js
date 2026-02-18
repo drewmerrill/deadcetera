@@ -2289,8 +2289,17 @@ async function addPracticeTrackSimple() {
             thumbnail: metadata.thumbnail
         };
         
-        // Save to localStorage
-        savePracticeTrack(selectedSong.title, track);
+        // Check for duplicate URL
+        const existingTracks = await loadPracticeTracksFromDrive(selectedSong.title);
+        if (existingTracks.some(t => t.videoUrl === url)) {
+            alert('This video has already been added as a practice track!');
+            addButton.innerHTML = originalText;
+            addButton.disabled = false;
+            return;
+        }
+        
+        // Save to Drive (await to prevent race conditions)
+        await savePracticeTrack(selectedSong.title, track);
         
         // Show success message
         const message = document.createElement('div');
