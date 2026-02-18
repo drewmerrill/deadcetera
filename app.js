@@ -3732,12 +3732,28 @@ async function renderAudioSnippetsOnly(songTitle, container) {
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
 async function renderHarmoniesEnhanced(songTitle, bandData) {
     const container = document.getElementById('harmoniesContainer');
+    if (!container) {
+        console.warn('harmoniesContainer not found');
+        return;
+    }
     
-    // Check if song has harmonies
-    const hasHarmonies = await loadHasHarmonies(songTitle);
+    // Check if song has harmonies - use cache first, then Drive
+    let hasHarmonies = harmonyBadgeCache[songTitle] || harmonyCache[songTitle];
+    if (hasHarmonies === undefined) {
+        hasHarmonies = await loadHasHarmonies(songTitle);
+    }
     
     if (!hasHarmonies) {
-        container.innerHTML = '<div style="padding: 20px; color: #9ca3af; text-align: center; font-style: italic;">This song doesn\'t have harmony parts documented. Check "Has Harmonies" above if this song needs harmonies.</div>';
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center;">
+                <p style="color: #9ca3af; font-style: italic; margin-bottom: 15px;">No harmony parts documented yet.</p>
+                <button onclick="addFirstHarmonySection('${songTitle.replace(/'/g, "\\'")}')" 
+                    class="chart-btn chart-btn-primary" style="background: #667eea;">
+                    🎤 Add Harmony Section
+                </button>
+                <p style="color: #9ca3af; font-size: 0.85em; margin-top: 10px;">This will also mark the song as having harmonies.</p>
+            </div>
+        `;
         return;
     }
     
@@ -4753,12 +4769,33 @@ async function addFirstHarmonySection(songTitle) {
     if (!bandKnowledgeBase[songTitle]) bandKnowledgeBase[songTitle] = {};
     bandKnowledgeBase[songTitle].harmonies = harmonies;
     
-    // Save to Drive
-    await saveBandDataToDrive(songTitle, 'has_harmonies', { hasHarmonies: true, harmonies: harmonies });
+    // Mark song as having harmonies
+    harmonyCache[songTitle] = true;
+    harmonyBadgeCache[songTitle] = true;
+    
+    // Update the checkbox if it exists
+    const harmoniesCheckbox = document.getElementById('hasHarmoniesCheckbox');
+    if (harmoniesCheckbox) harmoniesCheckbox.checked = true;
+    
+    // Save both has_harmonies flag and harmony data to Drive
+    try {
+        await saveBandDataToDrive(songTitle, 'has_harmonies', { hasHarmonies: true });
+        
+        // Save harmony structure
+        await saveBandDataToDrive(songTitle, 'harmonies_data', harmonies);
+        
+        // Update master harmonies file
+        await saveMasterFile(MASTER_HARMONIES_FILE, harmonyBadgeCache);
+    } catch (e) {
+        console.warn('Could not save harmony data to Drive:', e);
+    }
     
     // Re-render
     const bandData = bandKnowledgeBase[songTitle];
     await renderHarmoniesEnhanced(songTitle, bandData);
+    
+    // Update badges
+    addHarmonyBadges();
 }
 
 async function updateHasHarmonies(hasHarmonies) {
