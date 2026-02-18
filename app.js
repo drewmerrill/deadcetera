@@ -4,16 +4,16 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v5.1.0 - FAST STATUS FILTERING! Cache-based!');
-console.log('⚡ Status loads in background (batches of 20)');
-console.log('⚡ Filtering is INSTANT once cache loads');
-console.log('📊 Progress shown in console');
-console.log('✅ Buttons work correctly now!');
-console.log('✅ ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
-console.log('✅ Recording: Stops ABC playback first (no conflicts)');
-console.log('✅ Recording: iOS-compatible format (MP4/M4A instead of WebM)');
-console.log('✅ Recording: Better error messages for permissions');
-console.log('📱 Critical for gigs and practice - tested for mobile!');
+console.log('? Deadcetera v5.2.0 - MASTER FILE STATUS SYSTEM!');
+console.log('? Statuses load from 1 file instead of 358 API calls');
+console.log('? Filtering is INSTANT on page load');
+console.log('? First load migrates existing data automatically');
+console.log('? Harmonies also use master file (no more looping!)');
+console.log('? ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
+console.log('? Recording: Stops ABC playback first (no conflicts)');
+console.log('? Recording: iOS-compatible format (MP4/M4A instead of WebM)');
+console.log('? Recording: Better error messages for permissions');
+console.log('? Critical for gigs and practice - tested for mobile!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -119,7 +119,7 @@ function setupInstrumentSelector() {
             renderLearningResources(selectedSong, currentInstrument);
         }
         
-        console.log('✅ Instrument changed to:', currentInstrument);
+        console.log('? Instrument changed to:', currentInstrument);
     });
 }
 
@@ -240,7 +240,7 @@ function showLearningResources(songTitle, bandName) {
 }
 
 function renderLearningResources(songTitle, instrument) {
-    console.log('📚 Rendering resources for:', songTitle, 'Instrument:', instrument);
+    console.log('? Rendering resources for:', songTitle, 'Instrument:', instrument);
     
     const resources = loadResources(songTitle, instrument);
     
@@ -280,7 +280,7 @@ function renderTabSection(songTitle, instrument, resources) {
         container.innerHTML = `
             <div class="resource-item">
                 <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-                    ${isUG ? '<span style="font-size: 1.5em;">🎸</span>' : ''}
+                    ${isUG ? '<span style="font-size: 1.5em;">?</span>' : ''}
                     <div style="flex: 1;">
                         <a href="${resources.tab}" target="_blank" class="resource-link" title="${resources.tab}">
                             ${displayName}
@@ -297,7 +297,7 @@ function renderTabSection(songTitle, instrument, resources) {
         // Show find button
         container.innerHTML = `
             <button class="find-resource-btn" onclick="findTab()">
-                🔍 Find on Ultimate Guitar →
+                ? Find on Ultimate Guitar ?
             </button>
         `;
     }
@@ -335,12 +335,12 @@ async function renderLessonsSection(songTitle, instrument, resources) {
                 ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
                 <div style="flex: 1;">
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        ${platform === 'YouTube' ? '🎥' : '🎵'} ${title}
+                        ${platform === 'YouTube' ? '?' : '?'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} • Click to open</div>
+                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
                 </div>
                 <div class="resource-actions">
-                    <button class="resource-btn remove-btn" onclick="removeLesson(${index})">✕</button>
+                    <button class="resource-btn remove-btn" onclick="removeLesson(${index})">?</button>
                 </div>
             </div>
         `).join('');
@@ -350,10 +350,10 @@ async function renderLessonsSection(songTitle, instrument, resources) {
             container.innerHTML += `
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <button class="add-resource-btn" onclick="searchYouTubeForLesson()" style="flex: 1;">
-                        🔍 Search YouTube for Lessons
+                        ? Search YouTube for Lessons
                     </button>
                     <button class="add-resource-btn" onclick="searchSpotifyForLesson()" style="flex: 1;">
-                        🎵 Search Spotify
+                        ? Search Spotify
                     </button>
                     <button class="add-resource-btn" onclick="addLesson()" style="flex: 1;">
                         + Paste URL
@@ -365,10 +365,10 @@ async function renderLessonsSection(songTitle, instrument, resources) {
         container.innerHTML = `
             <div style="display: flex; gap: 10px;">
                 <button class="add-resource-btn" onclick="searchYouTubeForLesson()" style="flex: 1;">
-                    🔍 YouTube Lessons
+                    ? YouTube Lessons
                 </button>
                 <button class="add-resource-btn" onclick="searchSpotifyForLesson()" style="flex: 1;">
-                    🎵 Spotify
+                    ? Spotify
                 </button>
                 <button class="add-resource-btn" onclick="addLesson()" style="flex: 1;">
                     + Paste URL
@@ -410,12 +410,12 @@ async function renderReferencesSection(songTitle, instrument, resources) {
                 ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail" class="youtube-thumbnail-small">` : ''}
                 <div style="flex: 1;">
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        ${platform === 'YouTube' ? '🎥' : '🎵'} ${title}
+                        ${platform === 'YouTube' ? '?' : '?'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} • Click to open</div>
+                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
                 </div>
                 <div class="resource-actions">
-                    <button class="resource-btn remove-btn" onclick="removeReference(${index})">✕</button>
+                    <button class="resource-btn remove-btn" onclick="removeReference(${index})">?</button>
                 </div>
             </div>
         `).join('');
@@ -425,10 +425,10 @@ async function renderReferencesSection(songTitle, instrument, resources) {
             container.innerHTML += `
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <button class="add-resource-btn" onclick="searchYouTubeForReference()" style="flex: 1;">
-                        🔍 YouTube Performances
+                        ? YouTube Performances
                     </button>
                     <button class="add-resource-btn" onclick="searchSpotifyForReference()" style="flex: 1;">
-                        🎵 Spotify
+                        ? Spotify
                     </button>
                     <button class="add-resource-btn" onclick="addReference()" style="flex: 1;">
                         + Paste URL
@@ -440,10 +440,10 @@ async function renderReferencesSection(songTitle, instrument, resources) {
         container.innerHTML = `
             <div style="display: flex; gap: 10px;">
                 <button class="add-resource-btn" onclick="searchYouTubeForReference()" style="flex: 1;">
-                    🔍 YouTube Performances
+                    ? YouTube Performances
                 </button>
                 <button class="add-resource-btn" onclick="searchSpotifyForReference()" style="flex: 1;">
-                    🎵 Spotify
+                    ? Spotify
                 </button>
                 <button class="add-resource-btn" onclick="addReference()" style="flex: 1;">
                     + Paste URL
@@ -462,14 +462,14 @@ function getResourceDisplayName(url) {
         
         // For Ultimate Guitar
         if (hostname.includes('ultimate-guitar.com')) {
-            return '🎸 ' + path.split('/').filter(p => p).pop().replace(/-/g, ' ');
+            return '? ' + path.split('/').filter(p => p).pop().replace(/-/g, ' ');
         }
         
         // For YouTube
         if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
             // Try to get video title from URL params or just show "YouTube Video"
             const videoId = urlObj.searchParams.get('v') || path.split('/').pop();
-            return '🎥 YouTube: ' + videoId;
+            return '? YouTube: ' + videoId;
         }
         
         // Generic
@@ -648,7 +648,7 @@ function removeLesson(index) {
     saveResources(selectedSong, currentInstrument, resources);
     renderLearningResources(selectedSong, currentInstrument);
     
-    console.log('✅ Lesson removed');
+    console.log('? Lesson removed');
 }
 
 // ============================================================================
@@ -698,7 +698,7 @@ function removeReference(index) {
     saveResources(selectedSong, currentInstrument, resources);
     renderLearningResources(selectedSong, currentInstrument);
     
-    console.log('✅ Reference removed');
+    console.log('? Reference removed');
 }
 
 // ============================================================================
@@ -791,7 +791,7 @@ function showYouTubeSearchModal(searchTerm) {
     // Reset modal title to "Search YouTube"
     const modalTitle = modal.querySelector('.modal-header h2');
     if (modalTitle) {
-        modalTitle.textContent = '🔍 Search YouTube';
+        modalTitle.textContent = '? Search YouTube';
     }
     
     // Show and set search term
@@ -824,7 +824,7 @@ async function performYouTubeSearch(query, resultsContainer) {
                     Click below to search YouTube for: <strong>"${query}"</strong>
                 </p>
                 <button class="primary-btn" onclick="window.open('${youtubeSearchUrl}', '_blank')" style="margin-bottom: 20px;">
-                    🔍 Search on YouTube
+                    ? Search on YouTube
                 </button>
                 <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; text-align: left;">
                     <strong style="color: #2d3748; display: block; margin-bottom: 10px;">How to use:</strong>
@@ -836,7 +836,7 @@ async function performYouTubeSearch(query, resultsContainer) {
                     </ol>
                     <input type="text" id="youtubeQuickPasteInput" class="search-input" placeholder="Paste YouTube URL here..." style="margin-top: 15px;">
                     <button class="primary-btn" onclick="saveFromYouTubeSearch()" style="margin-top: 10px; width: 100%;">
-                        💾 Save This Video
+                        ? Save This Video
                     </button>
                 </div>
             </div>
@@ -845,7 +845,7 @@ async function performYouTubeSearch(query, resultsContainer) {
         console.error('YouTube search error:', error);
         resultsContainer.innerHTML = `
             <div style="text-align: center; padding: 40px; color: #e53e3e;">
-                ❌ Search failed. Please try again.
+                ? Search failed. Please try again.
             </div>
         `;
     }
@@ -887,7 +887,7 @@ function saveFromYouTubeSearch() {
     renderLearningResources(selectedSong, currentInstrument);
     closeYouTubeSearchModal();
     
-    console.log('✅ Video saved from YouTube search:', url);
+    console.log('? Video saved from YouTube search:', url);
 }
 
 // ============================================================================
@@ -908,7 +908,7 @@ function showSpotifyPasteModal(searchUrl, type) {
     // Change modal title to "Search Spotify"
     const modalTitle = modal.querySelector('.modal-header h2');
     if (modalTitle) {
-        modalTitle.textContent = '🎵 Search Spotify';
+        modalTitle.textContent = '? Search Spotify';
     }
     
     // Show Spotify instructions
@@ -918,20 +918,20 @@ function showSpotifyPasteModal(searchUrl, type) {
                 Search Spotify for: <strong>"${selectedSong}"</strong>
             </p>
             <button class="primary-btn" onclick="window.open('${searchUrl}', '_blank')" style="margin-bottom: 20px; background: #1db954;">
-                🎵 Search on Spotify
+                ? Search on Spotify
             </button>
             <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; text-align: left;">
                 <strong style="color: #2d3748; display: block; margin-bottom: 10px;">How to use:</strong>
                 <ol style="color: #4a5568; line-height: 1.8; margin-left: 20px;">
                     <li>Click "Search on Spotify" above</li>
                     <li>Find the track you want</li>
-                    <li>Click the three dots (•••) on the track</li>
-                    <li>Select "Share" → "Copy Song Link"</li>
+                    <li>Click the three dots (---) on the track</li>
+                    <li>Select "Share" ? "Copy Song Link"</li>
                     <li>Come back here and paste it below:</li>
                 </ol>
                 <input type="text" id="youtubeQuickPasteInput" class="search-input" placeholder="Paste Spotify URL here..." style="margin-top: 15px;">
                 <button class="primary-btn" onclick="saveFromSpotifySearch()" style="margin-top: 10px; width: 100%; background: #1db954;">
-                    💾 Save This Track
+                    ? Save This Track
                 </button>
             </div>
         </div>
@@ -974,7 +974,7 @@ function saveFromSpotifySearch() {
     renderLearningResources(selectedSong, currentInstrument);
     closeYouTubeSearchModal();
     
-    console.log('✅ Track saved from Spotify search:', url);
+    console.log('? Track saved from Spotify search:', url);
 }
 
 function saveResource() {
@@ -1019,7 +1019,7 @@ function saveResource() {
     renderLearningResources(selectedSong, currentInstrument);
     closeAddResourceModal();
     
-    console.log('✅ Resource saved:', currentResourceType, url);
+    console.log('? Resource saved:', currentResourceType, url);
 }
 
 // ============================================================================
@@ -1080,7 +1080,7 @@ function showTop5Versions(songTitle) {
                     <div class="version-date">${version.date}</div>
                     <div class="version-notes">${version.notes}</div>
                     <div style="margin-top: 10px; padding: 8px; background: #edf2f7; border-radius: 6px; border-left: 4px solid #667eea;">
-                        <strong style="color: #667eea;">📂 Track ${version.trackNumber}</strong> • 
+                        <strong style="color: #667eea;">? Track ${version.trackNumber}</strong> - 
                         <span class="version-quality">${version.quality} Quality</span>
                     </div>
                 </div>
@@ -1105,7 +1105,7 @@ function showNoVersionsMessage(songTitle, bandName = 'Grateful Dead') {
                 We haven't pre-loaded the top 5 versions for this song yet.
             </p>
             <button class="primary-btn" onclick="searchArchiveForSong('${songTitle.replace(/'/g, "\\'")}', '${bandName}')" style="margin-bottom: 15px;">
-                🔍 Find Best Versions on Archive.org
+                ? Find Best Versions on Archive.org
             </button>
             <p style="color: #718096; font-size: 0.9em;">
                 This will search Archive.org for popular downloadable versions
@@ -1150,7 +1150,7 @@ function showDownloadStep(songTitle, version) {
         <div class="selected-song-name">${songTitle}</div>
         <div class="selected-version-name">${version.venue} (${version.date})</div>
         <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-            <strong style="color: #92400e;">📂 YOU NEED: Track ${version.trackNumber}</strong>
+            <strong style="color: #92400e;">? YOU NEED: Track ${version.trackNumber}</strong>
             <div style="color: #78350f; font-size: 0.9em; margin-top: 5px;">
                 Look for file: <code style="background: #fde68a; padding: 2px 6px; border-radius: 3px;">${version.archiveId}.mp3</code>
             </div>
@@ -1168,14 +1168,14 @@ function showDownloadStep(songTitle, version) {
         window.open(urls.download, '_blank');
         
         setTimeout(() => {
-            alert(`🎯 DOWNLOADING FULL SHOW:
+            alert(`? DOWNLOADING FULL SHOW:
 
 Look for the MP3 file (usually 100-200MB)
 It will be named something like: ${version.archiveId}.mp3
 
 Track ${version.trackNumber} is "${songTitle}"
 
-Right-click the MP3 filename → Save Link As...`);
+Right-click the MP3 filename ? Save Link As...`);
         }, 500);
         
         step5.classList.remove('hidden');
@@ -1209,7 +1209,7 @@ Right-click the MP3 filename → Save Link As...`);
 // ============================================================================
 
 function handleSmartDownload(songTitle, version) {
-    console.log('🚀 Starting Smart Download for:', songTitle, version);
+    console.log('? Starting Smart Download for:', songTitle, version);
     
     // Show progress UI
     const progressContainer = document.getElementById('progressContainer');
@@ -1222,7 +1222,7 @@ function handleSmartDownload(songTitle, version) {
     
     // Check if AudioSplitter is loaded
     if (typeof AudioSplitter === 'undefined') {
-        alert('⚠️ Audio Splitter not loaded. Make sure audio-splitter.js is included.');
+        alert('?? Audio Splitter not loaded. Make sure audio-splitter.js is included.');
         progressContainer.classList.add('hidden');
         return;
     }
@@ -1232,7 +1232,7 @@ function handleSmartDownload(songTitle, version) {
     // Start extraction
     splitter.extractSongFromShow(version.archiveId, version.trackNumber, songTitle)
         .then(blob => {
-            console.log('✅ Smart Download complete!', blob);
+            console.log('? Smart Download complete!', blob);
             progressMessage.textContent = 'Download complete!';
             progressBar.style.width = '100%';
             
@@ -1245,15 +1245,15 @@ function handleSmartDownload(songTitle, version) {
             
             setTimeout(() => {
                 progressContainer.classList.add('hidden');
-                alert(`✅ Downloaded: ${songTitle}
+                alert(`? Downloaded: ${songTitle}
 
 Now upload to Moises.ai to separate stems!`);
             }, 1000);
         })
         .catch(error => {
-            console.error('❌ Smart Download failed:', error);
+            console.error('? Smart Download failed:', error);
             progressContainer.classList.add('hidden');
-            alert(`❌ Smart Download failed: ${error.message}
+            alert(`? Smart Download failed: ${error.message}
 
 Try the regular "Download Full Show" button instead.`);
         });
@@ -1385,13 +1385,13 @@ function showNoBandResourcesMessage(songTitle) {
     const step2 = document.getElementById('step2');
     step2.innerHTML = `
         <div class="step-number">2</div>
-        <h2>🎸 Band Resources</h2>
+        <h2>? Band Resources</h2>
         <div class="empty-state">
-            <div class="empty-state-icon">📭</div>
+            <div class="empty-state-icon">?</div>
             <div class="empty-state-text">No band resources yet for "${songTitle}"</div>
             <div class="empty-state-subtext">This song hasn't been set up with collaborative resources</div>
             <button class="primary-btn" style="margin-top: 20px;" onclick="skipToBandResources()">
-                Skip to Version Selection →
+                Skip to Version Selection ?
             </button>
         </div>
     `;
@@ -1424,13 +1424,13 @@ function renderSpotifyVersions(songTitle, bandData) {
             <div class="spotify-version-card ${isDefault ? 'default' : ''}">
                 <div class="version-header">
                     <div class="version-title">${version.title}</div>
-                    ${isDefault ? '<div class="version-badge">✓ BAND CHOICE (' + voteCount + '/' + totalMembers + ')</div>' : ''}
+                    ${isDefault ? '<div class="version-badge">? BAND CHOICE (' + voteCount + '/' + totalMembers + ')</div>' : ''}
                 </div>
                 
                 <div class="votes-container">
                     ${Object.entries(version.votes).map(([member, voted]) => `
                         <span class="vote-chip ${voted ? 'yes' : 'no'}">
-                            ${voted ? '✓ ' : ''}${bandMembers[member].name}
+                            ${voted ? '? ' : ''}${bandMembers[member].name}
                         </span>
                     `).join('')}
                 </div>
@@ -1438,7 +1438,7 @@ function renderSpotifyVersions(songTitle, bandData) {
                 ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
                 
                 <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')">
-                    ▶ Play on Spotify
+                    ? Play on Spotify
                 </button>
             </div>
         `;
@@ -1468,11 +1468,11 @@ async function renderPersonalTabs(songTitle) {
                 <div style="background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; position: relative;">
                     ${tab.addedBy === currentUserEmail ? `
                         <button onclick="deletePersonalTab('${songTitle}', ${index})" 
-                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">×</button>
+                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">�</button>
                     ` : ''}
                     
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                        <span style="font-size: 1.2em;">🎸</span>
+                        <span style="font-size: 1.2em;">?</span>
                         <strong style="color: #667eea; font-size: 1.1em;">${bandMembers[tab.addedBy]?.name || tab.addedBy}</strong>
                     </div>
                     
@@ -1484,7 +1484,7 @@ async function renderPersonalTabs(songTitle) {
                     
                     <button onclick="window.open('${tab.url}', '_blank')" 
                         style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                        📖 Open ${bandMembers[tab.addedBy]?.name || 'Their'} Tab
+                        ? Open ${bandMembers[tab.addedBy]?.name || 'Their'} Tab
                     </button>
                     
                     <p style="margin-top: 8px; font-size: 0.85em; color: #9ca3af;">
@@ -1561,7 +1561,7 @@ async function loadPersonalTabs(songTitle) {
     return await loadBandDataFromDrive(songTitle, 'personal_tabs') || [];
 }
 
-console.log('✅ Personal tabs system loaded');
+console.log('? Personal tabs system loaded');
 
 // ============================================================================
 // MOISES STEMS
@@ -1577,7 +1577,7 @@ async function renderMoisesStems(songTitle, bandData) {
         container.innerHTML = `
             <div class="empty-state" style="padding: 20px;">
                 <p>No Moises stems uploaded yet</p>
-                <button onclick="showMoisesUploadForm()" class="primary-btn" style="margin-top: 10px;">📤 Upload Stems from Computer</button>
+                <button onclick="showMoisesUploadForm()" class="primary-btn" style="margin-top: 10px;">? Upload Stems from Computer</button>
                 <p style="margin-top: 10px; color: #6b7280; font-size: 0.85em;">Or <a href="#" onclick="addMoisesStems(); return false;" style="color: #667eea;">paste Drive links</a> if already uploaded</p>
             </div>
         `;
@@ -1587,19 +1587,19 @@ async function renderMoisesStems(songTitle, bandData) {
     // Check if we have individual stem links
     const stemKeys = ['bass', 'drums', 'guitar', 'keys', 'vocals', 'other'];
     const instrumentIcons = {
-        bass: '🎸',
-        drums: '🥁', 
-        guitar: '🎸',
-        keys: '🎹',
-        vocals: '🎤',
-        other: '🎵'
+        bass: '?',
+        drums: '?', 
+        guitar: '?',
+        keys: '?',
+        vocals: '?',
+        other: '?'
     };
     
     // Show stem buttons
     const stemButtons = stemKeys.map(key => {
         const url = stems.stems && stems.stems[key];
         const label = key.charAt(0).toUpperCase() + key.slice(1);
-        const icon = instrumentIcons[key] || '🎵';
+        const icon = instrumentIcons[key] || '?';
         
         if (url) {
             // Has URL - clickable download
@@ -1615,7 +1615,7 @@ async function renderMoisesStems(songTitle, bandData) {
     
     container.innerHTML = `
         <div style="position: relative;">
-            <button onclick="showMoisesUploadForm()" style="position: absolute; top: 0; right: 60px; background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">📤 Upload</button>
+            <button onclick="showMoisesUploadForm()" style="position: absolute; top: 0; right: 60px; background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">? Upload</button>
             <button onclick="editMoisesStems()" style="position: absolute; top: 0; right: 0; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">Edit</button>
             
             ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
@@ -1628,7 +1628,7 @@ async function renderMoisesStems(songTitle, bandData) {
             
             ${stems.folderUrl ? `
                 <button class="drive-folder-btn" onclick="window.open('${stems.folderUrl}', '_blank')" style="background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                    📁 Open Google Drive Folder
+                    ? Open Google Drive Folder
                 </button>
             ` : ''}
             
@@ -1644,7 +1644,7 @@ function showMoisesUploadForm() {
     const container = document.getElementById('moisesStemsContainer');
     container.innerHTML = `
         <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 2px solid #667eea;">
-            <h4 style="margin: 0 0 15px 0; color: #667eea;">📤 Upload Moises Stems</h4>
+            <h4 style="margin: 0 0 15px 0; color: #667eea;">? Upload Moises Stems</h4>
             
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
@@ -1665,7 +1665,7 @@ function showMoisesUploadForm() {
                 <input type="file" id="stemsFileInput" multiple accept="audio/*,.mp3,.wav,.m4a,.aac"
                     style="width: 100%; padding: 10px; border: 2px dashed #d1d5db; border-radius: 6px; background: white; cursor: pointer;">
                 <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
-                    💡 Name your files clearly (e.g., bass.mp3, drums.mp3, guitar.mp3, keys.mp3, vocals.mp3)
+                    ? Name your files clearly (e.g., bass.mp3, drums.mp3, guitar.mp3, keys.mp3, vocals.mp3)
                 </p>
             </div>
             
@@ -1689,7 +1689,7 @@ function showMoisesUploadForm() {
             <div style="display: flex; gap: 10px;">
                 <button onclick="uploadMoisesStems()" 
                     style="flex: 1; background: #10b981; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
-                    📤 Upload Stems
+                    ? Upload Stems
                 </button>
                 <button onclick="renderMoisesStems('${songTitle.replace(/'/g, "\\'")}', {})" 
                     style="background: #6b7280; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
@@ -1733,7 +1733,7 @@ async function uploadMoisesStems() {
             throw new Error('Failed to create folder');
         }
         
-        console.log(`✅ Created folder: ${folderId}`);
+        console.log(`? Created folder: ${folderId}`);
         
         // Upload each file
         const files = Array.from(fileInput.files);
@@ -1766,7 +1766,7 @@ async function uploadMoisesStems() {
                 const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
                 uploadedStems[instrument] = fileUrl;
                 
-                console.log(`✅ Uploaded ${file.name} as ${instrument}: ${fileId}`);
+                console.log(`? Uploaded ${file.name} as ${instrument}: ${fileId}`);
             }
         }
         
@@ -1787,10 +1787,10 @@ async function uploadMoisesStems() {
         
         await saveMoisesStems(songTitle, stemsData);
         
-        progressText.textContent = 'Complete! ✅';
+        progressText.textContent = 'Complete! ?';
         progressBar.style.width = '100%';
         
-        console.log('✅ All stems uploaded successfully!');
+        console.log('? All stems uploaded successfully!');
         
         setTimeout(async () => {
             const bandData = bandKnowledgeBase[songTitle] || {};
@@ -1914,7 +1914,7 @@ async function loadMoisesStems(songTitle) {
     return await loadBandDataFromDrive(songTitle, 'moises_stems');
 }
 
-console.log('✅ Moises stems editor loaded');
+console.log('? Moises stems editor loaded');
 
 // ============================================================================
 // PRACTICE TRACKS
@@ -1940,7 +1940,7 @@ function renderHarmonies(songTitle, bandData) {
     
     const sections = harmonies.sections.map(section => {
         const statusClass = section.workedOut ? 'worked-out' : 'needs-work';
-        const statusText = section.workedOut ? (section.soundsGood ? '✓ Sounds Great' : '⚠ Needs Polish') : '⚠ Needs Work';
+        const statusText = section.workedOut ? (section.soundsGood ? '? Sounds Great' : '? Needs Polish') : '? Needs Work';
         const statusBadgeClass = section.soundsGood ? 'status-good' : 'status-needs-work';
         
         return `
@@ -1973,7 +1973,7 @@ function renderHarmonies(songTitle, bandData) {
                 
                 ${section.referenceRecording ? `
                     <button class="chart-btn chart-btn-primary" style="margin-top: 12px;" onclick="window.open('${section.referenceRecording}', '_blank')">
-                        🎧 Play Reference Recording
+                        ? Play Reference Recording
                     </button>
                 ` : ''}
             </div>
@@ -2013,7 +2013,7 @@ function renderRehearsalNotes(songTitle, bandData) {
             ${notes.map(note => `
                 <div class="rehearsal-note-card ${note.priority === 'high' ? 'high' : ''}">
                     <div class="note-header">
-                        <span>${note.author} • ${note.date}</span>
+                        <span>${note.author} - ${note.date}</span>
                         <span style="color: ${note.priority === 'high' ? '#ef4444' : '#667eea'}; font-weight: 600;">
                             ${note.priority.toUpperCase()} PRIORITY
                         </span>
@@ -2097,7 +2097,7 @@ async function loadGigNotes(songTitle) {
     return await loadBandDataFromDrive(songTitle, 'gig_notes');
 }
 
-console.log('✅ Gig notes editor loaded');
+console.log('? Gig notes editor loaded');
 
 // ============================================================================
 // ============================================================================
@@ -2231,7 +2231,7 @@ async function addPracticeTrackSimple() {
     // Show loading
     const addButton = document.getElementById('addPracticeTrackBtn');
     const originalText = addButton.innerHTML;
-    addButton.innerHTML = '🔄 Fetching video info...';
+    addButton.innerHTML = '? Fetching video info...';
     addButton.disabled = true;
     
     try {
@@ -2254,7 +2254,7 @@ async function addPracticeTrackSimple() {
         // Show success message
         const message = document.createElement('div');
         message.style.cssText = 'background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; color: #065f46; font-weight: 600;';
-        message.textContent = `✅ Added: ${metadata.title}`;
+        message.textContent = `? Added: ${metadata.title}`;
         document.getElementById('practiceTrackAddForm').appendChild(message);
         
         // Clear form
@@ -2306,15 +2306,15 @@ async function renderPracticeTracksSimplified(songTitle) {
     
     // Instrument icons and names
     const instrumentIcons = {
-        bass: '🎸',
-        leadGuitar: '🎸',
-        lead_guitar: '🎸',
-        rhythmGuitar: '🎸',
-        rhythm_guitar: '🎸',
-        keys: '🎹',
-        keyboards: '🎹',
-        drums: '🥁',
-        vocals: '🎤'
+        bass: '?',
+        leadGuitar: '?',
+        lead_guitar: '?',
+        rhythmGuitar: '?',
+        rhythm_guitar: '?',
+        keys: '?',
+        keyboards: '?',
+        drums: '?',
+        vocals: '?'
     };
     
     const instrumentNames = {
@@ -2334,7 +2334,7 @@ async function renderPracticeTracksSimplified(songTitle) {
             ${allTracks.map((track, index) => {
                 const url = track.videoUrl || track.youtubeUrl;
                 const thumbnail = track.thumbnail || getYouTubeThumbnail(url);
-                const icon = instrumentIcons[track.instrument] || '🎵';
+                const icon = instrumentIcons[track.instrument] || '?';
                 const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
                 const isUserAdded = track.source !== 'data.js';
                 
@@ -2344,10 +2344,10 @@ async function renderPracticeTracksSimplified(songTitle) {
                             <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10;">
                                 <button onclick="editPracticeTrack('${songTitle}', ${index - dataTracks.length})" 
                                     style="background: #667eea; color: white; border: none; border-radius: 4px; width: 28px; height: 24px; cursor: pointer; font-size: 12px;"
-                                    title="Edit track">✏️</button>
+                                    title="Edit track">??</button>
                                 <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
                                     style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;"
-                                    title="Delete track">×</button>
+                                    title="Delete track">�</button>
                             </div>
                         ` : ''}
                         
@@ -2355,7 +2355,7 @@ async function renderPracticeTracksSimplified(songTitle) {
                             <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden; max-width: 200px;">
                                 <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
                                 <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    <span style="color: white; font-size: 20px;">▶</span>
+                                    <span style="color: white; font-size: 20px;">?</span>
                                 </div>
                             </div>
                         ` : ''}
@@ -2372,12 +2372,12 @@ async function renderPracticeTracksSimplified(songTitle) {
                         ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
                         
                         <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${url}', '_blank')">
-                            ▶ Watch Video
+                            ? Watch Video
                         </button>
                         
                         <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">
                             Added by ${track.uploadedBy || 'unknown'}
-                            ${track.source === 'Google Drive' ? ' <span style="color: #10b981;">• Google Drive</span>' : ''}
+                            ${track.source === 'Google Drive' ? ' <span style="color: #10b981;">- Google Drive</span>' : ''}
                         </p>
                     </div>
                 `;
@@ -2463,7 +2463,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     }
     
     // Show loading
-    container.innerHTML = '<p style="padding: 15px; color: #667eea;">🔄 Loading track info from Spotify...</p>';
+    container.innerHTML = '<p style="padding: 15px; color: #667eea;">? Loading track info from Spotify...</p>';
     
     // Fetch metadata for all versions
     const versionsWithMetadata = await Promise.all(
@@ -2489,7 +2489,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 ${version.addedBy === currentUserEmail ? `
                     <button onclick="deleteSpotifyVersion(${index})" 
-                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">×</button>
+                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">�</button>
                 ` : ''}
                 
                 ${version.thumbnail ? `
@@ -2500,7 +2500,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
                 
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
-                    ${isDefault ? `<div class="version-badge">✓ BAND CHOICE (${voteCount}/${totalMembers})</div>` : ''}
+                    ${isDefault ? `<div class="version-badge">? BAND CHOICE (${voteCount}/${totalMembers})</div>` : ''}
                 </div>
                 
                 <div class="votes-container">
@@ -2508,7 +2508,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
                         const voted = version.votes && version.votes[email];
                         return `
                             <span class="vote-chip ${voted ? 'yes' : 'no'}" onclick="toggleSpotifyVote(${index}, '${email}')" style="cursor: pointer;">
-                                ${voted ? '✓ ' : ''}${member.name}
+                                ${voted ? '? ' : ''}${member.name}
                             </span>
                         `;
                     }).join('')}
@@ -2517,7 +2517,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
                 ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
                 
                 <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')">
-                    ▶ Play on Spotify
+                    ? Play on Spotify
                 </button>
             </div>
         `;
@@ -2622,7 +2622,7 @@ async function loadSpotifyVersions(songTitle) {
     return await loadBandDataFromDrive(songTitle, 'spotify_versions');
 }
 
-console.log('✅ Spotify versions system loaded');
+console.log('? Spotify versions system loaded');
 
 // Search helpers
 function searchSpotify() {
@@ -2664,7 +2664,7 @@ function searchUltimateGuitar() {
     window.open(`https://www.ultimate-guitar.com/search.php?search_type=title&value=${query}`, '_blank');
 }
 
-console.log('✅ Search helper functions loaded');
+console.log('? Search helper functions loaded');
 
 // ============================================================================
 // REHEARSAL NOTES FORM
@@ -2689,9 +2689,9 @@ function showRehearsalNoteForm() {
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: 600;">Priority:</label>
                 <select id="rehearsalNotePriority" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                    <option value="low">🟢 Low - Nice to have</option>
-                    <option value="medium" selected>🟡 Medium - Should address</option>
-                    <option value="high">🔴 High - Must fix before gig</option>
+                    <option value="low">? Low - Nice to have</option>
+                    <option value="medium" selected>? Medium - Should address</option>
+                    <option value="high">? High - Must fix before gig</option>
                 </select>
             </div>
             
@@ -2703,7 +2703,7 @@ function showRehearsalNoteForm() {
             
             <div style="display: flex; gap: 10px;">
                 <button class="chart-btn chart-btn-primary" onclick="addRehearsalNote()" style="flex: 1;">
-                    ✅ Add Note
+                    ? Add Note
                 </button>
                 <button class="chart-btn chart-btn-secondary" onclick="hideRehearsalNoteForm()">
                     Cancel
@@ -2747,7 +2747,7 @@ async function addRehearsalNote() {
     await saveRehearsalNotesToDrive(selectedSong.title, notes);
     
     // Show success
-    alert(`✅ Note added by ${bandMembers[author].name} - saved to Google Drive!`);
+    alert(`? Note added by ${bandMembers[author].name} - saved to Google Drive!`);
     
     // Clear form
     hideRehearsalNoteForm();
@@ -2781,9 +2781,9 @@ async function renderRehearsalNotesWithStorage(songTitle) {
     };
     
     const priorityEmojis = {
-        high: '🔴',
-        medium: '🟡',
-        low: '🟢'
+        high: '?',
+        medium: '?',
+        low: '?'
     };
     
     container.innerHTML = `
@@ -2791,12 +2791,12 @@ async function renderRehearsalNotesWithStorage(songTitle) {
             ${allNotes.map(note => {
                 const memberName = bandMembers[note.author]?.name || note.author;
                 const priorityColor = priorityColors[note.priority] || '#667eea';
-                const priorityEmoji = priorityEmojis[note.priority] || '•';
+                const priorityEmoji = priorityEmojis[note.priority] || '-';
                 
                 return `
                     <div class="rehearsal-note-card ${note.priority === 'high' ? 'high' : ''}">
                         <div class="note-header">
-                            <span><strong>${memberName}</strong> • ${note.date}</span>
+                            <span><strong>${memberName}</strong> - ${note.date}</span>
                             <span style="color: ${priorityColor}; font-weight: 600;">
                                 ${priorityEmoji} ${note.priority.toUpperCase()} PRIORITY
                             </span>
@@ -2824,7 +2824,7 @@ function showHarmonyAudioUploadForm(sectionIndex) {
                 <input type="file" id="harmonyAudioFile" accept="audio/*"
                     style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
                 <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
-                    📱 Accepts: MP3, M4A, WAV, Voice Memos, Soundtrap exports, etc. (Max 5MB)
+                    ? Accepts: MP3, M4A, WAV, Voice Memos, Soundtrap exports, etc. (Max 5MB)
                 </p>
             </div>
             
@@ -2844,7 +2844,7 @@ function showHarmonyAudioUploadForm(sectionIndex) {
             
             <div style="display: flex; gap: 10px;">
                 <button class="chart-btn chart-btn-primary" onclick="uploadHarmonyAudio(${sectionIndex})" style="flex: 1;">
-                    ✨ Upload Audio
+                    ? Upload Audio
                 </button>
                 <button class="chart-btn chart-btn-secondary" onclick="hideHarmonyAudioForm()">
                     Cancel
@@ -2889,7 +2889,7 @@ async function uploadHarmonyAudio(sectionIndex) {
     // Show loading
     const uploadButton = event.target;
     const originalText = uploadButton.innerHTML;
-    uploadButton.innerHTML = '🔄 Uploading...';
+    uploadButton.innerHTML = '? Uploading...';
     uploadButton.disabled = true;
     
     try {
@@ -2917,7 +2917,7 @@ async function uploadHarmonyAudio(sectionIndex) {
         const localKey = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
         localStorage.setItem(localKey, JSON.stringify(existing));
         
-        alert(`✅ Audio uploaded to Google Drive! All band members can now hear it.`);
+        alert(`? Audio uploaded to Google Drive! All band members can now hear it.`);
         
         // Clear form
         hideHarmonyAudioForm();
@@ -3009,7 +3009,7 @@ async function startMicrophoneRecording(sectionIndex) {
         if (window.currentSynthControl) {
             try {
                 window.currentSynthControl.pause();
-                console.log('⏸ Stopped ABC playback');
+                console.log('? Stopped ABC playback');
             } catch (e) {
                 console.warn('Could not stop ABC playback:', e);
             }
@@ -3049,7 +3049,7 @@ async function startMicrophoneRecording(sectionIndex) {
             mimeType = 'audio/ogg';
         }
         
-        console.log('📱 Using MIME type:', mimeType);
+        console.log('? Using MIME type:', mimeType);
         
         // Create recorder with compatible MIME type
         mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
@@ -3135,12 +3135,12 @@ function showRecordingUI(sectionIndex) {
     
     container.innerHTML = `
         <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 25px; border-radius: 12px; color: white; text-align: center; margin-top: 15px;">
-            <div style="font-size: 3em; margin-bottom: 10px;">🎤</div>
+            <div style="font-size: 3em; margin-bottom: 10px;">?</div>
             <div style="font-size: 1.5em; font-weight: 600; margin-bottom: 10px;">Recording...</div>
             <div id="recordingTimer" style="font-size: 2em; font-weight: 700; font-family: monospace;">0:00</div>
             <button onclick="stopMicrophoneRecording(); clearInterval(${timerInterval})" 
                 style="background: white; color: #ef4444; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin-top: 20px; cursor: pointer; font-size: 1em;">
-                ⏹ Stop Recording
+                ? Stop Recording
             </button>
         </div>
     `;
@@ -3162,11 +3162,11 @@ function showSaveRecordingForm(sectionIndex, base64Audio, fileSize, mimeType) {
     
     container.innerHTML = `
         <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #10b981; margin-top: 15px;">
-            <h4 style="margin: 0 0 15px 0; color: #10b981;">✅ Recording Complete!</h4>
+            <h4 style="margin: 0 0 15px 0; color: #10b981;">? Recording Complete!</h4>
             
             <div style="margin-bottom: 15px; text-align: center;">
                 <audio controls src="${base64Audio}" style="width: 100%; max-width: 400px;"></audio>
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">Format: ${extension.toUpperCase()} • Size: ${(fileSize / 1024).toFixed(1)} KB</p>
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">Format: ${extension.toUpperCase()} - Size: ${(fileSize / 1024).toFixed(1)} KB</p>
             </div>
             
             <div style="margin-bottom: 12px;">
@@ -3194,10 +3194,10 @@ function showSaveRecordingForm(sectionIndex, base64Audio, fileSize, mimeType) {
             
             <div style="display: flex; gap: 10px;">
                 <button class="chart-btn chart-btn-primary" onclick="saveRecording(${sectionIndex}, '${base64Audio}', ${fileSize})" style="flex: 1;">
-                    💾 Save Recording
+                    ? Save Recording
                 </button>
                 <button class="chart-btn chart-btn-secondary" onclick="discardRecording(${sectionIndex})">
-                    🗑️ Discard
+                    ?? Discard
                 </button>
             </div>
         </div>
@@ -3242,7 +3242,7 @@ async function saveRecording(sectionIndex, base64Audio, fileSize) {
     snippets.push(snippet);
     localStorage.setItem(key, JSON.stringify(snippets));
     
-    alert(`✅ Recording saved: ${name}`);
+    alert(`? Recording saved: ${name}`);
     
     // Clear form
     hideHarmonyAudioForm();
@@ -3311,7 +3311,7 @@ function generateSheetMusic(sectionIndex, section) {
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-        alert('✅ ABC notation copied to clipboard!\n\nPaste it into https://abcjs.net/abcjs-editor.html to see the sheet music.');
+        alert('? ABC notation copied to clipboard!\n\nPaste it into https://abcjs.net/abcjs-editor.html to see the sheet music.');
     }).catch(err => {
         alert('Could not copy. Please select and copy manually.');
     });
@@ -3332,16 +3332,16 @@ async function renderAudioSnippetsOnly(songTitle, container) {
             
             snippetsHTML += `
                 <div style="margin-bottom: 30px; padding: 20px; background: #f9fafb; border-radius: 12px; border: 2px solid #e2e8f0;">
-                    <h4 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Audio Snippets - Section ${sectionIndex + 1}</h4>
+                    <h4 style="margin: 0 0 15px 0; color: #2d3748;">? Audio Snippets - Section ${sectionIndex + 1}</h4>
                     
                     <div style="display: flex; gap: 8px; margin-bottom: 15px;">
                         <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(${sectionIndex})" 
                             style="padding: 8px 16px; font-size: 0.9em;">
-                            🎤 Record Now
+                            ? Record Now
                         </button>
                         <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                             style="padding: 8px 16px; font-size: 0.9em;">
-                            📱 Upload File
+                            ? Upload File
                         </button>
                     </div>
                     
@@ -3358,18 +3358,18 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                                     <div style="display: flex; gap: 8px;">
                                         <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                             style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ✏️ Rename
+                                            ?? Rename
                                         </button>
                                         <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ×
+                                            �
                                         </button>
                                     </div>
                                 </div>
                                 <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                 <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
-                                    ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} • ${snippet.uploadedDate}
-                                    ${snippet.isRecording ? ' • 🎤 Recorded in browser' : ''}
+                                    ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
+                                    ${snippet.isRecording ? ' - ? Recorded in browser' : ''}
                                 </p>
                             </div>
                         `).join('')}
@@ -3394,10 +3394,10 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                 
                 <div style="display: flex; gap: 10px; justify-content: center;">
                     <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(0)">
-                        🎤 Record Now
+                        ? Record Now
                     </button>
                     <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(0)">
-                        📱 Upload File
+                        ? Upload File
                     </button>
                 </div>
                 
@@ -3426,7 +3426,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         // Load ABC from Google Drive first, fallback to localStorage
         const savedAbc = await loadABCNotation(songTitle, sectionIndex);
         const sheetMusicExists = savedAbc && savedAbc.length > 0;
-        const sheetMusicButtonText = sheetMusicExists ? '🎼 ✅ View Sheet Music' : '🎼 Create Sheet Music';
+        const sheetMusicButtonText = sheetMusicExists ? '? ? View Sheet Music' : '? Create Sheet Music';
         const sheetMusicButtonStyle = sheetMusicExists ? 
             'padding: 6px 12px; font-size: 0.85em; background: #10b981; color: white;' : 
             'padding: 6px 12px; font-size: 0.85em;';
@@ -3449,7 +3449,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                 
                 ${section.practiceNotes && section.practiceNotes.length > 0 ? `
                     <div class="practice-notes-box" style="background: #fffbeb; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #f59e0b;">
-                        <strong style="color: #92400e;">📝 General Practice Notes:</strong>
+                        <strong style="color: #92400e;">? General Practice Notes:</strong>
                         <ul style="margin: 8px 0 0 20px; padding: 0;">
                             ${section.practiceNotes.map(note => `<li style="margin: 4px 0; color: #78350f;">${note}</li>`).join('')}
                         </ul>
@@ -3459,15 +3459,15 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                 <!-- Audio Snippets -->
                 <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #fee2e2;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <strong style="color: #991b1b;">🎵 Audio Snippets</strong>
+                        <strong style="color: #991b1b;">? Audio Snippets</strong>
                         <div style="display: flex; gap: 8px;">
                             <button onclick="startMicrophoneRecording(${sectionIndex})" 
                                 style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                🎤 Record Now
+                                ? Record Now
                             </button>
                             <button onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                                 style="background: #4b5563; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                📱 Upload File
+                                ? Upload File
                             </button>
                         </div>
                     </div>
@@ -3485,15 +3485,15 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                                         </div>
                                         <div style="display: flex; gap: 8px;">
                                             <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                                style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">✏️</button>
+                                                style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">??</button>
                                             <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">×</button>
+                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">�</button>
                                         </div>
                                     </div>
                                     <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                     <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
-                                        ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} • ${snippet.uploadedDate}
-                                        ${snippet.isRecording ? ' • 🎤 Recorded' : ''}
+                                        ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
+                                        ${snippet.isRecording ? ' - ? Recorded' : ''}
                                     </p>
                                 </div>
                             `).join('')}
@@ -3541,7 +3541,7 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
                             <input type="checkbox" ${isLead ? 'checked' : ''} 
                                 onchange="updatePartMetadata('${songTitle}', ${sectionIndex}, '${part.singer}', 'isLead', this.checked)"
                                 style="width: 16px; height: 16px; cursor: pointer;">
-                            <span style="font-size: 0.9em; color: #6b7280; font-weight: 600;">🎤 Lead</span>
+                            <span style="font-size: 0.9em; color: #6b7280; font-weight: 600;">? Lead</span>
                         </label>
                         
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -3558,9 +3558,9 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span style="font-size: 0.85em; color: #6b7280;">Sort:</span>
                             <button onclick="movePartUp('${songTitle}', ${sectionIndex}, '${part.singer}')" 
-                                style="background: #e5e7eb; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">↑</button>
+                                style="background: #e5e7eb; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">?</button>
                             <button onclick="movePartDown('${songTitle}', ${sectionIndex}, '${part.singer}')" 
-                                style="background: #e5e7eb; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">↓</button>
+                                style="background: #e5e7eb; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">?</button>
                         </div>
                     </div>
                 </div>
@@ -3573,15 +3573,15 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
             
             ${customNotes && customNotes.length > 0 ? `
                 <div style="margin-top: 8px; background: #f9fafb; padding: 12px; border-radius: 6px;">
-                    <strong style="font-size: 0.9em; color: #374151;">📝 Practice Notes:</strong>
+                    <strong style="font-size: 0.9em; color: #374151;">? Practice Notes:</strong>
                     <ul style="margin: 8px 0 0 20px; padding: 0;">
                         ${customNotes.map((note, noteIndex) => `
                             <li style="margin: 6px 0; font-size: 0.9em; color: #4b5563;">
                                 ${note}
                                 <button onclick="editPartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
-                                    style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea; font-size: 0.85em;">✏️</button>
+                                    style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea; font-size: 0.85em;">??</button>
                                 <button onclick="deletePartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
-                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">×</button>
+                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">�</button>
                             </li>
                         `).join('')}
                     </ul>
@@ -3640,7 +3640,7 @@ async function movePartDown(songTitle, sectionIndex, singer) {
     }
 }
 
-console.log('✅ Comprehensive harmony parts rendering loaded');
+console.log('? Comprehensive harmony parts rendering loaded');
 
 // ============================================================================
 // ENHANCED ABC EDITOR
@@ -3706,24 +3706,24 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
     modal.innerHTML = `
         <div style="background: white; border-radius: 16px; max-width: 1200px; width: 100%; max-height: 95vh; overflow: hidden; display: flex; flex-direction: column;">
             <div style="padding: 25px; border-bottom: 2px solid #e2e8f0;">
-                <h3 style="margin: 0 0 10px 0;">🎼 Edit Sheet Music: ${title}</h3>
+                <h3 style="margin: 0 0 10px 0;">? Edit Sheet Music: ${title}</h3>
                 <p style="margin: 0; color: #6b7280; font-size: 0.9em;">
                     Edit ABC notation below, then click "Preview" to see the rendered sheet music
-                    • <a href="https://abcnotation.com/wiki/abc:standard:v2.1" target="_blank" style="color: #667eea;">📖 ABC Tutorial</a>
-                    • <a href="https://abcjs.net/abcjs-editor.html" target="_blank" style="color: #667eea;">🔗 Full ABC Editor</a>
+                    - <a href="https://abcnotation.com/wiki/abc:standard:v2.1" target="_blank" style="color: #667eea;">? ABC Tutorial</a>
+                    - <a href="https://abcjs.net/abcjs-editor.html" target="_blank" style="color: #667eea;">? Full ABC Editor</a>
                 </p>
             </div>
             
             <div style="flex: 1; overflow: auto; padding: 25px; display: flex; gap: 20px;">
                 <!-- Left: Editor -->
                 <div style="flex: 1; display: flex; flex-direction: column;">
-                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">✏️ ABC Notation:</label>
+                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">?? ABC Notation:</label>
                     <textarea id="abcEditorTextarea" 
                         style="flex: 1; font-family: 'Courier New', monospace; font-size: 0.95em; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; resize: none;"
                     >${initialAbc}</textarea>
                     
                     <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                        <strong style="font-size: 0.9em;">💡 Quick Tips:</strong>
+                        <strong style="font-size: 0.9em;">? Quick Tips:</strong>
                         <ul style="margin: 8px 0 0 20px; font-size: 0.85em; line-height: 1.6;">
                             <li>C D E F G A B = Notes</li>
                             <li>2 = half note, 4 = quarter note</li>
@@ -3735,7 +3735,7 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                 
                 <!-- Right: Preview -->
                 <div style="flex: 1; display: flex; flex-direction: column;">
-                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">👁️ Preview:</label>
+                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">?? Preview:</label>
                     <div id="abcPreviewContainer" style="flex: 1; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto;">
                         <p style="color: #9ca3af; text-align: center; margin-top: 40px;">Click "Preview" to render sheet music</p>
                     </div>
@@ -3747,10 +3747,10 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                     Cancel
                 </button>
                 <button class="chart-btn chart-btn-primary" onclick="previewABC()">
-                    👁️ Preview Sheet Music
+                    ?? Preview Sheet Music
                 </button>
                 <button class="chart-btn chart-btn-primary" onclick="saveABCNotation(${sectionIndex})" style="background: #10b981;">
-                    💾 Save & Close
+                    ? Save & Close
                 </button>
             </div>
         </div>
@@ -3831,7 +3831,7 @@ function renderABCPreview(abc, container) {
         if (voices.length > 1) {
             voiceControlsHTML = `
                 <div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 6px; border: 2px solid #e2e8f0;">
-                    <strong style="color: #2d3748;">🎤 Select Parts to Play:</strong>
+                    <strong style="color: #2d3748;">? Select Parts to Play:</strong>
                     <div style="display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap;">
                         ${voices.map(voice => `
                             <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
@@ -3843,7 +3843,7 @@ function renderABCPreview(abc, container) {
                     </div>
                     <button onclick="updateVoiceSelection()" 
                         style="margin-top: 10px; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                        🔄 Update Playback
+                        ? Update Playback
                     </button>
                 </div>
             `;
@@ -3853,7 +3853,7 @@ function renderABCPreview(abc, container) {
         const controlsContainer = document.createElement('div');
         controlsContainer.style.cssText = 'margin-top: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;';
         controlsContainer.innerHTML = `
-            <div style="margin-bottom: 10px; font-weight: 600; color: #2d3748;">🎵 Playback Controls:</div>
+            <div style="margin-bottom: 10px; font-weight: 600; color: #2d3748;">? Playback Controls:</div>
             ${voiceControlsHTML}
             <div id="abcAudioControls"></div>
             <div id="abcAudioWarnings" style="margin-top: 10px; color: #f59e0b; font-size: 0.85em;"></div>
@@ -3889,7 +3889,7 @@ function renderABCPreview(abc, container) {
                             return acc;
                         }, []) : []
                 }).then(() => {
-                    console.log('✅ Audio ready for playback');
+                    console.log('? Audio ready for playback');
                     
                     // iOS FIX: Initialize and resume AudioContext immediately
                     // This needs to happen BEFORE recording is ever used
@@ -3898,7 +3898,7 @@ function renderABCPreview(abc, container) {
                             if (synthControl.audioContext.state === 'suspended') {
                                 try {
                                     await synthControl.audioContext.resume();
-                                    console.log('✅ AudioContext resumed (iOS fix)');
+                                    console.log('? AudioContext resumed (iOS fix)');
                                 } catch (e) {
                                     console.warn('Could not resume AudioContext:', e);
                                 }
@@ -3922,12 +3922,12 @@ function renderABCPreview(abc, container) {
                 }).catch((error) => {
                     console.warn('Audio setup failed:', error);
                     document.getElementById('abcAudioWarnings').textContent = 
-                        '⚠️ Audio playback may not work in all browsers. The sheet music is still valid.';
+                        '?? Audio playback may not work in all browsers. The sheet music is still valid.';
                 });
             } catch (error) {
                 console.warn('Synth not available:', error);
                 document.getElementById('abcAudioWarnings').textContent = 
-                    'ℹ️ Audio playback not available. You can still edit and save the notation.';
+                    '?? Audio playback not available. You can still edit and save the notation.';
             }
         }
     } catch (error) {
@@ -3998,7 +3998,7 @@ function updateVoiceSelection() {
             renderABCPreview(newABC, previewContainer);
         }
         
-        console.log('✅ Voice selection updated via ABC comments');
+        console.log('? Voice selection updated via ABC comments');
     } catch (error) {
         console.error('Error updating voice selection:', error);
     }
@@ -4016,7 +4016,7 @@ async function saveABCNotation(sectionIndex) {
     const localKey = `deadcetera_abc_${songTitle}_section${sectionIndex}`;
     localStorage.setItem(localKey, abc);
     
-    alert('✅ Sheet music saved to Google Drive! All band members can now see it.');
+    alert('? Sheet music saved to Google Drive! All band members can now see it.');
     
     // Close modal
     const modal = document.getElementById('abcEditorModal');
@@ -4067,7 +4067,7 @@ let currentUserEmail = null; // Current signed-in user's email
 
 function loadGoogleDriveAPI() {
     return new Promise((resolve, reject) => {
-        console.log('🔄 Loading Google Drive API...');
+        console.log('? Loading Google Drive API...');
         
         // Load both Google API and Google Identity Services
         const loadGAPI = new Promise((res, rej) => {
@@ -4096,7 +4096,7 @@ function loadGoogleDriveAPI() {
         
         Promise.all([loadGAPI, loadGIS])
             .then(() => {
-                console.log('✅ Google scripts loaded');
+                console.log('? Google scripts loaded');
                 initGoogleDrive().then(resolve).catch(reject);
             })
             .catch(reject);
@@ -4105,7 +4105,7 @@ function loadGoogleDriveAPI() {
 
 async function initGoogleDrive() {
     try {
-        console.log('🔄 Initializing Google Drive API...');
+        console.log('? Initializing Google Drive API...');
         
         // Initialize gapi client
         await new Promise((resolve, reject) => {
@@ -4120,7 +4120,7 @@ async function initGoogleDrive() {
             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
         });
         
-        console.log('✅ gapi.client initialized');
+        console.log('? gapi.client initialized');
         
         // Initialize Google Identity Services token client
         tokenClient = google.accounts.oauth2.initTokenClient({
@@ -4135,7 +4135,7 @@ async function initGoogleDrive() {
                 accessToken = response.access_token;
                 gapi.client.setToken({ access_token: accessToken });
                 updateSignInStatus(true);
-                console.log('✅ User signed in');
+                console.log('? User signed in');
                 
                 // Get user email
                 getCurrentUserEmail();
@@ -4146,11 +4146,11 @@ async function initGoogleDrive() {
         });
         
         isGoogleDriveInitialized = true;
-        console.log('✅ Google Drive API initialized');
+        console.log('? Google Drive API initialized');
         
         return true;
     } catch (error) {
-        console.error('❌ Google Drive initialization failed:', error);
+        console.error('? Google Drive initialization failed:', error);
         throw error;
     }
 }
@@ -4166,7 +4166,7 @@ async function getCurrentUserEmail() {
             fields: 'user'
         });
         currentUserEmail = response.result.user.emailAddress;
-        console.log('👤 Signed in as:', currentUserEmail);
+        console.log('? Signed in as:', currentUserEmail);
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
@@ -4178,10 +4178,10 @@ function updateDriveAuthButton() {
     if (!button) return;
     
     if (isUserSignedIn) {
-        button.textContent = '✅ Connected to Google Drive';
+        button.textContent = '? Connected to Google Drive';
         button.style.background = '#10b981';
     } else {
-        button.textContent = '🔗 Connect Google Drive';
+        button.textContent = '? Connect Google Drive';
         button.style.background = '#667eea';
     }
 }
@@ -4193,7 +4193,7 @@ function updateDriveAuthButton() {
 async function handleGoogleDriveAuth() {
     if (!isGoogleDriveInitialized) {
         try {
-            console.log('🔄 Loading Google Drive API...');
+            console.log('? Loading Google Drive API...');
             await loadGoogleDriveAPI();
         } catch (error) {
             console.error('Failed to load Google Drive:', error);
@@ -4205,7 +4205,7 @@ async function handleGoogleDriveAuth() {
     if (isUserSignedIn) {
         // Sign out
         google.accounts.oauth2.revoke(accessToken, () => {
-            console.log('✅ User signed out');
+            console.log('? User signed out');
             accessToken = null;
             gapi.client.setToken(null);
             updateSignInStatus(false);
@@ -4213,7 +4213,7 @@ async function handleGoogleDriveAuth() {
     } else {
         // Sign in - request access token
         try {
-            console.log('🔄 Requesting access token...');
+            console.log('? Requesting access token...');
             tokenClient.requestAccessToken({ prompt: '' });
         } catch (error) {
             console.error('Sign-in failed:', error);
@@ -4233,7 +4233,7 @@ async function uploadAudioToDrive(audioBlob, fileName, metadata) {
     }
     
     try {
-        console.log('📤 Uploading to Google Drive:', fileName);
+        console.log('? Uploading to Google Drive:', fileName);
         
         // Create file metadata
         const fileMetadata = {
@@ -4274,7 +4274,7 @@ async function uploadAudioToDrive(audioBlob, fileName, metadata) {
             throw new Error(result.error?.message || 'Upload failed');
         }
         
-        console.log('✅ Upload successful:', result);
+        console.log('? Upload successful:', result);
         
         return {
             id: result.id,
@@ -4298,7 +4298,7 @@ async function blobToBase64(blob) {
     });
 }
 
-console.log('✅ Google Drive integration loaded (New GIS)');
+console.log('? Google Drive integration loaded (New GIS)');
 
 // ============================================================================
 // EDITABLE HARMONY PART NOTES
@@ -4371,7 +4371,7 @@ async function updateLeadSinger(singer) {
     if (!selectedSong || !selectedSong.title) return;
     
     await saveBandDataToDrive(selectedSong.title, 'lead_singer', { singer });
-    console.log(`✅ Lead singer updated: ${singer} - saved to Google Drive!`);
+    console.log(`? Lead singer updated: ${singer} - saved to Google Drive!`);
 }
 
 async function loadLeadSinger(songTitle) {
@@ -4381,19 +4381,22 @@ async function loadLeadSinger(songTitle) {
 
 async function updateHasHarmonies(hasHarmonies) {
     if (!selectedSong || !selectedSong.title) {
-        console.error('❌ Cannot update has harmonies - no song selected');
+        console.error('Cannot update has harmonies - no song selected');
         return;
     }
     
-    console.log(`🎤 Updating has harmonies for "${selectedSong.title}": ${hasHarmonies}`);
+    console.log(`Updating has harmonies for "${selectedSong.title}": ${hasHarmonies}`);
     
     await saveBandDataToDrive(selectedSong.title, 'has_harmonies', { hasHarmonies });
     
-    console.log(`✅ Saved to Google Drive!`);
-    
-    // Update cache immediately
+    // Update caches immediately
     harmonyCache[selectedSong.title] = hasHarmonies;
-    console.log(`✅ Updated cache for "${selectedSong.title}"`);
+    harmonyBadgeCache[selectedSong.title] = hasHarmonies;
+    
+    // Save updated master harmonies file
+    saveMasterFile(MASTER_HARMONIES_FILE, harmonyBadgeCache).then(() => {
+        console.log('Master harmonies file updated');
+    });
     
     // Update badge on song list
     addHarmonyBadges();
@@ -4404,7 +4407,7 @@ async function updateHasHarmonies(hasHarmonies) {
         renderHarmoniesEnhanced(selectedSong.title, bandData);
     }
     
-    console.log(`✅ Has harmonies: ${hasHarmonies} - saved to Google Drive!`);
+    console.log(`Has harmonies: ${hasHarmonies} - saved to Google Drive!`);
 }
 
 async function loadHasHarmonies(songTitle) {
@@ -4427,12 +4430,18 @@ async function updateSongStatus(status) {
         'gig_ready': 'Gig Ready'
     };
     
+    // Save to individual file (backward compatibility)
     await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
     
     // Update cache immediately
     statusCache[selectedSong.title] = status;
     
-    console.log(`✅ Song status updated: ${statusNames[status] || 'Not Started'}`);
+    // Save updated master file (so next page load is instant)
+    saveMasterFile(MASTER_STATUS_FILE, statusCache).then(() => {
+        console.log('Master status file updated');
+    });
+    
+    console.log(`Song status updated: ${statusNames[status] || 'Not Started'}`);
     
     // Update badge on song list
     await addStatusBadges();
@@ -4476,7 +4485,7 @@ async function filterByStatus(status) {
         document.querySelectorAll('.song-item').forEach(item => {
             item.style.display = 'block';
         });
-        console.log('✅ Showing all songs');
+        console.log('? Showing all songs');
         return;
     }
     
@@ -4498,21 +4507,21 @@ async function filterByStatus(status) {
         }
     });
     
-    console.log(`✅ Showing ${visibleCount} songs with status: ${status}`);
+    console.log(`? Showing ${visibleCount} songs with status: ${status}`);
     
     // If no songs found, show helpful message
     if (visibleCount === 0) {
         const dropdown = document.getElementById('songDropdown');
         const statusNames = {
-            'this_week': '🎯 This Week',
-            'gig_ready': '✅ Gig Ready',
-            'needs_polish': '⚠️ Needs Polish',
-            'on_deck': '📚 On Deck'
+            'this_week': '? This Week',
+            'gig_ready': '? Gig Ready',
+            'needs_polish': '?? Needs Polish',
+            'on_deck': '? On Deck'
         };
         
         dropdown.innerHTML = `
             <div style="padding: 40px; text-align: center; color: #6b7280;">
-                <div style="font-size: 2em; margin-bottom: 15px;">🎸</div>
+                <div style="font-size: 2em; margin-bottom: 15px;">?</div>
                 <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No songs marked as "${statusNames[status]}"</div>
                 <div style="margin-bottom: 20px;">Click any song and set its status!</div>
                 <button onclick="filterByStatus('all')" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
@@ -4525,7 +4534,7 @@ async function filterByStatus(status) {
 
 async function addStatusBadges() {
     if (!statusCacheLoaded) {
-        console.log('⏳ Status cache not loaded yet, skipping badges');
+        console.log('? Status cache not loaded yet, skipping badges');
         return;
     }
     
@@ -4543,10 +4552,10 @@ async function addStatusBadges() {
         
         if (status) {
             const badges = {
-                'this_week': { text: '🎯 THIS WEEK', color: '#ef4444', bg: '#fee2e2' },
-                'gig_ready': { text: '✅ READY', color: '#10b981', bg: '#d1fae5' },
-                'needs_polish': { text: '⚠️ POLISH', color: '#f59e0b', bg: '#fef3c7' },
-                'on_deck': { text: '📚 ON DECK', color: '#3b82f6', bg: '#dbeafe' }
+                'this_week': { text: '? THIS WEEK', color: '#ef4444', bg: '#fee2e2' },
+                'gig_ready': { text: '? READY', color: '#10b981', bg: '#d1fae5' },
+                'needs_polish': { text: '?? POLISH', color: '#f59e0b', bg: '#fef3c7' },
+                'on_deck': { text: '? ON DECK', color: '#3b82f6', bg: '#dbeafe' }
             };
             
             const badge = badges[status];
@@ -4585,7 +4594,7 @@ async function updateSongBpm(bpm) {
     }
     
     await saveBandDataToDrive(selectedSong.title, 'song_bpm', { bpm: bpmNum, updatedAt: new Date().toISOString() });
-    console.log(`✅ Song BPM updated: ${bpmNum}`);
+    console.log(`? Song BPM updated: ${bpmNum}`);
 }
 
 async function loadSongBpm(songTitle) {
@@ -4619,51 +4628,183 @@ async function populateSongMetadata(songTitle) {
 // Cache for harmony states - loads on demand
 let harmonyCache = {};
 
-// Cache for song statuses - pre-loaded in background
+// Cache for song statuses - loaded from single master file
 let statusCache = {};
 let statusCacheLoaded = false;
-
-// Pre-load all song statuses in background (non-blocking)
-// FIX v5.1.1: Uses master allSongs array, NOT DOM elements
 let statusPreloadRunning = false;
 
+// ============================================================================
+// MASTER STATUS FILE - Single Drive file for ALL song statuses (FAST!)
+// Instead of 358 individual Drive calls, we load ONE file on startup.
+// ============================================================================
+
+const MASTER_STATUS_FILE = '_master_song_statuses.json';
+const MASTER_HARMONIES_FILE = '_master_harmonies.json';
+
 async function preloadAllStatuses() {
-    if (statusPreloadRunning) {
-        console.log('⏳ Status preload already running, skipping...');
-        return;
-    }
+    if (statusPreloadRunning) return;
     if (statusCacheLoaded) {
         addStatusBadges();
         return;
     }
     
     statusPreloadRunning = true;
-    console.log('🔄 Pre-loading song statuses in background...');
+    console.log('Loading song statuses from master file...');
     
-    const total = allSongs.length;
-    let loaded = 0;
-    
-    const batchSize = 5;
-    for (let i = 0; i < allSongs.length; i += batchSize) {
-        const batch = allSongs.slice(i, i + batchSize);
+    try {
+        // Load master status file (1 API call instead of 358!)
+        const masterData = await loadMasterFile(MASTER_STATUS_FILE);
         
-        await Promise.all(batch.map(async (song) => {
-            if (song.title && !statusCache[song.title]) {
-                statusCache[song.title] = await loadSongStatus(song.title);
-                loaded++;
-            }
-        }));
-        
-        console.log(`📊 Loaded ${Math.min(i + batchSize, total)}/${total} song statuses...`);
+        if (masterData && typeof masterData === 'object') {
+            // Master file exists - use it!
+            Object.assign(statusCache, masterData);
+            const count = Object.values(masterData).filter(v => v).length;
+            console.log(`Loaded ${count} song statuses from master file (1 API call!)`);
+        } else {
+            // No master file yet - migrate from individual files
+            console.log('No master status file found. Migrating from individual files...');
+            await migrateStatusesToMaster();
+        }
+    } catch (error) {
+        console.error('Error loading master statuses:', error);
+        // Try localStorage fallback
+        const localData = localStorage.getItem('deadcetera_master_statuses');
+        if (localData) {
+            try {
+                Object.assign(statusCache, JSON.parse(localData));
+                console.log('Loaded statuses from localStorage fallback');
+            } catch (e) {}
+        }
     }
     
     statusCacheLoaded = true;
     statusPreloadRunning = false;
-    console.log(`✅ All ${total} song statuses cached!`);
+    console.log('All song statuses ready! Filtering is now instant.');
     
     addStatusBadges();
 }
 
+// Load a master file from Drive (single API call)
+async function loadMasterFile(fileName) {
+    if (!isUserSignedIn || !sharedFolderId) {
+        // Try localStorage
+        const key = `deadcetera_${fileName}`;
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : null;
+    }
+    
+    try {
+        const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
+        const file = await findFileInFolder(fileName, metadataFolderId);
+        
+        if (!file) return null;
+        
+        const response = await gapi.client.drive.files.get({
+            fileId: file.id,
+            alt: 'media'
+        });
+        
+        return response.result;
+    } catch (error) {
+        console.log(`Could not load master file: ${fileName}`);
+        return null;
+    }
+}
+
+// Save a master file to Drive (single API call)
+async function saveMasterFile(fileName, data) {
+    // Always save to localStorage as backup
+    const key = `deadcetera_${fileName}`;
+    localStorage.setItem(key, JSON.stringify(data));
+    
+    if (!isUserSignedIn || !sharedFolderId) return false;
+    
+    try {
+        const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
+        const content = JSON.stringify(data, null, 2);
+        const existingFile = await findFileInFolder(fileName, metadataFolderId);
+        
+        if (existingFile) {
+            await gapi.client.request({
+                path: `/upload/drive/v3/files/${existingFile.id}`,
+                method: 'PATCH',
+                params: { uploadType: 'media' },
+                body: content
+            });
+        } else {
+            const fileMetadata = {
+                name: fileName,
+                parents: [metadataFolderId],
+                mimeType: 'application/json'
+            };
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const close_delim = "\r\n--" + boundary + "--";
+            const multipartRequestBody =
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                JSON.stringify(fileMetadata) +
+                delimiter +
+                'Content-Type: application/json\r\n\r\n' +
+                content +
+                close_delim;
+            
+            await gapi.client.request({
+                path: '/upload/drive/v3/files',
+                method: 'POST',
+                params: { uploadType: 'multipart' },
+                headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+                body: multipartRequestBody
+            });
+        }
+        
+        console.log(`Saved master file: ${fileName}`);
+        return true;
+    } catch (error) {
+        console.error('Error saving master file:', error);
+        return false;
+    }
+}
+
+// One-time migration: read individual status files and combine into master
+async function migrateStatusesToMaster() {
+    console.log('Starting one-time status migration...');
+    const migrated = {};
+    let count = 0;
+    
+    // Load statuses in small batches to avoid throttling
+    for (let i = 0; i < allSongs.length; i += 5) {
+        const batch = allSongs.slice(i, i + 5);
+        
+        await Promise.all(batch.map(async (song) => {
+            try {
+                const data = await loadBandDataFromDrive(song.title, 'song_status');
+                if (data && data.status) {
+                    migrated[song.title] = data.status;
+                    count++;
+                }
+            } catch (e) {
+                // Skip failures
+            }
+        }));
+        
+        if (i % 50 === 0 && i > 0) {
+            console.log(`Migration progress: ${i}/${allSongs.length}...`);
+        }
+    }
+    
+    // Save master file
+    if (count > 0) {
+        await saveMasterFile(MASTER_STATUS_FILE, migrated);
+        console.log(`Migration complete! ${count} statuses saved to master file.`);
+    } else {
+        console.log('No existing statuses found to migrate.');
+        // Save empty master so we don\'t re-migrate
+        await saveMasterFile(MASTER_STATUS_FILE, {});
+    }
+    
+    Object.assign(statusCache, migrated);
+}
 
 // Get status from cache (instant!)
 function getStatusFromCache(songTitle) {
@@ -4672,8 +4813,15 @@ function getStatusFromCache(songTitle) {
 
 // Don't pre-load - too slow! Just cache as songs are clicked
 async function cacheHarmonyState(songTitle) {
+    // Use the master harmony badge cache first (instant!)
+    if (harmonyBadgeCache[songTitle] !== undefined) {
+        return harmonyBadgeCache[songTitle];
+    }
+    // Fallback to old per-song cache
     if (harmonyCache[songTitle] === undefined) {
         harmonyCache[songTitle] = await loadHasHarmonies(songTitle);
+        // Also update master cache
+        harmonyBadgeCache[songTitle] = harmonyCache[songTitle];
     }
     return harmonyCache[songTitle];
 }
@@ -4699,35 +4847,23 @@ async function filterSongsAsync(type) {
     });
     
     if (type === 'all') {
-        // Simple - just show everything
         document.querySelectorAll('.song-item').forEach(item => {
             item.style.display = 'block';
         });
-        console.log('✅ Showing all songs');
+        console.log('Showing all songs');
         return;
     }
     
-    // Show loading message
-    const dropdown = document.getElementById('songDropdown');
-    const originalContent = dropdown.innerHTML;
-    dropdown.innerHTML = '<div style="padding: 40px; text-align: center; color: #667eea;"><div style="font-size: 2em; margin-bottom: 10px;">🔍</div><div style="font-weight: 600;">Checking which songs have harmonies marked...</div><div style="font-size: 0.9em; color: #6b7280; margin-top: 8px;">This may take a moment</div></div>';
-    
-    // For harmonies - check only visible songs
-    const songItems = document.querySelectorAll('.song-item');
+    // Use master harmony cache for INSTANT filtering (no Drive calls!)
+    const items = document.querySelectorAll('.song-item');
     let visibleCount = 0;
     let checkedCount = 0;
     
-    // Restore original content first
-    dropdown.innerHTML = originalContent;
-    
-    // Get fresh song items after restore
-    const items = document.querySelectorAll('.song-item');
-    
-    for (const item of items) {
+    items.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
         const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
         
-        const hasHarmonies = await cacheHarmonyState(songTitle);
+        const hasHarmonies = harmonyBadgeCache[songTitle] || harmonyCache[songTitle] || false;
         checkedCount++;
         
         if (hasHarmonies) {
@@ -4736,17 +4872,17 @@ async function filterSongsAsync(type) {
         } else {
             item.style.display = 'none';
         }
-    }
+    });
     
-    console.log(`✅ Filter applied: showing ${visibleCount} songs with harmonies (checked ${checkedCount} songs)`);
+    console.log(`Filter applied: showing ${visibleCount} songs with harmonies (checked ${checkedCount} songs)`);
     
-    // If no songs found, show helpful message
     if (visibleCount === 0) {
+        const dropdown = document.getElementById('songDropdown');
         dropdown.innerHTML = `
             <div style="padding: 40px; text-align: center; color: #6b7280;">
-                <div style="font-size: 2em; margin-bottom: 15px;">🎤</div>
+                <div style="font-size: 2em; margin-bottom: 15px;">?</div>
                 <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No harmony songs marked yet</div>
-                <div style="margin-bottom: 20px;">Click any song and check the "🎵 Has Harmonies" box to mark it!</div>
+                <div style="margin-bottom: 20px;">Click any song and check the "? Has Harmonies" box to mark it!</div>
                 <button onclick="filterSongsSync('all')" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                     Show All Songs
                 </button>
@@ -4796,34 +4932,56 @@ async function filterSongs(type) {
     }
 }
 
+// Cache for harmony data - loaded from master file
+let harmonyBadgeCache = {};
+let harmonyBadgeCacheLoaded = false;
+let harmonyBadgeLoading = false;
+
 async function addHarmonyBadges() {
-    const songItems = document.querySelectorAll('.song-item');
-    for (const item of songItems) {
-        // Extract song title from the song-name span
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
-        
-        const hasHarmonies = await loadHasHarmonies(songTitle);
-        
-        // Remove existing badge if present
-        const existingBadge = item.querySelector('.harmony-badge');
-        if (existingBadge) {
-            existingBadge.remove();
+    // Don't run multiple times simultaneously
+    if (harmonyBadgeLoading) return;
+    
+    // Load master harmony file if not cached yet
+    if (!harmonyBadgeCacheLoaded) {
+        harmonyBadgeLoading = true;
+        try {
+            const masterData = await loadMasterFile(MASTER_HARMONIES_FILE);
+            if (masterData && typeof masterData === 'object') {
+                harmonyBadgeCache = masterData;
+                console.log('Loaded harmonies from master file');
+            }
+            harmonyBadgeCacheLoaded = true;
+        } catch (e) {
+            console.error('Error loading harmony master:', e);
+            harmonyBadgeCacheLoaded = true; // Don't retry forever
         }
+        harmonyBadgeLoading = false;
+    }
+    
+    // Apply badges from cache (instant, no Drive calls!)
+    const songItems = document.querySelectorAll('.song-item');
+    songItems.forEach(item => {
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
+        if (!songTitle) return;
+        
+        // Remove existing badge
+        const existingBadge = item.querySelector('.harmony-badge');
+        if (existingBadge) existingBadge.remove();
         
         // Add badge if song has harmonies
-        if (hasHarmonies) {
+        if (harmonyBadgeCache[songTitle]) {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
-            badge.textContent = '🎤';
+            badge.textContent = '?';
             badge.style.cssText = 'margin-left: 8px; font-size: 0.9em; opacity: 0.7;';
             badge.title = 'This song has harmonies';
             item.appendChild(badge);
         }
-    }
+    });
 }
 
-console.log('✅ All 4 features loaded');
+console.log('? All 4 features loaded');
 // ============================================================================
 // COMPREHENSIVE GOOGLE DRIVE STORAGE - ALL BAND DATA SHARED
 // ============================================================================
@@ -4854,12 +5012,12 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
     
     // Wait for shared folder to be initialized
     if (!sharedFolderId) {
-        console.log('⏳ Waiting for shared folder to be initialized...');
+        console.log('? Waiting for shared folder to be initialized...');
         await initializeSharedFolder();
         
         // If still no folder, fall back to localStorage
         if (!sharedFolderId) {
-            console.log('❌ Could not initialize folder, using localStorage');
+            console.log('? Could not initialize folder, using localStorage');
             const key = `deadcetera_${dataType}_${songTitle}`;
             localStorage.setItem(key, JSON.stringify(data));
             return false;
@@ -4884,7 +5042,7 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
                 params: { uploadType: 'media' },
                 body: content
             });
-            console.log(`✅ Updated ${dataType} for ${songTitle} in Drive`);
+            console.log(`? Updated ${dataType} for ${songTitle} in Drive`);
         } else {
             // Create new file
             const fileMetadata = {
@@ -4916,7 +5074,7 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
                 body: multipartRequestBody
             });
             
-            console.log(`✅ Created ${dataType} for ${songTitle} in Drive`);
+            console.log(`? Created ${dataType} for ${songTitle} in Drive`);
         }
         
         return true;
@@ -4938,13 +5096,13 @@ async function loadBandDataFromDrive(songTitle, dataType) {
     if (isUserSignedIn) {
         // Wait for shared folder to be initialized
         if (!sharedFolderId) {
-            console.log('⏳ Waiting for shared folder to be initialized...');
+            console.log('? Waiting for shared folder to be initialized...');
             await initializeSharedFolder();
         }
         
         // If still no folder, fall back to localStorage
         if (!sharedFolderId) {
-            console.log('❌ Could not initialize folder, using localStorage');
+            console.log('? Could not initialize folder, using localStorage');
             return loadFromLocalStorageFallback(songTitle, dataType);
         }
         
@@ -4963,10 +5121,10 @@ async function loadBandDataFromDrive(songTitle, dataType) {
                 alt: 'media'
             });
             
-            console.log(`✅ Loaded ${dataType} from Drive`);
+            console.log(`? Loaded ${dataType} from Drive`);
             return response.result;
         } catch (error) {
-            console.log(`ℹ️ No Drive data for ${dataType}, using localStorage`);
+            console.log(`?? No Drive data for ${dataType}, using localStorage`);
             return loadFromLocalStorageFallback(songTitle, dataType);
         }
     }
@@ -5034,7 +5192,7 @@ async function loadHarmonyMetadataFromDrive(songTitle, sectionIndex) {
     return await loadBandDataFromDrive(key, BAND_DATA_TYPES.HARMONY_METADATA) || {};
 }
 
-console.log('✅ Comprehensive Google Drive storage system loaded');
+console.log('? Comprehensive Google Drive storage system loaded');
 
 // ============================================================================
 // GOOGLE DRIVE HELPER FUNCTIONS
@@ -5094,12 +5252,12 @@ async function findFileInFolder(fileName, folderId) {
         
         return null;
     } catch (error) {
-        console.log(`ℹ️ Could not find file: ${fileName}`);
+        console.log(`?? Could not find file: ${fileName}`);
         return null;
     }
 }
 
-console.log('✅ Google Drive helper functions loaded');
+console.log('? Google Drive helper functions loaded');
 
 // ============================================================================
 // SONG STRUCTURE - Who starts, how it starts, who cues ending, how it ends
@@ -5127,7 +5285,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.whoStarts && structure.whoStarts.length > 0 ? `
                 <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎬 Who Starts the Song:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">? Who Starts the Song:</strong>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                         ${structure.whoStarts.map(member => 
                             `<span style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
@@ -5140,7 +5298,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.howStarts ? `
                 <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">▶️ How It Starts:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">?? How It Starts:</strong>
                     <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
                         ${structure.howStarts}
                     </div>
@@ -5149,7 +5307,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.whoCuesEnding ? `
                 <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">👉 Who Cues the Ending:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">? Who Cues the Ending:</strong>
                     <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; display: inline-block; font-weight: 600;">
                         ${bandMembers[structure.whoCuesEnding]?.name || structure.whoCuesEnding}
                     </div>
@@ -5158,7 +5316,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.howEnds ? `
                 <div>
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🏁 How It Ends:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">? How It Ends:</strong>
                     <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
                         ${structure.howEnds}
                     </div>
@@ -5227,7 +5385,7 @@ function showSongStructureForm() {
                 <h4 style="margin-top: 0; color: #667eea;">Edit Song Structure</h4>
                 
                 <div style="margin-bottom: 15px;">
-                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">🎬 Who Starts the Song? (check all)</strong>
+                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">? Who Starts the Song? (check all)</strong>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                         ${Object.keys(bandMembers).map(key => `
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -5243,7 +5401,7 @@ function showSongStructureForm() {
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
-                        ▶️ How Is It Started?
+                        ?? How Is It Started?
                     </label>
                     <textarea id="howStartsInput" 
                         style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
@@ -5252,7 +5410,7 @@ function showSongStructureForm() {
                 </div>
                 
                 <div style="margin-bottom: 15px;">
-                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">👉 Who Cues the Ending? (select one)</strong>
+                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">? Who Cues the Ending? (select one)</strong>
                     <select id="whoCuesEndingSelect" 
                         style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">
                         <option value="">- Select -</option>
@@ -5266,7 +5424,7 @@ function showSongStructureForm() {
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
-                        🏁 How Does the Song End?
+                        ? How Does the Song End?
                     </label>
                     <textarea id="howEndsInput" 
                         style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
@@ -5277,7 +5435,7 @@ function showSongStructureForm() {
                 <div style="display: flex; gap: 10px;">
                     <button onclick="saveSongStructure()" 
                         style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                        💾 Save
+                        ? Save
                     </button>
                     <button onclick="hideSongStructureForm()" 
                         style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
@@ -5314,14 +5472,14 @@ async function saveSongStructure() {
     // Save to Google Drive
     await saveBandDataToDrive(selectedSong.title, 'song_structure', structure);
     
-    alert('✅ Song structure saved to Google Drive!');
+    alert('? Song structure saved to Google Drive!');
     
     // Hide form and refresh display
     hideSongStructureForm();
     renderSongStructure(selectedSong.title);
 }
 
-console.log('✅ Song Structure functions loaded');
+console.log('? Song Structure functions loaded');
 
 // Initialize the shared band resources folder
 // ============================================================================
@@ -5343,12 +5501,12 @@ const BAND_MEMBER_EMAILS = [
 
 async function initializeSharedFolder() {
     try {
-        console.log('🔄 Initializing shared band folder...');
+        console.log('? Initializing shared band folder...');
         
         // If we have a hardcoded folder ID, use it
         if (SHARED_FOLDER_ID) {
             sharedFolderId = SHARED_FOLDER_ID;
-            console.log('✅ Using configured shared folder:', sharedFolderId);
+            console.log('? Using configured shared folder:', sharedFolderId);
             return;
         }
         
@@ -5361,12 +5519,12 @@ async function initializeSharedFolder() {
         
         if (response.result.files && response.result.files.length > 0) {
             sharedFolderId = response.result.files[0].id;
-            console.log('✅ Found existing folder:', sharedFolderId);
-            console.log('📋 OWNER: Copy this folder ID to SHARED_FOLDER_ID in app.js');
-            console.log('📋 Folder ID:', sharedFolderId);
+            console.log('? Found existing folder:', sharedFolderId);
+            console.log('? OWNER: Copy this folder ID to SHARED_FOLDER_ID in app.js');
+            console.log('? Folder ID:', sharedFolderId);
         } else {
             // Create folder as OWNER
-            console.log('🎸 Creating NEW shared folder (you are the OWNER)...');
+            console.log('? Creating NEW shared folder (you are the OWNER)...');
             
             const fileMetadata = {
                 name: 'Deadcetera Band Resources',
@@ -5379,29 +5537,29 @@ async function initializeSharedFolder() {
             });
             
             sharedFolderId = folder.result.id;
-            console.log('✅ Created new folder:', sharedFolderId);
+            console.log('? Created new folder:', sharedFolderId);
             console.log('');
-            console.log('═══════════════════════════════════════════════════════');
-            console.log('🎸 YOU ARE THE FOLDER OWNER!');
-            console.log('═══════════════════════════════════════════════════════');
+            console.log('???????????????????????????????????????????????????????');
+            console.log('? YOU ARE THE FOLDER OWNER!');
+            console.log('???????????????????????????????????????????????????????');
             console.log('');
-            console.log('📋 COPY THIS FOLDER ID:');
+            console.log('? COPY THIS FOLDER ID:');
             console.log(sharedFolderId);
             console.log('');
-            console.log('📝 NEXT STEPS:');
+            console.log('? NEXT STEPS:');
             console.log('1. Copy the folder ID above');
             console.log('2. Update SHARED_FOLDER_ID in app.js');
             console.log('3. Update band member emails in BAND_MEMBER_EMAILS');
             console.log('4. Re-upload app.js');
             console.log('5. Click "Share Folder with Band" button below');
             console.log('');
-            console.log('═══════════════════════════════════════════════════════');
+            console.log('???????????????????????????????????????????????????????');
             
             // Show UI to share folder
             showFolderSharingInstructions(sharedFolderId);
         }
     } catch (error) {
-        console.error('❌ Failed to initialize shared folder:', error);
+        console.error('? Failed to initialize shared folder:', error);
     }
 }
 
@@ -5411,7 +5569,7 @@ async function shareFolderWithBand() {
         return;
     }
     
-    console.log('🔄 Sharing folder with band members...');
+    console.log('? Sharing folder with band members...');
     
     let successCount = 0;
     let failCount = 0;
@@ -5420,7 +5578,7 @@ async function shareFolderWithBand() {
         try {
             // Skip placeholder emails
             if (email.includes('example.com')) {
-                console.log(`⏭️  Skipping placeholder: ${email}`);
+                console.log(`??  Skipping placeholder: ${email}`);
                 continue;
             }
             
@@ -5435,13 +5593,13 @@ async function shareFolderWithBand() {
                 fileId: sharedFolderId,
                 resource: permission,
                 sendNotificationEmail: true,
-                emailMessage: '🎸 You now have access to the Deadcetera Band Resources folder! Open the app and connect your Google Drive to start collaborating.'
+                emailMessage: '? You now have access to the Deadcetera Band Resources folder! Open the app and connect your Google Drive to start collaborating.'
             });
             
-            console.log(`✅ Shared with: ${email}`);
+            console.log(`? Shared with: ${email}`);
             successCount++;
         } catch (error) {
-            console.error(`❌ Failed to share with ${email}:`, error);
+            console.error(`? Failed to share with ${email}:`, error);
             failCount++;
         }
     }
@@ -5449,8 +5607,8 @@ async function shareFolderWithBand() {
     const message = `
 Folder shared!
 
-✅ Success: ${successCount} members
-${failCount > 0 ? `❌ Failed: ${failCount} members (check console)` : ''}
+? Success: ${successCount} members
+${failCount > 0 ? `? Failed: ${failCount} members (check console)` : ''}
 
 Band members will receive an email invitation.
     `.trim();
@@ -5476,11 +5634,11 @@ function showFolderSharingInstructions(folderId) {
     
     banner.innerHTML = `
         <div style="max-width: 800px; margin: 0 auto;">
-            <h2 style="margin: 0 0 10px 0;">🎸 You Created the Shared Folder!</h2>
+            <h2 style="margin: 0 0 10px 0;">? You Created the Shared Folder!</h2>
             <p style="margin: 0 0 15px 0;">Folder ID: <code style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 4px;">${folderId}</code></p>
             <p style="margin: 0 0 15px 0; font-size: 0.9em;">Copy this ID and update <code>SHARED_FOLDER_ID</code> in app.js, then update band member emails and re-upload.</p>
             <button onclick="shareFolderWithBand()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 10px;">
-                📧 Share Folder with Band
+                ? Share Folder with Band
             </button>
             <button onclick="this.parentElement.parentElement.remove()" style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer;">
                 Close
@@ -5491,4 +5649,4 @@ function showFolderSharingInstructions(folderId) {
     document.body.insertBefore(banner, document.body.firstChild);
 }
 
-console.log('✅ Shared folder initialization loaded');
+console.log('? Shared folder initialization loaded');
