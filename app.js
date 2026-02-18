@@ -4,12 +4,11 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v5.0.0 - SONG STATUS SYSTEM + BPM! Major Release!');
-console.log('🎯 NEW: Song Status - Gig Ready, Needs Polish, On Deck, This Week');
-console.log('🥁 NEW: BPM field per song (for drummers!)');
-console.log('🔍 NEW: Filter by status - quick setlist building!');
-console.log('✅ Status badges on every song card');
-console.log('📊 Ready for Monday rehearsal planning!');
+console.log('🎸 Deadcetera v5.1.0 - FAST STATUS FILTERING! Cache-based!');
+console.log('⚡ Status loads in background (batches of 20)');
+console.log('⚡ Filtering is INSTANT once cache loads');
+console.log('📊 Progress shown in console');
+console.log('✅ Buttons work correctly now!');
 console.log('✅ ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
 console.log('✅ Recording: Stops ABC playback first (no conflicts)');
 console.log('✅ Recording: iOS-compatible format (MP4/M4A instead of WebM)');
@@ -155,7 +154,8 @@ function renderSongs(filter = 'all', searchTerm = '') {
     // Add harmony badges and status badges after rendering
     setTimeout(() => {
         addHarmonyBadges();
-        addStatusBadges();
+        // Start loading statuses in background (non-blocking)
+        preloadAllStatuses();
     }, 50);
 }
 
@@ -4424,6 +4424,10 @@ async function updateSongStatus(status) {
     };
     
     await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
+    
+    // Update cache immediately
+    statusCache[selectedSong.title] = status;
+    
     console.log(`✅ Song status updated: ${statusNames[status] || 'Not Started'}`);
     
     // Update badge on song list
@@ -4438,41 +4442,45 @@ async function loadSongStatus(songTitle) {
 async function filterByStatus(status) {
     console.log(`Filtering by status: ${status}`);
     
+    // If cache not loaded yet, show loading message
+    if (!statusCacheLoaded) {
+        alert('Song statuses are still loading in the background. Please wait a moment and try again.');
+        return;
+    }
+    
     // Update button states
     document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
         btn.style.background = 'white';
-        btn.style.fontWeight = '600';
+        const color = btn.style.color;
+        btn.style.color = color; // Keep original color
     });
     
-    // Find clicked button and highlight it
-    const buttons = document.querySelectorAll('.status-filters .filter-btn');
-    buttons.forEach(btn => {
-        const btnStatus = btn.onclick.toString().match(/filterByStatus\('(.+?)'\)/)?.[1];
-        if (btnStatus === status) {
-            const color = btn.style.color;
-            btn.style.background = color;
-            btn.style.color = 'white';
-            btn.style.fontWeight = '700';
-        }
-    });
+    // Highlight clicked button
+    event?.target?.style && (() => {
+        const btn = event.target;
+        const originalColor = btn.style.color;
+        btn.style.background = originalColor;
+        btn.style.color = 'white';
+    })();
     
     if (status === 'all') {
         // Show all songs
         document.querySelectorAll('.song-item').forEach(item => {
             item.style.display = 'block';
         });
+        console.log('✅ Showing all songs');
         return;
     }
     
-    // Filter songs by status
+    // Filter songs by status using cache (INSTANT!)
     const songItems = document.querySelectorAll('.song-item');
     let visibleCount = 0;
     
-    for (const item of songItems) {
+    songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
         const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
         
-        const songStatus = await loadSongStatus(songTitle);
+        const songStatus = getStatusFromCache(songTitle);
         
         if (songStatus === status) {
             item.style.display = 'block';
@@ -4480,19 +4488,46 @@ async function filterByStatus(status) {
         } else {
             item.style.display = 'none';
         }
-    }
+    });
     
     console.log(`✅ Showing ${visibleCount} songs with status: ${status}`);
+    
+    // If no songs found, show helpful message
+    if (visibleCount === 0) {
+        const dropdown = document.getElementById('songDropdown');
+        const statusNames = {
+            'this_week': '🎯 This Week',
+            'gig_ready': '✅ Gig Ready',
+            'needs_polish': '⚠️ Needs Polish',
+            'on_deck': '📚 On Deck'
+        };
+        
+        dropdown.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: #6b7280;">
+                <div style="font-size: 2em; margin-bottom: 15px;">🎸</div>
+                <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No songs marked as "${statusNames[status]}"</div>
+                <div style="margin-bottom: 20px;">Click any song and set its status!</div>
+                <button onclick="filterByStatus('all')" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                    Show All Songs
+                </button>
+            </div>
+        `;
+    }
 }
 
 async function addStatusBadges() {
+    if (!statusCacheLoaded) {
+        console.log('⏳ Status cache not loaded yet, skipping badges');
+        return;
+    }
+    
     const songItems = document.querySelectorAll('.song-item');
-    for (const item of songItems) {
+    songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
         const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
-        if (!songTitle) continue;
+        if (!songTitle) return;
         
-        const status = await loadSongStatus(songTitle);
+        const status = getStatusFromCache(songTitle);
         
         // Remove existing status badge
         const existingBadge = item.querySelector('.status-badge');
@@ -4525,7 +4560,7 @@ async function addStatusBadges() {
                 songNameElement.appendChild(badgeEl);
             }
         }
-    }
+    });
 }
 
 // ============================================================================
@@ -4573,9 +4608,48 @@ async function populateSongMetadata(songTitle) {
 // HARMONY SONG FILTERING
 // ============================================================================
 
-// Wrapper for onclick calls
 // Cache for harmony states - loads on demand
 let harmonyCache = {};
+
+// Cache for song statuses - pre-loaded in background
+let statusCache = {};
+let statusCacheLoaded = false;
+
+// Pre-load all song statuses in background (non-blocking)
+async function preloadAllStatuses() {
+    console.log('🔄 Pre-loading song statuses in background...');
+    const songItems = document.querySelectorAll('.song-item');
+    const total = songItems.length;
+    let loaded = 0;
+    
+    // Load in batches of 20 to avoid overwhelming Drive API
+    const batchSize = 20;
+    for (let i = 0; i < songItems.length; i += batchSize) {
+        const batch = Array.from(songItems).slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async (item) => {
+            const songNameElement = item.querySelector('.song-name');
+            const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
+            if (songTitle) {
+                statusCache[songTitle] = await loadSongStatus(songTitle);
+                loaded++;
+            }
+        }));
+        
+        console.log(`📊 Loaded ${loaded}/${total} song statuses...`);
+    }
+    
+    statusCacheLoaded = true;
+    console.log(`✅ All ${loaded} song statuses cached!`);
+    
+    // Add status badges now that cache is loaded
+    addStatusBadges();
+}
+
+// Get status from cache (instant!)
+function getStatusFromCache(songTitle) {
+    return statusCache[songTitle] || '';
+}
 
 // Don't pre-load - too slow! Just cache as songs are clicked
 async function cacheHarmonyState(songTitle) {
