@@ -1639,7 +1639,7 @@ async function renderMoisesStems(songTitle, bandData) {
             
             ${stems.folderUrl ? `
                 <button class="drive-folder-btn" onclick="window.open('${stems.folderUrl}', '_blank')" style="background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                    ? Open Google Drive Folder
+                    📂 Open Google Drive Folder
                 </button>
             ` : ''}
             
@@ -1676,7 +1676,7 @@ function showMoisesUploadForm() {
                 <input type="file" id="stemsFileInput" multiple accept="audio/*,.mp3,.wav,.m4a,.aac"
                     style="width: 100%; padding: 10px; border: 2px dashed #d1d5db; border-radius: 6px; background: white; cursor: pointer;">
                 <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
-                    ? Name your files clearly (e.g., bass.mp3, drums.mp3, guitar.mp3, keys.mp3, vocals.mp3)
+                    💡 Name your files clearly (e.g., bass.mp3, drums.mp3, guitar.mp3, keys.mp3, vocals.mp3)
                 </p>
             </div>
             
@@ -1700,7 +1700,7 @@ function showMoisesUploadForm() {
             <div style="display: flex; gap: 10px;">
                 <button onclick="uploadMoisesStems()" 
                     style="flex: 1; background: #10b981; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
-                    ? Upload Stems
+                    📤 Upload Stems
                 </button>
                 <button onclick="renderMoisesStems('${songTitle.replace(/'/g, "\\'")}', {})" 
                     style="background: #6b7280; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
@@ -1984,7 +1984,7 @@ function renderHarmonies(songTitle, bandData) {
                 
                 ${section.referenceRecording ? `
                     <button class="chart-btn chart-btn-primary" style="margin-top: 12px;" onclick="window.open('${section.referenceRecording}', '_blank')">
-                        ? Play Reference Recording
+                        ▶️ Play Reference Recording
                     </button>
                 ` : ''}
             </div>
@@ -2383,7 +2383,7 @@ async function renderPracticeTracksSimplified(songTitle) {
                         ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
                         
                         <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${url}', '_blank')">
-                            ? Watch Video
+                            📺 Watch Video
                         </button>
                         
                         <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">
@@ -2700,9 +2700,9 @@ function showRehearsalNoteForm() {
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: 600;">Priority:</label>
                 <select id="rehearsalNotePriority" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                    <option value="low">? Low - Nice to have</option>
-                    <option value="medium" selected>? Medium - Should address</option>
-                    <option value="high">? High - Must fix before gig</option>
+                    <option value="low">🟢 Low - Nice to have</option>
+                    <option value="medium" selected>🟡 Medium - Should address</option>
+                    <option value="high">🔴 High - Must fix before gig</option>
                 </select>
             </div>
             
@@ -2714,7 +2714,7 @@ function showRehearsalNoteForm() {
             
             <div style="display: flex; gap: 10px;">
                 <button class="chart-btn chart-btn-primary" onclick="addRehearsalNote()" style="flex: 1;">
-                    ? Add Note
+                    ➕ Add Note
                 </button>
                 <button class="chart-btn chart-btn-secondary" onclick="hideRehearsalNoteForm()">
                     Cancel
@@ -2835,7 +2835,7 @@ function showHarmonyAudioUploadForm(sectionIndex) {
                 <input type="file" id="harmonyAudioFile" accept="audio/*"
                     style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
                 <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
-                    ? Accepts: MP3, M4A, WAV, Voice Memos, Soundtrap exports, etc. (Max 5MB)
+                    📎 Accepts: MP3, M4A, WAV, Voice Memos, Soundtrap exports, etc. (Max 5MB)
                 </p>
             </div>
             
@@ -2855,7 +2855,7 @@ function showHarmonyAudioUploadForm(sectionIndex) {
             
             <div style="display: flex; gap: 10px;">
                 <button class="chart-btn chart-btn-primary" onclick="uploadHarmonyAudio(${sectionIndex})" style="flex: 1;">
-                    ? Upload Audio
+                    📤 Upload Audio
                 </button>
                 <button class="chart-btn chart-btn-secondary" onclick="hideHarmonyAudioForm()">
                     Cancel
@@ -2900,7 +2900,7 @@ async function uploadHarmonyAudio(sectionIndex) {
     // Show loading
     const uploadButton = event.target;
     const originalText = uploadButton.innerHTML;
-    uploadButton.innerHTML = '? Uploading...';
+    uploadButton.innerHTML = '⏳ Uploading...';
     uploadButton.disabled = true;
     
     try {
@@ -3151,7 +3151,7 @@ function showRecordingUI(sectionIndex) {
             <div id="recordingTimer" style="font-size: 2em; font-weight: 700; font-family: monospace;">0:00</div>
             <button onclick="stopMicrophoneRecording(); clearInterval(${timerInterval})" 
                 style="background: white; color: #ef4444; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin-top: 20px; cursor: pointer; font-size: 1em;">
-                ? Stop Recording
+                ⏹️ Stop Recording
             </button>
         </div>
     `;
@@ -3205,7 +3205,7 @@ function showSaveRecordingForm(sectionIndex, base64Audio, fileSize, mimeType) {
             
             <div style="display: flex; gap: 10px;">
                 <button class="chart-btn chart-btn-primary" onclick="saveRecording(${sectionIndex}, '${base64Audio}', ${fileSize})" style="flex: 1;">
-                    ? Save Recording
+                    💾 Save Recording
                 </button>
                 <button class="chart-btn chart-btn-secondary" onclick="discardRecording(${sectionIndex})">
                     🗑️ Discard
@@ -3339,11 +3339,11 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                     <div style="display: flex; gap: 8px; margin-bottom: 15px;">
                         <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(${sectionIndex})" 
                             style="padding: 8px 16px; font-size: 0.9em;">
-                            ? Record Now
+                            🎙️ Record Now
                         </button>
                         <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                             style="padding: 8px 16px; font-size: 0.9em;">
-                            ? Upload File
+                            📤 Upload File
                         </button>
                     </div>
                     
@@ -3360,7 +3360,7 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                                     <div style="display: flex; gap: 8px;">
                                         <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                             style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ?? Rename
+                                            ✏️ Rename
                                         </button>
                                         <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
@@ -3396,10 +3396,10 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                 
                 <div style="display: flex; gap: 10px; justify-content: center;">
                     <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(0)">
-                        ? Record Now
+                        🎙️ Record Now
                     </button>
                     <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(0)">
-                        ? Upload File
+                        📤 Upload File
                     </button>
                 </div>
                 
@@ -3465,11 +3465,11 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                         <div style="display: flex; gap: 8px;">
                             <button onclick="startMicrophoneRecording(${sectionIndex})" 
                                 style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                ? Record Now
+                                🎙️ Record Now
                             </button>
                             <button onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                                 style="background: #4b5563; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                ? Upload File
+                                📤 Upload File
                             </button>
                         </div>
                     </div>
@@ -3752,7 +3752,7 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                     👁️ Preview Sheet Music
                 </button>
                 <button class="chart-btn chart-btn-primary" onclick="saveABCNotation(${sectionIndex})" style="background: #10b981;">
-                    ? Save & Close
+                    💾 Save & Close
                 </button>
             </div>
         </div>
@@ -3845,7 +3845,7 @@ function renderABCPreview(abc, container) {
                     </div>
                     <button onclick="updateVoiceSelection()" 
                         style="margin-top: 10px; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                        ? Update Playback
+                        🔄 Update Playback
                     </button>
                 </div>
             `;
@@ -4489,9 +4489,14 @@ async function filterByStatus(status) {
     
     if (status === 'all') {
         activeStatusFilter = null;
-        document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'flex';
-        });
+        // Re-render if song list was replaced with a message
+        if (document.querySelectorAll('.song-item').length === 0) {
+            renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
+        } else {
+            document.querySelectorAll('.song-item').forEach(item => {
+                item.style.display = 'flex';
+            });
+        }
         return;
     }
     
@@ -4662,29 +4667,41 @@ async function preloadAllStatuses() {
         // Load master status file (1 API call instead of 358!)
         const masterData = await loadMasterFile(MASTER_STATUS_FILE);
         
-        if (masterData && typeof masterData === 'object') {
+        if (masterData && typeof masterData === 'object' && Object.keys(masterData).length > 0) {
             // Master file exists - use it!
             Object.assign(statusCache, masterData);
             const count = Object.values(masterData).filter(v => v).length;
             console.log(`Loaded ${count} song statuses from master file (1 API call!)`);
-        } else {
-            // No master file yet - migrate from individual files
+            statusCacheLoaded = true;
+        } else if (isUserSignedIn && sharedFolderId) {
+            // Drive is ready but no master file - migrate
             console.log('No master status file found. Migrating from individual files...');
             await migrateStatusesToMaster();
+            statusCacheLoaded = true;
+        } else {
+            // Drive not ready yet - try localStorage, don't mark as loaded
+            const localData = localStorage.getItem('deadcetera__master_song_statuses.json');
+            if (localData) {
+                try {
+                    Object.assign(statusCache, JSON.parse(localData));
+                    const count = Object.values(statusCache).filter(v => v).length;
+                    console.log(`Loaded ${count} statuses from localStorage (Drive not ready yet)`);
+                    statusCacheLoaded = true;
+                } catch (e) {}
+            }
+            // Will retry on next render cycle
         }
     } catch (error) {
         console.error('Error loading master statuses:', error);
-        // Try localStorage fallback
-        const localData = localStorage.getItem('deadcetera_master_statuses');
+        const localData = localStorage.getItem('deadcetera__master_song_statuses.json');
         if (localData) {
             try {
                 Object.assign(statusCache, JSON.parse(localData));
                 console.log('Loaded statuses from localStorage fallback');
+                statusCacheLoaded = true;
             } catch (e) {}
         }
     }
-    
-    statusCacheLoaded = true;
     statusPreloadRunning = false;
     console.log('All song statuses ready! Filtering is now instant.');
     
@@ -4902,7 +4919,10 @@ function applyHarmonyFilter() {
 }
 
 function filterSongsSync(type) {
-    // Call async version
+    // Re-render the song list first in case it was replaced with a message
+    if (document.querySelectorAll('.song-item').length === 0) {
+        renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
+    }
     filterSongsAsync(type);
 }
 
@@ -4925,14 +4945,21 @@ async function addHarmonyBadges() {
         harmonyBadgeLoading = true;
         try {
             const masterData = await loadMasterFile(MASTER_HARMONIES_FILE);
-            if (masterData && typeof masterData === 'object') {
+            if (masterData && typeof masterData === 'object' && Object.keys(masterData).length > 0) {
                 harmonyBadgeCache = masterData;
+                harmonyBadgeCacheLoaded = true;
                 console.log('Loaded harmonies from master file');
+            } else if (isUserSignedIn && sharedFolderId) {
+                // Drive is ready but no data found - mark as loaded (no harmonies set yet)
+                harmonyBadgeCacheLoaded = true;
+                console.log('No harmony data found in master file');
             }
-            harmonyBadgeCacheLoaded = true;
+            // If Drive not ready yet, DON'T mark as loaded - will retry on next render
         } catch (e) {
             console.error('Error loading harmony master:', e);
-            harmonyBadgeCacheLoaded = true; // Don't retry forever
+            if (isUserSignedIn && sharedFolderId) {
+                harmonyBadgeCacheLoaded = true; // Drive was ready, real error
+            }
         }
         harmonyBadgeLoading = false;
     }
@@ -5270,7 +5297,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.whoStarts && structure.whoStarts.length > 0 ? `
                 <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">? Who Starts the Song:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎤 Who Starts the Song:</strong>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                         ${structure.whoStarts.map(member => 
                             `<span style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
@@ -5283,7 +5310,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.howStarts ? `
                 <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">?? How It Starts:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎵 How It Starts:</strong>
                     <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
                         ${structure.howStarts}
                     </div>
@@ -5292,7 +5319,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.whoCuesEnding ? `
                 <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">? Who Cues the Ending:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎤 Who Cues the Ending:</strong>
                     <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; display: inline-block; font-weight: 600;">
                         ${bandMembers[structure.whoCuesEnding]?.name || structure.whoCuesEnding}
                     </div>
@@ -5301,7 +5328,7 @@ async function renderSongStructure(songTitle) {
             
             ${structure.howEnds ? `
                 <div>
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">? How It Ends:</strong>
+                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎵 How It Ends:</strong>
                     <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
                         ${structure.howEnds}
                     </div>
@@ -5370,7 +5397,7 @@ function showSongStructureForm() {
                 <h4 style="margin-top: 0; color: #667eea;">Edit Song Structure</h4>
                 
                 <div style="margin-bottom: 15px;">
-                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">? Who Starts the Song? (check all)</strong>
+                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">🎤 Who Starts the Song? (check all)</strong>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                         ${Object.keys(bandMembers).map(key => `
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -5386,7 +5413,7 @@ function showSongStructureForm() {
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
-                        ?? How Is It Started?
+                        🎵 How Is It Started?
                     </label>
                     <textarea id="howStartsInput" 
                         style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
@@ -5395,7 +5422,7 @@ function showSongStructureForm() {
                 </div>
                 
                 <div style="margin-bottom: 15px;">
-                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">? Who Cues the Ending? (select one)</strong>
+                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">🎤 Who Cues the Ending? (select one)</strong>
                     <select id="whoCuesEndingSelect" 
                         style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">
                         <option value="">- Select -</option>
@@ -5409,7 +5436,7 @@ function showSongStructureForm() {
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
-                        ? How Does the Song End?
+                        🎵 How Does the Song End?
                     </label>
                     <textarea id="howEndsInput" 
                         style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
@@ -5420,7 +5447,7 @@ function showSongStructureForm() {
                 <div style="display: flex; gap: 10px;">
                     <button onclick="saveSongStructure()" 
                         style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                        ? Save
+                        💾 Save
                     </button>
                     <button onclick="hideSongStructureForm()" 
                         style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
@@ -5592,7 +5619,7 @@ async function shareFolderWithBand() {
     const message = `
 Folder shared!
 
-? Success: ${successCount} members
+✅ Success: ${successCount} members
 ${failCount > 0 ? `❌ Failed: ${failCount} members (check console)` : ''}
 
 Band members will receive an email invitation.
@@ -5619,11 +5646,11 @@ function showFolderSharingInstructions(folderId) {
     
     banner.innerHTML = `
         <div style="max-width: 800px; margin: 0 auto;">
-            <h2 style="margin: 0 0 10px 0;">? You Created the Shared Folder!</h2>
+            <h2 style="margin: 0 0 10px 0;">📁 You Created the Shared Folder!</h2>
             <p style="margin: 0 0 15px 0;">Folder ID: <code style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 4px;">${folderId}</code></p>
             <p style="margin: 0 0 15px 0; font-size: 0.9em;">Copy this ID and update <code>SHARED_FOLDER_ID</code> in app.js, then update band member emails and re-upload.</p>
             <button onclick="shareFolderWithBand()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 10px;">
-                ? Share Folder with Band
+                📤 Share Folder with Band
             </button>
             <button onclick="this.parentElement.parentElement.remove()" style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer;">
                 Close
