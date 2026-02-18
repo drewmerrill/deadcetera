@@ -3745,8 +3745,8 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
             </div>
             
             <div style="padding: 20px; border-top: 2px solid #e2e8f0; display: flex; gap: 10px; justify-content: flex-end;">
-                <button class="chart-btn chart-btn-secondary" onclick="document.getElementById('abcEditorModal').remove()">
-                    Cancel
+                <button class="chart-btn chart-btn-secondary" onclick="document.getElementById('abcEditorModal').remove()" style="background: #ef4444; color: white; border: none;">
+                    ❌ Cancel
                 </button>
                 <button class="chart-btn chart-btn-primary" onclick="previewABC()">
                     👁️ Preview Sheet Music
@@ -3802,6 +3802,36 @@ function renderABCPreview(abc, container) {
         cssLink.rel = 'stylesheet';
         cssLink.href = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/abcjs-audio.css';
         document.head.appendChild(cssLink);
+    }
+    
+    // Add custom CSS for better mobile BPM/warp display
+    if (!document.getElementById('abcjs-custom-css')) {
+        const style = document.createElement('style');
+        style.id = 'abcjs-custom-css';
+        style.textContent = `
+            #abcAudioControls .abcjs-inline-audio {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            #abcAudioControls .abcjs-inline-audio .abcjs-tempo-wrapper {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 0.85em;
+                white-space: nowrap;
+            }
+            @media (max-width: 480px) {
+                #abcAudioControls .abcjs-inline-audio {
+                    gap: 4px;
+                }
+                #abcAudioControls .abcjs-inline-audio .abcjs-tempo-wrapper {
+                    font-size: 0.75em;
+                }
+            }
+        `;
+        document.head.appendChild(style);
     }
     
     try {
@@ -3893,33 +3923,37 @@ function renderABCPreview(abc, container) {
                 }).then(() => {
                     console.log('🔊 Audio ready for playback');
                     
-                    // iOS FIX: Initialize and resume AudioContext immediately
-                    // This needs to happen BEFORE recording is ever used
-                    const initAudioContext = async () => {
-                        if (synthControl.audioContext) {
-                            if (synthControl.audioContext.state === 'suspended') {
-                                try {
-                                    await synthControl.audioContext.resume();
-                                    console.log('🔊 AudioContext resumed (iOS fix)');
-                                } catch (e) {
-                                    console.warn('Could not resume AudioContext:', e);
-                                }
+                    // iOS FIX: Resume AudioContext on ANY user interaction
+                    const resumeAudio = async () => {
+                        try {
+                            // Try the synthControl's audioContext
+                            if (synthControl.audioContext && synthControl.audioContext.state === 'suspended') {
+                                await synthControl.audioContext.resume();
+                                console.log('🔊 AudioContext resumed (iOS fix)');
                             }
+                            // Also try the global AudioContext
+                            if (window.AudioContext || window.webkitAudioContext) {
+                                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                                if (ctx.state === 'suspended') await ctx.resume();
+                            }
+                        } catch (e) {
+                            console.warn('Could not resume AudioContext:', e);
                         }
                     };
                     
-                    // Try to resume on any user interaction with the controls
-                    const controlsContainer = document.querySelector('#abcAudioControls');
-                    if (controlsContainer) {
-                        controlsContainer.addEventListener('click', initAudioContext, { once: false });
-                        controlsContainer.addEventListener('touchstart', initAudioContext, { once: false });
+                    // Attach to multiple interaction points for iOS
+                    const controlsEl = document.querySelector('#abcAudioControls');
+                    if (controlsEl) {
+                        controlsEl.addEventListener('click', resumeAudio);
+                        controlsEl.addEventListener('touchstart', resumeAudio);
+                        controlsEl.addEventListener('touchend', resumeAudio);
                     }
                     
-                    // Also try on play button specifically
-                    const playButton = document.querySelector('#abcAudioControls .abcjs-midi-start');
-                    if (playButton) {
-                        playButton.addEventListener('click', initAudioContext);
-                        playButton.addEventListener('touchstart', initAudioContext);
+                    // Also attach to the entire modal for iOS
+                    const modal = document.getElementById('abcEditorModal');
+                    if (modal) {
+                        modal.addEventListener('click', resumeAudio, { once: true });
+                        modal.addEventListener('touchstart', resumeAudio, { once: true });
                     }
                 }).catch((error) => {
                     console.warn('Audio setup failed:', error);
