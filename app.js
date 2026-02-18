@@ -318,9 +318,6 @@ let currentResourceIndex = null; // For editing resources
 let activeStatusFilter = null; // Tracks which status filter is active
 let activeHarmonyFilter = null; // Tracks which harmony filter is active
 
-// Helper: find band member name from any identifier (email, key, etc.)
-function getBandMemberName(identifier) {
-
 // Helper: get play button label based on URL/platform
 function getPlayButtonLabel(version) {
     const url = (version.spotifyUrl || '').toLowerCase();
@@ -345,6 +342,9 @@ function getPlayButtonStyle(version) {
     if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;';
     return '';
 }
+
+// Helper: find band member name from any identifier (email, key, etc.)
+function getBandMemberName(identifier) {
     if (!identifier) return 'Unknown';
     // Direct key match
     if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
@@ -425,6 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupInstrumentSelector();
     setupContinueButton();
     setupSpotifyAddButton();
+    updateReferenceVersionLabels();
     
     // Load saved instrument preference
     const savedInstrument = localStorage.getItem('deadcetera_instrument');
@@ -435,9 +436,27 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Update Reference Version section labels for multi-platform support
+function updateReferenceVersionLabels() {
+    // Update subtitle text
+    const spotifySection = document.getElementById('spotifySection');
+    if (spotifySection) {
+        const subtitle = spotifySection.querySelector('p');
+        if (subtitle && subtitle.textContent.includes('Spotify version')) {
+            subtitle.textContent = 'Vote on which version to learn';
+        }
+        // Update "Search Spotify" link to include other options
+        const searchLink = spotifySection.querySelector('a[onclick*="searchSpotify"], .search-spotify-link');
+        if (searchLink && searchLink.textContent.includes('Search Spotify')) {
+            // Keep the original but add context
+        }
+    }
+}
+
 function setupSpotifyAddButton() {
     const btn = document.getElementById('addSpotifyVersionBtn');
     if (!btn) return;
+    btn.textContent = '+ Suggest Different Version';
     btn.addEventListener('click', addSpotifyVersion);
 }
 
@@ -1760,7 +1779,7 @@ function renderSpotifyVersions(songTitle, bandData) {
     const versions = bandData.spotifyVersions || [];
     
     if (versions.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Spotify versions added yet</div>';
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No reference versions added yet</div>';
         return;
     }
     
@@ -2784,24 +2803,54 @@ async function editPracticeTrack(songTitle, index) {
 // Spotify API - Client Credentials Flow (public API)
 async function fetchSpotifyTrackInfo(trackUrl) {
     try {
-        // Extract track ID from Spotify URL
-        const trackId = extractSpotifyTrackId(trackUrl);
-        if (!trackId) {
-            return { title: 'Spotify Track', success: false };
+        if (!trackUrl) return { title: 'Unknown Track', success: false };
+        
+        const url = trackUrl.toLowerCase();
+        
+        // Spotify
+        if (url.includes('spotify.com')) {
+            const trackId = extractSpotifyTrackId(trackUrl);
+            if (!trackId) return { title: 'Spotify Track', success: false };
+            const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`);
+            const data = await response.json();
+            return { title: data.title, thumbnail: data.thumbnail_url, success: true };
         }
         
-        // Use Spotify oEmbed endpoint (no auth required!)
-        const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`);
-        const data = await response.json();
+        // YouTube
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            let videoId = null;
+            const match1 = trackUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+            const match2 = trackUrl.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+            const match3 = trackUrl.match(/shorts\/([a-zA-Z0-9_-]{11})/);
+            videoId = (match1 || match2 || match3)?.[1];
+            if (videoId) {
+                try {
+                    const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+                    const data = await response.json();
+                    return { title: data.title, thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`, success: true };
+                } catch (e) {
+                    return { title: 'YouTube Video', thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`, success: false };
+                }
+            }
+            return { title: 'YouTube Video', success: false };
+        }
         
-        return {
-            title: data.title, // Returns "Song Name by Artist Name"
-            thumbnail: data.thumbnail_url,
-            success: true
-        };
+        // Archive.org
+        if (url.includes('archive.org')) {
+            const title = decodeURIComponent(trackUrl.split('/').pop()).replace(/[-_]/g, ' ');
+            return { title: title || 'Archive.org Recording', success: true };
+        }
+        
+        // Generic fallback - use the domain name
+        try {
+            const domain = new URL(trackUrl).hostname.replace('www.', '');
+            return { title: `Track on ${domain}`, success: false };
+        } catch (e) {
+            return { title: 'Unknown Track', success: false };
+        }
     } catch (error) {
-        console.error('Error fetching Spotify metadata:', error);
-        return { title: 'Spotify Track', success: false };
+        console.error('Error fetching track metadata:', error);
+        return { title: 'Track', success: false };
     }
 }
 
@@ -2816,12 +2865,12 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     const versions = await loadSpotifyVersions(songTitle) || bandData.spotifyVersions || [];
     
     if (versions.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No Spotify versions added yet</div>';
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No reference versions added yet</div>';
         return;
     }
     
     // Show loading
-    container.innerHTML = '<p style="padding: 15px; color: #667eea;">⏳ Loading track info from Spotify...</p>';
+    container.innerHTML = '<p style="padding: 15px; color: #667eea;">⏳ Loading track info...</p>';
     
     // Fetch metadata for all versions
     const versionsWithMetadata = await Promise.all(
