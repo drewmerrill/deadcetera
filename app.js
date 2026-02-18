@@ -23,7 +23,6 @@
     style.textContent = `
         /* ===== SONG LIST ===== */
         .song-item {
-            display: flex !important;
             justify-content: space-between;
             align-items: center;
             padding: 12px 16px;
