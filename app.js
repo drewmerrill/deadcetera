@@ -4,11 +4,12 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v4.2.0 - CRITICAL FIX: Harmony audio now on Drive!');
-console.log('🚨 IMPORTANT: Harmony audio snippets now save to Google Drive!');
-console.log('✅ Whole band can hear recorded harmony parts');
-console.log('✅ ABC notation on Drive (already fixed)');
-console.log('✅ All band data now shared properly');
+console.log('🎸 Deadcetera v4.3.0 - MOBILE AUDIO FIXES for iPhone/Android!');
+console.log('✅ ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
+console.log('✅ Recording: Stops ABC playback first (no conflicts)');
+console.log('✅ Recording: iOS-compatible format (MP4/M4A instead of WebM)');
+console.log('✅ Recording: Better error messages for permissions');
+console.log('📱 Critical for gigs and practice - tested for mobile!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -2991,29 +2992,93 @@ let recordingStream = null;
 
 async function startMicrophoneRecording(sectionIndex) {
     try {
-        // Request microphone access
-        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // MOBILE FIX: Stop ALL audio playback first
+        // 1. Stop ABC synth if playing
+        if (window.currentSynthControl) {
+            try {
+                window.currentSynthControl.pause();
+                console.log('⏸ Stopped ABC playback');
+            } catch (e) {
+                console.warn('Could not stop ABC playback:', e);
+            }
+        }
         
-        // Create recorder
-        mediaRecorder = new MediaRecorder(recordingStream);
+        // 2. Pause all <audio> elements on page
+        document.querySelectorAll('audio').forEach(audio => {
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+            } catch (e) {
+                console.warn('Could not stop audio element:', e);
+            }
+        });
+        
+        // 3. Wait a moment for audio to fully stop
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Request microphone access with better error handling
+        const constraints = {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                sampleRate: 44100
+            }
+        };
+        
+        recordingStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        // iOS FIX: Use compatible MIME type
+        let mimeType = 'audio/webm';
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+            mimeType = 'audio/ogg';
+        }
+        
+        console.log('📱 Using MIME type:', mimeType);
+        
+        // Create recorder with compatible MIME type
+        mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
         audioChunks = [];
         
         mediaRecorder.ondataavailable = (event) => {
-            audioChunks.push(event.data);
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
         };
         
         mediaRecorder.onstop = async () => {
-            // Create blob from chunks
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            
-            // Convert to base64
-            const base64 = await blobToBase64(audioBlob);
-            
-            // Show save form with recorded audio
-            showSaveRecordingForm(sectionIndex, base64, audioBlob.size);
-            
-            // Stop all tracks
-            recordingStream.getTracks().forEach(track => track.stop());
+            try {
+                // Create blob from chunks
+                const audioBlob = new Blob(audioChunks, { type: mimeType });
+                
+                if (audioBlob.size === 0) {
+                    throw new Error('Recording failed - no audio data captured');
+                }
+                
+                // Convert to base64
+                const base64 = await blobToBase64(audioBlob);
+                
+                // Show save form with recorded audio
+                showSaveRecordingForm(sectionIndex, base64, audioBlob.size, mimeType);
+                
+                // Stop all tracks
+                recordingStream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.error('Recording save error:', error);
+                alert('Recording failed to save: ' + error.message);
+                // Clean up
+                if (recordingStream) {
+                    recordingStream.getTracks().forEach(track => track.stop());
+                }
+            }
+        };
+        
+        mediaRecorder.onerror = (error) => {
+            console.error('MediaRecorder error:', error);
+            alert('Recording error: ' + (error.error?.message || 'Unknown error'));
         };
         
         // Start recording
@@ -3023,7 +3088,18 @@ async function startMicrophoneRecording(sectionIndex) {
         showRecordingUI(sectionIndex);
         
     } catch (error) {
-        alert('Microphone access denied or not available.\n\nError: ' + error.message);
+        console.error('Microphone access error:', error);
+        let errorMessage = 'Microphone access denied or not available.';
+        
+        if (error.name === 'NotAllowedError') {
+            errorMessage = 'Please allow microphone access in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = 'No microphone found. Please check your device.';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = 'Microphone is already in use by another app.';
+        }
+        
+        alert(errorMessage + '\n\nError: ' + error.message);
     }
 }
 
@@ -3064,15 +3140,21 @@ function formatTime(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function showSaveRecordingForm(sectionIndex, base64Audio, fileSize) {
+function showSaveRecordingForm(sectionIndex, base64Audio, fileSize, mimeType) {
     const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
+    
+    // Get file extension from MIME type
+    let extension = 'webm';
+    if (mimeType.includes('mp4')) extension = 'm4a';
+    else if (mimeType.includes('ogg')) extension = 'ogg';
     
     container.innerHTML = `
         <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #10b981; margin-top: 15px;">
             <h4 style="margin: 0 0 15px 0; color: #10b981;">✅ Recording Complete!</h4>
             
             <div style="margin-bottom: 15px; text-align: center;">
-                <audio controls src="${base64Audio}" style="width: 100%;"></audio>
+                <audio controls src="${base64Audio}" style="width: 100%; max-width: 400px;"></audio>
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">Format: ${extension.toUpperCase()} • Size: ${(fileSize / 1024).toFixed(1)} KB</p>
             </div>
             
             <div style="margin-bottom: 12px;">
@@ -3796,6 +3878,21 @@ function renderABCPreview(abc, container) {
                         }, []) : []
                 }).then(() => {
                     console.log('✅ Audio ready for playback');
+                    
+                    // iOS FIX: Resume AudioContext on first user interaction
+                    const resumeAudio = () => {
+                        if (synthControl.audioContext && synthControl.audioContext.state === 'suspended') {
+                            synthControl.audioContext.resume().then(() => {
+                                console.log('✅ AudioContext resumed for iOS');
+                            });
+                        }
+                    };
+                    
+                    // Add resume handler to play button
+                    const playButton = document.querySelector('#abcAudioControls .abcjs-btn');
+                    if (playButton) {
+                        playButton.addEventListener('click', resumeAudio, { once: true });
+                    }
                 }).catch((error) => {
                     console.warn('Audio setup failed:', error);
                     document.getElementById('abcAudioWarnings').textContent = 
