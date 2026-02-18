@@ -3823,6 +3823,9 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     const container = document.getElementById('harmoniesContainer');
     if (!container) return;
     
+    // Immediately show loading state so we know the function is running
+    container.innerHTML = '<p style="padding: 10px; color: #667eea;">🎤 Loading harmony info...</p>';
+    
     try {
     // Check if song has harmonies - use cache first, then Drive
     let hasHarmonies = harmonyBadgeCache[songTitle] || harmonyCache[songTitle];
