@@ -320,6 +320,31 @@ let activeHarmonyFilter = null; // Tracks which harmony filter is active
 
 // Helper: find band member name from any identifier (email, key, etc.)
 function getBandMemberName(identifier) {
+
+// Helper: get play button label based on URL/platform
+function getPlayButtonLabel(version) {
+    const url = (version.spotifyUrl || '').toLowerCase();
+    const p = version.platform || '';
+    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return '▶️ Watch on YouTube';
+    if (p === 'apple_music' || url.includes('music.apple')) return '▶️ Play on Apple Music';
+    if (p === 'archive' || url.includes('archive.org')) return '▶️ Listen on Archive.org';
+    if (p === 'soundcloud' || url.includes('soundcloud')) return '▶️ Play on SoundCloud';
+    if (p === 'tidal' || url.includes('tidal')) return '▶️ Play on Tidal';
+    if (url.includes('spotify')) return '▶️ Play on Spotify';
+    return '▶️ Listen';
+}
+
+// Helper: get play button color based on URL/platform
+function getPlayButtonStyle(version) {
+    const url = (version.spotifyUrl || '').toLowerCase();
+    const p = version.platform || '';
+    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000;';
+    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44;';
+    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;';
+    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;';
+    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;';
+    return '';
+}
     if (!identifier) return 'Unknown';
     // Direct key match
     if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
@@ -1761,8 +1786,8 @@ function renderSpotifyVersions(songTitle, bandData) {
                 
                 ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
                 
-                <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')">
-                    ▶️ Play on Spotify
+                <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
+                    ${getPlayButtonLabel(version)}
                 </button>
             </div>
         `;
@@ -2849,8 +2874,8 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
                 
                 ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
                 
-                <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')">
-                    ▶️ Play on Spotify
+                <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
+                    ${getPlayButtonLabel(version)}
                 </button>
             </div>
         `;
@@ -2864,18 +2889,33 @@ async function addSpotifyVersion() {
         return;
     }
     
-    const url = prompt('Paste Spotify track URL:');
-    if (!url || !url.includes('spotify.com')) {
-        if (url) alert('Please paste a valid Spotify URL');
+    const url = prompt('Paste a link to the reference version:\n(Spotify, YouTube, Apple Music, or any URL)');
+    if (!url) return;
+    
+    // Basic URL validation
+    try {
+        new URL(url);
+    } catch (e) {
+        alert('Please paste a valid URL');
         return;
     }
     
     const notes = prompt('Notes about this version (optional):');
     
+    // Detect the platform
+    let platform = 'link';
+    if (url.includes('spotify.com')) platform = 'spotify';
+    else if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
+    else if (url.includes('music.apple.com')) platform = 'apple_music';
+    else if (url.includes('tidal.com')) platform = 'tidal';
+    else if (url.includes('soundcloud.com')) platform = 'soundcloud';
+    else if (url.includes('archive.org')) platform = 'archive';
+    
     const version = {
         id: 'version_' + Date.now(),
         title: 'Loading...',
-        spotifyUrl: url,
+        spotifyUrl: url,  // Keep field name for backward compatibility
+        platform: platform,
         votes: {},
         totalVotes: 0,
         isDefault: false,
