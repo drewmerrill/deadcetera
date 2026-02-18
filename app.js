@@ -2594,10 +2594,8 @@ async function toggleSpotifyVote(versionIndex, voterEmail) {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     
-    if (voterEmail !== currentUserEmail) {
-        alert("You can only vote for yourself!");
-        return;
-    }
+    // Note: any signed-in band member can toggle votes
+    // (email mismatch between bandMembers keys and Google OAuth made the old check too strict)
     
     let versions = await loadSpotifyVersions(songTitle) || [];
     if (!versions[versionIndex]) return;
