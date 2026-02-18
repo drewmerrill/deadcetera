@@ -92,7 +92,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedInstrument = localStorage.getItem('deadcetera_instrument');
     if (savedInstrument) {
         currentInstrument = savedInstrument;
-        document.getElementById('instrumentSelect').value = savedInstrument;
+        const instrumentSelect = document.getElementById('instrumentSelect');
+        if (instrumentSelect) instrumentSelect.value = savedInstrument;
     }
 });
 
@@ -147,7 +148,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     }
     
     dropdown.innerHTML = filtered.map(song => `
-        <div class="song-item" style="display:flex;justify-content:space-between;align-items:center;" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
+        <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" style="display:flex;justify-content:space-between;align-items:center;" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
             <span style="margin-left:auto;flex-shrink:0;" class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
@@ -4506,7 +4507,7 @@ function applyStatusFilter(status) {
     
     songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
+        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         
         if (getStatusFromCache(songTitle) === status) {
             item.style.display = 'flex';
@@ -4544,14 +4545,17 @@ async function addStatusBadges() {
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
+        
+        // Remove existing badges FIRST (before reading title)
+        const existingStatus = item.querySelector('.status-badge');
+        if (existingStatus) existingStatus.remove();
+        const existingHarmony = item.querySelector('.harmony-badge');
+        if (existingHarmony) existingHarmony.remove();
+        
+        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         if (!songTitle) return;
         
         const status = getStatusFromCache(songTitle);
-        
-        // Remove existing status badge
-        const existingBadge = item.querySelector('.status-badge');
-        if (existingBadge) existingBadge.remove();
         
         if (status) {
             const badges = {
@@ -4874,7 +4878,7 @@ function applyHarmonyFilter() {
     
     items.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
+        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         
         if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
             item.style.display = 'flex';
@@ -4937,24 +4941,24 @@ async function addHarmonyBadges() {
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
-        if (!songTitle) return;
         
-        // Remove existing badge
+        // Remove existing badge FIRST (before reading title)
         const existingBadge = item.querySelector('.harmony-badge');
         if (existingBadge) existingBadge.remove();
+        
+        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
+        if (!songTitle) return;
         
         // Add badge if song has harmonies
         if (harmonyBadgeCache[songTitle]) {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
             badge.textContent = '🎤';
-            badge.style.cssText = 'margin-left: 6px; font-size: 0.85em; opacity: 0.7; flex-shrink: 0;';
+            badge.style.cssText = 'margin-left: 8px; font-size: 0.8em; opacity: 0.6;';
             badge.title = 'This song has harmonies';
-            // Insert before the band badge to keep badge right-aligned
-            const bandBadge = item.querySelector('.song-badge');
-            if (bandBadge) {
-                item.insertBefore(badge, bandBadge);
+            // Append inside the song-name span so it sits next to the title
+            if (songNameElement) {
+                songNameElement.appendChild(badge);
             } else {
                 item.appendChild(badge);
             }
