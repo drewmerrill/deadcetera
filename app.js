@@ -15,7 +15,7 @@
     }
 })();
 
-console.log('🎸 Deadcetera v5.2.0 - MASTER FILE STATUS SYSTEM!');
+console.log('🎸 Deadcetera v5.2.1 - MASTER FILE STATUS SYSTEM!');
 console.log('⚡ Statuses load from 1 file instead of 358 API calls');
 console.log('⚡ Filtering is INSTANT on page load');
 console.log('🔄 First load migrates existing data automatically');
@@ -34,6 +34,25 @@ let currentResourceType = null; // For modal state
 let currentResourceIndex = null; // For editing resources
 let activeStatusFilter = null; // Tracks which status filter is active
 let activeHarmonyFilter = null; // Tracks which harmony filter is active
+
+// Helper: find band member name from any identifier (email, key, etc.)
+function getBandMemberName(identifier) {
+    if (!identifier) return 'Unknown';
+    // Direct key match
+    if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
+    // Search by email property
+    if (bandMembers) {
+        const entry = Object.entries(bandMembers).find(([key, member]) => 
+            member.email === identifier || 
+            member.email?.toLowerCase() === identifier.toLowerCase() ||
+            key.toLowerCase() === identifier.toLowerCase()
+        );
+        if (entry) return entry[1].name;
+    }
+    // Extract name from email (drewmerrill1029@gmail.com -> Drew)
+    const emailName = identifier.split('@')[0].replace(/[0-9]/g, '').replace(/\./g, ' ');
+    return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+}
 
 // ============================================================================
 // BAND NAME CONVERTER
@@ -1490,12 +1509,12 @@ async function renderPersonalTabs(songTitle) {
                 <div style="background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; position: relative;">
                     ${tab.addedBy === currentUserEmail ? `
                         <button onclick="deletePersonalTab('${songTitle}', ${index})" 
-                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">�</button>
+                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">✕</button>
                     ` : ''}
                     
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
                         <span style="font-size: 1.2em;">👤</span>
-                        <strong style="color: #667eea; font-size: 1.1em;">${bandMembers[tab.addedBy]?.name || tab.addedBy}</strong>
+                        <strong style="color: #667eea; font-size: 1.1em;">${getBandMemberName(tab.addedBy)}</strong>
                     </div>
                     
                     ${tab.notes ? `
@@ -1506,7 +1525,7 @@ async function renderPersonalTabs(songTitle) {
                     
                     <button onclick="window.open('${tab.url}', '_blank')" 
                         style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                        ? Open ${bandMembers[tab.addedBy]?.name || 'Their'} Tab
+                        🎸 Open ${getBandMemberName(tab.addedBy)}'s Tab
                     </button>
                     
                     <p style="margin-top: 8px; font-size: 0.85em; color: #9ca3af;">
@@ -2369,7 +2388,7 @@ async function renderPracticeTracksSimplified(songTitle) {
                                     title="Edit track">✏️</button>
                                 <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
                                     style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;"
-                                    title="Delete track">�</button>
+                                    title="Delete track">✕</button>
                             </div>
                         ` : ''}
                         
@@ -2511,7 +2530,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 ${version.addedBy === currentUserEmail ? `
                     <button onclick="deleteSpotifyVersion(${index})" 
-                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">�</button>
+                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">✕</button>
                 ` : ''}
                 
                 ${version.thumbnail ? `
@@ -3373,7 +3392,7 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                                         </button>
                                         <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            �
+                                            ✕
                                         </button>
                                     </div>
                                 </div>
@@ -3498,7 +3517,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                                             <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                                 style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">✏️</button>
                                             <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">�</button>
+                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">✕</button>
                                         </div>
                                     </div>
                                     <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
@@ -3592,7 +3611,7 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
                                 <button onclick="editPartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
                                     style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea; font-size: 0.85em;">✏️</button>
                                 <button onclick="deletePartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
-                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">�</button>
+                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">✕</button>
                             </li>
                         `).join('')}
                     </ul>
