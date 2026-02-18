@@ -4643,12 +4643,12 @@ async function preloadAllStatuses() {
     const total = allSongs.length;
     let loaded = 0;
     
-    const batchSize = 20;
+    const batchSize = 5;
     for (let i = 0; i < allSongs.length; i += batchSize) {
         const batch = allSongs.slice(i, i + batchSize);
         
         await Promise.all(batch.map(async (song) => {
-            if (song.title && statusCache[song.title] === undefined) {
+            if (song.title && !statusCache[song.title]) {
                 statusCache[song.title] = await loadSongStatus(song.title);
                 loaded++;
             }
