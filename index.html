@@ -45,15 +45,35 @@
                 <button class="filter-btn" data-filter="Phish">Phish</button>
             </div>
             
-            <!-- HARMONY FILTER -->
-            <div class="harmony-filters" style="margin: 15px 0; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="filter-btn active" onclick="filterSongsSync('all')" 
-                    style="padding: 8px 16px; border: 2px solid #667eea; background: #667eea; color: white; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                    All Songs
+            <!-- STATUS FILTERS -->
+            <div class="status-filters" style="margin: 15px 0; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="filter-btn" onclick="filterByStatus('all')" 
+                    style="padding: 8px 14px; border: 2px solid #10b981; background: white; color: #10b981; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    All Statuses
                 </button>
+                <button class="filter-btn" onclick="filterByStatus('this_week')" 
+                    style="padding: 8px 14px; border: 2px solid #ef4444; background: white; color: #ef4444; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    🎯 This Week
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('gig_ready')" 
+                    style="padding: 8px 14px; border: 2px solid #10b981; background: white; color: #10b981; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    ✅ Gig Ready
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('needs_polish')" 
+                    style="padding: 8px 14px; border: 2px solid #f59e0b; background: white; color: #f59e0b; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    ⚠️ Needs Polish
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('on_deck')" 
+                    style="padding: 8px 14px; border: 2px solid #3b82f6; background: white; color: #3b82f6; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    📚 On Deck
+                </button>
+            </div>
+            
+            <!-- HARMONY FILTER (kept for backward compatibility) -->
+            <div class="harmony-filters" style="margin: 0 0 15px 0; display: flex; gap: 8px; flex-wrap: wrap;">
                 <button class="filter-btn" onclick="filterSongsSync('harmonies')" 
-                    style="padding: 8px 16px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                    🎤 Harmony Songs Only
+                    style="padding: 6px 12px; border: 1px solid #667eea; background: white; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85em;">
+                    🎤 Harmonies Only
                 </button>
             </div>
             
@@ -70,7 +90,7 @@
     
     <!-- SONG METADATA -->
     <div class="song-metadata" style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <div style="display: flex; gap: 30px; flex-wrap: wrap; align-items: center;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
             <div class="meta-item">
                 <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎤 Lead Singer:</span>
                 <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" 
@@ -82,6 +102,26 @@
                     <option value="pierce">Pierce</option>
                     <option value="drew,chris">Drew & Chris (trading)</option>
                 </select>
+            </div>
+            
+            <div class="meta-item">
+                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎸 Status:</span>
+                <select id="songStatusSelect" onchange="updateSongStatus(this.value)"
+                    style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer; font-weight: 600;">
+                    <option value="">Not Started</option>
+                    <option value="on_deck">📚 On Deck</option>
+                    <option value="this_week">🎯 This Week</option>
+                    <option value="needs_polish">⚠️ Needs Polish</option>
+                    <option value="gig_ready">✅ Gig Ready</option>
+                </select>
+            </div>
+            
+            <div class="meta-item">
+                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🥁 BPM:</span>
+                <input type="number" id="songBpmInput" min="40" max="240" step="1" 
+                    placeholder="120"
+                    onchange="updateSongBpm(this.value)"
+                    style="width: 70px; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; background: white;">
             </div>
             
             <div class="meta-item">

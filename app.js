@@ -4,7 +4,12 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('🎸 Deadcetera v4.3.0 - MOBILE AUDIO FIXES for iPhone/Android!');
+console.log('🎸 Deadcetera v5.0.0 - SONG STATUS SYSTEM + BPM! Major Release!');
+console.log('🎯 NEW: Song Status - Gig Ready, Needs Polish, On Deck, This Week');
+console.log('🥁 NEW: BPM field per song (for drummers!)');
+console.log('🔍 NEW: Filter by status - quick setlist building!');
+console.log('✅ Status badges on every song card');
+console.log('📊 Ready for Monday rehearsal planning!');
 console.log('✅ ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
 console.log('✅ Recording: Stops ABC playback first (no conflicts)');
 console.log('✅ Recording: iOS-compatible format (MP4/M4A instead of WebM)');
@@ -147,8 +152,11 @@ function renderSongs(filter = 'all', searchTerm = '') {
         </div>
     `).join('');
     
-    // Add harmony badges after rendering
-    setTimeout(() => addHarmonyBadges(), 50);
+    // Add harmony badges and status badges after rendering
+    setTimeout(() => {
+        addHarmonyBadges();
+        addStatusBadges();
+    }, 50);
 }
 
 // ============================================================================
@@ -3879,19 +3887,33 @@ function renderABCPreview(abc, container) {
                 }).then(() => {
                     console.log('✅ Audio ready for playback');
                     
-                    // iOS FIX: Resume AudioContext on first user interaction
-                    const resumeAudio = () => {
-                        if (synthControl.audioContext && synthControl.audioContext.state === 'suspended') {
-                            synthControl.audioContext.resume().then(() => {
-                                console.log('✅ AudioContext resumed for iOS');
-                            });
+                    // iOS FIX: Initialize and resume AudioContext immediately
+                    // This needs to happen BEFORE recording is ever used
+                    const initAudioContext = async () => {
+                        if (synthControl.audioContext) {
+                            if (synthControl.audioContext.state === 'suspended') {
+                                try {
+                                    await synthControl.audioContext.resume();
+                                    console.log('✅ AudioContext resumed (iOS fix)');
+                                } catch (e) {
+                                    console.warn('Could not resume AudioContext:', e);
+                                }
+                            }
                         }
                     };
                     
-                    // Add resume handler to play button
-                    const playButton = document.querySelector('#abcAudioControls .abcjs-btn');
+                    // Try to resume on any user interaction with the controls
+                    const controlsContainer = document.querySelector('#abcAudioControls');
+                    if (controlsContainer) {
+                        controlsContainer.addEventListener('click', initAudioContext, { once: false });
+                        controlsContainer.addEventListener('touchstart', initAudioContext, { once: false });
+                    }
+                    
+                    // Also try on play button specifically
+                    const playButton = document.querySelector('#abcAudioControls .abcjs-midi-start');
                     if (playButton) {
-                        playButton.addEventListener('click', resumeAudio, { once: true });
+                        playButton.addEventListener('click', initAudioContext);
+                        playButton.addEventListener('touchstart', initAudioContext);
                     }
                 }).catch((error) => {
                     console.warn('Audio setup failed:', error);
@@ -4386,15 +4408,165 @@ async function loadHasHarmonies(songTitle) {
     return data ? data.hasHarmonies : false;
 }
 
+// ============================================================================
+// SONG STATUS SYSTEM - Gig Ready, Needs Polish, On Deck, This Week
+// ============================================================================
+
+async function updateSongStatus(status) {
+    if (!selectedSong || !selectedSong.title) return;
+    
+    const statusNames = {
+        '': 'Not Started',
+        'on_deck': 'On Deck',
+        'this_week': 'This Week',
+        'needs_polish': 'Needs Polish',
+        'gig_ready': 'Gig Ready'
+    };
+    
+    await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
+    console.log(`✅ Song status updated: ${statusNames[status] || 'Not Started'}`);
+    
+    // Update badge on song list
+    await addStatusBadges();
+}
+
+async function loadSongStatus(songTitle) {
+    const data = await loadBandDataFromDrive(songTitle, 'song_status');
+    return data ? data.status : '';
+}
+
+async function filterByStatus(status) {
+    console.log(`Filtering by status: ${status}`);
+    
+    // Update button states
+    document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
+        btn.style.background = 'white';
+        btn.style.fontWeight = '600';
+    });
+    
+    // Find clicked button and highlight it
+    const buttons = document.querySelectorAll('.status-filters .filter-btn');
+    buttons.forEach(btn => {
+        const btnStatus = btn.onclick.toString().match(/filterByStatus\('(.+?)'\)/)?.[1];
+        if (btnStatus === status) {
+            const color = btn.style.color;
+            btn.style.background = color;
+            btn.style.color = 'white';
+            btn.style.fontWeight = '700';
+        }
+    });
+    
+    if (status === 'all') {
+        // Show all songs
+        document.querySelectorAll('.song-item').forEach(item => {
+            item.style.display = 'block';
+        });
+        return;
+    }
+    
+    // Filter songs by status
+    const songItems = document.querySelectorAll('.song-item');
+    let visibleCount = 0;
+    
+    for (const item of songItems) {
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        
+        const songStatus = await loadSongStatus(songTitle);
+        
+        if (songStatus === status) {
+            item.style.display = 'block';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    }
+    
+    console.log(`✅ Showing ${visibleCount} songs with status: ${status}`);
+}
+
+async function addStatusBadges() {
+    const songItems = document.querySelectorAll('.song-item');
+    for (const item of songItems) {
+        const songNameElement = item.querySelector('.song-name');
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
+        if (!songTitle) continue;
+        
+        const status = await loadSongStatus(songTitle);
+        
+        // Remove existing status badge
+        const existingBadge = item.querySelector('.status-badge');
+        if (existingBadge) existingBadge.remove();
+        
+        if (status) {
+            const badges = {
+                'this_week': { text: '🎯 THIS WEEK', color: '#ef4444', bg: '#fee2e2' },
+                'gig_ready': { text: '✅ READY', color: '#10b981', bg: '#d1fae5' },
+                'needs_polish': { text: '⚠️ POLISH', color: '#f59e0b', bg: '#fef3c7' },
+                'on_deck': { text: '📚 ON DECK', color: '#3b82f6', bg: '#dbeafe' }
+            };
+            
+            const badge = badges[status];
+            if (badge) {
+                const badgeEl = document.createElement('span');
+                badgeEl.className = 'status-badge';
+                badgeEl.textContent = badge.text;
+                badgeEl.style.cssText = `
+                    display: inline-block;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    font-size: 0.7em;
+                    font-weight: 700;
+                    color: ${badge.color};
+                    background: ${badge.bg};
+                    margin-left: 8px;
+                    vertical-align: middle;
+                `;
+                songNameElement.appendChild(badgeEl);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// BPM SYSTEM - Song BPM + ABC Player BPM with memory
+// ============================================================================
+
+async function updateSongBpm(bpm) {
+    if (!selectedSong || !selectedSong.title) return;
+    
+    const bpmNum = parseInt(bpm);
+    if (isNaN(bpmNum) || bpmNum < 40 || bpmNum > 240) {
+        console.warn('Invalid BPM:', bpm);
+        return;
+    }
+    
+    await saveBandDataToDrive(selectedSong.title, 'song_bpm', { bpm: bpmNum, updatedAt: new Date().toISOString() });
+    console.log(`✅ Song BPM updated: ${bpmNum}`);
+}
+
+async function loadSongBpm(songTitle) {
+    const data = await loadBandDataFromDrive(songTitle, 'song_bpm');
+    return data ? data.bpm : null;
+}
+
 async function populateSongMetadata(songTitle) {
     const leadSinger = await loadLeadSinger(songTitle);
     const hasHarmonies = await loadHasHarmonies(songTitle);
+    const songStatus = await loadSongStatus(songTitle);
+    const songBpm = await loadSongBpm(songTitle);
     
     const leadSelect = document.getElementById('leadSingerSelect');
     if (leadSelect) leadSelect.value = leadSinger;
     
     const harmoniesCheckbox = document.getElementById('hasHarmoniesCheckbox');
     if (harmoniesCheckbox) harmoniesCheckbox.checked = hasHarmonies;
+    
+    const statusSelect = document.getElementById('songStatusSelect');
+    if (statusSelect) statusSelect.value = songStatus || '';
+    
+    const bpmInput = document.getElementById('songBpmInput');
+    if (bpmInput && songBpm) bpmInput.value = songBpm;
 }
 
 // ============================================================================
@@ -4442,15 +4614,28 @@ async function filterSongsAsync(type) {
         return;
     }
     
+    // Show loading message
+    const dropdown = document.getElementById('songDropdown');
+    const originalContent = dropdown.innerHTML;
+    dropdown.innerHTML = '<div style="padding: 40px; text-align: center; color: #667eea;"><div style="font-size: 2em; margin-bottom: 10px;">🔍</div><div style="font-weight: 600;">Checking which songs have harmonies marked...</div><div style="font-size: 0.9em; color: #6b7280; margin-top: 8px;">This may take a moment</div></div>';
+    
     // For harmonies - check only visible songs
     const songItems = document.querySelectorAll('.song-item');
     let visibleCount = 0;
+    let checkedCount = 0;
     
-    for (const item of songItems) {
+    // Restore original content first
+    dropdown.innerHTML = originalContent;
+    
+    // Get fresh song items after restore
+    const items = document.querySelectorAll('.song-item');
+    
+    for (const item of items) {
         const songNameElement = item.querySelector('.song-name');
         const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
         
         const hasHarmonies = await cacheHarmonyState(songTitle);
+        checkedCount++;
         
         if (hasHarmonies) {
             item.style.display = 'block';
@@ -4460,7 +4645,21 @@ async function filterSongsAsync(type) {
         }
     }
     
-    console.log(`✅ Filter applied: showing ${visibleCount} songs with harmonies`);
+    console.log(`✅ Filter applied: showing ${visibleCount} songs with harmonies (checked ${checkedCount} songs)`);
+    
+    // If no songs found, show helpful message
+    if (visibleCount === 0) {
+        dropdown.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: #6b7280;">
+                <div style="font-size: 2em; margin-bottom: 15px;">🎤</div>
+                <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No harmony songs marked yet</div>
+                <div style="margin-bottom: 20px;">Click any song and check the "🎵 Has Harmonies" box to mark it!</div>
+                <button onclick="filterSongsSync('all')" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                    Show All Songs
+                </button>
+            </div>
+        `;
+    }
 }
 
 function filterSongsSync(type) {
