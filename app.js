@@ -147,9 +147,9 @@ function renderSongs(filter = 'all', searchTerm = '') {
     }
     
     dropdown.innerHTML = filtered.map(song => `
-        <div class="song-item" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
+        <div class="song-item" style="display:flex;justify-content:space-between;align-items:center;" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
-            <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
+            <span style="margin-left:auto;flex-shrink:0;" class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
     
@@ -1478,7 +1478,7 @@ async function renderPersonalTabs(songTitle) {
                 <div style="background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; position: relative;">
                     ${tab.addedBy === currentUserEmail ? `
                         <button onclick="deletePersonalTab('${songTitle}', ${index})" 
-                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">×</button>
+                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">ï¿½</button>
                     ` : ''}
                     
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
@@ -2357,7 +2357,7 @@ async function renderPracticeTracksSimplified(songTitle) {
                                     title="Edit track">??</button>
                                 <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
                                     style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;"
-                                    title="Delete track">×</button>
+                                    title="Delete track">ï¿½</button>
                             </div>
                         ` : ''}
                         
@@ -2499,7 +2499,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 ${version.addedBy === currentUserEmail ? `
                     <button onclick="deleteSpotifyVersion(${index})" 
-                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">×</button>
+                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">ï¿½</button>
                 ` : ''}
                 
                 ${version.thumbnail ? `
@@ -3372,7 +3372,7 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                                         </button>
                                         <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ×
+                                            ï¿½
                                         </button>
                                     </div>
                                 </div>
@@ -3497,7 +3497,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                                             <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
                                                 style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">??</button>
                                             <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">×</button>
+                                                style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">ï¿½</button>
                                         </div>
                                     </div>
                                     <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
@@ -3591,7 +3591,7 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
                                 <button onclick="editPartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
                                     style="margin-left: 8px; background: none; border: none; cursor: pointer; color: #667eea; font-size: 0.85em;">??</button>
                                 <button onclick="deletePartNote('${songTitle}', ${sectionIndex}, '${part.singer}', ${noteIndex})" 
-                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">×</button>
+                                    style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 0.9em;">ï¿½</button>
                             </li>
                         `).join('')}
                     </ul>
@@ -4470,6 +4470,11 @@ async function filterByStatus(status) {
         return;
     }
     
+    // Toggle: if clicking the same filter again, reset to 'all'
+    if (status !== 'all' && activeStatusFilter === status) {
+        status = 'all';
+    }
+    
     // Update button styles
     document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
         const originalColor = btn.dataset.color || btn.style.color || '#667eea';
@@ -4493,7 +4498,7 @@ async function filterByStatus(status) {
     if (status === 'all') {
         activeStatusFilter = null;
         document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'block';
+            item.style.display = 'flex';
         });
         return;
     }
@@ -4513,7 +4518,7 @@ function applyStatusFilter(status) {
         const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
         
         if (getStatusFromCache(songTitle) === status) {
-            item.style.display = 'block';
+            item.style.display = 'flex';
             visibleCount++;
         } else {
             item.style.display = 'none';
@@ -4835,6 +4840,12 @@ async function cacheHarmonyState(songTitle) {
 
 async function filterSongsAsync(type) {
     console.log('Filtering songs:', type);
+    
+    // Toggle: if clicking the same filter again, reset to 'all'
+    if (type === 'harmonies' && activeHarmonyFilter === 'harmonies') {
+        type = 'all';
+    }
+    
     activeHarmonyFilter = type;
     
     // Update button states
@@ -4857,7 +4868,7 @@ async function filterSongsAsync(type) {
     if (type === 'all') {
         activeHarmonyFilter = null;
         document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'block';
+            item.style.display = 'flex';
         });
         return;
     }
@@ -4875,7 +4886,7 @@ function applyHarmonyFilter() {
         const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
         
         if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
-            item.style.display = 'block';
+            item.style.display = 'flex';
             visibleCount++;
         } else {
             item.style.display = 'none';
@@ -4900,40 +4911,9 @@ function filterSongsSync(type) {
     filterSongsAsync(type);
 }
 
-// Old async version - keep for compatibility
+// Old async version - redirect to new version
 async function filterSongs(type) {
-    // Update button states
-    document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
-        btn.classList.remove('active');
-        btn.style.background = 'white';
-        btn.style.color = '#667eea';
-    });
-    
-    const buttons = document.querySelectorAll('.harmony-filters .filter-btn');
-    buttons.forEach(btn => {
-        if ((type === 'all' && btn.textContent.includes('All')) ||
-            (type === 'harmonies' && btn.textContent.includes('Harmony'))) {
-            btn.classList.add('active');
-            btn.style.background = '#667eea';
-            btn.style.color = 'white';
-        }
-    });
-    
-    // Filter songs
-    const songItems = document.querySelectorAll('.song-item');
-    for (const item of songItems) {
-        // Extract song title from the song-name span
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
-        
-        const hasHarmonies = await loadHasHarmonies(songTitle);
-        
-        if (type === 'all') {
-            item.style.display = 'block';
-        } else if (type === 'harmonies') {
-            item.style.display = hasHarmonies ? 'block' : 'none';
-        }
-    }
+    filterSongsAsync(type);
 }
 
 // Cache for harmony data - loaded from master file
@@ -4978,9 +4958,15 @@ async function addHarmonyBadges() {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
             badge.textContent = 'ðŸŽ¤';
-            badge.style.cssText = 'margin-left: 8px; font-size: 0.9em; opacity: 0.7;';
+            badge.style.cssText = 'margin-left: 6px; font-size: 0.85em; opacity: 0.7; flex-shrink: 0;';
             badge.title = 'This song has harmonies';
-            item.appendChild(badge);
+            // Insert before the band badge to keep badge right-aligned
+            const bandBadge = item.querySelector('.song-badge');
+            if (bandBadge) {
+                item.insertBefore(badge, bandBadge);
+            } else {
+                item.appendChild(badge);
+            }
         }
     });
 }
