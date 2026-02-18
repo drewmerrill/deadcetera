@@ -3835,11 +3835,13 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         console.log(`🎤 Loaded hasHarmonies from Drive: ${hasHarmonies}`);
     }
     
+    const safeSongTitle = songTitle.replace(/'/g, "\\'");
+    
     if (!hasHarmonies) {
         container.innerHTML = `
             <div style="padding: 20px; text-align: center;">
                 <p style="color: #9ca3af; font-style: italic; margin-bottom: 15px;">No harmony parts documented yet.</p>
-                <button onclick="addFirstHarmonySection('${songTitle.replace(/'/g, "\\'")}')" 
+                <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
                     class="chart-btn chart-btn-primary" style="background: #667eea;">
                     🎤 Add Harmony Section
                 </button>
@@ -3853,7 +3855,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         container.innerHTML = `
             <div style="padding: 20px; text-align: center;">
                 <p style="color: #6b7280; margin-bottom: 15px;">This song is marked as having harmonies but no parts have been added yet.</p>
-                <button onclick="addFirstHarmonySection('${songTitle.replace(/'/g, "\\'")}')" 
+                <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
                     class="chart-btn chart-btn-primary" style="background: #667eea;">
                     🎤 Add Harmony Section
                 </button>
@@ -3862,7 +3864,22 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         return;
     }
     
+    console.log(`🎤 Rendering ${bandData.harmonies.sections?.length || 0} sections for "${songTitle}"`);
+    
     const sections = bandData.harmonies.sections;
+    
+    if (!sections || sections.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center;">
+                <p style="color: #6b7280; margin-bottom: 15px;">Harmony sections are empty. Add the first one!</p>
+                <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
+                    class="chart-btn chart-btn-primary" style="background: #667eea;">
+                    🎤 Add Harmony Section
+                </button>
+            </div>
+        `;
+        return;
+    }
     
     const sectionsHTML = await Promise.all(sections.map(async (section, sectionIndex) => {
         const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
@@ -3952,12 +3969,15 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     }));
     
     container.innerHTML = (await Promise.all(sectionsHTML)).join('');
+    console.log('🎤 Harmony rendering complete');
     } catch (error) {
         console.error('❌ renderHarmoniesEnhanced error:', error);
+        const safe = (songTitle || '').replace(/'/g, "\\'");
         container.innerHTML = `
             <div style="padding: 20px; text-align: center;">
-                <p style="color: #6b7280; margin-bottom: 15px;">No harmony parts documented yet.</p>
-                <button onclick="addFirstHarmonySection('${songTitle.replace(/'/g, "\\'")}')" 
+                <p style="color: #ef4444; margin-bottom: 10px;">⚠️ Error loading harmonies</p>
+                <p style="color: #6b7280; margin-bottom: 15px; font-size: 0.85em;">${error.message || 'Unknown error'}</p>
+                <button onclick="addFirstHarmonySection('${safe}')" 
                     class="chart-btn chart-btn-primary" style="background: #667eea;">
                     🎤 Add Harmony Section
                 </button>
