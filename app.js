@@ -3731,47 +3731,16 @@ async function renderAudioSnippetsOnly(songTitle, container) {
 
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
 async function renderHarmoniesEnhanced(songTitle, bandData) {
-    let container = document.getElementById('harmoniesContainer');
+    const container = document.getElementById('harmoniesContainer');
+    if (!container) return;
     
-    // Fallback: look for the section by other means
-    if (!container) {
-        // Try to find it within the harmony parts section
-        const allContainers = document.querySelectorAll('[id*="harmoni"], [id*="Harmoni"]');
-        if (allContainers.length > 0) {
-            container = allContainers[0];
-            console.log('Found harmony container via fallback:', container.id);
-        }
-    }
-    
-    if (!container) {
-        console.warn('harmoniesContainer not found - creating one');
-        // Try to find the Harmony Parts section header and add container after it
-        const headers = document.querySelectorAll('h2, h3');
-        for (const h of headers) {
-            if (h.textContent.includes('Harmony Parts')) {
-                container = document.createElement('div');
-                container.id = 'harmoniesContainer';
-                h.parentElement.appendChild(container);
-                console.log('Created harmoniesContainer after Harmony Parts header');
-                break;
-            }
-        }
-    }
-    
-    if (!container) {
-        console.error('Could not find or create harmoniesContainer');
-        return;
-    }
-    
+    try {
     // Check if song has harmonies - use cache first, then Drive
     let hasHarmonies = harmonyBadgeCache[songTitle] || harmonyCache[songTitle];
-    if (hasHarmonies === undefined) {
-        try {
-            hasHarmonies = await loadHasHarmonies(songTitle);
-        } catch (e) {
-            console.warn('Error loading hasHarmonies:', e);
-            hasHarmonies = false;
-        }
+    console.log(`🎤 Harmony render for "${songTitle}": cacheValue=${hasHarmonies}, bandData.harmonies=${!!bandData?.harmonies}`);
+    if (hasHarmonies === undefined || hasHarmonies === null) {
+        hasHarmonies = await loadHasHarmonies(songTitle);
+        console.log(`🎤 Loaded hasHarmonies from Drive: ${hasHarmonies}`);
     }
     
     if (!hasHarmonies) {
@@ -3891,6 +3860,18 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     }));
     
     container.innerHTML = (await Promise.all(sectionsHTML)).join('');
+    } catch (error) {
+        console.error('❌ renderHarmoniesEnhanced error:', error);
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center;">
+                <p style="color: #6b7280; margin-bottom: 15px;">No harmony parts documented yet.</p>
+                <button onclick="addFirstHarmonySection('${songTitle.replace(/'/g, "\\'")}')" 
+                    class="chart-btn chart-btn-primary" style="background: #667eea;">
+                    🎤 Add Harmony Section
+                </button>
+            </div>
+        `;
+    }
 }
 
 async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
