@@ -4467,14 +4467,15 @@ async function filterByStatus(status) {
         status = 'all';
     }
     
-    // Update button styles
+    // Update button styles - reset all buttons first
     document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
         const originalColor = btn.dataset.color || btn.style.color || '#667eea';
         btn.dataset.color = originalColor;
         btn.style.background = 'white';
         btn.style.color = originalColor;
     });
-    if (event && event.target) {
+    // Only highlight clicked button if we're NOT toggling off
+    if (status !== 'all' && event && event.target) {
         const btn = event.target.closest('.filter-btn');
         if (btn) {
             const originalColor = btn.dataset.color || btn.style.color || '#667eea';
@@ -4551,11 +4552,9 @@ async function addStatusBadges() {
     songItems.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
         
-        // Remove existing badges FIRST (before reading title)
+        // Remove existing status badge FIRST (before reading title)
         const existingStatus = item.querySelector('.status-badge');
         if (existingStatus) existingStatus.remove();
-        const existingHarmony = item.querySelector('.harmony-badge');
-        if (existingHarmony) existingHarmony.remove();
         
         const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         if (!songTitle) return;
@@ -4860,22 +4859,22 @@ async function filterSongsAsync(type) {
     
     activeHarmonyFilter = type;
     
-    // Update button states
+    // Update button states - reset all harmony buttons
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
         btn.classList.remove('active');
         btn.style.background = 'white';
         btn.style.color = '#667eea';
     });
     
-    const buttons = document.querySelectorAll('.harmony-filters .filter-btn');
-    buttons.forEach(btn => {
-        if ((type === 'all' && btn.textContent.includes('All')) ||
-            (type === 'harmonies' && btn.textContent.includes('Harmony'))) {
+    // Highlight clicked button only if filter is active (not toggling off)
+    if (type !== 'all' && event && event.target) {
+        const btn = event.target.closest('.filter-btn');
+        if (btn) {
             btn.classList.add('active');
             btn.style.background = '#667eea';
             btn.style.color = 'white';
         }
-    });
+    }
     
     if (type === 'all') {
         activeHarmonyFilter = null;
