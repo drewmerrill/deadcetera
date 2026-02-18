@@ -4,11 +4,11 @@
 // Last updated: 2026-02-15
 // ============================================================================
 
-console.log('? Deadcetera v5.2.0 - MASTER FILE STATUS SYSTEM!');
-console.log('? Statuses load from 1 file instead of 358 API calls');
-console.log('? Filtering is INSTANT on page load');
-console.log('? First load migrates existing data automatically');
-console.log('? Harmonies also use master file (no more looping!)');
+console.log('🎸 Deadcetera v5.2.0 - MASTER FILE STATUS SYSTEM!');
+console.log('⚡ Statuses load from 1 file instead of 358 API calls');
+console.log('⚡ Filtering is INSTANT on page load');
+console.log('🔄 First load migrates existing data automatically');
+console.log('🎤 Harmonies also use master file (no more looping!)');
 console.log('? ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
 console.log('? Recording: Stops ABC playback first (no conflicts)');
 console.log('? Recording: iOS-compatible format (MP4/M4A instead of WebM)');
@@ -22,6 +22,7 @@ let currentInstrument = 'bass'; // Default instrument
 let currentResourceType = null; // For modal state
 let currentResourceIndex = null; // For editing resources
 let activeStatusFilter = null; // Tracks which status filter is active
+let activeHarmonyFilter = null; // Tracks which harmony filter is active
 
 // ============================================================================
 // BAND NAME CONVERTER
@@ -164,6 +165,10 @@ function renderSongs(filter = 'all', searchTerm = '') {
         // Re-apply active status filter if one is set
         if (activeStatusFilter && activeStatusFilter !== 'all') {
             applyStatusFilter(activeStatusFilter);
+        }
+        // Re-apply active harmony filter if one is set
+        if (activeHarmonyFilter && activeHarmonyFilter !== 'all') {
+            applyHarmonyFilter();
         }
     }, 50);
 }
@@ -340,7 +345,7 @@ async function renderLessonsSection(songTitle, instrument, resources) {
                 ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
                 <div style="flex: 1;">
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        ${platform === 'YouTube' ? '?' : '?'} ${title}
+                        ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
                     </a>
                     <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
                 </div>
@@ -415,7 +420,7 @@ async function renderReferencesSection(songTitle, instrument, resources) {
                 ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail" class="youtube-thumbnail-small">` : ''}
                 <div style="flex: 1;">
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        ${platform === 'YouTube' ? '?' : '?'} ${title}
+                        ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
                     </a>
                     <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
                 </div>
@@ -1592,19 +1597,19 @@ async function renderMoisesStems(songTitle, bandData) {
     // Check if we have individual stem links
     const stemKeys = ['bass', 'drums', 'guitar', 'keys', 'vocals', 'other'];
     const instrumentIcons = {
-        bass: '?',
-        drums: '?', 
-        guitar: '?',
-        keys: '?',
-        vocals: '?',
-        other: '?'
+        bass: '🎸',
+        drums: '🥁', 
+        guitar: '🎸',
+        keys: '🎹',
+        vocals: '🎤',
+        other: '🎵'
     };
     
     // Show stem buttons
     const stemButtons = stemKeys.map(key => {
         const url = stems.stems && stems.stems[key];
         const label = key.charAt(0).toUpperCase() + key.slice(1);
-        const icon = instrumentIcons[key] || '?';
+        const icon = instrumentIcons[key] || '🎵';
         
         if (url) {
             // Has URL - clickable download
@@ -2311,15 +2316,15 @@ async function renderPracticeTracksSimplified(songTitle) {
     
     // Instrument icons and names
     const instrumentIcons = {
-        bass: '?',
-        leadGuitar: '?',
-        lead_guitar: '?',
-        rhythmGuitar: '?',
-        rhythm_guitar: '?',
-        keys: '?',
-        keyboards: '?',
-        drums: '?',
-        vocals: '?'
+        bass: '🎸',
+        leadGuitar: '🎸',
+        lead_guitar: '🎸',
+        rhythmGuitar: '🎸',
+        rhythm_guitar: '🎸',
+        keys: '🎹',
+        keyboards: '🎹',
+        drums: '🥁',
+        vocals: '🎤'
     };
     
     const instrumentNames = {
@@ -2339,7 +2344,7 @@ async function renderPracticeTracksSimplified(songTitle) {
             ${allTracks.map((track, index) => {
                 const url = track.videoUrl || track.youtubeUrl;
                 const thumbnail = track.thumbnail || getYouTubeThumbnail(url);
-                const icon = instrumentIcons[track.instrument] || '?';
+                const icon = instrumentIcons[track.instrument] || '🎵';
                 const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
                 const isUserAdded = track.source !== 'data.js';
                 
@@ -2786,9 +2791,9 @@ async function renderRehearsalNotesWithStorage(songTitle) {
     };
     
     const priorityEmojis = {
-        high: '?',
-        medium: '?',
-        low: '?'
+        high: '🔴',
+        medium: '🟡',
+        low: '🟢'
     };
     
     container.innerHTML = `
@@ -4829,7 +4834,8 @@ async function cacheHarmonyState(songTitle) {
 }
 
 async function filterSongsAsync(type) {
-    console.log(`Filtering songs: ${type}`);
+    console.log('Filtering songs:', type);
+    activeHarmonyFilter = type;
     
     // Update button states
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
@@ -4849,26 +4855,26 @@ async function filterSongsAsync(type) {
     });
     
     if (type === 'all') {
+        activeHarmonyFilter = null;
         document.querySelectorAll('.song-item').forEach(item => {
             item.style.display = 'block';
         });
-        console.log('Showing all songs');
         return;
     }
     
-    // Use master harmony cache for INSTANT filtering (no Drive calls!)
+    applyHarmonyFilter();
+}
+
+// Separate function so renderSongs can re-apply after re-rendering
+function applyHarmonyFilter() {
     const items = document.querySelectorAll('.song-item');
     let visibleCount = 0;
-    let checkedCount = 0;
     
     items.forEach(item => {
         const songNameElement = item.querySelector('.song-name');
-        const songTitle = songNameElement ? songNameElement.textContent.trim() : item.textContent.split('\n')[0].trim();
+        const songTitle = songNameElement ? songNameElement.textContent.trim() : '';
         
-        const hasHarmonies = harmonyBadgeCache[songTitle] || harmonyCache[songTitle] || false;
-        checkedCount++;
-        
-        if (hasHarmonies) {
+        if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
             item.style.display = 'block';
             visibleCount++;
         } else {
@@ -4876,20 +4882,16 @@ async function filterSongsAsync(type) {
         }
     });
     
-    console.log(`Filter applied: showing ${visibleCount} songs with harmonies (checked ${checkedCount} songs)`);
+    console.log('Harmony filter: ' + visibleCount + ' songs');
     
     if (visibleCount === 0) {
-        const dropdown = document.getElementById('songDropdown');
-        dropdown.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: #6b7280;">
-                <div style="font-size: 2em; margin-bottom: 15px;">?</div>
-                <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No harmony songs marked yet</div>
-                <div style="margin-bottom: 20px;">Click any song and check the "? Has Harmonies" box to mark it!</div>
-                <button onclick="filterSongsSync('all')" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                    Show All Songs
-                </button>
-            </div>
-        `;
+        document.getElementById('songDropdown').innerHTML = 
+            '<div style="padding: 40px; text-align: center; color: #6b7280;">' +
+            '<div style="font-size: 2em; margin-bottom: 15px;">🎵</div>' +
+            '<div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No harmony songs marked yet</div>' +
+            '<div style="margin-bottom: 20px;">Click any song and check the "Has Harmonies" box to mark it!</div>' +
+            '<button onclick="filterSongsSync(\'all\')" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">Show All Songs</button>' +
+            '</div>';
     }
 }
 
@@ -4975,7 +4977,7 @@ async function addHarmonyBadges() {
         if (harmonyBadgeCache[songTitle]) {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
-            badge.textContent = '?';
+            badge.textContent = '🎤';
             badge.style.cssText = 'margin-left: 8px; font-size: 0.9em; opacity: 0.7;';
             badge.title = 'This song has harmonies';
             item.appendChild(badge);
