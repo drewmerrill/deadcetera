@@ -3716,12 +3716,12 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                 </p>
             </div>
             
-            <div style="flex: 1; overflow: auto; padding: 25px; display: flex; gap: 20px;">
+            <div style="flex: 1; overflow: auto; padding: 25px; display: flex; gap: 20px; flex-wrap: wrap;">
                 <!-- Left: Editor -->
-                <div style="flex: 1; display: flex; flex-direction: column;">
+                <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column;">
                     <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">📝 ABC Notation:</label>
                     <textarea id="abcEditorTextarea" 
-                        style="flex: 1; font-family: 'Courier New', monospace; font-size: 0.95em; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; resize: none;"
+                        style="flex: 1; min-height: 200px; font-family: 'Courier New', monospace; font-size: 0.95em; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; resize: none;"
                     >${initialAbc}</textarea>
                     
                     <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
@@ -3736,15 +3736,15 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                 </div>
                 
                 <!-- Right: Preview -->
-                <div style="flex: 1; display: flex; flex-direction: column;">
+                <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column;">
                     <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">👁️ Preview:</label>
-                    <div id="abcPreviewContainer" style="flex: 1; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto;">
+                    <div id="abcPreviewContainer" style="flex: 1; min-height: 300px; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto;">
                         <p style="color: #9ca3af; text-align: center; margin-top: 40px;">Click "Preview" to render sheet music</p>
                     </div>
                 </div>
             </div>
             
-            <div style="padding: 20px; border-top: 2px solid #e2e8f0; display: flex; gap: 10px; justify-content: flex-end;">
+            <div style="padding: 20px; border-top: 2px solid #e2e8f0; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <button class="chart-btn chart-btn-secondary" onclick="document.getElementById('abcEditorModal').remove()" style="background: #ef4444; color: white; border: none;">
                     ❌ Cancel
                 </button>
@@ -3792,7 +3792,7 @@ function loadABCJS(callback) {
     document.head.appendChild(script);
 }
 
-function renderABCPreview(abc, container) {
+async function renderABCPreview(abc, container) {
     container.innerHTML = '';
     
     // Load ABCjs audio CSS if not already loaded
@@ -3802,36 +3802,6 @@ function renderABCPreview(abc, container) {
         cssLink.rel = 'stylesheet';
         cssLink.href = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/abcjs-audio.css';
         document.head.appendChild(cssLink);
-    }
-    
-    // Add custom CSS for better mobile BPM/warp display
-    if (!document.getElementById('abcjs-custom-css')) {
-        const style = document.createElement('style');
-        style.id = 'abcjs-custom-css';
-        style.textContent = `
-            #abcAudioControls .abcjs-inline-audio {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                flex-wrap: wrap;
-            }
-            #abcAudioControls .abcjs-inline-audio .abcjs-tempo-wrapper {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                font-size: 0.85em;
-                white-space: nowrap;
-            }
-            @media (max-width: 480px) {
-                #abcAudioControls .abcjs-inline-audio {
-                    gap: 4px;
-                }
-                #abcAudioControls .abcjs-inline-audio .abcjs-tempo-wrapper {
-                    font-size: 0.75em;
-                }
-            }
-        `;
-        document.head.appendChild(style);
     }
     
     try {
@@ -3899,67 +3869,86 @@ function renderABCPreview(abc, container) {
         // Initialize synth for playback
         if (window.ABCJS && window.ABCJS.synth && visualObj) {
             try {
-                const synthControl = new ABCJS.synth.SynthController();
-                window.currentSynthControl = synthControl;
-                
-                synthControl.load('#abcAudioControls', null, {
-                    displayLoop: true,
-                    displayRestart: true,
-                    displayPlay: true,
-                    displayProgress: true,
-                    displayWarp: true
-                });
-                
-                // Get selected voices (all by default)
-                const selectedVoices = getSelectedVoices();
-                
-                synthControl.setTune(visualObj, false, {
-                    chordsOff: true,
-                    voicesOff: selectedVoices.length > 0 ? 
-                        voices.map((v, i) => !selectedVoices.includes(i)).reduce((acc, off, i) => {
-                            if (off) acc.push(i);
-                            return acc;
-                        }, []) : []
-                }).then(() => {
-                    console.log('🔊 Audio ready for playback');
-                    
-                    // iOS FIX: Resume AudioContext on ANY user interaction
-                    const resumeAudio = async () => {
-                        try {
-                            // Try the synthControl's audioContext
-                            if (synthControl.audioContext && synthControl.audioContext.state === 'suspended') {
-                                await synthControl.audioContext.resume();
-                                console.log('🔊 AudioContext resumed (iOS fix)');
+                // iOS FIX: Create AudioContext early via user gesture
+                // We wrap synth init in a function triggered by first tap
+                const initSynth = async () => {
+                    try {
+                        // Force-create and resume AudioContext (iOS requires user gesture)
+                        if (window.AudioContext || window.webkitAudioContext) {
+                            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                            if (!window._deadceteraAudioCtx) {
+                                window._deadceteraAudioCtx = new AudioCtx();
                             }
-                            // Also try the global AudioContext
-                            if (window.AudioContext || window.webkitAudioContext) {
-                                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                                if (ctx.state === 'suspended') await ctx.resume();
+                            if (window._deadceteraAudioCtx.state === 'suspended') {
+                                await window._deadceteraAudioCtx.resume();
                             }
-                        } catch (e) {
-                            console.warn('Could not resume AudioContext:', e);
                         }
-                    };
-                    
-                    // Attach to multiple interaction points for iOS
-                    const controlsEl = document.querySelector('#abcAudioControls');
-                    if (controlsEl) {
-                        controlsEl.addEventListener('click', resumeAudio);
-                        controlsEl.addEventListener('touchstart', resumeAudio);
-                        controlsEl.addEventListener('touchend', resumeAudio);
+                        
+                        const synthControl = new ABCJS.synth.SynthController();
+                        window.currentSynthControl = synthControl;
+                        
+                        synthControl.load('#abcAudioControls', null, {
+                            displayLoop: true,
+                            displayRestart: true,
+                            displayPlay: true,
+                            displayProgress: true,
+                            displayWarp: true
+                        });
+                        
+                        const selectedVoices = getSelectedVoices();
+                        
+                        await synthControl.setTune(visualObj, false, {
+                            chordsOff: true,
+                            voicesOff: selectedVoices.length > 0 ? 
+                                voices.map((v, i) => !selectedVoices.includes(i)).reduce((acc, off, i) => {
+                                    if (off) acc.push(i);
+                                    return acc;
+                                }, []) : []
+                        });
+                        
+                        console.log('🔊 Audio ready for playback');
+                        
+                        // Resume AudioContext if still suspended
+                        if (synthControl.audioContext && synthControl.audioContext.state === 'suspended') {
+                            await synthControl.audioContext.resume();
+                            console.log('🔊 AudioContext resumed');
+                        }
+                    } catch (error) {
+                        console.warn('Audio setup failed:', error);
+                        document.getElementById('abcAudioWarnings').textContent = 
+                            '⚠️ Audio playback may not work in all browsers. The sheet music is still valid.';
                     }
+                };
+                
+                // On iOS, we need user interaction first. Show a tap-to-play prompt.
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+                if (isIOS) {
+                    const tapPrompt = document.createElement('div');
+                    tapPrompt.id = 'iosTapPrompt';
+                    tapPrompt.style.cssText = 'padding: 15px; text-align: center; background: #fff7ed; border: 2px solid #f59e0b; border-radius: 8px; margin-bottom: 10px; cursor: pointer;';
+                    tapPrompt.innerHTML = '<strong style="color: #92400e;">🔊 Tap here to enable audio playback</strong><br><span style="font-size: 0.85em; color: #78716c;">Required on iPhone/iPad</span>';
+                    tapPrompt.addEventListener('click', async () => {
+                        tapPrompt.innerHTML = '<span style="color: #667eea;">⏳ Loading audio...</span>';
+                        await initSynth();
+                        tapPrompt.remove();
+                    });
+                    document.getElementById('abcAudioControls').before(tapPrompt);
                     
-                    // Also attach to the entire modal for iOS
-                    const modal = document.getElementById('abcEditorModal');
-                    if (modal) {
-                        modal.addEventListener('click', resumeAudio, { once: true });
-                        modal.addEventListener('touchstart', resumeAudio, { once: true });
-                    }
-                }).catch((error) => {
-                    console.warn('Audio setup failed:', error);
-                    document.getElementById('abcAudioWarnings').textContent = 
-                        '⚠️ Audio playback may not work in all browsers. The sheet music is still valid.';
-                });
+                    // Still show the controls (they just won't work until tapped)
+                    const synthControl = new ABCJS.synth.SynthController();
+                    window.currentSynthControl = synthControl;
+                    synthControl.load('#abcAudioControls', null, {
+                        displayLoop: true,
+                        displayRestart: true,
+                        displayPlay: true,
+                        displayProgress: true,
+                        displayWarp: true
+                    });
+                    synthControl.setTune(visualObj, false, { chordsOff: true }).catch(() => {});
+                } else {
+                    // Non-iOS: init immediately
+                    await initSynth();
+                }
             } catch (error) {
                 console.warn('Synth not available:', error);
                 document.getElementById('abcAudioWarnings').textContent = 
