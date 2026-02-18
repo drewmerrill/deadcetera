@@ -3736,8 +3736,21 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     // Check if song has harmonies
     const hasHarmonies = await loadHasHarmonies(songTitle);
     
-    if (!hasHarmonies || !bandData || !bandData.harmonies) {
+    if (!hasHarmonies) {
         container.innerHTML = '<div style="padding: 20px; color: #9ca3af; text-align: center; font-style: italic;">This song doesn\'t have harmony parts documented. Check "Has Harmonies" above if this song needs harmonies.</div>';
+        return;
+    }
+    
+    if (!bandData || !bandData.harmonies) {
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center;">
+                <p style="color: #6b7280; margin-bottom: 15px;">This song is marked as having harmonies but no parts have been added yet.</p>
+                <button onclick="addFirstHarmonySection('${songTitle.replace(/'/g, "\\'")}')" 
+                    class="chart-btn chart-btn-primary" style="background: #667eea;">
+                    🎤 Add Harmony Section
+                </button>
+            </div>
+        `;
         return;
     }
     
@@ -4722,6 +4735,30 @@ async function updateLeadSinger(singer) {
 async function loadLeadSinger(songTitle) {
     const data = await loadBandDataFromDrive(songTitle, 'lead_singer');
     return data ? data.singer : '';
+}
+
+async function addFirstHarmonySection(songTitle) {
+    const sectionName = prompt('Name this harmony section (e.g., "Chorus", "Verse 1", "Bridge"):');
+    if (!sectionName) return;
+    
+    // Create initial harmony structure
+    const harmonies = {
+        sections: [{
+            name: sectionName,
+            parts: []
+        }]
+    };
+    
+    // Update bandKnowledgeBase
+    if (!bandKnowledgeBase[songTitle]) bandKnowledgeBase[songTitle] = {};
+    bandKnowledgeBase[songTitle].harmonies = harmonies;
+    
+    // Save to Drive
+    await saveBandDataToDrive(songTitle, 'has_harmonies', { hasHarmonies: true, harmonies: harmonies });
+    
+    // Re-render
+    const bandData = bandKnowledgeBase[songTitle];
+    await renderHarmoniesEnhanced(songTitle, bandData);
 }
 
 async function updateHasHarmonies(hasHarmonies) {
