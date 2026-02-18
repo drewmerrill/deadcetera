@@ -106,6 +106,7 @@ const allSongs = [
     { title: "Run for the Roses", band: "JGB" },
     { title: "Shining Star", band: "JGB" },
     { title: "Tangled Up in Blue", band: "JGB" },
+    { title: "That's What Love Will Make You Do", band: "JGB" },
     { title: "The Night They Drove Old Dixie Down", band: "JGB" },
     { title: "The Harder They Come", band: "JGB" },
     { title: "Waiting for a Miracle", band: "JGB" },
