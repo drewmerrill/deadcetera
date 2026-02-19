@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadcetera - Song Practice Workflow</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Cache buster: v3.0.0-final-2026-02-15 -->
+</head>
+<body>
+    <!-- DEV BANNER -->
+    <div id="devBanner" style="background: linear-gradient(90deg, #f59e0b, #ef4444); color: white; text-align: center; padding: 8px 15px; font-weight: 700; font-size: 0.9em; position: sticky; top: 0; z-index: 9999; display: flex; justify-content: space-between; align-items: center;">
+        <span>🚧 DEV BUILD — Testing Only</span>
+        <span style="font-weight: 400; font-size: 0.85em;">app-dev.js | <a href="index.html" style="color: white; text-decoration: underline;">← Back to Production</a></span>
+    </div>
+    <div class="container">
+        <header>
+            <!-- Logo placeholder - replace logo.png with your actual logo -->
+            <img src="logo.png" alt="Deadcetera" class="logo" onerror="this.style.display='none'">
+            <h1>🎸 Deadcetera Practice Tool</h1>
+            <p class="subtitle">Pick a song → Find the best version → Download → Practice your part</p>
+            
+            <!-- Google Drive Connection -->
+            <div style="text-align: center; margin-top: 15px;">
+                <button id="googleDriveAuthBtn" onclick="handleGoogleDriveAuth()" 
+                    style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.95em; cursor: pointer; font-weight: 600;">
+                    🔗 Connect Google Drive
+                </button>
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Connect to share recordings with your band!</p>
+            </div>
+        </header>
+
+        <!-- Step 1: Song Selection -->
+        <div class="step-card" id="step1">
+            <div class="step-number">1</div>
+            <h2>Choose Your Song</h2>
+            <div class="search-box">
+                <input 
+                    type="text" 
+                    id="songSearch" 
+                    placeholder="Search for a song..." 
+                    class="search-input"
+                >
+            </div>
+            <div class="band-filters">
+                <button class="filter-btn active" data-filter="all">All Songs</button>
+                <button class="filter-btn" data-filter="GD">Grateful Dead</button>
+                <button class="filter-btn" data-filter="JGB">Jerry Garcia Band</button>
+                <button class="filter-btn" data-filter="WSP">Widespread Panic</button>
+                <button class="filter-btn" data-filter="Phish">Phish</button>
+            </div>
+            
+            <!-- STATUS FILTERS -->
+            <div class="status-filters" style="margin: 15px 0; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="filter-btn" onclick="filterByStatus('all')" 
+                    style="padding: 8px 14px; border: 2px solid #10b981; background: white; color: #10b981; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    All Statuses
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('this_week')" 
+                    style="padding: 8px 14px; border: 2px solid #ef4444; background: white; color: #ef4444; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    🎯 This Week
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('gig_ready')" 
+                    style="padding: 8px 14px; border: 2px solid #10b981; background: white; color: #10b981; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    ✅ Gig Ready
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('needs_polish')" 
+                    style="padding: 8px 14px; border: 2px solid #f59e0b; background: white; color: #f59e0b; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    ⚠️ Needs Polish
+                </button>
+                <button class="filter-btn" onclick="filterByStatus('on_deck')" 
+                    style="padding: 8px 14px; border: 2px solid #3b82f6; background: white; color: #3b82f6; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
+                    📚 On Deck
+                </button>
+            </div>
+            
+            <!-- HARMONY FILTER (kept for backward compatibility) -->
+            <div class="harmony-filters" style="margin: 0 0 15px 0; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="filter-btn" onclick="filterSongsSync('harmonies')" 
+                    style="padding: 6px 12px; border: 1px solid #667eea; background: white; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85em;">
+                    🎤 Harmonies Only
+                </button>
+            </div>
+            
+            <div class="song-dropdown" id="songDropdown">
+                <!-- Songs populated here -->
+            </div>
+        </div>
+
+<!-- Step 2: Band Resources (REPLACES Learning Resources) -->
+<div class="step-card hidden" id="step2">
+    <div class="step-number">2</div>
+    <h2>🎸 Band Resources</h2>
+    <p class="subtitle" id="bandResourcesSubtitle">Collaborative resources for your band</p>
+    
+    <!-- SONG METADATA -->
+    <div class="song-metadata" style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+            <div class="meta-item">
+                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎤 Lead Singer:</span>
+                <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" 
+                    style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer;">
+                    <option value="">Select...</option>
+                    <option value="drew">Drew</option>
+                    <option value="chris">Chris</option>
+                    <option value="brian">Brian</option>
+                    <option value="pierce">Pierce</option>
+                    <option value="drew,chris">Drew & Chris (trading)</option>
+                </select>
+            </div>
+            
+            <div class="meta-item">
+                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎸 Status:</span>
+                <select id="songStatusSelect" onchange="updateSongStatus(this.value)"
+                    style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer; font-weight: 600;">
+                    <option value="">Not Started</option>
+                    <option value="on_deck">📚 On Deck</option>
+                    <option value="this_week">🎯 This Week</option>
+                    <option value="needs_polish">⚠️ Needs Polish</option>
+                    <option value="gig_ready">✅ Gig Ready</option>
+                </select>
+            </div>
+            
+            <div class="meta-item">
+                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🥁 BPM:</span>
+                <input type="number" id="songBpmInput" min="40" max="240" step="1" 
+                    placeholder="120"
+                    onchange="updateSongBpm(this.value)"
+                    style="width: 70px; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; background: white;">
+            </div>
+            
+            <div class="meta-item">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span style="font-weight: 600; color: #6b7280;">🎵 Has Harmonies</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- SPOTIFY REFERENCE VERSION - Voting -->
+    <div class="resource-section" id="spotifySection">
+        <div class="section-header">
+            <h3>🎵 Reference Version (Band Voted)</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">
+                Vote on which Spotify version to learn
+                <button onclick="searchSpotify()" style="background: none; border: none; color: #667eea; text-decoration: underline; cursor: pointer; font-size: 0.9em; padding: 0; margin-left: 15px;">🔍 Search Spotify</button>
+            </p>
+        </div>
+        
+        <div id="spotifyVersionsContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="secondary-btn" id="addSpotifyVersionBtn" style="margin-top: 12px;">
+            + Suggest Different Version
+        </button>
+    </div>
+    
+    <!-- CHORD CHART -->
+    <div class="resource-section" id="personalTabsSection">
+        <div class="section-header">
+            <h3>📝 Personal Tab Links</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">
+                Each person can add their own Ultimate Guitar tab link
+                <button onclick="searchUltimateGuitar()" style="background: none; border: none; color: #667eea; text-decoration: underline; cursor: pointer; font-size: 0.9em; padding: 0; margin-left: 15px;">🔍 Search Ultimate Guitar</button>
+            </p>
+        </div>
+        
+        <div id="personalTabsContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <!-- Add Your Tab Form -->
+        <div id="addTabForm" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-top: 20px; border: 2px solid #e2e8f0;">
+            <h4 style="margin: 0 0 15px 0; color: #2d3748;">Add Your Tab Link</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Tab URL:</label>
+                <input type="text" id="tabUrlInput" 
+                    placeholder="Paste your Ultimate Guitar tab link" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
+                    💡 Go to Ultimate Guitar, find your preferred tab, copy the full URL
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Notes (optional):</label>
+                <input type="text" id="tabNotesInput" 
+                    placeholder="E.g., Lead guitar tab, Bass with my edits, etc." 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            </div>
+            
+            <button onclick="addPersonalTab()" 
+                style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
+                ➕ Add My Tab Link
+            </button>
+        </div>
+    </div>
+    
+    <!-- MOISES STEMS -->
+    <div class="resource-section" id="moisesSection">
+        <div class="section-header">
+            <h3>🎚️ Moises Stems (Practice Parts)</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Download individual instrument tracks</p>
+        </div>
+        
+        <div id="moisesStemsContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <!-- PRACTICE TRACKS -->
+    <div class="resource-section" id="practiceTracksSection">
+        <div class="section-header">
+            <h3>🎵 Practice Tracks</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Add videos instantly - auto-fetches title & thumbnail!</p>
+        </div>
+        
+        <!-- Simple Add Form -->
+        <div id="practiceTrackAddForm" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0;">
+            <h4 style="margin: 0 0 15px 0; color: #2d3748;">Add Practice Track</h4>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Video URL:</label>
+                <input type="text" id="practiceTrackUrlInput" 
+                    placeholder="Paste YouTube, YouTube Shorts, Vimeo, or any video URL" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Instrument:</label>
+                <select id="practiceTrackInstrument" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+                    <option value="">-- Select Instrument --</option>
+                    <option value="bass">🎸 Bass</option>
+                    <option value="leadGuitar">🎸 Lead Guitar</option>
+                    <option value="rhythmGuitar">🎸 Rhythm Guitar</option>
+                    <option value="keys">🎹 Keys/Keyboards</option>
+                    <option value="drums">🥁 Drums</option>
+                    <option value="vocals">🎤 Vocals</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Notes (optional):</label>
+                <input type="text" id="practiceTrackNotes" 
+                    placeholder="E.g., Great breakdown of the bass line" 
+                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            </div>
+            
+            <button id="addPracticeTrackBtn" class="chart-btn chart-btn-primary" onclick="addPracticeTrackSimple()" 
+                style="width: 100%; padding: 14px; font-size: 1em;">
+                ✨ Add Track (Auto-Fetch Title & Thumbnail)
+            </button>
+            
+            <p style="margin: 12px 0 0 0; font-size: 0.85em; color: #6b7280;">
+                💡 Just paste URL & select instrument - we'll fetch the rest automatically!
+            </p>
+        </div>
+        
+        <!-- Saved Tracks -->
+        <div id="practiceTracksContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <!-- HARMONIES -->
+    <div class="resource-section" id="harmoniesSection">
+        <div class="section-header">
+            <h3>🎤 Harmony Parts</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Who sings what, when</p>
+        </div>
+        
+        <div id="harmoniesContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+    
+    <!-- REHEARSAL NOTES -->
+    <div class="resource-section" id="rehearsalNotesSection">
+        <div class="section-header">
+            <h3>📋 Rehearsal Notes</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Band feedback and tips - anyone can add!</p>
+        </div>
+        
+        <div id="rehearsalNoteFormContainer"></div>
+        
+        <div id="rehearsalNotesContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="secondary-btn" onclick="showRehearsalNoteForm()" style="margin-top: 12px;">
+            + Add Note
+        </button>
+    </div>
+    
+    <!-- SONG STRUCTURE -->
+    <div class="resource-section" id="songStructureSection">
+        <div class="section-header">
+            <h3>🎭 Song Structure</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">How the song starts and ends</p>
+        </div>
+        
+        <div id="songStructureContainer">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="secondary-btn" id="editSongStructureBtn" onclick="showSongStructureForm()" style="margin-top: 12px;">
+            ✏️ Edit Song Structure
+        </button>
+        
+        <div id="songStructureFormContainer" style="display: none; margin-top: 15px;">
+            <!-- Form will be inserted here -->
+        </div>
+    </div>
+    
+    <!-- GIG NOTES -->
+    <div class="resource-section" id="gigNotesSection">
+        <div class="section-header">
+            <h3>🎸 Performance Tips</h3>
+        </div>
+        
+        <div id="gigNotesContainer">
+            <!-- Dynamically populated -->
+        </div>
+    </div>
+</div>
+        <!-- Step 3: Version Selection (renumbered from Step 2) -->
+        <div class="step-card hidden" id="step3">
+            <div class="step-number">3</div>
+            <h2>Top 5 Live Versions</h2>
+            <p class="step-description">Based on community rankings and sound quality</p>
+            <div id="versionsContainer">
+                <!-- Top 5 versions populated here -->
+            </div>
+        </div>
+
+        <!-- Step 4: Download (renumbered from Step 3) -->
+        <div class="step-card hidden" id="step4">
+            <div class="step-number">4</div>
+            <h2>Download & Upload to Moises</h2>
+            <div class="download-card">
+                <div class="selected-info" id="selectedInfo">
+                    <!-- Selected song and version info -->
+                </div>
+                <div class="action-buttons">
+                    <button class="primary-btn smart-download-btn" id="smartDownloadBtn" style="background: #10b981;">
+                        ⚡ Smart Download (Just This Song!)
+                    </button>
+                    <button class="primary-btn" id="downloadBtn">
+                        ⬇️ Download Full Show from Archive.org
+                    </button>
+                    <button class="primary-btn moises-btn" id="moisesBtn">
+                        🎛️ Open Moises.ai Studio
+                    </button>
+                    <button class="primary-btn" id="setlistBtn" style="background: #48bb78;">
+                        📋 View Setlist (Song Order & Timing)
+                    </button>
+                    <button class="primary-btn youtube-btn" id="youtubeSearchBtn" style="background: #ef4444;">
+                        🎥 Search YouTube for This Song
+                    </button>
+                </div>
+                <div id="progressContainer" class="hidden" style="margin-top: 15px; padding: 15px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner"></div>
+                        <div>
+                            <strong id="progressMessage">Processing...</strong>
+                            <div style="margin-top: 5px; height: 8px; background: #dbeafe; border-radius: 4px; overflow: hidden;">
+                                <div id="progressBar" style="height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="workflow-guide">
+                    <h3>📋 Your Practice Workflow:</h3>
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #48bb78;">
+                            <strong>✅ STEP 1: Download MP3</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Click "Download MP3" button above → Find the file on Archive.org → Right-click → Save to Downloads
+                            </p>
+                        </div>
+                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #4299e1;">
+                            <strong>⬆️ STEP 2: Upload to Moises</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Click "Open Moises.ai Studio" → Click Upload → Select your downloaded MP3
+                            </p>
+                        </div>
+                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #ed8936;">
+                            <strong>⚙️ STEP 3: Separate Stems</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Choose "6 Stems" separation → Wait 1-2 minutes for AI processing
+                            </p>
+                        </div>
+                        <div style="padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #667eea;">
+                            <strong>🎸 STEP 4: Solo Your Part</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Click "Solo" on your instrument → Adjust tempo → Loop sections → Practice!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: Part Selection Guide (renumbered from Step 4) -->
+        <div class="step-card hidden" id="step5">
+            <div class="step-number">5</div>
+            <h2>Isolate Your Part in Moises</h2>
+            <div class="parts-grid">
+                <div class="part-card">
+                    <div class="part-icon">🎤</div>
+                    <h3>Vocals / Harmonies</h3>
+                    <p>Solo the vocals track to learn melody and harmonies</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎸</div>
+                    <h3>Jerry Garcia (Lead)</h3>
+                    <p>Isolate lead guitar to learn solos and fills</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎸</div>
+                    <h3>Bob Weir (Rhythm)</h3>
+                    <p>Focus on rhythm guitar and chord progressions</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎸</div>
+                    <h3>Phil Lesh (Bass)</h3>
+                    <p>Learn Phil's melodic bass lines</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🥁</div>
+                    <h3>Drums</h3>
+                    <p>Practice the groove and fills</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎹</div>
+                    <h3>Keyboards</h3>
+                    <p>Isolate keys for atmospheric parts</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reset Button -->
+        <div class="reset-container hidden" id="resetContainer">
+            <button class="reset-btn" onclick="resetWorkflow()">
+                ↺ Start Over with New Song
+            </button>
+        </div>
+        
+        <!-- YouTube Search Modal -->
+        <div id="youtubeModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🎥 Search YouTube</h2>
+                    <button class="close-btn" onclick="closeYoutubeModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div id="youtubeSearchResults" class="youtube-results">
+                        <!-- Results populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- YouTube Search Modal (In-App) -->
+        <div id="youtubeSearchModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🔍 Search YouTube</h2>
+                    <button class="close-btn" onclick="closeYouTubeSearchModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="youtubeSearchInput" class="search-input" placeholder="Search YouTube..." readonly style="margin-bottom: 15px;">
+                    <div id="youtubeSearchResultsContainer">
+                        <!-- Results populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Add Resource Modal -->
+        <div id="addResourceModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="addResourceTitle">Add Resource</h2>
+                    <button class="close-btn" onclick="closeAddResourceModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <p id="addResourceInstructions"></p>
+                    <input type="text" id="resourceUrlInput" class="search-input" placeholder="Paste URL here...">
+                    <div id="urlPreviewContainer"></div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;">
+                        <button class="secondary-btn" onclick="closeAddResourceModal()">Cancel</button>
+                        <button class="primary-btn" onclick="saveResource()">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Made for Deadcetera | Data from Archive.org • Stem separation by Moises.ai</p>
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="audio-splitter.js"></script>
+    <script src="app-dev.js"></script>
+</body>
+</html>
