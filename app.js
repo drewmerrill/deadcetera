@@ -3852,16 +3852,26 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     }
     
     if (!bandData || !bandData.harmonies) {
-        container.innerHTML = `
-            <div style="padding: 20px; text-align: center;">
-                <p style="color: #6b7280; margin-bottom: 15px;">This song is marked as having harmonies but no parts have been added yet.</p>
-                <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
-                    class="chart-btn chart-btn-primary" style="background: #667eea;">
-                    🎤 Add Harmony Section
-                </button>
-            </div>
-        `;
-        return;
+        // Check if harmony data exists on Drive (may not be in data.js)
+        const driveHarmonies = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+        if (driveHarmonies && driveHarmonies.sections && driveHarmonies.sections.length > 0) {
+            // Found harmony data on Drive - use it
+            if (!bandData) bandData = {};
+            bandData.harmonies = driveHarmonies;
+            bandKnowledgeBase[songTitle] = bandData;
+            console.log(`🎤 Loaded ${driveHarmonies.sections.length} harmony sections from Drive for "${songTitle}"`);
+        } else {
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center;">
+                    <p style="color: #6b7280; margin-bottom: 15px;">This song is marked as having harmonies but no parts have been added yet.</p>
+                    <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
+                        class="chart-btn chart-btn-primary" style="background: #667eea;">
+                        🎤 Add Harmony Section
+                    </button>
+                </div>
+            `;
+            return;
+        }
     }
     
     console.log(`🎤 Rendering ${bandData.harmonies.sections?.length || 0} sections for "${songTitle}"`);
@@ -3869,19 +3879,30 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     const sections = bandData.harmonies.sections;
     
     if (!sections || sections.length === 0) {
-        container.innerHTML = `
-            <div style="padding: 20px; text-align: center;">
-                <p style="color: #6b7280; margin-bottom: 15px;">Harmony sections are empty. Add the first one!</p>
-                <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
-                    class="chart-btn chart-btn-primary" style="background: #667eea;">
-                    🎤 Add Harmony Section
-                </button>
-            </div>
-        `;
-        return;
+        // Check Drive for sections that might not be in data.js
+        const driveHarmonies = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+        if (driveHarmonies && driveHarmonies.sections && driveHarmonies.sections.length > 0) {
+            bandData.harmonies = driveHarmonies;
+            bandKnowledgeBase[songTitle] = bandData;
+            // Continue rendering with Drive data (don't return)
+        } else {
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center;">
+                    <p style="color: #6b7280; margin-bottom: 15px;">Harmony sections are empty. Add the first one!</p>
+                    <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
+                        class="chart-btn chart-btn-primary" style="background: #667eea;">
+                        🎤 Add Harmony Section
+                    </button>
+                </div>
+            `;
+            return;
+        }
     }
     
-    const sectionsHTML = await Promise.all(sections.map(async (section, sectionIndex) => {
+    // Use the latest sections (may have been updated from Drive)
+    const finalSections = bandData.harmonies.sections;
+    
+    const sectionsHTML = await Promise.all(finalSections.map(async (section, sectionIndex) => {
         console.log(`🎤 Section ${sectionIndex} keys:`, Object.keys(section), 'lyric:', section.lyric, 'name:', section.name);
         const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
         // Load ABC from Google Drive first, fallback to localStorage
@@ -4914,16 +4935,29 @@ async function addFirstHarmonySection(songTitle) {
     const sectionName = prompt('Name this harmony section (e.g., "Chorus", "Verse 1", "Bridge"):');
     if (!sectionName) return;
     
-    // Create initial harmony structure
-    const harmonies = {
-        sections: [{
-            name: sectionName,
-            parts: []
-        }]
-    };
-    
-    // Update bandKnowledgeBase
+    // Initialize bandKnowledgeBase entry if needed
     if (!bandKnowledgeBase[songTitle]) bandKnowledgeBase[songTitle] = {};
+    
+    // Preserve existing harmony data - load from Drive if not in memory
+    let existing = bandKnowledgeBase[songTitle].harmonies;
+    if (!existing || !existing.sections) {
+        const driveData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+        if (driveData && driveData.sections) {
+            existing = driveData;
+        }
+    }
+    
+    // Add new section to existing sections (don't overwrite!)
+    const sections = (existing && existing.sections) ? [...existing.sections] : [];
+    sections.push({
+        name: sectionName,
+        lyric: sectionName,
+        parts: []
+    });
+    
+    const harmonies = { sections };
+    
+    // Update in-memory data
     bandKnowledgeBase[songTitle].harmonies = harmonies;
     
     // Mark song as having harmonies
@@ -4937,11 +4971,7 @@ async function addFirstHarmonySection(songTitle) {
     // Save both has_harmonies flag and harmony data to Drive
     try {
         await saveBandDataToDrive(songTitle, 'has_harmonies', { hasHarmonies: true });
-        
-        // Save harmony structure
         await saveBandDataToDrive(songTitle, 'harmonies_data', harmonies);
-        
-        // Update master harmonies file
         await saveMasterFile(MASTER_HARMONIES_FILE, harmonyBadgeCache);
     } catch (e) {
         console.warn('Could not save harmony data to Drive:', e);
