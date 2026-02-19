@@ -4234,8 +4234,8 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
     
     modal.innerHTML = `
         <div style="background: white; border-radius: 16px; max-width: 1200px; width: 100%; max-height: 95vh; overflow: hidden; display: flex; flex-direction: column;">
-            <div style="padding: 25px; border-bottom: 2px solid #e2e8f0;">
-                <h3 style="margin: 0 0 10px 0;">🎼 Edit Sheet Music: ${title}</h3>
+            <div style="padding: 20px 25px; border-bottom: 2px solid #e2e8f0;">
+                <h3 style="margin: 0 0 10px 0; font-size: ${title.length > 80 ? '0.85em' : title.length > 40 ? '1em' : '1.17em'}; line-height: 1.3; word-wrap: break-word; overflow-wrap: break-word;">🎼 Edit Sheet Music: ${title}</h3>
                 <p style="margin: 0; color: #6b7280; font-size: 0.9em;">
                     Edit ABC notation below, then click "Preview" to see the rendered sheet music
                     - <a href="https://abcnotation.com/wiki/abc:standard:v2.1" target="_blank" style="color: #667eea;">📖 ABC Tutorial</a>
@@ -4265,9 +4265,10 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                 <!-- Right: Preview -->
                 <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column;">
                     <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">👁️ Preview:</label>
-                    <div id="abcPreviewContainer" style="flex: 1; min-height: 300px; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto;">
+                    <div id="abcPreviewContainer" style="flex: 1; min-height: 300px; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto; -webkit-overflow-scrolling: touch;">
                         <p style="color: #9ca3af; text-align: center; margin-top: 40px;">Click "Preview" to render sheet music</p>
                     </div>
+                    <p style="margin-top: 5px; font-size: 0.8em; color: #9ca3af;">Scroll horizontally if notation extends beyond the preview area</p>
                 </div>
             </div>
             
@@ -4347,10 +4348,16 @@ async function renderABCPreview(abc, container) {
             };
         });
         
-        // Render the sheet music
+        // Render the sheet music with wrapping for long pieces
+        const renderWidth = Math.max(container.offsetWidth - 40, 400);
         const visualObj = ABCJS.renderAbc(sheetContainer, abc, {
             responsive: 'resize',
-            staffwidth: container.offsetWidth - 40,
+            staffwidth: renderWidth,
+            wrap: {
+                minSpacing: 1.8,
+                maxSpacing: 2.7,
+                preferredMeasuresPerLine: 4
+            },
             scale: 1.2,
             add_classes: true
         })[0];
