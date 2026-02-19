@@ -3882,10 +3882,18 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     }
     
     const sectionsHTML = await Promise.all(sections.map(async (section, sectionIndex) => {
+        console.log(`🎤 Section ${sectionIndex} keys:`, Object.keys(section), 'lyric:', section.lyric, 'name:', section.name);
         const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
         // Load ABC from Google Drive first, fallback to localStorage
         const savedAbc = await loadABCNotation(songTitle, sectionIndex);
         const sheetMusicExists = savedAbc && savedAbc.length > 0;
+        
+        // Get section title: prefer ABC T: field, then section properties
+        let sectionDisplayName = section.lyric || section.name || section.title || section.label || `Section ${sectionIndex + 1}`;
+        if (savedAbc) {
+            const abcTMatch = savedAbc.match(/^T:(.+)$/m);
+            if (abcTMatch) sectionDisplayName = abcTMatch[1].trim();
+        }
         const sheetMusicButtonText = sheetMusicExists ? '🎼 👁️ View Sheet Music' : '🎼 Create Sheet Music';
         const sheetMusicButtonStyle = sheetMusicExists ? 
             'padding: 6px 12px; font-size: 0.85em; background: #10b981; color: white;' : 
@@ -3897,7 +3905,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         return `
             <div class="harmony-card" style="background: #fff5f5; border: 2px solid #fecaca; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                 <div class="harmony-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <div class="harmony-lyric" style="font-size: 1.2em; font-weight: 600; font-style: italic; color: #991b1b;">"${section.lyric}"</div>
+                    <div class="harmony-lyric" style="font-size: 1.2em; font-weight: 600; font-style: italic; color: #991b1b;">"${sectionDisplayName}"</div>
                     <button class="chart-btn ${sheetMusicExists ? '' : 'chart-btn-secondary'}" 
                         onclick="generateSheetMusic(${sectionIndex}, ${JSON.stringify(section).replace(/"/g, '&quot;')})" 
                         style="${sheetMusicButtonStyle}">
@@ -4136,27 +4144,52 @@ async function generateSheetMusicEnhanced(sectionIndex, section) {
     // Check if we have saved ABC notation - load from Drive first
     const savedAbc = await loadABCNotation(selectedSong.title, sectionIndex);
     
-    let abcNotation = savedAbc || generateDefaultABC(section, parts, partToNote);
+    // Get song BPM for default template
+    const songBpm = await loadSongBpm(selectedSong.title) || 120;
+    
+    let abcNotation = savedAbc || generateDefaultABC(section, parts, partToNote, songBpm);
+    
+    // Get title: prefer ABC T: field, then section properties
+    let sectionTitle = section.lyric || section.name || section.title || section.label;
+    const abcTitleMatch = abcNotation.match(/^T:(.+)$/m);
+    if (abcTitleMatch) sectionTitle = abcTitleMatch[1].trim();
+    sectionTitle = sectionTitle || `Section ${sectionIndex + 1}`;
     
     // Show editor modal
-    showABCEditorModal(section.lyric, abcNotation, sectionIndex);
+    showABCEditorModal(sectionTitle, abcNotation, sectionIndex);
 }
 
-function generateDefaultABC(section, parts, partToNote) {
-    let abc = `X:1
-T:${section.lyric || 'Harmony Section'}
-M:4/4
-L:1/4
-K:Dmaj
-`;
+function generateDefaultABC(section, parts, partToNote, bpm) {
+    const title = section.lyric || section.name || section.title || section.label || 'Enter Lyric or Section Name Here';
+    const tempo = bpm || 120;
     
-    parts.forEach(part => {
-        const note = partToNote[part.part] || 'C';
-        const memberName = bandMembers[part.singer]?.name || part.singer;
-        abc += `%${memberName} (${part.part.replace('_', ' ')})
-${note}4 |
-`;
-    });
+    let abc = `X:1\nT:${title}\nM:4/4\nQ:1/4=${tempo}\nL:1/8\nK:C\n`;
+    
+    if (parts && parts.length > 0) {
+        // Create voice definitions for each part/singer
+        parts.forEach((part, i) => {
+            const memberName = bandMembers[part.singer]?.name || part.singer;
+            abc += `V:${i + 1} clef=treble name="${memberName}"\n`;
+        });
+        abc += `%\n`;
+        
+        // Add placeholder notes for each voice
+        parts.forEach((part, i) => {
+            const note = partToNote[part.part] || 'C';
+            abc += `[V:${i + 1}]${note}2${note}2${note}2${note}2|${note}2${note}2${note}4|\n`;
+        });
+    } else {
+        // No parts defined - create a simple template with examples
+        abc += `% Add voices below. Example:\n`;
+        abc += `% V:1 clef=treble name="Pierce"\n`;
+        abc += `% V:2 clef=treble name="Brian"\n`;
+        abc += `% V:3 clef=treble name="Drew"\n`;
+        abc += `%\n`;
+        abc += `% [V:1]CCCC|CCCC|\n`;
+        abc += `% [V:2]EEEE|EEEE|\n`;
+        abc += `% [V:3]GGGG|GGGG|\n`;
+        abc += `C2C2C2C2|C2C2C4|\n`;
+    }
     
     return abc;
 }
