@@ -3993,6 +3993,22 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                         </div>
                     `}
                 </div>
+                
+                <!-- Multi-Track Harmony Recorder -->
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #fee2e2;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <strong style="color: #991b1b;">🎚️ Multi-Track Recorder</strong>
+                        <button onclick="(async()=>{const bpm=await loadSongBpm('${songTitle.replace(/'/g, "\\'")}') || 120; initMultiTrackRecorder('${songTitle.replace(/'/g, "\\'")}', ${sectionIndex}, bpm)})()" 
+                            style="background: #1a1a2e; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em; font-weight: 600;">
+                            🎚️ Open Recorder
+                        </button>
+                    </div>
+                    <div id="multitrack-container-${sectionIndex}">
+                        <p style="color: #9ca3af; font-size: 0.85em; text-align: center; padding: 10px;">
+                            Record layered harmony parts with metronome, mixer, and karaoke mode.
+                        </p>
+                    </div>
+                </div>
             </div>
         `;
     }));
@@ -4601,6 +4617,1111 @@ async function loadABCNotation(songTitle, sectionIndex) {
 function generateSheetMusic(sectionIndex, section) {
     generateSheetMusicEnhanced(sectionIndex, section);
 }
+
+// ============================================================================
+// MULTI-TRACK HARMONY RECORDER v1.0
+// Record layered harmony parts with metronome, mixer, and karaoke mode
+// ============================================================================
+
+// ---- Multi-Track State ----
+const multiTrackState = {
+    audioContext: null,
+    tracks: {},          // { trackId: { buffer, gainNode, sourceNode, muted, solo, volume, offset } }
+    isRecording: false,
+    isPlaying: false,
+    recordingTrackId: null,
+    mediaRecorder: null,
+    recordingStream: null,
+    metronomeInterval: null,
+    startTime: 0,
+    bpm: 120,
+    songTitle: '',
+    sectionIndex: 0,
+    latencyOffset: 0,    // ms - manual nudge
+    countInBeats: 4,     // count-in before recording starts
+};
+
+const TRACK_DEFINITIONS = [
+    { id: 'metronome', label: '🥁 Metronome', color: '#6b7280', recordable: false, icon: '🥁' },
+    { id: 'rhythm',    label: '🎸 Rhythm Guitar', color: '#f59e0b', recordable: true, icon: '🎸' },
+    { id: 'lead',      label: '🎤 Lead Vocal', color: '#ef4444', recordable: true, icon: '🎤' },
+    { id: 'harmony1',  label: '🎵 Harmony 1', color: '#3b82f6', recordable: true, icon: '🎵' },
+    { id: 'harmony2',  label: '🎶 Harmony 2', color: '#8b5cf6', recordable: true, icon: '🎶' },
+];
+
+// ---- AudioContext Management ----
+function getMultiTrackAudioContext() {
+    if (!multiTrackState.audioContext || multiTrackState.audioContext.state === 'closed') {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        multiTrackState.audioContext = new AudioCtx();
+    }
+    if (multiTrackState.audioContext.state === 'suspended') {
+        multiTrackState.audioContext.resume();
+    }
+    return multiTrackState.audioContext;
+}
+
+// ---- Metronome Generator ----
+function generateMetronomeBuffer(bpm, measures, beatsPerMeasure = 4) {
+    const ctx = getMultiTrackAudioContext();
+    const totalBeats = measures * beatsPerMeasure;
+    const beatDuration = 60 / bpm;
+    const totalDuration = totalBeats * beatDuration;
+    const sampleRate = ctx.sampleRate;
+    const bufferLength = Math.ceil(totalDuration * sampleRate);
+    const buffer = ctx.createBuffer(1, bufferLength, sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    for (let beat = 0; beat < totalBeats; beat++) {
+        const beatStart = Math.floor(beat * beatDuration * sampleRate);
+        const isDownbeat = (beat % beatsPerMeasure === 0);
+        const freq = isDownbeat ? 1000 : 800;  // Higher pitch on downbeat
+        const amplitude = isDownbeat ? 0.7 : 0.4;
+        const clickDuration = 0.02; // 20ms click
+        const clickSamples = Math.floor(clickDuration * sampleRate);
+        
+        for (let i = 0; i < clickSamples && (beatStart + i) < bufferLength; i++) {
+            const t = i / sampleRate;
+            const envelope = 1 - (i / clickSamples); // Linear decay
+            data[beatStart + i] = Math.sin(2 * Math.PI * freq * t) * amplitude * envelope;
+        }
+    }
+    
+    return buffer;
+}
+
+// ---- Count-In Generator ----
+function generateCountInBuffer(bpm, beats = 4) {
+    const ctx = getMultiTrackAudioContext();
+    const beatDuration = 60 / bpm;
+    const totalDuration = beats * beatDuration;
+    const sampleRate = ctx.sampleRate;
+    const bufferLength = Math.ceil(totalDuration * sampleRate);
+    const buffer = ctx.createBuffer(1, bufferLength, sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    for (let beat = 0; beat < beats; beat++) {
+        const beatStart = Math.floor(beat * beatDuration * sampleRate);
+        const freq = 1200; // Higher pitch for count-in
+        const clickDuration = 0.03;
+        const clickSamples = Math.floor(clickDuration * sampleRate);
+        
+        for (let i = 0; i < clickSamples && (beatStart + i) < bufferLength; i++) {
+            const t = i / sampleRate;
+            const envelope = 1 - (i / clickSamples);
+            data[beatStart + i] = Math.sin(2 * Math.PI * freq * t) * 0.8 * envelope;
+        }
+    }
+    
+    return buffer;
+}
+
+// ---- Recording ----
+async function startMultiTrackRecording(trackId) {
+    const ctx = getMultiTrackAudioContext();
+    const state = multiTrackState;
+    
+    if (state.isRecording) {
+        alert('Already recording! Stop the current recording first.');
+        return;
+    }
+    
+    // Get mic access
+    try {
+        state.recordingStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: false,  // We want raw audio for layering
+                noiseSuppression: false,
+                autoGainControl: false,
+                sampleRate: 44100
+            }
+        });
+    } catch (err) {
+        alert('Microphone access denied. Please allow microphone access and try again.');
+        return;
+    }
+    
+    state.isRecording = true;
+    state.recordingTrackId = trackId;
+    
+    // Update UI to show recording state
+    updateTrackUI(trackId, 'recording');
+    
+    // Play count-in, then start recording
+    const countInBuffer = generateCountInBuffer(state.bpm, state.countInBeats);
+    const countInSource = ctx.createBufferSource();
+    countInSource.buffer = countInBuffer;
+    countInSource.connect(ctx.destination);
+    
+    const countInDuration = (state.countInBeats * 60 / state.bpm);
+    
+    // Show count-in visual
+    showCountIn(state.bpm, state.countInBeats, () => {
+        // Count-in finished - start actual recording
+        const recordStartTime = ctx.currentTime;
+        state.startTime = recordStartTime;
+        
+        // Start playing existing tracks for reference
+        playAllTracksForRecording(trackId);
+        
+        // Start MediaRecorder
+        const chunks = [];
+        let mimeType = 'audio/webm;codecs=opus';
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+        } else if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'audio/ogg';
+        }
+        
+        state.mediaRecorder = new MediaRecorder(state.recordingStream, { mimeType });
+        
+        state.mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+        };
+        
+        state.mediaRecorder.onstop = async () => {
+            const blob = new Blob(chunks, { type: mimeType });
+            await processRecordedTrack(trackId, blob, recordStartTime);
+        };
+        
+        state.mediaRecorder.start(100); // Collect in 100ms chunks
+        
+        // Update recording timer
+        startRecordingTimer(trackId);
+    });
+    
+    countInSource.start();
+}
+
+function stopMultiTrackRecording() {
+    const state = multiTrackState;
+    if (!state.isRecording || !state.mediaRecorder) return;
+    
+    state.mediaRecorder.stop();
+    state.isRecording = false;
+    
+    // Stop mic stream
+    if (state.recordingStream) {
+        state.recordingStream.getTracks().forEach(t => t.stop());
+        state.recordingStream = null;
+    }
+    
+    // Stop all playback
+    stopAllTracks();
+    
+    // Update UI
+    updateTrackUI(state.recordingTrackId, 'stopped');
+    stopRecordingTimer();
+    state.recordingTrackId = null;
+}
+
+async function processRecordedTrack(trackId, blob, recordStartTime) {
+    const ctx = getMultiTrackAudioContext();
+    
+    // Convert blob to ArrayBuffer then AudioBuffer
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    
+    // Store the track
+    multiTrackState.tracks[trackId] = {
+        buffer: audioBuffer,
+        blob: blob,
+        gainNode: null,
+        sourceNode: null,
+        muted: false,
+        solo: false,
+        volume: 1.0,
+        offset: multiTrackState.latencyOffset, // Apply latency compensation
+        recordedAt: new Date().toISOString()
+    };
+    
+    // Save to Google Drive
+    await saveMultiTrackToDrive(trackId, blob);
+    
+    // Re-render the mixer
+    renderMultiTrackMixer();
+    
+    console.log(`✅ Track "${trackId}" recorded (${(audioBuffer.duration).toFixed(1)}s)`);
+}
+
+// ---- Playback ----
+function playAllTracks() {
+    const ctx = getMultiTrackAudioContext();
+    const state = multiTrackState;
+    
+    if (state.isPlaying) {
+        stopAllTracks();
+        return;
+    }
+    
+    state.isPlaying = true;
+    state.startTime = ctx.currentTime;
+    
+    // Check for solo tracks
+    const hasSolo = Object.values(state.tracks).some(t => t.solo);
+    
+    Object.entries(state.tracks).forEach(([trackId, track]) => {
+        if (!track.buffer) return;
+        if (track.muted) return;
+        if (hasSolo && !track.solo) return;
+        
+        const source = ctx.createBufferSource();
+        source.buffer = track.buffer;
+        
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = track.volume;
+        
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        // Apply per-track offset for latency compensation
+        const offsetSeconds = (track.offset || 0) / 1000;
+        
+        source.start(ctx.currentTime + offsetSeconds);
+        
+        track.sourceNode = source;
+        track.gainNode = gainNode;
+        
+        source.onended = () => {
+            track.sourceNode = null;
+        };
+    });
+    
+    // Update play button
+    updatePlayButton(true);
+    
+    // Start timeline progress
+    startPlaybackTimeline();
+}
+
+function playAllTracksForRecording(excludeTrackId) {
+    const ctx = getMultiTrackAudioContext();
+    const state = multiTrackState;
+    
+    Object.entries(state.tracks).forEach(([trackId, track]) => {
+        if (trackId === excludeTrackId) return; // Don't play track being recorded
+        if (!track.buffer) return;
+        if (track.muted) return;
+        
+        const source = ctx.createBufferSource();
+        source.buffer = track.buffer;
+        
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = track.volume;
+        
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        const offsetSeconds = (track.offset || 0) / 1000;
+        source.start(ctx.currentTime + offsetSeconds);
+        
+        track.sourceNode = source;
+        track.gainNode = gainNode;
+    });
+}
+
+function stopAllTracks() {
+    const state = multiTrackState;
+    state.isPlaying = false;
+    
+    Object.values(state.tracks).forEach(track => {
+        if (track.sourceNode) {
+            try { track.sourceNode.stop(); } catch (e) {}
+            track.sourceNode = null;
+        }
+    });
+    
+    // Stop metronome
+    if (state.metronomeInterval) {
+        clearInterval(state.metronomeInterval);
+        state.metronomeInterval = null;
+    }
+    
+    updatePlayButton(false);
+    stopPlaybackTimeline();
+}
+
+// ---- Track Controls ----
+function toggleTrackMute(trackId) {
+    const track = multiTrackState.tracks[trackId];
+    if (!track) return;
+    
+    track.muted = !track.muted;
+    
+    // If currently playing, update gain
+    if (track.gainNode) {
+        track.gainNode.gain.value = track.muted ? 0 : track.volume;
+    }
+    
+    renderMultiTrackMixer();
+}
+
+function toggleTrackSolo(trackId) {
+    const track = multiTrackState.tracks[trackId];
+    if (!track) return;
+    
+    track.solo = !track.solo;
+    
+    // If playing, need to restart to apply solo
+    if (multiTrackState.isPlaying) {
+        stopAllTracks();
+        playAllTracks();
+    } else {
+        renderMultiTrackMixer();
+    }
+}
+
+function setTrackVolume(trackId, volume) {
+    const track = multiTrackState.tracks[trackId];
+    if (!track) return;
+    
+    track.volume = parseFloat(volume);
+    
+    if (track.gainNode && !track.muted) {
+        track.gainNode.gain.value = track.volume;
+    }
+}
+
+function setTrackOffset(trackId, offsetMs) {
+    const track = multiTrackState.tracks[trackId];
+    if (!track) return;
+    
+    track.offset = parseFloat(offsetMs);
+}
+
+function deleteTrack(trackId) {
+    if (!confirm(`Delete the ${trackId} track? This cannot be undone.`)) return;
+    
+    // Stop if playing
+    const track = multiTrackState.tracks[trackId];
+    if (track?.sourceNode) {
+        try { track.sourceNode.stop(); } catch (e) {}
+    }
+    
+    delete multiTrackState.tracks[trackId];
+    deleteMultiTrackFromDrive(trackId);
+    renderMultiTrackMixer();
+}
+
+// ---- Count-In Visual ----
+function showCountIn(bpm, beats, onComplete) {
+    const overlay = document.createElement('div');
+    overlay.id = 'countInOverlay';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.85); display: flex; align-items: center;
+        justify-content: center; z-index: 20000; flex-direction: column;
+    `;
+    
+    const counter = document.createElement('div');
+    counter.style.cssText = `
+        font-size: 120px; font-weight: 900; color: white;
+        text-shadow: 0 0 40px rgba(239,68,68,0.8);
+        transition: transform 0.15s ease-out;
+    `;
+    
+    const label = document.createElement('div');
+    label.style.cssText = 'color: #9ca3af; font-size: 1.2em; margin-top: 20px;';
+    label.textContent = '🎤 Recording starts after count-in...';
+    
+    overlay.appendChild(counter);
+    overlay.appendChild(label);
+    document.body.appendChild(overlay);
+    
+    const beatInterval = 60000 / bpm;
+    let count = 0;
+    
+    const tick = () => {
+        count++;
+        if (count <= beats) {
+            counter.textContent = count;
+            counter.style.transform = 'scale(1.3)';
+            setTimeout(() => { counter.style.transform = 'scale(1)'; }, 100);
+            
+            if (count < beats) {
+                setTimeout(tick, beatInterval);
+            } else {
+                // Last beat - start recording after this beat
+                setTimeout(() => {
+                    overlay.remove();
+                    onComplete();
+                }, beatInterval);
+            }
+        }
+    };
+    
+    tick();
+}
+
+// ---- Recording Timer ----
+let recordingTimerInterval = null;
+
+function startRecordingTimer(trackId) {
+    const startTime = Date.now();
+    const timerEl = document.getElementById(`track-timer-${trackId}`);
+    if (!timerEl) return;
+    
+    recordingTimerInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const seconds = Math.floor(elapsed / 1000);
+        const ms = Math.floor((elapsed % 1000) / 10);
+        timerEl.textContent = `${seconds}.${ms.toString().padStart(2, '0')}s`;
+    }, 50);
+}
+
+function stopRecordingTimer() {
+    if (recordingTimerInterval) {
+        clearInterval(recordingTimerInterval);
+        recordingTimerInterval = null;
+    }
+}
+
+// ---- Playback Timeline ----
+let playbackTimelineInterval = null;
+
+function startPlaybackTimeline() {
+    const ctx = multiTrackState.audioContext;
+    if (!ctx) return;
+    
+    const maxDuration = Math.max(...Object.values(multiTrackState.tracks)
+        .filter(t => t.buffer)
+        .map(t => t.buffer.duration), 0);
+    
+    const progressBar = document.getElementById('multitrack-progress');
+    const timeDisplay = document.getElementById('multitrack-time');
+    if (!progressBar || !timeDisplay) return;
+    
+    playbackTimelineInterval = setInterval(() => {
+        const elapsed = ctx.currentTime - multiTrackState.startTime;
+        const progress = maxDuration > 0 ? Math.min(elapsed / maxDuration, 1) : 0;
+        
+        progressBar.style.width = `${progress * 100}%`;
+        timeDisplay.textContent = `${elapsed.toFixed(1)}s / ${maxDuration.toFixed(1)}s`;
+        
+        if (elapsed >= maxDuration) {
+            stopAllTracks();
+        }
+    }, 50);
+}
+
+function stopPlaybackTimeline() {
+    if (playbackTimelineInterval) {
+        clearInterval(playbackTimelineInterval);
+        playbackTimelineInterval = null;
+    }
+}
+
+// ---- Play Button ----
+function updatePlayButton(isPlaying) {
+    const btn = document.getElementById('multitrack-play-btn');
+    if (!btn) return;
+    btn.innerHTML = isPlaying ? '⏹️ Stop All' : '▶️ Play All';
+    btn.style.background = isPlaying ? '#ef4444' : '#10b981';
+}
+
+// ---- Track UI State ----
+function updateTrackUI(trackId, state) {
+    const trackEl = document.getElementById(`track-card-${trackId}`);
+    if (!trackEl) return;
+    
+    const recBtn = document.getElementById(`track-rec-btn-${trackId}`);
+    const statusEl = document.getElementById(`track-status-${trackId}`);
+    
+    if (state === 'recording') {
+        trackEl.style.boxShadow = '0 0 0 3px #ef4444, 0 0 20px rgba(239,68,68,0.3)';
+        if (recBtn) {
+            recBtn.innerHTML = '⏹️ Stop';
+            recBtn.style.background = '#ef4444';
+            recBtn.onclick = () => stopMultiTrackRecording();
+        }
+        if (statusEl) statusEl.innerHTML = '<span style="color: #ef4444; font-weight: 600;">⏺ Recording...</span> <span id="track-timer-' + trackId + '">0.00s</span>';
+    } else {
+        trackEl.style.boxShadow = '';
+        if (recBtn) {
+            recBtn.innerHTML = '⏺ Record';
+            recBtn.style.background = '#ef4444';
+            recBtn.onclick = () => startMultiTrackRecording(trackId);
+        }
+        if (statusEl) {
+            const track = multiTrackState.tracks[trackId];
+            if (track?.buffer) {
+                statusEl.innerHTML = `<span style="color: #10b981;">✅ ${track.buffer.duration.toFixed(1)}s recorded</span>`;
+            } else {
+                statusEl.innerHTML = '<span style="color: #9ca3af;">No recording yet</span>';
+            }
+        }
+    }
+}
+
+// ---- Karaoke / Lyric Sync ----
+function generateVocalToneBuffer(abcNotation, bpm) {
+    // Parse ABC notation to extract notes and timing
+    // Generate vocal-like tones (sawtooth wave with formant filter)
+    const ctx = getMultiTrackAudioContext();
+    
+    if (!abcNotation) return null;
+    
+    // Extract the T: field for lyrics display
+    const titleMatch = abcNotation.match(/^T:(.+)$/m);
+    const lyrics = titleMatch ? titleMatch[1].trim() : '';
+    
+    // Simple ABC note parser
+    const noteFreqs = {
+        'C': 261.63, 'D': 293.66, 'E': 329.63, 'F': 349.23,
+        'G': 392.00, 'A': 440.00, 'B': 493.88,
+        'c': 523.25, 'd': 587.33, 'e': 659.25, 'f': 698.46,
+        'g': 783.99, 'a': 880.00, 'b': 987.77
+    };
+    
+    // Extract key signature
+    const keyMatch = abcNotation.match(/^K:(\w+)/m);
+    const key = keyMatch ? keyMatch[1] : 'C';
+    
+    // Extract tempo
+    const qMatch = abcNotation.match(/^Q:1\/4=(\d+)/m);
+    const tempo = qMatch ? parseInt(qMatch[1]) : bpm || 120;
+    
+    // Extract note length
+    const lMatch = abcNotation.match(/^L:1\/(\d+)/m);
+    const baseNoteDiv = lMatch ? parseInt(lMatch[1]) : 8;
+    const baseNoteDuration = (60 / tempo) * (4 / baseNoteDiv); // duration in seconds
+    
+    return { lyrics, tempo, key, baseNoteDuration, noteFreqs };
+}
+
+// ---- Render Multi-Track Recorder UI ----
+function renderMultiTrackRecorder(songTitle, sectionIndex, bpm, abcNotation) {
+    multiTrackState.songTitle = songTitle;
+    multiTrackState.sectionIndex = sectionIndex;
+    multiTrackState.bpm = bpm || 120;
+    
+    const container = document.getElementById(`multitrack-container-${sectionIndex}`);
+    if (!container) return;
+    
+    const hasAnyTracks = Object.keys(multiTrackState.tracks).some(
+        k => multiTrackState.tracks[k]?.buffer
+    );
+    
+    // Build metronome track if BPM is set
+    if (bpm && !multiTrackState.tracks.metronome?.buffer) {
+        const metronomeBuf = generateMetronomeBuffer(bpm, 16, 4); // 16 measures
+        multiTrackState.tracks.metronome = {
+            buffer: metronomeBuf,
+            muted: false,
+            solo: false,
+            volume: 0.5,
+            offset: 0
+        };
+    }
+    
+    container.innerHTML = `
+        <div style="background: #1a1a2e; border-radius: 12px; padding: 20px; color: white;">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <h4 style="margin: 0; color: #e2e8f0; font-size: 1.1em;">🎚️ Multi-Track Harmony Recorder</h4>
+                    <p style="margin: 4px 0 0; color: #9ca3af; font-size: 0.85em;">Record parts one at a time. Each new recording plays back previous tracks in your headphones.</p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span style="color: #9ca3af; font-size: 0.85em;">BPM: <strong style="color: #f59e0b;">${multiTrackState.bpm}</strong></span>
+                    <button id="multitrack-play-btn" onclick="playAllTracks()" 
+                        style="padding: 8px 20px; border-radius: 8px; border: none; color: white; font-weight: 600; cursor: pointer; font-size: 0.95em; background: #10b981;">
+                        ▶️ Play All
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Timeline/Progress -->
+            <div style="margin-bottom: 20px; background: #16213e; border-radius: 8px; padding: 10px 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="color: #9ca3af; font-size: 0.8em;">Timeline</span>
+                    <span id="multitrack-time" style="color: #9ca3af; font-size: 0.8em;">0.0s</span>
+                </div>
+                <div style="background: #0f3460; border-radius: 4px; height: 6px; overflow: hidden;">
+                    <div id="multitrack-progress" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.05s linear; border-radius: 4px;"></div>
+                </div>
+            </div>
+            
+            <!-- Track Cards -->
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                ${TRACK_DEFINITIONS.map(def => renderTrackCard(def)).join('')}
+            </div>
+            
+            <!-- Latency Controls -->
+            <div style="margin-top: 20px; padding: 15px; background: #16213e; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="color: #e2e8f0; font-size: 0.9em;">⚡ Global Latency Offset</strong>
+                        <p style="margin: 4px 0 0; color: #6b7280; font-size: 0.8em;">Nudge all recorded tracks to sync with metronome</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="range" min="-100" max="100" value="${multiTrackState.latencyOffset}" 
+                            oninput="updateGlobalLatency(this.value)"
+                            style="width: 150px; accent-color: #667eea;">
+                        <span id="latency-display" style="color: #9ca3af; font-size: 0.85em; min-width: 50px;">${multiTrackState.latencyOffset}ms</span>
+                    </div>
+                </div>
+            </div>
+            
+            ${abcNotation ? `
+            <!-- Karaoke Section -->
+            <div style="margin-top: 15px; padding: 15px; background: #16213e; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <strong style="color: #e2e8f0; font-size: 0.9em;">🎤 Karaoke Mode</strong>
+                    <button onclick="startKaraokeMode(${sectionIndex})" 
+                        style="padding: 6px 16px; border-radius: 6px; border: none; background: #667eea; color: white; font-size: 0.85em; cursor: pointer; font-weight: 600;">
+                        🎤 Start Karaoke
+                    </button>
+                </div>
+                <p style="margin: 0; color: #6b7280; font-size: 0.8em;">Play notation with highlighted lyrics — hear the pitch, see the words</p>
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderTrackCard(def) {
+    const track = multiTrackState.tracks[def.id];
+    const hasRecording = track?.buffer;
+    const isRecording = multiTrackState.isRecording && multiTrackState.recordingTrackId === def.id;
+    
+    return `
+        <div id="track-card-${def.id}" style="
+            background: #16213e; border-radius: 10px; padding: 15px;
+            border-left: 4px solid ${def.color};
+            ${isRecording ? 'box-shadow: 0 0 0 3px #ef4444, 0 0 20px rgba(239,68,68,0.3);' : ''}
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <!-- Track Label -->
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 150px;">
+                    <span style="font-size: 1.3em;">${def.icon}</span>
+                    <div>
+                        <div style="font-weight: 600; color: #e2e8f0; font-size: 0.95em;">${def.label}</div>
+                        <div id="track-status-${def.id}" style="font-size: 0.8em; color: #9ca3af;">
+                            ${hasRecording ? `<span style="color: #10b981;">✅ ${track.buffer.duration.toFixed(1)}s recorded</span>` 
+                            : def.id === 'metronome' ? `<span style="color: #10b981;">✅ Auto-generated</span>` 
+                            : '<span style="color: #9ca3af;">No recording yet</span>'}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Controls -->
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    ${hasRecording || def.id === 'metronome' ? `
+                        <!-- Mute -->
+                        <button onclick="toggleTrackMute('${def.id}')" 
+                            style="padding: 4px 10px; border-radius: 4px; border: 1px solid ${track?.muted ? '#ef4444' : '#4b5563'}; 
+                            background: ${track?.muted ? '#ef4444' : 'transparent'}; color: ${track?.muted ? 'white' : '#9ca3af'}; 
+                            font-size: 0.8em; cursor: pointer; font-weight: 600;">
+                            ${track?.muted ? 'M' : 'M'}
+                        </button>
+                        <!-- Solo -->
+                        <button onclick="toggleTrackSolo('${def.id}')" 
+                            style="padding: 4px 10px; border-radius: 4px; border: 1px solid ${track?.solo ? '#f59e0b' : '#4b5563'}; 
+                            background: ${track?.solo ? '#f59e0b' : 'transparent'}; color: ${track?.solo ? 'white' : '#9ca3af'}; 
+                            font-size: 0.8em; cursor: pointer; font-weight: 600;">
+                            S
+                        </button>
+                        <!-- Volume -->
+                        <input type="range" min="0" max="1" step="0.05" value="${track?.volume ?? 1}" 
+                            oninput="setTrackVolume('${def.id}', this.value)"
+                            style="width: 80px; accent-color: ${def.color};">
+                    ` : ''}
+                    
+                    ${def.recordable ? `
+                        <!-- Record Button -->
+                        <button id="track-rec-btn-${def.id}" 
+                            onclick="${isRecording ? 'stopMultiTrackRecording()' : `startMultiTrackRecording('${def.id}')`}"
+                            style="padding: 6px 14px; border-radius: 6px; border: none; 
+                            background: ${isRecording ? '#dc2626' : '#ef4444'}; color: white; 
+                            font-size: 0.85em; cursor: pointer; font-weight: 600;
+                            ${isRecording ? 'animation: pulse-red 1s infinite;' : ''}">
+                            ${isRecording ? '⏹️ Stop' : '⏺ Record'}
+                        </button>
+                    ` : ''}
+                    
+                    ${hasRecording && def.recordable ? `
+                        <!-- Per-track nudge -->
+                        <div style="display: flex; align-items: center; gap: 4px;" title="Latency nudge (ms)">
+                            <input type="range" min="-50" max="50" value="${track?.offset || 0}" 
+                                oninput="setTrackOffset('${def.id}', this.value); document.getElementById('nudge-${def.id}').textContent = this.value + 'ms'"
+                                style="width: 60px; accent-color: ${def.color};">
+                            <span id="nudge-${def.id}" style="color: #6b7280; font-size: 0.75em; min-width: 35px;">${track?.offset || 0}ms</span>
+                        </div>
+                        <!-- Delete -->
+                        <button onclick="deleteTrack('${def.id}')" 
+                            style="padding: 4px 8px; border-radius: 4px; border: 1px solid #4b5563; background: transparent; color: #6b7280; font-size: 0.8em; cursor: pointer;"
+                            title="Delete recording">✕</button>
+                    ` : ''}
+                </div>
+            </div>
+            
+            ${hasRecording ? `
+            <!-- Waveform placeholder -->
+            <div style="margin-top: 10px; height: 40px; background: #0f3460; border-radius: 4px; overflow: hidden; position: relative;">
+                <canvas id="waveform-${def.id}" width="600" height="40" style="width: 100%; height: 100%;"></canvas>
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// ---- Waveform Drawing ----
+function drawWaveform(trackId) {
+    const track = multiTrackState.tracks[trackId];
+    const canvas = document.getElementById(`waveform-${trackId}`);
+    if (!track?.buffer || !canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const data = track.buffer.getChannelData(0);
+    const step = Math.ceil(data.length / canvas.width);
+    const amp = canvas.height / 2;
+    
+    const def = TRACK_DEFINITIONS.find(d => d.id === trackId);
+    ctx.fillStyle = '#0f3460';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.strokeStyle = def?.color || '#667eea';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    
+    for (let i = 0; i < canvas.width; i++) {
+        let min = 1.0, max = -1.0;
+        for (let j = 0; j < step; j++) {
+            const datum = data[(i * step) + j] || 0;
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
+        }
+        ctx.moveTo(i, (1 + min) * amp);
+        ctx.lineTo(i, (1 + max) * amp);
+    }
+    
+    ctx.stroke();
+}
+
+function drawAllWaveforms() {
+    Object.keys(multiTrackState.tracks).forEach(trackId => {
+        drawWaveform(trackId);
+    });
+}
+
+// ---- Latency ----
+function updateGlobalLatency(value) {
+    multiTrackState.latencyOffset = parseInt(value);
+    document.getElementById('latency-display').textContent = `${value}ms`;
+    
+    // Apply to all recorded tracks
+    Object.entries(multiTrackState.tracks).forEach(([id, track]) => {
+        if (id !== 'metronome') {
+            track.offset = parseInt(value);
+        }
+    });
+}
+
+// ---- Karaoke Mode ----
+async function startKaraokeMode(sectionIndex) {
+    const songTitle = multiTrackState.songTitle || selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    
+    const savedAbc = await loadABCNotation(songTitle, sectionIndex);
+    if (!savedAbc) {
+        alert('No sheet music saved for this section. Create sheet music first, then try karaoke mode.');
+        return;
+    }
+    
+    const bpm = multiTrackState.bpm || 120;
+    
+    // Parse lyrics from T: field
+    const titleMatch = savedAbc.match(/^T:(.+)$/m);
+    const lyrics = titleMatch ? titleMatch[1].trim() : 'No lyrics';
+    
+    // Parse tempo
+    const qMatch = savedAbc.match(/^Q:1\/4=(\d+)/m);
+    const tempo = qMatch ? parseInt(qMatch[1]) : bpm;
+    
+    // Create karaoke overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'karaokeOverlay';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; z-index: 20000; padding: 40px;
+    `;
+    
+    overlay.innerHTML = `
+        <div style="max-width: 900px; width: 100%; text-align: center;">
+            <h2 style="color: white; margin: 0 0 10px; font-size: 1.5em;">🎤 Karaoke Mode</h2>
+            <p style="color: #9ca3af; margin: 0 0 30px; font-size: 0.9em;">♩ = ${tempo} BPM</p>
+            
+            <!-- Lyrics Display -->
+            <div id="karaoke-lyrics" style="
+                font-size: 2em; color: white; font-weight: 700; line-height: 1.6;
+                padding: 30px; background: rgba(255,255,255,0.05); border-radius: 16px;
+                margin-bottom: 30px; min-height: 120px; display: flex; align-items: center;
+                justify-content: center; word-wrap: break-word;
+            ">
+                ${lyrics}
+            </div>
+            
+            <!-- Sheet Music Preview -->
+            <div id="karaoke-sheet" style="
+                background: white; border-radius: 12px; padding: 20px;
+                margin-bottom: 30px; overflow: auto; max-height: 250px;
+            "></div>
+            
+            <!-- Playback Controls -->
+            <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                <button onclick="playKaraokeWithSynth(${sectionIndex})" 
+                    style="padding: 12px 30px; border-radius: 10px; border: none; background: #10b981; color: white; font-size: 1.1em; font-weight: 700; cursor: pointer;">
+                    ▶️ Play with Pitched Tones
+                </button>
+                <button onclick="playKaraokeMetronomeOnly()" 
+                    style="padding: 12px 30px; border-radius: 10px; border: none; background: #f59e0b; color: white; font-size: 1.1em; font-weight: 700; cursor: pointer;">
+                    🥁 Metronome Only
+                </button>
+                <button onclick="document.getElementById('karaokeOverlay').remove(); stopAllTracks();" 
+                    style="padding: 12px 30px; border-radius: 10px; border: none; background: #ef4444; color: white; font-size: 1.1em; font-weight: 700; cursor: pointer;">
+                    ✕ Close
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    // Render the sheet music in karaoke view
+    if (typeof ABCJS !== 'undefined') {
+        const sheetContainer = document.getElementById('karaoke-sheet');
+        ABCJS.renderAbc(sheetContainer, savedAbc, {
+            responsive: 'resize',
+            staffwidth: 800,
+            wrap: { minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 },
+            scale: 1.0,
+            add_classes: true
+        });
+    }
+}
+
+async function playKaraokeWithSynth(sectionIndex) {
+    const songTitle = multiTrackState.songTitle || selectedSong?.title || selectedSong;
+    const savedAbc = await loadABCNotation(songTitle, sectionIndex);
+    if (!savedAbc || typeof ABCJS === 'undefined') return;
+    
+    // Use ABCJS synth to play the notation
+    const sheetContainer = document.getElementById('karaoke-sheet');
+    if (!sheetContainer) return;
+    
+    try {
+        const visualObj = ABCJS.renderAbc(sheetContainer, savedAbc, {
+            responsive: 'resize', staffwidth: 800,
+            wrap: { minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 },
+            scale: 1.0, add_classes: true
+        })[0];
+        
+        const synthControl = new ABCJS.synth.SynthController();
+        synthControl.load('#karaoke-sheet', null, {
+            displayPlay: false, displayProgress: true, displayWarp: false
+        });
+        
+        await synthControl.setTune(visualObj, false, {});
+        synthControl.play();
+        
+        // Animate lyrics with beat highlighting
+        animateKaraokeLyrics(multiTrackState.bpm);
+        
+    } catch (e) {
+        console.error('Karaoke synth error:', e);
+        alert('Could not start playback. Make sure the ABC notation is valid.');
+    }
+}
+
+function playKaraokeMetronomeOnly() {
+    const ctx = getMultiTrackAudioContext();
+    const bpm = multiTrackState.bpm || 120;
+    const buffer = generateMetronomeBuffer(bpm, 16, 4);
+    
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.6;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+    
+    // Store so we can stop it
+    multiTrackState.tracks._karaokeMetronome = { sourceNode: source, gainNode: gain };
+    
+    animateKaraokeLyrics(bpm);
+}
+
+function animateKaraokeLyrics(bpm) {
+    const lyricsEl = document.getElementById('karaoke-lyrics');
+    if (!lyricsEl) return;
+    
+    const beatInterval = 60000 / bpm;
+    let beat = 0;
+    
+    const pulse = setInterval(() => {
+        beat++;
+        const isDownbeat = (beat % 4 === 1);
+        
+        lyricsEl.style.transform = isDownbeat ? 'scale(1.05)' : 'scale(1.0)';
+        lyricsEl.style.textShadow = isDownbeat ? '0 0 30px rgba(102,126,234,0.8)' : 'none';
+        lyricsEl.style.transition = 'transform 0.1s ease-out, text-shadow 0.1s ease-out';
+        
+        // Stop after ~60 seconds
+        if (beat > (bpm * 1)) {
+            clearInterval(pulse);
+            lyricsEl.style.transform = 'scale(1)';
+            lyricsEl.style.textShadow = 'none';
+        }
+    }, beatInterval);
+    
+    // Store interval so we can clear on close
+    multiTrackState._karaokePulse = pulse;
+}
+
+// ---- Google Drive Save/Load ----
+async function saveMultiTrackToDrive(trackId, blob) {
+    const songTitle = multiTrackState.songTitle;
+    const sectionIndex = multiTrackState.sectionIndex;
+    
+    if (!songTitle) return;
+    
+    // Convert blob to base64 for Drive storage
+    const reader = new FileReader();
+    const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+    
+    const key = `multitrack_${sectionIndex}_${trackId}`;
+    const data = {
+        trackId,
+        sectionIndex,
+        audio: base64,
+        recordedBy: currentUserEmail,
+        recordedAt: new Date().toISOString(),
+        offset: multiTrackState.tracks[trackId]?.offset || 0,
+        volume: multiTrackState.tracks[trackId]?.volume || 1.0
+    };
+    
+    try {
+        await saveBandDataToDrive(songTitle, key, data);
+        console.log(`✅ Saved multitrack "${trackId}" to Drive`);
+    } catch (e) {
+        console.warn(`Could not save multitrack "${trackId}" to Drive:`, e);
+    }
+}
+
+async function loadMultiTracksFromDrive(songTitle, sectionIndex) {
+    const ctx = getMultiTrackAudioContext();
+    
+    for (const def of TRACK_DEFINITIONS) {
+        if (!def.recordable) continue;
+        
+        const key = `multitrack_${sectionIndex}_${def.id}`;
+        try {
+            const data = await loadBandDataFromDrive(songTitle, key);
+            if (data && data.audio) {
+                // Convert base64 back to AudioBuffer
+                const response = await fetch(data.audio);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+                
+                multiTrackState.tracks[def.id] = {
+                    buffer: audioBuffer,
+                    muted: false,
+                    solo: false,
+                    volume: data.volume || 1.0,
+                    offset: data.offset || 0,
+                    recordedAt: data.recordedAt
+                };
+                
+                console.log(`✅ Loaded multitrack "${def.id}" from Drive (${audioBuffer.duration.toFixed(1)}s)`);
+            }
+        } catch (e) {
+            // No data for this track - that's fine
+        }
+    }
+}
+
+async function deleteMultiTrackFromDrive(trackId) {
+    const songTitle = multiTrackState.songTitle;
+    const sectionIndex = multiTrackState.sectionIndex;
+    if (!songTitle) return;
+    
+    const key = `multitrack_${sectionIndex}_${trackId}`;
+    try {
+        await saveBandDataToDrive(songTitle, key, null); // Save null to clear
+        console.log(`🗑️ Deleted multitrack "${trackId}" from Drive`);
+    } catch (e) {
+        console.warn(`Could not delete multitrack "${trackId}" from Drive:`, e);
+    }
+}
+
+// ---- CSS Animation for Recording Pulse ----
+function injectMultiTrackCSS() {
+    if (document.getElementById('multitrack-css')) return;
+    const style = document.createElement('style');
+    style.id = 'multitrack-css';
+    style.textContent = `
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+        }
+        .multitrack-rec-pulse {
+            animation: pulse-red 1s infinite;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// ---- Initialize Multi-Track for a Section ----
+async function initMultiTrackRecorder(songTitle, sectionIndex, bpm) {
+    injectMultiTrackCSS();
+    
+    multiTrackState.songTitle = songTitle;
+    multiTrackState.sectionIndex = sectionIndex;
+    multiTrackState.bpm = bpm || 120;
+    
+    // Reset tracks (keep metronome)
+    const metronomeBuf = generateMetronomeBuffer(multiTrackState.bpm, 16, 4);
+    multiTrackState.tracks = {
+        metronome: {
+            buffer: metronomeBuf,
+            muted: false,
+            solo: false,
+            volume: 0.5,
+            offset: 0
+        }
+    };
+    
+    // Load saved tracks from Drive
+    await loadMultiTracksFromDrive(songTitle, sectionIndex);
+    
+    // Load ABC notation for karaoke
+    const savedAbc = await loadABCNotation(songTitle, sectionIndex);
+    
+    // Render the UI
+    renderMultiTrackRecorder(songTitle, sectionIndex, multiTrackState.bpm, savedAbc);
+    
+    // Draw waveforms after a tick (canvas needs to be in DOM)
+    setTimeout(() => drawAllWaveforms(), 100);
+}
+
+// ---- Render Multi-Track Mixer (refresh) ----
+function renderMultiTrackMixer() {
+    const { songTitle, sectionIndex, bpm } = multiTrackState;
+    const savedAbc = null; // Don't re-load, just refresh UI
+    renderMultiTrackRecorder(songTitle, sectionIndex, bpm, savedAbc);
+    setTimeout(() => drawAllWaveforms(), 100);
+}
+
+console.log('🎚️ Multi-Track Harmony Recorder v1.0 loaded');
+
 // ============================================================================
 // ============================================================================
 // GOOGLE DRIVE INTEGRATION - NEW GOOGLE IDENTITY SERVICES (GIS)
