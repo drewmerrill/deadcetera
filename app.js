@@ -2627,6 +2627,7 @@ async function addPracticeTrackSimple() {
         
         // Save to Drive (await to prevent race conditions)
         await savePracticeTrack(selectedSong.title, track);
+        logActivity('practice_track', { song: selectedSong.title, extra: instrument });
         
         // Show success message
         const message = document.createElement('div');
@@ -3168,6 +3169,7 @@ async function addRehearsalNote() {
     
     // Show success
     alert(`✅ Note added by ${bandMembers[author].name} - saved to Google Drive!`);
+    logActivity('rehearsal_note', { song: selectedSong.title, extra: bandMembers[author].name });
     
     // Clear form
     hideRehearsalNoteForm();
@@ -4726,6 +4728,8 @@ async function getCurrentUserEmail() {
         });
         currentUserEmail = response.result.user.emailAddress;
         console.log('👤 Signed in as:', currentUserEmail);
+        logActivity('sign_in');
+        injectAdminButton();
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
@@ -4869,6 +4873,7 @@ async function loadPartNotes(songTitle, sectionIndex, singer) {
 
 async function savePartNotes(songTitle, sectionIndex, singer, notes) {
     await savePartNotesToDrive(songTitle, sectionIndex, singer, notes);
+    logActivity('part_notes', { song: songTitle, extra: singer });
 }
 
 async function addPartNote(songTitle, sectionIndex, singer) {
@@ -4987,6 +4992,7 @@ async function addFirstHarmonySection(songTitle) {
     // Re-render
     const bandData = bandKnowledgeBase[songTitle];
     await renderHarmoniesEnhanced(songTitle, bandData);
+    logActivity('harmony_add', { song: songTitle, extra: sectionName });
     
     // Update badges
     addHarmonyBadges();
@@ -5055,6 +5061,7 @@ async function updateSongStatus(status) {
     });
     
     console.log(`Song status updated: ${statusNames[status] || 'Not Started'}`);
+    logActivity('status_change', { song: selectedSong.title, extra: statusNames[status] || 'Not Started' });
     
     // Update badge on song list
     await addStatusBadges();
@@ -5262,6 +5269,7 @@ let statusPreloadRunning = false;
 
 const MASTER_STATUS_FILE = '_master_song_statuses.json';
 const MASTER_HARMONIES_FILE = '_master_harmonies.json';
+const MASTER_ACTIVITY_LOG = '_master_activity_log.json';
 
 async function preloadAllStatuses() {
     if (statusPreloadRunning) return;
@@ -5806,6 +5814,7 @@ async function loadPartNotesFromDrive(songTitle, sectionIndex, singer) {
 // Harmony Metadata (starting notes, lead markers, sorting)
 async function saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata) {
     const key = `${songTitle}_section${sectionIndex}`;
+    logActivity('harmony_edit', { song: songTitle, extra: `section ${sectionIndex}` });
     return await saveBandDataToDrive(key, BAND_DATA_TYPES.HARMONY_METADATA, metadata);
 }
 
@@ -6238,6 +6247,7 @@ async function saveSongStructure() {
     await saveBandDataToDrive(selectedSong.title, 'song_structure', structure);
     
     alert('✅ Song structure saved to Google Drive!');
+    logActivity('song_structure', { song: selectedSong.title });
     
     // Hide form and refresh display
     hideSongStructureForm();
@@ -6245,6 +6255,269 @@ async function saveSongStructure() {
 }
 
 console.log('📋 Song Structure functions loaded');
+
+// ============================================================================
+// ACTIVITY TRACKING - Silent usage logging for owner visibility
+// ============================================================================
+
+let activityLogCache = null;
+let activityLogDirty = false;
+let activityLogSaveTimer = null;
+
+async function logActivity(action, details = {}) {
+    if (!isUserSignedIn || !currentUserEmail) return;
+    
+    const entry = {
+        user: currentUserEmail,
+        action: action,
+        song: details.song || (selectedSong ? selectedSong.title : null),
+        details: details.extra || null,
+        time: new Date().toISOString(),
+        browser: /Brave/.test(navigator.userAgent) ? 'Brave' : 
+                 /Edg/.test(navigator.userAgent) ? 'Edge' : 
+                 /Chrome/.test(navigator.userAgent) ? 'Chrome' : 
+                 /Firefox/.test(navigator.userAgent) ? 'Firefox' : 
+                 /Safari/.test(navigator.userAgent) ? 'Safari' : 'Unknown'
+    };
+    
+    // Initialize cache if needed
+    if (!activityLogCache) {
+        try {
+            activityLogCache = await loadMasterFile(MASTER_ACTIVITY_LOG) || [];
+        } catch (e) {
+            activityLogCache = [];
+        }
+    }
+    
+    activityLogCache.push(entry);
+    
+    // Keep last 500 entries max
+    if (activityLogCache.length > 500) {
+        activityLogCache = activityLogCache.slice(-500);
+    }
+    
+    // Debounce saves - batch writes every 10 seconds
+    activityLogDirty = true;
+    if (!activityLogSaveTimer) {
+        activityLogSaveTimer = setTimeout(async () => {
+            if (activityLogDirty) {
+                await saveMasterFile(MASTER_ACTIVITY_LOG, activityLogCache);
+                activityLogDirty = false;
+            }
+            activityLogSaveTimer = null;
+        }, 10000);
+    }
+}
+
+// Force-save on page unload
+window.addEventListener('beforeunload', () => {
+    if (activityLogDirty && activityLogCache) {
+        // Use sync localStorage as backup since Drive save may not complete
+        localStorage.setItem('deadcetera_activity_log_pending', JSON.stringify(activityLogCache));
+    }
+});
+
+// ============================================================================
+// ADMIN PANEL - Owner-only usage dashboard
+// ============================================================================
+
+function injectAdminButton() {
+    if (currentUserEmail !== OWNER_EMAIL) return;
+    
+    // Don't duplicate
+    if (document.getElementById('adminPanelBtn')) return;
+    
+    const btn = document.createElement('button');
+    btn.id = 'adminPanelBtn';
+    btn.innerHTML = '📊';
+    btn.title = 'Band Activity Dashboard';
+    btn.style.cssText = `
+        position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+        width: 48px; height: 48px; border-radius: 50%;
+        background: #667eea; color: white; border: none;
+        font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        transition: transform 0.2s;
+    `;
+    btn.onmouseover = () => btn.style.transform = 'scale(1.1)';
+    btn.onmouseout = () => btn.style.transform = 'scale(1)';
+    btn.onclick = showAdminPanel;
+    document.body.appendChild(btn);
+}
+
+async function showAdminPanel() {
+    // Load activity log
+    let log = activityLogCache;
+    if (!log) {
+        log = await loadMasterFile(MASTER_ACTIVITY_LOG) || [];
+        activityLogCache = log;
+    }
+    
+    // Remove existing panel if open
+    const existing = document.getElementById('adminPanel');
+    if (existing) { existing.remove(); return; }
+    
+    const panel = document.createElement('div');
+    panel.id = 'adminPanel';
+    panel.style.cssText = `
+        position: fixed; top: 0; right: 0; width: 420px; height: 100vh;
+        background: #1a1a2e; color: #e0e0e0; z-index: 10000;
+        box-shadow: -4px 0 20px rgba(0,0,0,0.5); overflow-y: auto;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    `;
+    
+    // Build stats
+    const now = new Date();
+    const last7days = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const last30days = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    
+    const recentLog = log.filter(e => new Date(e.time) > last30days);
+    const weekLog = log.filter(e => new Date(e.time) > last7days);
+    
+    // Per-member stats
+    const memberStats = {};
+    const memberNames = {
+        'drewmerrill1029@gmail.com': 'Drew',
+        'brian@hrestoration.com': 'Brian',
+        'pierce.d.hale@gmail.com': 'Pierce',
+        'cmjalbert@gmail.com': 'Chris',
+        'jnault@fegholdings.com': 'Jay'
+    };
+    
+    for (const email of BAND_MEMBER_EMAILS) {
+        const name = memberNames[email] || email.split('@')[0];
+        const memberEntries = recentLog.filter(e => e.user === email);
+        const weekEntries = weekLog.filter(e => e.user === email);
+        
+        const signIns = memberEntries.filter(e => e.action === 'sign_in');
+        const lastSignIn = signIns.length > 0 ? signIns[signIns.length - 1].time : null;
+        
+        const contributions = memberEntries.filter(e => e.action !== 'sign_in');
+        const weekContributions = weekEntries.filter(e => e.action !== 'sign_in');
+        
+        // Count by type
+        const byType = {};
+        contributions.forEach(e => {
+            byType[e.action] = (byType[e.action] || 0) + 1;
+        });
+        
+        memberStats[email] = {
+            name, signIns: signIns.length, lastSignIn,
+            contributions: contributions.length,
+            weekContributions: weekContributions.length,
+            byType,
+            lastActivity: memberEntries.length > 0 ? memberEntries[memberEntries.length - 1] : null
+        };
+    }
+    
+    // Sort by contributions (most active first)
+    const sorted = Object.values(memberStats).sort((a, b) => b.contributions - a.contributions);
+    
+    // Action labels
+    const actionLabels = {
+        'sign_in': '🔑 Sign In',
+        'status_change': '📊 Status Change',
+        'harmony_add': '🎤 Harmony Added',
+        'harmony_edit': '🎤 Harmony Edit',
+        'rehearsal_note': '📝 Rehearsal Note',
+        'practice_track': '🎸 Practice Track',
+        'song_structure': '🏗️ Song Structure',
+        'part_notes': '📋 Part Notes'
+    };
+    
+    const timeAgo = (isoStr) => {
+        if (!isoStr) return 'Never';
+        const diff = now - new Date(isoStr);
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        const days = Math.floor(hrs / 24);
+        if (days === 1) return 'Yesterday';
+        return `${days}d ago`;
+    };
+    
+    panel.innerHTML = `
+        <div style="padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #667eea; font-size: 1.3em;">📊 Band Activity</h2>
+                <button onclick="document.getElementById('adminPanel').remove()" 
+                    style="background: none; border: none; color: #999; font-size: 24px; cursor: pointer;">✕</button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                <div style="background: #16213e; padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 1.8em; font-weight: 700; color: #667eea;">${weekLog.length}</div>
+                    <div style="font-size: 0.75em; color: #888;">Actions This Week</div>
+                </div>
+                <div style="background: #16213e; padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 1.8em; font-weight: 700; color: #10b981;">${recentLog.length}</div>
+                    <div style="font-size: 0.75em; color: #888;">Actions (30 Days)</div>
+                </div>
+            </div>
+            
+            <h3 style="color: #ccc; font-size: 0.95em; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px;">
+                👥 Member Scoreboard
+            </h3>
+            
+            ${sorted.map((m, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '  ';
+                const barWidth = sorted[0].contributions > 0 ? Math.max(5, (m.contributions / sorted[0].contributions) * 100) : 0;
+                const typeBreakdown = Object.entries(m.byType)
+                    .map(([k, v]) => `${actionLabels[k] || k}: ${v}`)
+                    .join(', ') || 'No contributions yet';
+                    
+                return `
+                <div style="background: #16213e; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-size: 1.1em;">${medal} <strong>${m.name}</strong></span>
+                            <span style="color: #888; font-size: 0.8em; margin-left: 8px;">
+                                ${m.weekContributions} this week
+                            </span>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.3em; font-weight: 700; color: ${m.contributions > 0 ? '#10b981' : '#ef4444'};">
+                                ${m.contributions}
+                            </div>
+                            <div style="font-size: 0.7em; color: #888;">contributions</div>
+                        </div>
+                    </div>
+                    <div style="background: #0a0a1a; border-radius: 4px; height: 6px; margin: 8px 0;">
+                        <div style="background: linear-gradient(90deg, #667eea, #10b981); height: 100%; border-radius: 4px; width: ${barWidth}%; transition: width 0.5s;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #888;">
+                        <span>🔑 ${m.signIns} sign-ins</span>
+                        <span>Last active: ${timeAgo(m.lastActivity?.time)}</span>
+                    </div>
+                    <div style="font-size: 0.72em; color: #667; margin-top: 4px;">${typeBreakdown}</div>
+                </div>`;
+            }).join('')}
+            
+            <h3 style="color: #ccc; font-size: 0.95em; margin: 20px 0 12px; border-bottom: 1px solid #333; padding-bottom: 8px;">
+                📜 Recent Activity Feed
+            </h3>
+            
+            <div style="max-height: 300px; overflow-y: auto;">
+                ${log.slice(-30).reverse().map(e => {
+                    const name = memberNames[e.user] || e.user.split('@')[0];
+                    const label = actionLabels[e.action] || e.action;
+                    const songInfo = e.song ? ` — ${e.song}` : '';
+                    const detailInfo = e.details ? ` (${e.details})` : '';
+                    return `
+                    <div style="padding: 8px 0; border-bottom: 1px solid #222; font-size: 0.82em;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span><strong>${name}</strong> ${label}${songInfo}${detailInfo}</span>
+                        </div>
+                        <div style="color: #666; font-size: 0.85em;">${timeAgo(e.time)} · ${e.browser || ''}</div>
+                    </div>`;
+                }).join('')}
+                ${log.length === 0 ? '<p style="color: #666; text-align: center; padding: 20px;">No activity logged yet. Data will appear as band members use the app.</p>' : ''}
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(panel);
+}
 
 // Initialize the shared band resources folder
 // ============================================================================
