@@ -5820,39 +5820,176 @@ console.log('☁️ Comprehensive Google Drive storage system loaded');
 // GOOGLE DRIVE HELPER FUNCTIONS
 // ============================================================================
 
+// Cache for folder IDs to prevent duplicate creation (race condition fix)
+const _folderIdCache = {};
+const _folderCreationLocks = {};
+
 async function findOrCreateFolder(folderName, parentFolderId) {
+    // Create a cache key
+    const cacheKey = `${folderName}::${parentFolderId}`;
+    
+    // Return cached ID if we already found/created this folder
+    if (_folderIdCache[cacheKey]) {
+        return _folderIdCache[cacheKey];
+    }
+    
+    // If another call is already creating this folder, wait for it
+    if (_folderCreationLocks[cacheKey]) {
+        return _folderCreationLocks[cacheKey];
+    }
+    
+    // Create a promise that other callers can wait on
+    _folderCreationLocks[cacheKey] = (async () => {
+        try {
+            // Escape single quotes and backslashes for Drive API
+            const escapedFolderName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const escapedParentId = parentFolderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            
+            // Search for existing folder
+            const response = await gapi.client.drive.files.list({
+                q: `name='${escapedFolderName}' and '${escapedParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id, name)',
+                spaces: 'drive'
+            });
+            
+            if (response.result.files && response.result.files.length > 0) {
+                const folderId = response.result.files[0].id;
+                _folderIdCache[cacheKey] = folderId;
+                
+                // Log if duplicates found
+                if (response.result.files.length > 1) {
+                    console.warn(`⚠️ Found ${response.result.files.length} "${folderName}" folders. Using first: ${folderId}. Consider consolidating duplicates.`);
+                }
+                
+                return folderId;
+            }
+            
+            // Create folder if it doesn't exist
+            const fileMetadata = {
+                name: folderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [parentFolderId]
+            };
+            
+            const folder = await gapi.client.drive.files.create({
+                resource: fileMetadata,
+                fields: 'id'
+            });
+            
+            const newId = folder.result.id;
+            _folderIdCache[cacheKey] = newId;
+            console.log(`📁 Created folder "${folderName}": ${newId}`);
+            return newId;
+        } catch (error) {
+            console.error('Error finding/creating folder:', error);
+            throw error;
+        } finally {
+            delete _folderCreationLocks[cacheKey];
+        }
+    })();
+    
+    return _folderCreationLocks[cacheKey];
+}
+
+// ---- Metadata Folder Consolidation ----
+// Run this once to merge duplicate Metadata folders into one
+// Call from console: consolidateMetadataFolders()
+async function consolidateMetadataFolders() {
+    if (!sharedFolderId) {
+        console.error('❌ Not connected to Drive. Sign in first.');
+        return;
+    }
+    
     try {
-        // Escape single quotes and backslashes for Drive API
-        const escapedFolderName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const escapedParentId = parentFolderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        
-        // Search for existing folder
+        // Find ALL Metadata folders in the shared folder
         const response = await gapi.client.drive.files.list({
-            q: `name='${escapedFolderName}' and '${escapedParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-            fields: 'files(id, name)',
-            spaces: 'drive'
+            q: `name='Metadata' and '${sharedFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            fields: 'files(id, name, createdTime)',
+            spaces: 'drive',
+            orderBy: 'createdTime'
         });
         
-        if (response.result.files && response.result.files.length > 0) {
-            return response.result.files[0].id;
+        const folders = response.result.files || [];
+        console.log(`📁 Found ${folders.length} Metadata folders`);
+        
+        if (folders.length <= 1) {
+            console.log('✅ Only one Metadata folder exists. Nothing to consolidate.');
+            return;
         }
         
-        // Create folder if it doesn't exist
-        const fileMetadata = {
-            name: folderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [parentFolderId]
-        };
+        // Use the FIRST (oldest) folder as the target
+        const targetFolder = folders[0];
+        const sourceFolders = folders.slice(1);
         
-        const folder = await gapi.client.drive.files.create({
-            resource: fileMetadata,
-            fields: 'id'
-        });
+        console.log(`📁 Target folder: ${targetFolder.id} (created: ${targetFolder.createdTime})`);
+        console.log(`📁 Will merge ${sourceFolders.length} duplicate folders into target`);
         
-        return folder.result.id;
+        let movedCount = 0;
+        let skippedCount = 0;
+        
+        for (const sourceFolder of sourceFolders) {
+            // List all files in this duplicate folder
+            const filesResponse = await gapi.client.drive.files.list({
+                q: `'${sourceFolder.id}' in parents and trashed=false`,
+                fields: 'files(id, name)',
+                spaces: 'drive',
+                pageSize: 1000
+            });
+            
+            const files = filesResponse.result.files || [];
+            console.log(`📁 Folder ${sourceFolder.id}: ${files.length} files`);
+            
+            for (const file of files) {
+                // Check if a file with the same name already exists in target
+                const existing = await findFileInFolder(file.name, targetFolder.id);
+                
+                if (existing) {
+                    console.log(`  ⏭️ Skipping "${file.name}" (already exists in target)`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Move file to target folder
+                await gapi.client.drive.files.update({
+                    fileId: file.id,
+                    addParents: targetFolder.id,
+                    removeParents: sourceFolder.id,
+                    fields: 'id, parents'
+                });
+                
+                console.log(`  ✅ Moved "${file.name}"`);
+                movedCount++;
+            }
+            
+            // Check if source folder is now empty
+            const remainingFiles = await gapi.client.drive.files.list({
+                q: `'${sourceFolder.id}' in parents and trashed=false`,
+                fields: 'files(id)',
+                spaces: 'drive'
+            });
+            
+            if (!remainingFiles.result.files || remainingFiles.result.files.length === 0) {
+                // Delete empty duplicate folder
+                await gapi.client.drive.files.delete({ fileId: sourceFolder.id });
+                console.log(`🗑️ Deleted empty duplicate folder: ${sourceFolder.id}`);
+            } else {
+                console.log(`⚠️ Folder ${sourceFolder.id} still has ${remainingFiles.result.files.length} files (had duplicates)`);
+            }
+        }
+        
+        console.log('');
+        console.log('═══════════════════════════════════════');
+        console.log(`✅ Consolidation complete!`);
+        console.log(`   Moved: ${movedCount} files`);
+        console.log(`   Skipped (duplicates): ${skippedCount}`);
+        console.log(`   Target folder: ${targetFolder.id}`);
+        console.log('═══════════════════════════════════════');
+        
+        // Clear the folder cache so it picks up the single folder
+        delete _folderIdCache[`Metadata::${sharedFolderId}`];
+        
     } catch (error) {
-        console.error('Error finding/creating folder:', error);
-        throw error;
+        console.error('❌ Consolidation error:', error);
     }
 }
 
