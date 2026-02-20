@@ -6976,7 +6976,7 @@ async function findOrCreateFolder(folderName, parentFolderId) {
             const response = await gapi.client.drive.files.list({
                 q: `name='${escapedFolderName}' and '${escapedParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
                 fields: 'files(id, name)',
-                spaces: 'drive'
+                spaces: 'drive',
             });
             
             if (response.result.files && response.result.files.length > 0) {
@@ -7129,7 +7129,7 @@ async function findFileInFolder(fileName, folderId) {
         const response = await gapi.client.drive.files.list({
             q: `name='${escapedFileName}' and '${escapedFolderId}' in parents and trashed=false`,
             fields: 'files(id, name)',
-            spaces: 'drive'
+            spaces: 'drive',
         });
         
         if (response.result.files && response.result.files.length > 0) {
