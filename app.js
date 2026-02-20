@@ -6257,13 +6257,93 @@ console.log('📋 Song Structure functions loaded');
 const SHARED_FOLDER_ID = '1YGur46dHb4GljnVfpqUpjscdI0lBcuaO'; // Owner will update this after creating folder
 const METADATA_FOLDER_ID = '1L6eRsjDDVsU2ExAar468a2L3hJxMYg4r'; // Hardcoded to prevent duplicate creation
 
-// Band member emails who should have access (owner should update this list)
+// Band member emails who should have access
 const BAND_MEMBER_EMAILS = [
-    'drew.merrill@gmail.com',     // Drew
-    'pierce@example.com',          // Pierce - UPDATE THIS
-    'brian@example.com',           // Brian - UPDATE THIS
-    'chris@example.com'            // Chris - UPDATE THIS
+    'drewmerrill1029@gmail.com',   // Drew (owner)
+    'pierce.d.hale@gmail.com',     // Pierce
+    'brian@hrestoration.com',      // Brian
+    'cmjalbert@gmail.com',         // Chris
+    'jnault@fegholdings.com'       // Jay
 ];
+const OWNER_EMAIL = 'drewmerrill1029@gmail.com';
+
+// ============================================================================
+// SILENT SHARING AUDIT - Runs on owner login, ensures all files are accessible
+// ============================================================================
+
+async function silentSharingAudit() {
+    // Only run for the owner - wait for email to be available
+    await new Promise(resolve => {
+        const check = () => {
+            if (currentUserEmail && currentUserEmail !== 'unknown') resolve();
+            else setTimeout(check, 500);
+        };
+        check();
+    });
+    
+    if (currentUserEmail !== OWNER_EMAIL) return;
+    
+    try {
+        const metadataFolderId = METADATA_FOLDER_ID || await findOrCreateFolder('Metadata', sharedFolderId);
+        if (!metadataFolderId) return;
+        
+        // List all files with their permissions
+        const res = await gapi.client.drive.files.list({
+            q: `'${metadataFolderId}' in parents and trashed=false`,
+            fields: 'files(id, name, permissions(emailAddress, role, type))',
+            spaces: 'drive',
+            pageSize: 500
+        });
+        
+        const files = res.result.files || [];
+        let fixedCount = 0;
+        
+        for (const file of files) {
+            const perms = file.permissions || [];
+            const sharedEmails = perms.map(p => p.emailAddress?.toLowerCase()).filter(Boolean);
+            
+            // Check if all band members have access
+            for (const email of BAND_MEMBER_EMAILS) {
+                if (email === OWNER_EMAIL) continue; // Owner always has access
+                if (!sharedEmails.includes(email.toLowerCase())) {
+                    // This band member can't see this file - fix it
+                    try {
+                        await gapi.client.drive.permissions.create({
+                            fileId: file.id,
+                            resource: { type: 'user', role: 'writer', emailAddress: email },
+                            sendNotificationEmail: false
+                        });
+                        fixedCount++;
+                    } catch (e) {
+                        // If per-user sharing fails, try "anyone with link"
+                        try {
+                            const hasAnyone = perms.some(p => p.type === 'anyone');
+                            if (!hasAnyone) {
+                                await gapi.client.drive.permissions.create({
+                                    fileId: file.id,
+                                    resource: { type: 'anyone', role: 'writer' }
+                                });
+                                fixedCount++;
+                            }
+                        } catch (e2) {
+                            // Silently skip - don't break anything
+                        }
+                        break; // If per-user fails, "anyone" covers everyone
+                    }
+                }
+            }
+        }
+        
+        if (fixedCount > 0) {
+            console.log(`🔧 Sharing audit: fixed ${fixedCount} permission(s) across ${files.length} files`);
+        } else {
+            console.log(`✅ Sharing audit: all ${files.length} files accessible to band`);
+        }
+    } catch (error) {
+        // Completely silent - never interrupt the user
+        console.log('Sharing audit skipped:', error.message || error);
+    }
+}
 
 async function initializeSharedFolder() {
     try {
@@ -6273,6 +6353,9 @@ async function initializeSharedFolder() {
         if (SHARED_FOLDER_ID) {
             sharedFolderId = SHARED_FOLDER_ID;
             console.log('📁 Using configured shared folder:', sharedFolderId);
+            
+            // Silent sharing audit for owner only
+            silentSharingAudit();
             return;
         }
         
