@@ -6248,7 +6248,7 @@ console.log('📋 Song Structure functions loaded');
 // IMPORTANT: Set this to the folder ID after the owner creates it
 // Leave as null for the first person (owner) to create the folder
 // After creation, copy the folder ID here so everyone uses the SAME folder
-const SHARED_FOLDER_ID = null; // Owner will update this after creating folder
+const SHARED_FOLDER_ID = '1YGur46dHb4GljnVfpqUpjscdI0lBcuaO'; // Owner will update this after creating folder
 
 // Band member emails who should have access (owner should update this list)
 const BAND_MEMBER_EMAILS = [
