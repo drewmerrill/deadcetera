@@ -6946,6 +6946,12 @@ const _folderIdCache = {};
 const _folderCreationLocks = {};
 
 async function findOrCreateFolder(folderName, parentFolderId) {
+    // Short-circuit for Metadata folder - always use hardcoded ID
+    if (folderName === 'Metadata' && METADATA_FOLDER_ID) {
+        _folderIdCache[`Metadata::${parentFolderId}`] = METADATA_FOLDER_ID;
+        return METADATA_FOLDER_ID;
+    }
+    
     // Create a cache key
     const cacheKey = `${folderName}::${parentFolderId}`;
     
@@ -7370,6 +7376,7 @@ console.log('📋 Song Structure functions loaded');
 // Leave as null for the first person (owner) to create the folder
 // After creation, copy the folder ID here so everyone uses the SAME folder
 const SHARED_FOLDER_ID = '1YGur46dHb4GljnVfpqUpjscdI0lBcuaO'; // Owner will update this after creating folder
+const METADATA_FOLDER_ID = '1L6eRsjDDVsU2ExAar468a2L3hJxMYg4r'; // Hardcoded to prevent duplicate creation
 
 // Band member emails who should have access (owner should update this list)
 const BAND_MEMBER_EMAILS = [
