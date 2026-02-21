@@ -6274,27 +6274,49 @@ let mtPitchAnimFrame=null, mtCurrentEffect='none';
 // --- HELP TOOLTIPS ---
 const mtTips = {
     metronome:'Set tempo (BPM) and click Start to hear a click track while recording.',
-    tracks:'Recorded harmony parts. Solo(S) hears one track only, Mute(M) silences it.',
+    tracks:'Recorded harmony parts. Solo(S) hears one track only, Mute(M) silences it. 🗑 deletes a track.',
     loop:'Mix replays automatically when it ends.',
-    latency:'Audio delay compensation. Auto-Detect first, then Calibrate for accuracy.',
-    calibrate:'Plays a click through speakers, times when mic hears it. Turn up volume, stay quiet.',
-    record:'Records your mic. Checked tracks play as backing so you can sing along.',
-    countIn:'4 clicks at current BPM before recording starts.',
+    latency:'Compensates for the delay between when you play/sing and when the computer records it. Click 📋 for a full recording workflow guide.',
+    calibrate:'Plays a tone through speakers, times when mic hears it back. Works best with speakers (not headphones). Keep the room quiet.',
+    record:'Records your mic while playing checked tracks as backing. Use headphones to prevent bleed from speakers into the mic.',
+    countIn:'Two measures of clicks at current BPM before recording starts. Second measure is louder so you know when recording is about to begin.',
     clickDuring:'Metronome clicks while recording to keep time.',
-    pitch:'Shows what note you\'re singing in real-time vs the target note.',
-    karaoke:'Sheet music with moving cursor and highlighted lyrics while you record.',
-    effects:'Audio effect presets applied during playback.',
-    export:'Combine all checked tracks into one downloadable audio file.',
-    nudge:'After recording, shift your new track ±ms to align with others.',
-    pan:'Stereo position: left, center, or right. Separates parts in headphones.',
-    playMix:'Play all checked tracks at their volumes and pan positions.'
+    pitch:'Shows what note you\'re singing in real-time. Green=in tune, yellow=close, red=off.',
+    karaoke:'Sheet music with moving cursor and highlighted lyrics. Press ▶ Play in the karaoke controls to start.',
+    effects:'Audio effect presets applied to playback. Select before pressing Play Mix. Warm=bass boost, Bright=presence, Room/Hall=reverb.',
+    export:'Combine all checked tracks into one downloadable WAV file.',
+    nudge:'After recording, shift your new track earlier or later (±200ms) to fix timing. Preview to hear the result before saving.',
+    pan:'Stereo position: left, center, or right. Put guitar center, harmony 1 left, harmony 2 right — much easier to hear each part.',
+    playMix:'Play all checked tracks at their volume and pan positions with the selected effect.',
+    workflow:`<b>🎸 Recording Workflow Guide</b><br><br>
+<b>Step 1: Calibrate Once</b><br>
+Before your first recording session, click 🎯 Calibrate with speakers at moderate volume and a quiet room. This measures your system\'s audio delay. You only need to do this once per device.<br><br>
+<b>Step 2: Record Guitar (Foundation)</b><br>
+• Set BPM, enable Count-in and Click During<br>
+• Hit Record and play acoustic guitar<br>
+• Play through the whole section (or song)<br>
+• Save → this is your foundation track<br><br>
+<b>Step 3: Add Vocals (Use Headphones! 🎧)</b><br>
+• <b>PUT ON HEADPHONES</b> — this prevents the backing track from bleeding into the vocal mic<br>
+• Check the guitar track so it plays while you record<br>
+• Hit Record and sing your first part<br>
+• Use the <b>Nudge slider</b> if timing feels off → preview → then save<br>
+• Repeat for each harmony part (2-4 parts)<br><br>
+<b>Step 4: Mix & Pan</b><br>
+• Pan guitar center (0), harmony 1 left (-60), harmony 2 right (+60), etc.<br>
+• Adjust volumes so no part drowns the others<br>
+• Try an effect preset (Room is nice for vocals)<br>
+• Export when happy!<br><br>
+<b>🔧 If tracks sound out of sync:</b><br>
+Use the Nudge slider right after recording. +ms = later, -ms = earlier. Small adjustments (10-30ms) are normal. If ALL tracks drift, adjust the Sync offset.`
 };
-function mtHelp(k){return `<span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('${k}')" title="${(mtTips[k]||'').replace(/'/g,'&#39;')}">ⓘ</span>`;}
+function mtHelp(k){return `<span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('${k}')" title="${(mtTips[k]||'').replace(/<[^>]*>/g,'').replace(/'/g,'&#39;').substring(0,80)}">ⓘ</span>`;}
 function mtShowHelp(k){
     document.getElementById('mtHelpPopup')?.remove();
     const d=document.createElement('div');d.id='mtHelpPopup';
-    d.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;color:white;padding:20px 24px;border-radius:12px;max-width:320px;z-index:10000;box-shadow:0 20px 60px rgba(0,0,0,0.5);font-size:0.9em;line-height:1.5;';
-    d.innerHTML=`<div style="margin-bottom:10px;font-weight:600">💡 Help</div><div>${mtTips[k]||'No help available.'}</div><button onclick="this.parentElement.remove()" style="margin-top:12px;background:#667eea;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;width:100%">Got it</button>`;
+    const isLong=(mtTips[k]||'').length>200;
+    d.style.cssText=`position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;color:white;padding:20px 24px;border-radius:12px;max-width:${isLong?'420':'320'}px;z-index:10000;box-shadow:0 20px 60px rgba(0,0,0,0.5);font-size:0.85em;line-height:1.6;max-height:80vh;overflow-y:auto;`;
+    d.innerHTML=`<div style="margin-bottom:10px;font-weight:600">💡 Help</div><div>${mtTips[k]||'No help available.'}</div><button onclick="this.parentElement.remove()" style="margin-top:14px;background:#667eea;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;width:100%;font-weight:600">Got it</button>`;
     document.body.appendChild(d);
     setTimeout(()=>{document.addEventListener('click',function f(e){if(!d.contains(e.target)){d.remove();document.removeEventListener('click',f);}});},100);
 }
@@ -6414,7 +6436,7 @@ ${hasAbc?`
 
 <div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
-        <div><strong style="font-size:0.8em">⏱️ Sync ${mtHelp('latency')}</strong>
+        <div><strong style="font-size:0.8em">⏱️ Sync ${mtHelp('latency')}</strong> <span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('workflow')" title="Recording workflow guide" style="background:rgba(102,126,234,0.2);color:#a5b4fc;border-color:rgba(102,126,234,0.3)">📋</span>
             <div id="mtLatencyInfo_${sectionIndex}" style="font-size:0.65em;color:rgba(255,255,255,0.3)"><span id="mtDetectedLatency_${sectionIndex}">measuring...</span></div>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
@@ -6466,6 +6488,7 @@ ${hasAbc?`
 // ============================================================================
 function mtRenderTrackRow(si, snippet, i) {
     const nm = snippet.name||'Rec '+(i+1), who = bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy || '';
+    const ss = (mtCurrentSongTitle||'').replace(/'/g, "\\'");
     return `<div id="mtTrackRow_${si}_${i}" style="display:flex;align-items:center;gap:4px;padding:5px 6px;background:rgba(255,255,255,0.03);border-radius:5px;margin-bottom:3px">
         <input type="checkbox" id="mtTrack_${si}_${i}" checked style="width:14px;height:14px;accent-color:#667eea;flex-shrink:0">
         <div style="flex:1;min-width:0"><div style="font-size:0.75em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm}</div><div style="font-size:0.6em;color:rgba(255,255,255,0.25)">${who}</div></div>
@@ -6474,7 +6497,24 @@ function mtRenderTrackRow(si, snippet, i) {
         <input type="range" id="mtVol_${si}_${i}" min="0" max="100" value="80" oninput="mtUpdateVolume(${si},${i},this.value)" title="Volume" style="width:48px;accent-color:#667eea;flex-shrink:0">
         <input type="range" id="mtPan_${si}_${i}" min="-100" max="100" value="0" oninput="mtUpdatePan(${si},${i},this.value)" title="Pan L↔R" style="width:42px;accent-color:#8b5cf6;flex-shrink:0">
         <span id="mtPanLabel_${si}_${i}" style="font-size:0.55em;color:rgba(255,255,255,0.25);width:14px;text-align:center;flex-shrink:0">C</span>
+        <button onclick="mtDeleteTrack('${ss}',${si},${i})" title="Delete track" style="background:none;border:none;color:rgba(255,255,255,0.25);cursor:pointer;font-size:0.75em;flex-shrink:0;padding:2px">🗑</button>
     </div>`;
+}
+
+async function mtDeleteTrack(songTitle, si, trackIndex) {
+    if (!confirm('Delete this recording? This cannot be undone.')) return;
+    try {
+        const key = `harmony_audio_section_${si}`;
+        const existing = toArray(await loadBandDataFromDrive(songTitle, key));
+        if (trackIndex >= 0 && trackIndex < existing.length) {
+            const removed = existing.splice(trackIndex, 1);
+            await saveBandDataToDrive(songTitle, key, existing);
+            const localKey = `deadcetera_harmony_audio_${songTitle}_section${si}`;
+            localStorage.setItem(localKey, JSON.stringify(existing));
+            logActivity('harmony_delete', { song: songTitle, extra: `section ${si}: ${removed[0]?.name || 'track ' + trackIndex}` });
+            openMultiTrackStudio(songTitle, si); // Refresh
+        }
+    } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 function closeMultiTrackStudio(si){
@@ -6532,22 +6572,60 @@ async function mtCalibrateLatency(si){
     st.style.display='block';st.innerHTML='🎯 Turn up volume, stay quiet...';
     try{
         if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+        // Request mic with echo cancellation OFF so it can hear the speaker
         const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-        const src=mtAudioContext.createMediaStreamSource(stream),an=mtAudioContext.createAnalyser();an.fftSize=2048;src.connect(an);
-        const buf=new Float32Array(an.fftSize);await new Promise(r=>setTimeout(r,500));
-        st.innerHTML='🔊 Click in 1s...';await new Promise(r=>setTimeout(r,1000));
-        const t0=performance.now(),o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
-        o.connect(g);g.connect(mtAudioContext.destination);o.frequency.value=1000;
-        g.gain.setValueAtTime(0.8,mtAudioContext.currentTime);g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.05);
-        o.start();o.stop(mtAudioContext.currentTime+0.05);
+        const src=mtAudioContext.createMediaStreamSource(stream);
+        const an=mtAudioContext.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;
+        src.connect(an);
+        const buf=new Float32Array(an.fftSize);
+        
+        // Sample the background noise level first
+        await new Promise(r=>setTimeout(r,500));
+        an.getFloatTimeDomainData(buf);
+        let bgNoise=0;
+        for(let i=0;i<buf.length;i++) bgNoise=Math.max(bgNoise,Math.abs(buf[i]));
+        const threshold=Math.max(bgNoise*3, 0.02); // 3x background or min 0.02
+        console.log('🎯 Calibration: bg noise='+bgNoise.toFixed(4)+', threshold='+threshold.toFixed(4));
+        
+        st.innerHTML='🔊 Playing click now...';
+        await new Promise(r=>setTimeout(r,300));
+        
+        // Play a LOUDER, longer click
+        const t0=performance.now();
+        const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+        o.connect(g);g.connect(mtAudioContext.destination);
+        o.frequency.value=880;
+        g.gain.setValueAtTime(1.0,mtAudioContext.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.15);
+        o.start();o.stop(mtAudioContext.currentTime+0.15);
+        
+        // Poll more aggressively with shorter intervals
         let det=false,t1=0;
-        await new Promise(res=>{(function ck(){an.getFloatTimeDomainData(buf);if(Math.max(...buf.map(Math.abs))>0.15&&!det){det=true;t1=performance.now();res();return;}if(performance.now()-t0>500){res();return;}requestAnimationFrame(ck);})();});
+        await new Promise(res=>{
+            const pollInterval=setInterval(()=>{
+                an.getFloatTimeDomainData(buf);
+                let peak=0;
+                for(let i=0;i<buf.length;i++) peak=Math.max(peak,Math.abs(buf[i]));
+                if(peak>threshold&&!det){
+                    det=true;t1=performance.now();
+                    clearInterval(pollInterval);res();return;
+                }
+                if(performance.now()-t0>1000){clearInterval(pollInterval);res();return;}
+            }, 5); // Poll every 5ms
+        });
+        
         stream.getTracks().forEach(t=>t.stop());src.disconnect();
-        if(det){const rt=Math.round(t1-t0);mtLatencyMs=Math.round(rt/2);const inp=document.getElementById(`mtLatency_${si}`);if(inp)inp.value=mtLatencyMs;localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);
-            const info=document.getElementById(`mtDetectedLatency_${si}`);if(info)info.textContent=`Cal: RT ${rt}ms → ${mtLatencyMs}ms`;
-            st.innerHTML=`✅ RT: <b>${rt}ms</b> → offset: <b>${mtLatencyMs}ms</b>`;
-        }else{st.innerHTML='⚠️ No click detected. Turn up volume.';}
-        setTimeout(()=>st.style.display='none',5000);
+        if(det){
+            const rt=Math.round(t1-t0);mtLatencyMs=Math.round(rt/2);
+            const inp=document.getElementById(`mtLatency_${si}`);if(inp)inp.value=mtLatencyMs;
+            localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);
+            const info=document.getElementById(`mtDetectedLatency_${si}`);
+            if(info)info.textContent=`Cal: RT ${rt}ms → ${mtLatencyMs}ms`;
+            st.innerHTML=`✅ Round-trip: <b>${rt}ms</b> → offset: <b>${mtLatencyMs}ms</b>`;
+        }else{
+            st.innerHTML='⚠️ No click detected. Try: 1) Turn volume up more, 2) Make sure mic is near speakers, 3) Use wired headphones (not Bluetooth).';
+        }
+        setTimeout(()=>st.style.display='none',6000);
     }catch(e){st.innerHTML='❌ '+e.message;setTimeout(()=>st.style.display='none',3000);}
 }
 
@@ -6603,14 +6681,32 @@ async function mtStartRecording(songTitle, si) {
         };
         const statEl=document.getElementById(`mtRecordStatus_${si}`),timEl=document.getElementById(`mtRecordTimer_${si}`);
         const recBtn=document.getElementById(`mtRecordBtn_${si}`),stopBtn=document.getElementById(`mtStopBtn_${si}`);
-        // Count-in
+        // Count-in: 2 measures (8 beats) with proper timing
         if(document.getElementById(`mtCountIn_${si}`)?.checked){
             const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,beatMs=60000/bpm;
-            for(let i=4;i>=1;i--){statEl.innerHTML=`<span style="font-size:1.6em;font-weight:700;color:#fbbf24">${i}</span>`;
-                const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();o.connect(g);g.connect(mtAudioContext.destination);
-                o.frequency.value=i===4?1200:900;g.gain.setValueAtTime(0.5,mtAudioContext.currentTime);
-                g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.12);o.start();o.stop(mtAudioContext.currentTime+0.12);
-                await new Promise(r=>setTimeout(r,beatMs));}
+            const countBeats = [8,7,6,5,4,3,2,1]; // Two measures
+            for(let idx=0;idx<countBeats.length;idx++){
+                const beatNum=countBeats[idx];
+                const isDownbeat=(idx%4===0);
+                const displayNum=(idx%4)+1; // Show 1-2-3-4 1-2-3-4
+                const measure=idx<4?1:2;
+                statEl.innerHTML=`<span style="font-size:1.6em;font-weight:700;color:${measure===2?'#fbbf24':'rgba(255,255,255,0.5)'}">${measure===1?'●':''}${4-(idx%4)}</span><span style="font-size:0.7em;color:rgba(255,255,255,0.3);margin-left:6px">m${measure}</span>`;
+                // Play click
+                const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+                o.connect(g);g.connect(mtAudioContext.destination);
+                o.frequency.value=isDownbeat?1200:900;
+                g.gain.setValueAtTime(measure===2?0.5:0.3,mtAudioContext.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.1);
+                o.start();o.stop(mtAudioContext.currentTime+0.1);
+                // Flash beat dots
+                const beats=document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`);
+                const bi=idx%4;
+                beats.forEach((el,j)=>{el.style.background=j===bi?(isDownbeat?'#ef4444':'#667eea'):'rgba(255,255,255,0.1)';el.style.transform=j===bi?'scale(1.3)':'scale(1)';});
+                // Wait one full beat AFTER the click
+                await new Promise(r=>setTimeout(r,beatMs));
+            }
+            // Reset beat dots
+            document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`).forEach(el=>{el.style.background='rgba(255,255,255,0.1)';el.style.transform='scale(1)';});
         }
         const backD=Math.max(0,mtLatencyMs),recD=Math.max(0,-mtLatencyMs);
         setTimeout(()=>{mtRecorder.start();mtIsRecording=true;},recD);
@@ -6635,34 +6731,41 @@ function mtStopRecording(si){
 // PLAYBACK with Pan via Web Audio API
 // ============================================================================
 async function mtStartBackingTracks(songTitle,si){mtStopAllTracks();const sn=toArray(await loadHarmonyAudioSnippets(songTitle,si));mtPlaybackAudios=[];
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
     for(let i=0;i<sn.length;i++){const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);
         if(sn[i].data){const a=new Audio(sn[i].data);a.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;
-            // Set up stereo pan via Web Audio
-            let panNode=null;
-            try{if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();
-                const src=mtAudioContext.createMediaElementSource(a);panNode=mtAudioContext.createStereoPanner();
+            let panNode=null,nodes=[];
+            try{
+                const src=mtAudioContext.createMediaElementSource(a);
+                panNode=mtAudioContext.createStereoPanner();
                 const pv=document.getElementById(`mtPan_${si}_${i}`);panNode.pan.value=(parseInt(pv?.value)||0)/100;
-                src.connect(panNode);panNode.connect(mtAudioContext.destination);
-            }catch(e){console.warn('Pan setup error:',e);}
-            mtPlaybackAudios.push({audio:a,index:i,panNode});
+                // Chain: src → pan → effects → destination
+                src.connect(panNode);
+                nodes=mtConnectEffectChain(mtAudioContext, panNode);
+            }catch(e){console.warn('Backing audio chain error:',e);}
+            mtPlaybackAudios.push({audio:a,index:i,panNode,nodes});
             if(cb?.checked)a.play().catch(e=>console.warn('Backing:',e));
-        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null});}}
+        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null,nodes:[]});}}
     mtIsPlaying=true;
 }
 
 async function mtPlayAllTracks(songTitle,si){
     mtStopAllTracks();const sn=toArray(await loadHarmonyAudioSnippets(songTitle,si));mtPlaybackAudios=[];
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
     for(let i=0;i<sn.length;i++){const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);
         if(sn[i].data){const a=new Audio(sn[i].data);a.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;
-            let panNode=null;
-            try{if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();
-                const src=mtAudioContext.createMediaElementSource(a);panNode=mtAudioContext.createStereoPanner();
+            let panNode=null,nodes=[];
+            try{
+                const src=mtAudioContext.createMediaElementSource(a);
+                panNode=mtAudioContext.createStereoPanner();
                 const pv=document.getElementById(`mtPan_${si}_${i}`);panNode.pan.value=(parseInt(pv?.value)||0)/100;
-                src.connect(panNode);panNode.connect(mtAudioContext.destination);
-            }catch(e){}
-            mtPlaybackAudios.push({audio:a,index:i,panNode});
+                // Chain: src → pan → effects → destination
+                src.connect(panNode);
+                nodes=mtConnectEffectChain(mtAudioContext, panNode);
+            }catch(e){console.warn('Play audio chain error:',e);}
+            mtPlaybackAudios.push({audio:a,index:i,panNode,nodes});
             if(cb?.checked)a.play().catch(e=>console.warn('Play:',e));
-        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null});}}
+        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null,nodes:[]});}}
     mtIsPlaying=true;
     // Loop support
     if(mtLooping){const first=mtPlaybackAudios.find(it=>it.audio&&document.getElementById(`mtTrack_${si}_${it.index}`)?.checked);
@@ -6670,7 +6773,13 @@ async function mtPlayAllTracks(songTitle,si){
     // Draw waveforms
     mtDrawAllWaveforms(songTitle,si);
 }
-function mtStopAllTracks(){mtPlaybackAudios.forEach(it=>{if(it?.audio){it.audio.pause();it.audio.currentTime=0;it.audio.onended=null;}});mtPlaybackAudios=[];mtIsPlaying=false;}
+function mtStopAllTracks(){
+    mtPlaybackAudios.forEach(it=>{
+        if(it?.audio){it.audio.pause();it.audio.currentTime=0;it.audio.onended=null;}
+        if(it?.nodes)it.nodes.forEach(n=>{try{n.disconnect();}catch(e){}});
+    });
+    mtPlaybackAudios=[];mtIsPlaying=false;
+}
 
 // ============================================================================
 // EFFECTS (Web Audio preset chains applied during playback)
@@ -6683,45 +6792,54 @@ function mtApplyEffect(name,si){
         b.style.color=active?'white':'rgba(255,255,255,0.6)';
         b.style.borderColor=active?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)';
     });
+    // If currently playing, restart playback to apply new effect
+    if(mtIsPlaying && mtCurrentSongTitle){
+        const ss = mtCurrentSongTitle;
+        mtPlayAllTracks(ss, si);
+    }
 }
 
-function mtBuildEffectChain(ctx, sourceNode) {
-    // Clean up old
-    mtEffectNodes.forEach(n => { try { n.disconnect(); } catch(e){} });
-    mtEffectNodes = [];
+// Connects sourceNode through the current effect chain to destination.
+// Returns array of created nodes for cleanup.
+function mtConnectEffectChain(ctx, sourceNode) {
+    const nodes = [];
     
-    if (mtCurrentEffect === 'none') {
+    if (mtCurrentEffect === 'none' || !mtCurrentEffect) {
         sourceNode.connect(ctx.destination);
-        return;
+        return nodes;
     }
     
     let lastNode = sourceNode;
     
     if (mtCurrentEffect === 'warm') {
-        // Low-shelf boost + gentle compression
         const eq = ctx.createBiquadFilter(); eq.type = 'lowshelf'; eq.frequency.value = 300; eq.gain.value = 4;
         const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3;
-        lastNode.connect(eq); eq.connect(comp); lastNode = comp; mtEffectNodes.push(eq, comp);
+        lastNode.connect(eq); eq.connect(comp); lastNode = comp; nodes.push(eq, comp);
     } else if (mtCurrentEffect === 'bright') {
-        // High-shelf boost + presence
         const eq = ctx.createBiquadFilter(); eq.type = 'highshelf'; eq.frequency.value = 3000; eq.gain.value = 5;
         const eq2 = ctx.createBiquadFilter(); eq2.type = 'peaking'; eq2.frequency.value = 6000; eq2.gain.value = 3; eq2.Q.value = 1;
-        lastNode.connect(eq); eq.connect(eq2); lastNode = eq2; mtEffectNodes.push(eq, eq2);
+        lastNode.connect(eq); eq.connect(eq2); lastNode = eq2; nodes.push(eq, eq2);
     } else if (mtCurrentEffect === 'room' || mtCurrentEffect === 'hall') {
-        // Convolution reverb simulation using delays
-        const delay1 = ctx.createDelay(); delay1.delayTime.value = mtCurrentEffect === 'room' ? 0.03 : 0.08;
-        const gain1 = ctx.createGain(); gain1.gain.value = mtCurrentEffect === 'room' ? 0.3 : 0.4;
-        const delay2 = ctx.createDelay(); delay2.delayTime.value = mtCurrentEffect === 'room' ? 0.06 : 0.15;
-        const gain2 = ctx.createGain(); gain2.gain.value = mtCurrentEffect === 'room' ? 0.2 : 0.3;
-        const dry = ctx.createGain(); dry.gain.value = 0.8;
-        lastNode.connect(dry); lastNode.connect(delay1); delay1.connect(gain1);
-        lastNode.connect(delay2); delay2.connect(gain2);
+        const isHall = mtCurrentEffect === 'hall';
+        const delay1 = ctx.createDelay(); delay1.delayTime.value = isHall ? 0.08 : 0.03;
+        const gain1 = ctx.createGain(); gain1.gain.value = isHall ? 0.4 : 0.3;
+        const delay2 = ctx.createDelay(); delay2.delayTime.value = isHall ? 0.15 : 0.06;
+        const gain2 = ctx.createGain(); gain2.gain.value = isHall ? 0.3 : 0.2;
+        const delay3 = ctx.createDelay(); delay3.delayTime.value = isHall ? 0.25 : 0.1;
+        const gain3 = ctx.createGain(); gain3.gain.value = isHall ? 0.2 : 0.1;
+        const dry = ctx.createGain(); dry.gain.value = isHall ? 0.7 : 0.8;
         const merger = ctx.createGain();
-        dry.connect(merger); gain1.connect(merger); gain2.connect(merger);
-        lastNode = merger; mtEffectNodes.push(delay1, gain1, delay2, gain2, dry, merger);
+        lastNode.connect(dry); dry.connect(merger);
+        lastNode.connect(delay1); delay1.connect(gain1); gain1.connect(merger);
+        lastNode.connect(delay2); delay2.connect(gain2); gain2.connect(merger);
+        lastNode.connect(delay3); delay3.connect(gain3); gain3.connect(merger);
+        // Feedback for hall
+        if(isHall){ const fb=ctx.createGain();fb.gain.value=0.15;gain1.connect(fb);fb.connect(delay2);nodes.push(fb); }
+        lastNode = merger; nodes.push(delay1, gain1, delay2, gain2, delay3, gain3, dry, merger);
     }
     
     lastNode.connect(ctx.destination);
+    return nodes;
 }
 
 // ============================================================================
@@ -6828,7 +6946,6 @@ async function mtToggleKaraoke(songTitle, si) {
     const btn = document.getElementById(`mtKaraokeBtn_${si}`);
     
     if (sheetEl.style.display !== 'none') {
-        // Stop karaoke
         mtStopKaraoke(si);
         return;
     }
@@ -6844,66 +6961,125 @@ async function mtToggleKaraoke(songTitle, si) {
             await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/dist/abcjs-basic-min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
         }
         
+        // CRITICAL: Load abcjs-audio CSS BEFORE creating synth controller
+        if (!document.getElementById('abcjs-audio-css')) {
+            const cssLink = document.createElement('link');
+            cssLink.id = 'abcjs-audio-css';
+            cssLink.rel = 'stylesheet';
+            cssLink.href = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/abcjs-audio.css';
+            document.head.appendChild(cssLink);
+            // Wait for CSS to load
+            await new Promise(r => { cssLink.onload = r; setTimeout(r, 1000); });
+        }
+        
+        // Add karaoke highlight styles
+        if (!document.getElementById('mt-karaoke-css')) {
+            const style = document.createElement('style');
+            style.id = 'mt-karaoke-css';
+            style.textContent = `
+                .abcjs-highlight{fill:#667eea !important;stroke:#667eea !important;}
+                #mtKaraokeSheet_${si} .abcjs-cursor{stroke:#ef4444;stroke-width:2;opacity:0.8;}
+            `;
+            document.head.appendChild(style);
+        }
+        
         sheetEl.style.display = 'block';
         lyricsEl.style.display = 'block';
         
-        // Render ABC with cursor support
-        const visualObj = ABCJS.renderAbc(sheetEl, abc, {
-            responsive: 'resize', staffwidth: 500, scale: 0.9,
+        // Extract lyrics from ABC for display
+        const lyricLines = abc.split('\n').filter(l => l.startsWith('w:')).map(l => l.substring(2).trim());
+        const lyricWords = lyricLines.join(' ').split(/\s+/).filter(w => w && w !== '|' && w !== '-');
+        let currentWordIndex = 0;
+        
+        // Create audio controls container FIRST
+        const audioContainerId = `mtKaraokeAudio_${si}`;
+        
+        // Render ABC
+        sheetEl.innerHTML = ''; // Clear
+        const sheetDiv = document.createElement('div');
+        sheetDiv.id = `mtKaraokeSheetInner_${si}`;
+        sheetEl.appendChild(sheetDiv);
+        
+        const audioDiv = document.createElement('div');
+        audioDiv.id = audioContainerId;
+        audioDiv.style.cssText = 'margin-top:8px;';
+        sheetEl.appendChild(audioDiv);
+        
+        const visualObj = ABCJS.renderAbc(`mtKaraokeSheetInner_${si}`, abc, {
+            responsive: 'resize', staffwidth: 480, scale: 0.85,
             wrap: { minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 },
             add_classes: true
         })[0];
         
-        // Extract lyrics from ABC
-        const lyricLines = abc.split('\n').filter(l => l.startsWith('w:')).map(l => l.substring(2).trim());
-        const allLyrics = lyricLines.join(' ');
+        // Create cursor line in SVG
+        const svgEl = sheetDiv.querySelector('svg');
+        if (svgEl) {
+            const cursor = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            cursor.setAttribute('class', 'abcjs-cursor');
+            cursor.setAttribute('x1', 0); cursor.setAttribute('x2', 0);
+            cursor.setAttribute('y1', 0); cursor.setAttribute('y2', 0);
+            svgEl.appendChild(cursor);
+        }
         
-        // Set up synth for playback with cursor
-        const synthControl = new ABCJS.synth.SynthController();
-        const audioEl = document.createElement('div');
-        audioEl.id = `mtKaraokeAudio_${si}`;
-        audioEl.style.cssText = 'margin-top:6px';
-        sheetEl.appendChild(audioEl);
-        
-        synthControl.load(`#mtKaraokeAudio_${si}`, null, {
-            displayLoop: true, displayRestart: true, displayPlay: true, displayProgress: true
-        });
-        
-        // Create cursor control
+        // Cursor control callbacks
         const cursorControl = {
+            beatSubdivisions: 2,
             onEvent: function(ev) {
-                // Highlight current note
-                document.querySelectorAll(`#mtKaraokeSheet_${si} svg .highlight`).forEach(el => el.classList.remove('highlight'));
-                if (ev.elements) {
-                    ev.elements.forEach(els => els.forEach(el => el.classList.add('highlight')));
+                // Move cursor line
+                if (ev && svgEl) {
+                    const cursor = svgEl.querySelector('.abcjs-cursor');
+                    if (cursor) {
+                        cursor.setAttribute('x1', ev.left - 2);
+                        cursor.setAttribute('x2', ev.left - 2);
+                        cursor.setAttribute('y1', ev.top);
+                        cursor.setAttribute('y2', ev.top + ev.height);
+                    }
                 }
-                // Show current lyric
-                if (ev.midiPitches && lyricsEl) {
-                    // Try to extract the lyric from the element
-                    const lyricEls = document.querySelectorAll(`#mtKaraokeSheet_${si} svg .abcjs-lyric`);
-                    // Simple approach: highlight based on timing
+                // Highlight notes
+                document.querySelectorAll(`#mtKaraokeSheetInner_${si} svg .abcjs-highlight`).forEach(el => el.classList.remove('abcjs-highlight'));
+                if (ev && ev.elements) {
+                    ev.elements.forEach(els => els.forEach(el => el.classList.add('abcjs-highlight')));
+                }
+                // Update lyrics
+                if (lyricsEl && lyricWords.length > 0 && ev && ev.elements) {
+                    if (currentWordIndex < lyricWords.length) {
+                        const word = lyricWords[currentWordIndex] || '';
+                        lyricsEl.innerHTML = lyricWords.slice(Math.max(0, currentWordIndex - 2), currentWordIndex).map(w => `<span style="color:rgba(255,255,255,0.3)">${w} </span>`).join('') +
+                            `<span style="color:#fbbf24;font-size:1.3em">${word}</span>` +
+                            lyricWords.slice(currentWordIndex + 1, currentWordIndex + 4).map(w => `<span style="color:rgba(255,255,255,0.3)"> ${w}</span>`).join('');
+                        currentWordIndex++;
+                    }
                 }
             },
             onFinished: function() {
-                document.querySelectorAll(`#mtKaraokeSheet_${si} svg .highlight`).forEach(el => el.classList.remove('highlight'));
+                document.querySelectorAll(`#mtKaraokeSheetInner_${si} svg .abcjs-highlight`).forEach(el => el.classList.remove('abcjs-highlight'));
+                if (lyricsEl) lyricsEl.innerHTML = '<span style="color:rgba(255,255,255,0.4)">🎤 Finished!</span>';
+                currentWordIndex = 0;
             }
         };
+        
+        // iOS AudioContext fix
+        if (!window._deadceteraAudioCtx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            window._deadceteraAudioCtx = new AudioCtx();
+        }
+        if (window._deadceteraAudioCtx.state === 'suspended') {
+            await window._deadceteraAudioCtx.resume();
+        }
+        
+        // Set up synth controller
+        const synthControl = new ABCJS.synth.SynthController();
+        synthControl.load(`#${audioContainerId}`, cursorControl, {
+            displayLoop: true, displayRestart: true, displayPlay: true, displayProgress: true
+        });
         
         await synthControl.setTune(visualObj, false, { chordsOff: true });
         
         btn.textContent = '⏹ Stop Karaoke';
         btn.onclick = () => mtStopKaraoke(si);
-        
-        // Store for cleanup
         window._mtKaraokeSynth = synthControl;
         
-        // Add highlight CSS
-        if (!document.getElementById('mt-karaoke-css')) {
-            const style = document.createElement('style');
-            style.id = 'mt-karaoke-css';
-            style.textContent = `.highlight{fill:#667eea !important;} .abcjs-cursor{stroke:#ef4444;stroke-width:2;}`;
-            document.head.appendChild(style);
-        }
+        if (lyricsEl) lyricsEl.innerHTML = '<span style="color:rgba(255,255,255,0.4)">Press ▶ Play above to start karaoke</span>';
         
     } catch (e) {
         console.error('Karaoke error:', e);
