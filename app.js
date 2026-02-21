@@ -2692,7 +2692,8 @@ async function renderPracticeTracksSimplified(songTitle) {
         keys: '🎹',
         keyboards: '🎹',
         drums: '🥁',
-        vocals: '🎤'
+        vocals: '🎤',
+        whole_band: '🎶'
     };
     
     const instrumentNames = {
@@ -2704,7 +2705,8 @@ async function renderPracticeTracksSimplified(songTitle) {
         keys: 'Keys',
         keyboards: 'Keyboards',
         drums: 'Drums',
-        vocals: 'Vocals'
+        vocals: 'Vocals',
+        whole_band: 'Whole Band'
     };
     
     container.innerHTML = `
@@ -5391,13 +5393,26 @@ async function saveMasterFile(fileName, data) {
                 content +
                 close_delim;
             
-            await gapi.client.request({
+            const createResp = await gapi.client.request({
                 path: '/upload/drive/v3/files',
                 method: 'POST',
                 params: { uploadType: 'multipart' },
                 headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
                 body: multipartRequestBody
             });
+            
+            // Auto-share new files
+            try {
+                const newFileId = createResp.result?.id || JSON.parse(createResp.body)?.id;
+                if (newFileId) {
+                    await gapi.client.drive.permissions.create({
+                        fileId: newFileId,
+                        resource: { role: 'reader', type: 'anyone' }
+                    });
+                }
+            } catch (shareErr) {
+                console.warn('⚠️ Could not auto-share master file:', shareErr);
+            }
         }
         
         console.log(`Saved master file: ${fileName}`);
@@ -5694,7 +5709,7 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
                 content +
                 close_delim;
             
-            await gapi.client.request({
+            const createResponse = await gapi.client.request({
                 path: '/upload/drive/v3/files',
                 method: 'POST',
                 params: { uploadType: 'multipart' },
@@ -5705,6 +5720,19 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
             });
             
             console.log(`✅ Created ${dataType} for ${songTitle} in Drive`);
+            
+            // Auto-share new files so all band members can access them
+            try {
+                const newFileId = createResponse.result?.id || JSON.parse(createResponse.body)?.id;
+                if (newFileId) {
+                    await gapi.client.drive.permissions.create({
+                        fileId: newFileId,
+                        resource: { role: 'reader', type: 'anyone' }
+                    });
+                }
+            } catch (shareErr) {
+                console.warn('⚠️ Could not auto-share new file:', shareErr);
+            }
         }
         
         return true;
