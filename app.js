@@ -6042,6 +6042,7 @@ async function findFileInFolder(fileName, folderId) {
         const escapedFileName = fileName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const escapedFolderId = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         
+        // Try folder-scoped search first (works for owner)
         const response = await gapi.client.drive.files.list({
             q: `name='${escapedFileName}' and '${escapedFolderId}' in parents and trashed=false`,
             fields: 'files(id, name)',
@@ -6050,6 +6051,20 @@ async function findFileInFolder(fileName, folderId) {
         
         if (response.result.files && response.result.files.length > 0) {
             return response.result.files[0];
+        }
+        
+        // Fallback: search by name excluding files user owns (finds shared "anyone with link" files)
+        // Needed because 'in parents' doesn't work for folders not in user's Drive
+        const ownerEmail = currentUserEmail ? currentUserEmail.replace(/'/g, "\\'") : '';
+        const notOwnedClause = ownerEmail ? ` and not '${ownerEmail}' in owners` : '';
+        const fallback = await gapi.client.drive.files.list({
+            q: `name='${escapedFileName}' and trashed=false${notOwnedClause}`,
+            fields: 'files(id, name)',
+            spaces: 'drive'
+        });
+        
+        if (fallback.result.files && fallback.result.files.length > 0) {
+            return fallback.result.files[0];
         }
         
         return null;
