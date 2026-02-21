@@ -3,16 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deadcetera - Song Practice Workflow</title>
+    <title>Deadcetera</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Cache buster: v3.0.0-final-2026-02-15 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="app-shell.css">
 </head>
 <body>
     <!-- DEV BANNER -->
-    <div id="devBanner" style="background: linear-gradient(90deg, #f59e0b, #ef4444); color: white; text-align: center; padding: 8px 15px; font-weight: 700; font-size: 0.9em; position: sticky; top: 0; z-index: 9999; display: flex; justify-content: space-between; align-items: center;">
+    <div id="devBanner" style="background:linear-gradient(90deg,#f59e0b,#ef4444);color:white;text-align:center;padding:8px 15px;font-weight:700;font-size:0.85em;position:sticky;top:0;z-index:9999;display:flex;justify-content:space-between;align-items:center;">
         <span>🚧 DEV BUILD — Testing Only</span>
-        <span style="font-weight: 400; font-size: 0.85em;">app-dev.js | <a href="index.html" style="color: white; text-decoration: underline;">← Back to Production</a></span>
+        <span style="font-weight:400;font-size:0.85em;">app-dev.js | <a href="index.html" style="color:white;text-decoration:underline;">← Back to Production</a></span>
     </div>
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <span class="topbar-brand" onclick="showPage('songs')" style="cursor:pointer">Deadcetera</span>
+        </div>
+        <div class="topbar-right">
+            <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()">🔗 Connect</button>
+            <button class="topbar-btn" onclick="showPage('admin')">⚙️</button>
+        </div>
+    </div>
+
+    <!-- SLIDE-OUT MENU -->
+    <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
+    <nav class="slide-menu" id="slideMenu">
+        <div class="menu-brand">🎸 Deadcetera</div>
+        <div class="menu-section">
+            <div class="menu-section-title">Music</div>
+            <button class="menu-item active" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Song Library</button>
+            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
+            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">📅</span> Practice Plan</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <div class="menu-section-title">Band</div>
+            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
+            <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
+            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
+            <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <div class="menu-section-title">Tools</div>
+            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🎸</span> Guitar Tuner</button>
+            <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="main-content" id="mainContent">
+        <!-- PAGE: Songs (existing app content) -->
+        <div id="page-songs" class="app-page">
     <div class="container">
         <header>
             <!-- Logo placeholder - replace logo.png with your actual logo -->
@@ -20,13 +70,13 @@
             <h1>🎸 Deadcetera Practice Tool</h1>
             <p class="subtitle">Pick a song → Find the best version → Download → Practice your part</p>
             
-            <!-- Sign In for Band Collaboration -->
+            <!-- Google Drive Connection -->
             <div style="text-align: center; margin-top: 15px;">
                 <button id="googleDriveAuthBtn" onclick="handleGoogleDriveAuth()" 
                     style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.95em; cursor: pointer; font-weight: 600;">
-                    🔥 Sign In
+                    🔗 Connect Google Drive
                 </button>
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Sign in to track who's contributing!</p>
+                <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Connect to share recordings with your band!</p>
             </div>
         </header>
 
@@ -241,7 +291,6 @@
                     <option value="keys">🎹 Keys/Keyboards</option>
                     <option value="drums">🥁 Drums</option>
                     <option value="vocals">🎤 Vocals</option>
-                    <option value="whole_band">🎶 Whole Band</option>
                 </select>
             </div>
             
@@ -502,12 +551,26 @@
             </div>
         </div>
     </div>
+        </div><!-- end page-songs -->
 
-    <footer>
+        <!-- Dynamic pages rendered by JS -->
+        <div id="page-setlists" class="app-page hidden"></div>
+        <div id="page-practice" class="app-page hidden"></div>
+        <div id="page-calendar" class="app-page hidden"></div>
+        <div id="page-gigs" class="app-page hidden"></div>
+        <div id="page-venues" class="app-page hidden"></div>
+        <div id="page-finances" class="app-page hidden"></div>
+        <div id="page-tuner" class="app-page hidden"></div>
+        <div id="page-metronome" class="app-page hidden"></div>
+        <div id="page-admin" class="app-page hidden"></div>
+    </div>
+
+    <footer style="text-align:center;padding:20px;font-size:0.8em;">
         <p>Made for Deadcetera | Data from Archive.org • Stem separation by Moises.ai</p>
     </footer>
 
     <script src="data.js"></script>
+    <script src="audio-splitter.js"></script>
     <script src="app-dev.js"></script>
 </body>
 </html>
