@@ -7391,3 +7391,627 @@ async function mtSaveRecording(songTitle, si, _unused, fileSize) {
 })();
 
 console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
+
+// ============================================================================
+// NAV SHELL: Menu Toggle, Page Navigation
+// ============================================================================
+let currentPage = 'songs';
+
+function toggleMenu() {
+    const menu = document.getElementById('slideMenu');
+    const overlay = document.getElementById('menuOverlay');
+    const isOpen = menu.classList.contains('open');
+    menu.classList.toggle('open', !isOpen);
+    overlay.classList.toggle('open', !isOpen);
+}
+
+function showPage(page) {
+    document.getElementById('slideMenu')?.classList.remove('open');
+    document.getElementById('menuOverlay')?.classList.remove('open');
+    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+    const el = document.getElementById('page-' + page);
+    if (el) { el.classList.remove('hidden'); el.classList.add('fade-in'); }
+    document.querySelectorAll('.menu-item').forEach(m => { m.classList.toggle('active', m.dataset.page === page); });
+    currentPage = page;
+    if (el && !el.dataset.loaded && page !== 'songs') {
+        el.dataset.loaded = 'true';
+        const renderer = pageRenderers[page];
+        if (renderer) renderer(el);
+    }
+}
+
+const pageRenderers = {
+    setlists: renderSetlistsPage,
+    practice: renderPracticePage,
+    calendar: renderCalendarPage,
+    gigs: renderGigsPage,
+    venues: renderVenuesPage,
+    finances: renderFinancesPage,
+    tuner: renderTunerPage,
+    metronome: renderMetronomePage,
+    admin: (el) => { el.innerHTML = '<div id="adminPanelContainer"></div>'; showAdminPanel(); }
+};
+
+// ============================================================================
+// SETLIST BUILDER
+// ============================================================================
+function renderSetlistsPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
+    <div id="setlistsList"></div>`;
+    loadSetlists();
+}
+
+async function loadSetlists() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const container = document.getElementById('setlistsList');
+    if (!container) return;
+    if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
+    container.innerHTML = data.map((sl, i) => `<div class="app-card" style="cursor:pointer" onclick="editSetlist(${i})">
+        <h3>${sl.name||'Untitled'}</h3>
+        <div style="display:flex;gap:16px;font-size:0.8em;color:var(--text-muted)">
+            <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
+            <span>🎵 ${(sl.sets||[]).reduce((a,s)=>a+(s.songs||[]).length,0)} songs</span>
+        </div></div>`).join('');
+}
+
+function createNewSetlist() {
+    const container = document.getElementById('setlistsList');
+    if (!container) return;
+    window._slSets = [{ name: 'Set 1', songs: [] }];
+    container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
+        <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" placeholder="e.g. Buckhead Theatre 3/15"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date"></div>
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" placeholder="Venue name"></div>
+            <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
+        </div>
+        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="margin-bottom:4px"><div id="slSongResults0"></div></div></div></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
+            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Add Encore</button>
+            <button class="btn btn-success" onclick="slSaveSetlist()" style="margin-left:auto">💾 Save Setlist</button>
+        </div></div>`;
+}
+
+function slSearchSong(input, setIdx) {
+    const q = input.value.toLowerCase();
+    const results = document.getElementById('slSongResults' + setIdx);
+    if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
+    const matches = songs.filter(s => s.title.toLowerCase().includes(q)).slice(0, 8);
+    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" onclick="slAddSongToSet(${setIdx},'${s.title.replace(/'/g,"\\'")}')">
+        <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
+}
+function slAddSongToSet(setIdx, title) {
+    if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
+    window._slSets[setIdx].songs.push(title);
+    slRenderSetSongs(setIdx);
+    document.getElementById('slAddSong' + setIdx).value = '';
+    document.getElementById('slSongResults' + setIdx).innerHTML = '';
+}
+
+function slRenderSetSongs(setIdx) {
+    const el = document.getElementById('slSet' + setIdx + 'Songs');
+    if (!el) return;
+    const songs = window._slSets[setIdx]?.songs || [];
+    el.innerHTML = songs.map((s, i) => `<div class="list-item" style="padding:6px 10px;font-size:0.85em">
+        <span style="color:var(--text-dim);min-width:20px">${i + 1}.</span>
+        <span style="flex:1">${s}</span>
+        <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px">✕</button>
+    </div>`).join('');
+}
+
+function slRemoveSong(setIdx, songIdx) {
+    window._slSets[setIdx]?.songs.splice(songIdx, 1);
+    slRenderSetSongs(setIdx);
+}
+
+let _slSetCount = 1;
+function slAddSet(type) {
+    const name = type === 'encore' ? 'Encore' : ('Set ' + (++_slSetCount));
+    window._slSets.push({ name, songs: [] });
+    const idx = window._slSets.length - 1;
+    const setsEl = document.getElementById('slSets');
+    setsEl.insertAdjacentHTML('beforeend', `
+        <div class="app-card" style="background:rgba(255,255,255,0.02)">
+            <h3 style="color:${type === 'encore' ? 'var(--yellow)' : 'var(--accent-light)'}">${name}</h3>
+            <div id="slSet${idx}Songs"></div>
+            <div style="margin-top:8px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="margin-bottom:4px"><div id="slSongResults${idx}"></div></div>
+        </div>`);
+}
+
+async function slSaveSetlist() {
+    const sl = {
+        name: document.getElementById('slName')?.value || 'Untitled',
+        date: document.getElementById('slDate')?.value || '',
+        venue: document.getElementById('slVenue')?.value || '',
+        notes: document.getElementById('slNotes')?.value || '',
+        sets: window._slSets || [],
+        created: new Date().toISOString()
+    };
+    const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    existing.push(sl);
+    await saveBandDataToDrive('_band', 'setlists', existing);
+    alert('✅ Setlist saved!');
+    loadSetlists();
+}
+
+function editSetlist(idx) {
+    // TODO: Full edit mode
+    alert('Editing coming soon! For now, create a new setlist.');
+}
+
+// ============================================================================
+// PRACTICE PLAN
+// ============================================================================
+function renderPracticePage(el) {
+    const thisWeek = songs.filter(s => s.status === 'this_week' || (s.bandData && s.bandData.status === 'this_week'));
+    const needsPolish = songs.filter(s => s.status === 'needs_polish' || (s.bandData && s.bandData.status === 'needs_polish'));
+    
+    el.innerHTML = `
+    <div class="page-header"><h1>📅 Practice Plan</h1><p>Weekly focus and rehearsal prep</p></div>
+    <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-value" style="color:var(--red)">${thisWeek.length}</div><div class="stat-label">This Week</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--yellow)">${needsPolish.length}</div><div class="stat-label">Needs Polish</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--green)">${songs.filter(s=>(s.bandData?.status||s.status)==='gig_ready').length}</div><div class="stat-label">Gig Ready</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${songs.filter(s=>(s.bandData?.status||s.status)==='on_deck').length}</div><div class="stat-label">On Deck</div></div>
+    </div>
+    
+    <div class="app-card">
+        <h3>🎯 This Week's Focus</h3>
+        ${thisWeek.length > 0 ? thisWeek.map(s => `<div class="list-item" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
+            <span style="color:var(--text-dim);font-size:0.8em">${s.band||''}</span>
+            <span style="flex:1">${s.title}</span>
+            <span style="color:var(--red);font-size:0.75em;font-weight:600">🎯 This Week</span>
+        </div>`).join('') : '<div style="text-align:center;padding:20px;color:var(--text-dim)">No songs marked as "This Week" yet. Go to a song and set its status.</div>'}
+    </div>
+    
+    <div class="app-card">
+        <h3>⚠️ Needs Polish</h3>
+        ${needsPolish.length > 0 ? needsPolish.map(s => `<div class="list-item" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
+            <span style="color:var(--text-dim);font-size:0.8em">${s.band||''}</span>
+            <span style="flex:1">${s.title}</span>
+        </div>`).join('') : '<div style="text-align:center;padding:20px;color:var(--text-dim)">No songs need polish right now.</div>'}
+    </div>
+    
+    <div class="app-card">
+        <h3>📝 Rehearsal Agenda</h3>
+        <div id="rehearsalAgenda"></div>
+        <textarea class="app-textarea" id="rehearsalAgendaText" placeholder="Type this week's rehearsal plan... e.g.&#10;1. Warm up - Scarlet Begonias&#10;2. Work harmony parts on Friend of the Devil&#10;3. Full run-through of Set 1 for Saturday"></textarea>
+        <button class="btn btn-primary" style="margin-top:8px" onclick="saveRehearsalAgenda()">💾 Save Agenda</button>
+    </div>`;
+}
+
+async function saveRehearsalAgenda() {
+    const text = document.getElementById('rehearsalAgendaText')?.value;
+    if (!text) return;
+    await saveBandDataToDrive('_band', 'rehearsal_agenda', { text, date: new Date().toISOString() });
+    alert('✅ Agenda saved!');
+}
+
+// ============================================================================
+// CALENDAR
+// ============================================================================
+function renderCalendarPage(el) {
+    const now = new Date();
+    const year = now.getFullYear(), month = now.getMonth();
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = now.getDate();
+    
+    let calHTML = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+    dayNames.forEach(d => { calHTML += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:var(--text-dim);text-align:center;padding:6px 0">${d}</div>`; });
+    for (let i = 0; i < firstDay; i++) calHTML += '<div style="aspect-ratio:1;padding:4px;"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+        const isToday = d === today;
+        calHTML += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:1px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
+            <span style="${isToday?'color:var(--accent);font-weight:700;':'color:var(--text-muted);'}">${d}</span>
+        </div>`;
+    }
+    calHTML += '</div>';
+
+    el.innerHTML = `
+    <div class="page-header"><h1>📆 Calendar</h1><p>${monthNames[month]} ${year}</p></div>
+    <div class="app-card">${calHTML}</div>
+    <div class="app-card">
+        <h3>📌 Upcoming Events</h3>
+        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">No events yet. Click a date to add one.</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>`;
+}
+
+function calDayClick(y, m, d) { calAddEvent(new Date(y, m, d).toISOString().split('T')[0]); }
+function calAddEvent(date) {
+    const el = document.getElementById('calendarEvents');
+    if (!el) return;
+    el.innerHTML = `<div class="form-grid">
+        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||''}"></div>
+        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType"><option value="rehearsal">🎸 Rehearsal</option><option value="gig">🎤 Gig</option><option value="meeting">👥 Meeting</option><option value="other">📌 Other</option></select></div>
+        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's"></div>
+        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time"></div>
+    </div>
+    <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="calNotes" placeholder="Optional details"></textarea></div>
+    <button class="btn btn-success" onclick="calSaveEvent()">💾 Save Event</button>`;
+}
+
+async function calSaveEvent() {
+    const ev = {
+        date: document.getElementById('calDate')?.value,
+        type: document.getElementById('calType')?.value,
+        title: document.getElementById('calTitle')?.value,
+        time: document.getElementById('calTime')?.value,
+        notes: document.getElementById('calNotes')?.value,
+        created: new Date().toISOString()
+    };
+    if (!ev.date || !ev.title) { alert('Date and title required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    existing.push(ev);
+    await saveBandDataToDrive('_band', 'calendar_events', existing);
+    alert('✅ Event saved!');
+}
+
+// ============================================================================
+// GIGS
+// ============================================================================
+function renderGigsPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
+    <button class="btn btn-primary" onclick="addGig()" style="margin-bottom:16px">+ Add Gig</button>
+    <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
+    loadGigs();
+}
+
+async function loadGigs() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const el = document.getElementById('gigsList');
+    if (!el || data.length === 0) return;
+    data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    el.innerHTML = data.map((g, i) => `<div class="app-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div><h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
+                <div style="font-size:0.85em;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap">
+                    <span>📅 ${g.date || 'TBD'}</span>
+                    <span>⏰ ${g.time || ''}</span>
+                    <span>💰 ${g.pay || 'TBD'}</span>
+                    <span>🔊 ${g.soundPerson || 'TBD'}</span>
+                </div></div>
+            <span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+        </div>
+        ${g.notes ? `<div style="margin-top:8px;font-size:0.85em;color:var(--text-muted)">${g.notes}</div>` : ''}
+        ${g.setlistName ? `<div style="margin-top:6px;font-size:0.8em"><span style="color:var(--accent-light)">📋 ${g.setlistName}</span></div>` : ''}
+    </div>`).join('');
+}
+
+function addGig() {
+    const el = document.getElementById('gigsList');
+    el.innerHTML = `<div class="app-card">
+        <h3>Add New Gig</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="gigVenue" placeholder="Venue name"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date"></div>
+            <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="gigTime" placeholder="e.g. 9 PM"></div>
+            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" placeholder="Who's doing sound?"></div>
+            <div class="form-row"><label class="form-label">Contact</label><input class="app-input" id="gigContact" placeholder="Venue contact name"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Load-in time, parking, set length, etc."></textarea></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveGig()">💾 Save</button><button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>
+    </div>` + el.innerHTML;
+}
+
+async function saveGig() {
+    const gig = { venue: document.getElementById('gigVenue')?.value, date: document.getElementById('gigDate')?.value,
+        time: document.getElementById('gigTime')?.value, pay: document.getElementById('gigPay')?.value,
+        soundPerson: document.getElementById('gigSound')?.value, contact: document.getElementById('gigContact')?.value,
+        notes: document.getElementById('gigNotes')?.value, created: new Date().toISOString() };
+    if (!gig.venue) { alert('Venue required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    existing.push(gig);
+    await saveBandDataToDrive('_band', 'gigs', existing);
+    alert('✅ Gig saved!');
+    loadGigs();
+}
+
+// ============================================================================
+// VENUES & CONTACTS
+// ============================================================================
+function renderVenuesPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🏛️ Venues & Contacts</h1><p>Venue info, booking contacts, sound engineers</p></div>
+    <button class="btn btn-primary" onclick="addVenue()" style="margin-bottom:16px">+ Add Venue</button>
+    <div id="venuesList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No venues added yet.</div></div>`;
+    loadVenues();
+}
+
+async function loadVenues() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const el = document.getElementById('venuesList');
+    if (!el || data.length === 0) return;
+    el.innerHTML = data.map((v, i) => `<div class="app-card">
+        <h3 style="margin-bottom:6px">${v.name || 'Unnamed'}</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:0.82em;color:var(--text-muted)">
+            ${v.address?`<span>📍 ${v.address}</span>`:''}
+            ${v.phone?`<span>📞 ${v.phone}</span>`:''}
+            ${v.email?`<span>📧 ${v.email}</span>`:''}
+            ${v.capacity?`<span>👥 ${v.capacity}</span>`:''}
+            ${v.contactName?`<span>🤝 ${v.contactName}</span>`:''}
+            ${v.owner?`<span>👤 Owned by: ${bandMembers[v.owner]?.name||v.owner}</span>`:''}
+            ${v.soundPerson?`<span>🔊 Sound: ${v.soundPerson}</span>`:''}
+            ${v.soundPhone?`<span>📱 ${v.soundPhone}</span>`:''}
+        </div>
+        ${v.notes?`<div style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">${v.notes}</div>`:''}
+        ${v.pay?`<div style="margin-top:4px;font-size:0.82em;color:var(--green)">💰 ${v.pay}</div>`:''}
+    </div>`).join('');
+}
+
+function addVenue() {
+    const el = document.getElementById('venuesList');
+    el.innerHTML = `<div class="app-card">
+        <h3>Add Venue</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Venue Name</label><input class="app-input" id="vName"></div>
+            <div class="form-row"><label class="form-label">Address</label><input class="app-input" id="vAddress"></div>
+            <div class="form-row"><label class="form-label">Phone</label><input class="app-input" id="vPhone"></div>
+            <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="vEmail"></div>
+            <div class="form-row"><label class="form-label">Capacity</label><input class="app-input" id="vCapacity" placeholder="e.g. 200"></div>
+            <div class="form-row"><label class="form-label">Booking Contact</label><input class="app-input" id="vContact"></div>
+            <div class="form-row"><label class="form-label">Band Contact Owner</label><select class="app-select" id="vOwner"><option value="">Select...</option>${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join('')}</select></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="vSoundPerson"></div>
+            <div class="form-row"><label class="form-label">Sound Phone</label><input class="app-input" id="vSoundPhone"></div>
+            <div class="form-row"><label class="form-label">Typical Pay</label><input class="app-input" id="vPay" placeholder="e.g. $500/night"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes" placeholder="Load-in, parking, stage size, PA info..."></textarea></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveVenue()">💾 Save</button><button class="btn btn-ghost" onclick="loadVenues()">Cancel</button></div>
+    </div>` + el.innerHTML;
+}
+
+async function saveVenue() {
+    const v = {};
+    ['Name','Address','Phone','Email','Capacity','Contact','Owner','SoundPerson','SoundPhone','Pay','Notes'].forEach(f => {
+        const id = 'v' + f, el = document.getElementById(id);
+        v[f.charAt(0).toLowerCase() + f.slice(1)] = el?.value || '';
+    });
+    if (!v.name) { alert('Venue name required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    existing.push(v);
+    await saveBandDataToDrive('_band', 'venues', existing);
+    alert('✅ Venue saved!');
+    loadVenues();
+}
+
+// ============================================================================
+// FINANCES
+// ============================================================================
+function renderFinancesPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>💰 Finances</h1><p>Income, expenses, and receipts</p></div>
+    <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-value finance-income" id="finTotalIncome">$0</div><div class="stat-label">Total Income</div></div>
+        <div class="stat-card"><div class="stat-value finance-expense" id="finTotalExpenses">$0</div><div class="stat-label">Total Expenses</div></div>
+        <div class="stat-card"><div class="stat-value" id="finBalance" style="color:var(--accent)">$0</div><div class="stat-label">Balance</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="addTransaction()" style="margin-bottom:12px">+ Add Transaction</button>
+    <div class="app-card"><h3>Transactions</h3><div id="finTransactions"><div style="text-align:center;padding:20px;color:var(--text-dim)">No transactions yet.</div></div></div>`;
+    loadFinances();
+}
+
+async function loadFinances() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'finances') || []);
+    const el = document.getElementById('finTransactions');
+    if (!el) return;
+    let totalIn = 0, totalOut = 0;
+    data.forEach(t => { if (t.type === 'income') totalIn += parseFloat(t.amount) || 0; else totalOut += parseFloat(t.amount) || 0; });
+    document.getElementById('finTotalIncome').textContent = '$' + totalIn.toFixed(2);
+    document.getElementById('finTotalExpenses').textContent = '$' + totalOut.toFixed(2);
+    const bal = totalIn - totalOut;
+    const balEl = document.getElementById('finBalance');
+    balEl.textContent = (bal >= 0 ? '$' : '-$') + Math.abs(bal).toFixed(2);
+    balEl.style.color = bal >= 0 ? 'var(--green)' : 'var(--red)';
+    
+    if (data.length === 0) return;
+    data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    el.innerHTML = `<div style="display:grid;grid-template-columns:90px 1fr 80px 60px;gap:6px;padding:6px 10px;font-size:0.7em;color:var(--text-dim);font-weight:600;text-transform:uppercase">
+        <span>Date</span><span>Description</span><span>Amount</span><span>Type</span></div>` +
+        data.map(t => `<div style="display:grid;grid-template-columns:90px 1fr 80px 60px;gap:6px;padding:8px 10px;font-size:0.85em;border-bottom:1px solid var(--border);align-items:center">
+            <span style="color:var(--text-dim)">${t.date || ''}</span>
+            <span>${t.description || ''}</span>
+            <span style="color:${t.type==='income'?'var(--green)':'var(--red)'};font-weight:600">${t.type==='income'?'+':'-'}$${parseFloat(t.amount||0).toFixed(2)}</span>
+            <span style="font-size:0.75em;color:var(--text-dim)">${t.category || ''}</span>
+        </div>`).join('');
+}
+
+function addTransaction() {
+    const el = document.getElementById('finTransactions');
+    el.innerHTML = `<div style="margin-bottom:16px;padding:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px">
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="finType"><option value="income">💵 Income</option><option value="expense">💸 Expense</option></select></div>
+            <div class="form-row"><label class="form-label">Amount ($)</label><input class="app-input" id="finAmount" type="number" step="0.01" placeholder="0.00"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="finDate" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="form-row"><label class="form-label">Category</label><select class="app-select" id="finCategory"><option value="gig_pay">Gig Pay</option><option value="merch">Merch</option><option value="tips">Tips</option><option value="equipment">Equipment</option><option value="rehearsal">Rehearsal Space</option><option value="promo">Promotion</option><option value="travel">Travel</option><option value="other">Other</option></select></div>
+        </div>
+        <div class="form-row"><label class="form-label">Description</label><input class="app-input" id="finDesc" placeholder="e.g. Buckhead Theatre gig pay"></div>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" onclick="saveTransaction()">💾 Save</button><button class="btn btn-ghost" onclick="loadFinances()">Cancel</button></div>
+    </div>` + el.innerHTML;
+}
+
+async function saveTransaction() {
+    const t = { type: document.getElementById('finType')?.value, amount: document.getElementById('finAmount')?.value,
+        date: document.getElementById('finDate')?.value, category: document.getElementById('finCategory')?.value,
+        description: document.getElementById('finDesc')?.value, created: new Date().toISOString() };
+    if (!t.amount) { alert('Amount required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'finances') || []);
+    existing.push(t);
+    await saveBandDataToDrive('_band', 'finances', existing);
+    alert('✅ Transaction saved!');
+    loadFinances();
+}
+
+// ============================================================================
+// GUITAR TUNER
+// ============================================================================
+function renderTunerPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🎸 Guitar Tuner</h1><p>Chromatic tuner using your microphone</p></div>
+    <div class="app-card" style="text-align:center;padding:30px">
+        <div id="tunerNote" style="font-size:4em;font-weight:800;font-family:'Inter',monospace;line-height:1;margin-bottom:6px">—</div>
+        <div id="tunerOctave" style="font-size:1.2em;color:var(--text-dim);margin-bottom:16px">—</div>
+        <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:4px;position:relative;overflow:hidden;margin:0 auto;max-width:400px">
+            <div style="position:absolute;top:0;left:50%;width:2px;height:100%;background:rgba(255,255,255,0.15)"></div>
+            <div id="tunerNeedle" style="position:absolute;top:0;width:4px;height:100%;background:var(--green);border-radius:2px;left:50%;transition:left 0.1s"></div>
+        </div>
+        <div id="tunerCents" style="font-size:0.9em;color:var(--text-dim);margin-top:10px">0¢</div>
+        <div id="tunerFreq" style="font-size:0.75em;color:var(--text-dim);margin-top:4px">— Hz</div>
+        <div style="margin-top:20px;display:flex;gap:10px;justify-content:center">
+            <button class="btn btn-primary" id="tunerStartBtn" onclick="tunerToggle()">🎤 Start Tuner</button>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+            ${['E2|82.41','A2|110.00','D3|146.83','G3|196.00','B3|246.94','E4|329.63'].map(s => {
+                const [n,f] = s.split('|');
+                return `<button class="btn btn-ghost btn-sm" onclick="tunerPlayRef(${f})" title="${f} Hz">${n}</button>`;
+            }).join('')}
+        </div>
+        <div style="font-size:0.7em;color:var(--text-dim);margin-top:8px">Click a string to hear its reference tone</div>
+    </div>`;
+}
+
+let _tunerRunning = false, _tunerAnimFrame = null, _tunerStream = null;
+function tunerToggle() {
+    if (_tunerRunning) { tunerStop(); return; }
+    tunerStart();
+}
+
+async function tunerStart() {
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+        _tunerStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = mtAudioContext.createMediaStreamSource(_tunerStream);
+        const analyser = mtAudioContext.createAnalyser();
+        analyser.fftSize = 4096;
+        source.connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        _tunerRunning = true;
+        document.getElementById('tunerStartBtn').textContent = '⏹ Stop';
+        document.getElementById('tunerStartBtn').classList.remove('btn-primary');
+        document.getElementById('tunerStartBtn').classList.add('btn-danger');
+        
+        function update() {
+            analyser.getFloatTimeDomainData(buf);
+            const freq = mtAutoCorrelate(buf, mtAudioContext.sampleRate);
+            if (freq > 0) {
+                const note = mtFreqToNote(freq);
+                if (note) {
+                    document.getElementById('tunerNote').textContent = note.name;
+                    document.getElementById('tunerNote').style.color = Math.abs(note.cents) < 5 ? 'var(--green)' : Math.abs(note.cents) < 15 ? 'var(--yellow)' : 'var(--red)';
+                    document.getElementById('tunerOctave').textContent = 'Octave ' + note.octave;
+                    document.getElementById('tunerCents').textContent = (note.cents >= 0 ? '+' : '') + note.cents + '¢';
+                    document.getElementById('tunerNeedle').style.left = (50 + note.cents * 0.4) + '%';
+                    document.getElementById('tunerFreq').textContent = freq.toFixed(1) + ' Hz';
+                }
+            } else {
+                document.getElementById('tunerNote').textContent = '—';
+                document.getElementById('tunerNote').style.color = 'var(--text)';
+                document.getElementById('tunerCents').textContent = '—';
+                document.getElementById('tunerNeedle').style.left = '50%';
+            }
+            if (_tunerRunning) _tunerAnimFrame = requestAnimationFrame(update);
+        }
+        update();
+    } catch (e) { alert('Microphone access required: ' + e.message); }
+}
+
+function tunerStop() {
+    _tunerRunning = false;
+    if (_tunerAnimFrame) cancelAnimationFrame(_tunerAnimFrame);
+    if (_tunerStream) _tunerStream.getTracks().forEach(t => t.stop());
+    document.getElementById('tunerStartBtn').textContent = '🎤 Start Tuner';
+    document.getElementById('tunerStartBtn').classList.add('btn-primary');
+    document.getElementById('tunerStartBtn').classList.remove('btn-danger');
+}
+
+function tunerPlayRef(freq) {
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const o = mtAudioContext.createOscillator(), g = mtAudioContext.createGain();
+    o.connect(g); g.connect(mtAudioContext.destination);
+    o.frequency.value = freq; o.type = 'sine';
+    g.gain.setValueAtTime(0.3, mtAudioContext.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 2);
+    o.start(); o.stop(mtAudioContext.currentTime + 2);
+}
+
+// ============================================================================
+// STANDALONE METRONOME
+// ============================================================================
+function renderMetronomePage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🥁 Metronome</h1><p>Keep time for practice</p></div>
+    <div class="app-card" style="text-align:center;padding:30px">
+        <div id="metBPMDisplay" style="font-size:4em;font-weight:800;font-family:'Inter',monospace;line-height:1">120</div>
+        <div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">BPM</div>
+        <input type="range" id="metBPMSlider" min="40" max="240" value="120" style="width:100%;max-width:400px;accent-color:var(--accent)" oninput="metUpdateBPM(this.value)">
+        <div style="display:flex;gap:6px;justify-content:center;margin:16px 0">
+            ${[60,80,100,120,140,160,180].map(b => `<button class="btn btn-ghost btn-sm" onclick="metUpdateBPM(${b})">${b}</button>`).join('')}
+        </div>
+        <div id="metBeats" style="display:flex;gap:8px;justify-content:center;margin:16px 0">${[0,1,2,3].map(i => `<div id="metBeat${i}" style="width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.08);transition:all 0.05s"></div>`).join('')}</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;align-items:center">
+            <label class="form-label" style="margin:0">Time Sig:</label>
+            <select class="app-select" id="metTimeSig" onchange="metUpdateTimeSig()" style="width:70px">${['4/4','3/4','6/8','2/4','5/4','7/8'].map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+        </div>
+        <button class="btn btn-primary" id="metStartBtn" onclick="metToggle()" style="margin-top:20px;padding:12px 32px;font-size:1.1em">▶ Start</button>
+    </div>`;
+}
+
+let _metInterval = null, _metBeat = 0, _metBeatsPerBar = 4;
+function metUpdateBPM(val) {
+    document.getElementById('metBPMDisplay').textContent = val;
+    document.getElementById('metBPMSlider').value = val;
+    if (_metInterval) { clearInterval(_metInterval); _metInterval = null; metToggle(); }
+}
+function metUpdateTimeSig() {
+    const ts = document.getElementById('metTimeSig')?.value || '4/4';
+    _metBeatsPerBar = parseInt(ts.split('/')[0]);
+    const container = document.getElementById('metBeats');
+    container.innerHTML = Array.from({length: _metBeatsPerBar}, (_, i) => `<div id="metBeat${i}" style="width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.08);transition:all 0.05s"></div>`).join('');
+    if (_metInterval) { clearInterval(_metInterval); _metInterval = null; metToggle(); }
+}
+function metToggle() {
+    if (_metInterval) {
+        clearInterval(_metInterval); _metInterval = null;
+        document.getElementById('metStartBtn').textContent = '▶ Start';
+        document.getElementById('metStartBtn').classList.remove('btn-danger');
+        document.getElementById('metStartBtn').classList.add('btn-primary');
+        return;
+    }
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    mtAudioContext.resume();
+    const bpm = parseInt(document.getElementById('metBPMSlider')?.value) || 120;
+    _metBeat = 0;
+    document.getElementById('metStartBtn').textContent = '⏹ Stop';
+    document.getElementById('metStartBtn').classList.add('btn-danger');
+    document.getElementById('metStartBtn').classList.remove('btn-primary');
+    
+    function tick() {
+        const isDown = _metBeat % _metBeatsPerBar === 0;
+        const o = mtAudioContext.createOscillator(), g = mtAudioContext.createGain();
+        o.connect(g); g.connect(mtAudioContext.destination);
+        o.frequency.value = isDown ? 1000 : 700;
+        g.gain.setValueAtTime(0.4, mtAudioContext.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 0.08);
+        o.start(); o.stop(mtAudioContext.currentTime + 0.08);
+        for (let i = 0; i < _metBeatsPerBar; i++) {
+            const el = document.getElementById('metBeat' + i);
+            if (el) {
+                const active = i === _metBeat % _metBeatsPerBar;
+                el.style.background = active ? (isDown ? 'var(--red)' : 'var(--accent)') : 'rgba(255,255,255,0.08)';
+                el.style.transform = active ? 'scale(1.4)' : 'scale(1)';
+            }
+        }
+        _metBeat++;
+    }
+    tick();
+    _metInterval = setInterval(tick, 60000 / bpm);
+}
+
+console.log('🎸 Deadcetera Band App modules loaded');
