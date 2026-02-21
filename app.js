@@ -2426,7 +2426,7 @@ console.log('📝 Gig notes editor loaded');
 async function savePracticeTrack(songTitle, track) {
     const tracks = await loadPracticeTracksFromDrive(songTitle);
     tracks.push(track);
-    await savePracticeTracksToDrive(songTitle, tracks);
+    await savePracticeTracks(songTitle, tracks);
 }
 
 async function loadPracticeTracksFromStorage(songTitle) {
@@ -2436,7 +2436,7 @@ async function loadPracticeTracksFromStorage(songTitle) {
 async function deletePracticeTrack(songTitle, index) {
     const tracks = await loadPracticeTracksFromDrive(songTitle);
     tracks.splice(index, 1);
-    await savePracticeTracksToDrive(songTitle, tracks);
+    await savePracticeTracks(songTitle, tracks);
     
     // Refresh display
     const bandData = bandKnowledgeBase[songTitle];
@@ -2744,7 +2744,7 @@ async function editPracticeTrack(songTitle, index) {
         notes: newNotes.trim()
     };
     
-    await savePracticeTracksToDrive(songTitle, tracks);
+    await savePracticeTracks(songTitle, tracks);
     await renderPracticeTracksSimplified(songTitle);
 }
 // ============================================================================
@@ -3114,9 +3114,9 @@ async function addRehearsalNote() {
     };
     
     // Save to Google Drive (shared with all band members)
-    const notes = await loadRehearsalNotesFromDrive(selectedSong.title);
+    const notes = await loadRehearsalNotes(selectedSong.title);
     notes.push(note);
-    await saveRehearsalNotesToDrive(selectedSong.title, notes);
+    await saveRehearsalNotes(selectedSong.title, notes);
     
     // Show success
     alert(`✅ Note added by ${bandMembers[author].name} - saved to Google Drive!`);
@@ -3135,7 +3135,7 @@ async function renderRehearsalNotesWithStorage(songTitle) {
     
     // Get notes from both sources
     const dataJsNotes = (bandData && bandData.rehearsalNotes) || [];
-    const storedNotes = await loadRehearsalNotesFromDrive(songTitle);
+    const storedNotes = await loadRehearsalNotes(songTitle);
     
     // Combine and sort by date (newest first)
     const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) => 
@@ -3811,12 +3811,15 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     if (!bandData || !bandData.harmonies) {
         // Check if harmony data exists on Drive (may not be in data.js)
         const driveHarmonies = await loadBandDataFromDrive(songTitle, 'harmonies_data');
-        if (driveHarmonies && driveHarmonies.sections && driveHarmonies.sections.length > 0) {
-            // Found harmony data on Drive - use it
+        if (driveHarmonies && driveHarmonies.sections && toArray(driveHarmonies.sections).length > 0) {
+            // Normalize sections from Firebase
+            driveHarmonies.sections = toArray(driveHarmonies.sections);
+            driveHarmonies.sections.forEach(s => { if (s.parts) s.parts = toArray(s.parts); });
+            // Found harmony data - use it
             if (!bandData) bandData = {};
             bandData.harmonies = driveHarmonies;
             bandKnowledgeBase[songTitle] = bandData;
-            console.log(`🎤 Loaded ${driveHarmonies.sections.length} harmony sections from Drive for "${songTitle}"`);
+            console.log(`🎤 Loaded ${driveHarmonies.sections.length} harmony sections from Firebase for "${songTitle}"`);
         } else {
             container.innerHTML = `
                 <div style="padding: 20px; text-align: center;">
@@ -3833,15 +3836,22 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     
     console.log(`🎤 Rendering ${bandData.harmonies.sections?.length || 0} sections for "${songTitle}"`);
     
-    const sections = bandData.harmonies.sections;
+    // Firebase may convert arrays to objects with numeric keys - normalize
+    let sections = bandData.harmonies.sections;
+    if (sections && !Array.isArray(sections)) {
+        sections = Object.values(sections);
+        bandData.harmonies.sections = sections;
+    }
     
     if (!sections || sections.length === 0) {
-        // Check Drive for sections that might not be in data.js
+        // Check Firebase for sections that might not be in data.js
         const driveHarmonies = await loadBandDataFromDrive(songTitle, 'harmonies_data');
-        if (driveHarmonies && driveHarmonies.sections && driveHarmonies.sections.length > 0) {
+        if (driveHarmonies && driveHarmonies.sections && toArray(driveHarmonies.sections).length > 0) {
+            driveHarmonies.sections = toArray(driveHarmonies.sections);
+            driveHarmonies.sections.forEach(s => { if (s.parts) s.parts = toArray(s.parts); });
             bandData.harmonies = driveHarmonies;
             bandKnowledgeBase[songTitle] = bandData;
-            // Continue rendering with Drive data (don't return)
+            // Continue rendering with Firebase data (don't return)
         } else {
             container.innerHTML = `
                 <div style="padding: 20px; text-align: center;">
@@ -3856,8 +3866,9 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         }
     }
     
-    // Use the latest sections (may have been updated from Drive)
-    const finalSections = bandData.harmonies.sections;
+    // Use the latest sections (may have been updated from Firebase)
+    let finalSections = toArray(bandData.harmonies.sections);
+    finalSections.forEach(s => { if (s && s.parts) s.parts = toArray(s.parts); });
     
     const sectionsHTML = await Promise.all(finalSections.map(async (section, sectionIndex) => {
         console.log(`🎤 Section ${sectionIndex} keys:`, Object.keys(section), 'lyric:', section.lyric, 'name:', section.name);
@@ -3878,7 +3889,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
             'padding: 6px 12px; font-size: 0.85em;';
         
         // Render parts with metadata
-        const partsHTML = await renderHarmonyPartsWithMetadata(songTitle, sectionIndex, section.parts);
+        const partsHTML = await renderHarmonyPartsWithMetadata(songTitle, sectionIndex, section.parts || []);
         
         return `
             <div class="harmony-card" style="background: #fff5f5; border: 2px solid #fecaca; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
@@ -3975,6 +3986,9 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
 async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
     // Load metadata from Drive
     const metadata = await loadHarmonyMetadataFromDrive(songTitle, sectionIndex) || {};
+    
+    // Firebase converts empty arrays to null - handle that
+    if (!parts || !Array.isArray(parts)) parts = [];
     
     // Sort parts by order (highest to lowest pitch)
     const sortedParts = [...parts].sort((a, b) => {
@@ -4772,6 +4786,14 @@ async function handleGoogleDriveAuth() {
 function sanitizeFirebasePath(str) {
     // Firebase paths cannot contain . # $ [ ] /
     return str.replace(/[.#$\[\]\/]/g, '_');
+}
+
+// Firebase converts arrays to objects with numeric keys - this normalizes them back
+function toArray(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'object') return Object.values(val);
+    return [];
 }
 
 function songPath(songTitle, dataType) {
