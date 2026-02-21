@@ -3737,7 +3737,7 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                                 <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                 <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
                                     ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
-                                    ${snippet.isRecording ? ' - ? Recorded in browser' : ''}
+                                    ${snippet.isRecording ? ' - 🎙️ Recorded in browser' : ''}
                                 </p>
                             </div>
                         `).join('')}
@@ -3950,7 +3950,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                                     <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                     <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
                                         ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
-                                        ${snippet.isRecording ? ' - ? Recorded' : ''}
+                                        ${snippet.isRecording ? ' - 🎙️ Recorded' : ''}
                                     </p>
                                 </div>
                             `).join('')}
@@ -6263,629 +6263,921 @@ function showFolderSharingInstructions(folderId) {
 
 console.log('🔥 Firebase configuration loaded - no sharing needed!');
 // ============================================================================
-// MULTI-TRACK HARMONY RECORDER v2
-// Features: Latency adjustment, metronome, solo/mute, looping, real-time mixer
+// MULTI-TRACK HARMONY STUDIO v3
 // ============================================================================
 
-let mtRecorder = null;
-let mtAudioChunks = [];
-let mtRecordingStream = null;
-let mtMetronomeInterval = null;
-let mtAudioContext = null;
-let mtIsRecording = false;
-let mtPlaybackAudios = [];    // {audio, gainNode} objects for mixing
-let mtIsPlaying = false;
-let mtLooping = false;
-let mtCurrentSectionIndex = null;
-let mtCurrentSongTitle = null;
-let mtLatencyMs = 0;          // User-adjustable latency compensation
+let mtRecorder=null, mtAudioChunks=[], mtRecordingStream=null, mtMetronomeInterval=null;
+let mtAudioContext=null, mtIsRecording=false, mtPlaybackAudios=[], mtIsPlaying=false;
+let mtLooping=false, mtCurrentSectionIndex=null, mtCurrentSongTitle=null, mtLatencyMs=0;
+let mtPitchAnimFrame=null, mtCurrentEffect='none';
 
+// --- HELP TOOLTIPS ---
+const mtTips = {
+    metronome:'Set tempo (BPM) and click Start to hear a click track while recording.',
+    tracks:'Recorded harmony parts. Solo(S) hears one track only, Mute(M) silences it.',
+    loop:'Mix replays automatically when it ends.',
+    latency:'Audio delay compensation. Auto-Detect first, then Calibrate for accuracy.',
+    calibrate:'Plays a click through speakers, times when mic hears it. Turn up volume, stay quiet.',
+    record:'Records your mic. Checked tracks play as backing so you can sing along.',
+    countIn:'4 clicks at current BPM before recording starts.',
+    clickDuring:'Metronome clicks while recording to keep time.',
+    pitch:'Shows what note you\'re singing in real-time vs the target note.',
+    karaoke:'Sheet music with moving cursor and highlighted lyrics while you record.',
+    effects:'Audio effect presets applied during playback.',
+    export:'Combine all checked tracks into one downloadable audio file.',
+    nudge:'After recording, shift your new track ±ms to align with others.',
+    pan:'Stereo position: left, center, or right. Separates parts in headphones.',
+    playMix:'Play all checked tracks at their volumes and pan positions.'
+};
+function mtHelp(k){return `<span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('${k}')" title="${(mtTips[k]||'').replace(/'/g,'&#39;')}">ⓘ</span>`;}
+function mtShowHelp(k){
+    document.getElementById('mtHelpPopup')?.remove();
+    const d=document.createElement('div');d.id='mtHelpPopup';
+    d.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;color:white;padding:20px 24px;border-radius:12px;max-width:320px;z-index:10000;box-shadow:0 20px 60px rgba(0,0,0,0.5);font-size:0.9em;line-height:1.5;';
+    d.innerHTML=`<div style="margin-bottom:10px;font-weight:600">💡 Help</div><div>${mtTips[k]||'No help available.'}</div><button onclick="this.parentElement.remove()" style="margin-top:12px;background:#667eea;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;width:100%">Got it</button>`;
+    document.body.appendChild(d);
+    setTimeout(()=>{document.addEventListener('click',function f(e){if(!d.contains(e.target)){d.remove();document.removeEventListener('click',f);}});},100);
+}
+
+// --- GUIDED TOUR ---
+function mtGuidedTour(si){
+    const steps=[
+        {text:'🥁 <b>Metronome</b> — Set tempo and click Start. Visual dots flash on each beat.'},
+        {text:'🎵 <b>Tracks</b> — All recorded parts with Solo/Mute, Volume, and Pan controls.'},
+        {text:'⏱️ <b>Sync</b> — Compensate for audio delay. Calibrate for best results.'},
+        {text:'🔴 <b>Record</b> — Capture your harmony. Toggle Pitch monitor and Karaoke mode.'},
+        {text:'🎚️ <b>Effects</b> — Apply Warm, Bright, Room, or Hall reverb to the playback mix.'},
+        {text:'💾 <b>Export</b> — Download mixed audio. Use Nudge slider after recording to align tracks.'}
+    ];
+    let cur=0;
+    function show(){
+        document.getElementById('mtTourOverlay')?.remove();
+        if(cur>=steps.length){localStorage.setItem('deadcetera_tour_seen','true');return;}
+        const o=document.createElement('div');o.id='mtTourOverlay';
+        o.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        o.innerHTML=`<div style="background:#1e293b;color:white;padding:24px;border-radius:12px;max-width:360px;text-align:center;">
+            <div style="margin-bottom:12px;line-height:1.5">${steps[cur].text}</div>
+            <div style="font-size:0.75em;color:rgba(255,255,255,0.35);margin-bottom:12px">Step ${cur+1} of ${steps.length}</div>
+            <div style="display:flex;gap:8px;justify-content:center">
+                <button onclick="document.getElementById('mtTourOverlay').remove();localStorage.setItem('deadcetera_tour_seen','true')" style="background:rgba(255,255,255,0.15);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer">Skip</button>
+                <button id="mtTourNext" style="background:#667eea;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:600">Next →</button>
+            </div></div>`;
+        document.body.appendChild(o);
+        document.getElementById('mtTourNext').onclick=()=>{cur++;show();};
+    }
+    show();
+}
+
+// ============================================================================
+// MAIN STUDIO UI
+// ============================================================================
 function openMultiTrackStudio(songTitle, sectionIndex) {
     const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
     if (!container) return;
-    
     mtCurrentSectionIndex = sectionIndex;
     mtCurrentSongTitle = songTitle;
-    const safeSongTitle = songTitle.replace(/'/g, "\\'");
-    
-    // Load saved latency setting
+    const ss = songTitle.replace(/'/g, "\\'");
     mtLatencyMs = parseInt(localStorage.getItem('deadcetera_latency_ms') || '0');
     
-    loadHarmonyAudioSnippets(songTitle, sectionIndex).then(snippets => {
-        const snippetsArr = toArray(snippets);
+    loadHarmonyAudioSnippets(songTitle, sectionIndex).then(async (snippets) => {
+        const arr = toArray(snippets);
+        let hasAbc = false;
+        try { const abc = await loadABCNotation(songTitle, sectionIndex); hasAbc = abc && abc.length > 0; } catch(e){}
+        const tourSeen = localStorage.getItem('deadcetera_tour_seen') === 'true';
         
         container.innerHTML = `
-            <div id="mtStudio_${sectionIndex}" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px; border-radius: 12px; margin-top: 15px; color: white;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h3 style="margin: 0; font-size: 1.2em;">🎛️ Multi-Track Studio</h3>
-                    <button onclick="closeMultiTrackStudio(${sectionIndex})" 
-                        style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer;">✕ Close</button>
-                </div>
-                
-                <!-- METRONOME -->
-                <div style="background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                        <strong>🥁 Metronome</strong>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <button onclick="mtAdjustBPM(${sectionIndex}, -5)" style="background: rgba(255,255,255,0.15); color: white; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;">−</button>
-                            <input id="mtBPM_${sectionIndex}" type="number" value="${getBPMForSong()}" min="40" max="240" 
-                                style="width: 55px; text-align: center; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 5px; font-size: 1em; font-weight: 700;"
-                                onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex});}">
-                            <button onclick="mtAdjustBPM(${sectionIndex}, 5)" style="background: rgba(255,255,255,0.15); color: white; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;">+</button>
-                            <span style="font-size: 0.8em; color: rgba(255,255,255,0.5);">BPM</span>
-                            <button id="mtMetronomeToggle_${sectionIndex}" onclick="mtToggleMetronome(${sectionIndex})" 
-                                style="background: #667eea; color: white; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                                ▶ Start
-                            </button>
-                        </div>
-                    </div>
-                    <div id="mtBeatVisual_${sectionIndex}" style="display: flex; gap: 8px; justify-content: center;">
-                        ${[0,1,2,3].map(i => `<div class="mt-beat" data-beat="${i}" style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: background 0.05s, transform 0.05s;"></div>`).join('')}
-                    </div>
-                </div>
-                
-                <!-- MIXER / TRACK LIST -->
-                <div style="background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                        <strong>🎵 Tracks</strong>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <label style="display: flex; align-items: center; gap: 4px; font-size: 0.8em; color: rgba(255,255,255,0.6); cursor: pointer;">
-                                <input type="checkbox" id="mtLoop_${sectionIndex}" onchange="mtLooping=this.checked" style="accent-color: #667eea;"> Loop
-                            </label>
-                            <button onclick="mtPlayAllTracks('${safeSongTitle}', ${sectionIndex})" 
-                                style="background: #10b981; color: white; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                                ▶ Play Mix
-                            </button>
-                            <button onclick="mtStopAllTracks()" 
-                                style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                ⏹ Stop
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="mtTracksList_${sectionIndex}">
-                        ${snippetsArr.length > 0 ? snippetsArr.map((snippet, i) => mtRenderTrackRow(sectionIndex, snippet, i)).join('') : `
-                            <div style="text-align: center; padding: 15px; color: rgba(255,255,255,0.4); font-size: 0.9em;">
-                                No tracks yet. Record the first one!
-                            </div>
-                        `}
-                    </div>
-                </div>
-                
-                <!-- LATENCY ADJUSTMENT -->
-                <div style="background: rgba(255,255,255,0.08); padding: 12px 15px; border-radius: 10px; margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                        <div>
-                            <strong style="font-size: 0.9em;">⏱️ Latency Offset</strong>
-                            <div style="font-size: 0.75em; color: rgba(255,255,255,0.4); margin-top: 2px;">Shift new recordings to sync with backing tracks</div>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <button onclick="mtAdjustLatency(-10)" style="background: rgba(255,255,255,0.15); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 0.9em;">−</button>
-                            <input id="mtLatency_${sectionIndex}" type="number" value="${mtLatencyMs}" step="10" 
-                                style="width: 55px; text-align: center; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px; font-size: 0.9em;"
-                                onchange="mtLatencyMs=parseInt(this.value)||0; localStorage.setItem('deadcetera_latency_ms', mtLatencyMs);">
-                            <button onclick="mtAdjustLatency(10)" style="background: rgba(255,255,255,0.15); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 0.9em;">+</button>
-                            <span style="font-size: 0.75em; color: rgba(255,255,255,0.5);">ms</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- RECORD CONTROLS -->
-                <div id="mtRecordSection_${sectionIndex}" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
-                        <div id="mtRecordStatus_${sectionIndex}" style="font-size: 0.85em; color: rgba(255,255,255,0.6);">
-                            Ready to record. Checked tracks above will play as backing.
-                        </div>
-                        
-                        <div id="mtRecordTimer_${sectionIndex}" style="font-size: 2.2em; font-weight: 700; font-family: monospace; display: none;">0:00</div>
-                        
-                        <div style="display: flex; gap: 10px;">
-                            <button id="mtRecordBtn_${sectionIndex}" onclick="mtStartRecording('${safeSongTitle}', ${sectionIndex})" 
-                                style="background: #ef4444; color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: 600; font-size: 1em; display: flex; align-items: center; gap: 8px;">
-                                <span style="width: 12px; height: 12px; background: white; border-radius: 50%; display: inline-block;"></span> Record
-                            </button>
-                            <button id="mtStopBtn_${sectionIndex}" onclick="mtStopRecording(${sectionIndex})" 
-                                style="background: white; color: #ef4444; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: 600; font-size: 1em; display: none;">
-                                ⏹️ Stop
-                            </button>
-                        </div>
-                        
-                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center;">
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8em; color: rgba(255,255,255,0.6); cursor: pointer;">
-                                <input type="checkbox" id="mtCountIn_${sectionIndex}" checked style="accent-color: #667eea;"> 4-beat count-in
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8em; color: rgba(255,255,255,0.6); cursor: pointer;">
-                                <input type="checkbox" id="mtMetronomeDuringRec_${sectionIndex}" style="accent-color: #667eea;"> Metronome while recording
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- PREVIEW/SAVE (shown after recording) -->
-                <div id="mtPreviewSection_${sectionIndex}" style="display: none;"></div>
-            </div>
-        `;
+<div id="mtStudio_${sectionIndex}" style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:16px;border-radius:12px;margin-top:12px;color:white;">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0;font-size:1.1em">🎛️ Multi-Track Studio</h3>
+    <div style="display:flex;gap:5px">
+        ${!tourSeen?`<button onclick="mtGuidedTour(${sectionIndex})" style="background:rgba(102,126,234,0.25);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:4px 8px;border-radius:5px;cursor:pointer;font-size:0.75em">📖 Tour</button>`:''}
+        <button onclick="closeMultiTrackStudio(${sectionIndex})" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:0.85em">✕</button>
+    </div>
+</div>
+
+${hasAbc?`
+<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:0.85em">🎤 Karaoke ${mtHelp('karaoke')}</strong>
+        <button id="mtKaraokeBtn_${sectionIndex}" onclick="mtToggleKaraoke('${ss}',${sectionIndex})" style="background:#8b5cf6;color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:0.8em;font-weight:600">🎤 Start</button>
+    </div>
+    <div id="mtKaraokeSheet_${sectionIndex}" style="background:white;border-radius:6px;padding:8px;display:none;max-height:180px;overflow-y:auto"></div>
+    <div id="mtKaraokeLyrics_${sectionIndex}" style="display:none;margin-top:6px;text-align:center;font-size:1.2em;font-weight:600;color:#fbbf24;min-height:36px"></div>
+</div>`:''}
+
+<div id="mtPitchSection_${sectionIndex}" style="display:none;background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong style="font-size:0.85em">🎵 Pitch ${mtHelp('pitch')}</strong>
+        <div style="display:flex;align-items:center;gap:10px">
+            <div id="mtPitchNote_${sectionIndex}" style="font-size:1.6em;font-weight:700;font-family:monospace;min-width:50px;text-align:center">—</div>
+            <div id="mtPitchCents_${sectionIndex}" style="font-size:0.8em;min-width:45px;text-align:center;color:rgba(255,255,255,0.5)">—</div>
+        </div>
+    </div>
+    <div style="margin-top:5px;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;position:relative;overflow:hidden">
+        <div id="mtPitchBar_${sectionIndex}" style="position:absolute;top:0;width:4px;height:100%;background:#10b981;left:50%;transition:left 0.1s;border-radius:2px"></div>
+        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:rgba(255,255,255,0.2)"></div>
+    </div>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+        <strong style="font-size:0.85em">🥁 Metronome ${mtHelp('metronome')}</strong>
+        <div style="display:flex;align-items:center;gap:5px">
+            <button onclick="mtAdjustBPM(${sectionIndex},-5)" style="background:rgba(255,255,255,0.1);color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer">−</button>
+            <input id="mtBPM_${sectionIndex}" type="number" value="${getBPMForSong()}" min="40" max="240" style="width:46px;text-align:center;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:3px;font-size:1em;font-weight:700" onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}">
+            <button onclick="mtAdjustBPM(${sectionIndex},5)" style="background:rgba(255,255,255,0.1);color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer">+</button>
+            <span style="font-size:0.7em;color:rgba(255,255,255,0.35)">BPM</span>
+            <button id="mtMetronomeToggle_${sectionIndex}" onclick="mtToggleMetronome(${sectionIndex})" style="background:#667eea;color:white;border:none;padding:5px 10px;border-radius:5px;cursor:pointer;font-weight:600;font-size:0.8em">▶ Start</button>
+        </div>
+    </div>
+    <div id="mtBeatVisual_${sectionIndex}" style="display:flex;gap:5px;justify-content:center">${[0,1,2,3].map(i=>`<div class="mt-beat" data-beat="${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.1);transition:all 0.05s"></div>`).join('')}</div>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:5px">
+        <strong style="font-size:0.85em">🎵 Tracks ${mtHelp('tracks')}</strong>
+        <div style="display:flex;gap:5px;align-items:center">
+            <label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer">
+                <input type="checkbox" id="mtLoop_${sectionIndex}" onchange="mtLooping=this.checked" style="accent-color:#667eea"> Loop
+            </label>
+            <button onclick="mtPlayAllTracks('${ss}',${sectionIndex})" style="background:#10b981;color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-weight:600;font-size:0.8em">▶ Play Mix</button>
+            <button onclick="mtStopAllTracks()" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:0.8em">⏹ Stop</button>
+            <button onclick="mtExportMix('${ss}',${sectionIndex})" title="Export mix" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);padding:5px 8px;border-radius:5px;cursor:pointer;font-size:0.75em">💾</button>
+        </div>
+    </div>
+    ${arr.length>0?`<div style="display:flex;align-items:center;gap:5px;padding:0 8px;font-size:0.6em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.4px">
+        <span style="width:14px"></span><span style="flex:1">Track</span><span style="width:24px;text-align:center">S</span><span style="width:24px;text-align:center">M</span><span style="width:52px;text-align:center">Vol</span><span style="width:48px;text-align:center">Pan</span><span style="width:14px"></span>
+    </div>`:''}
+    <div id="mtTracksList_${sectionIndex}">${arr.length>0?arr.map((s,i)=>mtRenderTrackRow(sectionIndex,s,i)).join(''):`<div style="text-align:center;padding:12px;color:rgba(255,255,255,0.3);font-size:0.8em">No tracks yet — record the first one!</div>`}</div>
+    <canvas id="mtWaveformCanvas_${sectionIndex}" width="600" height="50" style="width:100%;height:50px;border-radius:5px;background:rgba(0,0,0,0.15);margin-top:6px;display:none"></canvas>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
+        <div><strong style="font-size:0.8em">⏱️ Sync ${mtHelp('latency')}</strong>
+            <div id="mtLatencyInfo_${sectionIndex}" style="font-size:0.65em;color:rgba(255,255,255,0.3)"><span id="mtDetectedLatency_${sectionIndex}">measuring...</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+            <button onclick="mtAutoDetectLatency(${sectionIndex})" title="Auto-detect" style="background:rgba(255,255,255,0.06);color:white;border:1px solid rgba(255,255,255,0.12);padding:3px 7px;border-radius:4px;cursor:pointer;font-size:0.7em">🔍</button>
+            <button onclick="mtCalibrateLatency(${sectionIndex})" title="Calibrate" style="background:rgba(255,255,255,0.06);color:white;border:1px solid rgba(255,255,255,0.12);padding:3px 7px;border-radius:4px;cursor:pointer;font-size:0.7em">🎯</button>
+            <button onclick="mtAdjustLatency(-10)" style="background:rgba(255,255,255,0.06);color:white;border:none;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:0.7em">−</button>
+            <input id="mtLatency_${sectionIndex}" type="number" value="${mtLatencyMs}" step="10" style="width:38px;text-align:center;background:rgba(255,255,255,0.06);color:white;border:1px solid rgba(255,255,255,0.15);border-radius:3px;padding:2px;font-size:0.75em" onchange="mtLatencyMs=parseInt(this.value)||0;localStorage.setItem('deadcetera_latency_ms',mtLatencyMs)">
+            <button onclick="mtAdjustLatency(10)" style="background:rgba(255,255,255,0.06);color:white;border:none;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:0.7em">+</button>
+            <span style="font-size:0.6em;color:rgba(255,255,255,0.25)">ms</span>
+        </div>
+    </div>
+    <div id="mtCalibrationStatus_${sectionIndex}" style="display:none;margin-top:4px;font-size:0.7em;padding:5px;background:rgba(255,255,255,0.03);border-radius:4px"></div>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <strong style="font-size:0.8em">🎚️ Effects ${mtHelp('effects')}</strong>
+    </div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${['none|🔇 Dry','warm|🔥 Warm','bright|✨ Bright','room|🏠 Room','hall|🏛️ Hall'].map(p=>{const[k,l]=p.split('|');return`<button onclick="mtApplyEffect('${k}',${sectionIndex})" class="mt-fx-btn" data-fx="${k}" style="background:${k==='none'?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.05)'};color:${k==='none'?'white':'rgba(255,255,255,0.6)'};border:1px solid ${k==='none'?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)'};padding:4px 9px;border-radius:12px;cursor:pointer;font-size:0.7em">${l}</button>`;}).join('')}</div>
+</div>
+
+<div id="mtRecordSection_${sectionIndex}" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div id="mtRecordStatus_${sectionIndex}" style="font-size:0.75em;color:rgba(255,255,255,0.45)">Ready to record ${mtHelp('record')}</div>
+        <div id="mtRecordTimer_${sectionIndex}" style="font-size:1.8em;font-weight:700;font-family:monospace;display:none">0:00</div>
+        <div style="display:flex;gap:6px">
+            <button id="mtRecordBtn_${sectionIndex}" onclick="mtStartRecording('${ss}',${sectionIndex})" style="background:#ef4444;color:white;border:none;padding:9px 20px;border-radius:20px;cursor:pointer;font-weight:600;font-size:0.95em;display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:white;border-radius:50%;display:inline-block"></span> Record</button>
+            <button id="mtStopBtn_${sectionIndex}" onclick="mtStopRecording(${sectionIndex})" style="background:white;color:#ef4444;border:none;padding:9px 20px;border-radius:20px;cursor:pointer;font-weight:600;display:none">⏹️ Stop</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">${[
+            [`mtCountIn_${sectionIndex}`,'checked','Count-in','countIn'],
+            [`mtMetronomeDuringRec_${sectionIndex}`,'','Click','clickDuring'],
+            [`mtShowPitch_${sectionIndex}`,'','Pitch','pitch']
+        ].map(([id,chk,label,hk])=>`<label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer"><input type="checkbox" id="${id}" ${chk} ${id.includes('Pitch')?`onchange="mtTogglePitchMonitor(${sectionIndex},this.checked)"`:''} style="accent-color:#667eea"> ${label} ${mtHelp(hk)}</label>`).join('')}</div>
+    </div>
+</div>
+
+<div id="mtNudgeSection_${sectionIndex}" style="display:none"></div>
+<div id="mtPreviewSection_${sectionIndex}" style="display:none"></div>
+</div>`;
+        
+        setTimeout(()=>mtAutoDetectLatency(sectionIndex), 300);
+        if(!tourSeen) setTimeout(()=>mtGuidedTour(sectionIndex), 800);
     });
 }
 
-function mtRenderTrackRow(sectionIndex, snippet, i) {
-    const name = snippet.name || 'Recording ' + (i+1);
-    const who = bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy || '';
-    return `
-        <div id="mtTrackRow_${sectionIndex}_${i}" style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 5px;">
-            <input type="checkbox" id="mtTrack_${sectionIndex}_${i}" checked style="width: 16px; height: 16px; accent-color: #667eea; flex-shrink: 0;">
-            <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
-                <div style="font-size: 0.7em; color: rgba(255,255,255,0.4);">${who}</div>
-            </div>
-            <button id="mtSolo_${sectionIndex}_${i}" onclick="mtToggleSolo(${sectionIndex}, ${i})" 
-                title="Solo" style="background: rgba(255,255,255,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; font-size: 0.7em; font-weight: 700; flex-shrink: 0;">S</button>
-            <button id="mtMute_${sectionIndex}_${i}" onclick="mtToggleMute(${sectionIndex}, ${i})" 
-                title="Mute" style="background: rgba(255,255,255,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; font-size: 0.7em; font-weight: 700; flex-shrink: 0;">M</button>
-            <input type="range" id="mtVol_${sectionIndex}_${i}" min="0" max="100" value="80" 
-                oninput="mtUpdateVolume(${sectionIndex}, ${i}, this.value)"
-                style="width: 65px; accent-color: #667eea; flex-shrink: 0;">
-            <span id="mtVolLabel_${sectionIndex}_${i}" style="font-size: 0.7em; color: rgba(255,255,255,0.4); width: 26px; text-align: right; flex-shrink: 0;">80%</span>
-        </div>
-    `;
+// ============================================================================
+// TRACK ROW with Pan
+// ============================================================================
+function mtRenderTrackRow(si, snippet, i) {
+    const nm = snippet.name||'Rec '+(i+1), who = bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy || '';
+    return `<div id="mtTrackRow_${si}_${i}" style="display:flex;align-items:center;gap:4px;padding:5px 6px;background:rgba(255,255,255,0.03);border-radius:5px;margin-bottom:3px">
+        <input type="checkbox" id="mtTrack_${si}_${i}" checked style="width:14px;height:14px;accent-color:#667eea;flex-shrink:0">
+        <div style="flex:1;min-width:0"><div style="font-size:0.75em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm}</div><div style="font-size:0.6em;color:rgba(255,255,255,0.25)">${who}</div></div>
+        <button id="mtSolo_${si}_${i}" data-active="false" onclick="mtToggleSolo(${si},${i})" style="background:rgba(255,255,255,0.06);color:#fbbf24;border:1px solid rgba(251,191,36,0.15);width:22px;height:22px;border-radius:3px;cursor:pointer;font-size:0.6em;font-weight:700;flex-shrink:0">S</button>
+        <button id="mtMute_${si}_${i}" onclick="mtToggleMute(${si},${i})" style="background:rgba(255,255,255,0.06);color:#ef4444;border:1px solid rgba(239,68,68,0.15);width:22px;height:22px;border-radius:3px;cursor:pointer;font-size:0.6em;font-weight:700;flex-shrink:0">M</button>
+        <input type="range" id="mtVol_${si}_${i}" min="0" max="100" value="80" oninput="mtUpdateVolume(${si},${i},this.value)" title="Volume" style="width:48px;accent-color:#667eea;flex-shrink:0">
+        <input type="range" id="mtPan_${si}_${i}" min="-100" max="100" value="0" oninput="mtUpdatePan(${si},${i},this.value)" title="Pan L↔R" style="width:42px;accent-color:#8b5cf6;flex-shrink:0">
+        <span id="mtPanLabel_${si}_${i}" style="font-size:0.55em;color:rgba(255,255,255,0.25);width:14px;text-align:center;flex-shrink:0">C</span>
+    </div>`;
 }
 
-function closeMultiTrackStudio(sectionIndex) {
-    mtStopMetronome();
-    mtStopAllTracks();
-    if (mtIsRecording) mtStopRecording(sectionIndex);
-    mtLooping = false;
-    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
-    if (container) container.innerHTML = '';
+function closeMultiTrackStudio(si){
+    mtStopMetronome();mtStopAllTracks();mtStopPitchMonitor();
+    if(mtIsRecording)mtStopRecording(si);mtLooping=false;
+    const c=document.getElementById('harmonyAudioFormContainer'+si);if(c)c.innerHTML='';
 }
-
-function getBPMForSong() {
-    if (selectedSong) {
-        const bpmEl = document.getElementById('songBpmInput');
-        if (bpmEl && bpmEl.value) return parseInt(bpmEl.value) || 120;
-    }
-    return 120;
-}
+function getBPMForSong(){const b=document.getElementById('songBpmInput');return(b&&b.value)?parseInt(b.value)||120:120;}
 
 // ============================================================================
-// METRONOME (using AudioContext scheduling for accurate timing)
+// METRONOME
 // ============================================================================
-
-function mtToggleMetronome(sectionIndex) {
-    if (mtMetronomeInterval) {
-        mtStopMetronome();
-        const btn = document.getElementById(`mtMetronomeToggle_${sectionIndex}`);
-        if (btn) { btn.textContent = '▶ Start'; btn.style.background = '#667eea'; }
-    } else {
-        mtStartMetronome(sectionIndex);
-        const btn = document.getElementById(`mtMetronomeToggle_${sectionIndex}`);
-        if (btn) { btn.textContent = '⏸ Stop'; btn.style.background = '#ef4444'; }
-    }
+function mtToggleMetronome(si){
+    const btn=document.getElementById(`mtMetronomeToggle_${si}`);
+    if(mtMetronomeInterval){mtStopMetronome();if(btn){btn.textContent='▶ Start';btn.style.background='#667eea';}}
+    else{mtStartMetronome(si);if(btn){btn.textContent='⏸ Stop';btn.style.background='#ef4444';}}
 }
-
-function mtStartMetronome(sectionIndex) {
-    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-    mtAudioContext.resume();
-    
-    const bpm = parseInt(document.getElementById(`mtBPM_${sectionIndex}`)?.value) || 120;
-    const interval = 60.0 / bpm;
-    const beats = document.querySelectorAll(`#mtBeatVisual_${sectionIndex} .mt-beat`);
-    
-    let nextBeatTime = mtAudioContext.currentTime + 0.05;
-    let beat = 0;
-    
-    function scheduleBeat() {
-        // Schedule audio click precisely with AudioContext
-        const osc = mtAudioContext.createOscillator();
-        const gain = mtAudioContext.createGain();
-        osc.connect(gain);
-        gain.connect(mtAudioContext.destination);
-        osc.frequency.value = (beat % 4 === 0) ? 1000 : 700;
-        gain.gain.setValueAtTime(0.3, nextBeatTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, nextBeatTime + 0.08);
-        osc.start(nextBeatTime);
-        osc.stop(nextBeatTime + 0.08);
-        
-        // Visual update (approximate - setTimeout is fine for visuals)
-        const currentBeat = beat % 4;
-        const delay = Math.max(0, (nextBeatTime - mtAudioContext.currentTime) * 1000);
-        setTimeout(() => {
-            beats.forEach((b, i) => {
-                b.style.background = i === currentBeat ? (currentBeat === 0 ? '#ef4444' : '#667eea') : 'rgba(255,255,255,0.15)';
-                b.style.transform = i === currentBeat ? 'scale(1.4)' : 'scale(1)';
-            });
-        }, delay);
-        
-        beat++;
-        nextBeatTime += interval;
+function mtStartMetronome(si){
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();mtAudioContext.resume();
+    const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,intv=60/bpm;
+    const beats=document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`);
+    let next=mtAudioContext.currentTime+0.05,b=0;
+    function sched(){
+        const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+        o.connect(g);g.connect(mtAudioContext.destination);
+        o.frequency.value=(b%4===0)?1000:700;g.gain.setValueAtTime(0.3,next);
+        g.gain.exponentialRampToValueAtTime(0.001,next+0.08);o.start(next);o.stop(next+0.08);
+        const cb=b%4,d=Math.max(0,(next-mtAudioContext.currentTime)*1000);
+        setTimeout(()=>{beats.forEach((el,i)=>{el.style.background=i===cb?(cb===0?'#ef4444':'#667eea'):'rgba(255,255,255,0.1)';el.style.transform=i===cb?'scale(1.3)':'scale(1)';});},d);
+        b++;next+=intv;
     }
-    
-    scheduleBeat(); // First beat
-    
-    // Use a lookahead scheduler for precise timing
-    mtMetronomeInterval = setInterval(() => {
-        while (nextBeatTime < mtAudioContext.currentTime + 0.1) {
-            scheduleBeat();
-        }
-    }, 25); // Check every 25ms
+    sched();
+    mtMetronomeInterval=setInterval(()=>{while(next<mtAudioContext.currentTime+0.1)sched();},25);
 }
-
-function mtStopMetronome() {
-    if (mtMetronomeInterval) {
-        clearInterval(mtMetronomeInterval);
-        mtMetronomeInterval = null;
-    }
-}
-
-function mtAdjustBPM(sectionIndex, delta) {
-    const input = document.getElementById(`mtBPM_${sectionIndex}`);
-    if (input) {
-        let val = Math.max(40, Math.min(240, parseInt(input.value) + delta));
-        input.value = val;
-        if (mtMetronomeInterval) { mtStopMetronome(); mtStartMetronome(sectionIndex); }
-    }
-}
+function mtStopMetronome(){if(mtMetronomeInterval){clearInterval(mtMetronomeInterval);mtMetronomeInterval=null;}}
+function mtAdjustBPM(si,d){const inp=document.getElementById(`mtBPM_${si}`);if(inp){inp.value=Math.max(40,Math.min(240,parseInt(inp.value)+d));if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(si);}}}
 
 // ============================================================================
 // LATENCY
 // ============================================================================
-
-function mtAdjustLatency(delta) {
-    const sectionIndex = mtCurrentSectionIndex;
-    const input = document.getElementById(`mtLatency_${sectionIndex}`);
-    if (input) {
-        mtLatencyMs = Math.max(-500, Math.min(500, parseInt(input.value) + delta));
-        input.value = mtLatencyMs;
-        localStorage.setItem('deadcetera_latency_ms', mtLatencyMs);
-    }
+function mtAdjustLatency(d){const inp=document.getElementById(`mtLatency_${mtCurrentSectionIndex}`);if(inp){mtLatencyMs=Math.max(-500,Math.min(500,parseInt(inp.value)+d));inp.value=mtLatencyMs;localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);}}
+function mtAutoDetectLatency(si){
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();
+    let est=0;const p=[];
+    if(mtAudioContext.outputLatency!==undefined){const m=Math.round(mtAudioContext.outputLatency*1000);p.push(`out:${m}ms`);est+=m;}
+    if(mtAudioContext.baseLatency!==undefined){const m=Math.round(mtAudioContext.baseLatency*1000);p.push(`base:${m}ms`);est+=m;}
+    if(est===0){est=50;p.push('est:~50ms');}
+    const rt=Math.round(est*1.5);mtLatencyMs=rt;
+    const inp=document.getElementById(`mtLatency_${si}`);if(inp)inp.value=mtLatencyMs;
+    localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);
+    const info=document.getElementById(`mtDetectedLatency_${si}`);if(info)info.textContent=`${p.join(', ')} → ${rt}ms`;
+}
+async function mtCalibrateLatency(si){
+    const st=document.getElementById(`mtCalibrationStatus_${si}`);if(!st)return;
+    st.style.display='block';st.innerHTML='🎯 Turn up volume, stay quiet...';
+    try{
+        if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+        const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+        const src=mtAudioContext.createMediaStreamSource(stream),an=mtAudioContext.createAnalyser();an.fftSize=2048;src.connect(an);
+        const buf=new Float32Array(an.fftSize);await new Promise(r=>setTimeout(r,500));
+        st.innerHTML='🔊 Click in 1s...';await new Promise(r=>setTimeout(r,1000));
+        const t0=performance.now(),o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+        o.connect(g);g.connect(mtAudioContext.destination);o.frequency.value=1000;
+        g.gain.setValueAtTime(0.8,mtAudioContext.currentTime);g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.05);
+        o.start();o.stop(mtAudioContext.currentTime+0.05);
+        let det=false,t1=0;
+        await new Promise(res=>{(function ck(){an.getFloatTimeDomainData(buf);if(Math.max(...buf.map(Math.abs))>0.15&&!det){det=true;t1=performance.now();res();return;}if(performance.now()-t0>500){res();return;}requestAnimationFrame(ck);})();});
+        stream.getTracks().forEach(t=>t.stop());src.disconnect();
+        if(det){const rt=Math.round(t1-t0);mtLatencyMs=Math.round(rt/2);const inp=document.getElementById(`mtLatency_${si}`);if(inp)inp.value=mtLatencyMs;localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);
+            const info=document.getElementById(`mtDetectedLatency_${si}`);if(info)info.textContent=`Cal: RT ${rt}ms → ${mtLatencyMs}ms`;
+            st.innerHTML=`✅ RT: <b>${rt}ms</b> → offset: <b>${mtLatencyMs}ms</b>`;
+        }else{st.innerHTML='⚠️ No click detected. Turn up volume.';}
+        setTimeout(()=>st.style.display='none',5000);
+    }catch(e){st.innerHTML='❌ '+e.message;setTimeout(()=>st.style.display='none',3000);}
 }
 
 // ============================================================================
-// SOLO / MUTE
+// SOLO / MUTE / VOLUME / PAN
 // ============================================================================
-
-function mtToggleSolo(sectionIndex, trackIndex) {
-    const btn = document.getElementById(`mtSolo_${sectionIndex}_${trackIndex}`);
-    const isActive = btn.style.background.includes('251');
-    
-    if (isActive) {
-        // Unsolo - restore all
-        btn.style.background = 'rgba(255,255,255,0.1)';
-        const rows = document.querySelectorAll(`[id^="mtTrackRow_${sectionIndex}_"]`);
-        rows.forEach(row => row.style.opacity = '1');
-        // Unmute all checkboxes
-        document.querySelectorAll(`[id^="mtTrack_${sectionIndex}_"]`).forEach(cb => cb.checked = true);
-    } else {
-        // Solo this track - mute all others
-        btn.style.background = 'rgba(251,191,36,0.4)';
-        const allRows = document.querySelectorAll(`[id^="mtTrackRow_${sectionIndex}_"]`);
-        allRows.forEach((row, i) => {
-            const cb = document.getElementById(`mtTrack_${sectionIndex}_${i}`);
-            if (i === trackIndex) {
-                if (cb) cb.checked = true;
-                row.style.opacity = '1';
-            } else {
-                if (cb) cb.checked = false;
-                row.style.opacity = '0.4';
-                // Clear other solos
-                const otherSolo = document.getElementById(`mtSolo_${sectionIndex}_${i}`);
-                if (otherSolo) otherSolo.style.background = 'rgba(255,255,255,0.1)';
-            }
+function mtToggleSolo(si,ti){
+    const btn=document.getElementById(`mtSolo_${si}_${ti}`),act=btn.dataset.active==='true';
+    if(act){btn.dataset.active='false';btn.style.background='rgba(255,255,255,0.06)';
+        document.querySelectorAll(`[id^="mtTrackRow_${si}_"]`).forEach(r=>r.style.opacity='1');
+        document.querySelectorAll(`input[id^="mtTrack_${si}_"]`).forEach(c=>{if(c.type==='checkbox')c.checked=true;});
+    }else{btn.dataset.active='true';btn.style.background='rgba(251,191,36,0.25)';
+        document.querySelectorAll(`[id^="mtTrackRow_${si}_"]`).forEach((r,i)=>{
+            const cb=document.getElementById(`mtTrack_${si}_${i}`);
+            if(i===ti){if(cb)cb.checked=true;r.style.opacity='1';}
+            else{if(cb)cb.checked=false;r.style.opacity='0.3';const s=document.getElementById(`mtSolo_${si}_${i}`);if(s){s.dataset.active='false';s.style.background='rgba(255,255,255,0.06)';}}
         });
     }
-    
-    // Update live playback volumes if playing
-    if (mtIsPlaying) mtUpdateLiveVolumes(sectionIndex);
+    if(mtIsPlaying)mtUpdateLiveVolumes(si);
 }
-
-function mtToggleMute(sectionIndex, trackIndex) {
-    const btn = document.getElementById(`mtMute_${sectionIndex}_${trackIndex}`);
-    const cb = document.getElementById(`mtTrack_${sectionIndex}_${trackIndex}`);
-    const row = document.getElementById(`mtTrackRow_${sectionIndex}_${trackIndex}`);
-    
-    if (cb.checked) {
-        cb.checked = false;
-        btn.style.background = 'rgba(239,68,68,0.4)';
-        if (row) row.style.opacity = '0.4';
-    } else {
-        cb.checked = true;
-        btn.style.background = 'rgba(255,255,255,0.1)';
-        if (row) row.style.opacity = '1';
-    }
-    
-    if (mtIsPlaying) mtUpdateLiveVolumes(sectionIndex);
+function mtToggleMute(si,ti){
+    const btn=document.getElementById(`mtMute_${si}_${ti}`),cb=document.getElementById(`mtTrack_${si}_${ti}`),row=document.getElementById(`mtTrackRow_${si}_${ti}`);
+    if(cb.checked){cb.checked=false;btn.style.background='rgba(239,68,68,0.25)';if(row)row.style.opacity='0.3';}
+    else{cb.checked=true;btn.style.background='rgba(255,255,255,0.06)';if(row)row.style.opacity='1';}
+    if(mtIsPlaying)mtUpdateLiveVolumes(si);
 }
-
-function mtUpdateVolume(sectionIndex, trackIndex, value) {
-    const label = document.getElementById(`mtVolLabel_${sectionIndex}_${trackIndex}`);
-    if (label) label.textContent = value + '%';
-    
-    // Update live if playing
-    if (mtIsPlaying && mtPlaybackAudios[trackIndex]) {
-        const cb = document.getElementById(`mtTrack_${sectionIndex}_${trackIndex}`);
-        mtPlaybackAudios[trackIndex].audio.volume = cb?.checked ? value / 100 : 0;
-    }
+function mtUpdateVolume(si,ti,val){if(mtIsPlaying&&mtPlaybackAudios[ti]?.audio){const cb=document.getElementById(`mtTrack_${si}_${ti}`);mtPlaybackAudios[ti].audio.volume=cb?.checked?val/100:0;}}
+function mtUpdatePan(si,ti,val){
+    const lbl=document.getElementById(`mtPanLabel_${si}_${ti}`),v=parseInt(val);
+    if(lbl)lbl.textContent=v===0?'C':(v<0?'L':'R');
+    if(mtIsPlaying&&mtPlaybackAudios[ti]?.panNode)mtPlaybackAudios[ti].panNode.pan.value=v/100;
 }
+function mtUpdateLiveVolumes(si){mtPlaybackAudios.forEach((item,i)=>{if(!item?.audio)return;const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);item.audio.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;});}
 
-function mtUpdateLiveVolumes(sectionIndex) {
-    mtPlaybackAudios.forEach((item, i) => {
-        const cb = document.getElementById(`mtTrack_${sectionIndex}_${i}`);
-        const vol = document.getElementById(`mtVol_${sectionIndex}_${i}`);
-        if (item && item.audio) {
-            item.audio.volume = (cb?.checked ? (parseInt(vol?.value) || 80) : 0) / 100;
+// ============================================================================
+// RECORDING
+// ============================================================================
+async function mtStartRecording(songTitle, si) {
+    try {
+        if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+        if(mtIsRecording)mtStopRecording(si);
+        document.querySelectorAll('audio').forEach(a=>{a.pause();a.currentTime=0;});mtStopAllTracks();
+        mtRecordingStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,sampleRate:44100}});
+        let mime='audio/webm';
+        if(MediaRecorder.isTypeSupported('audio/mp4'))mime='audio/mp4';
+        else if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))mime='audio/webm;codecs=opus';
+        mtRecorder=new MediaRecorder(mtRecordingStream,{mimeType:mime});mtAudioChunks=[];
+        mtRecorder.ondataavailable=e=>{if(e.data.size>0)mtAudioChunks.push(e.data);};
+        mtRecorder.onstop=async()=>{
+            const blob=new Blob(mtAudioChunks,{type:mime});if(blob.size===0){alert('No audio captured');return;}
+            const b64=await blobToBase64(blob);mtShowPreview(songTitle,si,b64,blob.size,mime);
+            if(mtRecordingStream)mtRecordingStream.getTracks().forEach(t=>t.stop());mtIsRecording=false;mtStopPitchMonitor();
+        };
+        const statEl=document.getElementById(`mtRecordStatus_${si}`),timEl=document.getElementById(`mtRecordTimer_${si}`);
+        const recBtn=document.getElementById(`mtRecordBtn_${si}`),stopBtn=document.getElementById(`mtStopBtn_${si}`);
+        // Count-in
+        if(document.getElementById(`mtCountIn_${si}`)?.checked){
+            const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,beatMs=60000/bpm;
+            for(let i=4;i>=1;i--){statEl.innerHTML=`<span style="font-size:1.6em;font-weight:700;color:#fbbf24">${i}</span>`;
+                const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();o.connect(g);g.connect(mtAudioContext.destination);
+                o.frequency.value=i===4?1200:900;g.gain.setValueAtTime(0.5,mtAudioContext.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.12);o.start();o.stop(mtAudioContext.currentTime+0.12);
+                await new Promise(r=>setTimeout(r,beatMs));}
         }
+        const backD=Math.max(0,mtLatencyMs),recD=Math.max(0,-mtLatencyMs);
+        setTimeout(()=>{mtRecorder.start();mtIsRecording=true;},recD);
+        setTimeout(()=>mtStartBackingTracks(songTitle,si),backD);
+        statEl.innerHTML='<span style="color:#ef4444" class="mt-pulse">🔴 RECORDING</span>';
+        timEl.style.display='block';recBtn.style.display='none';stopBtn.style.display='inline-flex';
+        let sec=0;const ti=setInterval(()=>{if(!mtIsRecording){clearInterval(ti);return;}sec++;if(timEl)timEl.textContent=formatTime(sec);},1000);
+        stopBtn?.setAttribute('data-timer',ti);
+        if(document.getElementById(`mtMetronomeDuringRec_${si}`)?.checked&&!mtMetronomeInterval)mtStartMetronome(si);
+        if(document.getElementById(`mtShowPitch_${si}`)?.checked){document.getElementById(`mtPitchSection_${si}`).style.display='block';mtStartPitchMonitor(si);}
+    }catch(e){let m='Microphone access denied.';if(e.name==='NotFoundError')m='No microphone found.';alert(m+'\n\n'+e.message);}
+}
+function mtStopRecording(si){
+    if(mtRecorder?.state==='recording')mtRecorder.stop();mtIsRecording=false;mtStopAllTracks();mtStopPitchMonitor();
+    if(document.getElementById(`mtMetronomeDuringRec_${si}`)?.checked)mtStopMetronome();
+    const stopBtn=document.getElementById(`mtStopBtn_${si}`);if(stopBtn){const t=stopBtn.getAttribute('data-timer');if(t)clearInterval(parseInt(t));}
+    document.getElementById(`mtRecordBtn_${si}`).style.display='inline-flex';
+    if(stopBtn)stopBtn.style.display='none';
+}
+
+// ============================================================================
+// PLAYBACK with Pan via Web Audio API
+// ============================================================================
+async function mtStartBackingTracks(songTitle,si){mtStopAllTracks();const sn=toArray(await loadHarmonyAudioSnippets(songTitle,si));mtPlaybackAudios=[];
+    for(let i=0;i<sn.length;i++){const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);
+        if(sn[i].data){const a=new Audio(sn[i].data);a.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;
+            // Set up stereo pan via Web Audio
+            let panNode=null;
+            try{if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();
+                const src=mtAudioContext.createMediaElementSource(a);panNode=mtAudioContext.createStereoPanner();
+                const pv=document.getElementById(`mtPan_${si}_${i}`);panNode.pan.value=(parseInt(pv?.value)||0)/100;
+                src.connect(panNode);panNode.connect(mtAudioContext.destination);
+            }catch(e){console.warn('Pan setup error:',e);}
+            mtPlaybackAudios.push({audio:a,index:i,panNode});
+            if(cb?.checked)a.play().catch(e=>console.warn('Backing:',e));
+        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null});}}
+    mtIsPlaying=true;
+}
+
+async function mtPlayAllTracks(songTitle,si){
+    mtStopAllTracks();const sn=toArray(await loadHarmonyAudioSnippets(songTitle,si));mtPlaybackAudios=[];
+    for(let i=0;i<sn.length;i++){const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);
+        if(sn[i].data){const a=new Audio(sn[i].data);a.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;
+            let panNode=null;
+            try{if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();
+                const src=mtAudioContext.createMediaElementSource(a);panNode=mtAudioContext.createStereoPanner();
+                const pv=document.getElementById(`mtPan_${si}_${i}`);panNode.pan.value=(parseInt(pv?.value)||0)/100;
+                src.connect(panNode);panNode.connect(mtAudioContext.destination);
+            }catch(e){}
+            mtPlaybackAudios.push({audio:a,index:i,panNode});
+            if(cb?.checked)a.play().catch(e=>console.warn('Play:',e));
+        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null});}}
+    mtIsPlaying=true;
+    // Loop support
+    if(mtLooping){const first=mtPlaybackAudios.find(it=>it.audio&&document.getElementById(`mtTrack_${si}_${it.index}`)?.checked);
+        if(first)first.audio.onended=()=>{if(mtLooping&&mtIsPlaying){console.log('🔁 Looping...');mtPlayAllTracks(songTitle,si);}};}
+    // Draw waveforms
+    mtDrawAllWaveforms(songTitle,si);
+}
+function mtStopAllTracks(){mtPlaybackAudios.forEach(it=>{if(it?.audio){it.audio.pause();it.audio.currentTime=0;it.audio.onended=null;}});mtPlaybackAudios=[];mtIsPlaying=false;}
+
+// ============================================================================
+// EFFECTS (Web Audio preset chains applied during playback)
+// ============================================================================
+let mtEffectNodes = [];
+function mtApplyEffect(name,si){
+    mtCurrentEffect=name;
+    document.querySelectorAll('.mt-fx-btn').forEach(b=>{const active=b.dataset.fx===name;
+        b.style.background=active?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.05)';
+        b.style.color=active?'white':'rgba(255,255,255,0.6)';
+        b.style.borderColor=active?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)';
     });
 }
 
-// ============================================================================
-// MULTI-TRACK RECORDING
-// ============================================================================
+function mtBuildEffectChain(ctx, sourceNode) {
+    // Clean up old
+    mtEffectNodes.forEach(n => { try { n.disconnect(); } catch(e){} });
+    mtEffectNodes = [];
+    
+    if (mtCurrentEffect === 'none') {
+        sourceNode.connect(ctx.destination);
+        return;
+    }
+    
+    let lastNode = sourceNode;
+    
+    if (mtCurrentEffect === 'warm') {
+        // Low-shelf boost + gentle compression
+        const eq = ctx.createBiquadFilter(); eq.type = 'lowshelf'; eq.frequency.value = 300; eq.gain.value = 4;
+        const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3;
+        lastNode.connect(eq); eq.connect(comp); lastNode = comp; mtEffectNodes.push(eq, comp);
+    } else if (mtCurrentEffect === 'bright') {
+        // High-shelf boost + presence
+        const eq = ctx.createBiquadFilter(); eq.type = 'highshelf'; eq.frequency.value = 3000; eq.gain.value = 5;
+        const eq2 = ctx.createBiquadFilter(); eq2.type = 'peaking'; eq2.frequency.value = 6000; eq2.gain.value = 3; eq2.Q.value = 1;
+        lastNode.connect(eq); eq.connect(eq2); lastNode = eq2; mtEffectNodes.push(eq, eq2);
+    } else if (mtCurrentEffect === 'room' || mtCurrentEffect === 'hall') {
+        // Convolution reverb simulation using delays
+        const delay1 = ctx.createDelay(); delay1.delayTime.value = mtCurrentEffect === 'room' ? 0.03 : 0.08;
+        const gain1 = ctx.createGain(); gain1.gain.value = mtCurrentEffect === 'room' ? 0.3 : 0.4;
+        const delay2 = ctx.createDelay(); delay2.delayTime.value = mtCurrentEffect === 'room' ? 0.06 : 0.15;
+        const gain2 = ctx.createGain(); gain2.gain.value = mtCurrentEffect === 'room' ? 0.2 : 0.3;
+        const dry = ctx.createGain(); dry.gain.value = 0.8;
+        lastNode.connect(dry); lastNode.connect(delay1); delay1.connect(gain1);
+        lastNode.connect(delay2); delay2.connect(gain2);
+        const merger = ctx.createGain();
+        dry.connect(merger); gain1.connect(merger); gain2.connect(merger);
+        lastNode = merger; mtEffectNodes.push(delay1, gain1, delay2, gain2, dry, merger);
+    }
+    
+    lastNode.connect(ctx.destination);
+}
 
-async function mtStartRecording(songTitle, sectionIndex) {
+// ============================================================================
+// PITCH DETECTION (autocorrelation)
+// ============================================================================
+const mtNoteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function mtFreqToNote(freq) {
+    if (!freq || freq < 50 || freq > 2000) return null;
+    const noteNum = 12 * (Math.log2(freq / 440)) + 69;
+    const rounded = Math.round(noteNum);
+    const cents = Math.round((noteNum - rounded) * 100);
+    const name = mtNoteNames[rounded % 12];
+    const octave = Math.floor(rounded / 12) - 1;
+    return { name, octave, cents, noteNum: rounded };
+}
+
+function mtAutoCorrelate(buf, sampleRate) {
+    let SIZE = buf.length, rms = 0;
+    for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1; // Too quiet
+
+    let r1 = 0, r2 = SIZE - 1;
+    const thresh = 0.2;
+    for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thresh) { r1 = i; break; } }
+    for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thresh) { r2 = SIZE - i; break; } }
+
+    buf = buf.slice(r1, r2);
+    SIZE = buf.length;
+    const c = new Array(SIZE).fill(0);
+    for (let i = 0; i < SIZE; i++) for (let j = 0; j < SIZE - i; j++) c[i] += buf[j] * buf[j + i];
+
+    let d = 0;
+    while (c[d] > c[d + 1]) d++;
+    let maxval = -1, maxpos = -1;
+    for (let i = d; i < SIZE; i++) { if (c[i] > maxval) { maxval = c[i]; maxpos = i; } }
+
+    let T0 = maxpos;
+    const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+    const a = (x1 + x3 - 2 * x2) / 2;
+    const b = (x3 - x1) / 2;
+    if (a) T0 -= b / (2 * a);
+    return sampleRate / T0;
+}
+
+function mtStartPitchMonitor(si) {
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        const source = mtAudioContext.createMediaStreamSource(stream);
+        const analyser = mtAudioContext.createAnalyser();
+        analyser.fftSize = 4096;
+        source.connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        
+        function update() {
+            analyser.getFloatTimeDomainData(buf);
+            const freq = mtAutoCorrelate(buf, mtAudioContext.sampleRate);
+            const noteEl = document.getElementById(`mtPitchNote_${si}`);
+            const centsEl = document.getElementById(`mtPitchCents_${si}`);
+            const barEl = document.getElementById(`mtPitchBar_${si}`);
+            
+            if (freq > 0) {
+                const note = mtFreqToNote(freq);
+                if (note && noteEl) {
+                    noteEl.textContent = note.name + note.octave;
+                    noteEl.style.color = Math.abs(note.cents) < 10 ? '#10b981' : Math.abs(note.cents) < 25 ? '#fbbf24' : '#ef4444';
+                    if (centsEl) centsEl.textContent = (note.cents >= 0 ? '+' : '') + note.cents + '¢';
+                    if (barEl) barEl.style.left = (50 + note.cents * 0.4) + '%';
+                }
+            } else {
+                if (noteEl) { noteEl.textContent = '—'; noteEl.style.color = 'white'; }
+                if (centsEl) centsEl.textContent = '—';
+                if (barEl) barEl.style.left = '50%';
+            }
+            mtPitchAnimFrame = requestAnimationFrame(update);
+        }
+        update();
+        
+        // Store stream for cleanup
+        mtStartPitchMonitor._stream = stream;
+        mtStartPitchMonitor._source = source;
+    }).catch(e => console.warn('Pitch monitor:', e));
+}
+
+function mtStopPitchMonitor() {
+    if (mtPitchAnimFrame) { cancelAnimationFrame(mtPitchAnimFrame); mtPitchAnimFrame = null; }
+    if (mtStartPitchMonitor._stream) { mtStartPitchMonitor._stream.getTracks().forEach(t => t.stop()); mtStartPitchMonitor._stream = null; }
+}
+
+function mtTogglePitchMonitor(si, on) {
+    const sec = document.getElementById(`mtPitchSection_${si}`);
+    if (sec) sec.style.display = on ? 'block' : 'none';
+    if (!on) mtStopPitchMonitor();
+}
+
+// ============================================================================
+// KARAOKE MODE (ABC cursor + lyrics)
+// ============================================================================
+async function mtToggleKaraoke(songTitle, si) {
+    const sheetEl = document.getElementById(`mtKaraokeSheet_${si}`);
+    const lyricsEl = document.getElementById(`mtKaraokeLyrics_${si}`);
+    const btn = document.getElementById(`mtKaraokeBtn_${si}`);
+    
+    if (sheetEl.style.display !== 'none') {
+        // Stop karaoke
+        mtStopKaraoke(si);
+        return;
+    }
+    
+    btn.textContent = '⏳ Loading...';
+    
     try {
-        if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-        await mtAudioContext.resume();
+        const abc = await loadABCNotation(songTitle, si);
+        if (!abc) { btn.textContent = '🎤 Start'; alert('No ABC notation for this section.'); return; }
         
-        if (mtIsRecording) mtStopRecording(sectionIndex);
+        // Load abcjs if needed
+        if (typeof ABCJS === 'undefined') {
+            await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/dist/abcjs-basic-min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+        }
         
-        // Stop any existing audio
-        document.querySelectorAll('audio').forEach(a => { a.pause(); a.currentTime = 0; });
-        mtStopAllTracks();
+        sheetEl.style.display = 'block';
+        lyricsEl.style.display = 'block';
         
-        // Get microphone
-        mtRecordingStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+        // Render ABC with cursor support
+        const visualObj = ABCJS.renderAbc(sheetEl, abc, {
+            responsive: 'resize', staffwidth: 500, scale: 0.9,
+            wrap: { minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 },
+            add_classes: true
+        })[0];
+        
+        // Extract lyrics from ABC
+        const lyricLines = abc.split('\n').filter(l => l.startsWith('w:')).map(l => l.substring(2).trim());
+        const allLyrics = lyricLines.join(' ');
+        
+        // Set up synth for playback with cursor
+        const synthControl = new ABCJS.synth.SynthController();
+        const audioEl = document.createElement('div');
+        audioEl.id = `mtKaraokeAudio_${si}`;
+        audioEl.style.cssText = 'margin-top:6px';
+        sheetEl.appendChild(audioEl);
+        
+        synthControl.load(`#mtKaraokeAudio_${si}`, null, {
+            displayLoop: true, displayRestart: true, displayPlay: true, displayProgress: true
         });
         
-        // iOS-compatible MIME type
-        let mimeType = 'audio/webm';
-        if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-        else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
-        else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
-        
-        mtRecorder = new MediaRecorder(mtRecordingStream, { mimeType });
-        mtAudioChunks = [];
-        
-        mtRecorder.ondataavailable = (e) => { if (e.data.size > 0) mtAudioChunks.push(e.data); };
-        
-        mtRecorder.onstop = async () => {
-            const blob = new Blob(mtAudioChunks, { type: mimeType });
-            if (blob.size === 0) { alert('No audio captured'); return; }
-            const base64 = await blobToBase64(blob);
-            mtShowPreview(songTitle, sectionIndex, base64, blob.size, mimeType);
-            if (mtRecordingStream) mtRecordingStream.getTracks().forEach(t => t.stop());
-            mtIsRecording = false;
+        // Create cursor control
+        const cursorControl = {
+            onEvent: function(ev) {
+                // Highlight current note
+                document.querySelectorAll(`#mtKaraokeSheet_${si} svg .highlight`).forEach(el => el.classList.remove('highlight'));
+                if (ev.elements) {
+                    ev.elements.forEach(els => els.forEach(el => el.classList.add('highlight')));
+                }
+                // Show current lyric
+                if (ev.midiPitches && lyricsEl) {
+                    // Try to extract the lyric from the element
+                    const lyricEls = document.querySelectorAll(`#mtKaraokeSheet_${si} svg .abcjs-lyric`);
+                    // Simple approach: highlight based on timing
+                }
+            },
+            onFinished: function() {
+                document.querySelectorAll(`#mtKaraokeSheet_${si} svg .highlight`).forEach(el => el.classList.remove('highlight'));
+            }
         };
         
-        const statusEl = document.getElementById(`mtRecordStatus_${sectionIndex}`);
-        const timerEl = document.getElementById(`mtRecordTimer_${sectionIndex}`);
-        const recordBtn = document.getElementById(`mtRecordBtn_${sectionIndex}`);
-        const stopBtn = document.getElementById(`mtStopBtn_${sectionIndex}`);
+        await synthControl.setTune(visualObj, false, { chordsOff: true });
         
-        // Count-in using AudioContext scheduler (fixes timing issues)
-        const countIn = document.getElementById(`mtCountIn_${sectionIndex}`)?.checked;
-        if (countIn) {
-            const bpm = parseInt(document.getElementById(`mtBPM_${sectionIndex}`)?.value) || 120;
-            const beatMs = 60000 / bpm;
-            
-            for (let i = 4; i >= 1; i--) {
-                statusEl.innerHTML = `<span style="font-size: 2em; font-weight: 700; color: #fbbf24;">${i}</span>`;
-                // Click sound using AudioContext for accuracy
-                const osc = mtAudioContext.createOscillator();
-                const gain = mtAudioContext.createGain();
-                osc.connect(gain); gain.connect(mtAudioContext.destination);
-                osc.frequency.value = i === 4 ? 1200 : 900;
-                gain.gain.setValueAtTime(0.5, mtAudioContext.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 0.12);
-                osc.start(mtAudioContext.currentTime);
-                osc.stop(mtAudioContext.currentTime + 0.12);
-                // Wait precisely using a promise with AudioContext timing
-                await new Promise(r => setTimeout(r, beatMs));
-            }
+        btn.textContent = '⏹ Stop Karaoke';
+        btn.onclick = () => mtStopKaraoke(si);
+        
+        // Store for cleanup
+        window._mtKaraokeSynth = synthControl;
+        
+        // Add highlight CSS
+        if (!document.getElementById('mt-karaoke-css')) {
+            const style = document.createElement('style');
+            style.id = 'mt-karaoke-css';
+            style.textContent = `.highlight{fill:#667eea !important;} .abcjs-cursor{stroke:#ef4444;stroke-width:2;}`;
+            document.head.appendChild(style);
         }
         
-        // Start backing tracks with latency offset
-        const backingDelay = Math.max(0, mtLatencyMs);
-        const recordDelay = Math.max(0, -mtLatencyMs);
-        
-        // Start recording
-        setTimeout(() => {
-            mtRecorder.start();
-            mtIsRecording = true;
-            statusEl.innerHTML = '<span style="color: #ef4444;" class="mt-pulse">🔴 RECORDING</span>';
-            timerEl.style.display = 'block';
-            recordBtn.style.display = 'none';
-            stopBtn.style.display = 'inline-flex';
-        }, recordDelay);
-        
-        // Start backing tracks
-        setTimeout(() => {
-            mtStartBackingTracks(songTitle, sectionIndex);
-        }, backingDelay);
-        
-        // Start timer
-        let seconds = 0;
-        const timerInterval = setInterval(() => {
-            if (!mtIsRecording) { clearInterval(timerInterval); return; }
-            seconds++;
-            if (timerEl) timerEl.textContent = formatTime(seconds);
-        }, 1000);
-        stopBtn?.setAttribute('data-timer', timerInterval);
-        
-        // Metronome during recording
-        if (document.getElementById(`mtMetronomeDuringRec_${sectionIndex}`)?.checked && !mtMetronomeInterval) {
-            mtStartMetronome(sectionIndex);
-        }
-        
-    } catch (error) {
-        let msg = 'Microphone access denied.';
-        if (error.name === 'NotFoundError') msg = 'No microphone found.';
-        else if (error.name === 'NotReadableError') msg = 'Microphone in use by another app.';
-        alert(msg + '\n\n' + error.message);
+    } catch (e) {
+        console.error('Karaoke error:', e);
+        btn.textContent = '🎤 Start';
+        alert('Could not start karaoke: ' + e.message);
     }
 }
 
-function mtStopRecording(sectionIndex) {
-    if (mtRecorder && mtRecorder.state === 'recording') mtRecorder.stop();
-    mtIsRecording = false;
-    mtStopAllTracks();
-    
-    if (document.getElementById(`mtMetronomeDuringRec_${sectionIndex}`)?.checked) mtStopMetronome();
-    
-    const stopBtn = document.getElementById(`mtStopBtn_${sectionIndex}`);
-    if (stopBtn) { const ti = stopBtn.getAttribute('data-timer'); if (ti) clearInterval(parseInt(ti)); }
-    
-    const recordBtn = document.getElementById(`mtRecordBtn_${sectionIndex}`);
-    if (recordBtn) recordBtn.style.display = 'inline-flex';
-    if (stopBtn) stopBtn.style.display = 'none';
+function mtStopKaraoke(si) {
+    const sheetEl = document.getElementById(`mtKaraokeSheet_${si}`);
+    const lyricsEl = document.getElementById(`mtKaraokeLyrics_${si}`);
+    const btn = document.getElementById(`mtKaraokeBtn_${si}`);
+    if (sheetEl) sheetEl.style.display = 'none';
+    if (lyricsEl) lyricsEl.style.display = 'none';
+    if (btn) { btn.textContent = '🎤 Start'; btn.onclick = () => mtToggleKaraoke(mtCurrentSongTitle, si); }
+    if (window._mtKaraokeSynth) { try { window._mtKaraokeSynth.pause(); } catch(e){} }
 }
 
 // ============================================================================
-// PLAYBACK WITH LOOPING
+// WAVEFORM VISUALIZATION
 // ============================================================================
-
-async function mtStartBackingTracks(songTitle, sectionIndex) {
-    mtStopAllTracks();
-    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, sectionIndex));
-    mtPlaybackAudios = [];
+async function mtDrawAllWaveforms(songTitle, si) {
+    const canvas = document.getElementById(`mtWaveformCanvas_${si}`);
+    if (!canvas) return;
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    
+    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, si));
+    const colors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
     
     for (let i = 0; i < snippets.length; i++) {
-        const cb = document.getElementById(`mtTrack_${sectionIndex}_${i}`);
-        const vol = document.getElementById(`mtVol_${sectionIndex}_${i}`);
+        const cb = document.getElementById(`mtTrack_${si}_${i}`);
+        if (!cb?.checked || !snippets[i].data) continue;
         
-        if (snippets[i].data) {
-            const audio = new Audio(snippets[i].data);
-            audio.volume = (cb?.checked ? (parseInt(vol?.value) || 80) : 0) / 100;
-            mtPlaybackAudios.push({ audio, index: i });
+        try {
+            if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const response = await fetch(snippets[i].data);
+            const arrayBuf = await response.arrayBuffer();
+            const audioBuf = await mtAudioContext.decodeAudioData(arrayBuf);
+            const data = audioBuf.getChannelData(0);
             
-            if (cb?.checked) {
-                audio.play().catch(e => console.warn('Backing track play error:', e));
-            }
-        } else {
-            mtPlaybackAudios.push({ audio: null, index: i });
-        }
-    }
-    mtIsPlaying = true;
-}
-
-async function mtPlayAllTracks(songTitle, sectionIndex) {
-    mtStopAllTracks();
-    
-    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, sectionIndex));
-    mtPlaybackAudios = [];
-    let maxDuration = 0;
-    
-    for (let i = 0; i < snippets.length; i++) {
-        const cb = document.getElementById(`mtTrack_${sectionIndex}_${i}`);
-        const vol = document.getElementById(`mtVol_${sectionIndex}_${i}`);
-        
-        if (snippets[i].data) {
-            const audio = new Audio(snippets[i].data);
-            audio.volume = (cb?.checked ? (parseInt(vol?.value) || 80) : 0) / 100;
-            mtPlaybackAudios.push({ audio, index: i });
+            const step = Math.floor(data.length / w);
+            const color = colors[i % colors.length];
+            const trackH = h / Math.min(snippets.length, 4);
+            const yOffset = (i % 4) * trackH;
             
-            if (cb?.checked) {
-                audio.play().catch(e => console.warn('Track play error:', e));
-            }
-        } else {
-            mtPlaybackAudios.push({ audio: null, index: i });
-        }
-    }
-    
-    mtIsPlaying = true;
-    
-    // Set up looping - find the longest track and restart when it ends
-    if (mtLooping) {
-        const longestAudio = mtPlaybackAudios
-            .filter(item => item.audio && document.getElementById(`mtTrack_${sectionIndex}_${item.index}`)?.checked)
-            .map(item => item.audio);
-        
-        if (longestAudio.length > 0) {
-            // Use the first checked track to detect end
-            longestAudio[0].onended = () => {
-                if (mtLooping && mtIsPlaying) {
-                    console.log('🔁 Looping mix...');
-                    mtPlayAllTracks(songTitle, sectionIndex);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            
+            for (let x = 0; x < w; x++) {
+                let min = 1, max = -1;
+                for (let j = 0; j < step; j++) {
+                    const v = data[x * step + j] || 0;
+                    if (v < min) min = v;
+                    if (v > max) max = v;
                 }
-            };
-        }
+                const mid = yOffset + trackH / 2;
+                ctx.moveTo(x, mid + min * trackH / 2);
+                ctx.lineTo(x, mid + max * trackH / 2);
+            }
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        } catch (e) { console.warn('Waveform error track', i, e); }
     }
 }
 
-function mtStopAllTracks() {
-    mtPlaybackAudios.forEach(item => {
-        if (item && item.audio) {
-            item.audio.pause();
-            item.audio.currentTime = 0;
-            item.audio.onended = null;
+function mtDrawWaveform(si, trackIndex) {
+    const canvas = document.getElementById(`mtWaveformCanvas_${si}`);
+    if (canvas) canvas.style.display = canvas.style.display === 'none' ? 'block' : 'none';
+}
+
+// ============================================================================
+// EXPORT MIX
+// ============================================================================
+async function mtExportMix(songTitle, si) {
+    try {
+        if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, si));
+        const buffers = [];
+        
+        for (let i = 0; i < snippets.length; i++) {
+            const cb = document.getElementById(`mtTrack_${si}_${i}`);
+            if (!cb?.checked || !snippets[i].data) continue;
+            const resp = await fetch(snippets[i].data);
+            const arr = await resp.arrayBuffer();
+            const buf = await mtAudioContext.decodeAudioData(arr);
+            const vol = (parseInt(document.getElementById(`mtVol_${si}_${i}`)?.value) || 80) / 100;
+            buffers.push({ buffer: buf, volume: vol });
         }
-    });
-    mtPlaybackAudios = [];
-    mtIsPlaying = false;
+        
+        if (buffers.length === 0) { alert('No checked tracks to export.'); return; }
+        
+        const maxLen = Math.max(...buffers.map(b => b.buffer.length));
+        const sampleRate = buffers[0].buffer.sampleRate;
+        const offline = new OfflineAudioContext(2, maxLen, sampleRate);
+        
+        buffers.forEach(({ buffer, volume }) => {
+            const src = offline.createBufferSource();
+            src.buffer = buffer;
+            const gain = offline.createGain();
+            gain.gain.value = volume;
+            src.connect(gain);
+            gain.connect(offline.destination);
+            src.start(0);
+        });
+        
+        const rendered = await offline.startRendering();
+        
+        // Convert to WAV
+        const wav = mtAudioBufferToWav(rendered);
+        const blob = new Blob([wav], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${songTitle.replace(/[^a-zA-Z0-9]/g, '_')}_mix.wav`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        alert('✅ Mix exported as WAV!');
+    } catch (e) {
+        console.error('Export error:', e);
+        alert('Export failed: ' + e.message);
+    }
+}
+
+function mtAudioBufferToWav(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataSize = buffer.length * blockAlign;
+    const bufferSize = 44 + dataSize;
+    const arrayBuffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(arrayBuffer);
+    
+    function writeString(offset, string) { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); }
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, bufferSize - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+    
+    let offset = 44;
+    const channels = [];
+    for (let c = 0; c < numChannels; c++) channels.push(buffer.getChannelData(c));
+    
+    for (let i = 0; i < buffer.length; i++) {
+        for (let c = 0; c < numChannels; c++) {
+            const sample = Math.max(-1, Math.min(1, channels[c][i]));
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+            offset += 2;
+        }
+    }
+    return arrayBuffer;
+}
+
+// ============================================================================
+// POST-RECORDING NUDGE
+// ============================================================================
+function mtShowNudge(songTitle, si, newRecordingBase64) {
+    const nudgeEl = document.getElementById(`mtNudgeSection_${si}`);
+    if (!nudgeEl) return;
+    const ss = songTitle.replace(/'/g, "\\'");
+    
+    nudgeEl.style.display = 'block';
+    nudgeEl.innerHTML = `
+        <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.25);padding:12px;border-radius:8px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong style="font-size:0.85em">🔧 Nudge / Align ${mtHelp('nudge')}</strong>
+                <span id="mtNudgeVal_${si}" style="font-size:0.8em;font-family:monospace;color:#a5b4fc">0ms</span>
+            </div>
+            <input type="range" id="mtNudgeSlider_${si}" min="-200" max="200" value="0" step="5" style="width:100%;accent-color:#667eea"
+                oninput="document.getElementById('mtNudgeVal_${si}').textContent=this.value+'ms'">
+            <div style="display:flex;justify-content:space-between;font-size:0.6em;color:rgba(255,255,255,0.3);margin-top:2px"><span>← Earlier</span><span>Later →</span></div>
+            <div style="margin-top:8px;text-align:center">
+                <button onclick="mtPreviewWithNudge('${ss}',${si})" style="background:#667eea;color:white;border:none;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.8em;font-weight:600">▶ Preview with Nudge</button>
+            </div>
+        </div>`;
+    
+    // Store the new recording for nudge preview
+    window._mtNudgeRecording = newRecordingBase64;
+}
+
+async function mtPreviewWithNudge(songTitle, si) {
+    mtStopAllTracks();
+    const nudgeMs = parseInt(document.getElementById(`mtNudgeSlider_${si}`)?.value) || 0;
+    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, si));
+    
+    // Play existing tracks
+    for (const sn of snippets) {
+        if (sn.data) { const a = new Audio(sn.data); a.volume = 0.7; a.play().catch(() => {}); mtPlaybackAudios.push({ audio: a }); }
+    }
+    
+    // Play new recording with nudge offset
+    if (window._mtNudgeRecording) {
+        const newAudio = new Audio(window._mtNudgeRecording);
+        newAudio.volume = 0.9;
+        if (nudgeMs >= 0) { setTimeout(() => newAudio.play().catch(() => {}), nudgeMs); }
+        else { setTimeout(() => { for (const pa of mtPlaybackAudios) if (pa.audio) pa.audio.play().catch(() => {}); }, Math.abs(nudgeMs)); newAudio.play().catch(() => {}); }
+        mtPlaybackAudios.push({ audio: newAudio });
+    }
+    mtIsPlaying = true;
 }
 
 // ============================================================================
 // PREVIEW & SAVE
 // ============================================================================
-
-function mtShowPreview(songTitle, sectionIndex, base64Audio, fileSize, mimeType) {
-    const section = document.getElementById(`mtPreviewSection_${sectionIndex}`);
+function mtShowPreview(songTitle, si, base64Audio, fileSize, mimeType) {
+    const section = document.getElementById(`mtPreviewSection_${si}`);
     if (!section) return;
+    const ss = songTitle.replace(/'/g, "\\'");
+    let ext = 'webm'; if (mimeType.includes('mp4')) ext = 'm4a'; else if (mimeType.includes('ogg')) ext = 'ogg';
     
-    let ext = 'webm';
-    if (mimeType.includes('mp4')) ext = 'm4a';
-    else if (mimeType.includes('ogg')) ext = 'ogg';
-    
-    const safeSongTitle = songTitle.replace(/'/g, "\\'");
+    // Show nudge slider
+    mtShowNudge(songTitle, si, base64Audio);
     
     section.style.display = 'block';
     section.innerHTML = `
-        <div style="background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; padding: 20px; border-radius: 10px;">
-            <h4 style="margin: 0 0 12px 0; color: #10b981;">✅ Recording Complete!</h4>
-            <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 12px;"></audio>
-            <p style="font-size: 0.75em; color: rgba(255,255,255,0.4); margin: 0 0 12px 0;">${ext.toUpperCase()} · ${(fileSize / 1024).toFixed(1)} KB</p>
-            
-            <div style="margin-bottom: 10px;">
-                <label style="display: block; margin-bottom: 4px; font-size: 0.85em;">Who recorded this?</label>
-                <select id="mtRecAuthor_${sectionIndex}" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
-                    ${Object.entries(bandMembers).map(([key, m]) => `<option value="${key}" style="color: black;">${m.name}</option>`).join('')}
+        <div style="background:rgba(16,185,129,0.1);border:2px solid #10b981;padding:16px;border-radius:10px">
+            <h4 style="margin:0 0 10px;color:#10b981">✅ Recording Complete!</h4>
+            <audio controls src="${base64Audio}" style="width:100%;margin-bottom:10px"></audio>
+            <p style="font-size:0.7em;color:rgba(255,255,255,0.35);margin:0 0 10px">${ext.toUpperCase()} · ${(fileSize/1024).toFixed(1)} KB</p>
+            <div style="margin-bottom:8px">
+                <label style="display:block;margin-bottom:3px;font-size:0.8em">Who recorded?</label>
+                <select id="mtRecAuthor_${si}" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15)">
+                    ${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}" style="color:black">${m.name}</option>`).join('')}
                 </select>
             </div>
-            <div style="margin-bottom: 10px;">
-                <label style="display: block; margin-bottom: 4px; font-size: 0.85em;">Name this recording:</label>
-                <input type="text" id="mtRecName_${sectionIndex}" placeholder="E.g., Drew - high harmony" 
-                    style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box;">
+            <div style="margin-bottom:8px">
+                <label style="display:block;margin-bottom:3px;font-size:0.8em">Name:</label>
+                <input type="text" id="mtRecName_${si}" placeholder="E.g. Drew - high harmony" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);box-sizing:border-box">
             </div>
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 4px; font-size: 0.85em;">Notes (optional):</label>
-                <input type="text" id="mtRecNotes_${sectionIndex}" placeholder="E.g., Third above the melody" 
-                    style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box;">
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:3px;font-size:0.8em">Notes:</label>
+                <input type="text" id="mtRecNotes_${si}" placeholder="Optional" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);box-sizing:border-box">
             </div>
-            
-            <div style="display: flex; gap: 10px;">
-                <button onclick="mtSaveRecording('${safeSongTitle}', ${sectionIndex}, \`${base64Audio}\`, ${fileSize})" 
-                    style="flex: 1; background: #10b981; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                    💾 Save to Band
-                </button>
-                <button onclick="document.getElementById('mtPreviewSection_${sectionIndex}').style.display='none'" 
-                    style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
-                    🗑️ Discard
-                </button>
+            <div style="display:flex;gap:8px">
+                <button onclick="mtSaveRecording('${ss}',${si},'${base64Audio.substring(0,50)}',${fileSize})" style="flex:1;background:#10b981;color:white;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:600">💾 Save</button>
+                <button onclick="document.getElementById('mtPreviewSection_${si}').style.display='none';document.getElementById('mtNudgeSection_${si}').style.display='none'" style="background:rgba(255,255,255,0.12);color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer">🗑️ Discard</button>
             </div>
-        </div>
-    `;
+        </div>`;
     
-    const statusEl = document.getElementById(`mtRecordStatus_${sectionIndex}`);
-    const timerEl = document.getElementById(`mtRecordTimer_${sectionIndex}`);
-    if (statusEl) statusEl.innerHTML = 'Ready to record another take.';
-    if (timerEl) timerEl.style.display = 'none';
+    // Store full base64 in a data attribute for save
+    section.dataset.audio = base64Audio;
+    
+    const statEl = document.getElementById(`mtRecordStatus_${si}`);
+    const timEl = document.getElementById(`mtRecordTimer_${si}`);
+    if (statEl) statEl.innerHTML = 'Ready to record another take.';
+    if (timEl) timEl.style.display = 'none';
 }
 
-async function mtSaveRecording(songTitle, sectionIndex, base64Audio, fileSize) {
-    const author = document.getElementById(`mtRecAuthor_${sectionIndex}`)?.value || 'unknown';
-    const name = document.getElementById(`mtRecName_${sectionIndex}`)?.value?.trim();
-    const notes = document.getElementById(`mtRecNotes_${sectionIndex}`)?.value?.trim();
+async function mtSaveRecording(songTitle, si, _unused, fileSize) {
+    const section = document.getElementById(`mtPreviewSection_${si}`);
+    const base64Audio = section?.dataset?.audio;
+    if (!base64Audio) { alert('Recording data lost. Please record again.'); return; }
     
+    const author = document.getElementById(`mtRecAuthor_${si}`)?.value || 'unknown';
+    const name = document.getElementById(`mtRecName_${si}`)?.value?.trim();
+    const notes = document.getElementById(`mtRecNotes_${si}`)?.value?.trim();
     if (!name) { alert('Please enter a name for this recording'); return; }
     
     const snippet = {
@@ -6894,28 +7186,32 @@ async function mtSaveRecording(songTitle, sectionIndex, base64Audio, fileSize) {
         uploadedDate: new Date().toISOString().split('T')[0], isRecording: true
     };
     
-    const key = `harmony_audio_section_${sectionIndex}`;
+    const key = `harmony_audio_section_${si}`;
     const existing = toArray(await loadBandDataFromDrive(songTitle, key));
     existing.push(snippet);
     await saveBandDataToDrive(songTitle, key, existing);
     
-    const localKey = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const localKey = `deadcetera_harmony_audio_${songTitle}_section${si}`;
     localStorage.setItem(localKey, JSON.stringify(existing));
     
-    logActivity('harmony_recording', { song: songTitle, extra: `section ${sectionIndex}: ${name}` });
-    alert(`✅ Recording saved! All band members can hear it.`);
-    
-    // Refresh the studio
-    openMultiTrackStudio(songTitle, sectionIndex);
+    logActivity('harmony_recording', { song: songTitle, extra: `section ${si}: ${name}` });
+    alert('✅ Recording saved!');
+    openMultiTrackStudio(songTitle, si);
 }
 
+// ============================================================================
 // CSS
-(function() {
-    if (document.getElementById('mt-studio-css')) return;
-    const style = document.createElement('style');
-    style.id = 'mt-studio-css';
-    style.textContent = `@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } } .mt-pulse { animation: pulse 1s infinite; }`;
-    document.head.appendChild(style);
+// ============================================================================
+(function(){
+    if(document.getElementById('mt-studio-css'))return;
+    const s=document.createElement('style');s.id='mt-studio-css';
+    s.textContent=`
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}} .mt-pulse{animation:pulse 1s infinite}
+        .mt-help-icon{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.35);font-size:0.6em;cursor:pointer;margin-left:3px;vertical-align:middle;border:1px solid rgba(255,255,255,0.1);transition:all 0.15s}
+        .mt-help-icon:hover{background:rgba(102,126,234,0.3);color:white;border-color:rgba(102,126,234,0.5)}
+        .highlight{fill:#667eea !important} .abcjs-cursor{stroke:#ef4444;stroke-width:2}
+    `;
+    document.head.appendChild(s);
 })();
 
-console.log('🎛️ Multi-Track Harmony Studio v2 loaded');
+console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
