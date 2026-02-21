@@ -2130,11 +2130,10 @@ async function uploadMoisesStems() {
                 else if (fileName.includes('key') || fileName.includes('piano')) instrument = 'keys';
                 else if (fileName.includes('vocal') || fileName.includes('voice')) instrument = 'vocals';
                 
-                // Create shareable link
-                const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
-                uploadedStems[instrument] = fileUrl;
+                // fileId is now a direct download URL from Firebase Storage
+                uploadedStems[instrument] = fileId;
                 
-                console.log(`✅ Uploaded ${file.name} as ${instrument}: ${fileId}`);
+                console.log(`✅ Uploaded ${file.name} as ${instrument}`);
             }
         }
         
@@ -2142,9 +2141,8 @@ async function uploadMoisesStems() {
         progressBar.style.width = '95%';
         
         // Save stems metadata
-        const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
         const stemsData = {
-            folderUrl: folderUrl,
+            folderUrl: '', // No folder URL with Firebase Storage
             folderId: folderId,
             sourceVersion: sourceInput.value.trim(),
             stems: uploadedStems,
@@ -2172,57 +2170,8 @@ async function uploadMoisesStems() {
     }
 }
 
-async function createDriveFolder(folderName, parentFolderId) {
-    try {
-        const metadata = {
-            name: folderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [parentFolderId]
-        };
-        
-        const response = await gapi.client.drive.files.create({
-            resource: metadata,
-            fields: 'id'
-        });
-        
-        return response.result.id;
-    } catch (error) {
-        console.error('Error creating folder:', error);
-        return null;
-    }
-}
-
-async function uploadFileToDrive(file, parentFolderId) {
-    try {
-        // Use multipart upload for files
-        const metadata = {
-            name: file.name,
-            parents: [parentFolderId]
-        };
-        
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', file);
-        
-        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${gapi.auth.getToken().access_token}`
-            },
-            body: form
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Upload failed: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        return result.id;
-    } catch (error) {
-        console.error('Error uploading file:', error);
-        return null;
-    }
-}
+// createDriveFolder and uploadFileToDrive are defined in Firebase storage section below
+// (original Drive versions removed)
 
 async function addMoisesStems() {
     const songTitle = selectedSong?.title || selectedSong;
@@ -3652,12 +3601,16 @@ async function saveRecording(sectionIndex, base64Audio, fileSize) {
         isRecording: true
     };
     
-    // Save to localStorage
+    // Save to localStorage as backup
     const key = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
     const existing = localStorage.getItem(key);
     const snippets = existing ? JSON.parse(existing) : [];
     snippets.push(snippet);
     localStorage.setItem(key, JSON.stringify(snippets));
+    
+    // Also save to Firebase so all band members can hear it
+    const fbKey = `harmony_audio_section_${sectionIndex}`;
+    await saveBandDataToDrive(selectedSong.title, fbKey, snippets);
     
     alert(`✅ Recording saved: ${name}`);
     
@@ -3688,12 +3641,11 @@ function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     if (newName && newName.trim()) {
         snippet.name = newName.trim();
         localStorage.setItem(key, JSON.stringify(snippets));
+        saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
         
         const bandData = bandKnowledgeBase[songTitle];
         if (bandData) {
             renderHarmoniesEnhanced(songTitle, bandData);
-        } else {
-            
         }
     }
 }
@@ -3705,6 +3657,7 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
     const snippets = JSON.parse(localStorage.getItem(key) || '[]');
     snippets.splice(snippetIndex, 1);
     localStorage.setItem(key, JSON.stringify(snippets));
+    saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
     
     const bandData = bandKnowledgeBase[songTitle];
     if (bandData) {
@@ -4607,115 +4560,139 @@ function generateSheetMusic(sectionIndex, section) {
 }
 // ============================================================================
 // ============================================================================
-// GOOGLE DRIVE INTEGRATION - NEW GOOGLE IDENTITY SERVICES (GIS)
-// Using the modern Google Auth library instead of deprecated gapi.auth2
+// FIREBASE INTEGRATION - Real-time database for all band data
+// Replaces Google Drive for reliable cross-browser data sharing
 // ============================================================================
 
+const FIREBASE_CONFIG = {
+    apiKey: "REDACTED",
+    authDomain: "deadcetera-35424.firebaseapp.com",
+    databaseURL: "https://deadcetera-35424-default-rtdb.firebaseio.com",
+    projectId: "deadcetera-35424",
+    storageBucket: "deadcetera-35424.firebasestorage.app",
+    messagingSenderId: "218400123401",
+    appId: "1:218400123401:web:7f64ad84231dcaba6966d8"
+};
+
+// Keep Google config for sign-in identity only (email/profile, no Drive access needed)
 const GOOGLE_DRIVE_CONFIG = {
     apiKey: 'REDACTED',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    scope: 'https://www.googleapis.com/auth/drive.file'
+    scope: 'email profile'
 };
 
-let isGoogleDriveInitialized = false;
+let isGoogleDriveInitialized = false; // Keep name for compatibility - means "backend ready"
 let isUserSignedIn = false;
 let accessToken = null;
 let tokenClient = null;
-let sharedFolderId = null; // ID of the "Deadcetera Band Resources" folder
-let currentUserEmail = null; // Current signed-in user's email
+let sharedFolderId = 'firebase'; // Dummy value so existing checks pass
+let currentUserEmail = null;
+
+// Firebase references (set during init)
+let firebaseDB = null;
+let firebaseStorage = null;
 
 // ============================================================================
-// INITIALIZATION WITH NEW GOOGLE IDENTITY SERVICES
+// FIREBASE INITIALIZATION
 // ============================================================================
 
 function loadGoogleDriveAPI() {
+    // Now loads Firebase SDK + Google Identity Services for sign-in
     return new Promise((resolve, reject) => {
-        console.log('☁️ Loading Google Drive API...');
+        console.log('🔥 Loading Firebase + Google Identity...');
         
-        // Load both Google API and Google Identity Services
-        const loadGAPI = new Promise((res, rej) => {
-            if (window.gapi) {
-                res();
-                return;
-            }
-            const script = document.createElement('script');
-            script.src = 'https://apis.google.com/js/api.js';
-            script.onload = res;
-            script.onerror = rej;
-            document.head.appendChild(script);
+        const loadFirebaseApp = new Promise((res, rej) => {
+            if (window.firebase?.apps?.length) { res(); return; }
+            const s = document.createElement('script');
+            s.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js';
+            s.onload = res; s.onerror = rej;
+            document.head.appendChild(s);
+        });
+        
+        const loadFirebaseDB = new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js';
+            s.onload = res; s.onerror = rej;
+            document.head.appendChild(s);
+        });
+        
+        const loadFirebaseStorage = new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js';
+            s.onload = res; s.onerror = rej;
+            document.head.appendChild(s);
         });
         
         const loadGIS = new Promise((res, rej) => {
-            if (window.google?.accounts?.oauth2) {
-                res();
-                return;
-            }
-            const script = document.createElement('script');
-            script.src = 'https://accounts.google.com/gsi/client';
-            script.onload = res;
-            script.onerror = rej;
-            document.head.appendChild(script);
+            if (window.google?.accounts?.oauth2) { res(); return; }
+            const s = document.createElement('script');
+            s.src = 'https://accounts.google.com/gsi/client';
+            s.onload = res; s.onerror = rej;
+            document.head.appendChild(s);
         });
         
-        Promise.all([loadGAPI, loadGIS])
+        // Firebase App must load first, then DB and Storage
+        loadFirebaseApp
+            .then(() => Promise.all([loadFirebaseDB, loadFirebaseStorage, loadGIS]))
             .then(() => {
-                console.log('✅ Google scripts loaded');
-                initGoogleDrive().then(resolve).catch(reject);
+                console.log('✅ Firebase + Google scripts loaded');
+                initFirebase().then(resolve).catch(reject);
             })
             .catch(reject);
     });
 }
 
-async function initGoogleDrive() {
+async function initFirebase() {
     try {
-        console.log('⚙️ Initializing Google Drive API...');
+        console.log('⚙️ Initializing Firebase...');
         
-        // Initialize gapi client
-        await new Promise((resolve, reject) => {
-            gapi.load('client', {
-                callback: resolve,
-                onerror: reject
-            });
-        });
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+        }
         
-        await gapi.client.init({
-            apiKey: GOOGLE_DRIVE_CONFIG.apiKey,
-            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
-        });
+        firebaseDB = firebase.database();
+        firebaseStorage = firebase.storage();
         
-        console.log('✅ gapi.client initialized');
+        console.log('✅ Firebase initialized');
         
-        // Initialize Google Identity Services token client
+        // Initialize Google Identity Services for sign-in (identity only, no Drive)
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_DRIVE_CONFIG.clientId,
             scope: GOOGLE_DRIVE_CONFIG.scope,
-            callback: (response) => {
+            callback: async (response) => {
                 if (response.error) {
                     console.error('Token error:', response);
                     updateSignInStatus(false);
                     return;
                 }
                 accessToken = response.access_token;
-                gapi.client.setToken({ access_token: accessToken });
                 updateSignInStatus(true);
                 console.log('✅ User signed in');
                 
-                // Get user email
-                getCurrentUserEmail();
+                // Get user email from Google
+                await getCurrentUserEmail();
                 
-                // Create or find the shared folder
-                initializeSharedFolder();
+                // No shared folder init needed - Firebase is always ready!
+                console.log('🔥 Firebase ready - no folder sharing needed!');
             }
         });
         
         isGoogleDriveInitialized = true;
-        console.log('✅ Google Drive API initialized');
+        console.log('✅ Backend initialized (Firebase + Google Identity)');
         
         return true;
     } catch (error) {
-        console.error('❌ Google Drive initialization failed:', error);
+        console.error('❌ Firebase initialization failed:', error);
         throw error;
     }
+}
+
+// Keep same function name for compatibility
+async function initializeSharedFolder() {
+    // No-op - Firebase doesn't need folder management
+    sharedFolderId = 'firebase';
+    console.log('🔥 Using Firebase - no shared folder needed');
 }
 
 function updateSignInStatus(signedIn) {
@@ -4725,10 +4702,12 @@ function updateSignInStatus(signedIn) {
 
 async function getCurrentUserEmail() {
     try {
-        const response = await gapi.client.drive.about.get({
-            fields: 'user'
+        // Use Google's userinfo endpoint instead of Drive API
+        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: 'Bearer ' + accessToken }
         });
-        currentUserEmail = response.result.user.emailAddress;
+        const userInfo = await response.json();
+        currentUserEmail = userInfo.email;
         console.log('👤 Signed in as:', currentUserEmail);
         logActivity('sign_in');
         injectAdminButton();
@@ -4743,26 +4722,26 @@ function updateDriveAuthButton() {
     if (!button) return;
     
     if (isUserSignedIn) {
-        button.textContent = '✅ Connected to Google Drive';
+        button.textContent = '✅ Connected';
         button.style.background = '#10b981';
     } else {
-        button.textContent = '☁️ Connect Google Drive';
+        button.textContent = '🔥 Sign In';
         button.style.background = '#667eea';
     }
 }
 
 // ============================================================================
-// AUTHENTICATION WITH NEW GOOGLE IDENTITY SERVICES
+// AUTHENTICATION
 // ============================================================================
 
 async function handleGoogleDriveAuth() {
     if (!isGoogleDriveInitialized) {
         try {
-            console.log('☁️ Loading Google Drive API...');
+            console.log('🔥 Loading Firebase...');
             await loadGoogleDriveAPI();
         } catch (error) {
-            console.error('Failed to load Google Drive:', error);
-            alert('Failed to load Google Drive.\n\nError: ' + error.message);
+            console.error('Failed to load Firebase:', error);
+            alert('Failed to initialize.\n\nError: ' + error.message);
             return;
         }
     }
@@ -4772,88 +4751,73 @@ async function handleGoogleDriveAuth() {
         google.accounts.oauth2.revoke(accessToken, () => {
             console.log('👋 User signed out');
             accessToken = null;
-            gapi.client.setToken(null);
             updateSignInStatus(false);
         });
     } else {
-        // Sign in - request access token
+        // Sign in
         try {
-            console.log('🔑 Requesting access token...');
+            console.log('🔑 Requesting sign-in...');
             tokenClient.requestAccessToken({ prompt: '' });
         } catch (error) {
             console.error('Sign-in failed:', error);
-            alert('Google Drive sign-in failed.\n\nError: ' + error.message);
+            alert('Sign-in failed.\n\nError: ' + error.message);
         }
     }
 }
 
 // ============================================================================
-// UPLOAD AUDIO TO GOOGLE DRIVE (Using new auth)
+// FIREBASE PATH HELPERS
+// ============================================================================
+
+function sanitizeFirebasePath(str) {
+    // Firebase paths cannot contain . # $ [ ] /
+    return str.replace(/[.#$\[\]\/]/g, '_');
+}
+
+function songPath(songTitle, dataType) {
+    return `songs/${sanitizeFirebasePath(songTitle)}/${sanitizeFirebasePath(dataType)}`;
+}
+
+function masterPath(fileName) {
+    // Remove file extension for cleaner paths
+    const name = fileName.replace('.json', '');
+    return `master/${sanitizeFirebasePath(name)}`;
+}
+
+// ============================================================================
+// UPLOAD AUDIO TO FIREBASE STORAGE
 // ============================================================================
 
 async function uploadAudioToDrive(audioBlob, fileName, metadata) {
+    // Now uploads to Firebase Storage instead of Drive
     if (!isUserSignedIn) {
-        alert('Please connect to Google Drive first!');
+        alert('Please sign in first!');
         return null;
     }
     
     try {
-        console.log('📤 Uploading to Google Drive:', fileName);
+        console.log('📤 Uploading to Firebase Storage:', fileName);
         
-        // Create file metadata
-        const fileMetadata = {
-            name: fileName,
-            description: JSON.stringify(metadata)
-        };
+        const safeName = sanitizeFirebasePath(fileName);
+        const storageRef = firebaseStorage.ref(`audio/${safeName}`);
         
-        // Convert blob to base64
-        const base64Data = await blobToBase64(audioBlob);
+        await storageRef.put(audioBlob);
+        const downloadURL = await storageRef.getDownloadURL();
         
-        // Upload using Google Drive API v3
-        const boundary = '-------314159265358979323846';
-        const delimiter = "\r\n--" + boundary + "\r\n";
-        const close_delim = "\r\n--" + boundary + "--";
-        
-        const multipartRequestBody =
-            delimiter +
-            'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-            JSON.stringify(fileMetadata) +
-            delimiter +
-            'Content-Type: ' + audioBlob.type + '\r\n' +
-            'Content-Transfer-Encoding: base64\r\n\r\n' +
-            base64Data.split(',')[1] +
-            close_delim;
-        
-        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + accessToken,
-                'Content-Type': 'multipart/related; boundary=' + boundary
-            },
-            body: multipartRequestBody
-        });
-        
-        const result = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(result.error?.message || 'Upload failed');
-        }
-        
-        console.log('✅ Upload successful:', result);
+        console.log('✅ Upload successful:', downloadURL);
         
         return {
-            id: result.id,
-            name: result.name,
-            webViewLink: `https://drive.google.com/file/d/${result.id}/view`
+            id: safeName,
+            name: fileName,
+            webViewLink: downloadURL
         };
     } catch (error) {
         console.error('Upload failed:', error);
-        alert('Failed to upload to Google Drive: ' + error.message);
+        alert('Failed to upload audio: ' + error.message);
         return null;
     }
 }
 
-// Helper function
 async function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -4863,8 +4827,11 @@ async function blobToBase64(blob) {
     });
 }
 
-console.log('☁️ Google Drive integration loaded (New GIS)');
+console.log('🔥 Firebase integration loaded');
 
+// ============================================================================
+// EDITABLE HARMONY PART NOTES
+// ============================================================================
 // ============================================================================
 // EDITABLE HARMONY PART NOTES
 // ============================================================================
@@ -5267,6 +5234,9 @@ let statusPreloadRunning = false;
 // ============================================================================
 // MASTER STATUS FILE - Single Drive file for ALL song statuses (FAST!)
 // Instead of 358 individual Drive calls, we load ONE file on startup.
+
+// ============================================================================
+// MASTER FILES FOR EFFICIENT LOADING
 // ============================================================================
 
 const MASTER_STATUS_FILE = '_master_song_statuses.json';
@@ -5328,100 +5298,8 @@ async function preloadAllStatuses() {
     addStatusBadges();
 }
 
-// Load a master file from Drive (single API call)
-async function loadMasterFile(fileName) {
-    if (!isUserSignedIn || !sharedFolderId) {
-        // Try localStorage
-        const key = `deadcetera_${fileName}`;
-        const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : null;
-    }
-    
-    try {
-        const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
-        const file = await findFileInFolder(fileName, metadataFolderId);
-        
-        if (!file) return null;
-        
-        const response = await gapi.client.drive.files.get({
-            fileId: file.id,
-            alt: 'media'
-        });
-        
-        return response.result;
-    } catch (error) {
-        console.log(`Could not load master file: ${fileName}`);
-        return null;
-    }
-}
 
-// Save a master file to Drive (single API call)
-async function saveMasterFile(fileName, data) {
-    // Always save to localStorage as backup
-    const key = `deadcetera_${fileName}`;
-    localStorage.setItem(key, JSON.stringify(data));
-    
-    if (!isUserSignedIn || !sharedFolderId) return false;
-    
-    try {
-        const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
-        const content = JSON.stringify(data, null, 2);
-        const existingFile = await findFileInFolder(fileName, metadataFolderId);
-        
-        if (existingFile) {
-            await gapi.client.request({
-                path: `/upload/drive/v3/files/${existingFile.id}`,
-                method: 'PATCH',
-                params: { uploadType: 'media' },
-                body: content
-            });
-        } else {
-            const fileMetadata = {
-                name: fileName,
-                parents: [metadataFolderId],
-                mimeType: 'application/json'
-            };
-            const boundary = '-------314159265358979323846';
-            const delimiter = "\r\n--" + boundary + "\r\n";
-            const close_delim = "\r\n--" + boundary + "--";
-            const multipartRequestBody =
-                delimiter +
-                'Content-Type: application/json\r\n\r\n' +
-                JSON.stringify(fileMetadata) +
-                delimiter +
-                'Content-Type: application/json\r\n\r\n' +
-                content +
-                close_delim;
-            
-            const createResp = await gapi.client.request({
-                path: '/upload/drive/v3/files',
-                method: 'POST',
-                params: { uploadType: 'multipart' },
-                headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
-                body: multipartRequestBody
-            });
-            
-            // Auto-share new files
-            try {
-                const newFileId = createResp.result?.id || JSON.parse(createResp.body)?.id;
-                if (newFileId) {
-                    await gapi.client.drive.permissions.create({
-                        fileId: newFileId,
-                        resource: { role: 'reader', type: 'anyone' }
-                    });
-                }
-            } catch (shareErr) {
-                console.warn('⚠️ Could not auto-share master file:', shareErr);
-            }
-        }
-        
-        console.log(`Saved master file: ${fileName}`);
-        return true;
-    } catch (error) {
-        console.error('Error saving master file:', error);
-        return false;
-    }
-}
+// (loadMasterFile and saveMasterFile are defined in Firebase storage section below)
 
 // One-time migration: read individual status files and combine into master
 async function migrateStatusesToMaster() {
@@ -5626,9 +5504,8 @@ async function addHarmonyBadges() {
     });
 }
 
-console.log('✅ All 4 features loaded');
 // ============================================================================
-// COMPREHENSIVE GOOGLE DRIVE STORAGE - ALL BAND DATA SHARED
+// COMPREHENSIVE FIREBASE STORAGE - ALL BAND DATA SHARED
 // ============================================================================
 
 // Central storage for all band data types
@@ -5643,147 +5520,49 @@ const BAND_DATA_TYPES = {
 };
 
 // ============================================================================
-// SAVE TO GOOGLE DRIVE (Shared with all band members)
+// SAVE TO FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
 async function saveBandDataToDrive(songTitle, dataType, data) {
-    // Fallback to localStorage if not signed in
-    if (!isUserSignedIn) {
-        console.log('⚠️ Not signed in, using localStorage fallback');
-        const key = `deadcetera_${dataType}_${songTitle}`;
-        localStorage.setItem(key, JSON.stringify(data));
-        return true;
-    }
+    // Always save to localStorage as backup
+    const localKey = `deadcetera_${dataType}_${songTitle}`;
+    localStorage.setItem(localKey, JSON.stringify(data));
     
-    // Wait for shared folder to be initialized
-    if (!sharedFolderId) {
-        console.log('⏳ Waiting for shared folder to be initialized...');
-        await initializeSharedFolder();
-        
-        // If still no folder, fall back to localStorage
-        if (!sharedFolderId) {
-            console.log('⚠️ Could not initialize folder, using localStorage');
-            const key = `deadcetera_${dataType}_${songTitle}`;
-            localStorage.setItem(key, JSON.stringify(data));
-            return false;
-        }
+    if (!firebaseDB) {
+        console.log('⚠️ Firebase not ready, using localStorage fallback');
+        return false;
     }
     
     try {
-        const fileName = `${songTitle}_${dataType}.json`;
-        const content = JSON.stringify(data, null, 2);
-        
-        // Get or create metadata folder
-        const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
-        
-        // Check if file exists
-        const existingFile = await findFileInFolder(fileName, metadataFolderId);
-        
-        if (existingFile) {
-            // Update existing file
-            await gapi.client.request({
-                path: `/upload/drive/v3/files/${existingFile.id}`,
-                method: 'PATCH',
-                params: { uploadType: 'media' },
-                body: content
-            });
-            console.log(`✅ Updated ${dataType} for ${songTitle} in Drive`);
-        } else {
-            // Create new file
-            const fileMetadata = {
-                name: fileName,
-                parents: [metadataFolderId],
-                mimeType: 'application/json'
-            };
-            
-            const boundary = '-------314159265358979323846';
-            const delimiter = "\r\n--" + boundary + "\r\n";
-            const close_delim = "\r\n--" + boundary + "--";
-            
-            const multipartRequestBody =
-                delimiter +
-                'Content-Type: application/json\r\n\r\n' +
-                JSON.stringify(fileMetadata) +
-                delimiter +
-                'Content-Type: application/json\r\n\r\n' +
-                content +
-                close_delim;
-            
-            const createResponse = await gapi.client.request({
-                path: '/upload/drive/v3/files',
-                method: 'POST',
-                params: { uploadType: 'multipart' },
-                headers: {
-                    'Content-Type': 'multipart/related; boundary=' + boundary
-                },
-                body: multipartRequestBody
-            });
-            
-            console.log(`✅ Created ${dataType} for ${songTitle} in Drive`);
-            
-            // Auto-share new files so all band members can access them
-            try {
-                const newFileId = createResponse.result?.id || JSON.parse(createResponse.body)?.id;
-                if (newFileId) {
-                    await gapi.client.drive.permissions.create({
-                        fileId: newFileId,
-                        resource: { role: 'reader', type: 'anyone' }
-                    });
-                }
-            } catch (shareErr) {
-                console.warn('⚠️ Could not auto-share new file:', shareErr);
-            }
-        }
-        
+        const path = songPath(songTitle, dataType);
+        await firebaseDB.ref(path).set(data);
+        console.log(`✅ Saved ${dataType} for ${songTitle} to Firebase`);
         return true;
     } catch (error) {
-        console.error('❌ Failed to save to Drive:', error);
-        // Fallback to localStorage
-        const key = `deadcetera_${dataType}_${songTitle}`;
-        localStorage.setItem(key, JSON.stringify(data));
+        console.error('❌ Failed to save to Firebase:', error);
         return false;
     }
 }
 
 // ============================================================================
-// LOAD FROM GOOGLE DRIVE (Shared with all band members)
+// LOAD FROM FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
 async function loadBandDataFromDrive(songTitle, dataType) {
-    // Try Drive first
-    if (isUserSignedIn) {
-        // Wait for shared folder to be initialized
-        if (!sharedFolderId) {
-            console.log('⏳ Waiting for shared folder to be initialized...');
-            await initializeSharedFolder();
-        }
-        
-        // If still no folder, fall back to localStorage
-        if (!sharedFolderId) {
-            console.log('⚠️ Could not initialize folder, using localStorage');
-            return loadFromLocalStorageFallback(songTitle, dataType);
-        }
-        
+    if (firebaseDB) {
         try {
-            const metadataFolderId = await findOrCreateFolder('Metadata', sharedFolderId);
-            const fileName = `${songTitle}_${dataType}.json`;
+            const path = songPath(songTitle, dataType);
+            const snapshot = await firebaseDB.ref(path).once('value');
+            const data = snapshot.val();
             
-            const file = await findFileInFolder(fileName, metadataFolderId);
-            if (!file) {
-                console.log(`No Drive data for ${dataType}`);
-                return loadFromLocalStorageFallback(songTitle, dataType);
+            if (data !== null) {
+                console.log(`✅ Loaded ${dataType} from Firebase`);
+                return data;
+            } else {
+                console.log(`No Firebase data for ${dataType}`);
             }
-            
-            const response = await gapi.client.drive.files.get({
-                fileId: file.id,
-                alt: 'media'
-            });
-            
-            console.log(`✅ Loaded ${dataType} from Drive`);
-            return response.result;
         } catch (error) {
-            console.log(`⚠️ No Drive data for ${dataType}, using localStorage`);
-            return loadFromLocalStorageFallback(songTitle, dataType);
+            console.log(`⚠️ Firebase error for ${dataType}:`, error.message);
         }
     }
     
@@ -5798,11 +5577,51 @@ function loadFromLocalStorageFallback(songTitle, dataType) {
 }
 
 // ============================================================================
-// SPECIFIC DATA TYPE WRAPPERS
+// MASTER FILES (aggregated data like all statuses, all harmonies)
 // ============================================================================
 
-// Practice Tracks
-async function savePracticeTracksToDrive(songTitle, tracks) {
+async function loadMasterFile(fileName) {
+    if (firebaseDB) {
+        try {
+            const path = masterPath(fileName);
+            const snapshot = await firebaseDB.ref(path).once('value');
+            const data = snapshot.val();
+            if (data !== null) return data;
+        } catch (error) {
+            console.log(`Could not load master file from Firebase: ${fileName}`);
+        }
+    }
+    
+    // Try localStorage
+    const key = `deadcetera_${fileName}`;
+    const localData = localStorage.getItem(key);
+    return localData ? JSON.parse(localData) : null;
+}
+
+async function saveMasterFile(fileName, data) {
+    // Always save to localStorage as backup
+    const key = `deadcetera_${fileName}`;
+    localStorage.setItem(key, JSON.stringify(data));
+    
+    if (!firebaseDB) return false;
+    
+    try {
+        const path = masterPath(fileName);
+        await firebaseDB.ref(path).set(data);
+        console.log(`Saved master file: ${fileName}`);
+        return true;
+    } catch (error) {
+        console.error('Error saving master file:', error);
+        return false;
+    }
+}
+
+// ============================================================================
+// PRACTICE TRACKS / REHEARSAL NOTES / SPOTIFY URLS / PART NOTES
+// ============================================================================
+
+async function savePracticeTracks(songTitle, tracks) {
+    logActivity('practice_track', { song: songTitle });
     return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS, tracks);
 }
 
@@ -5810,36 +5629,31 @@ async function loadPracticeTracksFromDrive(songTitle) {
     return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS) || [];
 }
 
-// Rehearsal Notes
-async function saveRehearsalNotesToDrive(songTitle, notes) {
+async function saveRehearsalNotes(songTitle, notes) {
+    logActivity('rehearsal_note', { song: songTitle });
     return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES, notes);
 }
 
-async function loadRehearsalNotesFromDrive(songTitle) {
+async function loadRehearsalNotes(songTitle) {
     return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES) || [];
 }
 
-// Spotify URLs
-async function saveSpotifyUrlsToDrive(songTitle, urls) {
+async function saveSpotifyUrls(songTitle, urls) {
     return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.SPOTIFY_URLS, urls);
 }
 
-async function loadSpotifyUrlsFromDrive(songTitle) {
+async function loadSpotifyUrls(songTitle) {
     return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.SPOTIFY_URLS) || {};
 }
 
-// Part Notes
-async function savePartNotesToDrive(songTitle, sectionIndex, singer, notes) {
-    const key = `${songTitle}_section${sectionIndex}_${singer}`;
+async function savePartNotesToDrive(key, type, notes) {
     return await saveBandDataToDrive(key, BAND_DATA_TYPES.PART_NOTES, notes);
 }
 
-async function loadPartNotesFromDrive(songTitle, sectionIndex, singer) {
-    const key = `${songTitle}_section${sectionIndex}_${singer}`;
+async function loadPartNotesFromDrive(key, type) {
     return await loadBandDataFromDrive(key, BAND_DATA_TYPES.PART_NOTES) || [];
 }
 
-// Harmony Metadata (starting notes, lead markers, sorting)
 async function saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata) {
     const key = `${songTitle}_section${sectionIndex}`;
     logActivity('harmony_edit', { song: songTitle, extra: `section ${sectionIndex}` });
@@ -5851,230 +5665,52 @@ async function loadHarmonyMetadataFromDrive(songTitle, sectionIndex) {
     return await loadBandDataFromDrive(key, BAND_DATA_TYPES.HARMONY_METADATA) || {};
 }
 
-console.log('☁️ Comprehensive Google Drive storage system loaded');
-
 // ============================================================================
-// GOOGLE DRIVE HELPER FUNCTIONS
+// MOISES STEMS UPLOAD (Firebase Storage)
 // ============================================================================
 
-// Cache for folder IDs to prevent duplicate creation (race condition fix)
+async function createDriveFolder(folderName, parentFolderId) {
+    // No-op for Firebase - we don't need folders
+    // Return a dummy ID for compatibility
+    return sanitizeFirebasePath(folderName);
+}
+
+async function uploadFileToDrive(file, parentFolderId) {
+    // Upload to Firebase Storage instead
+    try {
+        const safeName = sanitizeFirebasePath(`${parentFolderId}/${file.name}`);
+        const storageRef = firebaseStorage.ref(`stems/${safeName}`);
+        await storageRef.put(file);
+        const downloadURL = await storageRef.getDownloadURL();
+        console.log(`✅ Uploaded ${file.name} to Firebase Storage`);
+        return downloadURL; // Return URL instead of Drive file ID
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        return null;
+    }
+}
+
+console.log('🔥 Firebase storage system loaded');
+
+// ============================================================================
+// FIREBASE HELPER FUNCTIONS (replaces Drive folder/file management)
+// ============================================================================
+
+// These exist for compatibility - no longer needed with Firebase
 const _folderIdCache = {};
 const _folderCreationLocks = {};
 
 async function findOrCreateFolder(folderName, parentFolderId) {
-    // Short-circuit for Metadata folder - always use hardcoded ID
-    if (folderName === 'Metadata' && METADATA_FOLDER_ID) {
-        _folderIdCache[`Metadata::${parentFolderId}`] = METADATA_FOLDER_ID;
-        return METADATA_FOLDER_ID;
-    }
-    
-    // Create a cache key
-    const cacheKey = `${folderName}::${parentFolderId}`;
-    
-    // Return cached ID if we already found/created this folder
-    if (_folderIdCache[cacheKey]) {
-        return _folderIdCache[cacheKey];
-    }
-    
-    // If another call is already creating this folder, wait for it
-    if (_folderCreationLocks[cacheKey]) {
-        return _folderCreationLocks[cacheKey];
-    }
-    
-    // Create a promise that other callers can wait on
-    _folderCreationLocks[cacheKey] = (async () => {
-        try {
-            // Escape single quotes and backslashes for Drive API
-            const escapedFolderName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            const escapedParentId = parentFolderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            
-            // Search for existing folder
-            const response = await gapi.client.drive.files.list({
-                q: `name='${escapedFolderName}' and '${escapedParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-                fields: 'files(id, name)',
-                spaces: 'drive',
-            });
-            
-            if (response.result.files && response.result.files.length > 0) {
-                const folderId = response.result.files[0].id;
-                _folderIdCache[cacheKey] = folderId;
-                
-                // Log if duplicates found
-                if (response.result.files.length > 1) {
-                    console.warn(`⚠️ Found ${response.result.files.length} "${folderName}" folders. Using first: ${folderId}. Consider consolidating duplicates.`);
-                }
-                
-                return folderId;
-            }
-            
-            // Create folder if it doesn't exist
-            const fileMetadata = {
-                name: folderName,
-                mimeType: 'application/vnd.google-apps.folder',
-                parents: [parentFolderId]
-            };
-            
-            const folder = await gapi.client.drive.files.create({
-                resource: fileMetadata,
-                fields: 'id'
-            });
-            
-            const newId = folder.result.id;
-            _folderIdCache[cacheKey] = newId;
-            console.log(`📁 Created folder "${folderName}": ${newId}`);
-            return newId;
-        } catch (error) {
-            console.error('Error finding/creating folder:', error);
-            throw error;
-        } finally {
-            delete _folderCreationLocks[cacheKey];
-        }
-    })();
-    
-    return _folderCreationLocks[cacheKey];
-}
-
-// ---- Metadata Folder Consolidation ----
-// Run this once to merge duplicate Metadata folders into one
-// Call from console: consolidateMetadataFolders()
-async function consolidateMetadataFolders() {
-    if (!sharedFolderId) {
-        console.error('❌ Not connected to Drive. Sign in first.');
-        return;
-    }
-    
-    try {
-        // Find ALL Metadata folders in the shared folder
-        const response = await gapi.client.drive.files.list({
-            q: `name='Metadata' and '${sharedFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-            fields: 'files(id, name, createdTime)',
-            spaces: 'drive',
-            orderBy: 'createdTime'
-        });
-        
-        const folders = response.result.files || [];
-        console.log(`📁 Found ${folders.length} Metadata folders`);
-        
-        if (folders.length <= 1) {
-            console.log('✅ Only one Metadata folder exists. Nothing to consolidate.');
-            return;
-        }
-        
-        // Use the FIRST (oldest) folder as the target
-        const targetFolder = folders[0];
-        const sourceFolders = folders.slice(1);
-        
-        console.log(`📁 Target folder: ${targetFolder.id} (created: ${targetFolder.createdTime})`);
-        console.log(`📁 Will merge ${sourceFolders.length} duplicate folders into target`);
-        
-        let movedCount = 0;
-        let skippedCount = 0;
-        
-        for (const sourceFolder of sourceFolders) {
-            // List all files in this duplicate folder
-            const filesResponse = await gapi.client.drive.files.list({
-                q: `'${sourceFolder.id}' in parents and trashed=false`,
-                fields: 'files(id, name)',
-                spaces: 'drive',
-                pageSize: 1000
-            });
-            
-            const files = filesResponse.result.files || [];
-            console.log(`📁 Folder ${sourceFolder.id}: ${files.length} files`);
-            
-            for (const file of files) {
-                // Check if a file with the same name already exists in target
-                const existing = await findFileInFolder(file.name, targetFolder.id);
-                
-                if (existing) {
-                    console.log(`  ⏭️ Skipping "${file.name}" (already exists in target)`);
-                    skippedCount++;
-                    continue;
-                }
-                
-                // Move file to target folder
-                await gapi.client.drive.files.update({
-                    fileId: file.id,
-                    addParents: targetFolder.id,
-                    removeParents: sourceFolder.id,
-                    fields: 'id, parents'
-                });
-                
-                console.log(`  ✅ Moved "${file.name}"`);
-                movedCount++;
-            }
-            
-            // Check if source folder is now empty
-            const remainingFiles = await gapi.client.drive.files.list({
-                q: `'${sourceFolder.id}' in parents and trashed=false`,
-                fields: 'files(id)',
-                spaces: 'drive'
-            });
-            
-            if (!remainingFiles.result.files || remainingFiles.result.files.length === 0) {
-                // Delete empty duplicate folder
-                await gapi.client.drive.files.delete({ fileId: sourceFolder.id });
-                console.log(`🗑️ Deleted empty duplicate folder: ${sourceFolder.id}`);
-            } else {
-                console.log(`⚠️ Folder ${sourceFolder.id} still has ${remainingFiles.result.files.length} files (had duplicates)`);
-            }
-        }
-        
-        console.log('');
-        console.log('═══════════════════════════════════════');
-        console.log(`✅ Consolidation complete!`);
-        console.log(`   Moved: ${movedCount} files`);
-        console.log(`   Skipped (duplicates): ${skippedCount}`);
-        console.log(`   Target folder: ${targetFolder.id}`);
-        console.log('═══════════════════════════════════════');
-        
-        // Clear the folder cache so it picks up the single folder
-        delete _folderIdCache[`Metadata::${sharedFolderId}`];
-        
-    } catch (error) {
-        console.error('❌ Consolidation error:', error);
-    }
+    // No-op - Firebase doesn't use folders
+    return 'firebase';
 }
 
 async function findFileInFolder(fileName, folderId) {
-    try {
-        // Escape single quotes and backslashes for Drive API
-        const escapedFileName = fileName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const escapedFolderId = folderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        
-        // Try folder-scoped search first (works for owner)
-        const response = await gapi.client.drive.files.list({
-            q: `name='${escapedFileName}' and '${escapedFolderId}' in parents and trashed=false`,
-            fields: 'files(id, name)',
-            spaces: 'drive'
-        });
-        
-        if (response.result.files && response.result.files.length > 0) {
-            return response.result.files[0];
-        }
-        
-        // Fallback: search by name excluding files user owns (finds shared "anyone with link" files)
-        // Needed because 'in parents' doesn't work for folders not in user's Drive
-        const ownerEmail = currentUserEmail ? currentUserEmail.replace(/'/g, "\\'") : '';
-        const notOwnedClause = ownerEmail ? ` and not '${ownerEmail}' in owners` : '';
-        const fallback = await gapi.client.drive.files.list({
-            q: `name='${escapedFileName}' and trashed=false${notOwnedClause}`,
-            fields: 'files(id, name)',
-            spaces: 'drive'
-        });
-        
-        if (fallback.result.files && fallback.result.files.length > 0) {
-            return fallback.result.files[0];
-        }
-        
-        return null;
-    } catch (error) {
-        console.log(`⚠️ Could not find file: ${fileName}`);
-        return null;
-    }
+    // No-op - Firebase doesn't use file search
+    return null;
 }
 
-console.log('✅ Google Drive helper functions loaded');
+console.log('✅ Firebase helper functions loaded');
 
 // ============================================================================
 // SONG STRUCTURE - Who starts, how it starts, who cues ending, how it ends
@@ -6561,19 +6197,14 @@ async function showAdminPanel() {
     
     document.body.appendChild(panel);
 }
-
-// Initialize the shared band resources folder
 // ============================================================================
-// SHARED FOLDER CONFIGURATION
+// BAND CONFIGURATION
 // ============================================================================
 
-// IMPORTANT: Set this to the folder ID after the owner creates it
-// Leave as null for the first person (owner) to create the folder
-// After creation, copy the folder ID here so everyone uses the SAME folder
-const SHARED_FOLDER_ID = '1YGur46dHb4GljnVfpqUpjscdI0lBcuaO'; // Owner will update this after creating folder
-const METADATA_FOLDER_ID = '1L6eRsjDDVsU2ExAar468a2L3hJxMYg4r'; // Hardcoded to prevent duplicate creation
+const SHARED_FOLDER_ID = 'firebase'; // Kept for compatibility checks
+const METADATA_FOLDER_ID = 'firebase'; // Kept for compatibility checks
 
-// Band member emails who should have access
+// Band member emails (used for display purposes)
 const BAND_MEMBER_EMAILS = [
     'drewmerrill1029@gmail.com',   // Drew (owner)
     'pierce.d.hale@gmail.com',     // Pierce
@@ -6584,234 +6215,20 @@ const BAND_MEMBER_EMAILS = [
 const OWNER_EMAIL = 'drewmerrill1029@gmail.com';
 
 // ============================================================================
-// SILENT SHARING AUDIT - Runs on owner login, ensures all files are accessible
+// NO SHARING AUDIT NEEDED - Firebase is accessible to everyone!
 // ============================================================================
 
 async function silentSharingAudit() {
-    // Only run for the owner - wait for email to be available
-    await new Promise(resolve => {
-        const check = () => {
-            if (currentUserEmail && currentUserEmail !== 'unknown') resolve();
-            else setTimeout(check, 500);
-        };
-        check();
-    });
-    
-    if (currentUserEmail !== OWNER_EMAIL) return;
-    
-    try {
-        const metadataFolderId = METADATA_FOLDER_ID || await findOrCreateFolder('Metadata', sharedFolderId);
-        if (!metadataFolderId) return;
-        
-        // List all files with their permissions
-        const res = await gapi.client.drive.files.list({
-            q: `'${metadataFolderId}' in parents and trashed=false`,
-            fields: 'files(id, name, permissions(emailAddress, role, type))',
-            spaces: 'drive',
-            pageSize: 500
-        });
-        
-        const files = res.result.files || [];
-        let fixedCount = 0;
-        
-        for (const file of files) {
-            const perms = file.permissions || [];
-            const sharedEmails = perms.map(p => p.emailAddress?.toLowerCase()).filter(Boolean);
-            
-            // Check if all band members have access
-            for (const email of BAND_MEMBER_EMAILS) {
-                if (email === OWNER_EMAIL) continue; // Owner always has access
-                if (!sharedEmails.includes(email.toLowerCase())) {
-                    // This band member can't see this file - fix it
-                    try {
-                        await gapi.client.drive.permissions.create({
-                            fileId: file.id,
-                            resource: { type: 'user', role: 'writer', emailAddress: email },
-                            sendNotificationEmail: false
-                        });
-                        fixedCount++;
-                    } catch (e) {
-                        // If per-user sharing fails, try "anyone with link"
-                        try {
-                            const hasAnyone = perms.some(p => p.type === 'anyone');
-                            if (!hasAnyone) {
-                                await gapi.client.drive.permissions.create({
-                                    fileId: file.id,
-                                    resource: { type: 'anyone', role: 'writer' }
-                                });
-                                fixedCount++;
-                            }
-                        } catch (e2) {
-                            // Silently skip - don't break anything
-                        }
-                        break; // If per-user fails, "anyone" covers everyone
-                    }
-                }
-            }
-        }
-        
-        if (fixedCount > 0) {
-            console.log(`🔧 Sharing audit: fixed ${fixedCount} permission(s) across ${files.length} files`);
-        } else {
-            console.log(`✅ Sharing audit: all ${files.length} files accessible to band`);
-        }
-    } catch (error) {
-        // Completely silent - never interrupt the user
-        console.log('Sharing audit skipped:', error.message || error);
-    }
-}
-
-async function initializeSharedFolder() {
-    try {
-        console.log('📁 Initializing shared band folder...');
-        
-        // If we have a hardcoded folder ID, use it
-        if (SHARED_FOLDER_ID) {
-            sharedFolderId = SHARED_FOLDER_ID;
-            console.log('📁 Using configured shared folder:', sharedFolderId);
-            
-            // Silent sharing audit for owner only
-            silentSharingAudit();
-            return;
-        }
-        
-        // Otherwise, search for existing folder
-        const response = await gapi.client.drive.files.list({
-            q: "name='Deadcetera Band Resources' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            fields: 'files(id, name, owners)',
-            spaces: 'drive'
-        });
-        
-        if (response.result.files && response.result.files.length > 0) {
-            sharedFolderId = response.result.files[0].id;
-            console.log('📁 Found existing folder:', sharedFolderId);
-            console.log('📋 OWNER: Copy this folder ID to SHARED_FOLDER_ID in app.js');
-            console.log('📁 Folder ID:', sharedFolderId);
-        } else {
-            // Create folder as OWNER
-            console.log('📁 Creating NEW shared folder (you are the OWNER)...');
-            
-            const fileMetadata = {
-                name: 'Deadcetera Band Resources',
-                mimeType: 'application/vnd.google-apps.folder'
-            };
-            
-            const folder = await gapi.client.drive.files.create({
-                resource: fileMetadata,
-                fields: 'id'
-            });
-            
-            sharedFolderId = folder.result.id;
-            console.log('📁 Created new folder:', sharedFolderId);
-            console.log('');
-            console.log('═══════════════════════════════════════════════════════');
-            console.log('👑 YOU ARE THE FOLDER OWNER!');
-            console.log('═══════════════════════════════════════════════════════');
-            console.log('');
-            console.log('📋 COPY THIS FOLDER ID:');
-            console.log(sharedFolderId);
-            console.log('');
-            console.log('📋 NEXT STEPS:');
-            console.log('1. Copy the folder ID above');
-            console.log('2. Update SHARED_FOLDER_ID in app.js');
-            console.log('3. Update band member emails in BAND_MEMBER_EMAILS');
-            console.log('4. Re-upload app.js');
-            console.log('5. Click "Share Folder with Band" button below');
-            console.log('');
-            console.log('═══════════════════════════════════════════════════════');
-            
-            // Show UI to share folder
-            showFolderSharingInstructions(sharedFolderId);
-        }
-    } catch (error) {
-        console.error('❌ Failed to initialize shared folder:', error);
-    }
+    // No-op - Firebase doesn't need sharing management
+    console.log('🔥 Using Firebase - no sharing audit needed!');
 }
 
 async function shareFolderWithBand() {
-    if (!sharedFolderId) {
-        alert('No folder to share yet! Please connect to Google Drive first.');
-        return;
-    }
-    
-    console.log('📤 Sharing folder with band members...');
-    
-    let successCount = 0;
-    let failCount = 0;
-    
-    for (const email of BAND_MEMBER_EMAILS) {
-        try {
-            // Skip placeholder emails
-            if (email.includes('example.com')) {
-                console.log(`⚠️ Skipping placeholder: ${email}`);
-                continue;
-            }
-            
-            // Create permission for this band member
-            const permission = {
-                type: 'user',
-                role: 'writer', // Can edit files
-                emailAddress: email
-            };
-            
-            await gapi.client.drive.permissions.create({
-                fileId: sharedFolderId,
-                resource: permission,
-                sendNotificationEmail: true,
-                emailMessage: '🎸 You now have access to the Deadcetera Band Resources folder! Open the app and connect your Google Drive to start collaborating.'
-            });
-            
-            console.log(`✅ Shared with: ${email}`);
-            successCount++;
-        } catch (error) {
-            console.error(`? Failed to share with ${email}:`, error);
-            failCount++;
-        }
-    }
-    
-    const message = `
-Folder shared!
-
-✅ Success: ${successCount} members
-${failCount > 0 ? `❌ Failed: ${failCount} members (check console)` : ''}
-
-Band members will receive an email invitation.
-    `.trim();
-    
-    alert(message);
+    alert('Using Firebase now - data is automatically shared with all band members!');
 }
 
 function showFolderSharingInstructions(folderId) {
-    // Add a temporary banner at the top of the page
-    const banner = document.createElement('div');
-    banner.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        background: #667eea;
-        color: white;
-        padding: 20px;
-        text-align: center;
-        z-index: 10000;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    `;
-    
-    banner.innerHTML = `
-        <div style="max-width: 800px; margin: 0 auto;">
-            <h2 style="margin: 0 0 10px 0;">📁 You Created the Shared Folder!</h2>
-            <p style="margin: 0 0 15px 0;">Folder ID: <code style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 4px;">${folderId}</code></p>
-            <p style="margin: 0 0 15px 0; font-size: 0.9em;">Copy this ID and update <code>SHARED_FOLDER_ID</code> in app.js, then update band member emails and re-upload.</p>
-            <button onclick="shareFolderWithBand()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 10px;">
-                📤 Share Folder with Band
-            </button>
-            <button onclick="this.parentElement.parentElement.remove()" style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer;">
-                Close
-            </button>
-        </div>
-    `;
-    
-    document.body.insertBefore(banner, document.body.firstChild);
+    // No-op
 }
 
-console.log('📁 Shared folder initialization loaded');
+console.log('🔥 Firebase configuration loaded - no sharing needed!');
