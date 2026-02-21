@@ -3918,9 +3918,9 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <strong style="color: #991b1b;">🎵 Audio Snippets</strong>
                         <div style="display: flex; gap: 8px;">
-                            <button onclick="startMicrophoneRecording(${sectionIndex})" 
+                            <button onclick="openMultiTrackStudio('${songTitle}', ${sectionIndex})" 
                                 style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                🎙️ Record Now
+                                🎛️ Multi-Track Studio
                             </button>
                             <button onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                                 style="background: #4b5563; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
@@ -6254,3 +6254,545 @@ function showFolderSharingInstructions(folderId) {
 }
 
 console.log('🔥 Firebase configuration loaded - no sharing needed!');
+// ============================================================================
+// MULTI-TRACK HARMONY RECORDER
+// Features: Record while listening to existing tracks, metronome, mixing
+// ============================================================================
+
+let mtRecorder = null;       // MediaRecorder instance
+let mtAudioChunks = [];      // Recording chunks
+let mtRecordingStream = null; // Mic stream
+let mtMetronomeInterval = null;
+let mtAudioContext = null;
+let mtIsRecording = false;
+let mtPlaybackAudios = [];   // Audio elements for existing tracks during playback
+
+function openMultiTrackStudio(songTitle, sectionIndex) {
+    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
+    if (!container) return;
+    
+    const safeSongTitle = songTitle.replace(/'/g, "\\'");
+    
+    // Load existing snippets for this section
+    loadHarmonyAudioSnippets(songTitle, sectionIndex).then(snippets => {
+        const snippetsArr = toArray(snippets);
+        
+        container.innerHTML = `
+            <div id="mtStudio_${sectionIndex}" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px; border-radius: 12px; margin-top: 15px; color: white;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0; font-size: 1.2em;">🎛️ Multi-Track Studio</h3>
+                    <button onclick="closeMultiTrackStudio(${sectionIndex})" 
+                        style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer;">✕ Close</button>
+                </div>
+                
+                <!-- METRONOME SECTION -->
+                <div style="background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <strong>🥁 Metronome</strong>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button onclick="mtAdjustBPM(${sectionIndex}, -5)" style="background: rgba(255,255,255,0.15); color: white; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 1.1em;">−</button>
+                            <input id="mtBPM_${sectionIndex}" type="number" value="${getBPMForSong()}" min="40" max="240" 
+                                style="width: 60px; text-align: center; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 6px; font-size: 1.1em; font-weight: 700;">
+                            <button onclick="mtAdjustBPM(${sectionIndex}, 5)" style="background: rgba(255,255,255,0.15); color: white; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 1.1em;">+</button>
+                            <span style="font-size: 0.85em; color: rgba(255,255,255,0.6);">BPM</span>
+                            <button id="mtMetronomeToggle_${sectionIndex}" onclick="mtToggleMetronome(${sectionIndex})" 
+                                style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                ▶ Start
+                            </button>
+                        </div>
+                    </div>
+                    <div id="mtBeatVisual_${sectionIndex}" style="display: flex; gap: 8px; justify-content: center;">
+                        <div class="mt-beat" style="width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: all 0.1s;"></div>
+                        <div class="mt-beat" style="width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: all 0.1s;"></div>
+                        <div class="mt-beat" style="width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: all 0.1s;"></div>
+                        <div class="mt-beat" style="width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: all 0.1s;"></div>
+                    </div>
+                </div>
+                
+                <!-- EXISTING TRACKS (for playback during recording) -->
+                <div style="background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <strong style="display: block; margin-bottom: 10px;">🎵 Existing Tracks (play during recording)</strong>
+                    <div id="mtTracksList_${sectionIndex}">
+                        ${snippetsArr.length > 0 ? snippetsArr.map((snippet, i) => `
+                            <div style="display: flex; align-items: center; gap: 10px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 6px;">
+                                <input type="checkbox" id="mtTrack_${sectionIndex}_${i}" checked 
+                                    style="width: 18px; height: 18px; accent-color: #667eea;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${snippet.name || 'Recording ' + (i+1)}</div>
+                                    <div style="font-size: 0.75em; color: rgba(255,255,255,0.5);">${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy || 'Unknown'}</div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span style="font-size: 0.75em;">🔊</span>
+                                    <input type="range" id="mtVol_${sectionIndex}_${i}" min="0" max="100" value="80" 
+                                        style="width: 70px; accent-color: #667eea;">
+                                </div>
+                                <button onclick="mtPreviewTrack(${sectionIndex}, ${i})" 
+                                    style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">▶</button>
+                            </div>
+                        `).join('') : `
+                            <div style="text-align: center; padding: 15px; color: rgba(255,255,255,0.4); font-size: 0.9em;">
+                                No existing tracks. Record the first one!
+                            </div>
+                        `}
+                    </div>
+                </div>
+                
+                <!-- RECORD CONTROLS -->
+                <div id="mtRecordSection_${sectionIndex}" style="background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                        <div id="mtRecordStatus_${sectionIndex}" style="font-size: 0.9em; color: rgba(255,255,255,0.6);">
+                            Ready to record. Check tracks above to play as backing.
+                        </div>
+                        
+                        <div id="mtRecordTimer_${sectionIndex}" style="font-size: 2.5em; font-weight: 700; font-family: monospace; display: none;">
+                            0:00
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px;">
+                            <button id="mtRecordBtn_${sectionIndex}" onclick="mtStartRecording('${safeSongTitle}', ${sectionIndex})" 
+                                style="background: #ef4444; color: white; border: none; padding: 14px 28px; border-radius: 25px; cursor: pointer; font-weight: 600; font-size: 1.1em; display: flex; align-items: center; gap: 8px;">
+                                <span style="width: 14px; height: 14px; background: white; border-radius: 50%; display: inline-block;"></span>
+                                Record
+                            </button>
+                            <button id="mtStopBtn_${sectionIndex}" onclick="mtStopRecording(${sectionIndex})" 
+                                style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 14px 28px; border-radius: 25px; cursor: pointer; font-weight: 600; font-size: 1.1em; display: none;">
+                                ⏹️ Stop
+                            </button>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: rgba(255,255,255,0.7); cursor: pointer;">
+                                <input type="checkbox" id="mtCountIn_${sectionIndex}" checked style="accent-color: #667eea;">
+                                4-beat count-in
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: rgba(255,255,255,0.7); cursor: pointer;">
+                                <input type="checkbox" id="mtMetronomeDuringRec_${sectionIndex}" style="accent-color: #667eea;">
+                                Metronome during recording
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PREVIEW/SAVE (shown after recording) -->
+                <div id="mtPreviewSection_${sectionIndex}" style="display: none;">
+                </div>
+                
+                <!-- MIXER (play all tracks together) -->
+                ${snippetsArr.length > 1 ? `
+                <div style="background: rgba(255,255,255,0.08); padding: 15px; border-radius: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <strong>🎛️ Mix & Play All</strong>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="mtPlayAllTracks('${safeSongTitle}', ${sectionIndex})" 
+                                style="background: #10b981; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                ▶ Play Mix
+                            </button>
+                            <button onclick="mtStopAllTracks()" 
+                                style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer;">
+                                ⏹ Stop
+                            </button>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.85em; color: rgba(255,255,255,0.5);">
+                        Plays all checked tracks above with their volume levels. Great for hearing how harmonies blend!
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    });
+}
+
+function closeMultiTrackStudio(sectionIndex) {
+    mtStopMetronome();
+    mtStopAllTracks();
+    if (mtIsRecording) mtStopRecording(sectionIndex);
+    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
+    if (container) container.innerHTML = '';
+}
+
+function getBPMForSong() {
+    // Try to get from song metadata
+    if (selectedSong) {
+        const bpmEl = document.getElementById('songBpmInput');
+        if (bpmEl && bpmEl.value) return parseInt(bpmEl.value) || 120;
+    }
+    return 120;
+}
+
+// ============================================================================
+// METRONOME
+// ============================================================================
+
+function mtToggleMetronome(sectionIndex) {
+    if (mtMetronomeInterval) {
+        mtStopMetronome();
+        const btn = document.getElementById(`mtMetronomeToggle_${sectionIndex}`);
+        if (btn) { btn.textContent = '▶ Start'; btn.style.background = '#667eea'; }
+    } else {
+        mtStartMetronome(sectionIndex);
+        const btn = document.getElementById(`mtMetronomeToggle_${sectionIndex}`);
+        if (btn) { btn.textContent = '⏸ Stop'; btn.style.background = '#ef4444'; }
+    }
+}
+
+function mtStartMetronome(sectionIndex) {
+    const bpmInput = document.getElementById(`mtBPM_${sectionIndex}`);
+    const bpm = parseInt(bpmInput?.value) || 120;
+    const interval = 60000 / bpm;
+    
+    if (!mtAudioContext) {
+        mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    let beat = 0;
+    const beats = document.querySelectorAll(`#mtBeatVisual_${sectionIndex} .mt-beat`);
+    
+    function tick() {
+        // Visual
+        beats.forEach((b, i) => {
+            b.style.background = i === (beat % 4) ? 
+                (beat % 4 === 0 ? '#ef4444' : '#667eea') : 'rgba(255,255,255,0.15)';
+            b.style.transform = i === (beat % 4) ? 'scale(1.3)' : 'scale(1)';
+        });
+        
+        // Audio click
+        const osc = mtAudioContext.createOscillator();
+        const gain = mtAudioContext.createGain();
+        osc.connect(gain);
+        gain.connect(mtAudioContext.destination);
+        
+        osc.frequency.value = (beat % 4 === 0) ? 1000 : 700; // Accent on beat 1
+        gain.gain.value = 0.3;
+        gain.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 0.08);
+        
+        osc.start(mtAudioContext.currentTime);
+        osc.stop(mtAudioContext.currentTime + 0.08);
+        
+        beat++;
+    }
+    
+    tick(); // First beat immediately
+    mtMetronomeInterval = setInterval(tick, interval);
+}
+
+function mtStopMetronome() {
+    if (mtMetronomeInterval) {
+        clearInterval(mtMetronomeInterval);
+        mtMetronomeInterval = null;
+    }
+}
+
+function mtAdjustBPM(sectionIndex, delta) {
+    const input = document.getElementById(`mtBPM_${sectionIndex}`);
+    if (input) {
+        let val = parseInt(input.value) + delta;
+        val = Math.max(40, Math.min(240, val));
+        input.value = val;
+        
+        // Restart metronome if running
+        if (mtMetronomeInterval) {
+            mtStopMetronome();
+            mtStartMetronome(sectionIndex);
+        }
+    }
+}
+
+// ============================================================================
+// MULTI-TRACK RECORDING
+// ============================================================================
+
+async function mtStartRecording(songTitle, sectionIndex) {
+    try {
+        // Resume AudioContext (needed for iOS)
+        if (mtAudioContext) await mtAudioContext.resume();
+        if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Stop any existing recording
+        if (mtIsRecording) mtStopRecording(sectionIndex);
+        
+        // Stop all existing audio
+        document.querySelectorAll('audio').forEach(a => { a.pause(); a.currentTime = 0; });
+        
+        // Get microphone
+        mtRecordingStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+        });
+        
+        // iOS-compatible MIME type
+        let mimeType = 'audio/webm';
+        if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+        else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+        else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+        
+        mtRecorder = new MediaRecorder(mtRecordingStream, { mimeType });
+        mtAudioChunks = [];
+        
+        mtRecorder.ondataavailable = (e) => { if (e.data.size > 0) mtAudioChunks.push(e.data); };
+        
+        mtRecorder.onstop = async () => {
+            const blob = new Blob(mtAudioChunks, { type: mimeType });
+            if (blob.size === 0) { alert('No audio captured'); return; }
+            const base64 = await blobToBase64(blob);
+            mtShowPreview(songTitle, sectionIndex, base64, blob.size, mimeType);
+            if (mtRecordingStream) mtRecordingStream.getTracks().forEach(t => t.stop());
+            mtIsRecording = false;
+        };
+        
+        // Count-in
+        const countIn = document.getElementById(`mtCountIn_${sectionIndex}`)?.checked;
+        
+        const statusEl = document.getElementById(`mtRecordStatus_${sectionIndex}`);
+        const timerEl = document.getElementById(`mtRecordTimer_${sectionIndex}`);
+        const recordBtn = document.getElementById(`mtRecordBtn_${sectionIndex}`);
+        const stopBtn = document.getElementById(`mtStopBtn_${sectionIndex}`);
+        
+        if (countIn) {
+            const bpm = parseInt(document.getElementById(`mtBPM_${sectionIndex}`)?.value) || 120;
+            const beatMs = 60000 / bpm;
+            
+            statusEl.innerHTML = '<span style="font-size: 1.5em; color: #fbbf24;">Count in...</span>';
+            
+            for (let i = 4; i >= 1; i--) {
+                statusEl.innerHTML = `<span style="font-size: 2em; font-weight: 700; color: #fbbf24;">${i}</span>`;
+                // Click sound
+                const osc = mtAudioContext.createOscillator();
+                const gain = mtAudioContext.createGain();
+                osc.connect(gain); gain.connect(mtAudioContext.destination);
+                osc.frequency.value = i === 4 ? 1200 : 900;
+                gain.gain.value = 0.4;
+                gain.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 0.1);
+                osc.start(); osc.stop(mtAudioContext.currentTime + 0.1);
+                await new Promise(r => setTimeout(r, beatMs));
+            }
+        }
+        
+        // Start recording
+        mtRecorder.start();
+        mtIsRecording = true;
+        
+        // Update UI
+        statusEl.innerHTML = '<span style="color: #ef4444; animation: pulse 1s infinite;">🔴 RECORDING</span>';
+        timerEl.style.display = 'block';
+        recordBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-flex';
+        
+        // Start timer
+        let seconds = 0;
+        const timerInterval = setInterval(() => {
+            if (!mtIsRecording) { clearInterval(timerInterval); return; }
+            seconds++;
+            timerEl.textContent = formatTime(seconds);
+        }, 1000);
+        stopBtn.setAttribute('data-timer', timerInterval);
+        
+        // Start backing tracks
+        mtStartBackingTracks(songTitle, sectionIndex);
+        
+        // Start metronome during recording if checked
+        const metDuringRec = document.getElementById(`mtMetronomeDuringRec_${sectionIndex}`)?.checked;
+        if (metDuringRec && !mtMetronomeInterval) {
+            mtStartMetronome(sectionIndex);
+        }
+        
+    } catch (error) {
+        let msg = 'Microphone access denied.';
+        if (error.name === 'NotFoundError') msg = 'No microphone found.';
+        else if (error.name === 'NotReadableError') msg = 'Microphone in use by another app.';
+        alert(msg + '\n\n' + error.message);
+    }
+}
+
+function mtStopRecording(sectionIndex) {
+    if (mtRecorder && mtRecorder.state === 'recording') {
+        mtRecorder.stop();
+    }
+    mtIsRecording = false;
+    mtStopAllTracks();
+    
+    // Stop metronome if it was started for recording
+    const metDuringRec = document.getElementById(`mtMetronomeDuringRec_${sectionIndex}`)?.checked;
+    if (metDuringRec) mtStopMetronome();
+    
+    // Clear timer
+    const stopBtn = document.getElementById(`mtStopBtn_${sectionIndex}`);
+    if (stopBtn) {
+        const ti = stopBtn.getAttribute('data-timer');
+        if (ti) clearInterval(parseInt(ti));
+    }
+    
+    // Reset UI
+    const recordBtn = document.getElementById(`mtRecordBtn_${sectionIndex}`);
+    const stopBtnEl = document.getElementById(`mtStopBtn_${sectionIndex}`);
+    if (recordBtn) recordBtn.style.display = 'inline-flex';
+    if (stopBtnEl) stopBtnEl.style.display = 'none';
+}
+
+// ============================================================================
+// BACKING TRACK PLAYBACK
+// ============================================================================
+
+async function mtStartBackingTracks(songTitle, sectionIndex) {
+    mtStopAllTracks();
+    
+    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, sectionIndex));
+    
+    for (let i = 0; i < snippets.length; i++) {
+        const checkbox = document.getElementById(`mtTrack_${sectionIndex}_${i}`);
+        const volSlider = document.getElementById(`mtVol_${sectionIndex}_${i}`);
+        
+        if (checkbox && checkbox.checked && snippets[i].data) {
+            const audio = new Audio(snippets[i].data);
+            audio.volume = (volSlider ? parseInt(volSlider.value) : 80) / 100;
+            audio.play().catch(e => console.warn('Could not play track:', e));
+            mtPlaybackAudios.push(audio);
+        }
+    }
+}
+
+async function mtPlayAllTracks(songTitle, sectionIndex) {
+    mtStopAllTracks();
+    
+    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, sectionIndex));
+    
+    for (let i = 0; i < snippets.length; i++) {
+        const checkbox = document.getElementById(`mtTrack_${sectionIndex}_${i}`);
+        const volSlider = document.getElementById(`mtVol_${sectionIndex}_${i}`);
+        
+        if (checkbox && checkbox.checked && snippets[i].data) {
+            const audio = new Audio(snippets[i].data);
+            audio.volume = (volSlider ? parseInt(volSlider.value) : 80) / 100;
+            audio.play().catch(e => console.warn('Could not play track:', e));
+            mtPlaybackAudios.push(audio);
+        }
+    }
+}
+
+function mtStopAllTracks() {
+    mtPlaybackAudios.forEach(a => { try { a.pause(); a.currentTime = 0; } catch(e) {} });
+    mtPlaybackAudios = [];
+}
+
+function mtPreviewTrack(sectionIndex, snippetIndex) {
+    // Stop any currently playing previews
+    mtStopAllTracks();
+    
+    loadHarmonyAudioSnippets(selectedSong.title, sectionIndex).then(snippets => {
+        const arr = toArray(snippets);
+        if (arr[snippetIndex] && arr[snippetIndex].data) {
+            const audio = new Audio(arr[snippetIndex].data);
+            const volSlider = document.getElementById(`mtVol_${sectionIndex}_${snippetIndex}`);
+            audio.volume = (volSlider ? parseInt(volSlider.value) : 80) / 100;
+            audio.play().catch(e => alert('Playback error: ' + e.message));
+            mtPlaybackAudios.push(audio);
+        }
+    });
+}
+
+// ============================================================================
+// PREVIEW & SAVE RECORDING
+// ============================================================================
+
+function mtShowPreview(songTitle, sectionIndex, base64Audio, fileSize, mimeType) {
+    const section = document.getElementById(`mtPreviewSection_${sectionIndex}`);
+    if (!section) return;
+    
+    let ext = 'webm';
+    if (mimeType.includes('mp4')) ext = 'm4a';
+    else if (mimeType.includes('ogg')) ext = 'ogg';
+    
+    const safeSongTitle = songTitle.replace(/'/g, "\\'");
+    
+    section.style.display = 'block';
+    section.innerHTML = `
+        <div style="background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; padding: 20px; border-radius: 10px;">
+            <h4 style="margin: 0 0 12px 0; color: #10b981;">✅ Recording Complete!</h4>
+            <audio controls src="${base64Audio}" style="width: 100%; margin-bottom: 12px;"></audio>
+            <p style="font-size: 0.8em; color: rgba(255,255,255,0.5); margin: 0 0 12px 0;">${ext.toUpperCase()} · ${(fileSize / 1024).toFixed(1)} KB</p>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; margin-bottom: 4px; font-size: 0.85em;">Who recorded this?</label>
+                <select id="mtRecAuthor_${sectionIndex}" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
+                    ${Object.entries(bandMembers).map(([key, m]) => `<option value="${key}" style="color: black;">${m.name}</option>`).join('')}
+                </select>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; margin-bottom: 4px; font-size: 0.85em;">Name this recording:</label>
+                <input type="text" id="mtRecName_${sectionIndex}" placeholder="E.g., Drew - high harmony" 
+                    style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
+            </div>
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; margin-bottom: 4px; font-size: 0.85em;">Notes (optional):</label>
+                <input type="text" id="mtRecNotes_${sectionIndex}" placeholder="E.g., Third above the melody" 
+                    style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button onclick="mtSaveRecording('${safeSongTitle}', ${sectionIndex}, '${base64Audio}', ${fileSize})" 
+                    style="flex: 1; background: #10b981; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
+                    💾 Save to Band
+                </button>
+                <button onclick="document.getElementById('mtPreviewSection_${sectionIndex}').style.display='none'" 
+                    style="background: rgba(255,255,255,0.15); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
+                    🗑️ Discard
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Reset record UI
+    const statusEl = document.getElementById(`mtRecordStatus_${sectionIndex}`);
+    const timerEl = document.getElementById(`mtRecordTimer_${sectionIndex}`);
+    if (statusEl) statusEl.innerHTML = 'Ready to record another take.';
+    if (timerEl) timerEl.style.display = 'none';
+}
+
+async function mtSaveRecording(songTitle, sectionIndex, base64Audio, fileSize) {
+    const author = document.getElementById(`mtRecAuthor_${sectionIndex}`)?.value || 'unknown';
+    const name = document.getElementById(`mtRecName_${sectionIndex}`)?.value?.trim();
+    const notes = document.getElementById(`mtRecNotes_${sectionIndex}`)?.value?.trim();
+    
+    if (!name) { alert('Please enter a name for this recording'); return; }
+    
+    const snippet = {
+        name: name,
+        notes: notes || '',
+        filename: 'recording.webm',
+        type: 'audio/webm',
+        size: fileSize,
+        data: base64Audio,
+        uploadedBy: author,
+        uploadedDate: new Date().toISOString().split('T')[0],
+        isRecording: true
+    };
+    
+    // Save to Firebase
+    const key = `harmony_audio_section_${sectionIndex}`;
+    const existing = toArray(await loadBandDataFromDrive(songTitle, key));
+    existing.push(snippet);
+    await saveBandDataToDrive(songTitle, key, existing);
+    
+    // Also backup to localStorage
+    const localKey = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    localStorage.setItem(localKey, JSON.stringify(existing));
+    
+    logActivity('harmony_recording', { song: songTitle, extra: `section ${sectionIndex}: ${name}` });
+    
+    alert(`✅ Recording saved! All band members can hear it.`);
+    
+    // Refresh the studio to show the new track
+    openMultiTrackStudio(songTitle, sectionIndex);
+}
+
+// Add CSS animation for recording pulse
+(function() {
+    if (document.getElementById('mt-studio-css')) return;
+    const style = document.createElement('style');
+    style.id = 'mt-studio-css';
+    style.textContent = `
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    `;
+    document.head.appendChild(style);
+})();
+
+console.log('🎛️ Multi-Track Harmony Studio loaded');
