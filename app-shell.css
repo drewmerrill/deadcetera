@@ -234,6 +234,8 @@ footer p{color:var(--text-dim)!important;}
 
 /* Red backgrounds always get white text */
 [style*="background:#ef4444"],[style*="background: #ef4444"],[style*="background:#dc2626"],[style*="background: #dc2626"]{color:white!important;}
+[style*="background:#ef4444"] *,[style*="background: #ef4444"] *,[style*="background:#dc2626"] *,[style*="background: #dc2626"] *{color:white!important;}
+.btn-danger,.btn-danger *{color:white!important;}
 /* Mobile: karaoke & multi-track responsive */
 @media(max-width:600px){
     .form-grid{grid-template-columns:1fr!important;}

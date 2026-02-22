@@ -403,12 +403,12 @@ function getPlayButtonLabel(version) {
 function getPlayButtonStyle(version) {
     const url = (version.spotifyUrl || '').toLowerCase();
     const p = version.platform || '';
-    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000;';
-    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44;';
-    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;';
-    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;';
-    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;';
-    return '';
+    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000;color:white;';
+    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44;color:white;';
+    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;color:white;';
+    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;color:white;';
+    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;color:white;';
+    return 'color:white;';
 }
 
 // Helper: find band member name from any identifier (email, key, etc.)
@@ -6748,7 +6748,7 @@ function getBPMForSong(){const b=document.getElementById('songBpmInput');return(
 function mtToggleMetronome(si){
     const btn=document.getElementById(`mtMetronomeToggle_${si}`);
     if(mtMetronomeInterval){mtStopMetronome();if(btn){btn.textContent='▶ Start';btn.style.background='#667eea';}}
-    else{mtStartMetronome(si);if(btn){btn.textContent='⏸ Stop';btn.style.background='#ef4444';}}
+    else{mtStartMetronome(si);if(btn){btn.textContent='⏸ Stop';btn.style.background='#ef4444';btn.style.color='white';}}
 }
 function mtStartMetronome(si){
     if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();mtAudioContext.resume();
