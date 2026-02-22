@@ -10,7 +10,7 @@ a{color:var(--accent-light);}
 .topbar-right{display:flex;align-items:center;gap:6px;}
 .topbar-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-muted);padding:6px 10px;border-radius:8px;font-size:0.78em;cursor:pointer;transition:all 0.15s;white-space:nowrap;font-weight:500;font-family:inherit;}
 .topbar-btn:hover{background:rgba(255,255,255,0.12);color:white;}
-.topbar-btn.connected{background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);}
+.topbar-btn.connected{background:rgba(16,185,129,0.25);color:#ffffff;border-color:rgba(16,185,129,0.4);font-weight:600;}
 .menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1100;opacity:0;pointer-events:none;transition:opacity 0.25s;}
 .menu-overlay.open{opacity:1;pointer-events:auto;}
 .slide-menu{position:fixed;top:0;left:-300px;bottom:0;width:280px;z-index:1200;background:var(--bg-card);border-right:1px solid var(--border);transition:left 0.3s cubic-bezier(0.4,0,0.2,1);overflow-y:auto;padding:16px 0;}
@@ -108,3 +108,126 @@ a{color:var(--accent-light);}
 footer{color:var(--text-dim)!important;border-top:1px solid var(--border)!important;}
 footer p{color:var(--text-dim)!important;}
 .harmony-header,.note-header{color:var(--text)!important;}
+.song-item *{color:var(--text)!important;}
+.song-item .song-title{color:var(--text)!important;font-weight:600;}
+.song-item .song-band{color:var(--text-muted)!important;}
+.song-dropdown .song-item{background:rgba(255,255,255,0.04)!important;border:1px solid var(--border)!important;color:var(--text)!important;}
+.song-dropdown .song-item:hover{background:rgba(255,255,255,0.08)!important;}
+.resource-section .notes-icon,.resource-section svg,.resource-section .edit-icon,
+.resource-section [style*="color: #333"],.resource-section [style*="color: black"],
+.resource-section [style*="color:#333"],.resource-section [style*="color:#000"],
+#spotifyVersionsContainer [style*="color: #"],
+#practiceTracksContainer [style*="color: #"],
+.version-header [style*="color:"],
+.section-header [style*="color:"]
+{color:var(--text-muted)!important;fill:var(--text-muted)!important;}
+.resource-section button[style*="color: #333"]{color:var(--text-muted)!important;}
+
+/* FIX #2: Connected button text always white */
+.topbar-btn.connected{color:white!important;}
+
+/* FIX #3: Song dropdown results visible on dark bg */
+.song-item, .song-dropdown .song-item, #songDropdown > div {
+    color:var(--text)!important;background:rgba(255,255,255,0.03)!important;
+    border:1px solid var(--border)!important;
+}
+.song-item:hover, #songDropdown > div:hover {
+    background:rgba(255,255,255,0.08)!important;
+}
+.song-item .song-title, .song-item strong {color:var(--text)!important;}
+.song-item .song-band, .song-item small, .song-item .song-meta {color:var(--text-muted)!important;}
+
+/* FIX #6: Song list alignment */
+.song-item {display:flex!important;align-items:center!important;gap:8px!important;padding:10px 12px!important;}
+.song-item .status-badge, .song-item .harmony-badge {flex-shrink:0;}
+
+/* FIX #16, #19: Notes/icons black on dark bg */
+.resource-section svg, .resource-section .icon, 
+.section-header svg, .note-icon, .edit-icon,
+button[style*="color: #333"], button[style*="color: black"],
+.resource-section button {color:var(--text-muted)!important;}
+input[style*="color: #333"], input[style*="color: black"],
+textarea[style*="color: #333"], textarea[style*="color: black"],
+select[style*="color: #333"], select[style*="color: black"] {
+    color:var(--text)!important;
+}
+/* Any remaining dark text on dark bg */
+p[style*="color: #4a5568"], p[style*="color: #4b5563"], 
+div[style*="color: #333"], span[style*="color: #333"],
+div[style*="color: #2d3748"], h4[style*="color: #2d3748"] {
+    color:var(--text)!important;
+}
+p[style*="color: #6b7280"], span[style*="color: #6b7280"],
+label[style*="color: #6b7280"], div[style*="color: #6b7280"] {
+    color:var(--text-muted)!important;
+}
+
+/* General dark theme catch-all for inline styles */
+[style*="background: white"], [style*="background:#fff"], [style*="background: #fff"] {
+    background:rgba(255,255,255,0.04)!important;
+}
+[style*="background: #f9fafb"], [style*="background: #f7fafc"], [style*="background:#f9fafb"] {
+    background:rgba(255,255,255,0.03)!important;
+}
+[style*="border-left: 4px solid"] {
+    border-left-color:var(--accent)!important;
+}
+
+/* FIX #19: Practice tracks instrument grid */
+.practice-tracks-grid {
+    display:grid!important;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))!important;gap:10px!important;
+}
+.practice-track-card {
+    background:rgba(255,255,255,0.03)!important;border:1px solid var(--border)!important;
+    border-radius:10px!important;color:var(--text)!important;
+}
+.practice-track-card p, .practice-track-card span, .practice-track-card small, .practice-track-card div {
+    color:var(--text-muted)!important;
+}
+.practice-track-card strong, .practice-track-card h4 { color:var(--text)!important; }
+.practice-track-card button { color:white!important; }
+
+/* Fix #6 revisited: song list alignment */
+.song-dropdown > div, .song-item {
+    display:grid!important;
+    grid-template-columns:auto 1fr auto auto!important;
+    align-items:center!important;
+    gap:8px!important;
+    padding:10px 12px!important;
+}
+
+/* More dark theme overrides for inline styles */
+[style*="color: #2d3748"],[style*="color: #333"],[style*="color:#2d3748"],[style*="color:#333"] {color:var(--text)!important;}
+[style*="color: #4a5568"],[style*="color:#4a5568"] {color:var(--text-muted)!important;}
+[style*="color: #718096"],[style*="color:#718096"] {color:var(--text-dim)!important;}
+.version-title, .version-badge {color:var(--text)!important;}
+.vote-chip {color:var(--text)!important;background:rgba(255,255,255,0.06)!important;border:1px solid var(--border)!important;}
+.vote-chip.yes {background:rgba(16,185,129,0.15)!important;color:var(--green)!important;border-color:rgba(16,185,129,0.3)!important;}
+.spotify-play-btn, .spotify-play-btn * {color:white!important;}
+.spotify-version-card {background:rgba(255,255,255,0.03)!important;border:1px solid var(--border)!important;border-radius:10px!important;}
+.spotify-version-card.default {border-color:var(--accent)!important;background:rgba(102,126,234,0.08)!important;}
+.song-item.selected {background:rgba(102,126,234,0.12)!important;border-color:var(--accent)!important;}
+.reset-btn {background:rgba(255,255,255,0.06)!important;color:var(--text-muted)!important;border:1px solid var(--border)!important;}
+
+/* Header and subtitle overrides */
+header {background:transparent!important;border-bottom:none!important;}
+header h1 {color:var(--text)!important;}
+header p, header .subtitle {color:var(--text-muted)!important;}
+.logo {filter:brightness(1.2);}
+
+/* FIX #2: Connected button text always white */
+.topbar-btn.connected{color:white!important;}
+
+/* FIX #3: Song search results visibility on dark bg */
+.song-item,.song-dropdown .song-item,#songDropdown>div{color:#e2e8f0!important;background:rgba(255,255,255,0.04)!important;border:1px solid rgba(255,255,255,0.08)!important;border-radius:8px!important;margin-bottom:4px!important;}
+.song-item:hover,#songDropdown>div:hover{background:rgba(255,255,255,0.08)!important;}
+
+/* FIX #6: Song list proper alignment */
+.song-item{display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;}
+
+/* FIX #16 & #19: Icons invisible on dark bg */
+.resource-section [style*="color: #"]{color:var(--text-muted)!important;}
+.version-header button,.resource-section button[style]{color:var(--text-muted)!important;}
+.note-header [style*="color"]{color:var(--text-muted)!important;}
+#practiceTracksContainer [style*="color: #4"]{color:var(--text-muted)!important;}
+#spotifyVersionsContainer [style*="color: #4"]{color:var(--text-muted)!important;}

@@ -95,7 +95,7 @@
             border-radius: 8px;
         }
 
-        /* ===== SPOTIFY VERSION CARDS ===== */
+        /* ===== reference version CARDS ===== */
         .spotify-version-card {
             background: white;
             border: 2px solid #e2e8f0;
@@ -442,7 +442,7 @@ function updateReferenceVersionLabels() {
     const spotifySection = document.getElementById('spotifySection');
     if (spotifySection) {
         const subtitle = spotifySection.querySelector('p');
-        if (subtitle && subtitle.textContent.includes('Spotify version')) {
+        if (subtitle && subtitle.textContent.includes('reference version')) {
             subtitle.textContent = 'Vote on which version to learn';
         }
         // Update "Search Spotify" link to include other options
@@ -456,7 +456,7 @@ function updateReferenceVersionLabels() {
 function setupSpotifyAddButton() {
     const btn = document.getElementById('addSpotifyVersionBtn');
     if (!btn) return;
-    btn.textContent = '+ Suggest Different Version';
+    btn.textContent = '+ Suggest New/Alternate Version';
     btn.addEventListener('click', addSpotifyVersion);
 }
 
@@ -1723,7 +1723,9 @@ function showBandResources(songTitle) {
     const step2 = document.getElementById('step2');
     step2.classList.remove('hidden');
     
-    // Update subtitle
+    // Update title with song name (#11)
+    const titleEl = document.getElementById('step2Title');
+    if (titleEl) titleEl.innerHTML = '🎸 Steps to Master: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
     document.getElementById('bandResourcesSubtitle').textContent = 
         `Collaborative resources for "${songTitle}"`;
     
@@ -1771,7 +1773,7 @@ function skipToBandResources() {
 }
 
 // ============================================================================
-// SPOTIFY VERSIONS & VOTING
+// reference versionS & VOTING
 // ============================================================================
 
 function renderSpotifyVersions(songTitle, bandData) {
@@ -2811,7 +2813,7 @@ function extractSpotifyTrackId(url) {
     return match ? match[1] : null;
 }
 
-// Update Spotify version rendering to fetch metadata
+// Update reference version rendering to fetch metadata
 async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     const container = document.getElementById('spotifyVersionsContainer');
     const versions = await loadSpotifyVersions(songTitle) || bandData.spotifyVersions || [];
@@ -2972,7 +2974,7 @@ async function toggleSpotifyVote(versionIndex, voterEmail) {
 }
 
 async function deleteSpotifyVersion(versionIndex) {
-    if (!confirm('Delete this Spotify version?')) return;
+    if (!confirm('Delete this reference version?')) return;
     
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
@@ -2994,7 +2996,7 @@ async function loadSpotifyVersions(songTitle) {
     return await loadBandDataFromDrive(songTitle, 'spotify_versions');
 }
 
-console.log('🎵 Spotify versions system loaded');
+console.log('🎵 reference versions system loaded');
 
 // Search helpers
 function searchSpotify() {
@@ -7429,7 +7431,7 @@ const pageRenderers = {
     finances: renderFinancesPage,
     tuner: renderTunerPage,
     metronome: renderMetronomePage,
-    admin: (el) => { el.innerHTML = '<div id="adminPanelContainer"></div>'; showAdminPanel(); }
+    admin: renderSettingsPage
 };
 
 // ============================================================================
@@ -7468,9 +7470,10 @@ function createNewSetlist() {
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
         </div>
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="margin-bottom:4px"><div id="slSongResults0"></div></div></div></div>
-        <div style="display:flex;gap:8px;margin-top:12px">
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
-            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Add Encore</button>
+            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
+            <button class="btn btn-ghost" onclick="slAddSet('soundcheck')" style="color:var(--yellow)">🔊 Soundcheck</button>
             <button class="btn btn-success" onclick="slSaveSetlist()" style="margin-left:auto">💾 Save Setlist</button>
         </div></div>`;
 }
@@ -7479,13 +7482,13 @@ function slSearchSong(input, setIdx) {
     const q = input.value.toLowerCase();
     const results = document.getElementById('slSongResults' + setIdx);
     if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
-    const matches = songs.filter(s => s.title.toLowerCase().includes(q)).slice(0, 8);
+    const matches = (typeof allSongs !== "undefined" ? allSongs : songs || []).filter(s => s.title.toLowerCase().includes(q)).slice(0, 8);
     results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" onclick="slAddSongToSet(${setIdx},'${s.title.replace(/'/g,"\\'")}')">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
 }
 function slAddSongToSet(setIdx, title) {
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
-    window._slSets[setIdx].songs.push(title);
+    window._slSets[setIdx].songs.push({title: title, transition: false});
     slRenderSetSongs(setIdx);
     document.getElementById('slAddSong' + setIdx).value = '';
     document.getElementById('slSongResults' + setIdx).innerHTML = '';
@@ -7494,12 +7497,25 @@ function slAddSongToSet(setIdx, title) {
 function slRenderSetSongs(setIdx) {
     const el = document.getElementById('slSet' + setIdx + 'Songs');
     if (!el) return;
-    const songs = window._slSets[setIdx]?.songs || [];
-    el.innerHTML = songs.map((s, i) => `<div class="list-item" style="padding:6px 10px;font-size:0.85em">
-        <span style="color:var(--text-dim);min-width:20px">${i + 1}.</span>
-        <span style="flex:1">${s}</span>
-        <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px">✕</button>
-    </div>`).join('');
+    const items = window._slSets[setIdx]?.songs || [];
+    el.innerHTML = items.map((item, i) => {
+        const s = typeof item === 'string' ? item : item.title;
+        const trans = typeof item === 'object' && item.transition;
+        return `<div class="list-item" style="padding:6px 10px;font-size:0.85em;gap:6px">
+            <span style="color:var(--text-dim);min-width:20px;font-weight:600">${i + 1}.</span>
+            <span style="flex:1;font-weight:500">${s}${trans ? ' <span style="color:var(--accent-light);font-weight:700">→</span>' : ''}</span>
+            <button class="btn btn-sm ${trans?'btn-primary':'btn-ghost'}" onclick="slToggleTransition(${setIdx},${i})" title="${trans?'Song transitions into next':'Click to mark as transition'}" style="padding:2px 8px;font-size:0.75em">${trans?'→':'⏹'}</button>
+            <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px">✕</button>
+        </div>`;
+    }).join('');
+}
+
+function slToggleTransition(setIdx, songIdx) {
+    const items = window._slSets[setIdx]?.songs;
+    if (!items || !items[songIdx]) return;
+    if (typeof items[songIdx] === 'string') items[songIdx] = { title: items[songIdx], transition: true };
+    else items[songIdx].transition = !items[songIdx].transition;
+    slRenderSetSongs(setIdx);
 }
 
 function slRemoveSong(setIdx, songIdx) {
@@ -7509,13 +7525,14 @@ function slRemoveSong(setIdx, songIdx) {
 
 let _slSetCount = 1;
 function slAddSet(type) {
-    const name = type === 'encore' ? 'Encore' : ('Set ' + (++_slSetCount));
+    const name = type === 'encore' ? 'Encore' : type === 'soundcheck' ? '🔊 Soundcheck' : ('Set ' + (++_slSetCount));
     window._slSets.push({ name, songs: [] });
     const idx = window._slSets.length - 1;
+    const color = type === 'encore' ? 'var(--yellow)' : type === 'soundcheck' ? 'var(--green)' : 'var(--accent-light)';
     const setsEl = document.getElementById('slSets');
     setsEl.insertAdjacentHTML('beforeend', `
         <div class="app-card" style="background:rgba(255,255,255,0.02)">
-            <h3 style="color:${type === 'encore' ? 'var(--yellow)' : 'var(--accent-light)'}">${name}</h3>
+            <h3 style="color:${color}">${name}</h3>
             <div id="slSet${idx}Songs"></div>
             <div style="margin-top:8px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="margin-bottom:4px"><div id="slSongResults${idx}"></div></div>
         </div>`);
@@ -7545,40 +7562,64 @@ function editSetlist(idx) {
 // ============================================================================
 // PRACTICE PLAN
 // ============================================================================
-function renderPracticePage(el) {
-    const thisWeek = songs.filter(s => s.status === 'this_week' || (s.bandData && s.bandData.status === 'this_week'));
-    const needsPolish = songs.filter(s => s.status === 'needs_polish' || (s.bandData && s.bandData.status === 'needs_polish'));
+async function renderPracticePage(el) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading practice plan...</div>';
+    const songList = typeof allSongs !== 'undefined' ? allSongs : [];
+    
+    // Try to load statuses from Firebase/localStorage cache
+    const statusMap = {};
+    try {
+        // Check localStorage cache first for speed
+        for (const s of songList) {
+            const cached = localStorage.getItem('deadcetera_status_' + s.title);
+            if (cached) statusMap[s.title] = cached;
+            if (s.bandData?.status) statusMap[s.title] = s.bandData.status;
+        }
+        // Also try Firebase bulk load
+        if (typeof loadBandDataFromDrive === 'function') {
+            const allStatuses = await loadBandDataFromDrive('_band', 'song_statuses');
+            if (allStatuses && typeof allStatuses === 'object') {
+                Object.assign(statusMap, allStatuses);
+            }
+        }
+    } catch(e) { console.log('Status load:', e); }
+    
+    const thisWeek = songList.filter(s => statusMap[s.title] === 'this_week');
+    const needsPolish = songList.filter(s => statusMap[s.title] === 'needs_polish');
+    const gigReady = songList.filter(s => statusMap[s.title] === 'gig_ready');
+    const onDeck = songList.filter(s => statusMap[s.title] === 'on_deck');
+    
+    // Load saved agenda
+    let agendaText = '';
+    try { const ag = await loadBandDataFromDrive('_band','rehearsal_agenda'); if(ag?.text) agendaText = ag.text; } catch(e) {}
+    
+    function songRow(s, badge) {
+        return `<div class="list-item" style="cursor:pointer" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
+            <span style="color:var(--text-dim);font-size:0.78em;min-width:35px">${s.band||''}</span>
+            <span style="flex:1">${s.title}</span>
+            ${badge||''}
+        </div>`;
+    }
     
     el.innerHTML = `
     <div class="page-header"><h1>📅 Practice Plan</h1><p>Weekly focus and rehearsal prep</p></div>
     <div class="card-grid" style="margin-bottom:16px">
         <div class="stat-card"><div class="stat-value" style="color:var(--red)">${thisWeek.length}</div><div class="stat-label">This Week</div></div>
         <div class="stat-card"><div class="stat-value" style="color:var(--yellow)">${needsPolish.length}</div><div class="stat-label">Needs Polish</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--green)">${songs.filter(s=>(s.bandData?.status||s.status)==='gig_ready').length}</div><div class="stat-label">Gig Ready</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${songs.filter(s=>(s.bandData?.status||s.status)==='on_deck').length}</div><div class="stat-label">On Deck</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--green)">${gigReady.length}</div><div class="stat-label">Gig Ready</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${onDeck.length}</div><div class="stat-label">On Deck</div></div>
     </div>
-    
-    <div class="app-card">
-        <h3>🎯 This Week's Focus</h3>
-        ${thisWeek.length > 0 ? thisWeek.map(s => `<div class="list-item" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
-            <span style="color:var(--text-dim);font-size:0.8em">${s.band||''}</span>
-            <span style="flex:1">${s.title}</span>
-            <span style="color:var(--red);font-size:0.75em;font-weight:600">🎯 This Week</span>
-        </div>`).join('') : '<div style="text-align:center;padding:20px;color:var(--text-dim)">No songs marked as "This Week" yet. Go to a song and set its status.</div>'}
+    <div class="app-card"><h3>🎯 This Week's Focus</h3>
+        ${thisWeek.length ? thisWeek.map(s => songRow(s,'<span style="color:var(--red);font-size:0.72em;font-weight:600">🎯</span>')).join('') : '<div style="text-align:center;padding:16px;color:var(--text-dim)">No songs marked "This Week" yet. Set status on any song.</div>'}
     </div>
-    
-    <div class="app-card">
-        <h3>⚠️ Needs Polish</h3>
-        ${needsPolish.length > 0 ? needsPolish.map(s => `<div class="list-item" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
-            <span style="color:var(--text-dim);font-size:0.8em">${s.band||''}</span>
-            <span style="flex:1">${s.title}</span>
-        </div>`).join('') : '<div style="text-align:center;padding:20px;color:var(--text-dim)">No songs need polish right now.</div>'}
+    <div class="app-card"><h3>⚠️ Needs Polish</h3>
+        ${needsPolish.length ? needsPolish.map(s => songRow(s)).join('') : '<div style="text-align:center;padding:16px;color:var(--text-dim)">No songs need polish.</div>'}
     </div>
-    
-    <div class="app-card">
-        <h3>📝 Rehearsal Agenda</h3>
-        <div id="rehearsalAgenda"></div>
-        <textarea class="app-textarea" id="rehearsalAgendaText" placeholder="Type this week's rehearsal plan... e.g.&#10;1. Warm up - Scarlet Begonias&#10;2. Work harmony parts on Friend of the Devil&#10;3. Full run-through of Set 1 for Saturday"></textarea>
+    <div class="app-card"><h3>📚 On Deck (${onDeck.length})</h3>
+        ${onDeck.length ? onDeck.map(s => songRow(s)).join('') : '<div style="text-align:center;padding:16px;color:var(--text-dim)">No songs on deck.</div>'}
+    </div>
+    <div class="app-card"><h3>📝 Rehearsal Agenda</h3>
+        <textarea class="app-textarea" id="rehearsalAgendaText" placeholder="Type this week's rehearsal plan...">${agendaText}</textarea>
         <button class="btn btn-primary" style="margin-top:8px" onclick="saveRehearsalAgenda()">💾 Save Agenda</button>
     </div>`;
 }
@@ -7603,12 +7644,17 @@ function renderCalendarPage(el) {
     const today = now.getDate();
     
     let calHTML = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
-    dayNames.forEach(d => { calHTML += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:var(--text-dim);text-align:center;padding:6px 0">${d}</div>`; });
+    dayNames.forEach((d,i) => { 
+        const isWkend = i === 0 || i === 6;
+        calHTML += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${isWkend?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`; 
+    });
     for (let i = 0; i < firstDay; i++) calHTML += '<div style="aspect-ratio:1;padding:4px;"></div>';
     for (let d = 1; d <= daysInMonth; d++) {
         const isToday = d === today;
-        calHTML += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:1px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
-            <span style="${isToday?'color:var(--accent);font-weight:700;':'color:var(--text-muted);'}">${d}</span>
+        const dow = new Date(year, month, d).getDay();
+        const isWkend = dow === 0 || dow === 6;
+        calHTML += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:${isWkend?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
+            <span style="${isToday?'color:var(--accent);font-weight:700;':isWkend?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
         </div>`;
     }
     calHTML += '</div>';
@@ -7616,11 +7662,63 @@ function renderCalendarPage(el) {
     el.innerHTML = `
     <div class="page-header"><h1>📆 Calendar</h1><p>${monthNames[month]} ${year}</p></div>
     <div class="app-card">${calHTML}</div>
-    <div class="app-card">
-        <h3>📌 Upcoming Events</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
+        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Block Dates (Unavailable)</button>
+    </div>
+    <div class="app-card"><h3>📌 Upcoming Events</h3>
         <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">No events yet. Click a date to add one.</div></div>
     </div>
-    <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>`;
+    <div class="app-card"><h3>🚫 Blocked Dates</h3>
+        <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
+    </div>`;
+    loadCalendarEvents();
+}
+
+async function loadCalendarEvents() {
+    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const el = document.getElementById('calendarEvents');
+    if (!el) return;
+    const upcoming = events.filter(e => e.date >= new Date().toISOString().split('T')[0]).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    if (upcoming.length === 0) return;
+    el.innerHTML = upcoming.map(e => `<div class="list-item" style="padding:8px 10px">
+        <span style="font-size:0.8em;color:var(--text-dim);min-width:80px">${e.date||''}</span>
+        <span style="font-weight:600;flex:1">${e.title||'Untitled'}</span>
+        <span style="font-size:0.75em;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06)">${e.type||''}</span>
+    </div>`).join('');
+    // Also load blocked dates
+    const blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    const bEl = document.getElementById('blockedDates');
+    if (bEl && blocked.length > 0) {
+        bEl.innerHTML = blocked.map(b => `<div class="list-item" style="padding:6px 10px;font-size:0.85em">
+            <span style="color:var(--red)">${b.startDate} → ${b.endDate}</span>
+            <span style="flex:1;color:var(--text-muted)">${b.person||''}: ${b.reason||''}</span>
+        </div>`).join('');
+    }
+}
+
+function calBlockDates() {
+    const el = document.getElementById('calendarEvents');
+    if (!el) return;
+    el.innerHTML = `<div style="padding:12px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:10px;margin-bottom:12px">
+        <h3 style="font-size:0.9em;color:var(--red);margin-bottom:8px">🚫 Block Dates — I'm Unavailable</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>
+            <div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>
+            <div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>'<option value="'+m.name+'">'+m.name+'</option>').join('')}</select></div>
+            <div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>
+        </div>
+        <button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Block These Dates</button>
+    </div>`;
+}
+
+async function saveBlockedDates() {
+    const b = { startDate: document.getElementById('blockStart')?.value, endDate: document.getElementById('blockEnd')?.value,
+        person: document.getElementById('blockPerson')?.value, reason: document.getElementById('blockReason')?.value };
+    if (!b.startDate || !b.endDate) { alert('Both dates required'); return; }
+    const ex = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    ex.push(b); await saveBandDataToDrive('_band', 'blocked_dates', ex);
+    alert('✅ Dates blocked!'); loadCalendarEvents();
 }
 
 function calDayClick(y, m, d) { calAddEvent(new Date(y, m, d).toISOString().split('T')[0]); }
@@ -8015,3 +8113,62 @@ function metToggle() {
 }
 
 console.log('🎸 Deadcetera Band App modules loaded');
+
+// Register new pages
+pageRenderers.equipment = renderEquipmentPage;
+pageRenderers.contacts = renderContactsPage;
+pageRenderers.admin = renderSettingsPage;
+
+// ---- SETTINGS (#1) ----
+function renderSettingsPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>⚙️ Settings</h1></div>
+    <div class="app-card"><h3>👤 Your Profile</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Name</label><select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value)">${'<option value="">Select...</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(localStorage.getItem('deadcetera_current_user')===k?' selected':'')+'>'+m.name+'</option>').join('')}</select></div>
+            <div class="form-row"><label class="form-label">Instrument</label><select class="app-select" id="settingsInst" onchange="localStorage.setItem('deadcetera_instrument',this.value)"><option value="">Select...</option><option value="bass">Bass</option><option value="leadGuitar">Lead Guitar</option><option value="rhythmGuitar">Rhythm Guitar</option><option value="keys">Keys</option><option value="drums">Drums</option><option value="vocals">Vocals</option></select></div>
+        </div></div>
+    <div class="app-card"><h3>🐛 Report Bug / Request Feature</h3>
+        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="fbType"><option value="bug">🐛 Bug</option><option value="feature">💡 Feature</option><option value="other">💬 Feedback</option></select></div>
+        <div class="form-row"><label class="form-label">Description</label><textarea class="app-textarea" id="fbDesc" placeholder="Describe..."></textarea></div>
+        <div class="form-row"><label class="form-label">Screenshot</label><input type="file" id="fbFile" accept="image/*" class="app-input" style="padding:8px"></div>
+        <button class="btn btn-primary" onclick="submitFeedback()">📤 Submit</button></div>
+    <div class="app-card"><h3>📊 Data</h3><div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="showAdminPanel()">📈 Activity Dashboard</button>
+        <button class="btn btn-ghost" onclick="alert('All data is in Firebase: deadcetera-35424')">💾 Export</button>
+        <button class="btn btn-ghost" style="color:var(--red)" onclick="if(confirm('Clear local cache?')){localStorage.clear();location.reload()}">🗑 Clear Cache</button></div></div>
+    <div class="app-card"><h3>ℹ️ About</h3><div style="font-size:0.85em;line-height:1.8;color:var(--text-muted)">
+        ${[['App','Deadcetera — Band HQ'],['Version','3.0.0-beta'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band','Drew, Chris, Brian, Pierce, Jay'],['Songs',''+(songs?.length||0)]].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+        <div style="margin-top:12px;text-align:center;font-size:0.82em;color:var(--text-dim)">© 2025–2026 Drew Merrill. All rights reserved.<br>Less admin. More jams. 🤘</div></div></div>`;
+}
+async function submitFeedback(){const d=document.getElementById('fbDesc')?.value;if(!d){alert('Describe the issue.');return;}const fb={type:document.getElementById('fbType')?.value,description:d,user:localStorage.getItem('deadcetera_current_user')||'anon',date:new Date().toISOString()};const ex=toArray(await loadBandDataFromDrive('_band','feedback')||[]);ex.push(fb);await saveBandDataToDrive('_band','feedback',ex);alert('✅ Submitted!');document.getElementById('fbDesc').value='';}
+
+// ---- EQUIPMENT (#28) ----
+function renderEquipmentPage(el){el.innerHTML=`<div class="page-header"><h1>🎛️ Equipment</h1><p>Band gear inventory</p></div><button class="btn btn-primary" onclick="addEquipment()" style="margin-bottom:12px">+ Add Gear</button><div id="equipList"></div>`;loadEquipment();}
+async function loadEquipment(){const d=toArray(await loadBandDataFromDrive('_band','equipment')||[]);const el=document.getElementById('equipList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet.</div>';return;}const g={};d.forEach(i=>{const o=i.owner||'shared';if(!g[o])g[o]=[];g[o].push(i);});el.innerHTML=Object.entries(g).map(([o,items])=>`<div class="app-card"><h3>${bandMembers[o]?.name||'Shared/Band'}</h3>${items.map(i=>`<div class="list-item" style="padding:8px 10px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${i.name||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${[i.category,i.brand,i.model].filter(Boolean).join(' · ')}</div></div>${i.manualUrl?'<a href="'+i.manualUrl+'" target="_blank" class="btn btn-sm btn-ghost">📄</a>':''}</div>`).join('')}</div>`).join('');}
+function addEquipment(){const el=document.getElementById('equipList');el.innerHTML=`<div class="app-card"><h3>Add Gear</h3><div class="form-grid">${[['Name','eqN',''],['Category','eqC','select:amp,guitar,pedal,mic,cable,pa,drum,keys,other'],['Brand','eqB',''],['Model','eqM',''],['Owner','eqO','members'],['Serial #','eqS',''],['Manual URL','eqU',''],['Value ($)','eqV','number']].map(([l,id,t])=>{if(t==='members')return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'">'+m.name+'</option>').join('')+'</select></div>';if(t.startsWith('select:'))return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(v=>'<option value="'+v+'">'+v+'</option>').join('')+'</select></div>';return'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'"></div>';}).join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="eqNotes"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveEquip()">💾 Save</button><button class="btn btn-ghost" onclick="loadEquipment()">Cancel</button></div></div>`+el.innerHTML;}
+async function saveEquip(){const eq={name:document.getElementById('eqN')?.value,category:document.getElementById('eqC')?.value,brand:document.getElementById('eqB')?.value,model:document.getElementById('eqM')?.value,owner:document.getElementById('eqO')?.value,serial:document.getElementById('eqS')?.value,manualUrl:document.getElementById('eqU')?.value,value:document.getElementById('eqV')?.value,notes:document.getElementById('eqNotes')?.value};if(!eq.name){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','equipment')||[]);ex.push(eq);await saveBandDataToDrive('_band','equipment',ex);alert('✅ Saved!');loadEquipment();}
+
+// ---- CONTACTS (#27) ----
+function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
+async function loadContacts(){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const el=document.getElementById('ctList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No contacts yet.</div>';return;}el.innerHTML=d.map(c=>`<div class="list-item" style="padding:10px 12px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${c.firstName||''} ${c.lastName||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${c.title||''} ${c.company?'@ '+c.company:''}</div></div><div style="display:flex;gap:10px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">${c.email?'<span>📧 '+c.email+'</span>':''}${c.cell?'<span>📱 '+c.cell+'</span>':''}</div></div>`).join('');}
+function addContact(){const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Add Contact</h3><div class="form-grid">${[['First Name','ctF'],['Last Name','ctL'],['Email','ctE'],['Cell','ctP'],['Title','ctT'],['Company/Venue','ctC']].map(([l,id])=>'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'"></div>').join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="ctN"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCt()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
+async function saveCt(){const c={firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};if(!c.firstName&&!c.lastName){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','contacts')||[]);ex.push(c);await saveBandDataToDrive('_band','contacts',ex);alert('✅ Saved!');loadContacts();}
+
+// ---- FIX #11: Step 2 header ----
+if(typeof document!=='undefined'){const obs=new MutationObserver(()=>{const s=document.getElementById('step2');if(s&&!s.classList.contains('hidden')){const h=s.querySelector('h2');if(h&&typeof selectedSong!=='undefined'&&selectedSong&&!h.dataset.patched){h.dataset.patched='true';h.innerHTML='🎸 Steps to Master: <span style="color:var(--accent-light,#818cf8)">'+selectedSong.title+'</span>';}}});document.addEventListener('DOMContentLoaded',()=>{const s=document.getElementById('step2');if(s)obs.observe(s,{attributes:true,attributeFilter:['class']});});}
+
+console.log('📦 Settings, Equipment, Contacts loaded');
+
+// Band dropdown filter (#7)
+function filterByBand(band) {
+    // Reuse existing filter mechanism - simulate the button click
+    if (typeof currentBandFilter !== 'undefined') currentBandFilter = band;
+    // Trigger existing renderSongs with filter
+    const btns = document.querySelectorAll('.filter-btn[data-filter]');
+    btns.forEach(b => b.classList.remove('active'));
+    const match = document.querySelector('.filter-btn[data-filter="'+band+'"]');
+    if (match) match.classList.add('active');
+    // If renderSongs exists and uses currentBandFilter, call it
+    if (typeof renderSongs === 'function') renderSongs();
+}
