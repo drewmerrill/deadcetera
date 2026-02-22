@@ -21,13 +21,28 @@
     const style = document.createElement('style');
     style.id = 'deadcetera-responsive-css';
     style.textContent = `
-        /* ===== SONG LIST ===== */
+        /* ===== SONG LIST (DARK THEME) ===== */
         .song-item {
-            justify-content: space-between;
+            display: flex;
             align-items: center;
-            padding: 12px 16px;
-            min-height: 44px; /* iOS tap target */
-            gap: 12px;
+            padding: 11px 14px;
+            min-height: 44px;
+            gap: 10px;
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: all 0.12s ease;
+            color: #f1f5f9;
+        }
+        .song-item:hover {
+            background: rgba(102,126,234,0.1);
+            border-color: rgba(102,126,234,0.3);
+        }
+        .song-item.selected {
+            background: rgba(102,126,234,0.15);
+            border-color: #667eea;
         }
         .song-name {
             flex: 1;
@@ -35,23 +50,41 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            color: #f1f5f9;
+            font-weight: 500;
+            font-size: 0.92em;
         }
         .song-badge {
             flex-shrink: 0;
             margin-left: auto;
-            font-size: 0.8em;
+            font-size: 0.68em;
             padding: 3px 10px;
-            border-radius: 4px;
+            border-radius: 20px;
             font-weight: 700;
             text-align: center;
-            min-width: 40px;
+            min-width: 36px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
         }
+        .song-badge.gd { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+        .song-badge.jgb { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+        .song-badge.wsp { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+        .song-badge.phish { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+        .song-badge.abb { background: rgba(236,72,153,0.15); color: #f472b6; border: 1px solid rgba(236,72,153,0.25); }
+        .song-badge.goose { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
+        .song-badge.dmb { background: rgba(20,184,166,0.15); color: #2dd4bf; border: 1px solid rgba(20,184,166,0.25); }
         .harmony-badge {
             flex-shrink: 0;
+            font-size: 0.75em;
+            color: #818cf8;
         }
         .status-badge {
             flex-shrink: 0;
             white-space: nowrap;
+            font-size: 0.7em;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-weight: 600;
         }
 
         /* ===== FILTER BUTTONS ===== */
@@ -64,30 +97,37 @@
         .filter-btn {
             padding: 8px 16px;
             border-radius: 20px;
-            border: 2px solid #e2e8f0;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
             cursor: pointer;
             font-weight: 600;
             font-size: 0.85em;
             white-space: nowrap;
             transition: all 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
+        }
+        .filter-btn.active, .filter-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
         }
 
-        /* ===== PRACTICE TRACKS GRID ===== */
+        /* ===== PRACTICE TRACKS ===== */
         .practice-tracks-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
+            gap: 12px;
         }
         .practice-track-card {
-            background: white;
-            border: 2px solid #e2e8f0;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 16px;
-            transition: box-shadow 0.15s ease;
+            color: #f1f5f9;
+            transition: border-color 0.15s ease;
         }
         .practice-track-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border-color: rgba(102,126,234,0.3);
         }
         .practice-track-card img {
             max-width: 100%;
@@ -95,17 +135,18 @@
             border-radius: 8px;
         }
 
-        /* ===== reference version CARDS ===== */
+        /* ===== REFERENCE VERSION CARDS ===== */
         .spotify-version-card {
-            background: white;
-            border: 2px solid #e2e8f0;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 12px;
+            color: #f1f5f9;
         }
         .spotify-version-card.default {
             border-color: #667eea;
-            background: #f5f7ff;
+            background: rgba(102,126,234,0.08);
         }
         .votes-container {
             display: flex;
@@ -114,27 +155,29 @@
             margin: 10px 0;
         }
         .vote-chip {
-            padding: 6px 14px;
+            padding: 5px 12px;
             border-radius: 20px;
-            font-size: 0.85em;
+            font-size: 0.82em;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
-            border: 2px solid #e2e8f0;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
         }
         .vote-chip.yes {
-            background: #d1fae5;
-            color: #065f46;
-            border-color: #10b981;
+            background: rgba(16,185,129,0.15);
+            color: #34d399;
+            border-color: rgba(16,185,129,0.3);
         }
         .vote-chip.no {
-            background: white;
-            color: #6b7280;
+            background: rgba(255,255,255,0.04);
+            color: #64748b;
         }
         .vote-chip:hover {
             transform: scale(1.05);
         }
+        .version-title { color: #f1f5f9; }
         .version-badge {
             background: #667eea;
             color: white;
@@ -150,7 +193,7 @@
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             z-index: 1000;
             display: flex;
             align-items: center;
@@ -164,21 +207,24 @@
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
-            border: none;
+            border: 1px solid rgba(255,255,255,0.08);
             font-size: 0.9em;
             transition: all 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
         }
+        .chart-btn:hover { background: rgba(255,255,255,0.08); color: #f1f5f9; }
         .chart-btn-primary {
             background: #667eea;
             color: white;
+            border-color: #667eea;
         }
         .chart-btn-primary:hover {
             background: #5a6fd6;
         }
         .chart-btn-secondary {
-            background: #f3f4f6;
-            color: #374151;
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
         }
         .primary-btn {
             background: #667eea;
@@ -189,110 +235,103 @@
             font-weight: 600;
             cursor: pointer;
         }
+        .secondary-btn {
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .secondary-btn:hover { background: rgba(255,255,255,0.08); color: #f1f5f9; }
+
+        /* ===== RESOURCE SECTIONS ===== */
+        .resource-section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .section-header h3 { color: #f1f5f9; }
+        .section-header p { color: #94a3b8; }
+        .empty-state { color: #64748b; }
+
+        /* ===== REHEARSAL NOTES ===== */
+        .rehearsal-note-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .rehearsal-note-card.high { border-left: 3px solid #ef4444; }
+        .note-header strong { color: #f1f5f9; }
+
+        /* ===== HARMONY CARDS ===== */
+        .harmony-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 8px;
+        }
+        .harmony-lyric { color: #818cf8; font-weight: 600; }
+        .harmony-timing { color: #64748b; font-size: 0.82em; }
+        .part-row { color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 4px 0; }
+        .part-singer { color: #818cf8; font-weight: 600; }
+
+        /* ===== SONG METADATA ===== */
+        .song-metadata {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+        }
+        .song-metadata span, .song-metadata label { color: #94a3b8; }
+        .song-metadata select, .song-metadata input {
+            background: rgba(255,255,255,0.06);
+            color: #f1f5f9;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
 
         /* ===== MOBILE RESPONSIVE ===== */
         @media (max-width: 640px) {
-            .song-item {
-                padding: 10px 12px;
-                font-size: 0.95em;
-            }
-            .song-badge {
-                font-size: 0.7em;
-                padding: 2px 8px;
-            }
-            .practice-tracks-grid {
-                grid-template-columns: 1fr;
-            }
-            .practice-track-card {
-                padding: 12px;
-            }
-            .practice-track-card img {
-                max-width: 100%;
-            }
-            .filter-btn {
-                padding: 6px 12px;
-                font-size: 0.8em;
-            }
-            .vote-chip {
-                padding: 5px 10px;
-                font-size: 0.8em;
-            }
-            .chart-btn {
-                padding: 8px 14px;
-                font-size: 0.85em;
-            }
-            /* Ensure modals don't overflow on mobile */
-            .modal-overlay {
-                padding: 10px;
-            }
-            /* Make ABC editor modal scrollable on mobile */
-            #abcEditorModal > div {
-                max-height: 90vh;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            /* BPM/Warp display fix for mobile */
-            .abcjs-inline-audio {
-                flex-wrap: wrap;
-                gap: 4px;
-            }
+            .song-item { padding: 10px 12px; font-size: 0.93em; }
+            .song-badge { font-size: 0.65em; padding: 2px 8px; }
+            .practice-tracks-grid { grid-template-columns: 1fr; }
+            .filter-btn { padding: 6px 12px; font-size: 0.8em; }
+            .vote-chip { padding: 5px 10px; font-size: 0.8em; }
+            .chart-btn { padding: 8px 14px; font-size: 0.85em; }
+            .modal-overlay { padding: 10px; }
+            #abcEditorModal > div { max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+            .abcjs-inline-audio { flex-wrap: wrap; gap: 4px; }
         }
-
-        /* ===== TABLET ===== */
         @media (min-width: 641px) and (max-width: 1024px) {
-            .practice-tracks-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+            .practice-tracks-grid { grid-template-columns: repeat(2, 1fr); }
         }
-
-        /* ===== TOUCH DEVICE IMPROVEMENTS ===== */
         @media (hover: none) and (pointer: coarse) {
-            .song-item {
-                min-height: 48px;
-            }
-            .filter-btn {
-                min-height: 40px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .vote-chip {
-                min-height: 36px;
-                display: flex;
-                align-items: center;
-            }
-            /* Prevent double-tap zoom on buttons */
-            button, .filter-btn, .vote-chip, .chart-btn {
-                touch-action: manipulation;
-            }
+            .song-item { min-height: 48px; }
+            .filter-btn { min-height: 40px; display: flex; align-items: center; justify-content: center; }
+            .vote-chip { min-height: 36px; display: flex; align-items: center; }
+            button, .filter-btn, .vote-chip, .chart-btn { touch-action: manipulation; }
         }
 
-        /* ===== SCROLLBAR STYLING ===== */
+        /* ===== SCROLLBAR ===== */
         #songDropdown {
-            max-height: 60vh;
+            max-height: 50vh;
             overflow-y: auto;
             scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.15) transparent;
         }
-        #songDropdown::-webkit-scrollbar {
-            width: 6px;
-        }
-        #songDropdown::-webkit-scrollbar-thumb {
-            background: #cbd5e0;
-            border-radius: 3px;
-        }
+        #songDropdown::-webkit-scrollbar { width: 6px; }
+        #songDropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
 
-        /* ===== SEARCH INPUT ===== */
-        #songSearch {
-            width: 100%;
-            box-sizing: border-box;
-        }
+        #songSearch { width: 100%; box-sizing: border-box; }
 
-        /* ===== PRINT FRIENDLY ===== */
         @media print {
             .status-filters, .harmony-filters, .filter-btn,
-            button, .chart-btn, #googleDriveAuthBtn {
-                display: none !important;
-            }
+            button, .chart-btn, #googleDriveAuthBtn { display: none !important; }
         }
     `;
     document.head.appendChild(style);
@@ -505,9 +544,9 @@ function renderSongs(filter = 'all', searchTerm = '') {
     }
     
     dropdown.innerHTML = filtered.map(song => `
-        <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" style="display:flex;justify-content:space-between;align-items:center;" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
+        <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
-            <span style="margin-left:auto;flex-shrink:0;" class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
+            <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
     
