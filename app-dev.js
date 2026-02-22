@@ -559,16 +559,28 @@ function renderSongs(filter = 'all', searchTerm = '') {
     console.log('renderSongs called - filter:', filter, 'searchTerm:', searchTerm);
     const dropdown = document.getElementById('songDropdown');
     
+    // Pre-filter by status if active (do it at data level, not DOM level)
     let filtered = allSongs.filter(song => {
         const matchesFilter = filter === 'all' || song.band.toUpperCase() === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesFilter && matchesSearch;
+        if (!matchesFilter || !matchesSearch) return false;
+        // Status filter at data level
+        if (activeStatusFilter && statusCacheLoaded) {
+            const songStatus = getStatusFromCache(song.title);
+            if (songStatus !== activeStatusFilter) return false;
+        }
+        return true;
     });
     
-    console.log('Filtered songs:', filtered.length);
+    console.log('Filtered songs:', filtered.length, activeStatusFilter ? '(status: ' + activeStatusFilter + ')' : '');
     
     if (filtered.length === 0) {
-        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)"><div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:6px">No songs found</div><div style="font-size:0.9em">Try a different search or filter</div></div>';
+        const statusNames = { 'this_week':'This Week', 'gig_ready':'Gig Ready', 'needs_polish':'Needs Polish', 'on_deck':'On Deck' };
+        const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
+        const msg = activeStatusFilter
+            ? `<div style="font-size:2em;margin-bottom:12px">🎸</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:8px">No songs marked "${statusLabel}"</div><div style="margin-bottom:16px;font-size:0.9em">Click any song and set its status!</div><button onclick="document.getElementById('statusFilter').value='all';filterByStatus('all')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>`
+            : `<div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:6px">No songs found</div><div style="font-size:0.9em">Try a different search or filter</div>`;
+        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)">' + msg + '</div>';
         return;
     }
     
@@ -581,24 +593,13 @@ function renderSongs(filter = 'all', searchTerm = '') {
         </div>
     `).join('');
     
-    // Add harmony badges and status badges after rendering
-    setTimeout(() => {
+    // Add badges after rendering (no setTimeout race condition)
+    requestAnimationFrame(() => {
         addHarmonyBadges();
-        // Start loading statuses in background (only runs once)
         preloadAllStatuses();
-        // If already cached, apply badges to current view
-        if (statusCacheLoaded) {
-            addStatusBadges();
-        }
-        // Re-apply active status filter if one is set
-        if (activeStatusFilter && activeStatusFilter !== 'all') {
-            applyStatusFilter(activeStatusFilter);
-        }
-        // Re-apply active harmony filter if one is set
-        if (activeHarmonyFilter && activeHarmonyFilter !== 'all') {
-            applyHarmonyFilter();
-        }
-    }, 50);
+        if (statusCacheLoaded) addStatusBadges();
+        if (activeHarmonyFilter && activeHarmonyFilter !== 'all') applyHarmonyFilter();
+    });
 }
 
 // ============================================================================
@@ -5272,50 +5273,15 @@ async function filterByStatus(status) {
     }
     
     activeStatusFilter = (status === 'all') ? null : status;
-    
-    if (!activeStatusFilter) {
-        // Re-render the full song list
-        renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
-        return;
-    }
-    
-    applyStatusFilter(status);
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
 }
 
-// Separate function so renderSongs can call it after re-rendering
+// Legacy - kept for backward compat but renderSongs now handles filtering at data level
 function applyStatusFilter(status) {
-    if (!status || status === 'all') return;
-    
-    const songItems = document.querySelectorAll('.song-item');
-    let visibleCount = 0;
-    
-    songItems.forEach(item => {
-        const songTitle = item.dataset.title || '';
-        if (getStatusFromCache(songTitle) === status) {
-            item.style.display = 'grid';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-    
-    console.log('Showing ' + visibleCount + ' songs with status: ' + status);
-    
-    if (visibleCount === 0) {
-        const statusNames = {
-            'this_week': 'This Week',
-            'gig_ready': 'Gig Ready',
-            'needs_polish': 'Needs Polish',
-            'on_deck': 'On Deck'
-        };
-        document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);grid-column:1/-1">' +
-            '<div style="font-size:2em;margin-bottom:12px">🎸</div>' +
-            '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No songs marked as "' + (statusNames[status] || status) + '"</div>' +
-            '<div style="margin-bottom:16px;font-size:0.9em">Click any song and set its status!</div>' +
-            '<button onclick="filterByStatus(\'all\');document.getElementById(\'statusFilter\').value=\'all\'" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>' +
-            '</div>';
-    }
+    activeStatusFilter = (status === 'all') ? null : status;
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
 }
 
 async function addStatusBadges() {

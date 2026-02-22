@@ -21,38 +21,98 @@
     const style = document.createElement('style');
     style.id = 'deadcetera-responsive-css';
     style.textContent = `
-        /* ===== SONG LIST ===== */
+        /* ===== SONG LIST (DARK THEME) ===== */
         .song-item {
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: 1fr 28px 80px 52px;
             align-items: center;
-            padding: 12px 16px;
-            min-height: 44px; /* iOS tap target */
-            gap: 12px;
+            gap: 4px;
+            padding: 10px 12px;
+            min-height: 42px;
+            background: #1e293b !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 8px;
+            margin-bottom: 3px;
+            cursor: pointer;
+            transition: background 0.12s, border-color 0.12s;
+            color: #f1f5f9 !important;
         }
+        .song-item:hover {
+            background: #263248 !important;
+            border-color: rgba(102,126,234,0.25) !important;
+        }
+        .song-item.selected {
+            background: #2d3a5c !important;
+            border-color: #667eea !important;
+        }
+        .song-item.selected * { color: inherit !important; }
+        .song-item.selected .song-name { color: #c7d2fe !important; }
+        .song-item.selected .song-badge { opacity: 1 !important; }
         .song-name {
-            flex: 1;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            color: #f1f5f9 !important;
+            font-weight: 500;
+            font-size: 0.9em;
+            line-height: 1.3;
         }
-        .song-badge {
-            flex-shrink: 0;
-            margin-left: auto;
-            font-size: 0.8em;
-            padding: 3px 10px;
-            border-radius: 4px;
-            font-weight: 700;
-            text-align: center;
-            min-width: 40px;
+        /* Harmony badge column - fixed 28px */
+        .song-badges {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
         }
         .harmony-badge {
-            flex-shrink: 0;
+            font-size: 0.75em;
+            line-height: 1;
+            background: rgba(129,140,248,0.2);
+            padding: 2px 4px;
+            border-radius: 5px;
+            border: 1px solid rgba(129,140,248,0.3);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
+        /* Status badge column - fixed 80px */
         .status-badge {
-            flex-shrink: 0;
             white-space: nowrap;
+            font-size: 0.6em;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 70px;
+            text-align: center;
+            box-sizing: border-box;
         }
+        /* Band badge column - fixed 52px */
+        .song-badge {
+            font-size: 0.6em;
+            padding: 3px 0;
+            border-radius: 20px;
+            font-weight: 700;
+            text-align: center;
+            width: 48px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        .song-badge.gd { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+        .song-badge.jgb { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+        .song-badge.wsp { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+        .song-badge.phish { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+        .song-badge.abb { background: rgba(236,72,153,0.15); color: #f472b6; border: 1px solid rgba(236,72,153,0.25); }
+        .song-badge.goose { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
+        .song-badge.dmb { background: rgba(20,184,166,0.15); color: #2dd4bf; border: 1px solid rgba(20,184,166,0.25); }
 
         /* ===== FILTER BUTTONS ===== */
         .status-filters, .harmony-filters {
@@ -64,30 +124,37 @@
         .filter-btn {
             padding: 8px 16px;
             border-radius: 20px;
-            border: 2px solid #e2e8f0;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
             cursor: pointer;
             font-weight: 600;
             font-size: 0.85em;
             white-space: nowrap;
             transition: all 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
+        }
+        .filter-btn.active, .filter-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
         }
 
-        /* ===== PRACTICE TRACKS GRID ===== */
+        /* ===== PRACTICE TRACKS ===== */
         .practice-tracks-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
+            gap: 12px;
         }
         .practice-track-card {
-            background: white;
-            border: 2px solid #e2e8f0;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 16px;
-            transition: box-shadow 0.15s ease;
+            color: #f1f5f9;
+            transition: border-color 0.15s ease;
         }
         .practice-track-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border-color: rgba(102,126,234,0.3);
         }
         .practice-track-card img {
             max-width: 100%;
@@ -95,17 +162,18 @@
             border-radius: 8px;
         }
 
-        /* ===== SPOTIFY VERSION CARDS ===== */
+        /* ===== REFERENCE VERSION CARDS ===== */
         .spotify-version-card {
-            background: white;
-            border: 2px solid #e2e8f0;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 12px;
+            color: #f1f5f9;
         }
         .spotify-version-card.default {
             border-color: #667eea;
-            background: #f5f7ff;
+            background: rgba(102,126,234,0.08);
         }
         .votes-container {
             display: flex;
@@ -114,27 +182,29 @@
             margin: 10px 0;
         }
         .vote-chip {
-            padding: 6px 14px;
+            padding: 5px 12px;
             border-radius: 20px;
-            font-size: 0.85em;
+            font-size: 0.82em;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
-            border: 2px solid #e2e8f0;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
         }
         .vote-chip.yes {
-            background: #d1fae5;
-            color: #065f46;
-            border-color: #10b981;
+            background: rgba(16,185,129,0.15);
+            color: #34d399;
+            border-color: rgba(16,185,129,0.3);
         }
         .vote-chip.no {
-            background: white;
-            color: #6b7280;
+            background: rgba(255,255,255,0.04);
+            color: #64748b;
         }
         .vote-chip:hover {
             transform: scale(1.05);
         }
+        .version-title { color: #f1f5f9; }
         .version-badge {
             background: #667eea;
             color: white;
@@ -150,7 +220,7 @@
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             z-index: 1000;
             display: flex;
             align-items: center;
@@ -164,21 +234,24 @@
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
-            border: none;
+            border: 1px solid rgba(255,255,255,0.08);
             font-size: 0.9em;
             transition: all 0.15s ease;
-            -webkit-tap-highlight-color: transparent;
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
         }
+        .chart-btn:hover { background: rgba(255,255,255,0.08); color: #f1f5f9; }
         .chart-btn-primary {
             background: #667eea;
             color: white;
+            border-color: #667eea;
         }
         .chart-btn-primary:hover {
             background: #5a6fd6;
         }
         .chart-btn-secondary {
-            background: #f3f4f6;
-            color: #374151;
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
         }
         .primary-btn {
             background: #667eea;
@@ -189,110 +262,105 @@
             font-weight: 600;
             cursor: pointer;
         }
+        .secondary-btn {
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .secondary-btn:hover { background: rgba(255,255,255,0.08); color: #f1f5f9; }
+
+        /* ===== RESOURCE SECTIONS ===== */
+        .resource-section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .section-header h3 { color: #f1f5f9; }
+        .section-header p { color: #94a3b8; }
+        .empty-state { color: #64748b; }
+
+        /* ===== REHEARSAL NOTES ===== */
+        .rehearsal-note-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .rehearsal-note-card.high { border-left: 3px solid #ef4444; }
+        .note-header strong { color: #f1f5f9; }
+
+        /* ===== HARMONY CARDS ===== */
+        .harmony-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 8px;
+        }
+        .harmony-lyric { color: #818cf8; font-weight: 600; }
+        .harmony-timing { color: #64748b; font-size: 0.82em; }
+        .part-row { color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 4px 0; }
+        .part-singer { color: #818cf8; font-weight: 600; }
+
+        /* ===== SONG METADATA ===== */
+        .song-metadata {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+        }
+        .song-metadata span, .song-metadata label { color: #94a3b8; }
+        .song-metadata select, .song-metadata input {
+            background: rgba(255,255,255,0.06);
+            color: #f1f5f9;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
 
         /* ===== MOBILE RESPONSIVE ===== */
         @media (max-width: 640px) {
-            .song-item {
-                padding: 10px 12px;
-                font-size: 0.95em;
-            }
-            .song-badge {
-                font-size: 0.7em;
-                padding: 2px 8px;
-            }
-            .practice-tracks-grid {
-                grid-template-columns: 1fr;
-            }
-            .practice-track-card {
-                padding: 12px;
-            }
-            .practice-track-card img {
-                max-width: 100%;
-            }
-            .filter-btn {
-                padding: 6px 12px;
-                font-size: 0.8em;
-            }
-            .vote-chip {
-                padding: 5px 10px;
-                font-size: 0.8em;
-            }
-            .chart-btn {
-                padding: 8px 14px;
-                font-size: 0.85em;
-            }
-            /* Ensure modals don't overflow on mobile */
-            .modal-overlay {
-                padding: 10px;
-            }
-            /* Make ABC editor modal scrollable on mobile */
-            #abcEditorModal > div {
-                max-height: 90vh;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            /* BPM/Warp display fix for mobile */
-            .abcjs-inline-audio {
-                flex-wrap: wrap;
-                gap: 4px;
-            }
+            .song-item { padding: 10px 12px; font-size: 0.93em; }
+            .song-badge { font-size: 0.65em; padding: 2px 8px; }
+            .practice-tracks-grid { grid-template-columns: 1fr; }
+            .filter-btn { padding: 6px 12px; font-size: 0.8em; }
+            .vote-chip { padding: 5px 10px; font-size: 0.8em; }
+            .chart-btn { padding: 8px 14px; font-size: 0.85em; }
+            .modal-overlay { padding: 10px; }
+            #abcEditorModal > div { max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+            .abcjs-inline-audio { flex-wrap: wrap; gap: 4px; }
         }
-
-        /* ===== TABLET ===== */
         @media (min-width: 641px) and (max-width: 1024px) {
-            .practice-tracks-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+            .practice-tracks-grid { grid-template-columns: repeat(2, 1fr); }
         }
-
-        /* ===== TOUCH DEVICE IMPROVEMENTS ===== */
         @media (hover: none) and (pointer: coarse) {
-            .song-item {
-                min-height: 48px;
-            }
-            .filter-btn {
-                min-height: 40px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .vote-chip {
-                min-height: 36px;
-                display: flex;
-                align-items: center;
-            }
-            /* Prevent double-tap zoom on buttons */
-            button, .filter-btn, .vote-chip, .chart-btn {
-                touch-action: manipulation;
-            }
+            .song-item { min-height: 48px; }
+            .filter-btn { min-height: 40px; display: flex; align-items: center; justify-content: center; }
+            .vote-chip { min-height: 36px; display: flex; align-items: center; }
+            button, .filter-btn, .vote-chip, .chart-btn { touch-action: manipulation; }
         }
 
-        /* ===== SCROLLBAR STYLING ===== */
+        /* ===== SCROLLBAR ===== */
         #songDropdown {
-            max-height: 60vh;
+            max-height: 50vh;
             overflow-y: auto;
+            overflow-x: hidden;
             scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.15) transparent;
         }
-        #songDropdown::-webkit-scrollbar {
-            width: 6px;
-        }
-        #songDropdown::-webkit-scrollbar-thumb {
-            background: #cbd5e0;
-            border-radius: 3px;
-        }
+        #songDropdown::-webkit-scrollbar { width: 4px; }
+        #songDropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+        #songDropdown::-webkit-scrollbar-track { background: transparent; }
 
-        /* ===== SEARCH INPUT ===== */
-        #songSearch {
-            width: 100%;
-            box-sizing: border-box;
-        }
+        #songSearch { width: 100%; box-sizing: border-box; }
 
-        /* ===== PRINT FRIENDLY ===== */
         @media print {
             .status-filters, .harmony-filters, .filter-btn,
-            button, .chart-btn, #googleDriveAuthBtn {
-                display: none !important;
-            }
+            button, .chart-btn, #googleDriveAuthBtn { display: none !important; }
         }
     `;
     document.head.appendChild(style);
@@ -442,7 +510,7 @@ function updateReferenceVersionLabels() {
     const spotifySection = document.getElementById('spotifySection');
     if (spotifySection) {
         const subtitle = spotifySection.querySelector('p');
-        if (subtitle && subtitle.textContent.includes('Spotify version')) {
+        if (subtitle && subtitle.textContent.includes('reference version')) {
             subtitle.textContent = 'Vote on which version to learn';
         }
         // Update "Search Spotify" link to include other options
@@ -456,7 +524,7 @@ function updateReferenceVersionLabels() {
 function setupSpotifyAddButton() {
     const btn = document.getElementById('addSpotifyVersionBtn');
     if (!btn) return;
-    btn.textContent = '+ Suggest Different Version';
+    btn.textContent = '+ Suggest New/Alternate Version';
     btn.addEventListener('click', addSpotifyVersion);
 }
 
@@ -491,44 +559,47 @@ function renderSongs(filter = 'all', searchTerm = '') {
     console.log('renderSongs called - filter:', filter, 'searchTerm:', searchTerm);
     const dropdown = document.getElementById('songDropdown');
     
+    // Pre-filter by status if active (do it at data level, not DOM level)
     let filtered = allSongs.filter(song => {
-        const matchesFilter = filter === 'all' || song.band === filter;
+        const matchesFilter = filter === 'all' || song.band.toUpperCase() === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesFilter && matchesSearch;
+        if (!matchesFilter || !matchesSearch) return false;
+        // Status filter at data level
+        if (activeStatusFilter && statusCacheLoaded) {
+            const songStatus = getStatusFromCache(song.title);
+            if (songStatus !== activeStatusFilter) return false;
+        }
+        return true;
     });
     
-    console.log('Filtered songs:', filtered.length);
+    console.log('Filtered songs:', filtered.length, activeStatusFilter ? '(status: ' + activeStatusFilter + ')' : '');
     
     if (filtered.length === 0) {
-        dropdown.innerHTML = '<div style="padding: 20px; text-align: center; color: #718096;">No songs found</div>';
+        const statusNames = { 'this_week':'This Week', 'gig_ready':'Gig Ready', 'needs_polish':'Needs Polish', 'on_deck':'On Deck' };
+        const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
+        const msg = activeStatusFilter
+            ? `<div style="font-size:2em;margin-bottom:12px">🎸</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:8px">No songs marked "${statusLabel}"</div><div style="margin-bottom:16px;font-size:0.9em">Click any song and set its status!</div><button onclick="document.getElementById('statusFilter').value='all';filterByStatus('all')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>`
+            : `<div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:6px">No songs found</div><div style="font-size:0.9em">Try a different search or filter</div>`;
+        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)">' + msg + '</div>';
         return;
     }
     
     dropdown.innerHTML = filtered.map(song => `
-        <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" style="display:flex;justify-content:space-between;align-items:center;" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
+        <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
-            <span style="margin-left:auto;flex-shrink:0;" class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
+            <span class="song-badges"></span>
+            <span class="song-status-cell"></span>
+            <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
     
-    // Add harmony badges and status badges after rendering
-    setTimeout(() => {
+    // Add badges after rendering (no setTimeout race condition)
+    requestAnimationFrame(() => {
         addHarmonyBadges();
-        // Start loading statuses in background (only runs once)
         preloadAllStatuses();
-        // If already cached, apply badges to current view
-        if (statusCacheLoaded) {
-            addStatusBadges();
-        }
-        // Re-apply active status filter if one is set
-        if (activeStatusFilter && activeStatusFilter !== 'all') {
-            applyStatusFilter(activeStatusFilter);
-        }
-        // Re-apply active harmony filter if one is set
-        if (activeHarmonyFilter && activeHarmonyFilter !== 'all') {
-            applyHarmonyFilter();
-        }
-    }, 50);
+        if (statusCacheLoaded) addStatusBadges();
+        if (activeHarmonyFilter && activeHarmonyFilter !== 'all') applyHarmonyFilter();
+    });
 }
 
 // ============================================================================
@@ -574,7 +645,13 @@ function selectSong(songTitle) {
     document.querySelectorAll('.song-item').forEach(item => {
         item.classList.remove('selected');
     });
-    event.target.closest('.song-item').classList.add('selected');
+    const clickedItem = event?.target?.closest('.song-item');
+    if (clickedItem) {
+        clickedItem.classList.add('selected');
+        // Add a brief glow effect
+        clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
+        setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
+    }
     
     // Show Step 2: Band Resources
     showBandResources(songTitle);
@@ -585,10 +662,10 @@ function selectSong(songTitle) {
     document.getElementById('step5').classList.add('hidden');
     document.getElementById('resetContainer').classList.add('hidden');
     
-    // Scroll to step 2
+    // Scroll to step 2 after a short delay (gives user time to see selection)
     setTimeout(() => {
         document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
+    }, 500);
 }
 
 // ============================================================================
@@ -653,7 +730,7 @@ function renderTabSection(songTitle, instrument, resources) {
                         <a href="${resources.tab}" target="_blank" class="resource-link" title="${resources.tab}">
                             ${displayName}
                         </a>
-                        ${isUG ? '<div style="font-size: 0.85em; color: #718096; margin-top: 4px;">Ultimate Guitar</div>' : ''}
+                        ${isUG ? '<div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">Ultimate Guitar</div>' : ''}
                     </div>
                 </div>
                 <div class="resource-actions">
@@ -705,7 +782,7 @@ async function renderLessonsSection(songTitle, instrument, resources) {
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
                         ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
+                    <div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">${platform} - Click to open</div>
                 </div>
                 <div class="resource-actions">
                     <button class="resource-btn remove-btn" onclick="removeLesson(${index})">🗑️</button>
@@ -780,7 +857,7 @@ async function renderReferencesSection(songTitle, instrument, resources) {
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
                         ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
+                    <div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">${platform} - Click to open</div>
                 </div>
                 <div class="resource-actions">
                     <button class="resource-btn remove-btn" onclick="removeReference(${index})">🗑️</button>
@@ -1129,7 +1206,7 @@ function updateUrlPreview(url) {
             <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border: 2px solid #e2e8f0;">
                 <div style="font-weight: 600; color: #4a5568; margin-bottom: 10px;">Preview:</div>
                 <img src="${thumbnail}" alt="Video preview" style="width: 100%; max-width: 320px; border-radius: 8px;">
-                <div style="margin-top: 8px; color: #718096; font-size: 0.9em;">Video ID: ${videoId}</div>
+                <div style="margin-top: 8px; color: var(--text-dim, #64748b); font-size: 0.9em;">Video ID: ${videoId}</div>
             </div>
         `;
     } else {
@@ -1469,13 +1546,13 @@ function showNoVersionsMessage(songTitle, bandName = 'Grateful Dead') {
             <p style="font-size: 1.2em; color: #4a5568; margin-bottom: 15px;">
                 <strong>"${songTitle}"</strong> by <strong>${bandName}</strong> is in our catalog!
             </p>
-            <p style="color: #718096; margin-bottom: 20px;">
+            <p style="color: var(--text-dim, #64748b); margin-bottom: 20px;">
                 We haven't pre-loaded the top 5 versions for this song yet.
             </p>
             <button class="primary-btn" onclick="searchArchiveForSong('${songTitle.replace(/'/g, "\\'")}', '${bandName}')" style="margin-bottom: 15px;">
                 🔍 Find Best Versions on Archive.org
             </button>
-            <p style="color: #718096; font-size: 0.9em;">
+            <p style="color: var(--text-dim, #64748b); font-size: 0.9em;">
                 This will search Archive.org for popular downloadable versions
             </p>
         </div>
@@ -1723,7 +1800,9 @@ function showBandResources(songTitle) {
     const step2 = document.getElementById('step2');
     step2.classList.remove('hidden');
     
-    // Update subtitle
+    // Update title with song name (#11)
+    const titleEl = document.getElementById('step2Title');
+    if (titleEl) titleEl.innerHTML = '🎸 Steps to Master: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
     document.getElementById('bandResourcesSubtitle').textContent = 
         `Collaborative resources for "${songTitle}"`;
     
@@ -1771,7 +1850,7 @@ function skipToBandResources() {
 }
 
 // ============================================================================
-// SPOTIFY VERSIONS & VOTING
+// reference versionS & VOTING
 // ============================================================================
 
 function renderSpotifyVersions(songTitle, bandData) {
@@ -1797,8 +1876,8 @@ function renderSpotifyVersions(songTitle, bandData) {
                 
                 <div class="votes-container">
                     ${Object.entries(version.votes).map(([member, voted]) => `
-                        <span class="vote-chip ${voted ? 'yes' : 'no'}">
-                            ${voted ? '✅ ' : ''}${bandMembers[member].name}
+                        <span class="vote-chip ${voted ? 'yes' : 'no'}" onclick="toggleVersionVote('${songTitle.replace(/'/g,"\\'")}','${version.id||''}','${member}')" style="cursor:pointer" title="Click to toggle vote for ${bandMembers[member]?.name||member}">
+                            ${voted ? '✅ ' : ''}${bandMembers[member]?.name||member}
                         </span>
                     `).join('')}
                 </div>
@@ -1943,10 +2022,14 @@ async function renderMoisesStems(songTitle, bandData) {
     
     if (!stems.folderUrl && (!stems.stems || Object.keys(stems.stems).length === 0)) {
         container.innerHTML = `
-            <div class="empty-state" style="padding: 20px;">
-                <p>No Moises stems uploaded yet</p>
-                <button onclick="showMoisesUploadForm()" class="primary-btn" style="margin-top: 10px;">📤 Upload Stems from Computer</button>
-                <p style="margin-top: 10px; color: #6b7280; font-size: 0.85em;">Or <a href="#" onclick="addMoisesStems(); return false;" style="color: #667eea;">paste Drive links</a> if already uploaded</p>
+            <div style="padding: 16px;">
+                <p style="color:var(--text-dim,#6b7280);margin-bottom:12px">No stems uploaded yet. Add a source to isolate parts:</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+                    <button onclick="moisesAddYouTube()" class="btn btn-primary" style="padding:10px">📺 YouTube Link</button>
+                    <button onclick="showMoisesUploadForm()" class="btn btn-ghost" style="padding:10px">📤 Upload MP3</button>
+                </div>
+                <button onclick="moisesShowSplitter()" class="btn btn-ghost" style="width:100%;padding:10px;color:var(--yellow,#f59e0b)">✂️ Split Long Show Recording (Moises 20min limit)</button>
+                <p style="margin-top:8px;color:var(--text-dim,#6b7280);font-size:0.78em">Or <a href="#" onclick="addMoisesStems();return false;" style="color:var(--accent-light,#667eea)">paste Drive links</a> if already uploaded</p>
             </div>
         `;
         return;
@@ -2348,7 +2431,10 @@ function renderRehearsalNotes(songTitle, bandData) {
 
 async function renderGigNotes(songTitle, bandData) {
     const container = document.getElementById('gigNotesContainer');
-    const notes = await loadGigNotes(songTitle) || bandData.gigNotes || [];
+    let notes = toArray(await loadGigNotes(songTitle) || []);
+    // Fall back to data.js if Firebase empty
+    if (notes.length === 0 && bandData.gigNotes) notes = toArray(bandData.gigNotes);
+    if (notes.length === 0 && bandData.performanceTips) notes = toArray(bandData.performanceTips);
     
     if (notes.length === 0) {
         container.innerHTML = `
@@ -2411,7 +2497,7 @@ async function saveGigNotes(songTitle, notes) {
 }
 
 async function loadGigNotes(songTitle) {
-    return await loadBandDataFromDrive(songTitle, 'gig_notes');
+    return toArray(await loadBandDataFromDrive(songTitle, 'gig_notes') || []);
 }
 
 console.log('📝 Gig notes editor loaded');
@@ -2658,61 +2744,35 @@ async function renderPracticeTracksSimplified(songTitle) {
         whole_band: 'Whole Band'
     };
     
+    // Group tracks by instrument into quadrants (#19)
+    const instruments = ['vocals','leadGuitar','rhythmGuitar','bass','keys','drums'];
+    const instLabels = {vocals:'🎤 Vocals',leadGuitar:'🎸 Lead Guitar',rhythmGuitar:'🎸 Rhythm Guitar',bass:'🎸 Bass',keys:'🎹 Keys',drums:'🥁 Drums'};
+    const grouped = {};
+    instruments.forEach(i => grouped[i] = []);
+    allTracks.forEach(t => {
+        const key = t.instrument?.replace('_','') || 'vocals';
+        const norm = key === 'lead_guitar' ? 'leadGuitar' : key === 'rhythm_guitar' ? 'rhythmGuitar' : key === 'keyboards' ? 'keys' : key === 'whole_band' ? 'vocals' : key;
+        if (!grouped[norm]) grouped[norm] = [];
+        grouped[norm].push(t);
+    });
+    
     container.innerHTML = `
-        <div class="practice-tracks-grid">
-            ${allTracks.map((track, index) => {
-                const url = track.videoUrl || track.youtubeUrl;
-                const thumbnail = track.thumbnail || getYouTubeThumbnail(url);
-                const icon = instrumentIcons[track.instrument] || '🎵';
-                const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
-                const isUserAdded = track.source !== 'data.js';
-                
-                return `
-                    <div class="practice-track-card" style="position: relative;">
-                        ${isUserAdded ? `
-                            <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10;">
-                                <button onclick="editPracticeTrack('${songTitle}', ${index - dataTracks.length})" 
-                                    style="background: #667eea; color: white; border: none; border-radius: 4px; width: 28px; height: 24px; cursor: pointer; font-size: 12px;"
-                                    title="Edit track">✏️</button>
-                                <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
-                                    style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;"
-                                    title="Delete track">✕</button>
-                            </div>
-                        ` : ''}
-                        
-                        ${thumbnail ? `
-                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden; max-width: 200px;">
-                                <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
-                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    <span style="color: white; font-size: 20px;">▶</span>
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <span style="font-size: 1.5em;">${icon}</span>
-                            <div style="font-weight: 600; color: #667eea;">${instName}</div>
-                        </div>
-                        
-                        <h4 style="margin: 0 0 8px 0; font-size: 0.95em; color: #2d3748; line-height: 1.4;">
-                            ${track.title}
-                        </h4>
-                        
-                        ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
-                        
-                        <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${url}', '_blank')">
-                            📺 Watch Video
-                        </button>
-                        
-                        <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">
-                            Added by ${track.uploadedBy || 'unknown'}
-                            ${track.source === 'Google Drive' ? ' <span style="color: #10b981;">- Google Drive</span>' : ''}
-                        </p>
-                    </div>
-                `;
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${instruments.map(inst => {
+                const tracks = grouped[inst] || [];
+                return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:10px;min-height:80px">
+                    <div style="font-size:0.78em;font-weight:700;color:var(--text-muted,#94a3b8);margin-bottom:6px">${instLabels[inst]||inst}</div>
+                    ${tracks.length ? tracks.map((track,ti) => {
+                        const url = track.videoUrl || track.youtubeUrl;
+                        const title = track.title || track.notes || url?.substring(0,40) || 'Track';
+                        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.82em;border-bottom:1px solid rgba(255,255,255,0.04)">
+                            <a href="${url||'#'}" target="_blank" style="flex:1;color:var(--accent-light,#818cf8);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</a>
+                            ${track.source!=='data.js'?'<button onclick="deletePracticeTrackConfirm(\''+songTitle+'\','+ti+')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8em" title="Delete">✕</button>':''}
+                        </div>`;
+                    }).join('') : '<div style="font-size:0.75em;color:var(--text-dim,#64748b);font-style:italic">No tracks yet</div>'}
+                </div>`;
             }).join('')}
-        </div>
-    `;
+        </div>`;
 }
 
 async function deletePracticeTrackConfirm(songTitle, index) {
@@ -2811,10 +2871,33 @@ function extractSpotifyTrackId(url) {
     return match ? match[1] : null;
 }
 
-// Update Spotify version rendering to fetch metadata
+// Update reference version rendering to fetch metadata
 async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     const container = document.getElementById('spotifyVersionsContainer');
-    const versions = await loadSpotifyVersions(songTitle) || bandData.spotifyVersions || [];
+    
+    // Load from Firebase first
+    let firebaseVersions = await loadSpotifyVersions(songTitle);
+    firebaseVersions = toArray(firebaseVersions || []);
+    
+    // Only use data.js versions if Firebase has NOTHING for this song
+    // Once a user adds/saves ANY version, Firebase takes over completely
+    let versions;
+    if (firebaseVersions.length > 0) {
+        versions = firebaseVersions;
+    } else if (bandData.spotifyVersions && bandData.spotifyVersions.length > 0) {
+        versions = bandData.spotifyVersions;
+    } else {
+        versions = [];
+    }
+    
+    // Deduplicate by URL (in case data.js and Firebase have same entries)
+    const seen = new Set();
+    versions = versions.filter(v => {
+        const url = v.spotifyUrl || v.url || '';
+        if (!url || seen.has(url)) return false;
+        seen.add(url);
+        return true;
+    });
     
     if (versions.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding: 20px;">No reference versions added yet</div>';
@@ -2930,8 +3013,8 @@ async function addSpotifyVersion() {
         version.votes[email] = false;
     });
     
-    // Load existing versions
-    let versions = await loadSpotifyVersions(songTitle) || [];
+    // Load existing versions (normalize Firebase format)
+    let versions = toArray(await loadSpotifyVersions(songTitle) || []);
     versions.push(version);
     
     // Save
@@ -2940,6 +3023,16 @@ async function addSpotifyVersion() {
     // Re-render
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderSpotifyVersionsWithMetadata(songTitle, bandData);
+}
+
+// Alias for old render function compatibility
+async function toggleVersionVote(songTitle, versionId, voterEmail) {
+    // Find version index by ID
+    const versions = toArray(await loadSpotifyVersions(songTitle) || []);
+    const idx = versions.findIndex(v => v.id === versionId);
+    if (idx >= 0) {
+        await toggleSpotifyVote(idx, voterEmail);
+    }
 }
 
 async function toggleSpotifyVote(versionIndex, voterEmail) {
@@ -2972,7 +3065,7 @@ async function toggleSpotifyVote(versionIndex, voterEmail) {
 }
 
 async function deleteSpotifyVersion(versionIndex) {
-    if (!confirm('Delete this Spotify version?')) return;
+    if (!confirm('Delete this reference version?')) return;
     
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
@@ -2991,10 +3084,10 @@ async function saveSpotifyVersions(songTitle, versions) {
 }
 
 async function loadSpotifyVersions(songTitle) {
-    return await loadBandDataFromDrive(songTitle, 'spotify_versions');
+    return toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
 }
 
-console.log('🎵 Spotify versions system loaded');
+console.log('🎵 reference versions system loaded');
 
 // Search helpers
 function searchSpotify() {
@@ -3703,9 +3796,9 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                     <h4 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Audio Snippets - Section ${sectionIndex + 1}</h4>
                     
                     <div style="display: flex; gap: 8px; margin-bottom: 15px;">
-                        <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(${sectionIndex})" 
+                        <button class="chart-btn chart-btn-primary" onclick="openMultiTrackStudio('${songTitle}', ${sectionIndex})" 
                             style="padding: 8px 16px; font-size: 0.9em;">
-                            🎙️ Record Now
+                            🎛️ Multi-Track Studio
                         </button>
                         <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                             style="padding: 8px 16px; font-size: 0.9em;">
@@ -3737,7 +3830,7 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                                 <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                 <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
                                     ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
-                                    ${snippet.isRecording ? ' - ? Recorded in browser' : ''}
+                                    ${snippet.isRecording ? ' - 🎙️ Recorded in browser' : ''}
                                 </p>
                             </div>
                         `).join('')}
@@ -3761,8 +3854,8 @@ async function renderAudioSnippetsOnly(songTitle, container) {
                 <p style="color: #6b7280; margin-bottom: 20px;">No harmony parts documented yet, but you can still record audio snippets!</p>
                 
                 <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="chart-btn chart-btn-primary" onclick="startMicrophoneRecording(0)">
-                        🎙️ Record Now
+                    <button class="chart-btn chart-btn-primary" onclick="openMultiTrackStudio(selectedSong?.title || '', 0)">
+                        🎛️ Multi-Track Studio
                     </button>
                     <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(0)">
                         📤 Upload File
@@ -3793,6 +3886,15 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     }
     
     const safeSongTitle = songTitle.replace(/'/g, "\\'");
+    
+    if (!hasHarmonies) {
+        // Double-check: maybe harmony DATA exists even if the flag isn't set
+        const checkData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+        if (checkData && checkData.sections && toArray(checkData.sections).length > 0) {
+            hasHarmonies = true;
+            console.log('🎤 Found harmony data despite flag being unset, auto-correcting');
+        }
+    }
     
     if (!hasHarmonies) {
         container.innerHTML = `
@@ -3918,9 +4020,9 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <strong style="color: #991b1b;">🎵 Audio Snippets</strong>
                         <div style="display: flex; gap: 8px;">
-                            <button onclick="startMicrophoneRecording(${sectionIndex})" 
+                            <button onclick="openMultiTrackStudio('${songTitle}', ${sectionIndex})" 
                                 style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                                🎙️ Record Now
+                                🎛️ Multi-Track Studio
                             </button>
                             <button onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
                                 style="background: #4b5563; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
@@ -3950,7 +4052,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                                     <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
                                     <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
                                         ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
-                                        ${snippet.isRecording ? ' - ? Recorded' : ''}
+                                        ${snippet.isRecording ? ' - 🎙️ Recorded' : ''}
                                     </p>
                                 </div>
                             `).join('')}
@@ -4666,7 +4768,15 @@ async function initFirebase() {
         }
         
         firebaseDB = firebase.database();
-        firebaseStorage = firebase.storage();
+        
+        // Firebase Storage is optional - we primarily use RTDB for audio (base64)
+        try {
+            if (firebase.storage) {
+                firebaseStorage = firebase.storage();
+            }
+        } catch(e) {
+            console.log('⚠️ Firebase Storage not available (not critical - using RTDB for audio)');
+        }
         
         console.log('✅ Firebase initialized');
         
@@ -4736,11 +4846,13 @@ function updateDriveAuthButton() {
     if (!button) return;
     
     if (isUserSignedIn) {
-        button.textContent = '✅ Connected';
-        button.style.background = '#10b981';
+        button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span> Connected';
+        button.className = 'topbar-btn connected';
+        button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 12px!important;border-radius:8px!important;';
     } else {
-        button.textContent = '🔥 Sign In';
-        button.style.background = '#667eea';
+        button.textContent = '👤 Sign In';
+        button.className = 'topbar-btn';
+        button.style.cssText = 'background:#667eea;color:#fff;border-color:#667eea;';
     }
 }
 
@@ -4935,58 +5047,145 @@ async function loadLeadSinger(songTitle) {
 }
 
 async function addFirstHarmonySection(songTitle) {
-    const sectionName = prompt('Name this harmony section (e.g., "Chorus", "Verse 1", "Bridge"):');
-    if (!sectionName) return;
+    // Show the lyrics-based harmony builder
+    const container = document.getElementById('harmoniesContainer');
+    if (!container) return;
     
-    // Initialize bandKnowledgeBase entry if needed
+    // Try to load existing lyrics from Firebase
+    let existingLyrics = '';
+    try {
+        const lyricData = await loadBandDataFromDrive(songTitle, 'lyrics');
+        if (lyricData?.text) existingLyrics = lyricData.text;
+    } catch(e) {}
+    
+    container.innerHTML = `
+    <div style="padding:12px;background:rgba(102,126,234,0.05);border:1px solid rgba(102,126,234,0.15);border-radius:10px">
+        <h4 style="color:var(--accent-light,#818cf8);margin-bottom:10px">🎤 Harmony Section Builder — ${songTitle}</h4>
+        <p style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">
+            Paste the lyrics below, then tag which sections have harmonies. This sets up the structure for recording harmony parts.
+        </p>
+        
+        <div class="form-row" style="margin-bottom:10px">
+            <label class="form-label">Song Lyrics</label>
+            <textarea class="app-textarea" id="harmLyrics" rows="12" placeholder="Paste song lyrics here...&#10;&#10;[Verse 1]&#10;As I was walking round Grosvenor Square...&#10;&#10;[Chorus]&#10;Scarlet begonias, a touch of the blues...">${existingLyrics}</textarea>
+        </div>
+        
+        <div style="margin-bottom:12px">
+            <label class="form-label" style="margin-bottom:6px;display:block">Tag Sections with Harmonies</label>
+            <p style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Check each section that has vocal harmonies. These will become harmony recording sections.</p>
+            <div id="harmSectionTags" style="display:flex;flex-wrap:wrap;gap:6px">
+                ${['Verse 1','Verse 2','Verse 3','Verse 4','Verse 5','Chorus','Bridge','Coda','Intro','Outro','Pre-Chorus','Tag'].map(s => `
+                    <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--text-muted)">
+                        <input type="checkbox" class="harmSectionCheck" value="${s}" style="accent-color:var(--accent);width:14px;height:14px">
+                        ${s}
+                    </label>
+                `).join('')}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+                <input class="app-input" id="harmCustomSection" placeholder="Custom section name..." style="flex:1;margin:0">
+                <button class="btn btn-sm btn-ghost" onclick="addCustomHarmSection()">+ Add</button>
+            </div>
+        </div>
+        
+        <div style="margin-bottom:12px">
+            <label class="form-label" style="margin-bottom:6px;display:block">Singing Assignments (optional)</label>
+            <div class="form-grid">
+                ${Object.entries(bandMembers).filter(([k,m]) => m.sings || m.leadVocals || m.harmonies).map(([k,m]) => `
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.85em;color:var(--text-muted)">
+                        <input type="checkbox" class="harmSingerCheck" value="${k}" checked style="accent-color:var(--accent)">
+                        ${m.name} — ${m.leadVocals?'Lead/Harmony':m.harmonies?'Harmony':'Vocals'}
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success" onclick="buildHarmonySections('${songTitle.replace(/'/g,"\\'")}')">🎤 Create Harmony Sections</button>
+            <button class="btn btn-ghost" onclick="renderHarmoniesEnhanced('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function addCustomHarmSection() {
+    const input = document.getElementById('harmCustomSection');
+    const val = input?.value?.trim();
+    if (!val) return;
+    const container = document.getElementById('harmSectionTags');
+    container.insertAdjacentHTML('beforeend', `
+        <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--green,#10b981)">
+            <input type="checkbox" class="harmSectionCheck" value="${val}" checked style="accent-color:var(--green)">
+            ${val}
+        </label>`);
+    input.value = '';
+}
+
+async function buildHarmonySections(songTitle) {
+    // Get checked sections
+    const checks = document.querySelectorAll('.harmSectionCheck:checked');
+    if (checks.length === 0) { alert('Please check at least one section that has harmonies.'); return; }
+    
+    const sectionNames = Array.from(checks).map(c => c.value);
+    
+    // Get singers
+    const singers = Array.from(document.querySelectorAll('.harmSingerCheck:checked')).map(c => c.value);
+    
+    // Save lyrics
+    const lyrics = document.getElementById('harmLyrics')?.value || '';
+    if (lyrics.trim()) {
+        await saveBandDataToDrive(songTitle, 'lyrics', { text: lyrics, updated: new Date().toISOString() });
+    }
+    
+    // Build harmony sections
     if (!bandKnowledgeBase[songTitle]) bandKnowledgeBase[songTitle] = {};
     
-    // Preserve existing harmony data - load from Drive if not in memory
+    // Preserve existing sections
     let existing = bandKnowledgeBase[songTitle].harmonies;
     if (!existing || !existing.sections) {
         const driveData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
-        if (driveData && driveData.sections) {
-            existing = driveData;
-        }
+        if (driveData && driveData.sections) existing = driveData;
     }
+    const existingSections = (existing && existing.sections) ? [...toArray(existing.sections)] : [];
+    const existingNames = new Set(existingSections.map(s => s.name || s.lyric));
     
-    // Add new section to existing sections (don't overwrite!)
-    const sections = (existing && existing.sections) ? [...existing.sections] : [];
-    sections.push({
-        name: sectionName,
-        lyric: sectionName,
-        parts: []
-    });
+    // Add new sections (skip duplicates)
+    const newSections = sectionNames.filter(n => !existingNames.has(n)).map(name => ({
+        name: name,
+        lyric: name,
+        timing: '',
+        workedOut: false,
+        soundsGood: false,
+        parts: singers.map(s => ({
+            singer: s,
+            part: bandMembers[s]?.leadVocals ? 'lead' : 'harmony',
+            notes: ''
+        })),
+        practiceNotes: []
+    }));
     
-    const harmonies = { sections };
+    const allSections = [...existingSections, ...newSections];
+    const harmonies = { sections: allSections, lyrics: lyrics || undefined };
     
-    // Update in-memory data
+    // Update in-memory
     bandKnowledgeBase[songTitle].harmonies = harmonies;
-    
-    // Mark song as having harmonies
     harmonyCache[songTitle] = true;
     harmonyBadgeCache[songTitle] = true;
     
-    // Update the checkbox if it exists
     const harmoniesCheckbox = document.getElementById('hasHarmoniesCheckbox');
     if (harmoniesCheckbox) harmoniesCheckbox.checked = true;
     
-    // Save both has_harmonies flag and harmony data to Drive
+    // Save to Firebase
     try {
         await saveBandDataToDrive(songTitle, 'has_harmonies', { hasHarmonies: true });
         await saveBandDataToDrive(songTitle, 'harmonies_data', harmonies);
         await saveMasterFile(MASTER_HARMONIES_FILE, harmonyBadgeCache);
-    } catch (e) {
-        console.warn('Could not save harmony data to Drive:', e);
-    }
+    } catch (e) { console.warn('Could not save harmony data:', e); }
     
     // Re-render
-    const bandData = bandKnowledgeBase[songTitle];
-    await renderHarmoniesEnhanced(songTitle, bandData);
-    logActivity('harmony_add', { song: songTitle, extra: sectionName });
-    
-    // Update badges
+    await renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+    logActivity('harmony_add', { song: songTitle, extra: sectionNames.join(', ') });
     addHarmonyBadges();
+    
+    alert('✅ Created ' + newSections.length + ' harmony section(s): ' + sectionNames.join(', '));
 }
 
 async function updateHasHarmonies(hasHarmonies) {
@@ -5066,89 +5265,23 @@ async function loadSongStatus(songTitle) {
 async function filterByStatus(status) {
     console.log('Filtering by status:', status);
     
-    if (!statusCacheLoaded) {
+    if (!statusCacheLoaded && status !== 'all') {
         alert('Song statuses are still loading. Please wait a moment.');
+        const sel = document.getElementById('statusFilter');
+        if (sel) sel.value = 'all';
         return;
     }
     
-    // Toggle: if clicking the same filter again, reset to 'all'
-    if (status !== 'all' && activeStatusFilter === status) {
-        status = 'all';
-    }
-    
-    // Update button styles - reset all buttons first
-    document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
-        const originalColor = btn.dataset.color || btn.style.color || '#667eea';
-        btn.dataset.color = originalColor;
-        btn.style.background = 'white';
-        btn.style.color = originalColor;
-    });
-    // Only highlight clicked button if we're NOT toggling off
-    if (status !== 'all' && event && event.target) {
-        const btn = event.target.closest('.filter-btn');
-        if (btn) {
-            const originalColor = btn.dataset.color || btn.style.color || '#667eea';
-            btn.dataset.color = originalColor;
-            btn.style.background = originalColor;
-            btn.style.color = 'white';
-        }
-    }
-    
-    // Track active filter so renderSongs can re-apply it
-    activeStatusFilter = status;
-    
-    if (status === 'all') {
-        activeStatusFilter = null;
-        // Re-render if song list was replaced with a message
-        if (document.querySelectorAll('.song-item').length === 0) {
-            renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
-        } else {
-            document.querySelectorAll('.song-item').forEach(item => {
-                item.style.display = 'flex';
-            });
-        }
-        return;
-    }
-    
-    applyStatusFilter(status);
+    activeStatusFilter = (status === 'all') ? null : status;
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
 }
 
-// Separate function so renderSongs can call it after re-rendering
+// Legacy - kept for backward compat but renderSongs now handles filtering at data level
 function applyStatusFilter(status) {
-    if (!status || status === 'all') return;
-    
-    const songItems = document.querySelectorAll('.song-item');
-    let visibleCount = 0;
-    
-    songItems.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
-        
-        if (getStatusFromCache(songTitle) === status) {
-            item.style.display = 'flex';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-    
-    console.log('Showing ' + visibleCount + ' songs with status: ' + status);
-    
-    if (visibleCount === 0) {
-        const statusNames = {
-            'this_week': 'This Week',
-            'gig_ready': 'Gig Ready',
-            'needs_polish': 'Needs Polish',
-            'on_deck': 'On Deck'
-        };
-        document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding: 40px; text-align: center; color: #6b7280;">' +
-            '<div style="font-size: 2em; margin-bottom: 15px;">🎸</div>' +
-            '<div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No songs marked as "' + (statusNames[status] || status) + '"</div>' +
-            '<div style="margin-bottom: 20px;">Click any song and set its status!</div>' +
-            '<button onclick="filterByStatus(\'all\')" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">Show All Songs</button>' +
-            '</div>';
-    }
+    activeStatusFilter = (status === 'all') ? null : status;
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
 }
 
 async function addStatusBadges() {
@@ -5159,23 +5292,23 @@ async function addStatusBadges() {
     
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
+        const statusCell = item.querySelector('.song-status-cell');
+        if (!statusCell) return;
         
-        // Remove existing status badge FIRST (before reading title)
-        const existingStatus = item.querySelector('.status-badge');
-        if (existingStatus) existingStatus.remove();
+        // Clear existing
+        statusCell.innerHTML = '';
         
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
+        const songTitle = item.dataset.title || '';
         if (!songTitle) return;
         
         const status = getStatusFromCache(songTitle);
         
         if (status) {
             const badges = {
-                'this_week': { text: '🎯 THIS WEEK', color: '#ef4444', bg: '#fee2e2' },
-                'gig_ready': { text: '✅ READY', color: '#10b981', bg: '#d1fae5' },
-                'needs_polish': { text: '⚠️ POLISH', color: '#f59e0b', bg: '#fef3c7' },
-                'on_deck': { text: '📚 ON DECK', color: '#3b82f6', bg: '#dbeafe' }
+                'this_week': { text: '🎯 THIS WEEK', color: '#fff', bg: '#dc2626' },
+                'gig_ready': { text: '✅ READY', color: '#fff', bg: '#059669' },
+                'needs_polish': { text: '⚠️ POLISH', color: '#fff', bg: '#d97706' },
+                'on_deck': { text: '📚 ON DECK', color: '#fff', bg: '#2563eb' }
             };
             
             const badge = badges[status];
@@ -5183,18 +5316,8 @@ async function addStatusBadges() {
                 const badgeEl = document.createElement('span');
                 badgeEl.className = 'status-badge';
                 badgeEl.textContent = badge.text;
-                badgeEl.style.cssText = `
-                    display: inline-block;
-                    padding: 3px 8px;
-                    border-radius: 4px;
-                    font-size: 0.7em;
-                    font-weight: 700;
-                    color: ${badge.color};
-                    background: ${badge.bg};
-                    margin-left: 8px;
-                    vertical-align: middle;
-                `;
-                songNameElement.appendChild(badgeEl);
+                badgeEl.style.cssText = `color:${badge.color};background:${badge.bg};`;
+                statusCell.appendChild(badgeEl);
             }
         }
     });
@@ -5396,7 +5519,7 @@ async function filterSongsAsync(type) {
     // Update button states - reset all harmony buttons
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
         btn.classList.remove('active');
-        btn.style.background = 'white';
+        btn.style.background = 'rgba(255,255,255,0.04)';
         btn.style.color = '#667eea';
     });
     
@@ -5413,7 +5536,7 @@ async function filterSongsAsync(type) {
     if (type === 'all') {
         activeHarmonyFilter = null;
         document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'flex';
+            item.style.display = 'grid';
         });
         return;
     }
@@ -5431,7 +5554,7 @@ function applyHarmonyFilter() {
         const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         
         if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
-            item.style.display = 'flex';
+            item.style.display = 'grid';
             visibleCount++;
         } else {
             item.style.display = 'none';
@@ -5442,11 +5565,11 @@ function applyHarmonyFilter() {
     
     if (visibleCount === 0) {
         document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding: 40px; text-align: center; color: #6b7280;">' +
-            '<div style="font-size: 2em; margin-bottom: 15px;">🎵</div>' +
-            '<div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No harmony songs marked yet</div>' +
-            '<div style="margin-bottom: 20px;">Click any song and check the "Has Harmonies" box to mark it!</div>' +
-            '<button onclick="filterSongsSync(\'all\')" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">Show All Songs</button>' +
+            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)">' +
+            '<div style="font-size:2em;margin-bottom:12px">🎵</div>' +
+            '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No harmony songs marked yet</div>' +
+            '<div style="margin-bottom:16px;font-size:0.9em">Click any song and check the "Has Harmonies" box to mark it!</div>' +
+            '<button onclick="filterSongsSync(\'all\');document.getElementById(\'harmoniesOnlyFilter\').checked=false" class="btn btn-primary" style="padding:10px 24px">Show All Songs</button>' +
             '</div>';
     }
 }
@@ -5500,13 +5623,14 @@ async function addHarmonyBadges() {
     // Apply badges from cache (instant, no Drive calls!)
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
+        const badgesContainer = item.querySelector('.song-badges');
+        if (!badgesContainer) return;
         
-        // Remove existing badge FIRST (before reading title)
-        const existingBadge = item.querySelector('.harmony-badge');
+        // Remove existing harmony badge
+        const existingBadge = badgesContainer.querySelector('.harmony-badge');
         if (existingBadge) existingBadge.remove();
         
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
+        const songTitle = item.dataset.title || '';
         if (!songTitle) return;
         
         // Add badge if song has harmonies
@@ -5514,14 +5638,8 @@ async function addHarmonyBadges() {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
             badge.textContent = '🎤';
-            badge.style.cssText = 'margin-left: 8px; font-size: 0.8em; opacity: 0.6;';
-            badge.title = 'This song has harmonies';
-            // Append inside the song-name span so it sits next to the title
-            if (songNameElement) {
-                songNameElement.appendChild(badge);
-            } else {
-                item.appendChild(badge);
-            }
+            badge.title = 'Has vocal harmonies';
+            badgesContainer.appendChild(badge);
         }
     });
 }
@@ -5648,7 +5766,7 @@ async function savePracticeTracks(songTitle, tracks) {
 }
 
 async function loadPracticeTracksFromDrive(songTitle) {
-    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS) || [];
+    return toArray(await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS) || []);
 }
 
 async function saveRehearsalNotes(songTitle, notes) {
@@ -5657,7 +5775,8 @@ async function saveRehearsalNotes(songTitle, notes) {
 }
 
 async function loadRehearsalNotes(songTitle) {
-    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES) || [];
+    const data = await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES);
+    return toArray(data || []);
 }
 
 async function saveSpotifyUrls(songTitle, urls) {
@@ -5741,8 +5860,21 @@ console.log('✅ Firebase helper functions loaded');
 async function renderSongStructure(songTitle) {
     const container = document.getElementById('songStructureContainer');
     
-    // Load from Google Drive
-    const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
+    // Load from Firebase first, fall back to data.js
+    let structure = await loadBandDataFromDrive(songTitle, 'song_structure');
+    if (!structure || (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds)) {
+        // Check bandKnowledgeBase (data.js) for pre-populated data
+        const bk = bandKnowledgeBase[songTitle];
+        if (bk) {
+            structure = {
+                whoStarts: bk.songStructure?.whoStarts || bk.whoStarts || [],
+                howStarts: bk.songStructure?.howStarts || bk.howStarts || '',
+                whoCuesEnding: bk.songStructure?.whoCuesEnding || bk.whoCuesEnding || '',
+                howEnds: bk.songStructure?.howEnds || bk.howEnds || ''
+            };
+        }
+    }
+    if (!structure) structure = {};
     
     if (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds) {
         container.innerHTML = `
@@ -6254,3 +6386,2654 @@ function showFolderSharingInstructions(folderId) {
 }
 
 console.log('🔥 Firebase configuration loaded - no sharing needed!');
+// ============================================================================
+// MULTI-TRACK HARMONY STUDIO v3
+// ============================================================================
+
+let mtRecorder=null, mtAudioChunks=[], mtRecordingStream=null, mtMetronomeInterval=null;
+let mtAudioContext=null, mtIsRecording=false, mtPlaybackAudios=[], mtIsPlaying=false;
+let mtLooping=false, mtCurrentSectionIndex=null, mtCurrentSongTitle=null, mtLatencyMs=0;
+let mtPitchAnimFrame=null, mtCurrentEffect='none';
+
+// --- HELP TOOLTIPS ---
+const mtTips = {
+    metronome:'Set tempo (BPM) and click Start to hear a click track while recording.',
+    tracks:'Recorded harmony parts. Solo(S) hears one track only, Mute(M) silences it. 🗑 deletes a track.',
+    loop:'Mix replays automatically when it ends.',
+    latency:'Compensates for the delay between when you play/sing and when the computer records it. Click 📋 for a full recording workflow guide.',
+    calibrate:'Plays a tone through speakers, times when mic hears it back. Works best with speakers (not headphones). Keep the room quiet.',
+    record:'Records your mic while playing checked tracks as backing. Use headphones to prevent bleed from speakers into the mic.',
+    countIn:'Two measures of clicks at current BPM before recording starts. Second measure is louder so you know when recording is about to begin.',
+    clickDuring:'Metronome clicks while recording to keep time.',
+    pitch:'Shows what note you\'re singing in real-time. Green=in tune, yellow=close, red=off.',
+    karaoke:'Sheet music with moving cursor and highlighted lyrics. Press ▶ Play in the karaoke controls to start.',
+    effects:'Audio effect presets applied to playback. Select before pressing Play Mix. Warm=bass boost, Bright=presence, Room/Hall=reverb.',
+    export:'Combine all checked tracks into one downloadable WAV file.',
+    nudge:'After recording, shift your new track earlier or later (±200ms) to fix timing. Preview to hear the result before saving.',
+    pan:'Stereo position: left, center, or right. Put guitar center, harmony 1 left, harmony 2 right — much easier to hear each part.',
+    playMix:'Play all checked tracks at their volume and pan positions with the selected effect.',
+    workflow:`<b>🎸 Recording Workflow Guide</b><br><br>
+<b>Step 1: Calibrate Once</b><br>
+Before your first recording session, click 🎯 Calibrate with speakers at moderate volume and a quiet room. This measures your system\'s audio delay. You only need to do this once per device.<br><br>
+<b>Step 2: Record Guitar (Foundation)</b><br>
+• Set BPM, enable Count-in and Click During<br>
+• Hit Record and play acoustic guitar<br>
+• Play through the whole section (or song)<br>
+• Save → this is your foundation track<br><br>
+<b>Step 3: Add Vocals (Use Headphones! 🎧)</b><br>
+• <b>PUT ON HEADPHONES</b> — this prevents the backing track from bleeding into the vocal mic<br>
+• Check the guitar track so it plays while you record<br>
+• Hit Record and sing your first part<br>
+• Use the <b>Nudge slider</b> if timing feels off → preview → then save<br>
+• Repeat for each harmony part (2-4 parts)<br><br>
+<b>Step 4: Mix & Pan</b><br>
+• Pan guitar center (0), harmony 1 left (-60), harmony 2 right (+60), etc.<br>
+• Adjust volumes so no part drowns the others<br>
+• Try an effect preset (Room is nice for vocals)<br>
+• Export when happy!<br><br>
+<b>🔧 If tracks sound out of sync:</b><br>
+Use the Nudge slider right after recording. +ms = later, -ms = earlier. Small adjustments (10-30ms) are normal. If ALL tracks drift, adjust the Sync offset.`
+};
+function mtHelp(k){return `<span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('${k}')" title="${(mtTips[k]||'').replace(/<[^>]*>/g,'').replace(/'/g,'&#39;').substring(0,80)}">ⓘ</span>`;}
+function mtShowHelp(k){
+    document.getElementById('mtHelpPopup')?.remove();
+    const d=document.createElement('div');d.id='mtHelpPopup';
+    const isLong=(mtTips[k]||'').length>200;
+    d.style.cssText=`position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;color:white;padding:20px 24px;border-radius:12px;max-width:${isLong?'420':'320'}px;z-index:10000;box-shadow:0 20px 60px rgba(0,0,0,0.5);font-size:0.85em;line-height:1.6;max-height:80vh;overflow-y:auto;`;
+    d.innerHTML=`<div style="margin-bottom:10px;font-weight:600">💡 Help</div><div>${mtTips[k]||'No help available.'}</div><button onclick="this.parentElement.remove()" style="margin-top:14px;background:#667eea;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;width:100%;font-weight:600">Got it</button>`;
+    document.body.appendChild(d);
+    setTimeout(()=>{document.addEventListener('click',function f(e){if(!d.contains(e.target)){d.remove();document.removeEventListener('click',f);}});},100);
+}
+
+// --- GUIDED TOUR ---
+function mtGuidedTour(si){
+    const steps=[
+        {text:'🥁 <b>Metronome</b> — Set tempo and click Start. Visual dots flash on each beat.'},
+        {text:'🎵 <b>Tracks</b> — All recorded parts with Solo/Mute, Volume, and Pan controls.'},
+        {text:'⏱️ <b>Sync</b> — Compensate for audio delay. Calibrate for best results.'},
+        {text:'🔴 <b>Record</b> — Capture your harmony. Toggle Pitch monitor and Karaoke mode.'},
+        {text:'🎚️ <b>Effects</b> — Apply Warm, Bright, Room, or Hall reverb to the playback mix.'},
+        {text:'💾 <b>Export</b> — Download mixed audio. Use Nudge slider after recording to align tracks.'}
+    ];
+    let cur=0;
+    function show(){
+        document.getElementById('mtTourOverlay')?.remove();
+        if(cur>=steps.length){localStorage.setItem('deadcetera_tour_seen','true');return;}
+        const o=document.createElement('div');o.id='mtTourOverlay';
+        o.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        o.innerHTML=`<div style="background:#1e293b;color:white;padding:24px;border-radius:12px;max-width:360px;text-align:center;">
+            <div style="margin-bottom:12px;line-height:1.5">${steps[cur].text}</div>
+            <div style="font-size:0.75em;color:rgba(255,255,255,0.35);margin-bottom:12px">Step ${cur+1} of ${steps.length}</div>
+            <div style="display:flex;gap:8px;justify-content:center">
+                <button onclick="document.getElementById('mtTourOverlay').remove();localStorage.setItem('deadcetera_tour_seen','true')" style="background:rgba(255,255,255,0.15);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer">Skip</button>
+                <button id="mtTourNext" style="background:#667eea;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:600">Next →</button>
+            </div></div>`;
+        document.body.appendChild(o);
+        document.getElementById('mtTourNext').onclick=()=>{cur++;show();};
+    }
+    show();
+}
+
+// ============================================================================
+// MAIN STUDIO UI
+// ============================================================================
+function openMultiTrackStudio(songTitle, sectionIndex) {
+    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
+    if (!container) return;
+    mtCurrentSectionIndex = sectionIndex;
+    mtCurrentSongTitle = songTitle;
+    const ss = songTitle.replace(/'/g, "\\'");
+    mtLatencyMs = parseInt(localStorage.getItem('deadcetera_latency_ms') || '0');
+    
+    loadHarmonyAudioSnippets(songTitle, sectionIndex).then(async (snippets) => {
+        const arr = toArray(snippets);
+        let hasAbc = false;
+        try { const abc = await loadABCNotation(songTitle, sectionIndex); hasAbc = abc && abc.length > 0; } catch(e){}
+        const tourSeen = localStorage.getItem('deadcetera_tour_seen') === 'true';
+        
+        container.innerHTML = `
+<div id="mtStudio_${sectionIndex}" style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:16px;border-radius:12px;margin-top:12px;color:white;">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0;font-size:1.1em">🎛️ Multi-Track Studio</h3>
+    <div style="display:flex;gap:5px">
+        ${!tourSeen?`<button onclick="mtGuidedTour(${sectionIndex})" style="background:rgba(102,126,234,0.25);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:4px 8px;border-radius:5px;cursor:pointer;font-size:0.75em">📖 Tour</button>`:''}
+        <button onclick="closeMultiTrackStudio(${sectionIndex})" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:0.85em">✕</button>
+    </div>
+</div>
+
+${hasAbc?`
+<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:0.85em">🎤 Karaoke ${mtHelp('karaoke')}</strong>
+        <button id="mtKaraokeBtn_${sectionIndex}" onclick="mtToggleKaraoke('${ss}',${sectionIndex})" style="background:#8b5cf6;color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:0.8em;font-weight:600">🎤 Start</button>
+    </div>
+    <div id="mtKaraokeSheet_${sectionIndex}" style="background:white;border-radius:6px;padding:8px;display:none;max-height:180px;overflow-y:auto"></div>
+    <div id="mtKaraokeLyrics_${sectionIndex}" style="display:none;margin-top:6px;text-align:center;font-size:1.2em;font-weight:600;color:#fbbf24;min-height:36px"></div>
+</div>`:''}
+
+<div id="mtPitchSection_${sectionIndex}" style="display:none;background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong style="font-size:0.85em">🎵 Pitch ${mtHelp('pitch')}</strong>
+        <div style="display:flex;align-items:center;gap:10px">
+            <div id="mtPitchNote_${sectionIndex}" style="font-size:1.6em;font-weight:700;font-family:monospace;min-width:50px;text-align:center">—</div>
+            <div id="mtPitchCents_${sectionIndex}" style="font-size:0.8em;min-width:45px;text-align:center;color:rgba(255,255,255,0.5)">—</div>
+        </div>
+    </div>
+    <div style="margin-top:5px;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;position:relative;overflow:hidden">
+        <div id="mtPitchBar_${sectionIndex}" style="position:absolute;top:0;width:4px;height:100%;background:#10b981;left:50%;transition:left 0.1s;border-radius:2px"></div>
+        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:rgba(255,255,255,0.2)"></div>
+    </div>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+        <strong style="font-size:0.85em">🥁 Metronome ${mtHelp('metronome')}</strong>
+        <div style="display:flex;align-items:center;gap:5px">
+            <button onclick="mtAdjustBPM(${sectionIndex},-5)" style="background:rgba(255,255,255,0.1);color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer">−</button>
+            <input id="mtBPM_${sectionIndex}" type="number" value="${getBPMForSong()}" min="40" max="240" style="width:46px;text-align:center;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:3px;font-size:1em;font-weight:700" onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}">
+            <button onclick="mtAdjustBPM(${sectionIndex},5)" style="background:rgba(255,255,255,0.1);color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer">+</button>
+            <span style="font-size:0.7em;color:rgba(255,255,255,0.35)">BPM</span>
+            <button id="mtMetronomeToggle_${sectionIndex}" onclick="mtToggleMetronome(${sectionIndex})" style="background:#667eea;color:white;border:none;padding:5px 10px;border-radius:5px;cursor:pointer;font-weight:600;font-size:0.8em">▶ Start</button>
+        </div>
+    </div>
+    <div id="mtBeatVisual_${sectionIndex}" style="display:flex;gap:5px;justify-content:center">${[0,1,2,3].map(i=>`<div class="mt-beat" data-beat="${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.1);transition:all 0.05s"></div>`).join('')}</div>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:5px">
+        <strong style="font-size:0.85em">🎵 Tracks ${mtHelp('tracks')}</strong>
+        <div style="display:flex;gap:5px;align-items:center">
+            <label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer">
+                <input type="checkbox" id="mtLoop_${sectionIndex}" onchange="mtLooping=this.checked" style="accent-color:#667eea"> Loop
+            </label>
+            <button onclick="mtPlayAllTracks('${ss}',${sectionIndex})" style="background:#10b981;color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-weight:600;font-size:0.8em">▶ Play Mix</button>
+            <button onclick="mtStopAllTracks()" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:0.8em">⏹ Stop</button>
+            <button onclick="mtExportMix('${ss}',${sectionIndex})" title="Export mix" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);padding:5px 8px;border-radius:5px;cursor:pointer;font-size:0.75em">💾</button>
+        </div>
+    </div>
+    ${arr.length>0?`<div style="display:flex;align-items:center;gap:5px;padding:0 8px;font-size:0.6em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.4px">
+        <span style="width:14px"></span><span style="flex:1">Track</span><span style="width:24px;text-align:center">S</span><span style="width:24px;text-align:center">M</span><span style="width:52px;text-align:center">Vol</span><span style="width:48px;text-align:center">Pan</span><span style="width:14px"></span>
+    </div>`:''}
+    <div id="mtTracksList_${sectionIndex}">${arr.length>0?arr.map((s,i)=>mtRenderTrackRow(sectionIndex,s,i)).join(''):`<div style="text-align:center;padding:12px;color:rgba(255,255,255,0.3);font-size:0.8em">No tracks yet — record the first one!</div>`}</div>
+    <canvas id="mtWaveformCanvas_${sectionIndex}" width="600" height="50" style="width:100%;height:50px;border-radius:5px;background:rgba(0,0,0,0.15);margin-top:6px;display:none"></canvas>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
+        <div><strong style="font-size:0.8em">⏱️ Sync ${mtHelp('latency')}</strong> <span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('workflow')" title="Recording workflow guide" style="background:rgba(102,126,234,0.2);color:#a5b4fc;border-color:rgba(102,126,234,0.3)">📋</span>
+            <div id="mtLatencyInfo_${sectionIndex}" style="font-size:0.65em;color:rgba(255,255,255,0.3)"><span id="mtDetectedLatency_${sectionIndex}">measuring...</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+            <button onclick="mtAutoDetectLatency(${sectionIndex})" title="Auto-detect" style="background:rgba(255,255,255,0.06);color:white;border:1px solid rgba(255,255,255,0.12);padding:3px 7px;border-radius:4px;cursor:pointer;font-size:0.7em">🔍</button>
+            <button onclick="mtCalibrateLatency(${sectionIndex})" title="Calibrate" style="background:rgba(255,255,255,0.06);color:white;border:1px solid rgba(255,255,255,0.12);padding:3px 7px;border-radius:4px;cursor:pointer;font-size:0.7em">🎯</button>
+            <button onclick="mtAdjustLatency(-10)" style="background:rgba(255,255,255,0.06);color:white;border:none;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:0.7em">−</button>
+            <input id="mtLatency_${sectionIndex}" type="number" value="${mtLatencyMs}" step="10" style="width:38px;text-align:center;background:rgba(255,255,255,0.06);color:white;border:1px solid rgba(255,255,255,0.15);border-radius:3px;padding:2px;font-size:0.75em" onchange="mtLatencyMs=parseInt(this.value)||0;localStorage.setItem('deadcetera_latency_ms',mtLatencyMs)">
+            <button onclick="mtAdjustLatency(10)" style="background:rgba(255,255,255,0.06);color:white;border:none;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:0.7em">+</button>
+            <span style="font-size:0.6em;color:rgba(255,255,255,0.25)">ms</span>
+        </div>
+    </div>
+    <div id="mtCalibrationStatus_${sectionIndex}" style="display:none;margin-top:4px;font-size:0.7em;padding:5px;background:rgba(255,255,255,0.03);border-radius:4px"></div>
+</div>
+
+<div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <strong style="font-size:0.8em">🎚️ Effects ${mtHelp('effects')}</strong>
+    </div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${['none|🔇 Dry','warm|🔥 Warm','bright|✨ Bright','room|🏠 Room','hall|🏛️ Hall'].map(p=>{const[k,l]=p.split('|');return`<button onclick="mtApplyEffect('${k}',${sectionIndex})" class="mt-fx-btn" data-fx="${k}" style="background:${k==='none'?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.05)'};color:${k==='none'?'white':'rgba(255,255,255,0.6)'};border:1px solid ${k==='none'?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)'};padding:4px 9px;border-radius:12px;cursor:pointer;font-size:0.7em">${l}</button>`;}).join('')}</div>
+</div>
+
+<div id="mtRecordSection_${sectionIndex}" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);padding:10px;border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div id="mtRecordStatus_${sectionIndex}" style="font-size:0.75em;color:rgba(255,255,255,0.45)">Ready to record ${mtHelp('record')}</div>
+        <div id="mtRecordTimer_${sectionIndex}" style="font-size:1.8em;font-weight:700;font-family:monospace;display:none">0:00</div>
+        <div style="display:flex;gap:6px">
+            <button id="mtRecordBtn_${sectionIndex}" onclick="mtStartRecording('${ss}',${sectionIndex})" style="background:#ef4444;color:white;border:none;padding:9px 20px;border-radius:20px;cursor:pointer;font-weight:600;font-size:0.95em;display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:white;border-radius:50%;display:inline-block"></span> Record</button>
+            <button id="mtStopBtn_${sectionIndex}" onclick="mtStopRecording(${sectionIndex})" style="background:white;color:#ef4444;border:none;padding:9px 20px;border-radius:20px;cursor:pointer;font-weight:600;display:none">⏹️ Stop</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">${[
+            [`mtCountIn_${sectionIndex}`,'checked','Count-in','countIn'],
+            [`mtMetronomeDuringRec_${sectionIndex}`,'','Click','clickDuring'],
+            [`mtShowPitch_${sectionIndex}`,'','Pitch','pitch']
+        ].map(([id,chk,label,hk])=>`<label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer"><input type="checkbox" id="${id}" ${chk} ${id.includes('Pitch')?`onchange="mtTogglePitchMonitor(${sectionIndex},this.checked)"`:''} style="accent-color:#667eea"> ${label} ${mtHelp(hk)}</label>`).join('')}</div>
+    </div>
+</div>
+
+<div id="mtNudgeSection_${sectionIndex}" style="display:none"></div>
+<div id="mtPreviewSection_${sectionIndex}" style="display:none"></div>
+</div>`;
+        
+        setTimeout(()=>mtAutoDetectLatency(sectionIndex), 300);
+        if(!tourSeen) setTimeout(()=>mtGuidedTour(sectionIndex), 800);
+    });
+}
+
+// ============================================================================
+// TRACK ROW with Pan
+// ============================================================================
+function mtRenderTrackRow(si, snippet, i) {
+    const nm = snippet.name||'Rec '+(i+1), who = bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy || '';
+    const ss = (mtCurrentSongTitle||'').replace(/'/g, "\\'");
+    return `<div id="mtTrackRow_${si}_${i}" style="display:flex;align-items:center;gap:4px;padding:5px 6px;background:rgba(255,255,255,0.03);border-radius:5px;margin-bottom:3px">
+        <input type="checkbox" id="mtTrack_${si}_${i}" checked style="width:14px;height:14px;accent-color:#667eea;flex-shrink:0">
+        <div style="flex:1;min-width:0"><div style="font-size:0.75em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm}</div><div style="font-size:0.6em;color:rgba(255,255,255,0.25)">${who}</div></div>
+        <button id="mtSolo_${si}_${i}" data-active="false" onclick="mtToggleSolo(${si},${i})" style="background:rgba(255,255,255,0.06);color:#fbbf24;border:1px solid rgba(251,191,36,0.15);width:22px;height:22px;border-radius:3px;cursor:pointer;font-size:0.6em;font-weight:700;flex-shrink:0">S</button>
+        <button id="mtMute_${si}_${i}" onclick="mtToggleMute(${si},${i})" style="background:rgba(255,255,255,0.06);color:#ef4444;border:1px solid rgba(239,68,68,0.15);width:22px;height:22px;border-radius:3px;cursor:pointer;font-size:0.6em;font-weight:700;flex-shrink:0">M</button>
+        <input type="range" id="mtVol_${si}_${i}" min="0" max="100" value="80" oninput="mtUpdateVolume(${si},${i},this.value)" title="Volume" style="width:48px;accent-color:#667eea;flex-shrink:0">
+        <input type="range" id="mtPan_${si}_${i}" min="-100" max="100" value="0" oninput="mtUpdatePan(${si},${i},this.value)" title="Pan L↔R" style="width:42px;accent-color:#8b5cf6;flex-shrink:0">
+        <span id="mtPanLabel_${si}_${i}" style="font-size:0.55em;color:rgba(255,255,255,0.25);width:14px;text-align:center;flex-shrink:0">C</span>
+        <button onclick="mtDeleteTrack('${ss}',${si},${i})" title="Delete track" style="background:none;border:none;color:rgba(255,255,255,0.25);cursor:pointer;font-size:0.75em;flex-shrink:0;padding:2px">🗑</button>
+    </div>`;
+}
+
+async function mtDeleteTrack(songTitle, si, trackIndex) {
+    if (!confirm('Delete this recording? This cannot be undone.')) return;
+    try {
+        const key = `harmony_audio_section_${si}`;
+        const existing = toArray(await loadBandDataFromDrive(songTitle, key));
+        if (trackIndex >= 0 && trackIndex < existing.length) {
+            const removed = existing.splice(trackIndex, 1);
+            await saveBandDataToDrive(songTitle, key, existing);
+            const localKey = `deadcetera_harmony_audio_${songTitle}_section${si}`;
+            localStorage.setItem(localKey, JSON.stringify(existing));
+            logActivity('harmony_delete', { song: songTitle, extra: `section ${si}: ${removed[0]?.name || 'track ' + trackIndex}` });
+            openMultiTrackStudio(songTitle, si); // Refresh
+        }
+    } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+function closeMultiTrackStudio(si){
+    mtStopMetronome();mtStopAllTracks();mtStopPitchMonitor();
+    if(mtIsRecording)mtStopRecording(si);mtLooping=false;
+    const c=document.getElementById('harmonyAudioFormContainer'+si);if(c)c.innerHTML='';
+}
+function getBPMForSong(){const b=document.getElementById('songBpmInput');return(b&&b.value)?parseInt(b.value)||120:120;}
+
+// ============================================================================
+// METRONOME
+// ============================================================================
+function mtToggleMetronome(si){
+    const btn=document.getElementById(`mtMetronomeToggle_${si}`);
+    if(mtMetronomeInterval){mtStopMetronome();if(btn){btn.textContent='▶ Start';btn.style.background='#667eea';}}
+    else{mtStartMetronome(si);if(btn){btn.textContent='⏸ Stop';btn.style.background='#ef4444';}}
+}
+function mtStartMetronome(si){
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();mtAudioContext.resume();
+    const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,intv=60/bpm;
+    const beats=document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`);
+    let next=mtAudioContext.currentTime+0.05,b=0;
+    function sched(){
+        const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+        o.connect(g);g.connect(mtAudioContext.destination);
+        o.frequency.value=(b%4===0)?1000:700;g.gain.setValueAtTime(0.3,next);
+        g.gain.exponentialRampToValueAtTime(0.001,next+0.08);o.start(next);o.stop(next+0.08);
+        const cb=b%4,d=Math.max(0,(next-mtAudioContext.currentTime)*1000);
+        setTimeout(()=>{beats.forEach((el,i)=>{el.style.background=i===cb?(cb===0?'#ef4444':'#667eea'):'rgba(255,255,255,0.1)';el.style.transform=i===cb?'scale(1.3)':'scale(1)';});},d);
+        b++;next+=intv;
+    }
+    sched();
+    mtMetronomeInterval=setInterval(()=>{while(next<mtAudioContext.currentTime+0.1)sched();},25);
+}
+function mtStopMetronome(){if(mtMetronomeInterval){clearInterval(mtMetronomeInterval);mtMetronomeInterval=null;}}
+function mtAdjustBPM(si,d){const inp=document.getElementById(`mtBPM_${si}`);if(inp){inp.value=Math.max(40,Math.min(240,parseInt(inp.value)+d));if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(si);}}}
+
+// ============================================================================
+// LATENCY
+// ============================================================================
+function mtAdjustLatency(d){const inp=document.getElementById(`mtLatency_${mtCurrentSectionIndex}`);if(inp){mtLatencyMs=Math.max(-500,Math.min(500,parseInt(inp.value)+d));inp.value=mtLatencyMs;localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);}}
+function mtAutoDetectLatency(si){
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();
+    let est=0;const p=[];
+    if(mtAudioContext.outputLatency!==undefined){const m=Math.round(mtAudioContext.outputLatency*1000);p.push(`out:${m}ms`);est+=m;}
+    if(mtAudioContext.baseLatency!==undefined){const m=Math.round(mtAudioContext.baseLatency*1000);p.push(`base:${m}ms`);est+=m;}
+    if(est===0){est=50;p.push('est:~50ms');}
+    const rt=Math.round(est*1.5);mtLatencyMs=rt;
+    const inp=document.getElementById(`mtLatency_${si}`);if(inp)inp.value=mtLatencyMs;
+    localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);
+    const info=document.getElementById(`mtDetectedLatency_${si}`);if(info)info.textContent=`${p.join(', ')} → ${rt}ms`;
+}
+async function mtCalibrateLatency(si){
+    const st=document.getElementById(`mtCalibrationStatus_${si}`);if(!st)return;
+    st.style.display='block';st.innerHTML='🎯 Turn up volume, stay quiet...';
+    try{
+        if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+        // Request mic with echo cancellation OFF so it can hear the speaker
+        const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+        const src=mtAudioContext.createMediaStreamSource(stream);
+        const an=mtAudioContext.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;
+        src.connect(an);
+        const buf=new Float32Array(an.fftSize);
+        
+        // Sample the background noise level first
+        await new Promise(r=>setTimeout(r,500));
+        an.getFloatTimeDomainData(buf);
+        let bgNoise=0;
+        for(let i=0;i<buf.length;i++) bgNoise=Math.max(bgNoise,Math.abs(buf[i]));
+        const threshold=Math.max(bgNoise*3, 0.02); // 3x background or min 0.02
+        console.log('🎯 Calibration: bg noise='+bgNoise.toFixed(4)+', threshold='+threshold.toFixed(4));
+        
+        st.innerHTML='🔊 Playing click now...';
+        await new Promise(r=>setTimeout(r,300));
+        
+        // Play a LOUDER, longer click
+        const t0=performance.now();
+        const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+        o.connect(g);g.connect(mtAudioContext.destination);
+        o.frequency.value=880;
+        g.gain.setValueAtTime(1.0,mtAudioContext.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.15);
+        o.start();o.stop(mtAudioContext.currentTime+0.15);
+        
+        // Poll more aggressively with shorter intervals
+        let det=false,t1=0;
+        await new Promise(res=>{
+            const pollInterval=setInterval(()=>{
+                an.getFloatTimeDomainData(buf);
+                let peak=0;
+                for(let i=0;i<buf.length;i++) peak=Math.max(peak,Math.abs(buf[i]));
+                if(peak>threshold&&!det){
+                    det=true;t1=performance.now();
+                    clearInterval(pollInterval);res();return;
+                }
+                if(performance.now()-t0>1000){clearInterval(pollInterval);res();return;}
+            }, 5); // Poll every 5ms
+        });
+        
+        stream.getTracks().forEach(t=>t.stop());src.disconnect();
+        if(det){
+            const rt=Math.round(t1-t0);mtLatencyMs=Math.round(rt/2);
+            const inp=document.getElementById(`mtLatency_${si}`);if(inp)inp.value=mtLatencyMs;
+            localStorage.setItem('deadcetera_latency_ms',mtLatencyMs);
+            const info=document.getElementById(`mtDetectedLatency_${si}`);
+            if(info)info.textContent=`Cal: RT ${rt}ms → ${mtLatencyMs}ms`;
+            st.innerHTML=`✅ Round-trip: <b>${rt}ms</b> → offset: <b>${mtLatencyMs}ms</b>`;
+        }else{
+            st.innerHTML='⚠️ No click detected. Try: 1) Turn volume up more, 2) Make sure mic is near speakers, 3) Use wired headphones (not Bluetooth).';
+        }
+        setTimeout(()=>st.style.display='none',6000);
+    }catch(e){st.innerHTML='❌ '+e.message;setTimeout(()=>st.style.display='none',3000);}
+}
+
+// ============================================================================
+// SOLO / MUTE / VOLUME / PAN
+// ============================================================================
+function mtToggleSolo(si,ti){
+    const btn=document.getElementById(`mtSolo_${si}_${ti}`),act=btn.dataset.active==='true';
+    if(act){btn.dataset.active='false';btn.style.background='rgba(255,255,255,0.06)';
+        document.querySelectorAll(`[id^="mtTrackRow_${si}_"]`).forEach(r=>r.style.opacity='1');
+        document.querySelectorAll(`input[id^="mtTrack_${si}_"]`).forEach(c=>{if(c.type==='checkbox')c.checked=true;});
+    }else{btn.dataset.active='true';btn.style.background='rgba(251,191,36,0.25)';
+        document.querySelectorAll(`[id^="mtTrackRow_${si}_"]`).forEach((r,i)=>{
+            const cb=document.getElementById(`mtTrack_${si}_${i}`);
+            if(i===ti){if(cb)cb.checked=true;r.style.opacity='1';}
+            else{if(cb)cb.checked=false;r.style.opacity='0.3';const s=document.getElementById(`mtSolo_${si}_${i}`);if(s){s.dataset.active='false';s.style.background='rgba(255,255,255,0.06)';}}
+        });
+    }
+    if(mtIsPlaying)mtUpdateLiveVolumes(si);
+}
+function mtToggleMute(si,ti){
+    const btn=document.getElementById(`mtMute_${si}_${ti}`),cb=document.getElementById(`mtTrack_${si}_${ti}`),row=document.getElementById(`mtTrackRow_${si}_${ti}`);
+    if(cb.checked){cb.checked=false;btn.style.background='rgba(239,68,68,0.25)';if(row)row.style.opacity='0.3';}
+    else{cb.checked=true;btn.style.background='rgba(255,255,255,0.06)';if(row)row.style.opacity='1';}
+    if(mtIsPlaying)mtUpdateLiveVolumes(si);
+}
+function mtUpdateVolume(si,ti,val){if(mtIsPlaying&&mtPlaybackAudios[ti]?.audio){const cb=document.getElementById(`mtTrack_${si}_${ti}`);mtPlaybackAudios[ti].audio.volume=cb?.checked?val/100:0;}}
+function mtUpdatePan(si,ti,val){
+    const lbl=document.getElementById(`mtPanLabel_${si}_${ti}`),v=parseInt(val);
+    if(lbl)lbl.textContent=v===0?'C':(v<0?'L':'R');
+    if(mtIsPlaying&&mtPlaybackAudios[ti]?.panNode)mtPlaybackAudios[ti].panNode.pan.value=v/100;
+}
+function mtUpdateLiveVolumes(si){mtPlaybackAudios.forEach((item,i)=>{if(!item?.audio)return;const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);item.audio.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;});}
+
+// ============================================================================
+// RECORDING
+// ============================================================================
+async function mtStartRecording(songTitle, si) {
+    try {
+        if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+        if(mtIsRecording)mtStopRecording(si);
+        document.querySelectorAll('audio').forEach(a=>{a.pause();a.currentTime=0;});mtStopAllTracks();
+        mtRecordingStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,sampleRate:44100}});
+        let mime='audio/webm';
+        if(MediaRecorder.isTypeSupported('audio/mp4'))mime='audio/mp4';
+        else if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))mime='audio/webm;codecs=opus';
+        mtRecorder=new MediaRecorder(mtRecordingStream,{mimeType:mime});mtAudioChunks=[];
+        mtRecorder.ondataavailable=e=>{if(e.data.size>0)mtAudioChunks.push(e.data);};
+        mtRecorder.onstop=async()=>{
+            const blob=new Blob(mtAudioChunks,{type:mime});if(blob.size===0){alert('No audio captured');return;}
+            const b64=await blobToBase64(blob);mtShowPreview(songTitle,si,b64,blob.size,mime);
+            if(mtRecordingStream)mtRecordingStream.getTracks().forEach(t=>t.stop());mtIsRecording=false;mtStopPitchMonitor();
+        };
+        const statEl=document.getElementById(`mtRecordStatus_${si}`),timEl=document.getElementById(`mtRecordTimer_${si}`);
+        const recBtn=document.getElementById(`mtRecordBtn_${si}`),stopBtn=document.getElementById(`mtStopBtn_${si}`);
+        // Count-in: 2 measures (8 beats) with proper timing
+        if(document.getElementById(`mtCountIn_${si}`)?.checked){
+            const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,beatMs=60000/bpm;
+            const countBeats = [8,7,6,5,4,3,2,1]; // Two measures
+            for(let idx=0;idx<countBeats.length;idx++){
+                const beatNum=countBeats[idx];
+                const isDownbeat=(idx%4===0);
+                const displayNum=(idx%4)+1; // Show 1-2-3-4 1-2-3-4
+                const measure=idx<4?1:2;
+                statEl.innerHTML=`<span style="font-size:1.6em;font-weight:700;color:${measure===2?'#fbbf24':'rgba(255,255,255,0.5)'}">${measure===1?'●':''}${4-(idx%4)}</span><span style="font-size:0.7em;color:rgba(255,255,255,0.3);margin-left:6px">m${measure}</span>`;
+                // Play click
+                const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
+                o.connect(g);g.connect(mtAudioContext.destination);
+                o.frequency.value=isDownbeat?1200:900;
+                g.gain.setValueAtTime(measure===2?0.5:0.3,mtAudioContext.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001,mtAudioContext.currentTime+0.1);
+                o.start();o.stop(mtAudioContext.currentTime+0.1);
+                // Flash beat dots
+                const beats=document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`);
+                const bi=idx%4;
+                beats.forEach((el,j)=>{el.style.background=j===bi?(isDownbeat?'#ef4444':'#667eea'):'rgba(255,255,255,0.1)';el.style.transform=j===bi?'scale(1.3)':'scale(1)';});
+                // Wait one full beat AFTER the click
+                await new Promise(r=>setTimeout(r,beatMs));
+            }
+            // Reset beat dots
+            document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`).forEach(el=>{el.style.background='rgba(255,255,255,0.1)';el.style.transform='scale(1)';});
+        }
+        const backD=Math.max(0,mtLatencyMs),recD=Math.max(0,-mtLatencyMs);
+        setTimeout(()=>{mtRecorder.start();mtIsRecording=true;},recD);
+        setTimeout(()=>mtStartBackingTracks(songTitle,si),backD);
+        statEl.innerHTML='<span style="color:#ef4444" class="mt-pulse">🔴 RECORDING</span>';
+        timEl.style.display='block';recBtn.style.display='none';stopBtn.style.display='inline-flex';
+        let sec=0;const ti=setInterval(()=>{if(!mtIsRecording){clearInterval(ti);return;}sec++;if(timEl)timEl.textContent=formatTime(sec);},1000);
+        stopBtn?.setAttribute('data-timer',ti);
+        if(document.getElementById(`mtMetronomeDuringRec_${si}`)?.checked&&!mtMetronomeInterval)mtStartMetronome(si);
+        if(document.getElementById(`mtShowPitch_${si}`)?.checked){document.getElementById(`mtPitchSection_${si}`).style.display='block';mtStartPitchMonitor(si);}
+    }catch(e){let m='Microphone access denied.';if(e.name==='NotFoundError')m='No microphone found.';alert(m+'\n\n'+e.message);}
+}
+function mtStopRecording(si){
+    if(mtRecorder?.state==='recording')mtRecorder.stop();mtIsRecording=false;mtStopAllTracks();mtStopPitchMonitor();
+    if(document.getElementById(`mtMetronomeDuringRec_${si}`)?.checked)mtStopMetronome();
+    const stopBtn=document.getElementById(`mtStopBtn_${si}`);if(stopBtn){const t=stopBtn.getAttribute('data-timer');if(t)clearInterval(parseInt(t));}
+    document.getElementById(`mtRecordBtn_${si}`).style.display='inline-flex';
+    if(stopBtn)stopBtn.style.display='none';
+}
+
+// ============================================================================
+// PLAYBACK with Pan via Web Audio API
+// ============================================================================
+async function mtStartBackingTracks(songTitle,si){mtStopAllTracks();const sn=toArray(await loadHarmonyAudioSnippets(songTitle,si));mtPlaybackAudios=[];
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+    for(let i=0;i<sn.length;i++){const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);
+        if(sn[i].data){const a=new Audio(sn[i].data);a.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;
+            let panNode=null,nodes=[];
+            try{
+                const src=mtAudioContext.createMediaElementSource(a);
+                panNode=mtAudioContext.createStereoPanner();
+                const pv=document.getElementById(`mtPan_${si}_${i}`);panNode.pan.value=(parseInt(pv?.value)||0)/100;
+                // Chain: src → pan → effects → destination
+                src.connect(panNode);
+                nodes=mtConnectEffectChain(mtAudioContext, panNode);
+            }catch(e){console.warn('Backing audio chain error:',e);}
+            mtPlaybackAudios.push({audio:a,index:i,panNode,nodes});
+            if(cb?.checked)a.play().catch(e=>console.warn('Backing:',e));
+        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null,nodes:[]});}}
+    mtIsPlaying=true;
+}
+
+async function mtPlayAllTracks(songTitle,si){
+    mtStopAllTracks();const sn=toArray(await loadHarmonyAudioSnippets(songTitle,si));mtPlaybackAudios=[];
+    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();await mtAudioContext.resume();
+    for(let i=0;i<sn.length;i++){const cb=document.getElementById(`mtTrack_${si}_${i}`),vol=document.getElementById(`mtVol_${si}_${i}`);
+        if(sn[i].data){const a=new Audio(sn[i].data);a.volume=(cb?.checked?(parseInt(vol?.value)||80):0)/100;
+            let panNode=null,nodes=[];
+            try{
+                const src=mtAudioContext.createMediaElementSource(a);
+                panNode=mtAudioContext.createStereoPanner();
+                const pv=document.getElementById(`mtPan_${si}_${i}`);panNode.pan.value=(parseInt(pv?.value)||0)/100;
+                // Chain: src → pan → effects → destination
+                src.connect(panNode);
+                nodes=mtConnectEffectChain(mtAudioContext, panNode);
+            }catch(e){console.warn('Play audio chain error:',e);}
+            mtPlaybackAudios.push({audio:a,index:i,panNode,nodes});
+            if(cb?.checked)a.play().catch(e=>console.warn('Play:',e));
+        }else{mtPlaybackAudios.push({audio:null,index:i,panNode:null,nodes:[]});}}
+    mtIsPlaying=true;
+    // Loop support
+    if(mtLooping){const first=mtPlaybackAudios.find(it=>it.audio&&document.getElementById(`mtTrack_${si}_${it.index}`)?.checked);
+        if(first)first.audio.onended=()=>{if(mtLooping&&mtIsPlaying){console.log('🔁 Looping...');mtPlayAllTracks(songTitle,si);}};}
+    // Draw waveforms
+    mtDrawAllWaveforms(songTitle,si);
+}
+function mtStopAllTracks(){
+    mtPlaybackAudios.forEach(it=>{
+        if(it?.audio){it.audio.pause();it.audio.currentTime=0;it.audio.onended=null;}
+        if(it?.nodes)it.nodes.forEach(n=>{try{n.disconnect();}catch(e){}});
+    });
+    mtPlaybackAudios=[];mtIsPlaying=false;
+}
+
+// ============================================================================
+// EFFECTS (Web Audio preset chains applied during playback)
+// ============================================================================
+let mtEffectNodes = [];
+function mtApplyEffect(name,si){
+    mtCurrentEffect=name;
+    document.querySelectorAll('.mt-fx-btn').forEach(b=>{const active=b.dataset.fx===name;
+        b.style.background=active?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.05)';
+        b.style.color=active?'white':'rgba(255,255,255,0.6)';
+        b.style.borderColor=active?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)';
+    });
+    // If currently playing, restart playback to apply new effect
+    if(mtIsPlaying && mtCurrentSongTitle){
+        const ss = mtCurrentSongTitle;
+        mtPlayAllTracks(ss, si);
+    }
+}
+
+// Connects sourceNode through the current effect chain to destination.
+// Returns array of created nodes for cleanup.
+function mtConnectEffectChain(ctx, sourceNode) {
+    const nodes = [];
+    
+    if (mtCurrentEffect === 'none' || !mtCurrentEffect) {
+        sourceNode.connect(ctx.destination);
+        return nodes;
+    }
+    
+    let lastNode = sourceNode;
+    
+    if (mtCurrentEffect === 'warm') {
+        const eq = ctx.createBiquadFilter(); eq.type = 'lowshelf'; eq.frequency.value = 300; eq.gain.value = 4;
+        const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3;
+        lastNode.connect(eq); eq.connect(comp); lastNode = comp; nodes.push(eq, comp);
+    } else if (mtCurrentEffect === 'bright') {
+        const eq = ctx.createBiquadFilter(); eq.type = 'highshelf'; eq.frequency.value = 3000; eq.gain.value = 5;
+        const eq2 = ctx.createBiquadFilter(); eq2.type = 'peaking'; eq2.frequency.value = 6000; eq2.gain.value = 3; eq2.Q.value = 1;
+        lastNode.connect(eq); eq.connect(eq2); lastNode = eq2; nodes.push(eq, eq2);
+    } else if (mtCurrentEffect === 'room' || mtCurrentEffect === 'hall') {
+        const isHall = mtCurrentEffect === 'hall';
+        const delay1 = ctx.createDelay(); delay1.delayTime.value = isHall ? 0.08 : 0.03;
+        const gain1 = ctx.createGain(); gain1.gain.value = isHall ? 0.4 : 0.3;
+        const delay2 = ctx.createDelay(); delay2.delayTime.value = isHall ? 0.15 : 0.06;
+        const gain2 = ctx.createGain(); gain2.gain.value = isHall ? 0.3 : 0.2;
+        const delay3 = ctx.createDelay(); delay3.delayTime.value = isHall ? 0.25 : 0.1;
+        const gain3 = ctx.createGain(); gain3.gain.value = isHall ? 0.2 : 0.1;
+        const dry = ctx.createGain(); dry.gain.value = isHall ? 0.7 : 0.8;
+        const merger = ctx.createGain();
+        lastNode.connect(dry); dry.connect(merger);
+        lastNode.connect(delay1); delay1.connect(gain1); gain1.connect(merger);
+        lastNode.connect(delay2); delay2.connect(gain2); gain2.connect(merger);
+        lastNode.connect(delay3); delay3.connect(gain3); gain3.connect(merger);
+        // Feedback for hall
+        if(isHall){ const fb=ctx.createGain();fb.gain.value=0.15;gain1.connect(fb);fb.connect(delay2);nodes.push(fb); }
+        lastNode = merger; nodes.push(delay1, gain1, delay2, gain2, delay3, gain3, dry, merger);
+    }
+    
+    lastNode.connect(ctx.destination);
+    return nodes;
+}
+
+// ============================================================================
+// PITCH DETECTION (autocorrelation)
+// ============================================================================
+const mtNoteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function mtFreqToNote(freq) {
+    if (!freq || freq < 50 || freq > 2000) return null;
+    const noteNum = 12 * (Math.log2(freq / 440)) + 69;
+    const rounded = Math.round(noteNum);
+    const cents = Math.round((noteNum - rounded) * 100);
+    const name = mtNoteNames[rounded % 12];
+    const octave = Math.floor(rounded / 12) - 1;
+    return { name, octave, cents, noteNum: rounded };
+}
+
+function mtAutoCorrelate(buf, sampleRate) {
+    let SIZE = buf.length, rms = 0;
+    for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1; // Too quiet
+
+    let r1 = 0, r2 = SIZE - 1;
+    const thresh = 0.2;
+    for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thresh) { r1 = i; break; } }
+    for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thresh) { r2 = SIZE - i; break; } }
+
+    buf = buf.slice(r1, r2);
+    SIZE = buf.length;
+    const c = new Array(SIZE).fill(0);
+    for (let i = 0; i < SIZE; i++) for (let j = 0; j < SIZE - i; j++) c[i] += buf[j] * buf[j + i];
+
+    let d = 0;
+    while (c[d] > c[d + 1]) d++;
+    let maxval = -1, maxpos = -1;
+    for (let i = d; i < SIZE; i++) { if (c[i] > maxval) { maxval = c[i]; maxpos = i; } }
+
+    let T0 = maxpos;
+    const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+    const a = (x1 + x3 - 2 * x2) / 2;
+    const b = (x3 - x1) / 2;
+    if (a) T0 -= b / (2 * a);
+    return sampleRate / T0;
+}
+
+function mtStartPitchMonitor(si) {
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        const source = mtAudioContext.createMediaStreamSource(stream);
+        const analyser = mtAudioContext.createAnalyser();
+        analyser.fftSize = 4096;
+        source.connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        
+        function update() {
+            analyser.getFloatTimeDomainData(buf);
+            const freq = mtAutoCorrelate(buf, mtAudioContext.sampleRate);
+            const noteEl = document.getElementById(`mtPitchNote_${si}`);
+            const centsEl = document.getElementById(`mtPitchCents_${si}`);
+            const barEl = document.getElementById(`mtPitchBar_${si}`);
+            
+            if (freq > 0) {
+                const note = mtFreqToNote(freq);
+                if (note && noteEl) {
+                    noteEl.textContent = note.name + note.octave;
+                    noteEl.style.color = Math.abs(note.cents) < 10 ? '#10b981' : Math.abs(note.cents) < 25 ? '#fbbf24' : '#ef4444';
+                    if (centsEl) centsEl.textContent = (note.cents >= 0 ? '+' : '') + note.cents + '¢';
+                    if (barEl) barEl.style.left = (50 + note.cents * 0.4) + '%';
+                }
+            } else {
+                if (noteEl) { noteEl.textContent = '—'; noteEl.style.color = 'white'; }
+                if (centsEl) centsEl.textContent = '—';
+                if (barEl) barEl.style.left = '50%';
+            }
+            mtPitchAnimFrame = requestAnimationFrame(update);
+        }
+        update();
+        
+        // Store stream for cleanup
+        mtStartPitchMonitor._stream = stream;
+        mtStartPitchMonitor._source = source;
+    }).catch(e => console.warn('Pitch monitor:', e));
+}
+
+function mtStopPitchMonitor() {
+    if (mtPitchAnimFrame) { cancelAnimationFrame(mtPitchAnimFrame); mtPitchAnimFrame = null; }
+    if (mtStartPitchMonitor._stream) { mtStartPitchMonitor._stream.getTracks().forEach(t => t.stop()); mtStartPitchMonitor._stream = null; }
+}
+
+function mtTogglePitchMonitor(si, on) {
+    const sec = document.getElementById(`mtPitchSection_${si}`);
+    if (sec) sec.style.display = on ? 'block' : 'none';
+    if (!on) mtStopPitchMonitor();
+}
+
+// ============================================================================
+// KARAOKE MODE (ABC cursor + lyrics)
+// ============================================================================
+async function mtToggleKaraoke(songTitle, si) {
+    const sheetEl = document.getElementById(`mtKaraokeSheet_${si}`);
+    const lyricsEl = document.getElementById(`mtKaraokeLyrics_${si}`);
+    const btn = document.getElementById(`mtKaraokeBtn_${si}`);
+    
+    if (sheetEl.style.display !== 'none') {
+        mtStopKaraoke(si);
+        return;
+    }
+    
+    btn.textContent = '⏳ Loading...';
+    
+    try {
+        const abc = await loadABCNotation(songTitle, si);
+        if (!abc) { btn.textContent = '🎤 Start'; alert('No ABC notation for this section.'); return; }
+        
+        // Load abcjs if needed
+        if (typeof ABCJS === 'undefined') {
+            await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/dist/abcjs-basic-min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+        }
+        
+        // CRITICAL: Load abcjs-audio CSS BEFORE creating synth controller
+        if (!document.getElementById('abcjs-audio-css')) {
+            const cssLink = document.createElement('link');
+            cssLink.id = 'abcjs-audio-css';
+            cssLink.rel = 'stylesheet';
+            cssLink.href = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.0/abcjs-audio.css';
+            document.head.appendChild(cssLink);
+            // Wait for CSS to load
+            await new Promise(r => { cssLink.onload = r; setTimeout(r, 1000); });
+        }
+        
+        // Add karaoke highlight styles
+        if (!document.getElementById('mt-karaoke-css')) {
+            const style = document.createElement('style');
+            style.id = 'mt-karaoke-css';
+            style.textContent = `
+                .abcjs-highlight{fill:#667eea !important;stroke:#667eea !important;}
+                #mtKaraokeSheet_${si} .abcjs-cursor{stroke:#ef4444;stroke-width:2;opacity:0.8;}
+            `;
+            document.head.appendChild(style);
+        }
+        
+        sheetEl.style.display = 'block';
+        lyricsEl.style.display = 'block';
+        
+        // Extract lyrics from ABC for display
+        const lyricLines = abc.split('\n').filter(l => l.startsWith('w:')).map(l => l.substring(2).trim());
+        const lyricWords = lyricLines.join(' ').split(/\s+/).filter(w => w && w !== '|' && w !== '-');
+        let currentWordIndex = 0;
+        
+        // Create audio controls container FIRST
+        const audioContainerId = `mtKaraokeAudio_${si}`;
+        
+        // Render ABC
+        sheetEl.innerHTML = ''; // Clear
+        const sheetDiv = document.createElement('div');
+        sheetDiv.id = `mtKaraokeSheetInner_${si}`;
+        sheetEl.appendChild(sheetDiv);
+        
+        const audioDiv = document.createElement('div');
+        audioDiv.id = audioContainerId;
+        audioDiv.style.cssText = 'margin-top:8px;';
+        sheetEl.appendChild(audioDiv);
+        
+        const visualObj = ABCJS.renderAbc(`mtKaraokeSheetInner_${si}`, abc, {
+            responsive: 'resize', staffwidth: 480, scale: 0.85,
+            wrap: { minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 },
+            add_classes: true
+        })[0];
+        
+        // Create cursor line in SVG
+        const svgEl = sheetDiv.querySelector('svg');
+        if (svgEl) {
+            const cursor = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            cursor.setAttribute('class', 'abcjs-cursor');
+            cursor.setAttribute('x1', 0); cursor.setAttribute('x2', 0);
+            cursor.setAttribute('y1', 0); cursor.setAttribute('y2', 0);
+            svgEl.appendChild(cursor);
+        }
+        
+        // Cursor control callbacks
+        const cursorControl = {
+            beatSubdivisions: 2,
+            onEvent: function(ev) {
+                // Move cursor line
+                if (ev && svgEl) {
+                    const cursor = svgEl.querySelector('.abcjs-cursor');
+                    if (cursor) {
+                        cursor.setAttribute('x1', ev.left - 2);
+                        cursor.setAttribute('x2', ev.left - 2);
+                        cursor.setAttribute('y1', ev.top);
+                        cursor.setAttribute('y2', ev.top + ev.height);
+                    }
+                }
+                // Highlight notes
+                document.querySelectorAll(`#mtKaraokeSheetInner_${si} svg .abcjs-highlight`).forEach(el => el.classList.remove('abcjs-highlight'));
+                if (ev && ev.elements) {
+                    ev.elements.forEach(els => els.forEach(el => el.classList.add('abcjs-highlight')));
+                }
+                // Update lyrics
+                if (lyricsEl && lyricWords.length > 0 && ev && ev.elements) {
+                    if (currentWordIndex < lyricWords.length) {
+                        const word = lyricWords[currentWordIndex] || '';
+                        lyricsEl.innerHTML = lyricWords.slice(Math.max(0, currentWordIndex - 2), currentWordIndex).map(w => `<span style="color:rgba(255,255,255,0.3)">${w} </span>`).join('') +
+                            `<span style="color:#fbbf24;font-size:1.3em">${word}</span>` +
+                            lyricWords.slice(currentWordIndex + 1, currentWordIndex + 4).map(w => `<span style="color:rgba(255,255,255,0.3)"> ${w}</span>`).join('');
+                        currentWordIndex++;
+                    }
+                }
+            },
+            onFinished: function() {
+                document.querySelectorAll(`#mtKaraokeSheetInner_${si} svg .abcjs-highlight`).forEach(el => el.classList.remove('abcjs-highlight'));
+                if (lyricsEl) lyricsEl.innerHTML = '<span style="color:rgba(255,255,255,0.4)">🎤 Finished!</span>';
+                currentWordIndex = 0;
+            }
+        };
+        
+        // iOS AudioContext fix
+        if (!window._deadceteraAudioCtx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            window._deadceteraAudioCtx = new AudioCtx();
+        }
+        if (window._deadceteraAudioCtx.state === 'suspended') {
+            await window._deadceteraAudioCtx.resume();
+        }
+        
+        // Set up synth controller
+        const synthControl = new ABCJS.synth.SynthController();
+        synthControl.load(`#${audioContainerId}`, cursorControl, {
+            displayLoop: true, displayRestart: true, displayPlay: true, displayProgress: true
+        });
+        
+        await synthControl.setTune(visualObj, false, { chordsOff: true });
+        
+        btn.textContent = '⏹ Stop Karaoke';
+        btn.onclick = () => mtStopKaraoke(si);
+        window._mtKaraokeSynth = synthControl;
+        
+        if (lyricsEl) lyricsEl.innerHTML = '<span style="color:rgba(255,255,255,0.4)">Press ▶ Play above to start karaoke</span>';
+        
+    } catch (e) {
+        console.error('Karaoke error:', e);
+        btn.textContent = '🎤 Start';
+        alert('Could not start karaoke: ' + e.message);
+    }
+}
+
+function mtStopKaraoke(si) {
+    const sheetEl = document.getElementById(`mtKaraokeSheet_${si}`);
+    const lyricsEl = document.getElementById(`mtKaraokeLyrics_${si}`);
+    const btn = document.getElementById(`mtKaraokeBtn_${si}`);
+    if (sheetEl) sheetEl.style.display = 'none';
+    if (lyricsEl) lyricsEl.style.display = 'none';
+    if (btn) { btn.textContent = '🎤 Start'; btn.onclick = () => mtToggleKaraoke(mtCurrentSongTitle, si); }
+    if (window._mtKaraokeSynth) { try { window._mtKaraokeSynth.pause(); } catch(e){} }
+}
+
+// ============================================================================
+// WAVEFORM VISUALIZATION
+// ============================================================================
+async function mtDrawAllWaveforms(songTitle, si) {
+    const canvas = document.getElementById(`mtWaveformCanvas_${si}`);
+    if (!canvas) return;
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    
+    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, si));
+    const colors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+    
+    for (let i = 0; i < snippets.length; i++) {
+        const cb = document.getElementById(`mtTrack_${si}_${i}`);
+        if (!cb?.checked || !snippets[i].data) continue;
+        
+        try {
+            if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const response = await fetch(snippets[i].data);
+            const arrayBuf = await response.arrayBuffer();
+            const audioBuf = await mtAudioContext.decodeAudioData(arrayBuf);
+            const data = audioBuf.getChannelData(0);
+            
+            const step = Math.floor(data.length / w);
+            const color = colors[i % colors.length];
+            const trackH = h / Math.min(snippets.length, 4);
+            const yOffset = (i % 4) * trackH;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            
+            for (let x = 0; x < w; x++) {
+                let min = 1, max = -1;
+                for (let j = 0; j < step; j++) {
+                    const v = data[x * step + j] || 0;
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+                const mid = yOffset + trackH / 2;
+                ctx.moveTo(x, mid + min * trackH / 2);
+                ctx.lineTo(x, mid + max * trackH / 2);
+            }
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        } catch (e) { console.warn('Waveform error track', i, e); }
+    }
+}
+
+function mtDrawWaveform(si, trackIndex) {
+    const canvas = document.getElementById(`mtWaveformCanvas_${si}`);
+    if (canvas) canvas.style.display = canvas.style.display === 'none' ? 'block' : 'none';
+}
+
+// ============================================================================
+// EXPORT MIX
+// ============================================================================
+async function mtExportMix(songTitle, si) {
+    try {
+        if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, si));
+        const buffers = [];
+        
+        for (let i = 0; i < snippets.length; i++) {
+            const cb = document.getElementById(`mtTrack_${si}_${i}`);
+            if (!cb?.checked || !snippets[i].data) continue;
+            const resp = await fetch(snippets[i].data);
+            const arr = await resp.arrayBuffer();
+            const buf = await mtAudioContext.decodeAudioData(arr);
+            const vol = (parseInt(document.getElementById(`mtVol_${si}_${i}`)?.value) || 80) / 100;
+            buffers.push({ buffer: buf, volume: vol });
+        }
+        
+        if (buffers.length === 0) { alert('No checked tracks to export.'); return; }
+        
+        const maxLen = Math.max(...buffers.map(b => b.buffer.length));
+        const sampleRate = buffers[0].buffer.sampleRate;
+        const offline = new OfflineAudioContext(2, maxLen, sampleRate);
+        
+        buffers.forEach(({ buffer, volume }) => {
+            const src = offline.createBufferSource();
+            src.buffer = buffer;
+            const gain = offline.createGain();
+            gain.gain.value = volume;
+            src.connect(gain);
+            gain.connect(offline.destination);
+            src.start(0);
+        });
+        
+        const rendered = await offline.startRendering();
+        
+        // Convert to WAV
+        const wav = mtAudioBufferToWav(rendered);
+        const blob = new Blob([wav], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${songTitle.replace(/[^a-zA-Z0-9]/g, '_')}_mix.wav`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        alert('✅ Mix exported as WAV!');
+    } catch (e) {
+        console.error('Export error:', e);
+        alert('Export failed: ' + e.message);
+    }
+}
+
+function mtAudioBufferToWav(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataSize = buffer.length * blockAlign;
+    const bufferSize = 44 + dataSize;
+    const arrayBuffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(arrayBuffer);
+    
+    function writeString(offset, string) { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); }
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, bufferSize - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+    
+    let offset = 44;
+    const channels = [];
+    for (let c = 0; c < numChannels; c++) channels.push(buffer.getChannelData(c));
+    
+    for (let i = 0; i < buffer.length; i++) {
+        for (let c = 0; c < numChannels; c++) {
+            const sample = Math.max(-1, Math.min(1, channels[c][i]));
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+            offset += 2;
+        }
+    }
+    return arrayBuffer;
+}
+
+// ============================================================================
+// POST-RECORDING NUDGE
+// ============================================================================
+function mtShowNudge(songTitle, si, newRecordingBase64) {
+    const nudgeEl = document.getElementById(`mtNudgeSection_${si}`);
+    if (!nudgeEl) return;
+    const ss = songTitle.replace(/'/g, "\\'");
+    
+    nudgeEl.style.display = 'block';
+    nudgeEl.innerHTML = `
+        <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.25);padding:12px;border-radius:8px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <strong style="font-size:0.85em">🔧 Nudge / Align ${mtHelp('nudge')}</strong>
+                <span id="mtNudgeVal_${si}" style="font-size:0.8em;font-family:monospace;color:#a5b4fc">0ms</span>
+            </div>
+            <input type="range" id="mtNudgeSlider_${si}" min="-200" max="200" value="0" step="5" style="width:100%;accent-color:#667eea"
+                oninput="document.getElementById('mtNudgeVal_${si}').textContent=this.value+'ms'">
+            <div style="display:flex;justify-content:space-between;font-size:0.6em;color:rgba(255,255,255,0.3);margin-top:2px"><span>← Earlier</span><span>Later →</span></div>
+            <div style="margin-top:8px;text-align:center">
+                <button onclick="mtPreviewWithNudge('${ss}',${si})" style="background:#667eea;color:white;border:none;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.8em;font-weight:600">▶ Preview with Nudge</button>
+            </div>
+        </div>`;
+    
+    // Store the new recording for nudge preview
+    window._mtNudgeRecording = newRecordingBase64;
+}
+
+async function mtPreviewWithNudge(songTitle, si) {
+    mtStopAllTracks();
+    const nudgeMs = parseInt(document.getElementById(`mtNudgeSlider_${si}`)?.value) || 0;
+    const snippets = toArray(await loadHarmonyAudioSnippets(songTitle, si));
+    
+    // Play existing tracks
+    for (const sn of snippets) {
+        if (sn.data) { const a = new Audio(sn.data); a.volume = 0.7; a.play().catch(() => {}); mtPlaybackAudios.push({ audio: a }); }
+    }
+    
+    // Play new recording with nudge offset
+    if (window._mtNudgeRecording) {
+        const newAudio = new Audio(window._mtNudgeRecording);
+        newAudio.volume = 0.9;
+        if (nudgeMs >= 0) { setTimeout(() => newAudio.play().catch(() => {}), nudgeMs); }
+        else { setTimeout(() => { for (const pa of mtPlaybackAudios) if (pa.audio) pa.audio.play().catch(() => {}); }, Math.abs(nudgeMs)); newAudio.play().catch(() => {}); }
+        mtPlaybackAudios.push({ audio: newAudio });
+    }
+    mtIsPlaying = true;
+}
+
+// ============================================================================
+// PREVIEW & SAVE
+// ============================================================================
+function mtShowPreview(songTitle, si, base64Audio, fileSize, mimeType) {
+    const section = document.getElementById(`mtPreviewSection_${si}`);
+    if (!section) return;
+    const ss = songTitle.replace(/'/g, "\\'");
+    let ext = 'webm'; if (mimeType.includes('mp4')) ext = 'm4a'; else if (mimeType.includes('ogg')) ext = 'ogg';
+    
+    // Show nudge slider
+    mtShowNudge(songTitle, si, base64Audio);
+    
+    section.style.display = 'block';
+    section.innerHTML = `
+        <div style="background:rgba(16,185,129,0.1);border:2px solid #10b981;padding:16px;border-radius:10px">
+            <h4 style="margin:0 0 10px;color:#10b981">✅ Recording Complete!</h4>
+            <audio controls src="${base64Audio}" style="width:100%;margin-bottom:10px"></audio>
+            <p style="font-size:0.7em;color:rgba(255,255,255,0.35);margin:0 0 10px">${ext.toUpperCase()} · ${(fileSize/1024).toFixed(1)} KB</p>
+            <div style="margin-bottom:8px">
+                <label style="display:block;margin-bottom:3px;font-size:0.8em">Who recorded?</label>
+                <select id="mtRecAuthor_${si}" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15)">
+                    ${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}" style="color:black">${m.name}</option>`).join('')}
+                </select>
+            </div>
+            <div style="margin-bottom:8px">
+                <label style="display:block;margin-bottom:3px;font-size:0.8em">Name:</label>
+                <input type="text" id="mtRecName_${si}" placeholder="E.g. Drew - high harmony" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:3px;font-size:0.8em">Notes:</label>
+                <input type="text" id="mtRecNotes_${si}" placeholder="Optional" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);box-sizing:border-box">
+            </div>
+            <div style="display:flex;gap:8px">
+                <button onclick="mtSaveRecording('${ss}',${si},'${base64Audio.substring(0,50)}',${fileSize})" style="flex:1;background:#10b981;color:white;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:600">💾 Save</button>
+                <button onclick="document.getElementById('mtPreviewSection_${si}').style.display='none';document.getElementById('mtNudgeSection_${si}').style.display='none'" style="background:rgba(255,255,255,0.12);color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer">🗑️ Discard</button>
+            </div>
+        </div>`;
+    
+    // Store full base64 in a data attribute for save
+    section.dataset.audio = base64Audio;
+    
+    const statEl = document.getElementById(`mtRecordStatus_${si}`);
+    const timEl = document.getElementById(`mtRecordTimer_${si}`);
+    if (statEl) statEl.innerHTML = 'Ready to record another take.';
+    if (timEl) timEl.style.display = 'none';
+}
+
+async function mtSaveRecording(songTitle, si, _unused, fileSize) {
+    const section = document.getElementById(`mtPreviewSection_${si}`);
+    const base64Audio = section?.dataset?.audio;
+    if (!base64Audio) { alert('Recording data lost. Please record again.'); return; }
+    
+    const author = document.getElementById(`mtRecAuthor_${si}`)?.value || 'unknown';
+    const name = document.getElementById(`mtRecName_${si}`)?.value?.trim();
+    const notes = document.getElementById(`mtRecNotes_${si}`)?.value?.trim();
+    if (!name) { alert('Please enter a name for this recording'); return; }
+    
+    const snippet = {
+        name, notes: notes || '', filename: 'recording.webm', type: 'audio/webm',
+        size: fileSize, data: base64Audio, uploadedBy: author,
+        uploadedDate: new Date().toISOString().split('T')[0], isRecording: true
+    };
+    
+    const key = `harmony_audio_section_${si}`;
+    const existing = toArray(await loadBandDataFromDrive(songTitle, key));
+    existing.push(snippet);
+    await saveBandDataToDrive(songTitle, key, existing);
+    
+    const localKey = `deadcetera_harmony_audio_${songTitle}_section${si}`;
+    localStorage.setItem(localKey, JSON.stringify(existing));
+    
+    logActivity('harmony_recording', { song: songTitle, extra: `section ${si}: ${name}` });
+    alert('✅ Recording saved!');
+    openMultiTrackStudio(songTitle, si);
+}
+
+// ============================================================================
+// CSS
+// ============================================================================
+(function(){
+    if(document.getElementById('mt-studio-css'))return;
+    const s=document.createElement('style');s.id='mt-studio-css';
+    s.textContent=`
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}} .mt-pulse{animation:pulse 1s infinite}
+        .mt-help-icon{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.35);font-size:0.6em;cursor:pointer;margin-left:3px;vertical-align:middle;border:1px solid rgba(255,255,255,0.1);transition:all 0.15s}
+        .mt-help-icon:hover{background:rgba(102,126,234,0.3);color:white;border-color:rgba(102,126,234,0.5)}
+        .highlight{fill:#667eea !important} .abcjs-cursor{stroke:#ef4444;stroke-width:2}
+    `;
+    document.head.appendChild(s);
+})();
+
+console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
+
+// ============================================================================
+// NAV SHELL: Menu Toggle, Page Navigation
+// ============================================================================
+let currentPage = 'songs';
+
+function toggleMenu() {
+    const menu = document.getElementById('slideMenu');
+    const overlay = document.getElementById('menuOverlay');
+    const isOpen = menu.classList.contains('open');
+    menu.classList.toggle('open', !isOpen);
+    overlay.classList.toggle('open', !isOpen);
+}
+
+function showPage(page) {
+    document.getElementById('slideMenu')?.classList.remove('open');
+    document.getElementById('menuOverlay')?.classList.remove('open');
+    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+    const el = document.getElementById('page-' + page);
+    if (el) { el.classList.remove('hidden'); el.classList.add('fade-in'); }
+    document.querySelectorAll('.menu-item').forEach(m => { m.classList.toggle('active', m.dataset.page === page); });
+    currentPage = page;
+    if (el && !el.dataset.loaded && page !== 'songs') {
+        el.dataset.loaded = 'true';
+        const renderer = pageRenderers[page];
+        if (renderer) renderer(el);
+    }
+}
+
+const pageRenderers = {
+    setlists: renderSetlistsPage,
+    practice: renderPracticePage,
+    calendar: renderCalendarPage,
+    gigs: renderGigsPage,
+    venues: renderVenuesPage,
+    finances: renderFinancesPage,
+    tuner: renderTunerPage,
+    metronome: renderMetronomePage,
+    admin: renderSettingsPage,
+    help: renderHelpPage
+};
+
+// ============================================================================
+// SETLIST BUILDER
+// ============================================================================
+function renderSetlistsPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
+    <div id="setlistsList"></div>`;
+    loadGigHistory().then(() => loadSetlists());
+}
+
+async function loadSetlists() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const container = document.getElementById('setlistsList');
+    if (!container) return;
+    if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
+    container.innerHTML = data.map((sl, i) => `<div class="app-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="flex:1;cursor:pointer" onclick="editSetlist(${i})">
+                <h3 style="margin-bottom:4px">${sl.name||'Untitled'}</h3>
+                <div style="display:flex;gap:12px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">
+                    <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
+                    <span>🎵 ${(sl.sets||[]).reduce((a,s)=>a+(s.songs||[]).length,0)} songs</span>
+                    <span>📋 ${(sl.sets||[]).length} set${(sl.sets||[]).length!==1?'s':''}</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+            </div>
+        </div>
+        ${(sl.sets||[]).map(s => `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map(sg => typeof sg==='string'?sg:sg.title).join(' → ')}</div>`).join('')}
+    </div>`).join('');
+}
+
+function createNewSetlist() {
+    const container = document.getElementById('setlistsList');
+    if (!container) return;
+    window._slSets = [{ name: 'Set 1', songs: [] }];
+    container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
+        <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" placeholder="e.g. Buckhead Theatre 3/15"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date"></div>
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" placeholder="Venue name"></div>
+            <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
+        </div>
+        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="margin-bottom:4px"><div id="slSongResults0"></div></div></div></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
+            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
+            <button class="btn btn-ghost" onclick="slAddSet('soundcheck')" style="color:var(--yellow)">🔊 Soundcheck</button>
+            <button class="btn btn-success" onclick="slSaveSetlist()" style="margin-left:auto">💾 Save Setlist</button>
+        </div></div>`;
+}
+
+function slSearchSong(input, setIdx) {
+    const q = input.value.toLowerCase();
+    const results = document.getElementById('slSongResults' + setIdx);
+    if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
+    const matches = (typeof allSongs !== "undefined" ? allSongs : songs || []).filter(s => s.title.toLowerCase().includes(q)).slice(0, 8);
+    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" onclick="slAddSongToSet(${setIdx},'${s.title.replace(/'/g,"\\'")}')">
+        <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
+}
+function slAddSongToSet(setIdx, title) {
+    if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
+    window._slSets[setIdx].songs.push({title: title, transition: false});
+    slRenderSetSongs(setIdx);
+    document.getElementById('slAddSong' + setIdx).value = '';
+    document.getElementById('slSongResults' + setIdx).innerHTML = '';
+}
+
+function slRenderSetSongs(setIdx) {
+    const el = document.getElementById('slSet' + setIdx + 'Songs');
+    if (!el) return;
+    const items = window._slSets[setIdx]?.songs || [];
+    el.innerHTML = items.map((item, i) => {
+        const s = typeof item === 'string' ? item : item.title;
+        const trans = typeof item === 'object' && item.transition;
+        const histTip = getSongHistoryTooltip(s);
+        return `<div class="list-item" style="padding:6px 10px;font-size:0.85em;gap:6px" title="${histTip.replace(/"/g,'&quot;')}">
+            <span style="color:var(--text-dim);min-width:20px;font-weight:600">${i + 1}.</span>
+            <span style="flex:1;font-weight:500">${s}${trans ? ' <span style="color:var(--accent-light);font-weight:700">→</span>' : ''}</span>
+            <button class="btn btn-sm ${trans?'btn-primary':'btn-ghost'}" onclick="slToggleTransition(${setIdx},${i})" title="${trans?'Song transitions into next':'Click to mark as transition'}" style="padding:2px 8px;font-size:0.75em">${trans?'→':'⏹'}</button>
+            <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px">✕</button>
+        </div>`;
+    }).join('');
+}
+
+function slToggleTransition(setIdx, songIdx) {
+    const items = window._slSets[setIdx]?.songs;
+    if (!items || !items[songIdx]) return;
+    if (typeof items[songIdx] === 'string') items[songIdx] = { title: items[songIdx], transition: true };
+    else items[songIdx].transition = !items[songIdx].transition;
+    slRenderSetSongs(setIdx);
+}
+
+function slRemoveSong(setIdx, songIdx) {
+    window._slSets[setIdx]?.songs.splice(songIdx, 1);
+    slRenderSetSongs(setIdx);
+}
+
+let _slSetCount = 1;
+function slAddSet(type) {
+    const name = type === 'encore' ? 'Encore' : type === 'soundcheck' ? '🔊 Soundcheck' : ('Set ' + (++_slSetCount));
+    window._slSets.push({ name, songs: [] });
+    const idx = window._slSets.length - 1;
+    const color = type === 'encore' ? 'var(--yellow)' : type === 'soundcheck' ? 'var(--green)' : 'var(--accent-light)';
+    const setsEl = document.getElementById('slSets');
+    setsEl.insertAdjacentHTML('beforeend', `
+        <div class="app-card" style="background:rgba(255,255,255,0.02)">
+            <h3 style="color:${color}">${name}</h3>
+            <div id="slSet${idx}Songs"></div>
+            <div style="margin-top:8px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="margin-bottom:4px"><div id="slSongResults${idx}"></div></div>
+        </div>`);
+}
+
+async function slSaveSetlist() {
+    const sl = {
+        name: document.getElementById('slName')?.value || 'Untitled',
+        date: document.getElementById('slDate')?.value || '',
+        venue: document.getElementById('slVenue')?.value || '',
+        notes: document.getElementById('slNotes')?.value || '',
+        sets: window._slSets || [],
+        created: new Date().toISOString()
+    };
+    const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    existing.push(sl);
+    await saveBandDataToDrive('_band', 'setlists', existing);
+    alert('✅ Setlist saved!');
+    loadSetlists();
+}
+
+async function editSetlist(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const sl = data[idx];
+    if (!sl) { alert('Setlist not found'); return; }
+    
+    window._slSets = sl.sets || [{ name: 'Set 1', songs: [] }];
+    window._slEditIndex = idx;
+    _slSetCount = window._slSets.length;
+    
+    const container = document.getElementById('setlistsList');
+    container.innerHTML = `<div class="app-card"><h3>Edit: ${sl.name||'Untitled'}</h3>
+        <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" value="${(sl.name||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${sl.date||''}"></div>
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" value="${(sl.venue||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" value="${(sl.notes||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div id="slSets">${window._slSets.map((set, si) => `
+            <div class="app-card" style="background:rgba(255,255,255,0.02)">
+                <h3 style="color:var(--accent-light)">${set.name||'Set '+(si+1)}</h3>
+                <div id="slSet${si}Songs"></div>
+                <div style="margin-top:8px"><input class="app-input" id="slAddSong${si}" placeholder="Type song name..." oninput="slSearchSong(this,${si})" style="margin-bottom:4px"><div id="slSongResults${si}"></div></div>
+            </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
+            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
+            <button class="btn btn-success" onclick="slSaveSetlistEdit(${idx})" style="margin-left:auto">💾 Save Changes</button>
+            <button class="btn btn-ghost" onclick="loadSetlists()">Cancel</button>
+        </div></div>`;
+    
+    // Render existing songs in each set
+    window._slSets.forEach((set, si) => slRenderSetSongs(si));
+}
+
+async function slSaveSetlistEdit(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    data[idx] = {
+        ...data[idx],
+        name: document.getElementById('slName')?.value || 'Untitled',
+        date: document.getElementById('slDate')?.value || '',
+        venue: document.getElementById('slVenue')?.value || '',
+        notes: document.getElementById('slNotes')?.value || '',
+        sets: window._slSets || [],
+        updated: new Date().toISOString()
+    };
+    await saveBandDataToDrive('_band', 'setlists', data);
+    alert('✅ Setlist updated!');
+    loadSetlists();
+}
+
+async function deleteSetlist(idx) {
+    if (!confirm('Delete this setlist? This cannot be undone.')) return;
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    data.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'setlists', data);
+    alert('Setlist deleted.');
+    loadSetlists();
+}
+
+async function deleteGig(idx) {
+    if (!confirm('Delete this gig? This cannot be undone.')) return;
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    data.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'gigs', data);
+    alert('Gig deleted.');
+    loadGigs();
+}
+
+async function editGig(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const g = data[idx];
+    if (!g) return;
+    const el = document.getElementById('gigsList');
+    el.innerHTML = `<div class="app-card">
+        <h3>Edit Gig</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="gigVenue" value="${(g.venue||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date" value="${g.date||''}"></div>
+            <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="gigTime" value="${(g.time||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" value="${(g.soundPerson||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Contact</label><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success" onclick="saveGigEdit(${idx})">💾 Save</button>
+            <button class="btn btn-ghost" onclick="loadGigs()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveGigEdit(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    data[idx] = {
+        ...data[idx],
+        venue: document.getElementById('gigVenue')?.value,
+        date: document.getElementById('gigDate')?.value,
+        time: document.getElementById('gigTime')?.value,
+        pay: document.getElementById('gigPay')?.value,
+        soundPerson: document.getElementById('gigSound')?.value,
+        contact: document.getElementById('gigContact')?.value,
+        notes: document.getElementById('gigNotes')?.value,
+        updated: new Date().toISOString()
+    };
+    await saveBandDataToDrive('_band', 'gigs', data);
+    alert('✅ Gig updated!');
+    loadGigs();
+}
+
+// ============================================================================
+// PRACTICE PLAN
+// ============================================================================
+async function renderPracticePage(el) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading practice plan...</div>';
+    const songList = typeof allSongs !== 'undefined' ? allSongs : [];
+    
+    // Try to load statuses from Firebase/localStorage cache
+    const statusMap = {};
+    try {
+        // Check localStorage cache first for speed
+        for (const s of songList) {
+            const cached = localStorage.getItem('deadcetera_status_' + s.title);
+            if (cached) statusMap[s.title] = cached;
+            if (s.bandData?.status) statusMap[s.title] = s.bandData.status;
+        }
+        // Also try Firebase bulk load
+        if (typeof loadBandDataFromDrive === 'function') {
+            const allStatuses = await loadBandDataFromDrive('_band', 'song_statuses');
+            if (allStatuses && typeof allStatuses === 'object') {
+                Object.assign(statusMap, allStatuses);
+            }
+        }
+    } catch(e) { console.log('Status load:', e); }
+    
+    const thisWeek = songList.filter(s => statusMap[s.title] === 'this_week');
+    const needsPolish = songList.filter(s => statusMap[s.title] === 'needs_polish');
+    const gigReady = songList.filter(s => statusMap[s.title] === 'gig_ready');
+    const onDeck = songList.filter(s => statusMap[s.title] === 'on_deck');
+    
+    // Load saved agenda
+    let agendaText = '';
+    try { const ag = await loadBandDataFromDrive('_band','rehearsal_agenda'); if(ag?.text) agendaText = ag.text; } catch(e) {}
+    
+    function songRow(s, badge) {
+        return `<div class="list-item" style="cursor:pointer" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
+            <span style="color:var(--text-dim);font-size:0.78em;min-width:35px">${s.band||''}</span>
+            <span style="flex:1">${s.title}</span>
+            ${badge||''}
+        </div>`;
+    }
+    
+    el.innerHTML = `
+    <div class="page-header"><h1>📅 Practice Plan</h1><p>Weekly focus and rehearsal prep</p></div>
+    <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-value" style="color:var(--red)">${thisWeek.length}</div><div class="stat-label">This Week</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--yellow)">${needsPolish.length}</div><div class="stat-label">Needs Polish</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--green)">${gigReady.length}</div><div class="stat-label">Gig Ready</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${onDeck.length}</div><div class="stat-label">On Deck</div></div>
+    </div>
+    <div class="app-card"><h3>🎯 This Week's Focus</h3>
+        ${thisWeek.length ? thisWeek.map(s => songRow(s,'<span style="color:var(--red);font-size:0.72em;font-weight:600">🎯</span>')).join('') : '<div style="text-align:center;padding:16px;color:var(--text-dim)">No songs marked "This Week" yet. Set status on any song.</div>'}
+    </div>
+    <div class="app-card"><h3>⚠️ Needs Polish</h3>
+        ${needsPolish.length ? needsPolish.map(s => songRow(s)).join('') : '<div style="text-align:center;padding:16px;color:var(--text-dim)">No songs need polish.</div>'}
+    </div>
+    <div class="app-card"><h3>📚 On Deck (${onDeck.length})</h3>
+        ${onDeck.length ? onDeck.map(s => songRow(s)).join('') : '<div style="text-align:center;padding:16px;color:var(--text-dim)">No songs on deck.</div>'}
+    </div>
+    <div class="app-card"><h3>📝 Rehearsal Agenda</h3>
+        <textarea class="app-textarea" id="rehearsalAgendaText" placeholder="Type this week's rehearsal plan...">${agendaText}</textarea>
+        <button class="btn btn-primary" style="margin-top:8px" onclick="saveRehearsalAgenda()">💾 Save Agenda</button>
+    </div>`;
+}
+
+async function saveRehearsalAgenda() {
+    const text = document.getElementById('rehearsalAgendaText')?.value;
+    if (!text) return;
+    await saveBandDataToDrive('_band', 'rehearsal_agenda', { text, date: new Date().toISOString() });
+    alert('✅ Agenda saved!');
+}
+
+// ============================================================================
+// CALENDAR
+// ============================================================================
+function renderCalendarPage(el) {
+    const now = new Date();
+    const year = now.getFullYear(), month = now.getMonth();
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = now.getDate();
+    
+    let calHTML = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+    dayNames.forEach((d,i) => { 
+        const isWkend = i === 0 || i === 6;
+        calHTML += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${isWkend?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`; 
+    });
+    for (let i = 0; i < firstDay; i++) calHTML += '<div style="aspect-ratio:1;padding:4px;"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+        const isToday = d === today;
+        const dow = new Date(year, month, d).getDay();
+        const isWkend = dow === 0 || dow === 6;
+        calHTML += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:${isWkend?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
+            <span style="${isToday?'color:var(--accent);font-weight:700;':isWkend?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
+        </div>`;
+    }
+    calHTML += '</div>';
+
+    el.innerHTML = `
+    <div class="page-header"><h1>📆 Calendar</h1><p>${monthNames[month]} ${year}</p></div>
+    <div class="app-card">${calHTML}</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
+        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Block Dates (Unavailable)</button>
+    </div>
+    <div class="app-card"><h3>📌 Upcoming Events</h3>
+        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">No events yet. Click a date to add one.</div></div>
+    </div>
+    <div class="app-card"><h3>🚫 Blocked Dates</h3>
+        <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
+    </div>`;
+    loadCalendarEvents();
+}
+
+async function loadCalendarEvents() {
+    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const el = document.getElementById('calendarEvents');
+    if (!el) return;
+    const upcoming = events.filter(e => e.date >= new Date().toISOString().split('T')[0]).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    if (upcoming.length === 0) return;
+    el.innerHTML = upcoming.map(e => `<div class="list-item" style="padding:8px 10px">
+        <span style="font-size:0.8em;color:var(--text-dim);min-width:80px">${e.date||''}</span>
+        <span style="font-weight:600;flex:1">${e.title||'Untitled'}</span>
+        <span style="font-size:0.75em;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06)">${e.type||''}</span>
+    </div>`).join('');
+    // Also load blocked dates
+    const blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    const bEl = document.getElementById('blockedDates');
+    if (bEl && blocked.length > 0) {
+        bEl.innerHTML = blocked.map(b => `<div class="list-item" style="padding:6px 10px;font-size:0.85em">
+            <span style="color:var(--red)">${b.startDate} → ${b.endDate}</span>
+            <span style="flex:1;color:var(--text-muted)">${b.person||''}: ${b.reason||''}</span>
+        </div>`).join('');
+    }
+}
+
+function calBlockDates() {
+    const el = document.getElementById('calendarEvents');
+    if (!el) return;
+    el.innerHTML = `<div style="padding:12px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:10px;margin-bottom:12px">
+        <h3 style="font-size:0.9em;color:var(--red);margin-bottom:8px">🚫 Block Dates — I'm Unavailable</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>
+            <div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>
+            <div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>'<option value="'+m.name+'">'+m.name+'</option>').join('')}</select></div>
+            <div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>
+        </div>
+        <button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Block These Dates</button>
+    </div>`;
+}
+
+async function saveBlockedDates() {
+    const b = { startDate: document.getElementById('blockStart')?.value, endDate: document.getElementById('blockEnd')?.value,
+        person: document.getElementById('blockPerson')?.value, reason: document.getElementById('blockReason')?.value };
+    if (!b.startDate || !b.endDate) { alert('Both dates required'); return; }
+    const ex = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    ex.push(b); await saveBandDataToDrive('_band', 'blocked_dates', ex);
+    alert('✅ Dates blocked!'); loadCalendarEvents();
+}
+
+function calDayClick(y, m, d) { calAddEvent(new Date(y, m, d).toISOString().split('T')[0]); }
+function calAddEvent(date) {
+    const el = document.getElementById('calendarEvents');
+    if (!el) return;
+    el.innerHTML = `<div class="form-grid">
+        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||''}"></div>
+        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType"><option value="rehearsal">🎸 Rehearsal</option><option value="gig">🎤 Gig</option><option value="meeting">👥 Meeting</option><option value="other">📌 Other</option></select></div>
+        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's"></div>
+        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time"></div>
+    </div>
+    <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="calNotes" placeholder="Optional details"></textarea></div>
+    <button class="btn btn-success" onclick="calSaveEvent()">💾 Save Event</button>`;
+}
+
+async function calSaveEvent() {
+    const ev = {
+        date: document.getElementById('calDate')?.value,
+        type: document.getElementById('calType')?.value,
+        title: document.getElementById('calTitle')?.value,
+        time: document.getElementById('calTime')?.value,
+        notes: document.getElementById('calNotes')?.value,
+        created: new Date().toISOString()
+    };
+    if (!ev.date || !ev.title) { alert('Date and title required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    existing.push(ev);
+    await saveBandDataToDrive('_band', 'calendar_events', existing);
+    alert('✅ Event saved!');
+}
+
+// ============================================================================
+// GIGS
+// ============================================================================
+function renderGigsPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="addGig()">+ Add Gig</button>
+        <button class="btn btn-ghost" onclick="seedGigData()" title="Import past gigs, setlists, and venues from master spreadsheet">📥 Import Spreadsheet Data</button>
+    </div>
+    <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
+    loadGigs();
+}
+
+async function loadGigs() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const el = document.getElementById('gigsList');
+    if (!el || data.length === 0) return;
+    data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    el.innerHTML = data.map((g, i) => `<div class="app-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="flex:1">
+                <h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
+                <div style="font-size:0.82em;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap">
+                    <span>📅 ${g.date || 'TBD'}</span>
+                    ${g.time?`<span>⏰ ${g.time}</span>`:''}
+                    ${g.pay?`<span>💰 ${g.pay}</span>`:''}
+                    ${g.soundPerson?`<span>🔊 ${g.soundPerson}</span>`:''}
+                </div>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+                <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+                <button class="btn btn-sm btn-ghost" onclick="editGig(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteGig(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+            </div>
+        </div>
+        ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
+        ${g.setlistName ? `<div style="margin-top:4px;font-size:0.78em"><span style="color:var(--accent-light)">📋 ${g.setlistName}</span></div>` : ''}
+    </div>`).join('');
+}
+
+function addGig() {
+    const el = document.getElementById('gigsList');
+    el.innerHTML = `<div class="app-card">
+        <h3>Add New Gig</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="gigVenue" placeholder="Venue name"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date"></div>
+            <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="gigTime" placeholder="e.g. 9 PM"></div>
+            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" placeholder="Who's doing sound?"></div>
+            <div class="form-row"><label class="form-label">Contact</label><input class="app-input" id="gigContact" placeholder="Venue contact name"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Load-in time, parking, set length, etc."></textarea></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveGig()">💾 Save</button><button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>
+    </div>` + el.innerHTML;
+}
+
+async function saveGig() {
+    const gig = { venue: document.getElementById('gigVenue')?.value, date: document.getElementById('gigDate')?.value,
+        time: document.getElementById('gigTime')?.value, pay: document.getElementById('gigPay')?.value,
+        soundPerson: document.getElementById('gigSound')?.value, contact: document.getElementById('gigContact')?.value,
+        notes: document.getElementById('gigNotes')?.value, created: new Date().toISOString() };
+    if (!gig.venue) { alert('Venue required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    existing.push(gig);
+    await saveBandDataToDrive('_band', 'gigs', existing);
+    alert('✅ Gig saved!');
+    loadGigs();
+}
+
+// ============================================================================
+// SEED DATA — Pre-populate past gigs, setlists, and venues
+// ============================================================================
+async function seedGigData() {
+    if (!isUserSignedIn) { alert('Sign in first to import gig data.'); return; }
+    if (!confirm('Import past gigs, setlists, and venues from the master spreadsheet? This will not overwrite existing data.')) return;
+    
+    // ===== GIGS from PDF tabs =====
+    const gigs = [
+        { venue:'From The Earth Brewing', date:'2026-02-01', time:'8:00 PM', notes:'2 sets, ~116 min total' },
+        { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'2 sets, ~156 min total' },
+        { venue:'Dunwoody Square', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
+        { venue:'Wild Wings Café', date:'2025-05-23', time:'9:00 PM' },
+        { venue:'Dead Fest', date:'2025-04-12', time:'TBD', notes:'Festival' },
+        { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM' },
+        { venue:'Reformation Brewery', date:'2025-03-29', time:'7:00 PM' },
+        { venue:'Wing Café Marietta', date:'2024-12-14', time:'9:00 PM', notes:'2 sets' },
+        { venue:'Wild Wings Café', date:'2024-12-06', time:'9:00 PM', notes:'2 sets, ~126+46 min' },
+        { venue:'Truck & Tap', date:'2024-11-16', time:'8:00 PM', notes:'2 sets, ~38+81 min = 119 total' },
+        { venue:'Meth Shed (PDH)', date:'2024-10-26', time:'8:00 PM', notes:'2 sets, ~49+49 min = 98 total' },
+        { venue:'MadLife Stage & Studios', date:'2024-09-04', time:'8:00 PM' },
+        { venue:'Wings Café', date:'2024-06-15', time:'9:00 PM' },
+        { venue:'MadLife Stage & Studios', date:'2024-05-28', time:'8:00 PM' },
+        { venue:'MadLife Patio', date:'2024-05-31', time:'7:00 PM' },
+        { venue:'Alpharetta (Private)', date:'2024-07-19', time:'7:00 PM' },
+        { venue:'Coastal Grill', date:'2024-05-11', time:'8:00 PM', notes:'2 sets + soundcheck' },
+        { venue:'Wild Wings Café', date:'2024-01-19', time:'9:00 PM', notes:'2 sets + soundcheck' },
+        { venue:'Wild Wings Alpharetta', date:'2023-12-29', time:'9:00 PM' },
+        { venue:'Wild Wings Café', date:'2023-12-15', time:'9:00 PM' },
+        { venue:'Wild Wings Café', date:'2023-10-27', time:'9:00 PM' },
+        { venue:'Wild Wing Café', date:'2023-09-08', time:'9:00 PM' },
+        { venue:'Private Party', date:'2023-08-19', time:'7:00 PM' },
+        { venue:'Legends', date:'2023-07-22', time:'8:00 PM' },
+        { venue:'Meth Shed', date:'2023-06-03', time:'8:00 PM' },
+        { venue:'Wild Wings Alpharetta', date:'2023-05-12', time:'9:00 PM' },
+        { venue:'Meth Shed', date:'2023-04-15', time:'8:00 PM' },
+        { venue:'Skulls', date:'2023-03-23', time:'9:00 PM' },
+        { venue:'Wild Wings Café', date:'2023-03-18', time:'9:00 PM' },
+        { venue:'Skulls', date:'2023-01-13', time:'9:00 PM' },
+    ];
+    
+    // ===== SETLISTS from PDF =====
+    const setlists = [
+      { name:'From The Earth 02/01/26', date:'2026-02-01', venue:'From The Earth Brewing', sets:[
+        { name:'Set 1', songs:[{title:'Tall Boy'},{title:'Deal'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Superstition'},{title:'U.S. Blues'},{title:'Althea'},{title:'Deep Elem Blues'},{title:'Funky Bitch'},{title:'Chilly Water'}]},
+        { name:'Set 2', songs:[{title:'Birthday'},{title:"Ain't Life Grand"},{title:'After Midnight'},{title:'Ramble On Rose'},{title:'Ophelia'},{title:'Cumberland Blues'},{title:"Franklin's Tower"},{title:'All Time Low'},{title:'Shakedown Street'},{title:'Not Fade Away'},{title:'Life During Wartime'}]}
+      ]},
+      { name:'MoonShadow 01/12/26', date:'2026-01-12', venue:'MoonShadow Tavern', sets:[
+        { name:'Set 1', songs:[{title:'Cumberland Blues'},{title:"That's What Love Will Make You Do"},{title:'Eyes of the World'},{title:'Superstition'},{title:'Ramble On Rose'},{title:"Ain't Life Grand"},{title:'Jack Straw'},{title:'Althea'},{title:'They Love Each Other'},{title:'Tall Boy'},{title:'Deep Elem Blues'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'First Tube'},{title:'Lifeboy'}]},
+        { name:'Set 2', songs:[{title:'Black Peter'},{title:'Funky Bitch'},{title:'After Midnight'},{title:'Life During Wartime'},{title:'U.S. Blues'},{title:'Music Never Stopped'},{title:'Loser'},{title:"Franklin's Tower"},{title:'West LA Fadeaway'},{title:'Possum'},{title:'Chilly Water'}]}
+      ]},
+      { name:'Wing Café 12/14/24', date:'2024-12-14', venue:'Wing Café Marietta', sets:[
+        { name:'Set 1', songs:[{title:'Music Never Stopped'},{title:'Superstition'},{title:'Ophelia'},{title:'West LA Fadeaway'},{title:'Bertha'},{title:'Possum'},{title:"Ain't Life Grand"},{title:'U.S. Blues'},{title:"Truckin'"},{title:'Chilly Water'},{title:'They Love Each Other'},{title:'Miss You'},{title:'Shakedown Street'}]},
+        { name:'Set 2', songs:[{title:"Franklin's Tower"},{title:'Life During Wartime'},{title:'Sugaree'},{title:'Tall Boy'},{title:'Althea'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Jack Straw'}]}
+      ]},
+      { name:'Wild Wings 12/06/24', date:'2024-12-06', venue:'Wild Wings Café', sets:[
+        { name:'Set 1', songs:[{title:'Minglewood Blues'},{title:'Eyes of the World'},{title:'Use Me'},{title:'Mr. Charlie'},{title:'Life During Wartime'},{title:'West LA Fadeaway'},{title:'Jack Straw'},{title:'Sledgehammer'},{title:'Music Never Stopped'},{title:"Truckin'"},{title:'LA Woman'},{title:"That's What Love Will Make You Do"},{title:'Sugaree'}]},
+        { name:'Set 2', songs:[{title:'Ramble On Rose'},{title:'Deep Elem Blues'},{title:'Tall Boy'},{title:'All Along the Watchtower'},{title:'After Midnight'},{title:'They Love Each Other'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'}]}
+      ]},
+      { name:'Truck & Tap 11/16/24', date:'2024-11-16', venue:'Truck & Tap', sets:[
+        { name:'Set 1', songs:[{title:'Ophelia'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'They Love Each Other'},{title:"Ain't Life Grand"},{title:'Loser'},{title:'Superstition'},{title:'U.S. Blues'}]},
+        { name:'Set 2', songs:[{title:"Truckin'"},{title:'Chilly Water'},{title:'Bertha'},{title:'Althea'},{title:'Sledgehammer'},{title:'Deal'},{title:"Franklin's Tower"},{title:'Miss You'},{title:'Eyes of the World'},{title:'Possum'},{title:'Ramble On Rose'},{title:'Tall Boy'},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Meth Shed 10/26/24', date:'2024-10-26', venue:'Meth Shed (PDH)', sets:[
+        { name:'Set 1', songs:[{title:'U.S. Blues'},{title:'Tall Boy'},{title:'Ramble On Rose'},{title:'Sledgehammer'},{title:'Miss You'},{title:"Ain't Life Grand"},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Deal'}]},
+        { name:'Set 2', songs:[{title:"Franklin's Tower"},{title:"Truckin'"},{title:'Tall Boy'},{title:'Chilly Water'},{title:'Eyes of the World'},{title:'Music Never Stopped'},{title:'They Love Each Other'}]}
+      ]},
+      { name:'MadLife 09/04/24', date:'2024-09-04', venue:'MadLife Stage & Studios', sets:[
+        { name:'Set 1', songs:[{title:'Music Never Stopped'},{title:'Mr. Charlie'},{title:'Ramble On Rose'},{title:"Ain't Life Grand"},{title:'Ophelia'},{title:'Sugaree'},{title:'Possum'},{title:'Chilly Water'},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Wings Café 06/15/24', date:'2024-06-15', venue:'Wings Café', sets:[
+        { name:'Set 1', songs:[{title:'Music Never Stopped'},{title:'Minglewood Blues'},{title:'Bertha'},{title:'Hard to Handle'},{title:'Ophelia'},{title:'Big Railroad Blues'},{title:'Jack Straw'},{title:"Franklin's Tower"},{title:'Possum'},{title:'Life During Wartime'},{title:'Deep Elem Blues'},{title:'Loser'},{title:"That's What Love Will Make You Do"},{title:'Deal'},{title:'Mr. Charlie'},{title:'Chilly Water'}]},
+        { name:'Set 2', songs:[{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Sugaree'},{title:'All Along the Watchtower'},{title:'Samson and Delilah'},{title:'Althea'},{title:'Miss You',transition:true},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Alpharetta 07/19/24', date:'2024-07-19', venue:'Alpharetta (Private)', sets:[
+        { name:'Set 1', songs:[{title:'Superstition'},{title:"That's What Love Will Make You Do"},{title:"Truckin'"},{title:'Use Me'},{title:'Life During Wartime'},{title:'Sugaree'},{title:'Miss You',transition:true},{title:'Shakedown Street'},{title:'U.S. Blues'}]}
+      ]},
+      { name:'Coastal Grill 05/11/24', date:'2024-05-11', venue:'Coastal Grill', sets:[
+        { name:'Set 1', songs:[{title:'First Tube'},{title:'Bertha'},{title:'Mr. Charlie'},{title:'Life During Wartime'},{title:'Jack Straw'},{title:"That's What Love Will Make You Do"},{title:'Samson and Delilah'},{title:'Hard to Handle'},{title:'Sugaree'},{title:'Superstition'},{title:'Possum'},{title:"Truckin'"},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'}]},
+        { name:'Set 2', songs:[{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Use Me'},{title:'Minglewood Blues'},{title:"Franklin's Tower"},{title:'Red Hot Mama'},{title:'Miss You',transition:true},{title:'Shakedown Street'}]},
+        { name:'🔊 Soundcheck', songs:[{title:'Music Never Stopped'}]}
+      ]},
+      { name:'MadLife 05/28/24', date:'2024-05-28', venue:'MadLife Stage & Studios', sets:[
+        { name:'Set 1', songs:[{title:'Minglewood Blues'},{title:"That's What Love Will Make You Do"},{title:'Possum'},{title:'Miss You'},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Wings 01/19/24', date:'2024-01-19', venue:'Wild Wings Café', sets:[
+        { name:'Set 1', songs:[{title:"Franklin's Tower"},{title:'After Midnight'},{title:'Superstition'},{title:'They Love Each Other'},{title:'Possum'},{title:'Music Never Stopped'},{title:'Use Me'},{title:'Minglewood Blues'},{title:'Althea'},{title:'Chilly Water'},{title:'Deal'}]},
+        { name:'Set 2', songs:[{title:'First Tube'},{title:"That's What Love Will Make You Do"},{title:'Hard to Handle'},{title:'Ophelia'},{title:'All Along the Watchtower'},{title:'Sugaree'},{title:'Miss You',transition:true},{title:'Shakedown Street'},{title:'Loser'},{title:'Life During Wartime'}]},
+        { name:'🔊 Soundcheck', songs:[{title:'Werewolves of London'}]}
+      ]},
+      { name:'Wings 10/27/23', date:'2023-10-27', venue:'Wild Wings Café', sets:[
+        { name:'Set 1', songs:[{title:'Frankenstein'},{title:'First Tube'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Sympathy for the Devil'},{title:'Deal'},{title:'Sugaree'},{title:'Miss You'},{title:'Shakedown Street'},{title:"That's What Love Will Make You Do"},{title:'Werewolves of London'}]},
+        { name:'Set 2', songs:[{title:'Samson and Delilah'},{title:'All Along the Watchtower'},{title:'Bertha'},{title:'Good Lovin\''},{title:'Althea'},{title:'Samson and Delilah'},{title:'After Midnight'},{title:'Mr. Charlie'},{title:"Franklin's Tower"},{title:'Ziggy Stardust'},{title:'Not Fade Away'}]}
+      ]},
+    ];
+    
+    // ===== VENUES from PDF Venues tab + setlist venues =====
+    const venues = [
+        { name:'From The Earth Brewing', address:'Roswell, GA', notes:'Brewery with stage' },
+        { name:'MoonShadow Tavern', address:'Atlanta area, GA' },
+        { name:'Wild Wings Café', address:'Multiple GA locations', notes:'Regular gig. Alpharetta + others.' },
+        { name:'Wing Café Marietta', address:'Marietta, GA', contact:'Analog Boy' },
+        { name:'Reformation Brewery', address:'Woodstock, GA', notes:'Family friendly, early shows' },
+        { name:'Truck & Tap', address:'Alpharetta, GA', contact:'Francisco Vilda' },
+        { name:'MadLife Stage & Studios', address:'Woodstock, GA', notes:'Professional venue, great sound', contact:'Greg Shaddix' },
+        { name:'Coastal Grill', address:'Atlanta area, GA' },
+        { name:'Legends', address:'Atlanta area, GA' },
+        { name:'Skulls', address:'Atlanta area, GA' },
+        { name:'Meth Shed (PDH)', address:"Pierce's place", notes:'Practice/party spot' },
+        { name:'Wild Wings Alpharetta', address:'Alpharetta, GA', contact:'David McPherson' },
+        { name:"Lucky's", address:'Roswell, GA' },
+        { name:'Gate City Brewing', address:'GA' },
+        { name:"Milton's Tavern", address:'Milton, GA', contact:'Rivers Carroll', email:'RiversCarroll@yahoo.com', phone:'678-521-8001' },
+        { name:'Hyde Brewery', address:'GA' },
+        { name:"Rosatti's", address:'GA' },
+        { name:'Wings Tap House', address:'GA' },
+    ];
+    
+    gigs.forEach(g => g.created = new Date().toISOString());
+    setlists.forEach(sl => sl.created = new Date().toISOString());
+    venues.forEach(v => v.created = new Date().toISOString());
+    
+    try {
+        const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        const existingSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        const existingVenues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+        
+        // Deduplicate
+        const gigKeys = new Set(existingGigs.map(g => (g.venue||'') + '|' + (g.date||'')));
+        const newGigs = gigs.filter(g => !gigKeys.has(g.venue + '|' + g.date));
+        const slKeys = new Set(existingSetlists.map(s => s.name));
+        const newSetlists = setlists.filter(s => !slKeys.has(s.name));
+        const venueKeys = new Set(existingVenues.map(v => v.name));
+        const newVenues = venues.filter(v => !venueKeys.has(v.name));
+        
+        if (newGigs.length > 0) await saveBandDataToDrive('_band', 'gigs', [...existingGigs, ...newGigs]);
+        if (newSetlists.length > 0) await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...newSetlists]);
+        if (newVenues.length > 0) await saveBandDataToDrive('_band', 'venues', [...existingVenues, ...newVenues]);
+        
+        alert('✅ Imported ' + newGigs.length + ' gigs, ' + newSetlists.length + ' setlists, and ' + newVenues.length + ' venues!\n\n(Duplicates were skipped.)');
+        if (typeof loadGigs === 'function') loadGigs();
+        if (typeof loadSetlists === 'function') loadSetlists();
+        if (typeof loadVenues === 'function') loadVenues();
+    } catch(e) {
+        console.error('Seed error:', e);
+        alert('Error: ' + e.message);
+    }
+}
+
+// ============================================================================
+// VENUES & CONTACTS
+// ============================================================================
+function renderVenuesPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🏛️ Venues & Contacts</h1><p>Venue info, booking contacts, sound engineers</p></div>
+    <button class="btn btn-primary" onclick="addVenue()" style="margin-bottom:16px">+ Add Venue</button>
+    <div id="venuesList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No venues added yet.</div></div>`;
+    loadVenues();
+}
+
+async function loadVenues() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const el = document.getElementById('venuesList');
+    if (!el || data.length === 0) return;
+    el.innerHTML = data.map((v, i) => `<div class="app-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <h3 style="margin-bottom:6px">${v.name || 'Unnamed'}</h3>
+            ${v.website?`<a href="${v.website}" target="_blank" class="btn btn-sm btn-ghost" title="Website">🌐</a>`:''}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:0.82em;color:var(--text-muted)">
+            ${v.address?`<span>📍 ${v.address}</span>`:''}
+            ${v.phone?`<span>📞 ${v.phone}</span>`:''}
+            ${v.email?`<span>📧 ${v.email}</span>`:''}
+            ${v.capacity?`<span>👥 ${v.capacity}</span>`:''}
+            ${v.stage?`<span>🎭 ${v.stage}</span>`:''}
+            ${v.pA||v.pa?`<span>🔊 PA: ${v.pA||v.pa}</span>`:''}
+            ${v.contactName||v.contact?`<span>🤝 ${v.contactName||v.contact}</span>`:''}
+            ${v.owner?`<span>👤 ${bandMembers[v.owner]?.name||v.owner}</span>`:''}
+            ${v.soundPerson?`<span>🎛️ Sound: ${v.soundPerson}</span>`:''}
+            ${v.soundPhone?`<span>📱 ${v.soundPhone}</span>`:''}
+            ${v.loadIn?`<span>🚪 ${v.loadIn}</span>`:''}
+            ${v.parking?`<span>🅿️ ${v.parking}</span>`:''}
+        </div>
+        ${v.notes?`<div style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">${v.notes}</div>`:''}
+        ${v.pay?`<div style="margin-top:4px;font-size:0.82em;color:var(--green)">💰 ${v.pay}</div>`:''}
+    </div>`).join('');
+}
+
+function addVenue() {
+    const el = document.getElementById('venuesList');
+    el.innerHTML = `<div class="app-card">
+        <h3>Add Venue</h3>
+        <div style="margin-bottom:12px;padding:10px;background:rgba(102,126,234,0.06);border-radius:8px;display:flex;gap:8px;align-items:center">
+            <input class="app-input" id="vSearchGoogle" placeholder="Search Google for venue info..." style="flex:1;margin:0">
+            <button class="btn btn-sm btn-primary" onclick="searchVenueGoogle()">🔍 Search</button>
+        </div>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Venue Name</label><input class="app-input" id="vName"></div>
+            <div class="form-row"><label class="form-label">Address</label><input class="app-input" id="vAddress"></div>
+            <div class="form-row"><label class="form-label">Phone</label><input class="app-input" id="vPhone"></div>
+            <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="vEmail"></div>
+            <div class="form-row"><label class="form-label">Website</label><input class="app-input" id="vWebsite" placeholder="https://..."></div>
+            <div class="form-row"><label class="form-label">Capacity</label><input class="app-input" id="vCapacity" placeholder="e.g. 200"></div>
+            <div class="form-row"><label class="form-label">Stage Size</label><input class="app-input" id="vStage" placeholder="e.g. 20x12 ft"></div>
+            <div class="form-row"><label class="form-label">PA System</label><input class="app-input" id="vPA" placeholder="e.g. JBL PRX, 2 monitors"></div>
+            <div class="form-row"><label class="form-label">Booking Contact</label><input class="app-input" id="vContact"></div>
+            <div class="form-row"><label class="form-label">Band Contact Owner</label><select class="app-select" id="vOwner"><option value="">Select...</option>${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join('')}</select></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="vSoundPerson"></div>
+            <div class="form-row"><label class="form-label">Sound Phone</label><input class="app-input" id="vSoundPhone"></div>
+            <div class="form-row"><label class="form-label">Typical Pay</label><input class="app-input" id="vPay" placeholder="e.g. $500/night"></div>
+            <div class="form-row"><label class="form-label">Load-in Info</label><input class="app-input" id="vLoadIn" placeholder="e.g. Back door, 5pm"></div>
+            <div class="form-row"><label class="form-label">Parking</label><input class="app-input" id="vParking" placeholder="e.g. Street parking, lot behind"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes" placeholder="Load-in, parking, stage size, PA info..."></textarea></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveVenue()">💾 Save</button><button class="btn btn-ghost" onclick="loadVenues()">Cancel</button></div>
+    </div>` + el.innerHTML;
+}
+
+function searchVenueGoogle() {
+    const q = document.getElementById('vSearchGoogle')?.value;
+    if (!q) return;
+    window.open('https://www.google.com/search?q=' + encodeURIComponent(q + ' venue'), '_blank');
+}
+
+async function saveVenue() {
+    const v = {};
+    ['Name','Address','Phone','Email','Website','Capacity','Stage','PA','Contact','Owner','SoundPerson','SoundPhone','Pay','LoadIn','Parking','Notes'].forEach(f => {
+        const id = 'v' + f, el = document.getElementById(id);
+        v[f.charAt(0).toLowerCase() + f.slice(1)] = el?.value || '';
+    });
+    if (!v.name) { alert('Venue name required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    existing.push(v);
+    await saveBandDataToDrive('_band', 'venues', existing);
+    alert('✅ Venue saved!');
+    loadVenues();
+}
+
+// ============================================================================
+// FINANCES
+// ============================================================================
+function renderFinancesPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>💰 Finances</h1><p>Income, expenses, and receipts</p></div>
+    <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-value finance-income" id="finTotalIncome">$0</div><div class="stat-label">Total Income</div></div>
+        <div class="stat-card"><div class="stat-value finance-expense" id="finTotalExpenses">$0</div><div class="stat-label">Total Expenses</div></div>
+        <div class="stat-card"><div class="stat-value" id="finBalance" style="color:var(--accent)">$0</div><div class="stat-label">Balance</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="addTransaction()" style="margin-bottom:12px">+ Add Transaction</button>
+    <div class="app-card"><h3>Transactions</h3><div id="finTransactions"><div style="text-align:center;padding:20px;color:var(--text-dim)">No transactions yet.</div></div></div>`;
+    loadFinances();
+}
+
+async function loadFinances() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'finances') || []);
+    const el = document.getElementById('finTransactions');
+    if (!el) return;
+    let totalIn = 0, totalOut = 0;
+    data.forEach(t => { if (t.type === 'income') totalIn += parseFloat(t.amount) || 0; else totalOut += parseFloat(t.amount) || 0; });
+    document.getElementById('finTotalIncome').textContent = '$' + totalIn.toFixed(2);
+    document.getElementById('finTotalExpenses').textContent = '$' + totalOut.toFixed(2);
+    const bal = totalIn - totalOut;
+    const balEl = document.getElementById('finBalance');
+    balEl.textContent = (bal >= 0 ? '$' : '-$') + Math.abs(bal).toFixed(2);
+    balEl.style.color = bal >= 0 ? 'var(--green)' : 'var(--red)';
+    
+    if (data.length === 0) return;
+    data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    el.innerHTML = `<div style="display:grid;grid-template-columns:90px 1fr 80px 60px;gap:6px;padding:6px 10px;font-size:0.7em;color:var(--text-dim);font-weight:600;text-transform:uppercase">
+        <span>Date</span><span>Description</span><span>Amount</span><span>Type</span></div>` +
+        data.map(t => `<div style="display:grid;grid-template-columns:90px 1fr 80px 60px;gap:6px;padding:8px 10px;font-size:0.85em;border-bottom:1px solid var(--border);align-items:center">
+            <span style="color:var(--text-dim)">${t.date || ''}</span>
+            <span>${t.description || ''}</span>
+            <span style="color:${t.type==='income'?'var(--green)':'var(--red)'};font-weight:600">${t.type==='income'?'+':'-'}$${parseFloat(t.amount||0).toFixed(2)}</span>
+            <span style="font-size:0.75em;color:var(--text-dim)">${t.category || ''}</span>
+        </div>`).join('');
+}
+
+function addTransaction() {
+    const el = document.getElementById('finTransactions');
+    el.innerHTML = `<div style="margin-bottom:16px;padding:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px">
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="finType"><option value="income">💵 Income</option><option value="expense">💸 Expense</option></select></div>
+            <div class="form-row"><label class="form-label">Amount ($)</label><input class="app-input" id="finAmount" type="number" step="0.01" placeholder="0.00"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="finDate" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="form-row"><label class="form-label">Category</label><select class="app-select" id="finCategory"><option value="gig_pay">Gig Pay</option><option value="merch">Merch</option><option value="tips">Tips</option><option value="equipment">Equipment</option><option value="rehearsal">Rehearsal Space</option><option value="promo">Promotion</option><option value="travel">Travel</option><option value="other">Other</option></select></div>
+        </div>
+        <div class="form-row"><label class="form-label">Description</label><input class="app-input" id="finDesc" placeholder="e.g. Buckhead Theatre gig pay"></div>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" onclick="saveTransaction()">💾 Save</button><button class="btn btn-ghost" onclick="loadFinances()">Cancel</button></div>
+    </div>` + el.innerHTML;
+}
+
+async function saveTransaction() {
+    const t = { type: document.getElementById('finType')?.value, amount: document.getElementById('finAmount')?.value,
+        date: document.getElementById('finDate')?.value, category: document.getElementById('finCategory')?.value,
+        description: document.getElementById('finDesc')?.value, created: new Date().toISOString() };
+    if (!t.amount) { alert('Amount required'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'finances') || []);
+    existing.push(t);
+    await saveBandDataToDrive('_band', 'finances', existing);
+    alert('✅ Transaction saved!');
+    loadFinances();
+}
+
+// ============================================================================
+// GUITAR TUNER
+// ============================================================================
+function renderTunerPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🎸 Guitar Tuner</h1><p>Chromatic tuner using your microphone</p></div>
+    <div class="app-card" style="text-align:center;padding:30px">
+        <div id="tunerNote" style="font-size:4em;font-weight:800;font-family:'Inter',monospace;line-height:1;margin-bottom:6px">—</div>
+        <div id="tunerOctave" style="font-size:1.2em;color:var(--text-dim);margin-bottom:16px">—</div>
+        <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:4px;position:relative;overflow:hidden;margin:0 auto;max-width:400px">
+            <div style="position:absolute;top:0;left:50%;width:2px;height:100%;background:rgba(255,255,255,0.15)"></div>
+            <div id="tunerNeedle" style="position:absolute;top:0;width:4px;height:100%;background:var(--green);border-radius:2px;left:50%;transition:left 0.1s"></div>
+        </div>
+        <div id="tunerCents" style="font-size:0.9em;color:var(--text-dim);margin-top:10px">0¢</div>
+        <div id="tunerFreq" style="font-size:0.75em;color:var(--text-dim);margin-top:4px">— Hz</div>
+        <div style="margin-top:20px;display:flex;gap:10px;justify-content:center">
+            <button class="btn btn-primary" id="tunerStartBtn" onclick="tunerToggle()">🎤 Start Tuner</button>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+            ${['E2|82.41','A2|110.00','D3|146.83','G3|196.00','B3|246.94','E4|329.63'].map(s => {
+                const [n,f] = s.split('|');
+                return `<button class="btn btn-ghost btn-sm" onclick="tunerPlayRef(${f})" title="${f} Hz">${n}</button>`;
+            }).join('')}
+        </div>
+        <div style="font-size:0.7em;color:var(--text-dim);margin-top:8px">Click a string to hear its reference tone</div>
+    </div>`;
+}
+
+let _tunerRunning = false, _tunerAnimFrame = null, _tunerStream = null;
+function tunerToggle() {
+    if (_tunerRunning) { tunerStop(); return; }
+    tunerStart();
+}
+
+async function tunerStart() {
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+        _tunerStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = mtAudioContext.createMediaStreamSource(_tunerStream);
+        const analyser = mtAudioContext.createAnalyser();
+        analyser.fftSize = 4096;
+        source.connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        _tunerRunning = true;
+        document.getElementById('tunerStartBtn').textContent = '⏹ Stop';
+        document.getElementById('tunerStartBtn').classList.remove('btn-primary');
+        document.getElementById('tunerStartBtn').classList.add('btn-danger');
+        
+        function update() {
+            analyser.getFloatTimeDomainData(buf);
+            const freq = mtAutoCorrelate(buf, mtAudioContext.sampleRate);
+            if (freq > 0) {
+                const note = mtFreqToNote(freq);
+                if (note) {
+                    document.getElementById('tunerNote').textContent = note.name;
+                    document.getElementById('tunerNote').style.color = Math.abs(note.cents) < 5 ? 'var(--green)' : Math.abs(note.cents) < 15 ? 'var(--yellow)' : 'var(--red)';
+                    document.getElementById('tunerOctave').textContent = 'Octave ' + note.octave;
+                    document.getElementById('tunerCents').textContent = (note.cents >= 0 ? '+' : '') + note.cents + '¢';
+                    document.getElementById('tunerNeedle').style.left = (50 + note.cents * 0.4) + '%';
+                    document.getElementById('tunerFreq').textContent = freq.toFixed(1) + ' Hz';
+                }
+            } else {
+                document.getElementById('tunerNote').textContent = '—';
+                document.getElementById('tunerNote').style.color = 'var(--text)';
+                document.getElementById('tunerCents').textContent = '—';
+                document.getElementById('tunerNeedle').style.left = '50%';
+            }
+            if (_tunerRunning) _tunerAnimFrame = requestAnimationFrame(update);
+        }
+        update();
+    } catch (e) { alert('Microphone access required: ' + e.message); }
+}
+
+function tunerStop() {
+    _tunerRunning = false;
+    if (_tunerAnimFrame) cancelAnimationFrame(_tunerAnimFrame);
+    if (_tunerStream) _tunerStream.getTracks().forEach(t => t.stop());
+    document.getElementById('tunerStartBtn').textContent = '🎤 Start Tuner';
+    document.getElementById('tunerStartBtn').classList.add('btn-primary');
+    document.getElementById('tunerStartBtn').classList.remove('btn-danger');
+}
+
+function tunerPlayRef(freq) {
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const o = mtAudioContext.createOscillator(), g = mtAudioContext.createGain();
+    o.connect(g); g.connect(mtAudioContext.destination);
+    o.frequency.value = freq; o.type = 'sine';
+    g.gain.setValueAtTime(0.3, mtAudioContext.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 2);
+    o.start(); o.stop(mtAudioContext.currentTime + 2);
+}
+
+// ============================================================================
+// STANDALONE METRONOME
+// ============================================================================
+function renderMetronomePage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>🥁 Metronome</h1><p>Keep time for practice</p></div>
+    <div class="app-card" style="text-align:center;padding:30px">
+        <div id="metBPMDisplay" style="font-size:4em;font-weight:800;font-family:'Inter',monospace;line-height:1">120</div>
+        <div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">BPM</div>
+        <input type="range" id="metBPMSlider" min="40" max="240" value="120" style="width:100%;max-width:400px;accent-color:var(--accent)" oninput="metUpdateBPM(this.value)">
+        <div style="display:flex;gap:6px;justify-content:center;margin:16px 0">
+            ${[60,80,100,120,140,160,180].map(b => `<button class="btn btn-ghost btn-sm" onclick="metUpdateBPM(${b})">${b}</button>`).join('')}
+        </div>
+        <div id="metBeats" style="display:flex;gap:8px;justify-content:center;margin:16px 0">${[0,1,2,3].map(i => `<div id="metBeat${i}" style="width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.08);transition:all 0.05s"></div>`).join('')}</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;align-items:center">
+            <label class="form-label" style="margin:0">Time Sig:</label>
+            <select class="app-select" id="metTimeSig" onchange="metUpdateTimeSig()" style="width:70px">${['4/4','3/4','6/8','2/4','5/4','7/8'].map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+        </div>
+        <button class="btn btn-primary" id="metStartBtn" onclick="metToggle()" style="margin-top:20px;padding:12px 32px;font-size:1.1em">▶ Start</button>
+    </div>`;
+}
+
+let _metInterval = null, _metBeat = 0, _metBeatsPerBar = 4;
+function metUpdateBPM(val) {
+    document.getElementById('metBPMDisplay').textContent = val;
+    document.getElementById('metBPMSlider').value = val;
+    if (_metInterval) { clearInterval(_metInterval); _metInterval = null; metToggle(); }
+}
+function metUpdateTimeSig() {
+    const ts = document.getElementById('metTimeSig')?.value || '4/4';
+    _metBeatsPerBar = parseInt(ts.split('/')[0]);
+    const container = document.getElementById('metBeats');
+    container.innerHTML = Array.from({length: _metBeatsPerBar}, (_, i) => `<div id="metBeat${i}" style="width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.08);transition:all 0.05s"></div>`).join('');
+    if (_metInterval) { clearInterval(_metInterval); _metInterval = null; metToggle(); }
+}
+function metToggle() {
+    if (_metInterval) {
+        clearInterval(_metInterval); _metInterval = null;
+        document.getElementById('metStartBtn').textContent = '▶ Start';
+        document.getElementById('metStartBtn').classList.remove('btn-danger');
+        document.getElementById('metStartBtn').classList.add('btn-primary');
+        return;
+    }
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    mtAudioContext.resume();
+    const bpm = parseInt(document.getElementById('metBPMSlider')?.value) || 120;
+    _metBeat = 0;
+    document.getElementById('metStartBtn').textContent = '⏹ Stop';
+    document.getElementById('metStartBtn').classList.add('btn-danger');
+    document.getElementById('metStartBtn').classList.remove('btn-primary');
+    
+    function tick() {
+        const isDown = _metBeat % _metBeatsPerBar === 0;
+        const o = mtAudioContext.createOscillator(), g = mtAudioContext.createGain();
+        o.connect(g); g.connect(mtAudioContext.destination);
+        o.frequency.value = isDown ? 1000 : 700;
+        g.gain.setValueAtTime(0.4, mtAudioContext.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, mtAudioContext.currentTime + 0.08);
+        o.start(); o.stop(mtAudioContext.currentTime + 0.08);
+        for (let i = 0; i < _metBeatsPerBar; i++) {
+            const el = document.getElementById('metBeat' + i);
+            if (el) {
+                const active = i === _metBeat % _metBeatsPerBar;
+                el.style.background = active ? (isDown ? 'var(--red)' : 'var(--accent)') : 'rgba(255,255,255,0.08)';
+                el.style.transform = active ? 'scale(1.4)' : 'scale(1)';
+            }
+        }
+        _metBeat++;
+    }
+    tick();
+    _metInterval = setInterval(tick, 60000 / bpm);
+}
+
+console.log('🎸 Deadcetera Band App modules loaded');
+
+// Register new pages
+pageRenderers.equipment = renderEquipmentPage;
+pageRenderers.contacts = renderContactsPage;
+pageRenderers.admin = renderSettingsPage;
+
+// ---- SETTINGS (Enhanced with tabs) ----
+function renderSettingsPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>⚙️ Settings & Admin</h1><p>Configuration, band management, support</p></div>
+    <div class="tab-bar" id="settingsTabs">
+        <button class="tab-btn active" onclick="settingsTab('profile',this)">👤 Profile</button>
+        <button class="tab-btn" onclick="settingsTab('band',this)">🎸 Band</button>
+        <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
+        <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Feedback</button>
+        <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
+    </div>
+    <div id="settingsContent"></div>`;
+    settingsTab('profile');
+}
+
+function settingsTab(tab, btn) {
+    if (btn) document.querySelectorAll('#settingsTabs .tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const el = document.getElementById('settingsContent');
+    if (!el) return;
+    const cu = localStorage.getItem('deadcetera_current_user') || '';
+    const ci = localStorage.getItem('deadcetera_instrument') || '';
+    const bn = localStorage.getItem('deadcetera_band_name') || 'Deadcetera';
+    
+    const panels = {
+    profile: `
+        <div class="app-card"><h3>👤 Your Profile</h3>
+            <div class="form-grid">
+                <div class="form-row"><label class="form-label">Who are you?</label>
+                    <select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value)">
+                        <option value="">Select your name...</option>
+                        ${Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(cu===k?' selected':'')+'>'+m.name+' — '+m.role+'</option>').join('')}
+                    </select></div>
+                <div class="form-row"><label class="form-label">Primary Instrument</label>
+                    <select class="app-select" id="settingsInst" onchange="localStorage.setItem('deadcetera_instrument',this.value)">
+                        <option value="">Select...</option>
+                        ${['bass|🎸 Bass','leadGuitar|🎸 Lead Guitar','rhythmGuitar|🎸 Rhythm Guitar','keys|🎹 Keys','drums|🥁 Drums','vocals|🎤 Vocals'].map(o=>{const[v,l]=o.split('|');return'<option value="'+v+'"'+(ci===v?' selected':'')+'>'+l+'</option>';}).join('')}
+                    </select></div>
+            </div>
+            <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
+                🔗 Google: <span style="color:var(--text-muted)">${localStorage.getItem('deadcetera_google_email')||'Not connected'}</span>
+            </div>
+        </div>
+        <div class="app-card"><h3>🔔 Preferences</h3>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px" checked> Auto-save recordings to Google Drive
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px" checked> Show status badges in song list
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px"> Enable metronome count-in by default
+            </label>
+        </div>`,
+        
+    band: `
+        <div class="app-card"><h3>🎸 Band Configuration</h3>
+            <div class="form-row"><label class="form-label">Band Name</label>
+                <div style="display:flex;gap:8px"><input class="app-input" id="setBandName" value="${bn}">
+                <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_band_name',document.getElementById('setBandName').value);alert('✅ Updated!')">Save</button></div></div>
+            <div class="form-row" style="margin-top:12px"><label class="form-label">Band Logo</label>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
+                    <div><input type="file" accept="image/*" class="app-input" style="padding:6px;font-size:0.82em">
+                    <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in header.</div></div>
+                </div></div>
+        </div>
+        <div class="app-card"><h3>👥 Band Members</h3>
+            <div id="membersList">${Object.entries(bandMembers).map(([k,m])=>`
+                <div class="list-item" style="padding:10px 12px">
+                    <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;color:var(--accent-light)">${m.name.charAt(0)}</div>
+                    <div style="flex:1"><div style="font-weight:600;font-size:0.9em">${m.name}</div>
+                        <div style="font-size:0.75em;color:var(--text-dim)">${m.role}${m.sings?' · Vocals':''}${m.leadVocals?' (Lead)':''}</div></div>
+                    <button class="btn btn-sm btn-ghost" onclick="editMember('${k}')" title="Edit">✏️</button>
+                    <button class="btn btn-sm btn-ghost" onclick="removeMember('${k}')" title="Remove" style="color:var(--red)">✕</button>
+                </div>`).join('')}</div>
+            <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border:1px dashed var(--border);border-radius:8px">
+                <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
+                <div class="form-grid">
+                    <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="newMemberName" placeholder="First name"></div>
+                    <div class="form-row"><label class="form-label">Role</label><input class="app-input" id="newMemberRole" placeholder="e.g. Lead Guitar"></div>
+                    <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
+                    <div class="form-row"><label class="form-label">Sings?</label><select class="app-select" id="newMemberSings"><option value="no">No</option><option value="harmony">Harmony</option><option value="lead">Lead + Harmony</option></select></div>
+                </div>
+                <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">➕ Add Member</button>
+            </div>
+        </div>`,
+        
+    data: `
+        <div class="app-card"><h3>📊 Data Management</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                <button class="btn btn-ghost" onclick="showAdminPanel()">📈 Activity Dashboard</button>
+                <button class="btn btn-ghost" onclick="exportAllData()">💾 Export All Data</button>
+                <button class="btn btn-ghost" style="color:var(--red)" onclick="if(confirm('Clear local cache? You\\'ll need to re-select your profile.')){localStorage.clear();location.reload()}">🗑 Clear Cache</button>
+            </div>
+            <div style="font-size:0.82em;color:var(--text-dim);padding:10px;background:rgba(255,255,255,0.03);border-radius:8px">
+                <div>💾 Backend: Firebase Realtime DB (<code style="color:var(--accent-light)">deadcetera-35424</code>)</div>
+                <div>📁 Files: Google Drive (shared folder)</div>
+                <div>🌐 Hosting: GitHub Pages</div>
+                <div style="margin-top:6px">📊 Songs in database: <b style="color:var(--text)">${(typeof allSongs!=='undefined'?allSongs:[]).length}</b></div>
+            </div>
+        </div>
+        <div class="app-card"><h3>🔄 Sync Status</h3>
+            <div id="syncStatus" style="font-size:0.85em;color:var(--text-muted)">Checking...</div>
+        </div>`,
+        
+    feedback: `
+        <div class="app-card"><h3>🐛 Report Bug / Request Feature</h3>
+            <div class="form-row"><label class="form-label">Type</label>
+                <select class="app-select" id="fbType"><option value="bug">🐛 Bug Report</option><option value="feature">💡 Feature Request</option><option value="other">💬 General Feedback</option></select></div>
+            <div class="form-row"><label class="form-label">Priority</label>
+                <select class="app-select" id="fbPriority"><option value="low">🟢 Low</option><option value="medium">🟡 Medium</option><option value="high">🔴 High</option></select></div>
+            <div class="form-row"><label class="form-label">Description</label>
+                <textarea class="app-textarea" id="fbDesc" placeholder="Describe the issue or feature idea in detail..."></textarea></div>
+            <div class="form-row"><label class="form-label">Screenshot (optional)</label>
+                <input type="file" id="fbFile" accept="image/*" class="app-input" style="padding:8px"></div>
+            <button class="btn btn-primary" onclick="submitFeedback()">📤 Submit Feedback</button>
+        </div>
+        <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
+        
+    about: `
+        <div class="app-card"><h3>ℹ️ About Deadcetera</h3>
+            <div style="text-align:center;padding:16px 0">
+                <div style="font-size:2.5em;margin-bottom:8px">🎸</div>
+                <div style="font-size:1.3em;font-weight:800;background:linear-gradient(135deg,#667eea,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${bn}</div>
+                <div style="font-size:0.85em;color:var(--text-dim);margin-top:4px">Band HQ — Less admin. More jams. 🤘</div>
+            </div>
+            <div style="font-size:0.85em;line-height:2;color:var(--text-muted)">
+                ${[['Version','3.1.0'],['Build','2026.02.21'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+            </div>
+            <div style="margin-top:16px;text-align:center;font-size:0.78em;color:var(--text-dim);line-height:1.6">
+                © 2025–2026 Drew Merrill. All rights reserved.<br>
+                Built with ❤️ for live music.<br>
+                <a href="https://github.com" target="_blank" style="color:var(--accent-light)">GitHub</a> · 
+                <a href="mailto:drewmerrill1029@gmail.com" style="color:var(--accent-light)">Contact</a>
+            </div>
+        </div>`
+    };
+    
+    el.innerHTML = panels[tab] || panels.profile;
+    
+    // Post-render: load feedback history
+    if (tab === 'feedback') loadFeedbackHistory();
+    if (tab === 'data') checkSyncStatus();
+}
+
+async function loadFeedbackHistory() {
+    const el = document.getElementById('fbHistory');
+    if (!el) return;
+    try {
+        const data = toArray(await loadBandDataFromDrive('_band','feedback') || []);
+        if (!data.length) { el.innerHTML = 'No feedback submitted yet.'; return; }
+        data.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+        el.innerHTML = data.slice(0,10).map(f => `<div class="list-item" style="padding:8px 10px;font-size:0.85em">
+            <span style="min-width:20px">${f.type==='bug'?'🐛':f.type==='feature'?'💡':'💬'}</span>
+            <div style="flex:1"><div>${f.description?.substring(0,80)||'No description'}${f.description?.length>80?'...':''}</div>
+            <div style="font-size:0.75em;color:var(--text-dim)">${f.user||'anon'} · ${f.date?new Date(f.date).toLocaleDateString():''}</div></div>
+        </div>`).join('');
+    } catch(e) { el.innerHTML = 'Could not load feedback.'; }
+}
+
+function checkSyncStatus() {
+    const el = document.getElementById('syncStatus');
+    if (!el) return;
+    const isAuth = !!localStorage.getItem('deadcetera_google_email');
+    el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${isAuth?'var(--green)':'var(--yellow)'}"></span>
+            Google Drive: ${isAuth?'Connected':'Not connected'}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
+            Firebase: Active
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
+            Local Storage: ${Object.keys(localStorage).filter(k=>k.startsWith('deadcetera')).length} keys cached
+        </div>`;
+}
+
+function addNewMember() {
+    const name = document.getElementById('newMemberName')?.value;
+    const role = document.getElementById('newMemberRole')?.value;
+    const sings = document.getElementById('newMemberSings')?.value;
+    if (!name) { alert('Name required'); return; }
+    const key = name.toLowerCase().replace(/\s/g,'');
+    bandMembers[key] = { name, role: role||'Member', sings: sings!=='no', leadVocals: sings==='lead', harmonies: sings!=='no' };
+    alert('✅ ' + name + ' added! Note: To make permanent, update data.js on GitHub.');
+    settingsTab('band');
+}
+
+function removeMember(key) {
+    if (!confirm('Remove ' + (bandMembers[key]?.name||key) + ' from the band roster?')) return;
+    delete bandMembers[key];
+    alert('Removed. Update data.js on GitHub to make permanent.');
+    settingsTab('band');
+}
+
+function editMember(key) {
+    const m = bandMembers[key];
+    if (!m) return;
+    const newRole = prompt('Role for ' + m.name + ':', m.role);
+    if (newRole !== null) { m.role = newRole; settingsTab('band'); }
+}
+
+function exportAllData() {
+    const data = {};
+    Object.keys(localStorage).filter(k => k.startsWith('deadcetera')).forEach(k => { data[k] = localStorage.getItem(k); });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'deadcetera-backup-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+}
+
+async function submitFeedback() {
+    const d = document.getElementById('fbDesc')?.value;
+    if (!d) { alert('Please describe the issue.'); return; }
+    const fb = { type: document.getElementById('fbType')?.value, priority: document.getElementById('fbPriority')?.value, description: d, user: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() };
+    const ex = toArray(await loadBandDataFromDrive('_band','feedback')||[]);
+    ex.push(fb);
+    await saveBandDataToDrive('_band','feedback', ex);
+    alert('✅ Feedback submitted! Thanks.');
+    document.getElementById('fbDesc').value = '';
+    loadFeedbackHistory();
+}
+
+// ---- EQUIPMENT (#28) ----
+function renderEquipmentPage(el){el.innerHTML=`<div class="page-header"><h1>🎛️ Equipment</h1><p>Band gear inventory</p></div><button class="btn btn-primary" onclick="addEquipment()" style="margin-bottom:12px">+ Add Gear</button><div id="equipList"></div>`;loadEquipment();}
+async function loadEquipment(){const d=toArray(await loadBandDataFromDrive('_band','equipment')||[]);const el=document.getElementById('equipList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet.</div>';return;}const g={};d.forEach(i=>{const o=i.owner||'shared';if(!g[o])g[o]=[];g[o].push(i);});el.innerHTML=Object.entries(g).map(([o,items])=>`<div class="app-card"><h3>${bandMembers[o]?.name||'Shared/Band'}</h3>${items.map(i=>`<div class="list-item" style="padding:8px 10px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${i.name||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${[i.category,i.brand,i.model].filter(Boolean).join(' · ')}</div></div>${i.manualUrl?'<a href="'+i.manualUrl+'" target="_blank" class="btn btn-sm btn-ghost">📄</a>':''}</div>`).join('')}</div>`).join('');}
+function addEquipment(){const el=document.getElementById('equipList');el.innerHTML=`<div class="app-card"><h3>Add Gear</h3><div class="form-grid">${[['Name','eqN',''],['Category','eqC','select:amp,guitar,pedal,mic,cable,pa,drum,keys,other'],['Brand','eqB',''],['Model','eqM',''],['Owner','eqO','members'],['Serial #','eqS',''],['Manual URL','eqU',''],['Value ($)','eqV','number']].map(([l,id,t])=>{if(t==='members')return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'">'+m.name+'</option>').join('')+'</select></div>';if(t.startsWith('select:'))return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(v=>'<option value="'+v+'">'+v+'</option>').join('')+'</select></div>';return'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'"></div>';}).join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="eqNotes"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveEquip()">💾 Save</button><button class="btn btn-ghost" onclick="loadEquipment()">Cancel</button></div></div>`+el.innerHTML;}
+async function saveEquip(){const eq={name:document.getElementById('eqN')?.value,category:document.getElementById('eqC')?.value,brand:document.getElementById('eqB')?.value,model:document.getElementById('eqM')?.value,owner:document.getElementById('eqO')?.value,serial:document.getElementById('eqS')?.value,manualUrl:document.getElementById('eqU')?.value,value:document.getElementById('eqV')?.value,notes:document.getElementById('eqNotes')?.value};if(!eq.name){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','equipment')||[]);ex.push(eq);await saveBandDataToDrive('_band','equipment',ex);alert('✅ Saved!');loadEquipment();}
+
+// ---- CONTACTS (#27) ----
+function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
+async function loadContacts(){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const el=document.getElementById('ctList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No contacts yet.</div>';return;}el.innerHTML=d.map(c=>`<div class="list-item" style="padding:10px 12px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${c.firstName||''} ${c.lastName||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${c.title||''} ${c.company?'@ '+c.company:''}</div></div><div style="display:flex;gap:10px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">${c.email?'<span>📧 '+c.email+'</span>':''}${c.cell?'<span>📱 '+c.cell+'</span>':''}</div></div>`).join('');}
+function addContact(){const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Add Contact</h3><div class="form-grid">${[['First Name','ctF'],['Last Name','ctL'],['Email','ctE'],['Cell','ctP'],['Title','ctT'],['Company/Venue','ctC']].map(([l,id])=>'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'"></div>').join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="ctN"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCt()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
+async function saveCt(){const c={firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};if(!c.firstName&&!c.lastName){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','contacts')||[]);ex.push(c);await saveBandDataToDrive('_band','contacts',ex);alert('✅ Saved!');loadContacts();}
+
+// ---- FIX #11: Step 2 header ----
+if(typeof document!=='undefined'){const obs=new MutationObserver(()=>{const s=document.getElementById('step2');if(s&&!s.classList.contains('hidden')){const h=s.querySelector('h2');if(h&&typeof selectedSong!=='undefined'&&selectedSong&&!h.dataset.patched){h.dataset.patched='true';h.innerHTML='🎸 Steps to Master: <span style="color:var(--accent-light,#818cf8)">'+selectedSong.title+'</span>';}}});document.addEventListener('DOMContentLoaded',()=>{const s=document.getElementById('step2');if(s)obs.observe(s,{attributes:true,attributeFilter:['class']});});}
+
+console.log('📦 Settings, Equipment, Contacts loaded');
+
+// Band dropdown filter (#7)
+function filterByBand(band) {
+    currentFilter = band || 'all';
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
+}
+
+// ---- MOISES ENHANCED (#18) ----
+function moisesAddYouTube() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const container = document.getElementById('moisesStemsContainer');
+    container.innerHTML = `
+    <div class="app-card" style="background:rgba(255,255,255,0.03)">
+        <h4 style="color:var(--accent-light);margin-bottom:10px">📺 Add YouTube Link for Stem Separation</h4>
+        <div class="form-row"><label class="form-label">YouTube URL</label>
+            <input class="app-input" id="moisesYTUrl" placeholder="https://youtube.com/watch?v=..."></div>
+        <div class="form-row"><label class="form-label">Version Description</label>
+            <input class="app-input" id="moisesYTDesc" placeholder="e.g. Grateful Dead 5/8/77 Cornell"></div>
+        <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
+            <b>Workflow:</b> Copy the YouTube link → Go to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> → 
+            Paste link → Download separated stems → Upload stems back here<br>
+            <b>Note:</b> Moises has a 20-minute limit. Use the Show Splitter for longer recordings.
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveMoisesYTLink()">💾 Save Link</button>
+            <button class="btn btn-ghost" onclick="window.open('https://moises.ai','_blank')">🔗 Open Moises</button>
+            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveMoisesYTLink() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const url = document.getElementById('moisesYTUrl')?.value;
+    const desc = document.getElementById('moisesYTDesc')?.value;
+    if (!url) { alert('URL required'); return; }
+    const existing = await loadMoisesStems(songTitle) || {};
+    if (!existing.sourceLinks) existing.sourceLinks = [];
+    existing.sourceLinks.push({ url, description: desc, type: 'youtube', addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() });
+    existing.sourceVersion = desc || url;
+    await saveMoisesStems(songTitle, existing);
+    alert('✅ YouTube link saved!');
+    renderMoisesStems(songTitle, bandKnowledgeBase[songTitle]||{});
+}
+
+function moisesShowSplitter() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const container = document.getElementById('moisesStemsContainer');
+    container.innerHTML = `
+    <div class="app-card" style="background:rgba(255,255,255,0.03)">
+        <h4 style="color:var(--yellow);margin-bottom:10px">✂️ Show Splitter — Break Long Recordings for Moises</h4>
+        <p style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">
+            Moises.ai has a <b>20-minute limit</b>. If you have a full show recording, you need to split it into sections first.
+        </p>
+        <div class="form-row"><label class="form-label">Source URL or File</label>
+            <input class="app-input" id="splitterSource" placeholder="YouTube URL or archive.org link"></div>
+        <div class="form-row"><label class="form-label">Song start time</label>
+            <input class="app-input" id="splitterStart" placeholder="e.g. 45:30 (minutes:seconds)"></div>
+        <div class="form-row"><label class="form-label">Song end time</label>
+            <input class="app-input" id="splitterEnd" placeholder="e.g. 52:15"></div>
+        <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
+            <b>How to split:</b><br>
+            1. Note the start/end times for "${songTitle}" in the recording<br>
+            2. Use a free tool like <a href="https://mp3cut.net" target="_blank" style="color:var(--accent-light)">mp3cut.net</a> or 
+               <a href="https://audiotrimmer.com" target="_blank" style="color:var(--accent-light)">audiotrimmer.com</a><br>
+            3. Download the trimmed clip (under 20 min)<br>
+            4. Upload to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> for stem separation<br>
+            5. Upload the stems back here
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveSplitterInfo()">💾 Save Timestamps</button>
+            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveSplitterInfo() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const source = document.getElementById('splitterSource')?.value;
+    const start = document.getElementById('splitterStart')?.value;
+    const end = document.getElementById('splitterEnd')?.value;
+    const existing = await loadMoisesStems(songTitle) || {};
+    existing.showSplitter = { source, startTime: start, endTime: end, addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() };
+    await saveMoisesStems(songTitle, existing);
+    alert('✅ Timestamps saved!');
+    renderMoisesStems(songTitle, bandKnowledgeBase[songTitle]||{});
+}
+
+// ---- SETLIST SONG HISTORY (#24) ----
+// Store gig history for hover tooltips
+window._gigHistory = null;
+async function loadGigHistory() {
+    if (window._gigHistory) return window._gigHistory;
+    try {
+        const gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        const history = {};
+        setlists.forEach(sl => {
+            (sl.sets || []).forEach((set, si) => {
+                (set.songs || []).forEach((song, songIdx) => {
+                    const title = typeof song === 'string' ? song : song.title;
+                    if (!title) return;
+                    if (!history[title]) history[title] = [];
+                    const isOpener = songIdx === 0;
+                    const isCloser = songIdx === (set.songs.length - 1);
+                    const setName = set.name || ('Set ' + (si+1));
+                    const isEncore = setName.toLowerCase().includes('encore');
+                    let position = 'middle';
+                    if (isEncore) position = 'encore';
+                    else if (isOpener) position = 'opener';
+                    else if (isCloser) position = 'closer';
+                    history[title].push({ date: sl.date || '', venue: sl.venue || sl.name || '', position, set: setName });
+                });
+            });
+        });
+        // Sort each song's history by date descending
+        Object.values(history).forEach(arr => arr.sort((a,b) => (b.date||'').localeCompare(a.date||'')));
+        window._gigHistory = history;
+        return history;
+    } catch(e) { console.log('Gig history load error:', e); return {}; }
+}
+
+function getSongHistoryTooltip(title) {
+    const h = window._gigHistory?.[title];
+    if (!h || !h.length) return 'No gig history for this song yet';
+    return h.slice(0, 8).map(g => {
+        const posIcon = g.position === 'opener' ? '🟢' : g.position === 'closer' ? '🔴' : g.position === 'encore' ? '⭐' : '·';
+        return `${g.date||'?'} — ${g.venue||'?'} ${posIcon} ${g.position}`;
+    }).join('\n') + (h.length > 8 ? '\n... +' + (h.length-8) + ' more' : '');
+}
+
+// ---- TAB BAR CSS ----
+(function(){
+    if(document.getElementById('tab-bar-css'))return;
+    const s=document.createElement('style');s.id='tab-bar-css';
+    s.textContent=`
+        .tab-bar{display:flex;gap:6px;overflow-x:auto;padding:4px;background:rgba(255,255,255,0.03);border-radius:10px;margin-bottom:16px;scrollbar-width:none}
+        .tab-bar::-webkit-scrollbar{display:none}
+        .tab-btn{background:none;border:none;color:#64748b;padding:8px 14px;font-size:0.82em;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:all 0.15s;font-family:inherit}
+        .tab-btn:hover{color:#cbd5e1;background:rgba(255,255,255,0.06)}
+        .tab-btn.active{color:#ffffff;background:#667eea}
+    `;
+    document.head.appendChild(s);
+})();
+
+console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
+
+// ============================================================================
+// HELP & GUIDE
+// ============================================================================
+const helpTopics = [
+    { id:'getting-started', icon:'🚀', title:'Getting Started', content:`
+        <p><strong>Welcome to Deadcetera!</strong> This app is your band's central hub for learning songs, managing setlists, tracking gigs, and collaborating on harmonies.</p>
+        <ol>
+            <li><strong>Sign In</strong> — Click "Connect" in the top right to sign in with Google. This syncs your data across all band members via Firebase.</li>
+            <li><strong>Pick a Song</strong> — Use the Song Library to search or filter by band (GD, JGB, WSP, Phish). Click a song to see its resources.</li>
+            <li><strong>Learn It</strong> — Each song has tabs/chords, reference versions, practice tracks, and YouTube lessons.</li>
+            <li><strong>Track Progress</strong> — Set song statuses (Gig Ready, Needs Polish, On Deck, This Week) so everyone knows where things stand.</li>
+        </ol>`},
+    { id:'song-library', icon:'🎵', title:'Song Library', content:`
+        <p>The Song Library (Step 1) contains all ${typeof allSongs!=='undefined'?allSongs.length:'350+' } songs in the band's repertoire.</p>
+        <p><strong>Filters:</strong> Use the Band dropdown to show only GD, JGB, WSP, or Phish songs. Use Status to filter by readiness. Check "Harmonies" to see only songs with documented vocal parts.</p>
+        <p><strong>Badges:</strong> 🎤 = has vocal harmonies documented. Status pills (READY, POLISH, ON DECK, THIS WEEK) show the song's current state.</p>
+        <p><strong>Selecting a song</strong> opens its full resource page with tabs, reference versions, practice tracks, harmonies, and performance notes.</p>`},
+    { id:'reference-versions', icon:'🎧', title:'Reference Versions & Voting', content:`
+        <p>Each song can have multiple reference versions (Spotify, YouTube, Apple Music, Archive.org, etc.).</p>
+        <p><strong>Adding:</strong> Click "+ Add Reference Version" and paste any music URL.</p>
+        <p><strong>Voting:</strong> Band members vote on their preferred version. When 3+ members vote for the same version, it becomes the "Band Choice" (👑).</p>
+        <p><strong>Platform support:</strong> Spotify, YouTube, Apple Music, Tidal, SoundCloud, Archive.org, and any direct link.</p>`},
+    { id:'harmonies', icon:'🎤', title:'Harmonies & Vocal Parts', content:`
+        <p>The Harmony Section Builder lets you document which songs have vocal harmonies and who sings what.</p>
+        <p><strong>Adding harmonies:</strong> Click "Add Harmony Section" on any song. You can paste the lyrics, tag sections (Verse, Chorus, Bridge), and assign singers to each part.</p>
+        <p><strong>Part tracking:</strong> Each section shows who sings lead, who harmonizes, and practice notes for that section.</p>
+        <p><strong>Recording:</strong> The multi-track recorder (Step 5) lets you record harmony parts with metronome, looping, and individual track mixing.</p>`},
+    { id:'practice-tracks', icon:'🎸', title:'Practice Tracks & Moises', content:`
+        <p>Practice tracks are organized by instrument (Vocals, Lead Guitar, Rhythm Guitar, Bass, Keys, Drums).</p>
+        <p><strong>Adding tracks:</strong> Upload audio files or paste URLs to learning resources for each instrument.</p>
+        <p><strong>Moises Integration:</strong> Use the Moises workflow to separate stems from recordings:</p>
+        <ol>
+            <li>Add a YouTube link or upload an MP3</li>
+            <li>Go to moises.ai and paste the link</li>
+            <li>Download the separated stems</li>
+            <li>Upload stems back to Deadcetera</li>
+        </ol>
+        <p><strong>Show Splitter:</strong> For long recordings (>20 min), use the Show Splitter to note timestamps and trim clips before sending to Moises.</p>`},
+    { id:'setlists', icon:'📋', title:'Building Setlists', content:`
+        <p>Create setlists for upcoming gigs with drag-and-drop song ordering.</p>
+        <p><strong>Creating:</strong> Click "+ New Setlist", name it, set the date/venue, then search and add songs to each set.</p>
+        <p><strong>Sets:</strong> Add multiple sets, encores, and soundcheck lists. Mark transitions between songs with the → button.</p>
+        <p><strong>Gig History:</strong> Hover over any song in a setlist to see its gig history — where and when you've played it before, and its position (opener, closer, encore).</p>`},
+    { id:'gigs', icon:'🎤', title:'Gigs & Venues', content:`
+        <p>Track past and upcoming shows with venue details, pay, sound person, and linked setlists.</p>
+        <p><strong>Seed Data:</strong> Click "🌱 Seed Demo Data" on the Gigs page to import your past gig history from the master spreadsheet.</p>
+        <p><strong>Venues:</strong> Store venue info including address, capacity, stage size, PA system, load-in details, parking, and booking contacts.</p>`},
+    { id:'status-system', icon:'📊', title:'Song Status System', content:`
+        <p>Every song can have a status to track band readiness:</p>
+        <p>🎯 <strong>THIS WEEK</strong> — Focus songs for this week's rehearsal<br>
+        ✅ <strong>GIG READY</strong> — Solid enough to play live<br>
+        ⚠️ <strong>NEEDS POLISH</strong> — We know it but need more work<br>
+        📚 <strong>ON DECK</strong> — Next up to learn</p>
+        <p>Set status from any song's detail page. Filter the Song Library by status to focus rehearsals.</p>`},
+    { id:'recorder', icon:'🎙️', title:'Multi-Track Recorder', content:`
+        <p>Record harmony parts and practice takes directly in the app.</p>
+        <p><strong>Features:</strong> Built-in metronome with count-in, looping, multiple takes, individual track mixing (volume, pan, mute/solo), latency calibration, and WAV export.</p>
+        <p><strong>Karaoke mode:</strong> Play a backing track while recording your part.</p>
+        <p><strong>Tips:</strong> Use headphones to avoid bleed. Calibrate latency once for your device. Record in a quiet space.</p>`},
+    { id:'tools', icon:'🛠️', title:'Tools (Tuner, Metronome)', content:`
+        <p><strong>Guitar Tuner:</strong> Uses your device microphone to detect pitch. Supports standard and alternate tunings.</p>
+        <p><strong>Metronome:</strong> Tap tempo, adjustable BPM, time signatures, and accent patterns. BPM is saved per-song.</p>`},
+    { id:'data-sync', icon:'☁️', title:'Data & Sync', content:`
+        <p>All band data syncs through Firebase Realtime Database. When you sign in with Google, your changes are visible to all band members.</p>
+        <p><strong>What syncs:</strong> Song statuses, reference versions & votes, harmonies, practice tracks, rehearsal notes, setlists, gigs, venues, and performance tips.</p>
+        <p><strong>What's local:</strong> Your instrument preference, display settings, and search history stay on your device.</p>
+        <p><strong>Backup:</strong> Use Settings → Data → Export All Data to download a JSON backup of your local data.</p>`},
+    { id:'troubleshooting', icon:'🔧', title:'Troubleshooting', content:`
+        <p><strong>Can't sign in?</strong> Try a different browser. Edge sometimes blocks Google API calls. Chrome works best.</p>
+        <p><strong>Data not loading?</strong> Check your internet connection. Try signing out and back in. Use Settings → Data → Clear Cache if stale.</p>
+        <p><strong>Audio not working on iPhone?</strong> iOS requires a user gesture before playing audio. Tap a play button first.</p>
+        <p><strong>Songs not filtering?</strong> Wait for statuses to load (they cache in the background on first sign-in).</p>
+        <p><strong>Lost data?</strong> Firebase stores everything server-side. Sign in again to restore. Local-only data can be exported/imported via Settings.</p>`},
+];
+
+function renderHelpPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>❓ Help & Guide</h1><p>How to use Deadcetera</p></div>
+    <div style="margin-bottom:16px">
+        <input class="app-input" id="helpSearch" placeholder="Search help topics..." oninput="filterHelpTopics(this.value)" style="max-width:400px">
+    </div>
+    <div id="helpTopics">
+        ${helpTopics.map(t => `
+            <details class="app-card" style="cursor:pointer" id="help-${t.id}">
+                <summary style="font-weight:600;font-size:0.95em;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px">
+                    <span style="font-size:1.2em">${t.icon}</span>
+                    <span>${t.title}</span>
+                    <span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">▶</span>
+                </summary>
+                <div style="padding:10px 0 4px;font-size:0.88em;color:var(--text-muted);line-height:1.6">${t.content}</div>
+            </details>
+        `).join('')}
+    </div>`;
+}
+
+function filterHelpTopics(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('#helpTopics details').forEach(d => {
+        const text = d.textContent.toLowerCase();
+        d.style.display = text.includes(q) ? '' : 'none';
+        if (q.length > 2 && text.includes(q)) d.open = true;
+    });
+}
