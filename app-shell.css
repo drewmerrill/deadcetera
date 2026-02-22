@@ -91,21 +91,21 @@ a{color:var(--accent-light);}
 /* EVERY child div in songDropdown = a song row */
 #songDropdown > div {
     display:grid!important;
-    grid-template-columns:1fr auto auto!important;
+    grid-template-columns:1fr 28px 80px 52px!important;
     align-items:center!important;
-    gap:8px!important;
-    padding:10px 14px!important;
-    background:var(--bg-card)!important;
-    border:1px solid var(--border)!important;
+    gap:4px!important;
+    padding:10px 12px!important;
+    background:#1e293b!important;
+    border:1px solid rgba(255,255,255,0.08)!important;
     border-radius:8px!important;
     margin-bottom:3px!important;
     cursor:pointer!important;
-    transition:all 0.12s ease!important;
-    color:var(--text)!important;
+    color:#f1f5f9!important;
 }
-#songDropdown > div:hover{background:rgba(102,126,234,0.1)!important;border-color:rgba(102,126,234,0.3)!important;}
-#songDropdown > div.selected{background:rgba(102,126,234,0.2)!important;border-color:var(--accent)!important;}
-#songDropdown > div.selected .song-name{color:#e0e7ff!important;}
+#songDropdown > div:hover{background:#263248!important;border-color:rgba(102,126,234,0.25)!important;}
+#songDropdown > div.selected{background:#2d3a5c!important;border-color:#667eea!important;}
+#songDropdown > div.selected *{color:inherit!important;}
+#songDropdown > div.selected .song-name{color:#c7d2fe!important;}
 
 /* Song name text — MUST be visible */
 #songDropdown > div .song-name,

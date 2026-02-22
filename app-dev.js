@@ -24,78 +24,87 @@
         /* ===== SONG LIST (DARK THEME) ===== */
         .song-item {
             display: grid;
-            grid-template-columns: 1fr auto auto auto;
+            grid-template-columns: 1fr 28px 80px 52px;
             align-items: center;
-            gap: 8px;
-            padding: 10px 14px;
-            min-height: 44px;
-            background: #1e293b;
-            border: 1px solid rgba(255,255,255,0.08);
+            gap: 4px;
+            padding: 10px 12px;
+            min-height: 42px;
+            background: #1e293b !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
             border-radius: 8px;
             margin-bottom: 3px;
             cursor: pointer;
-            transition: all 0.12s ease;
-            color: #f1f5f9;
+            transition: background 0.12s, border-color 0.12s;
+            color: #f1f5f9 !important;
         }
         .song-item:hover {
-            background: rgba(102,126,234,0.08);
-            border-color: rgba(102,126,234,0.2);
+            background: #263248 !important;
+            border-color: rgba(102,126,234,0.25) !important;
         }
         .song-item.selected {
-            background: rgba(102,126,234,0.15);
-            border-color: rgba(102,126,234,0.5);
+            background: #2d3a5c !important;
+            border-color: #667eea !important;
         }
-        .song-item.selected .song-name { color: #c7d2fe; }
+        .song-item.selected * { color: inherit !important; }
+        .song-item.selected .song-name { color: #c7d2fe !important; }
+        .song-item.selected .song-badge { opacity: 1 !important; }
         .song-name {
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            color: #f1f5f9;
+            color: #f1f5f9 !important;
             font-weight: 500;
-            font-size: 0.92em;
+            font-size: 0.9em;
+            line-height: 1.3;
         }
-        /* Badges column: harmony + status sit together */
+        /* Harmony badge column - fixed 28px */
         .song-badges {
             display: flex;
             align-items: center;
-            gap: 4px;
-            justify-self: end;
+            justify-content: center;
+            width: 28px;
         }
         .harmony-badge {
-            flex-shrink: 0;
-            font-size: 0.8em;
+            font-size: 0.75em;
             line-height: 1;
             background: rgba(129,140,248,0.2);
-            padding: 3px 5px;
-            border-radius: 6px;
+            padding: 2px 4px;
+            border-radius: 5px;
             border: 1px solid rgba(129,140,248,0.3);
             display: inline-flex;
             align-items: center;
             justify-content: center;
         }
+        /* Status badge column - fixed 80px */
         .status-badge {
-            flex-shrink: 0;
             white-space: nowrap;
-            font-size: 0.65em;
-            padding: 2px 7px;
+            font-size: 0.6em;
+            padding: 2px 6px;
             border-radius: 10px;
             font-weight: 700;
             letter-spacing: 0.02em;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
+            min-width: 70px;
+            text-align: center;
+            box-sizing: border-box;
         }
+        /* Band badge column - fixed 52px */
         .song-badge {
-            flex-shrink: 0;
-            justify-self: end;
-            font-size: 0.65em;
-            padding: 3px 10px;
+            font-size: 0.6em;
+            padding: 3px 0;
             border-radius: 20px;
             font-weight: 700;
             text-align: center;
-            min-width: 32px;
+            width: 48px;
             letter-spacing: 0.03em;
             text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
         }
         .song-badge.gd { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
         .song-badge.jgb { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
@@ -339,13 +348,12 @@
         #songDropdown {
             max-height: 50vh;
             overflow-y: auto;
+            overflow-x: hidden;
             scrollbar-width: thin;
             scrollbar-color: rgba(255,255,255,0.15) transparent;
-            margin: 0 -2px;
-            padding: 0 2px;
         }
         #songDropdown::-webkit-scrollbar { width: 4px; }
-        #songDropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+        #songDropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
         #songDropdown::-webkit-scrollbar-track { background: transparent; }
 
         #songSearch { width: 100%; box-sizing: border-box; }
@@ -568,6 +576,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
         <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
             <span class="song-badges"></span>
+            <span class="song-status-cell"></span>
             <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
@@ -5322,12 +5331,11 @@ async function addStatusBadges() {
     
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
-        const badgesContainer = item.querySelector('.song-badges');
-        if (!badgesContainer) return;
+        const statusCell = item.querySelector('.song-status-cell');
+        if (!statusCell) return;
         
-        // Remove existing status badge
-        const existingStatus = badgesContainer.querySelector('.status-badge');
-        if (existingStatus) existingStatus.remove();
+        // Clear existing
+        statusCell.innerHTML = '';
         
         const songTitle = item.dataset.title || '';
         if (!songTitle) return;
@@ -5347,8 +5355,8 @@ async function addStatusBadges() {
                 const badgeEl = document.createElement('span');
                 badgeEl.className = 'status-badge';
                 badgeEl.textContent = badge.text;
-                badgeEl.style.cssText = `color:${badge.color};background:${badge.bg};border:1px solid ${badge.color}33;`;
-                badgesContainer.appendChild(badgeEl);
+                badgeEl.style.cssText = `color:${badge.color};background:${badge.bg};`;
+                statusCell.appendChild(badgeEl);
             }
         }
     });
@@ -7975,67 +7983,122 @@ async function saveGig() {
 // SEED DATA — Pre-populate past gigs, setlists, and venues
 // ============================================================================
 async function seedGigData() {
-    if (!isUserSignedIn) { alert('Sign in first to seed gig data.'); return; }
-    if (!confirm('This will import your past gigs, setlists, and venues from the master spreadsheet. Continue?')) return;
+    if (!isUserSignedIn) { alert('Sign in first to import gig data.'); return; }
+    if (!confirm('Import past gigs, setlists, and venues from the master spreadsheet? This will not overwrite existing data.')) return;
     
-    // Real gigs from DeadCetera Master List spreadsheet tabs
+    // ===== GIGS from PDF tabs =====
     const gigs = [
-        { venue:'From The Earth Brewing', date:'2026-02-01', time:'8:00 PM', notes:'Brewery gig' },
-        { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'' },
-        { venue:'Dunwoody (Private)', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
-        { venue:'Wild Wing Café', date:'2025-05-23', time:'9:00 PM', notes:'' },
+        { venue:'From The Earth Brewing', date:'2026-02-01', time:'8:00 PM', notes:'2 sets, ~116 min total' },
+        { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'2 sets, ~156 min total' },
+        { venue:'Dunwoody Square', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
+        { venue:'Wild Wings Café', date:'2025-05-23', time:'9:00 PM' },
         { venue:'Dead Fest', date:'2025-04-12', time:'TBD', notes:'Festival' },
-        { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM', notes:'' },
-        { venue:'Reformation Brewery', date:'2025-03-29', time:'7:00 PM', notes:'' },
-        { venue:'Wing Café', date:'2024-12-14', time:'9:00 PM', notes:'' },
-        { venue:'Wild Wings', date:'2024-12-06', time:'9:00 PM', notes:'' },
-        { venue:'Truck & Tap', date:'2024-11-16', time:'8:00 PM', notes:'' },
-        { venue:'PDH / Meth Shed', date:'2024-10-26', time:'9:00 PM', notes:'Pierce\'s place' },
-        { venue:'MadLife Stage & Studios', date:'2024-09-04', time:'8:00 PM', notes:'' },
-        { venue:'Wings Café', date:'2024-06-15', time:'9:00 PM', notes:'' },
-        { venue:'MadLife Stage & Studios', date:'2024-05-28', time:'8:00 PM', notes:'' },
-        { venue:'MadLife Patio', date:'2024-05-31', time:'7:00 PM', notes:'Patio stage' },
-        { venue:'Alpharetta (Private)', date:'2024-07-19', time:'7:00 PM', notes:'Private event' },
-        { venue:'Coastal Grill', date:'2024-05-11', time:'8:00 PM', notes:'' },
-        { venue:'Wild Wings Café', date:'2024-01-19', time:'9:00 PM', notes:'' },
-        { venue:'Wild Wings Alpharetta', date:'2023-12-29', time:'9:00 PM', notes:'' },
-        { venue:'Wild Wings Café', date:'2023-12-15', time:'9:00 PM', notes:'' },
-        { venue:'Wild Wings Café', date:'2023-10-27', time:'9:00 PM', notes:'' },
-        { venue:'Wild Wing Café', date:'2023-09-08', time:'9:00 PM', notes:'' },
-        { venue:'Private Party', date:'2023-08-19', time:'7:00 PM', notes:'House party' },
-        { venue:'Legends', date:'2023-07-22', time:'8:00 PM', notes:'' },
-        { venue:'Meth Shed', date:'2023-06-03', time:'8:00 PM', notes:'Pierce\'s place' },
-        { venue:'Wild Wings Alpharetta', date:'2023-05-12', time:'9:00 PM', notes:'' },
-        { venue:'Meth Shed', date:'2023-04-15', time:'8:00 PM', notes:'' },
-        { venue:'Skulls', date:'2023-03-23', time:'9:00 PM', notes:'' },
-        { venue:'Wild Wings Café', date:'2023-03-18', time:'9:00 PM', notes:'' },
-        { venue:'Skulls', date:'2023-01-13', time:'9:00 PM', notes:'' },
+        { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM' },
+        { venue:'Reformation Brewery', date:'2025-03-29', time:'7:00 PM' },
+        { venue:'Wing Café Marietta', date:'2024-12-14', time:'9:00 PM', notes:'2 sets' },
+        { venue:'Wild Wings Café', date:'2024-12-06', time:'9:00 PM', notes:'2 sets, ~126+46 min' },
+        { venue:'Truck & Tap', date:'2024-11-16', time:'8:00 PM', notes:'2 sets, ~38+81 min = 119 total' },
+        { venue:'Meth Shed (PDH)', date:'2024-10-26', time:'8:00 PM', notes:'2 sets, ~49+49 min = 98 total' },
+        { venue:'MadLife Stage & Studios', date:'2024-09-04', time:'8:00 PM' },
+        { venue:'Wings Café', date:'2024-06-15', time:'9:00 PM' },
+        { venue:'MadLife Stage & Studios', date:'2024-05-28', time:'8:00 PM' },
+        { venue:'MadLife Patio', date:'2024-05-31', time:'7:00 PM' },
+        { venue:'Alpharetta (Private)', date:'2024-07-19', time:'7:00 PM' },
+        { venue:'Coastal Grill', date:'2024-05-11', time:'8:00 PM', notes:'2 sets + soundcheck' },
+        { venue:'Wild Wings Café', date:'2024-01-19', time:'9:00 PM', notes:'2 sets + soundcheck' },
+        { venue:'Wild Wings Alpharetta', date:'2023-12-29', time:'9:00 PM' },
+        { venue:'Wild Wings Café', date:'2023-12-15', time:'9:00 PM' },
+        { venue:'Wild Wings Café', date:'2023-10-27', time:'9:00 PM' },
+        { venue:'Wild Wing Café', date:'2023-09-08', time:'9:00 PM' },
+        { venue:'Private Party', date:'2023-08-19', time:'7:00 PM' },
+        { venue:'Legends', date:'2023-07-22', time:'8:00 PM' },
+        { venue:'Meth Shed', date:'2023-06-03', time:'8:00 PM' },
+        { venue:'Wild Wings Alpharetta', date:'2023-05-12', time:'9:00 PM' },
+        { venue:'Meth Shed', date:'2023-04-15', time:'8:00 PM' },
+        { venue:'Skulls', date:'2023-03-23', time:'9:00 PM' },
+        { venue:'Wild Wings Café', date:'2023-03-18', time:'9:00 PM' },
+        { venue:'Skulls', date:'2023-01-13', time:'9:00 PM' },
     ];
-    gigs.forEach(g => g.created = new Date().toISOString());
     
-    // Setlists from the main sheet (the most recent / template setlist visible)
+    // ===== SETLISTS from PDF =====
     const setlists = [
-        { name:'From The Earth 02/01/26', date:'2026-02-01', venue:'From The Earth Brewing', sets:[
-            { name:'Set 1', songs:[{title:'Tall Boy'},{title:'Deal'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Superstition'},{title:'U.S. Blues'},{title:'Althea'},{title:'Deep Elem Blues'},{title:'Funky Bitch'},{title:'Chilly Water'}]},
-            { name:'Set 2', songs:[{title:'Birthday'},{title:"Ain't Life Grand"},{title:'After Midnight'},{title:'Ramble On Rose'},{title:'Ophelia'},{title:'Cumberland Blues'},{title:"Franklin's Tower"},{title:'All Time Low'},{title:'Shakedown Street'},{title:'Not Fade Away'},{title:'Life During Wartime'}]}
-        ]},
+      { name:'From The Earth 02/01/26', date:'2026-02-01', venue:'From The Earth Brewing', sets:[
+        { name:'Set 1', songs:[{title:'Tall Boy'},{title:'Deal'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Superstition'},{title:'U.S. Blues'},{title:'Althea'},{title:'Deep Elem Blues'},{title:'Funky Bitch'},{title:'Chilly Water'}]},
+        { name:'Set 2', songs:[{title:'Birthday'},{title:"Ain't Life Grand"},{title:'After Midnight'},{title:'Ramble On Rose'},{title:'Ophelia'},{title:'Cumberland Blues'},{title:"Franklin's Tower"},{title:'All Time Low'},{title:'Shakedown Street'},{title:'Not Fade Away'},{title:'Life During Wartime'}]}
+      ]},
+      { name:'MoonShadow 01/12/26', date:'2026-01-12', venue:'MoonShadow Tavern', sets:[
+        { name:'Set 1', songs:[{title:'Cumberland Blues'},{title:"That's What Love Will Make You Do"},{title:'Eyes of the World'},{title:'Superstition'},{title:'Ramble On Rose'},{title:"Ain't Life Grand"},{title:'Jack Straw'},{title:'Althea'},{title:'They Love Each Other'},{title:'Tall Boy'},{title:'Deep Elem Blues'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'First Tube'},{title:'Lifeboy'}]},
+        { name:'Set 2', songs:[{title:'Black Peter'},{title:'Funky Bitch'},{title:'After Midnight'},{title:'Life During Wartime'},{title:'U.S. Blues'},{title:'Music Never Stopped'},{title:'Loser'},{title:"Franklin's Tower"},{title:'West LA Fadeaway'},{title:'Possum'},{title:'Chilly Water'}]}
+      ]},
+      { name:'Wing Café 12/14/24', date:'2024-12-14', venue:'Wing Café Marietta', sets:[
+        { name:'Set 1', songs:[{title:'Music Never Stopped'},{title:'Superstition'},{title:'Ophelia'},{title:'West LA Fadeaway'},{title:'Bertha'},{title:'Possum'},{title:"Ain't Life Grand"},{title:'U.S. Blues'},{title:"Truckin'"},{title:'Chilly Water'},{title:'They Love Each Other'},{title:'Miss You'},{title:'Shakedown Street'}]},
+        { name:'Set 2', songs:[{title:"Franklin's Tower"},{title:'Life During Wartime'},{title:'Sugaree'},{title:'Tall Boy'},{title:'Althea'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Jack Straw'}]}
+      ]},
+      { name:'Wild Wings 12/06/24', date:'2024-12-06', venue:'Wild Wings Café', sets:[
+        { name:'Set 1', songs:[{title:'Minglewood Blues'},{title:'Eyes of the World'},{title:'Use Me'},{title:'Mr. Charlie'},{title:'Life During Wartime'},{title:'West LA Fadeaway'},{title:'Jack Straw'},{title:'Sledgehammer'},{title:'Music Never Stopped'},{title:"Truckin'"},{title:'LA Woman'},{title:"That's What Love Will Make You Do"},{title:'Sugaree'}]},
+        { name:'Set 2', songs:[{title:'Ramble On Rose'},{title:'Deep Elem Blues'},{title:'Tall Boy'},{title:'All Along the Watchtower'},{title:'After Midnight'},{title:'They Love Each Other'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'}]}
+      ]},
+      { name:'Truck & Tap 11/16/24', date:'2024-11-16', venue:'Truck & Tap', sets:[
+        { name:'Set 1', songs:[{title:'Ophelia'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'They Love Each Other'},{title:"Ain't Life Grand"},{title:'Loser'},{title:'Superstition'},{title:'U.S. Blues'}]},
+        { name:'Set 2', songs:[{title:"Truckin'"},{title:'Chilly Water'},{title:'Bertha'},{title:'Althea'},{title:'Sledgehammer'},{title:'Deal'},{title:"Franklin's Tower"},{title:'Miss You'},{title:'Eyes of the World'},{title:'Possum'},{title:'Ramble On Rose'},{title:'Tall Boy'},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Meth Shed 10/26/24', date:'2024-10-26', venue:'Meth Shed (PDH)', sets:[
+        { name:'Set 1', songs:[{title:'U.S. Blues'},{title:'Tall Boy'},{title:'Ramble On Rose'},{title:'Sledgehammer'},{title:'Miss You'},{title:"Ain't Life Grand"},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Deal'}]},
+        { name:'Set 2', songs:[{title:"Franklin's Tower"},{title:"Truckin'"},{title:'Tall Boy'},{title:'Chilly Water'},{title:'Eyes of the World'},{title:'Music Never Stopped'},{title:'They Love Each Other'}]}
+      ]},
+      { name:'MadLife 09/04/24', date:'2024-09-04', venue:'MadLife Stage & Studios', sets:[
+        { name:'Set 1', songs:[{title:'Music Never Stopped'},{title:'Mr. Charlie'},{title:'Ramble On Rose'},{title:"Ain't Life Grand"},{title:'Ophelia'},{title:'Sugaree'},{title:'Possum'},{title:'Chilly Water'},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Wings Café 06/15/24', date:'2024-06-15', venue:'Wings Café', sets:[
+        { name:'Set 1', songs:[{title:'Music Never Stopped'},{title:'Minglewood Blues'},{title:'Bertha'},{title:'Hard to Handle'},{title:'Ophelia'},{title:'Big Railroad Blues'},{title:'Jack Straw'},{title:"Franklin's Tower"},{title:'Possum'},{title:'Life During Wartime'},{title:'Deep Elem Blues'},{title:'Loser'},{title:"That's What Love Will Make You Do"},{title:'Deal'},{title:'Mr. Charlie'},{title:'Chilly Water'}]},
+        { name:'Set 2', songs:[{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Sugaree'},{title:'All Along the Watchtower'},{title:'Samson and Delilah'},{title:'Althea'},{title:'Miss You',transition:true},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Alpharetta 07/19/24', date:'2024-07-19', venue:'Alpharetta (Private)', sets:[
+        { name:'Set 1', songs:[{title:'Superstition'},{title:"That's What Love Will Make You Do"},{title:"Truckin'"},{title:'Use Me'},{title:'Life During Wartime'},{title:'Sugaree'},{title:'Miss You',transition:true},{title:'Shakedown Street'},{title:'U.S. Blues'}]}
+      ]},
+      { name:'Coastal Grill 05/11/24', date:'2024-05-11', venue:'Coastal Grill', sets:[
+        { name:'Set 1', songs:[{title:'First Tube'},{title:'Bertha'},{title:'Mr. Charlie'},{title:'Life During Wartime'},{title:'Jack Straw'},{title:"That's What Love Will Make You Do"},{title:'Samson and Delilah'},{title:'Hard to Handle'},{title:'Sugaree'},{title:'Superstition'},{title:'Possum'},{title:"Truckin'"},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'}]},
+        { name:'Set 2', songs:[{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Use Me'},{title:'Minglewood Blues'},{title:"Franklin's Tower"},{title:'Red Hot Mama'},{title:'Miss You',transition:true},{title:'Shakedown Street'}]},
+        { name:'🔊 Soundcheck', songs:[{title:'Music Never Stopped'}]}
+      ]},
+      { name:'MadLife 05/28/24', date:'2024-05-28', venue:'MadLife Stage & Studios', sets:[
+        { name:'Set 1', songs:[{title:'Minglewood Blues'},{title:"That's What Love Will Make You Do"},{title:'Possum'},{title:'Miss You'},{title:'Shakedown Street'}]}
+      ]},
+      { name:'Wings 01/19/24', date:'2024-01-19', venue:'Wild Wings Café', sets:[
+        { name:'Set 1', songs:[{title:"Franklin's Tower"},{title:'After Midnight'},{title:'Superstition'},{title:'They Love Each Other'},{title:'Possum'},{title:'Music Never Stopped'},{title:'Use Me'},{title:'Minglewood Blues'},{title:'Althea'},{title:'Chilly Water'},{title:'Deal'}]},
+        { name:'Set 2', songs:[{title:'First Tube'},{title:"That's What Love Will Make You Do"},{title:'Hard to Handle'},{title:'Ophelia'},{title:'All Along the Watchtower'},{title:'Sugaree'},{title:'Miss You',transition:true},{title:'Shakedown Street'},{title:'Loser'},{title:'Life During Wartime'}]},
+        { name:'🔊 Soundcheck', songs:[{title:'Werewolves of London'}]}
+      ]},
+      { name:'Wings 10/27/23', date:'2023-10-27', venue:'Wild Wings Café', sets:[
+        { name:'Set 1', songs:[{title:'Frankenstein'},{title:'First Tube'},{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Sympathy for the Devil'},{title:'Deal'},{title:'Sugaree'},{title:'Miss You'},{title:'Shakedown Street'},{title:"That's What Love Will Make You Do"},{title:'Werewolves of London'}]},
+        { name:'Set 2', songs:[{title:'Samson and Delilah'},{title:'All Along the Watchtower'},{title:'Bertha'},{title:'Good Lovin\''},{title:'Althea'},{title:'Samson and Delilah'},{title:'After Midnight'},{title:'Mr. Charlie'},{title:"Franklin's Tower"},{title:'Ziggy Stardust'},{title:'Not Fade Away'}]}
+      ]},
     ];
-    setlists.forEach(sl => sl.created = new Date().toISOString());
     
-    // Venues from spreadsheet tabs
+    // ===== VENUES from PDF Venues tab + setlist venues =====
     const venues = [
-        { name:'From The Earth Brewing', address:'Roswell, GA', notes:'Brewery with stage area' },
-        { name:'MoonShadow Tavern', address:'Atlanta area, GA', notes:'' },
-        { name:'Wild Wing Café', address:'Multiple locations, GA', notes:'Regular gig spot. Several locations.' },
-        { name:'Wild Wings Alpharetta', address:'Alpharetta, GA', notes:'Alpharetta location' },
-        { name:'Reformation Brewery', address:'Woodstock, GA', notes:'Brewery gig, family friendly early shows' },
-        { name:'Truck & Tap', address:'Woodstock, GA', notes:'' },
-        { name:'MadLife Stage & Studios', address:'Woodstock, GA', notes:'Professional venue, great sound system' },
-        { name:'Coastal Grill', address:'Atlanta area, GA', notes:'Restaurant venue' },
-        { name:'Legends', address:'Atlanta area, GA', notes:'' },
-        { name:'Skulls', address:'Atlanta area, GA', notes:'' },
-        { name:'Meth Shed / PDH', address:'Pierce\'s place', notes:'Private practice/party spot' },
+        { name:'From The Earth Brewing', address:'Roswell, GA', notes:'Brewery with stage' },
+        { name:'MoonShadow Tavern', address:'Atlanta area, GA' },
+        { name:'Wild Wings Café', address:'Multiple GA locations', notes:'Regular gig. Alpharetta + others.' },
+        { name:'Wing Café Marietta', address:'Marietta, GA', contact:'Analog Boy' },
+        { name:'Reformation Brewery', address:'Woodstock, GA', notes:'Family friendly, early shows' },
+        { name:'Truck & Tap', address:'Alpharetta, GA', contact:'Francisco Vilda' },
+        { name:'MadLife Stage & Studios', address:'Woodstock, GA', notes:'Professional venue, great sound', contact:'Greg Shaddix' },
+        { name:'Coastal Grill', address:'Atlanta area, GA' },
+        { name:'Legends', address:'Atlanta area, GA' },
+        { name:'Skulls', address:'Atlanta area, GA' },
+        { name:'Meth Shed (PDH)', address:"Pierce's place", notes:'Practice/party spot' },
+        { name:'Wild Wings Alpharetta', address:'Alpharetta, GA', contact:'David McPherson' },
+        { name:"Lucky's", address:'Roswell, GA' },
+        { name:'Gate City Brewing', address:'GA' },
+        { name:"Milton's Tavern", address:'Milton, GA', contact:'Rivers Carroll', email:'RiversCarroll@yahoo.com', phone:'678-521-8001' },
+        { name:'Hyde Brewery', address:'GA' },
+        { name:"Rosatti's", address:'GA' },
+        { name:'Wings Tap House', address:'GA' },
     ];
+    
+    gigs.forEach(g => g.created = new Date().toISOString());
+    setlists.forEach(sl => sl.created = new Date().toISOString());
     venues.forEach(v => v.created = new Date().toISOString());
     
     try {
@@ -8043,24 +8106,25 @@ async function seedGigData() {
         const existingSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
         const existingVenues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
         
-        // Deduplicate by venue+date for gigs
-        const gigKeys = new Set(existingGigs.map(g => g.venue + '|' + g.date));
+        // Deduplicate
+        const gigKeys = new Set(existingGigs.map(g => (g.venue||'') + '|' + (g.date||'')));
         const newGigs = gigs.filter(g => !gigKeys.has(g.venue + '|' + g.date));
-        
+        const slKeys = new Set(existingSetlists.map(s => s.name));
+        const newSetlists = setlists.filter(s => !slKeys.has(s.name));
         const venueKeys = new Set(existingVenues.map(v => v.name));
         const newVenues = venues.filter(v => !venueKeys.has(v.name));
         
         if (newGigs.length > 0) await saveBandDataToDrive('_band', 'gigs', [...existingGigs, ...newGigs]);
-        if (setlists.length > 0 && existingSetlists.length === 0) await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...setlists]);
+        if (newSetlists.length > 0) await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...newSetlists]);
         if (newVenues.length > 0) await saveBandDataToDrive('_band', 'venues', [...existingVenues, ...newVenues]);
         
-        alert('✅ Imported ' + newGigs.length + ' gigs, ' + setlists.length + ' setlist(s), and ' + newVenues.length + ' venues from your spreadsheet!');
+        alert('✅ Imported ' + newGigs.length + ' gigs, ' + newSetlists.length + ' setlists, and ' + newVenues.length + ' venues!\n\n(Duplicates were skipped.)');
         if (typeof loadGigs === 'function') loadGigs();
         if (typeof loadSetlists === 'function') loadSetlists();
         if (typeof loadVenues === 'function') loadVenues();
     } catch(e) {
         console.error('Seed error:', e);
-        alert('Error seeding data: ' + e.message);
+        alert('Error: ' + e.message);
     }
 }
 
