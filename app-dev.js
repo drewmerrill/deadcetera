@@ -2354,7 +2354,10 @@ function renderRehearsalNotes(songTitle, bandData) {
 
 async function renderGigNotes(songTitle, bandData) {
     const container = document.getElementById('gigNotesContainer');
-    const notes = await loadGigNotes(songTitle) || bandData.gigNotes || [];
+    let notes = toArray(await loadGigNotes(songTitle) || []);
+    // Fall back to data.js if Firebase empty
+    if (notes.length === 0 && bandData.gigNotes) notes = toArray(bandData.gigNotes);
+    if (notes.length === 0 && bandData.performanceTips) notes = toArray(bandData.performanceTips);
     
     if (notes.length === 0) {
         container.innerHTML = `
@@ -2794,7 +2797,30 @@ function extractSpotifyTrackId(url) {
 // Update reference version rendering to fetch metadata
 async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
     const container = document.getElementById('spotifyVersionsContainer');
-    const versions = await loadSpotifyVersions(songTitle) || bandData.spotifyVersions || [];
+    
+    // Load from Firebase first
+    let firebaseVersions = await loadSpotifyVersions(songTitle);
+    firebaseVersions = toArray(firebaseVersions || []);
+    
+    // Only use data.js versions if Firebase has NOTHING for this song
+    // Once a user adds/saves ANY version, Firebase takes over completely
+    let versions;
+    if (firebaseVersions.length > 0) {
+        versions = firebaseVersions;
+    } else if (bandData.spotifyVersions && bandData.spotifyVersions.length > 0) {
+        versions = bandData.spotifyVersions;
+    } else {
+        versions = [];
+    }
+    
+    // Deduplicate by URL (in case data.js and Firebase have same entries)
+    const seen = new Set();
+    versions = versions.filter(v => {
+        const url = v.spotifyUrl || v.url || '';
+        if (!url || seen.has(url)) return false;
+        seen.add(url);
+        return true;
+    });
     
     if (versions.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding: 20px;">No reference versions added yet</div>';
@@ -2910,8 +2936,8 @@ async function addSpotifyVersion() {
         version.votes[email] = false;
     });
     
-    // Load existing versions
-    let versions = await loadSpotifyVersions(songTitle) || [];
+    // Load existing versions (normalize Firebase format)
+    let versions = toArray(await loadSpotifyVersions(songTitle) || []);
     versions.push(version);
     
     // Save
@@ -4932,58 +4958,145 @@ async function loadLeadSinger(songTitle) {
 }
 
 async function addFirstHarmonySection(songTitle) {
-    const sectionName = prompt('Name this harmony section (e.g., "Chorus", "Verse 1", "Bridge"):');
-    if (!sectionName) return;
+    // Show the lyrics-based harmony builder
+    const container = document.getElementById('harmoniesContainer');
+    if (!container) return;
     
-    // Initialize bandKnowledgeBase entry if needed
+    // Try to load existing lyrics from Firebase
+    let existingLyrics = '';
+    try {
+        const lyricData = await loadBandDataFromDrive(songTitle, 'lyrics');
+        if (lyricData?.text) existingLyrics = lyricData.text;
+    } catch(e) {}
+    
+    container.innerHTML = `
+    <div style="padding:12px;background:rgba(102,126,234,0.05);border:1px solid rgba(102,126,234,0.15);border-radius:10px">
+        <h4 style="color:var(--accent-light,#818cf8);margin-bottom:10px">🎤 Harmony Section Builder — ${songTitle}</h4>
+        <p style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">
+            Paste the lyrics below, then tag which sections have harmonies. This sets up the structure for recording harmony parts.
+        </p>
+        
+        <div class="form-row" style="margin-bottom:10px">
+            <label class="form-label">Song Lyrics</label>
+            <textarea class="app-textarea" id="harmLyrics" rows="12" placeholder="Paste song lyrics here...&#10;&#10;[Verse 1]&#10;As I was walking round Grosvenor Square...&#10;&#10;[Chorus]&#10;Scarlet begonias, a touch of the blues...">${existingLyrics}</textarea>
+        </div>
+        
+        <div style="margin-bottom:12px">
+            <label class="form-label" style="margin-bottom:6px;display:block">Tag Sections with Harmonies</label>
+            <p style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Check each section that has vocal harmonies. These will become harmony recording sections.</p>
+            <div id="harmSectionTags" style="display:flex;flex-wrap:wrap;gap:6px">
+                ${['Verse 1','Verse 2','Verse 3','Verse 4','Verse 5','Chorus','Bridge','Coda','Intro','Outro','Pre-Chorus','Tag'].map(s => `
+                    <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--text-muted)">
+                        <input type="checkbox" class="harmSectionCheck" value="${s}" style="accent-color:var(--accent);width:14px;height:14px">
+                        ${s}
+                    </label>
+                `).join('')}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+                <input class="app-input" id="harmCustomSection" placeholder="Custom section name..." style="flex:1;margin:0">
+                <button class="btn btn-sm btn-ghost" onclick="addCustomHarmSection()">+ Add</button>
+            </div>
+        </div>
+        
+        <div style="margin-bottom:12px">
+            <label class="form-label" style="margin-bottom:6px;display:block">Singing Assignments (optional)</label>
+            <div class="form-grid">
+                ${Object.entries(bandMembers).filter(([k,m]) => m.sings || m.leadVocals || m.harmonies).map(([k,m]) => `
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.85em;color:var(--text-muted)">
+                        <input type="checkbox" class="harmSingerCheck" value="${k}" checked style="accent-color:var(--accent)">
+                        ${m.name} — ${m.leadVocals?'Lead/Harmony':m.harmonies?'Harmony':'Vocals'}
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success" onclick="buildHarmonySections('${songTitle.replace(/'/g,"\\'")}')">🎤 Create Harmony Sections</button>
+            <button class="btn btn-ghost" onclick="renderHarmoniesEnhanced('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function addCustomHarmSection() {
+    const input = document.getElementById('harmCustomSection');
+    const val = input?.value?.trim();
+    if (!val) return;
+    const container = document.getElementById('harmSectionTags');
+    container.insertAdjacentHTML('beforeend', `
+        <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--green,#10b981)">
+            <input type="checkbox" class="harmSectionCheck" value="${val}" checked style="accent-color:var(--green)">
+            ${val}
+        </label>`);
+    input.value = '';
+}
+
+async function buildHarmonySections(songTitle) {
+    // Get checked sections
+    const checks = document.querySelectorAll('.harmSectionCheck:checked');
+    if (checks.length === 0) { alert('Please check at least one section that has harmonies.'); return; }
+    
+    const sectionNames = Array.from(checks).map(c => c.value);
+    
+    // Get singers
+    const singers = Array.from(document.querySelectorAll('.harmSingerCheck:checked')).map(c => c.value);
+    
+    // Save lyrics
+    const lyrics = document.getElementById('harmLyrics')?.value || '';
+    if (lyrics.trim()) {
+        await saveBandDataToDrive(songTitle, 'lyrics', { text: lyrics, updated: new Date().toISOString() });
+    }
+    
+    // Build harmony sections
     if (!bandKnowledgeBase[songTitle]) bandKnowledgeBase[songTitle] = {};
     
-    // Preserve existing harmony data - load from Drive if not in memory
+    // Preserve existing sections
     let existing = bandKnowledgeBase[songTitle].harmonies;
     if (!existing || !existing.sections) {
         const driveData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
-        if (driveData && driveData.sections) {
-            existing = driveData;
-        }
+        if (driveData && driveData.sections) existing = driveData;
     }
+    const existingSections = (existing && existing.sections) ? [...toArray(existing.sections)] : [];
+    const existingNames = new Set(existingSections.map(s => s.name || s.lyric));
     
-    // Add new section to existing sections (don't overwrite!)
-    const sections = (existing && existing.sections) ? [...existing.sections] : [];
-    sections.push({
-        name: sectionName,
-        lyric: sectionName,
-        parts: []
-    });
+    // Add new sections (skip duplicates)
+    const newSections = sectionNames.filter(n => !existingNames.has(n)).map(name => ({
+        name: name,
+        lyric: name,
+        timing: '',
+        workedOut: false,
+        soundsGood: false,
+        parts: singers.map(s => ({
+            singer: s,
+            part: bandMembers[s]?.leadVocals ? 'lead' : 'harmony',
+            notes: ''
+        })),
+        practiceNotes: []
+    }));
     
-    const harmonies = { sections };
+    const allSections = [...existingSections, ...newSections];
+    const harmonies = { sections: allSections, lyrics: lyrics || undefined };
     
-    // Update in-memory data
+    // Update in-memory
     bandKnowledgeBase[songTitle].harmonies = harmonies;
-    
-    // Mark song as having harmonies
     harmonyCache[songTitle] = true;
     harmonyBadgeCache[songTitle] = true;
     
-    // Update the checkbox if it exists
     const harmoniesCheckbox = document.getElementById('hasHarmoniesCheckbox');
     if (harmoniesCheckbox) harmoniesCheckbox.checked = true;
     
-    // Save both has_harmonies flag and harmony data to Drive
+    // Save to Firebase
     try {
         await saveBandDataToDrive(songTitle, 'has_harmonies', { hasHarmonies: true });
         await saveBandDataToDrive(songTitle, 'harmonies_data', harmonies);
         await saveMasterFile(MASTER_HARMONIES_FILE, harmonyBadgeCache);
-    } catch (e) {
-        console.warn('Could not save harmony data to Drive:', e);
-    }
+    } catch (e) { console.warn('Could not save harmony data:', e); }
     
     // Re-render
-    const bandData = bandKnowledgeBase[songTitle];
-    await renderHarmoniesEnhanced(songTitle, bandData);
-    logActivity('harmony_add', { song: songTitle, extra: sectionName });
-    
-    // Update badges
+    await renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+    logActivity('harmony_add', { song: songTitle, extra: sectionNames.join(', ') });
     addHarmonyBadges();
+    
+    alert('✅ Created ' + newSections.length + ' harmony section(s): ' + sectionNames.join(', '));
 }
 
 async function updateHasHarmonies(hasHarmonies) {
@@ -5654,7 +5767,8 @@ async function saveRehearsalNotes(songTitle, notes) {
 }
 
 async function loadRehearsalNotes(songTitle) {
-    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES) || [];
+    const data = await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.REHEARSAL_NOTES);
+    return toArray(data || []);
 }
 
 async function saveSpotifyUrls(songTitle, urls) {
@@ -5738,8 +5852,21 @@ console.log('✅ Firebase helper functions loaded');
 async function renderSongStructure(songTitle) {
     const container = document.getElementById('songStructureContainer');
     
-    // Load from Google Drive
-    const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
+    // Load from Firebase first, fall back to data.js
+    let structure = await loadBandDataFromDrive(songTitle, 'song_structure');
+    if (!structure || (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds)) {
+        // Check bandKnowledgeBase (data.js) for pre-populated data
+        const bk = bandKnowledgeBase[songTitle];
+        if (bk) {
+            structure = {
+                whoStarts: bk.songStructure?.whoStarts || bk.whoStarts || [],
+                howStarts: bk.songStructure?.howStarts || bk.howStarts || '',
+                whoCuesEnding: bk.songStructure?.whoCuesEnding || bk.whoCuesEnding || '',
+                howEnds: bk.songStructure?.howEnds || bk.howEnds || ''
+            };
+        }
+    }
+    if (!structure) structure = {};
     
     if (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds) {
         container.innerHTML = `
