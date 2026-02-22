@@ -249,30 +249,12 @@
         <div class="step-number" style="flex-shrink:0">4</div>
         <h2 style="margin:0">Stage Crib Notes</h2>
     </div>
-    <p class="subtitle">Your on-stage cheat sheet — one glance and you're locked in</p>
+    <p class="subtitle">Each member's go-to reference — tabs, chord charts, or lyrics for stage/iPad
+        <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.85em;padding:0;margin-left:8px">🔍 Ultimate Guitar</button>
+    </p>
     
     <div class="resource-section" id="personalTabsSection">
-        <div class="section-header">
-            <h3>📋 Personal Reference Sheets</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
-                Each member's go-to tab, chord chart, or lyrics for stage/iPad
-                <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search Ultimate Guitar</button>
-            </p>
-        </div>
         <div id="personalTabsContainer"></div>
-        
-        <div id="addTabForm" style="background:rgba(255,255,255,0.03);padding:16px;border-radius:10px;margin-top:16px;border:1px solid var(--border,rgba(255,255,255,0.08))">
-            <h4 style="margin:0 0 12px 0;color:var(--text,#f1f5f9);font-size:0.95em">Add Your Reference</h4>
-            <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Tab/Chart URL:</label>
-                <input type="text" id="tabUrlInput" placeholder="Paste Ultimate Guitar, Chordify, or any link" class="app-input" style="width:100%;box-sizing:border-box">
-            </div>
-            <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Notes (optional):</label>
-                <input type="text" id="tabNotesInput" placeholder="E.g., Lead tab with my edits" class="app-input" style="width:100%;box-sizing:border-box">
-            </div>
-            <button onclick="addPersonalTab()" class="btn btn-primary" style="width:100%">➕ Add My Reference</button>
-        </div>
     </div>
 </div>
 

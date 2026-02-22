@@ -1919,44 +1919,93 @@ function renderSpotifyVersions(songTitle, bandData) {
 async function renderPersonalTabs(songTitle) {
     const container = document.getElementById('personalTabsContainer');
     const tabs = await loadPersonalTabs(songTitle);
-    
-    if (!tabs || tabs.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No tab links added yet. Be the first to add yours!</div>';
-        return;
-    }
-    
-    container.innerHTML = `
-        <div style="display: grid; gap: 15px;">
-            ${tabs.map((tab, index) => `
-                <div style="background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; position: relative;">
-                    ${tab.addedBy === currentUserEmail ? `
-                        <button onclick="deletePersonalTab('${songTitle}', ${index})" 
-                            style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;">✕</button>
-                    ` : ''}
-                    
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                        <span style="font-size: 1.2em;">👤</span>
-                        <strong style="color: #667eea; font-size: 1.1em;">${getBandMemberName(tab.addedBy)}</strong>
-                    </div>
-                    
-                    ${tab.notes ? `
-                        <p style="color: #6b7280; font-size: 0.9em; margin-bottom: 12px; font-style: italic;">
-                            "${tab.notes}"
-                        </p>
-                    ` : ''}
-                    
-                    <button onclick="window.open('${tab.url}', '_blank')" 
-                        style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                        🎸 Open ${getBandMemberName(tab.addedBy)}'s Tab
-                    </button>
-                    
-                    <p style="margin-top: 8px; font-size: 0.85em; color: #9ca3af;">
-                        Added ${tab.dateAdded || 'recently'}
-                    </p>
+    const tabsByMember = {};
+    (tabs || []).forEach((tab, index) => {
+        const key = tab.memberKey || tab.addedBy || 'unknown';
+        if (!tabsByMember[key]) tabsByMember[key] = [];
+        tabsByMember[key].push({ ...tab, _index: index });
+    });
+
+    // Determine current user's member key
+    const currentMemberKey = getCurrentMemberKey();
+
+    const memberHTML = Object.entries(bandMembers).map(([key, member]) => {
+        const memberTabs = tabsByMember[key] || [];
+        const isMe = (key === currentMemberKey);
+        const emoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' }[key] || '👤';
+        const tabItems = memberTabs.map(tab => `
+            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                <a href="${tab.url}" target="_blank" style="flex:1;color:var(--accent-light);font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tab.url}">${tab.label || tab.notes || tab.url}</a>
+                ${tab.notes && tab.label ? `<span style="color:var(--text-dim);font-size:0.75em;flex-shrink:0">${tab.notes}</span>` : ''}
+                ${isMe ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
+            </div>
+        `).join('');
+
+        return `
+        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span style="font-size:1.2em">${emoji}</span>
+                <strong style="color:var(--accent-light);font-size:0.95em">${member.name}</strong>
+                <span style="color:var(--text-dim);font-size:0.78em">${member.role}</span>
+                ${memberTabs.length > 0 ? `<span style="margin-left:auto;background:rgba(16,185,129,0.15);color:var(--green);font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:600">${memberTabs.length} ref${memberTabs.length>1?'s':''}</span>` : `<span style="margin-left:auto;color:var(--text-dim);font-size:0.75em">No refs yet</span>`}
+            </div>
+            ${tabItems || ''}
+            ${isMe ? `
+            <div id="addTabInline_${key}" style="display:none">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+                    <input type="text" id="tabUrl_${key}" placeholder="URL (Ultimate Guitar, Chordify…)" class="app-input" style="font-size:0.82em">
+                    <input type="text" id="tabLabel_${key}" placeholder="Label (e.g. 'My Chord Chart')" class="app-input" style="font-size:0.82em">
                 </div>
-            `).join('')}
-        </div>
-    `;
+                <input type="text" id="tabNotes_${key}" placeholder="Notes (optional)" class="app-input" style="font-size:0.82em;margin-top:6px">
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    <button onclick="addPersonalTabForMember('${songTitle.replace(/'/g,"\\'")}','${key}')" class="btn btn-primary btn-sm">➕ Add</button>
+                    <button onclick="document.getElementById('addTabInline_${key}').style.display='none'" class="btn btn-ghost btn-sm">Cancel</button>
+                </div>
+            </div>
+            <button onclick="document.getElementById('addTabInline_${key}').style.display='block';this.style.display='none'" class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%">+ Add My Reference</button>
+            ` : ''}
+        </div>`;
+    }).join('');
+
+    container.innerHTML = memberHTML || '<div style="padding:20px;color:var(--text-dim)">No members found</div>';
+}
+
+function getCurrentMemberKey() {
+    // Try localStorage first
+    const stored = localStorage.getItem('deadcetera_current_user');
+    if (stored && bandMembers[stored]) return stored;
+    // Fall back to email match
+    if (currentUserEmail) {
+        const emailToKey = {
+            'drewmerrill1029@gmail.com': 'drew',
+            'cmjalbert@gmail.com': 'chris',
+            'brian@hrestoration.com': 'brian',
+            'pierce.d.hale@gmail.com': 'pierce',
+            'jnault@fegholdings.com': 'jay'
+        };
+        return emailToKey[currentUserEmail] || null;
+    }
+    return null;
+}
+
+async function addPersonalTabForMember(songTitle, memberKey) {
+    const urlInput = document.getElementById(`tabUrl_${memberKey}`);
+    const labelInput = document.getElementById(`tabLabel_${memberKey}`);
+    const notesInput = document.getElementById(`tabNotes_${memberKey}`);
+    const url = urlInput?.value.trim();
+    if (!url || !url.startsWith('http')) { alert('Please enter a valid URL starting with http'); return; }
+    const tab = {
+        url,
+        label: labelInput?.value.trim() || '',
+        notes: notesInput?.value.trim() || '',
+        memberKey,
+        addedBy: currentUserEmail,
+        dateAdded: new Date().toLocaleDateString()
+    };
+    let tabs = await loadPersonalTabs(songTitle) || [];
+    tabs.push(tab);
+    await savePersonalTabs(songTitle, tabs);
+    await renderPersonalTabs(songTitle);
 }
 
 async function addPersonalTab() {
@@ -2466,9 +2515,12 @@ async function renderGigNotes(songTitle, bandData) {
         <div class="gig-notes-box">
             <ul>
                 ${notes.map((note, index) => `
-                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
-                        <span>${note}</span>
-                        <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">Delete</button>
+                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; gap: 8px;">
+                        <span id="gigNoteText_${index}" style="flex:1">${note}</span>
+                        <div style="display:flex;gap:4px;flex-shrink:0">
+                            <button onclick="editGigNote(${index})" style="background: rgba(102,126,234,0.15); color: var(--accent-light); border: 1px solid rgba(102,126,234,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">✏️</button>
+                            <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">Delete</button>
+                        </div>
                     </li>
                 `).join('')}
             </ul>
@@ -2504,6 +2556,40 @@ async function deleteGigNote(index) {
     
     await saveGigNotes(songTitle, notes);
     
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderGigNotes(songTitle, bandData);
+}
+
+async function editGigNote(index) {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    let notes = await loadGigNotes(songTitle) || [];
+    const current = notes[index] || '';
+    // Inline edit: replace li text with input
+    const textEl = document.getElementById(`gigNoteText_${index}`);
+    if (!textEl) return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'app-input';
+    input.style.cssText = 'flex:1;font-size:0.88em;padding:4px 8px';
+    input.onkeydown = async (e) => {
+        if (e.key === 'Enter') await saveGigNoteEdit(index, input.value);
+        if (e.key === 'Escape') { const bd = bandKnowledgeBase[songTitle]||{}; await renderGigNotes(songTitle,bd); }
+    };
+    textEl.replaceWith(input);
+    input.focus();
+    // Change edit button to save
+    const editBtn = input.parentElement?.querySelector('button:first-child');
+    if (editBtn) { editBtn.textContent = '💾'; editBtn.onclick = () => saveGigNoteEdit(index, input.value); }
+}
+
+async function saveGigNoteEdit(index, value) {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle || !value?.trim()) return;
+    let notes = await loadGigNotes(songTitle) || [];
+    notes[index] = value.trim();
+    await saveGigNotes(songTitle, notes);
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderGigNotes(songTitle, bandData);
 }
@@ -7664,11 +7750,120 @@ async function loadSetlists() {
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${i})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
                 <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
         ${(sl.sets||[]).map(s => `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map(sg => typeof sg==='string'?sg:sg.title).join(' → ')}</div>`).join('')}
     </div>`).join('');
+}
+
+async function exportSetlistToiPad(setlistIndex) {
+    const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const sl = allSetlists[setlistIndex];
+    if (!sl) return;
+
+    const allSongsList = typeof allSongs !== 'undefined' ? allSongs : (songs || []);
+    const allTabs = {};
+
+    // Gather all songs in this setlist
+    const songTitles = [];
+    (sl.sets || []).forEach(set => {
+        (set.songs || []).forEach(item => {
+            const title = typeof item === 'string' ? item : item.title;
+            if (title && !songTitles.includes(title)) songTitles.push(title);
+        });
+    });
+
+    // Load all personal tabs for each song in parallel
+    await Promise.all(songTitles.map(async (title) => {
+        allTabs[title] = await loadPersonalTabs(title) || [];
+    }));
+
+    // Build HTML document
+    const memberColors = { drew: '#667eea', chris: '#10b981', brian: '#f59e0b', pierce: '#8b5cf6', jay: '#3b82f6' };
+    const memberEmoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' };
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${sl.name || 'Setlist'} — Deadcetera Crib Sheet</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Inter', sans-serif; background: #0f172a; color: #f1f5f9; padding: 20px; }
+  h1 { font-size: 1.6em; font-weight: 800; color: #818cf8; margin-bottom: 4px; }
+  .meta { font-size: 0.85em; color: #94a3b8; margin-bottom: 24px; }
+  .set-header { font-size: 1.1em; font-weight: 700; color: #10b981; margin: 20px 0 10px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .song-block { background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px; margin-bottom: 10px; page-break-inside: avoid; }
+  .song-title { font-size: 1.05em; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .song-number { background: #667eea; color: white; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75em; font-weight: 700; flex-shrink: 0; }
+  .transition-arrow { color: #818cf8; font-weight: 700; margin-left: auto; }
+  .member-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
+  .member-ref { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 10px; }
+  .member-name { font-size: 0.72em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .ref-link { font-size: 0.82em; color: #818cf8; text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .no-ref { font-size: 0.8em; color: #475569; font-style: italic; }
+  .song-meta { font-size: 0.75em; color: #64748b; display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  @media print { body { background: white; color: black; } .song-block { background: #f8fafc; border-color: #e2e8f0; } }
+  @media (max-width: 600px) { .member-refs { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<h1>📋 ${sl.name || 'Setlist'}</h1>
+<div class="meta">📅 ${sl.date || 'Date TBD'} &nbsp;|&nbsp; 🏛️ ${sl.venue || 'Venue TBD'} &nbsp;|&nbsp; 🎵 ${songTitles.length} songs &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString()}</div>
+`;
+
+    let songNumber = 0;
+    for (const set of (sl.sets || [])) {
+        html += `<div class="set-header">🎵 ${set.name || 'Set'}</div>`;
+        for (const item of (set.songs || [])) {
+            const title = typeof item === 'string' ? item : item.title;
+            const isTransition = typeof item === 'object' && item.transition;
+            songNumber++;
+            const songData = allSongsList.find(s => s.title === title);
+            const tabs = allTabs[title] || [];
+
+            // Build member ref blocks
+            const memberRefHTML = Object.entries(bandMembers).map(([key, member]) => {
+                const memberTab = tabs.find(t => t.memberKey === key || (t.addedBy && t.addedBy.includes(key)));
+                const color = memberColors[key] || '#94a3b8';
+                const emoji = memberEmoji[key] || '👤';
+                return `<div class="member-ref">
+                    <div class="member-name" style="color:${color}">${emoji} ${member.name}</div>
+                    ${memberTab ? `<a href="${memberTab.url}" class="ref-link">${memberTab.label || memberTab.notes || 'View Reference'}</a>` : '<span class="no-ref">No ref added</span>'}
+                </div>`;
+            }).join('');
+
+            html += `<div class="song-block">
+                <div class="song-title">
+                    <span class="song-number">${songNumber}</span>
+                    <span>${title}</span>
+                    ${songData?.band ? `<span style="font-size:0.7em;color:#64748b;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:10px">${songData.band}</span>` : ''}
+                    ${isTransition ? '<span class="transition-arrow">→</span>' : ''}
+                </div>
+                ${songData?.key || songData?.bpm ? `<div class="song-meta">${songData.key ? `🎵 Key: ${songData.key}` : ''}${songData.bpm ? ` &nbsp; ⚡ ${songData.bpm} BPM` : ''}</div>` : ''}
+                <div class="member-refs">${memberRefHTML}</div>
+            </div>`;
+        }
+    }
+
+    html += `</body></html>`;
+
+    // Open in new window
+    const win = window.open('', '_blank');
+    if (win) {
+        win.document.write(html);
+        win.document.close();
+    } else {
+        // Fallback: download as HTML file
+        const blob = new Blob([html], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${(sl.name || 'setlist').replace(/[^a-z0-9]/gi, '_')}_crib_sheet.html`;
+        a.click();
+    }
 }
 
 function createNewSetlist() {
