@@ -8129,6 +8129,7 @@ function showPage(page) {
 
 const pageRenderers = {
     setlists: renderSetlistsPage,
+    playlists: renderPlaylistsPage,
     practice: renderPracticePage,
     calendar: renderCalendarPage,
     gigs: renderGigsPage,
@@ -8141,6 +8142,16 @@ const pageRenderers = {
     notifications: renderNotificationsPage,
     help: renderHelpPage
 };
+
+// Handle ?playlist= URL param — launch Smart Player directly
+(function checkPlaylistParam() {
+    const params = new URLSearchParams(window.location.search);
+    const playlistId = params.get('playlist');
+    if (playlistId) {
+        // Wait for app init then launch Smart Player
+        window.__launchSmartPlayer = playlistId;
+    }
+})();
 
 // ============================================================================
 // SETLIST BUILDER
@@ -11103,3 +11114,494 @@ function filterHelpTopics(query) {
         if (q.length > 2 && text.includes(q)) d.open = true;
     });
 }
+
+// ============================================================================
+// PLAYLISTS — PHASE 1: DATA LAYER
+// ============================================================================
+// All playlist data lives in Firebase (via saveBandDataToDrive / loadBandDataFromDrive)
+// under two top-level keys:
+//   _band / playlists        — the playlist objects (shared, writable by all)
+//   _band / playlist_listens — per-user listened tracking (shared, writable by all)
+//
+// Listening Party state lives in Firebase Realtime DB at:
+//   /listening_parties/{playlistId}
+//
+// Playlist types: northstar | pregig | practice | ondeck | custom
+// ============================================================================
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const PLAYLIST_TYPES = {
+    northstar: { label: '⭐ North Star',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.3)'  },
+    pregig:    { label: '🎤 Pre-Gig Prep',  color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.3)' },
+    practice:  { label: '🎸 Practice',      color: '#34d399', bg: 'rgba(52,211,153,0.15)',  border: 'rgba(52,211,153,0.3)'  },
+    ondeck:    { label: '📋 On Deck',        color: '#60a5fa', bg: 'rgba(96,165,250,0.15)',  border: 'rgba(96,165,250,0.3)'  },
+    custom:    { label: '🎵 Custom',         color: '#94a3b8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)' },
+};
+
+// Source priority order for resolvePlaylistSongUrl
+const SOURCE_PRIORITY = ['spotify', 'youtube', 'archive', 'soundcloud', 'other'];
+
+// ── Storage helpers ───────────────────────────────────────────────────────────
+
+async function loadPlaylists() {
+    const data = await loadBandDataFromDrive('_band', 'playlists');
+    return toArray(data || []);
+}
+
+async function savePlaylists(playlists) {
+    return await saveBandDataToDrive('_band', 'playlists', playlists);
+}
+
+async function loadPlaylistListens() {
+    const data = await loadBandDataFromDrive('_band', 'playlist_listens');
+    return (data && typeof data === 'object') ? data : {};
+}
+
+async function savePlaylistListens(listens) {
+    return await saveBandDataToDrive('_band', 'playlist_listens', listens);
+}
+
+// ── CRUD ─────────────────────────────────────────────────────────────────────
+
+async function createPlaylist(fields = {}) {
+    const playlists = await loadPlaylists();
+    const id = 'pl_' + Date.now();
+    const userKey = getCurrentUserKey() || 'unknown';
+    const now = new Date().toISOString();
+
+    const playlist = {
+        id,
+        name:           fields.name        || 'Untitled Playlist',
+        type:           fields.type        || 'custom',
+        description:    fields.description || '',
+        createdBy:      userKey,
+        createdAt:      now,
+        updatedAt:      now,
+        linkedSetlistId: fields.linkedSetlistId || null,
+        linkedGigId:    fields.linkedGigId || null,
+        // songs only stored here when NOT linked to a setlist
+        songs:          fields.linkedSetlistId ? [] : (fields.songs || []),
+    };
+
+    playlists.push(playlist);
+    await savePlaylists(playlists);
+    console.log('✅ Playlist created:', id);
+    return playlist;
+}
+
+async function updatePlaylist(playlistId, changes = {}) {
+    const playlists = await loadPlaylists();
+    const idx = playlists.findIndex(p => p.id === playlistId);
+    if (idx === -1) { console.warn('Playlist not found:', playlistId); return null; }
+
+    playlists[idx] = {
+        ...playlists[idx],
+        ...changes,
+        id:        playlistId,               // never overwrite id
+        updatedAt: new Date().toISOString(),
+    };
+    await savePlaylists(playlists);
+    return playlists[idx];
+}
+
+async function deletePlaylist(playlistId) {
+    const playlists = await loadPlaylists();
+    const filtered = playlists.filter(p => p.id !== playlistId);
+    await savePlaylists(filtered);
+
+    // Clean up listened data for this playlist
+    const listens = await loadPlaylistListens();
+    delete listens[playlistId];
+    await savePlaylistListens(listens);
+
+    // End any active listening party
+    if (firebaseDB) {
+        await firebaseDB.ref(`listening_parties/${playlistId}`).remove().catch(() => {});
+    }
+    console.log('🗑️ Playlist deleted:', playlistId);
+    return true;
+}
+
+// ── Song resolution ───────────────────────────────────────────────────────────
+// Returns the songs array for a playlist, handling live-sync from setlist.
+// Also merges in per-song notes/overrides stored on the playlist.
+
+async function getPlaylistSongs(playlist) {
+    if (!playlist) return [];
+
+    // Live-synced from setlist
+    if (playlist.linkedSetlistId) {
+        const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        const setlist = allSetlists.find(sl => sl.id === playlist.linkedSetlistId);
+
+        if (!setlist) {
+            // Setlist was deleted — return last-known songs with a flag
+            return (playlist.songs || []).map(s => ({ ...s, _setlistMissing: true }));
+        }
+
+        // Flatten all sets into ordered song array
+        const flatSongs = [];
+        (setlist.sets || []).forEach(set => {
+            (set.songs || []).forEach(item => {
+                const title = typeof item === 'string' ? item : item.title;
+                if (title) flatSongs.push(title);
+            });
+        });
+
+        // Build song entries, merging overrides stored on the playlist (by title)
+        const overrideMap = {};
+        (playlist.songs || []).forEach(s => { overrideMap[s.songTitle] = s; });
+
+        return flatSongs.map(title => ({
+            songTitle:       title,
+            note:            overrideMap[title]?.note            || '',
+            preferredSource: overrideMap[title]?.preferredSource || 'auto',
+            customUrl:       overrideMap[title]?.customUrl       || null,
+        }));
+    }
+
+    // Manual playlist — return stored songs as-is
+    return toArray(playlist.songs || []);
+}
+
+// ── URL resolution ────────────────────────────────────────────────────────────
+// Given a playlist song entry, returns the best available URL to play.
+// Priority: customUrl → preferredSource match → spotify → youtube → archive → search fallback
+
+async function resolvePlaylistSongUrl(playlistSong) {
+    const { songTitle, preferredSource, customUrl } = playlistSong;
+
+    // 1. Manual override always wins
+    if (customUrl) return { url: customUrl, source: detectUrlSource(customUrl) };
+
+    // 2. Load the song's saved versions from Drive
+    const versions = toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
+    const allUrls = versions.map(v => ({
+        url:    v.url || v.spotifyUrl || '',
+        source: detectUrlSource(v.url || v.spotifyUrl || ''),
+    })).filter(v => v.url);
+
+    // 3. Try preferred source first
+    if (preferredSource && preferredSource !== 'auto') {
+        const match = allUrls.find(v => v.source === preferredSource);
+        if (match) return match;
+    }
+
+    // 4. Try sources in priority order
+    for (const src of SOURCE_PRIORITY) {
+        const match = allUrls.find(v => v.source === src);
+        if (match) return match;
+    }
+
+    // 5. Practice tracks as fallback
+    const practiceTracks = toArray(await loadBandDataFromDrive(songTitle, 'practice_tracks') || []);
+    if (practiceTracks.length) {
+        const pt = practiceTracks[0];
+        const url = pt.url || pt.spotifyUrl || '';
+        if (url) return { url, source: detectUrlSource(url) };
+    }
+
+    // 6. Spotify search fallback — always works
+    const fallbackUrl = `https://open.spotify.com/search/${encodeURIComponent(songTitle)}`;
+    return { url: fallbackUrl, source: 'search' };
+}
+
+// Detect which streaming platform a URL belongs to
+function detectUrlSource(url) {
+    if (!url) return 'other';
+    const u = url.toLowerCase();
+    if (u.includes('spotify.com'))               return 'spotify';
+    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+    if (u.includes('archive.org'))               return 'archive';
+    if (u.includes('soundcloud.com'))            return 'soundcloud';
+    return 'other';
+}
+
+// Source display metadata (icon, label, color)
+function getSourceMeta(source) {
+    const map = {
+        spotify:    { icon: '🟢', label: 'Spotify',       color: '#1db954', bg: 'rgba(29,185,84,0.15)'  },
+        youtube:    { icon: '🔴', label: 'YouTube',       color: '#ff0000', bg: 'rgba(255,0,0,0.15)'    },
+        archive:    { icon: '🟠', label: 'Archive.org',   color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+        soundcloud: { icon: '🟣', label: 'SoundCloud',    color: '#ff7700', bg: 'rgba(255,119,0,0.15)'  },
+        search:     { icon: '🔍', label: 'Search Spotify',color: '#94a3b8', bg: 'rgba(148,163,184,0.15)'},
+        other:      { icon: '▶️',  label: 'Play',          color: '#667eea', bg: 'rgba(102,126,234,0.15)'},
+    };
+    return map[source] || map.other;
+}
+
+// ── YouTube playlist export ───────────────────────────────────────────────────
+// Builds an instant shareable YouTube playlist URL (no API key, no login needed).
+// Limit: ~50 videos. Returns { url, count, total } so caller can show truncation notice.
+
+function buildYouTubePlaylistUrl(resolvedSongs) {
+    const MAX = 50;
+    const ids = [];
+
+    for (const song of resolvedSongs) {
+        if (ids.length >= MAX) break;
+        const url = song._resolvedUrl || '';
+        const id = extractYouTubeId(url);
+        if (id) ids.push(id);
+    }
+
+    if (!ids.length) return null;
+
+    return {
+        url:   `https://www.youtube.com/watch_videos?video_ids=${ids.join(',')}`,
+        count: ids.length,
+        total: resolvedSongs.length,
+    };
+}
+
+// Extract YouTube video ID from any YouTube URL format
+function extractYouTubeId(url) {
+    if (!url) return null;
+    // youtu.be/ID
+    let m = url.match(/youtu\.be\/([^?&]+)/);
+    if (m) return m[1];
+    // youtube.com/watch?v=ID
+    m = url.match(/[?&]v=([^&]+)/);
+    if (m) return m[1];
+    // youtube.com/embed/ID
+    m = url.match(/embed\/([^?&]+)/);
+    if (m) return m[1];
+    return null;
+}
+
+// ── Share URL builder ─────────────────────────────────────────────────────────
+
+function buildPlaylistShareUrl(playlistId) {
+    const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    return `${base}/?playlist=${encodeURIComponent(playlistId)}`;
+}
+
+async function copyPlaylistShareUrl(playlistId) {
+    const url = buildPlaylistShareUrl(playlistId);
+    try {
+        await navigator.clipboard.writeText(url);
+        showToast('📋 Link copied! Send it to the band.', 2500);
+    } catch {
+        // Fallback for older iOS
+        prompt('Copy this link and send to the band:', url);
+    }
+    return url;
+}
+
+// ── Listened tracking ─────────────────────────────────────────────────────────
+
+async function markSongListened(playlistId, songTitle) {
+    if (!playlistId || !songTitle) return;
+    const userKey = getCurrentUserKey();
+    if (!userKey) return;
+
+    const listens = await loadPlaylistListens();
+    if (!listens[playlistId]) listens[playlistId] = {};
+    if (!listens[playlistId][userKey]) listens[playlistId][userKey] = [];
+
+    if (!listens[playlistId][userKey].includes(songTitle)) {
+        listens[playlistId][userKey].push(songTitle);
+        await savePlaylistListens(listens);
+        console.log(`✅ Marked listened: ${songTitle} (${userKey})`);
+    }
+}
+
+// Returns an object: { drew: ['Song A', 'Song B'], chris: [...], ... }
+async function getPlaylistListenedByUser(playlistId) {
+    const listens = await loadPlaylistListens();
+    return listens[playlistId] || {};
+}
+
+// Returns array of song titles this user has listened to in this playlist
+async function getMyListenedSongs(playlistId) {
+    const userKey = getCurrentUserKey();
+    if (!userKey) return [];
+    const byUser = await getPlaylistListenedByUser(playlistId);
+    return byUser[userKey] || [];
+}
+
+// Builds a per-member listen progress summary for display in cards
+// Returns: [{ key, name, listenedCount, totalCount, pct }]
+function buildListenProgress(listenedByUser, totalSongs) {
+    return Object.entries(bandMembers).map(([key, member]) => {
+        const count = (listenedByUser[key] || []).length;
+        return {
+            key,
+            name:          member.name,
+            listenedCount: count,
+            totalCount:    totalSongs,
+            pct:           totalSongs > 0 ? Math.round((count / totalSongs) * 100) : 0,
+        };
+    });
+}
+
+// ── Listening Party — Firebase Realtime DB ─────────────────────────────────────
+
+let _partyListener = null;   // active Firebase listener ref, for cleanup
+let _partyPlaylistId = null; // which playlist the current party is for
+
+async function startListeningParty(playlistId, songs) {
+    if (!firebaseDB) { alert('Firebase not connected — cannot start a Listening Party.'); return; }
+    const userKey = getCurrentUserKey() || 'unknown';
+
+    const partyData = {
+        active:             true,
+        startedBy:          userKey,
+        startedAt:          Date.now(),
+        currentSongIndex:   0,
+        currentSongTitle:   songs[0]?.songTitle || '',
+        lastAdvancedBy:     userKey,
+        lastAdvancedAt:     Date.now(),
+        presence: {
+            [userKey]: { online: true, lastSeen: Date.now() }
+        }
+    };
+
+    await firebaseDB.ref(`listening_parties/${playlistId}`).set(partyData);
+    console.log('🎉 Listening Party started:', playlistId);
+    await joinListeningParty(playlistId, songs);
+    return partyData;
+}
+
+async function joinListeningParty(playlistId, songs) {
+    if (!firebaseDB) return;
+    const userKey = getCurrentUserKey() || 'unknown';
+
+    // Register presence
+    const presenceRef = firebaseDB.ref(`listening_parties/${playlistId}/presence/${userKey}`);
+    await presenceRef.set({ online: true, lastSeen: Date.now() });
+    presenceRef.onDisconnect().update({ online: false, lastSeen: Date.now() });
+
+    // Refresh presence every 30s so lastSeen stays current
+    if (window._presenceInterval) clearInterval(window._presenceInterval);
+    window._presenceInterval = setInterval(() => {
+        presenceRef.update({ lastSeen: Date.now() }).catch(() => {});
+    }, 30000);
+
+    // Detach any previous listener
+    leaveListeningParty(false);
+
+    _partyPlaylistId = playlistId;
+    _partyListener = firebaseDB.ref(`listening_parties/${playlistId}`);
+
+    _partyListener.on('value', snap => {
+        const party = snap.val();
+        if (!party || !party.active) {
+            leaveListeningParty(false);
+            onPartyEnded();
+            return;
+        }
+        onPartyUpdate(party, songs);
+    });
+
+    console.log('👥 Joined Listening Party:', playlistId);
+}
+
+function leaveListeningParty(updatePresence = true) {
+    if (_partyListener) {
+        _partyListener.off('value');
+        _partyListener = null;
+    }
+    if (updatePresence && _partyPlaylistId && firebaseDB) {
+        const userKey = getCurrentUserKey() || 'unknown';
+        firebaseDB.ref(`listening_parties/${_partyPlaylistId}/presence/${userKey}`)
+            .update({ online: false, lastSeen: Date.now() })
+            .catch(() => {});
+    }
+    if (window._presenceInterval) {
+        clearInterval(window._presenceInterval);
+        window._presenceInterval = null;
+    }
+    _partyPlaylistId = null;
+}
+
+async function endListeningParty(playlistId) {
+    if (!firebaseDB) return;
+    await firebaseDB.ref(`listening_parties/${playlistId}`).update({
+        active: false,
+        endedAt: Date.now(),
+    });
+    leaveListeningParty(false);
+    console.log('🛑 Listening Party ended:', playlistId);
+}
+
+// Advance everyone to a new song index — anyone can call this (collaborative mode)
+async function advancePartyToSong(playlistId, newIndex, songs) {
+    if (!firebaseDB) return;
+    const userKey = getCurrentUserKey() || 'unknown';
+    const songTitle = songs[newIndex]?.songTitle || '';
+
+    await firebaseDB.ref(`listening_parties/${playlistId}`).update({
+        currentSongIndex: newIndex,
+        currentSongTitle: songTitle,
+        lastAdvancedBy:   userKey,
+        lastAdvancedAt:   Date.now(),
+    });
+
+    // Mark previous song as listened for this user
+    const prevTitle = songs[newIndex - 1]?.songTitle;
+    if (prevTitle) await markSongListened(playlistId, prevTitle);
+}
+
+// Get current party state (one-time read, not subscribed)
+async function getPartyState(playlistId) {
+    if (!firebaseDB) return null;
+    const snap = await firebaseDB.ref(`listening_parties/${playlistId}`).once('value');
+    return snap.val();
+}
+
+// ── Party event callbacks (overridden by Smart Player when active) ─────────────
+// These are no-ops here; renderSmartPlayer() (Phase 3) will replace them.
+
+function onPartyUpdate(party, songs) {
+    // Phase 3 will wire this to scroll + highlight the current song
+    console.log('[Party] Now playing:', party.currentSongTitle, '(advanced by', party.lastAdvancedBy + ')');
+}
+
+function onPartyEnded() {
+    // Phase 3 will update the UI
+    console.log('[Party] Party ended');
+    showToast('🛑 Listening Party has ended.', 3000);
+}
+
+// ── Toast helper (reusable) ───────────────────────────────────────────────────
+// Creates a brief notification at the bottom of the screen.
+
+function showToast(message, duration = 2500) {
+    const existing = document.getElementById('dc-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'dc-toast';
+    toast.style.cssText = `
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+        background: #1e293b; border: 1px solid rgba(102,126,234,0.4);
+        color: #f1f5f9; padding: 10px 20px; border-radius: 20px;
+        font-size: 0.88em; font-weight: 600; z-index: 9999;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        animation: slideUpBanner 0.25s ease-out;
+        white-space: nowrap; max-width: 90vw; text-align: center;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), duration);
+}
+
+// ── Stub page renderer (replaced by Phase 2) ─────────────────────────────────
+
+function renderPlaylistsPage(el) {
+    el.innerHTML = `
+        <div class="page-header">
+            <h1>🎵 Playlists</h1>
+            <p>Curated listening for the whole band — from any source</p>
+        </div>
+        <div class="app-card" style="text-align:center;padding:40px;color:var(--text-dim)">
+            <div style="font-size:2em;margin-bottom:12px">🚧</div>
+            <div style="font-weight:600;margin-bottom:8px">Playlists UI coming in Phase 2</div>
+            <div style="font-size:0.85em">Data layer is live — playlists save to Firebase.</div>
+        </div>
+    `;
+}
+
+console.log('🎵 Playlists Phase 1 — data layer loaded');
