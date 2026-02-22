@@ -11155,7 +11155,7 @@ async function savePlaylistListens(listens) {
 async function createPlaylist(fields = {}) {
     const playlists = await loadPlaylists();
     const id = 'pl_' + Date.now();
-    const userKey = getCurrentUserKey() || 'unknown';
+    const userKey = getCurrentMemberKey() || 'unknown';
     const now = new Date().toISOString();
 
     const playlist = {
@@ -11381,7 +11381,7 @@ async function copyPlaylistShareUrl(playlistId) {
 
 async function markSongListened(playlistId, songTitle) {
     if (!playlistId || !songTitle) return;
-    const userKey = getCurrentUserKey();
+    const userKey = getCurrentMemberKey();
     if (!userKey) return;
 
     const listens = await loadPlaylistListens();
@@ -11403,7 +11403,7 @@ async function getPlaylistListenedByUser(playlistId) {
 
 // Returns array of song titles this user has listened to in this playlist
 async function getMyListenedSongs(playlistId) {
-    const userKey = getCurrentUserKey();
+    const userKey = getCurrentMemberKey();
     if (!userKey) return [];
     const byUser = await getPlaylistListenedByUser(playlistId);
     return byUser[userKey] || [];
@@ -11431,7 +11431,7 @@ let _partyPlaylistId = null; // which playlist the current party is for
 
 async function startListeningParty(playlistId, songs) {
     if (!firebaseDB) { alert('Firebase not connected — cannot start a Listening Party.'); return; }
-    const userKey = getCurrentUserKey() || 'unknown';
+    const userKey = getCurrentMemberKey() || 'unknown';
 
     const partyData = {
         active:             true,
@@ -11454,7 +11454,7 @@ async function startListeningParty(playlistId, songs) {
 
 async function joinListeningParty(playlistId, songs) {
     if (!firebaseDB) return;
-    const userKey = getCurrentUserKey() || 'unknown';
+    const userKey = getCurrentMemberKey() || 'unknown';
 
     // Register presence
     const presenceRef = firebaseDB.ref(`listening_parties/${playlistId}/presence/${userKey}`);
@@ -11492,7 +11492,7 @@ function leaveListeningParty(updatePresence = true) {
         _partyListener = null;
     }
     if (updatePresence && _partyPlaylistId && firebaseDB) {
-        const userKey = getCurrentUserKey() || 'unknown';
+        const userKey = getCurrentMemberKey() || 'unknown';
         firebaseDB.ref(`listening_parties/${_partyPlaylistId}/presence/${userKey}`)
             .update({ online: false, lastSeen: Date.now() })
             .catch(() => {});
@@ -11517,7 +11517,7 @@ async function endListeningParty(playlistId) {
 // Advance everyone to a new song index — anyone can call this (collaborative mode)
 async function advancePartyToSong(playlistId, newIndex, songs) {
     if (!firebaseDB) return;
-    const userKey = getCurrentUserKey() || 'unknown';
+    const userKey = getCurrentMemberKey() || 'unknown';
     const songTitle = songs[newIndex]?.songTitle || '';
 
     await firebaseDB.ref(`listening_parties/${playlistId}`).update({
@@ -11819,20 +11819,44 @@ async function plRenderEditor(pl) {
     plEdInitDragDrop();
 }
 
-function plHandleSetlistLink(setlistId) {
-    // Re-render editor with live-sync notice updated
+async function plHandleSetlistLink(setlistId) {
+    // Preserve current field values without re-rendering entire editor
     const nameVal = document.getElementById('plEdName')?.value;
     const typeVal = document.getElementById('plEdType')?.value;
     const descVal = document.getElementById('plEdDesc')?.value;
 
-    // Temporarily patch _plEditing to reflect new linked state for re-render
-    const tempPl = _plEditing ? { ..._plEditing } : {};
-    tempPl.linkedSetlistId = setlistId || null;
-    tempPl.name = nameVal || tempPl.name;
-    tempPl.type = typeVal || tempPl.type;
-    tempPl.description = descVal || tempPl.description;
-    _plEditing = Object.keys(tempPl).length ? tempPl : null;
-    plRenderEditor(_plEditing);
+    if (!_plEditing) _plEditing = {};
+    _plEditing.linkedSetlistId = setlistId || null;
+    _plEditing.name = nameVal || _plEditing.name;
+    _plEditing.type = typeVal || _plEditing.type;
+    _plEditing.description = descVal || _plEditing.description;
+
+    // Fetch songs from linked setlist (or clear if unlinked)
+    if (setlistId) {
+        _plEditorSongs = await getPlaylistSongs(_plEditing);
+    } else {
+        _plEditorSongs = [];
+    }
+
+    // Show/hide live-sync notice inline without full re-render
+    const noticeId = 'plLiveSyncNotice';
+    let notice = document.getElementById(noticeId);
+    if (setlistId && !notice) {
+        notice = document.createElement('div');
+        notice.id = noticeId;
+        notice.style.cssText = 'background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.85em;color:#10b981';
+        notice.innerHTML = '⚡ Songs are live-synced from the linked setlist. Per-song notes and source preferences are still editable below.';
+        const setlistRow = document.getElementById('plEdSetlist')?.closest('.form-row');
+        if (setlistRow) setlistRow.insertAdjacentElement('afterend', notice);
+    } else if (!setlistId && notice) {
+        notice.remove();
+    }
+
+    // Hide/show the add-songs search bar
+    const searchArea = document.getElementById('plEdSearch')?.parentElement;
+    if (searchArea) searchArea.style.display = setlistId ? 'none' : '';
+
+    plEdRenderSongList();
 }
 
 // ── Editor song list ──────────────────────────────────────────────────────────
