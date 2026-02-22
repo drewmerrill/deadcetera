@@ -77,9 +77,9 @@ a{color:var(--accent-light);}
 /* ===== TABS ===== */
 .tab-bar{display:flex;gap:4px;overflow-x:auto;padding:4px;background:rgba(255,255,255,0.03);border-radius:10px;margin-bottom:16px;scrollbar-width:none;}
 .tab-bar::-webkit-scrollbar{display:none;}
-.tab-btn{padding:8px 14px;border:none;background:none;color:var(--text-dim);font-size:0.78em;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:all 0.15s;font-family:inherit;}
-.tab-btn:hover{color:var(--text-muted);background:rgba(255,255,255,0.04);}
-.tab-btn.active{background:var(--accent);color:white;}
+.tab-btn{padding:8px 14px;border:none;background:none;color:#64748b;font-size:0.78em;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:all 0.15s;font-family:inherit;}
+.tab-btn:hover{color:#cbd5e1;background:rgba(255,255,255,0.06);}
+.tab-btn.active{background:var(--accent);color:#ffffff!important;}
 
 /* ======================================================================
    SONG LIST — HIGH-PRIORITY DARK THEME FIX
@@ -90,20 +90,22 @@ a{color:var(--accent-light);}
 
 /* EVERY child div in songDropdown = a song row */
 #songDropdown > div {
-    display:flex!important;
+    display:grid!important;
+    grid-template-columns:1fr auto auto!important;
     align-items:center!important;
-    gap:10px!important;
-    padding:11px 14px!important;
+    gap:8px!important;
+    padding:10px 14px!important;
     background:var(--bg-card)!important;
     border:1px solid var(--border)!important;
     border-radius:8px!important;
-    margin-bottom:4px!important;
+    margin-bottom:3px!important;
     cursor:pointer!important;
     transition:all 0.12s ease!important;
     color:var(--text)!important;
 }
 #songDropdown > div:hover{background:rgba(102,126,234,0.1)!important;border-color:rgba(102,126,234,0.3)!important;}
-#songDropdown > div.selected{background:rgba(102,126,234,0.15)!important;border-color:var(--accent)!important;}
+#songDropdown > div.selected{background:rgba(102,126,234,0.2)!important;border-color:var(--accent)!important;}
+#songDropdown > div.selected .song-name{color:#e0e7ff!important;}
 
 /* Song name text — MUST be visible */
 #songDropdown > div .song-name,
@@ -205,6 +207,9 @@ a{color:var(--accent-light);}
 /* ===== DARK THEME CATCH-ALL ===== */
 [style*="background: white"],[style*="background:#fff"],[style*="background: #fff"]{background:rgba(255,255,255,0.04)!important;}
 [style*="background: #f9fafb"],[style*="background:#f9fafb"],[style*="background: #f7fafc"]{background:rgba(255,255,255,0.03)!important;}
+[style*="background: #fffbeb"],[style*="background: #fef3c7"],[style*="background: #fde68a"]{background:rgba(245,158,11,0.1)!important;}
+[style*="background: #f5f7ff"]{background:rgba(102,126,234,0.08)!important;}
+[style*="background: #f3f4f6"]{background:rgba(255,255,255,0.04)!important;}
 [style*="color: #2d3748"],[style*="color:#2d3748"],[style*="color: #1f2937"],[style*="color:#1f2937"],[style*="color: #333"]{color:var(--text)!important;}
 [style*="color: #4a5568"],[style*="color:#4a5568"],[style*="color: #4b5563"]{color:var(--text-muted)!important;}
 [style*="color: #718096"],[style*="color: #6b7280"],[style*="color: #9ca3af"]{color:var(--text-dim)!important;}

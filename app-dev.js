@@ -23,15 +23,16 @@
     style.textContent = `
         /* ===== SONG LIST (DARK THEME) ===== */
         .song-item {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
             align-items: center;
-            padding: 11px 14px;
+            gap: 8px;
+            padding: 10px 14px;
             min-height: 44px;
-            gap: 10px;
             background: #1e293b;
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 8px;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
             cursor: pointer;
             transition: all 0.12s ease;
             color: #f1f5f9;
@@ -41,11 +42,12 @@
             border-color: rgba(102,126,234,0.3);
         }
         .song-item.selected {
-            background: rgba(102,126,234,0.15);
+            background: rgba(102,126,234,0.2);
             border-color: #667eea;
+            box-shadow: inset 0 0 0 1px rgba(102,126,234,0.3);
         }
+        .song-item.selected .song-name { color: #e0e7ff; }
         .song-name {
-            flex: 1;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -54,15 +56,45 @@
             font-weight: 500;
             font-size: 0.92em;
         }
+        /* Badges column: harmony + status sit together */
+        .song-badges {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            justify-self: end;
+        }
+        .harmony-badge {
+            flex-shrink: 0;
+            font-size: 0.8em;
+            line-height: 1;
+            background: rgba(129,140,248,0.2);
+            padding: 3px 5px;
+            border-radius: 6px;
+            border: 1px solid rgba(129,140,248,0.3);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .status-badge {
+            flex-shrink: 0;
+            white-space: nowrap;
+            font-size: 0.65em;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            display: inline-flex;
+            align-items: center;
+        }
         .song-badge {
             flex-shrink: 0;
-            margin-left: auto;
-            font-size: 0.68em;
+            justify-self: end;
+            font-size: 0.65em;
             padding: 3px 10px;
             border-radius: 20px;
             font-weight: 700;
             text-align: center;
-            min-width: 36px;
+            min-width: 32px;
             letter-spacing: 0.03em;
             text-transform: uppercase;
         }
@@ -73,19 +105,6 @@
         .song-badge.abb { background: rgba(236,72,153,0.15); color: #f472b6; border: 1px solid rgba(236,72,153,0.25); }
         .song-badge.goose { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
         .song-badge.dmb { background: rgba(20,184,166,0.15); color: #2dd4bf; border: 1px solid rgba(20,184,166,0.25); }
-        .harmony-badge {
-            flex-shrink: 0;
-            font-size: 0.75em;
-            color: #818cf8;
-        }
-        .status-badge {
-            flex-shrink: 0;
-            white-space: nowrap;
-            font-size: 0.7em;
-            padding: 2px 8px;
-            border-radius: 20px;
-            font-weight: 600;
-        }
 
         /* ===== FILTER BUTTONS ===== */
         .status-filters, .harmony-filters {
@@ -546,6 +565,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     dropdown.innerHTML = filtered.map(song => `
         <div class="song-item" data-title="${song.title.replace(/"/g, '&quot;')}" onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
             <span class="song-name">${song.title}</span>
+            <span class="song-badges"></span>
             <span class="song-badge ${song.band.toLowerCase()}">${song.band}</span>
         </div>
     `).join('');
@@ -2465,7 +2485,7 @@ async function saveGigNotes(songTitle, notes) {
 }
 
 async function loadGigNotes(songTitle) {
-    return await loadBandDataFromDrive(songTitle, 'gig_notes');
+    return toArray(await loadBandDataFromDrive(songTitle, 'gig_notes') || []);
 }
 
 console.log('📝 Gig notes editor loaded');
@@ -2993,6 +3013,16 @@ async function addSpotifyVersion() {
     await renderSpotifyVersionsWithMetadata(songTitle, bandData);
 }
 
+// Alias for old render function compatibility
+async function toggleVersionVote(songTitle, versionId, voterEmail) {
+    // Find version index by ID
+    const versions = toArray(await loadSpotifyVersions(songTitle) || []);
+    const idx = versions.findIndex(v => v.id === versionId);
+    if (idx >= 0) {
+        await toggleSpotifyVote(idx, voterEmail);
+    }
+}
+
 async function toggleSpotifyVote(versionIndex, voterEmail) {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
@@ -3042,7 +3072,7 @@ async function saveSpotifyVersions(songTitle, versions) {
 }
 
 async function loadSpotifyVersions(songTitle) {
-    return await loadBandDataFromDrive(songTitle, 'spotify_versions');
+    return toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
 }
 
 console.log('🎵 reference versions system loaded');
@@ -5223,47 +5253,21 @@ async function loadSongStatus(songTitle) {
 async function filterByStatus(status) {
     console.log('Filtering by status:', status);
     
-    if (!statusCacheLoaded) {
+    if (!statusCacheLoaded && status !== 'all') {
         alert('Song statuses are still loading. Please wait a moment.');
+        // Reset dropdown
+        const sel = document.getElementById('statusFilter');
+        if (sel) sel.value = 'all';
         return;
     }
     
-    // Toggle: if clicking the same filter again, reset to 'all'
-    if (status !== 'all' && activeStatusFilter === status) {
-        status = 'all';
-    }
+    activeStatusFilter = (status === 'all') ? null : status;
     
-    // Update button styles - reset all buttons first
-    document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
-        const originalColor = btn.dataset.color || btn.style.color || '#667eea';
-        btn.dataset.color = originalColor;
-        btn.style.background = 'rgba(255,255,255,0.04)';
-        btn.style.color = originalColor;
-    });
-    // Only highlight clicked button if we're NOT toggling off
-    if (status !== 'all' && event && event.target) {
-        const btn = event.target.closest('.filter-btn');
-        if (btn) {
-            const originalColor = btn.dataset.color || btn.style.color || '#667eea';
-            btn.dataset.color = originalColor;
-            btn.style.background = originalColor;
-            btn.style.color = 'white';
-        }
-    }
-    
-    // Track active filter so renderSongs can re-apply it
-    activeStatusFilter = status;
-    
-    if (status === 'all') {
-        activeStatusFilter = null;
-        // Re-render if song list was replaced with a message
-        if (document.querySelectorAll('.song-item').length === 0) {
-            renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
-        } else {
-            document.querySelectorAll('.song-item').forEach(item => {
-                item.style.display = 'flex';
-            });
-        }
+    if (!activeStatusFilter) {
+        // Show all songs
+        document.querySelectorAll('.song-item').forEach(item => {
+            item.style.display = 'grid';
+        });
         return;
     }
     
@@ -5282,7 +5286,7 @@ function applyStatusFilter(status) {
         const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         
         if (getStatusFromCache(songTitle) === status) {
-            item.style.display = 'flex';
+            item.style.display = 'grid';
             visibleCount++;
         } else {
             item.style.display = 'none';
@@ -5316,23 +5320,24 @@ async function addStatusBadges() {
     
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
+        const badgesContainer = item.querySelector('.song-badges');
+        if (!badgesContainer) return;
         
-        // Remove existing status badge FIRST (before reading title)
-        const existingStatus = item.querySelector('.status-badge');
+        // Remove existing status badge
+        const existingStatus = badgesContainer.querySelector('.status-badge');
         if (existingStatus) existingStatus.remove();
         
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
+        const songTitle = item.dataset.title || '';
         if (!songTitle) return;
         
         const status = getStatusFromCache(songTitle);
         
         if (status) {
             const badges = {
-                'this_week': { text: '🎯 THIS WEEK', color: '#ef4444', bg: '#fee2e2' },
-                'gig_ready': { text: '✅ READY', color: '#10b981', bg: '#d1fae5' },
-                'needs_polish': { text: '⚠️ POLISH', color: '#f59e0b', bg: '#fef3c7' },
-                'on_deck': { text: '📚 ON DECK', color: '#3b82f6', bg: '#dbeafe' }
+                'this_week': { text: '🎯 THIS WEEK', color: '#fca5a5', bg: 'rgba(239,68,68,0.2)' },
+                'gig_ready': { text: '✅ READY', color: '#6ee7b7', bg: 'rgba(16,185,129,0.2)' },
+                'needs_polish': { text: '⚠️ POLISH', color: '#fcd34d', bg: 'rgba(245,158,11,0.2)' },
+                'on_deck': { text: '📚 ON DECK', color: '#93c5fd', bg: 'rgba(59,130,246,0.2)' }
             };
             
             const badge = badges[status];
@@ -5340,18 +5345,8 @@ async function addStatusBadges() {
                 const badgeEl = document.createElement('span');
                 badgeEl.className = 'status-badge';
                 badgeEl.textContent = badge.text;
-                badgeEl.style.cssText = `
-                    display: inline-block;
-                    padding: 3px 8px;
-                    border-radius: 4px;
-                    font-size: 0.7em;
-                    font-weight: 700;
-                    color: ${badge.color};
-                    background: ${badge.bg};
-                    margin-left: 8px;
-                    vertical-align: middle;
-                `;
-                songNameElement.appendChild(badgeEl);
+                badgeEl.style.cssText = `color:${badge.color};background:${badge.bg};border:1px solid ${badge.color}33;`;
+                badgesContainer.appendChild(badgeEl);
             }
         }
     });
@@ -5570,7 +5565,7 @@ async function filterSongsAsync(type) {
     if (type === 'all') {
         activeHarmonyFilter = null;
         document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'flex';
+            item.style.display = 'grid';
         });
         return;
     }
@@ -5588,7 +5583,7 @@ function applyHarmonyFilter() {
         const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
         
         if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
-            item.style.display = 'flex';
+            item.style.display = 'grid';
             visibleCount++;
         } else {
             item.style.display = 'none';
@@ -5657,13 +5652,14 @@ async function addHarmonyBadges() {
     // Apply badges from cache (instant, no Drive calls!)
     const songItems = document.querySelectorAll('.song-item');
     songItems.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
+        const badgesContainer = item.querySelector('.song-badges');
+        if (!badgesContainer) return;
         
-        // Remove existing badge FIRST (before reading title)
-        const existingBadge = item.querySelector('.harmony-badge');
+        // Remove existing harmony badge
+        const existingBadge = badgesContainer.querySelector('.harmony-badge');
         if (existingBadge) existingBadge.remove();
         
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
+        const songTitle = item.dataset.title || '';
         if (!songTitle) return;
         
         // Add badge if song has harmonies
@@ -5671,14 +5667,8 @@ async function addHarmonyBadges() {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
             badge.textContent = '🎤';
-            badge.style.cssText = 'margin-left:6px;font-size:0.8em;background:rgba(129,140,248,0.25);padding:2px 6px;border-radius:6px;border:1px solid rgba(129,140,248,0.35);';
             badge.title = 'Has vocal harmonies';
-            // Append inside the song-name span so it sits next to the title
-            if (songNameElement) {
-                songNameElement.appendChild(badge);
-            } else {
-                item.appendChild(badge);
-            }
+            badgesContainer.appendChild(badge);
         }
     });
 }
@@ -5805,7 +5795,7 @@ async function savePracticeTracks(songTitle, tracks) {
 }
 
 async function loadPracticeTracksFromDrive(songTitle) {
-    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS) || [];
+    return toArray(await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.PRACTICE_TRACKS) || []);
 }
 
 async function saveRehearsalNotes(songTitle, notes) {
@@ -8794,10 +8784,11 @@ function getSongHistoryTooltip(title) {
     if(document.getElementById('tab-bar-css'))return;
     const s=document.createElement('style');s.id='tab-bar-css';
     s.textContent=`
-        .tab-bar{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08));margin-bottom:16px}
-        .tab-btn{background:none;border:none;color:var(--text-dim,#64748b);padding:8px 14px;font-size:0.82em;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;border-radius:0;transition:all 0.15s}
-        .tab-btn:hover{color:var(--text-muted,#94a3b8)}
-        .tab-btn.active{color:var(--accent-light,#818cf8);border-bottom-color:var(--accent,#667eea)}
+        .tab-bar{display:flex;gap:6px;overflow-x:auto;padding:4px;background:rgba(255,255,255,0.03);border-radius:10px;margin-bottom:16px;scrollbar-width:none}
+        .tab-bar::-webkit-scrollbar{display:none}
+        .tab-btn{background:none;border:none;color:#64748b;padding:8px 14px;font-size:0.82em;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:all 0.15s;font-family:inherit}
+        .tab-btn:hover{color:#cbd5e1;background:rgba(255,255,255,0.06)}
+        .tab-btn.active{color:#ffffff;background:#667eea}
     `;
     document.head.appendChild(s);
 })();
