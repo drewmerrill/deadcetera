@@ -559,7 +559,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     console.log('renderSongs called - filter:', filter, 'searchTerm:', searchTerm);
     const dropdown = document.getElementById('songDropdown');
     
-    // Pre-filter by status if active (do it at data level, not DOM level)
+    // Pre-filter by status and harmony if active (do it at data level, not DOM level)
     let filtered = allSongs.filter(song => {
         const matchesFilter = filter === 'all' || song.band.toUpperCase() === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
@@ -569,6 +569,10 @@ function renderSongs(filter = 'all', searchTerm = '') {
             const songStatus = getStatusFromCache(song.title);
             if (songStatus !== activeStatusFilter) return false;
         }
+        // Harmony filter at data level
+        if (activeHarmonyFilter === 'harmonies') {
+            if (!harmonyBadgeCache[song.title] && !harmonyCache[song.title]) return false;
+        }
         return true;
     });
     
@@ -577,10 +581,15 @@ function renderSongs(filter = 'all', searchTerm = '') {
     if (filtered.length === 0) {
         const statusNames = { 'this_week':'This Week', 'gig_ready':'Gig Ready', 'needs_polish':'Needs Polish', 'on_deck':'On Deck' };
         const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
-        const msg = activeStatusFilter
-            ? `<div style="font-size:2em;margin-bottom:12px">🎸</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:8px">No songs marked "${statusLabel}"</div><div style="margin-bottom:16px;font-size:0.9em">Click any song and set its status!</div><button onclick="document.getElementById('statusFilter').value='all';filterByStatus('all')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>`
-            : `<div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:6px">No songs found</div><div style="font-size:0.9em">Try a different search or filter</div>`;
-        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);display:block !important;grid-template-columns:none !important">' + msg + '</div>';
+        let msg;
+        if (activeHarmonyFilter === 'harmonies') {
+            msg = `<div style="font-size:2em;margin-bottom:12px">🎵</div><div style="font-size:1.1em;font-weight:600;color:#1e293b;margin-bottom:8px">No harmony songs marked yet</div><div style="margin-bottom:16px;font-size:0.9em;color:#64748b">Click any song and check "Has Harmonies"!</div><button onclick="document.getElementById('harmoniesOnlyFilter').checked=false;filterSongsSync('all')" class="btn btn-primary" style="padding:10px 24px">Show All Songs</button>`;
+        } else if (activeStatusFilter) {
+            msg = `<div style="font-size:2em;margin-bottom:12px">🎸</div><div style="font-size:1.1em;font-weight:600;color:#1e293b;margin-bottom:8px">No songs marked "${statusLabel}"</div><div style="margin-bottom:16px;font-size:0.9em;color:#64748b">Click any song and set its status!</div><button onclick="document.getElementById('statusFilter').value='all';filterByStatus('all')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>`;
+        } else {
+            msg = `<div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:#1e293b;margin-bottom:6px">No songs found</div><div style="font-size:0.9em;color:#64748b">Try a different search or filter</div>`;
+        }
+        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;display:block !important;grid-template-columns:none !important">' + msg + '</div>';
         return;
     }
     
@@ -4861,10 +4870,25 @@ function updateDriveAuthButton() {
         button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span> Connected';
         button.className = 'topbar-btn connected';
         button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 12px!important;border-radius:8px!important;';
+        // Update the hero Sign In button to show Sign Out
+        const heroBtn = document.getElementById('googleDriveAuthBtn2');
+        if (heroBtn) {
+            heroBtn.innerHTML = '👋 Sign Out';
+            heroBtn.style.background = '#64748b';
+        }
+        const heroCaption = document.querySelector('#signInPrompt p');
+        if (heroCaption) heroCaption.textContent = 'Signed in as ' + (currentUserEmail || '');
     } else {
         button.textContent = '👤 Sign In';
         button.className = 'topbar-btn';
         button.style.cssText = 'background:#667eea;color:#fff;border-color:#667eea;';
+        const heroBtn = document.getElementById('googleDriveAuthBtn2');
+        if (heroBtn) {
+            heroBtn.innerHTML = '👤 Sign In';
+            heroBtn.style.background = 'var(--accent)';
+        }
+        const heroCaption = document.querySelector('#signInPrompt p');
+        if (heroCaption) heroCaption.textContent = 'Sign in to sync with your bandmates';
     }
 }
 
@@ -5524,36 +5548,13 @@ async function filterSongsAsync(type) {
     // Toggle: if clicking the same filter again, reset to 'all'
     if (type === 'harmonies' && activeHarmonyFilter === 'harmonies') {
         type = 'all';
+        const cb = document.getElementById('harmoniesOnlyFilter');
+        if (cb) cb.checked = false;
     }
     
-    activeHarmonyFilter = type;
-    
-    // Update button states - reset all harmony buttons
-    document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
-        btn.classList.remove('active');
-        btn.style.background = 'rgba(255,255,255,0.04)';
-        btn.style.color = '#667eea';
-    });
-    
-    // Highlight clicked button only if filter is active (not toggling off)
-    if (type !== 'all' && event && event.target) {
-        const btn = event.target.closest('.filter-btn');
-        if (btn) {
-            btn.classList.add('active');
-            btn.style.background = '#667eea';
-            btn.style.color = 'white';
-        }
-    }
-    
-    if (type === 'all') {
-        activeHarmonyFilter = null;
-        document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'grid';
-        });
-        return;
-    }
-    
-    applyHarmonyFilter();
+    activeHarmonyFilter = (type === 'all') ? null : type;
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
 }
 
 // Separate function so renderSongs can re-apply after re-rendering
