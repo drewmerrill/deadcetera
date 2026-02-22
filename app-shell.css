@@ -5,7 +5,7 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg-dark);colo
 a{color:var(--accent-light);}
 
 /* ===== TOPBAR ===== */
-.topbar{position:sticky;top:36px;z-index:1000;background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid var(--border);padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);}
+.topbar{position:sticky;top:0;z-index:1000;background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid var(--border);padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);}
 .topbar-left{display:flex;align-items:center;gap:12px;}
 .hamburger{background:none;border:none;color:var(--text);cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;transition:background 0.15s;}
 .hamburger:hover{background:rgba(255,255,255,0.08);}

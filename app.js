@@ -1,7 +1,6 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v5.2.1 - MASTER FILE + iOS AUDIO + CLEANUP
-// All fixes applied: Query escaping, delete buttons, metadata persistence
-// Last updated: 2026-02-18
+// DEADCETERA WORKFLOW APP v5.4.0 - Firebase · Playlists · Mobile-Ready
+// Last updated: 2026-02-22
 // ============================================================================
 
 // Inject favicon to prevent 404 error
@@ -366,7 +365,7 @@
     document.head.appendChild(style);
 })();
 
-console.log('🎸 Deadcetera v5.3 — Firebase · Per-member Crib Notes · iPad Export · Stage-ready!');
+console.log('🎸 Deadcetera v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -824,11 +823,10 @@ function setupInstrumentSelector() {
         
         // If a song is selected, refresh the resources display
         if (selectedSong) {
-            renderLearningResources(selectedSong, currentInstrument);
+            renderLearningResources(selectedSong?.title || selectedSong, currentInstrument);
         }
         
-        console.log('🎸 Instrument changed to:', currentInstrument);
-    });
+        });
 }
 
 // ============================================================================
@@ -836,7 +834,6 @@ function setupInstrumentSelector() {
 // ============================================================================
 
 function renderSongs(filter = 'all', searchTerm = '') {
-    console.log('renderSongs called - filter:', filter, 'searchTerm:', searchTerm);
     const dropdown = document.getElementById('songDropdown');
     
     // Pre-filter by status and harmony if active (do it at data level, not DOM level)
@@ -865,8 +862,6 @@ function renderSongs(filter = 'all', searchTerm = '') {
         }
         return true;
     });
-    
-    console.log('Filtered songs:', filtered.length, activeStatusFilter ? '(status: ' + activeStatusFilter + ')' : '');
     
     if (filtered.length === 0) {
         const statusNames = { 'this_week':'This Week', 'gig_ready':'Gig Ready', 'needs_polish':'Needs Polish', 'on_deck':'On Deck' };
@@ -910,7 +905,6 @@ function setupSearchAndFilters() {
     const filterBtns = document.querySelectorAll('.filter-btn');
     
     searchInput.addEventListener('input', (e) => {
-        console.log('Search input changed:', e.target.value);
         renderSongs(currentFilter, e.target.value);
     });
     
@@ -995,24 +989,19 @@ function showLearningResources(songTitle, bandName) {
 }
 
 function renderLearningResources(songTitle, instrument) {
-    console.log('📋 Rendering resources for:', songTitle, 'Instrument:', instrument);
     
     const resources = loadResources(songTitle, instrument);
     
     // Update tab type label based on instrument
     const tabTypeLabel = document.getElementById('tabTypeLabel');
-    switch(instrument) {
-        case 'bass':
-            tabTypeLabel.textContent = 'Bass Tab';
-            break;
-        case 'rhythm_guitar':
-        case 'keyboards':
-        case 'vocals':
-            tabTypeLabel.textContent = 'Chords';
-            break;
-        case 'lead_guitar':
-            tabTypeLabel.textContent = 'Lead Tab';
-            break;
+    if (tabTypeLabel) {
+        switch(instrument) {
+            case 'bass': tabTypeLabel.textContent = 'Bass Tab'; break;
+            case 'rhythm_guitar':
+            case 'keyboards':
+            case 'vocals': tabTypeLabel.textContent = 'Chords'; break;
+            case 'lead_guitar': tabTypeLabel.textContent = 'Lead Tab'; break;
+        }
     }
     
     // Render each section
@@ -1328,7 +1317,7 @@ function findTab() {
     const bandName = getFullBandName(bandAbbr);
     
     // Construct Ultimate Guitar search URL
-    const searchQuery = encodeURIComponent(`${bandName} ${selectedSong}`);
+    const searchQuery = encodeURIComponent(`${bandName} ${selectedSong.title}`);
     const ugUrl = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${searchQuery}`;
     
     // Open in new tab
@@ -1359,19 +1348,19 @@ function searchYouTubeForLesson() {
     let searchTerm = '';
     switch(currentInstrument) {
         case 'bass':
-            searchTerm = `${bandName} ${selectedSong} bass lesson`;
+            searchTerm = `${bandName} ${selectedSong.title} bass lesson`;
             break;
         case 'rhythm_guitar':
-            searchTerm = `${bandName} ${selectedSong} rhythm guitar lesson`;
+            searchTerm = `${bandName} ${selectedSong.title} rhythm guitar lesson`;
             break;
         case 'lead_guitar':
-            searchTerm = `${bandName} ${selectedSong} lead guitar lesson`;
+            searchTerm = `${bandName} ${selectedSong.title} lead guitar lesson`;
             break;
         case 'keyboards':
-            searchTerm = `${bandName} ${selectedSong} keyboard lesson`;
+            searchTerm = `${bandName} ${selectedSong.title} keyboard lesson`;
             break;
         case 'vocals':
-            searchTerm = `${bandName} ${selectedSong} vocals lesson`;
+            searchTerm = `${bandName} ${selectedSong.title} vocals lesson`;
             break;
     }
     
@@ -1387,7 +1376,7 @@ function searchSpotifyForLesson() {
     const bandAbbr = songData ? songData.band : 'GD';
     const bandName = getFullBandName(bandAbbr);
     
-    const searchTerm = `${bandName} ${selectedSong}`;
+    const searchTerm = `${bandName} ${selectedSong.title}`;
     const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(searchTerm)}`;
     
     // Show manual paste modal with Spotify instructions
@@ -1398,12 +1387,11 @@ function searchSpotifyForLesson() {
 function removeLesson(index) {
     if (!selectedSong) return;
     
-    const resources = loadResources(selectedSong, currentInstrument);
+    const resources = loadResources(selectedSong?.title || selectedSong, currentInstrument);
     resources.lessons.splice(index, 1);
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
+    saveResources(selectedSong?.title || selectedSong, currentInstrument, resources);
+    renderLearningResources(selectedSong?.title || selectedSong, currentInstrument);
     
-    console.log('🗑️ Lesson removed');
 }
 
 // ============================================================================
@@ -1423,7 +1411,7 @@ function searchYouTubeForReference() {
     const bandName = getFullBandName(bandAbbr);
     
     // Search for live performances
-    const searchTerm = `${bandName} ${selectedSong} live`;
+    const searchTerm = `${bandName} ${selectedSong.title} live`;
     
     // Show YouTube search modal
     currentResourceType = 'reference';
@@ -1437,7 +1425,7 @@ function searchSpotifyForReference() {
     const bandAbbr = songData ? songData.band : 'GD';
     const bandName = getFullBandName(bandAbbr);
     
-    const searchTerm = `${bandName} ${selectedSong}`;
+    const searchTerm = `${bandName} ${selectedSong.title}`;
     const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(searchTerm)}`;
     
     // Show manual paste modal with Spotify instructions
@@ -1448,12 +1436,11 @@ function searchSpotifyForReference() {
 function removeReference(index) {
     if (!selectedSong) return;
     
-    const resources = loadResources(selectedSong, currentInstrument);
+    const resources = loadResources(selectedSong?.title || selectedSong, currentInstrument);
     resources.references.splice(index, 1);
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
+    saveResources(selectedSong?.title || selectedSong, currentInstrument, resources);
+    renderLearningResources(selectedSong?.title || selectedSong, currentInstrument);
     
-    console.log('🗑️ Reference removed');
 }
 
 // ============================================================================
@@ -1623,7 +1610,7 @@ function saveFromYouTubeSearch() {
     }
     
     // Save based on current resource type
-    const resources = loadResources(selectedSong, currentInstrument);
+    const resources = loadResources(selectedSong?.title || selectedSong, currentInstrument);
     
     switch(currentResourceType) {
         case 'lesson':
@@ -1638,8 +1625,8 @@ function saveFromYouTubeSearch() {
             break;
     }
     
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
+    saveResources(selectedSong?.title || selectedSong, currentInstrument, resources);
+    renderLearningResources(selectedSong?.title || selectedSong, currentInstrument);
     closeYouTubeSearchModal();
     
     console.log('✅ Video saved from YouTube search:', url);
@@ -1670,7 +1657,7 @@ function showSpotifyPasteModal(searchUrl, type) {
     resultsContainer.innerHTML = `
         <div style="text-align: center; padding: 30px;">
             <p style="margin-bottom: 20px; color: #4a5568; font-size: 1.1em;">
-                Find Reference for: <strong>"${selectedSong}"</strong>
+                Find Reference for: <strong>"${selectedSong.title}"</strong>
             </p>
             <button class="primary-btn" onclick="window.open('${searchUrl}', '_blank')" style="margin-bottom: 20px; background: #1db954;">
                 🔍 Search on Spotify
@@ -1710,7 +1697,7 @@ function saveFromSpotifySearch() {
     }
     
     // Save based on current resource type
-    const resources = loadResources(selectedSong, currentInstrument);
+    const resources = loadResources(selectedSong?.title || selectedSong, currentInstrument);
     
     switch(currentResourceType) {
         case 'lesson':
@@ -1725,8 +1712,8 @@ function saveFromSpotifySearch() {
             break;
     }
     
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
+    saveResources(selectedSong?.title || selectedSong, currentInstrument, resources);
+    renderLearningResources(selectedSong?.title || selectedSong, currentInstrument);
     closeYouTubeSearchModal();
     
     console.log('✅ Track saved from Spotify search:', url);
@@ -1751,7 +1738,7 @@ function saveResource() {
         return;
     }
     
-    const resources = loadResources(selectedSong, currentInstrument);
+    const resources = loadResources(selectedSong?.title || selectedSong, currentInstrument);
     
     // Save based on type
     switch(currentResourceType) {
@@ -1770,8 +1757,8 @@ function saveResource() {
             break;
     }
     
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
+    saveResources(selectedSong?.title || selectedSong, currentInstrument, resources);
+    renderLearningResources(selectedSong?.title || selectedSong, currentInstrument);
     closeAddResourceModal();
     
     console.log('✅ Resource saved:', currentResourceType, url);
@@ -1977,7 +1964,7 @@ function handleSmartDownload(songTitle, version) {
     
     // Check if AudioSplitter is loaded
     if (typeof AudioSplitter === 'undefined') {
-        alert('⚠️ Audio Splitter not loaded. Make sure audio-splitter.js is included.');
+        showToast('⚠️ Audio Splitter not loaded');
         progressContainer.classList.add('hidden');
         return;
     }
@@ -2053,10 +2040,7 @@ function searchYouTube(songTitle) {
     window.open(youtubeUrl, '_blank');
 }
 
-function closeYoutubeModal() {
-    const modal = document.getElementById('youtubeModal');
-    modal.classList.add('hidden');
-}
+
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -3704,7 +3688,7 @@ async function addRehearsalNote() {
     await saveRehearsalNotes(selectedSong.title, notes);
     
     // Show success
-    alert(`✅ Note added by ${bandMembers[author].name} - saved to Google Drive!`);
+    showToast(`✅ Note added by ${bandMembers[author].name}`);
     logActivity('rehearsal_note', { song: selectedSong.title, extra: bandMembers[author].name });
     
     // Clear form
@@ -3875,7 +3859,7 @@ async function uploadHarmonyAudio(sectionIndex) {
         const localKey = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
         localStorage.setItem(localKey, JSON.stringify(existing));
         
-        alert(`✅ Audio uploaded to Google Drive! All band members can now hear it.`);
+        showToast('✅ Audio uploaded — shared with band!');
         
         // Clear form
         hideHarmonyAudioForm();
@@ -4197,7 +4181,7 @@ async function saveRecording(sectionIndex, base64Audio, fileSize) {
     const fbKey = `harmony_audio_section_${sectionIndex}`;
     await saveBandDataToDrive(selectedSong.title, fbKey, snippets);
     
-    alert(`✅ Recording saved: ${name}`);
+    showToast(`✅ Recording saved: ${name}`);
     
     // Clear form
     hideHarmonyAudioForm();
@@ -4264,7 +4248,7 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-        alert('✅ ABC notation copied to clipboard!\n\nPaste it into https://abcjs.net/abcjs-editor.html to see the sheet music.');
+        showToast('✅ ABC notation copied to clipboard!');
     }).catch(err => {
         alert('Could not copy. Please select and copy manually.');
     });
@@ -5140,7 +5124,7 @@ async function saveABCNotation(sectionIndex) {
     const localKey = `deadcetera_abc_${songTitle}_section${sectionIndex}`;
     localStorage.setItem(localKey, abc);
     
-    alert('✅ Sheet music saved to Google Drive! All band members can now see it.');
+    showToast('✅ Sheet music saved — shared with band!');
     
     // Close modal
     const modal = document.getElementById('abcEditorModal');
@@ -6468,19 +6452,11 @@ console.log('🔥 Firebase storage system loaded');
 // FIREBASE HELPER FUNCTIONS (replaces Drive folder/file management)
 // ============================================================================
 
-// These exist for compatibility - no longer needed with Firebase
-const _folderIdCache = {};
-const _folderCreationLocks = {};
 
-async function findOrCreateFolder(folderName, parentFolderId) {
-    // No-op - Firebase doesn't use folders
-    return 'firebase';
-}
 
-async function findFileInFolder(fileName, folderId) {
-    // No-op - Firebase doesn't use file search
-    return null;
-}
+
+
+
 
 console.log('✅ Firebase helper functions loaded');
 
@@ -6980,13 +6956,9 @@ async function silentSharingAudit() {
     console.log('🔥 Using Firebase - no sharing audit needed!');
 }
 
-async function shareFolderWithBand() {
-    alert('Using Firebase now - data is automatically shared with all band members!');
-}
+// shareFolderWithBand: replaced by Firebase
 
-function showFolderSharingInstructions(folderId) {
-    // No-op
-}
+
 
 console.log('🔥 Firebase configuration loaded - no sharing needed!');
 // ============================================================================
@@ -8399,7 +8371,7 @@ async function slSaveSetlist() {
     const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     existing.push(sl);
     await saveBandDataToDrive('_band', 'setlists', existing);
-    alert('✅ Setlist saved!');
+    showToast('✅ Setlist saved!');
     loadSetlists();
 }
 
@@ -8450,7 +8422,7 @@ async function slSaveSetlistEdit(idx) {
         updated: new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'setlists', data);
-    alert('✅ Setlist updated!');
+    showToast('✅ Setlist updated!');
     loadSetlists();
 }
 
@@ -8459,7 +8431,7 @@ async function deleteSetlist(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'setlists', data);
-    alert('Setlist deleted.');
+    showToast('🗑️ Setlist deleted');
     loadSetlists();
 }
 
@@ -8468,7 +8440,7 @@ async function deleteGig(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'gigs', data);
-    alert('Gig deleted.');
+    showToast('🗑️ Gig deleted');
     loadGigs();
 }
 
@@ -8509,7 +8481,7 @@ async function saveGigEdit(idx) {
         updated: new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'gigs', data);
-    alert('✅ Gig updated!');
+    showToast('✅ Gig updated!');
     loadGigs();
 }
 
@@ -9073,32 +9045,6 @@ function calNavMonth(dir) {
     renderCalendarInner();
 }
 
-// Show event detail in form area (clicking an event pill)
-async function calShowEvent(idx) {
-    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-    const ev = events[idx];
-    if (!ev) return;
-    const area = document.getElementById('calEventFormArea');
-    if (!area) return;
-    const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
-    area.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <h3 style="margin:0;font-size:1em">${typeIcon} ${ev.title||'Untitled'}</h3>
-        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
-    </div>
-    <div style="font-size:0.85em;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <span>📅 ${ev.date||''}</span>
-        ${ev.time ? `<span>⏰ ${ev.time}</span>` : ''}
-        <span style="text-transform:capitalize">📂 ${ev.type||'other'}</span>
-    </div>
-    ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
-    <div style="display:flex;gap:8px">
-        <button onclick="calEditEvent(${idx})" class="btn btn-ghost btn-sm">✏️ Edit</button>
-        <button onclick="calDeleteEvent(${idx})" class="btn btn-danger btn-sm">✕ Delete</button>
-        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
-    </div>`;
-    area.scrollIntoView({behavior:'smooth', block:'nearest'});
-}
 
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -10144,7 +10090,7 @@ async function saveGig() {
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);
     await saveBandDataToDrive('_band', 'gigs', existing);
-    alert('✅ Gig saved!');
+    showToast('✅ Gig saved!');
     loadGigs();
 }
 
@@ -11369,20 +11315,7 @@ function buildYouTubePlaylistUrl(resolvedSongs) {
     };
 }
 
-// Extract YouTube video ID from any YouTube URL format
-function extractYouTubeId(url) {
-    if (!url) return null;
-    // youtu.be/ID
-    let m = url.match(/youtu\.be\/([^?&]+)/);
-    if (m) return m[1];
-    // youtube.com/watch?v=ID
-    m = url.match(/[?&]v=([^&]+)/);
-    if (m) return m[1];
-    // youtube.com/embed/ID
-    m = url.match(/embed\/([^?&]+)/);
-    if (m) return m[1];
-    return null;
-}
+// extractYouTubeId defined in core section above
 
 // ── Share URL builder ─────────────────────────────────────────────────────────
 
@@ -11604,19 +11537,7 @@ function showToast(message, duration = 2500) {
 
 // ── Stub page renderer (replaced by Phase 2) ─────────────────────────────────
 
-function renderPlaylistsPage(el) {
-    el.innerHTML = `
-        <div class="page-header">
-            <h1>🎵 Playlists</h1>
-            <p>Curated listening for the whole band — from any source</p>
-        </div>
-        <div class="app-card" style="text-align:center;padding:40px;color:var(--text-dim)">
-            <div style="font-size:2em;margin-bottom:12px">🚧</div>
-            <div style="font-weight:600;margin-bottom:8px">Playlists UI coming in Phase 2</div>
-            <div style="font-size:0.85em">Data layer is live — playlists save to Firebase.</div>
-        </div>
-    `;
-}
+
 
 console.log('🎵 Playlists Phase 1 — data layer loaded');
 
