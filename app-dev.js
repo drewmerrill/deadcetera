@@ -630,19 +630,22 @@ let customSongsLoaded = false;
 async function loadCustomSongs() {
     try {
         const custom = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
-        // Remove any previously added custom songs to avoid duplicates on re-load
-        const builtInTitles = new Set(allSongs.filter(s => !s.isCustom).map(s => s.title));
-        // Remove stale custom entries
-        while (allSongs.length && allSongs[allSongs.length-1].isCustom) allSongs.pop();
-        // Add fresh custom songs
+        // Remove ALL previously added custom songs (not just from the tail)
+        const before = allSongs.length;
+        for (let i = allSongs.length - 1; i >= 0; i--) {
+            if (allSongs[i].isCustom) allSongs.splice(i, 1);
+        }
+        // Add fresh custom songs (skip any that duplicate a built-in title)
+        const builtInTitles = new Set(allSongs.map(s => s.title.toLowerCase()));
         custom.forEach(s => {
-            if (!builtInTitles.has(s.title)) {
+            if (s.title && !builtInTitles.has(s.title.toLowerCase())) {
                 allSongs.push({ title: s.title, band: s.band || 'Other', isCustom: true, addedBy: s.addedBy, notes: s.notes || '' });
             }
         });
         customSongsLoaded = true;
         updateCustomSongCount();
     } catch(e) {
+        console.warn('loadCustomSongs error:', e);
         customSongsLoaded = true;
     }
 }
@@ -820,11 +823,12 @@ function renderSongs(filter = 'all', searchTerm = '') {
     // Pre-filter by status and harmony if active (do it at data level, not DOM level)
     let filtered = allSongs.filter(song => {
         const knownBands = ['GD','JGB','WSP','PHISH','ABB','GOOSE','DMB'];
+        const bandUpper = (song.band || '').toUpperCase();  // null-safe
         const matchesFilter = filter === 'all'
             ? true
             : filter.toUpperCase() === 'OTHER'
-                ? !knownBands.includes(song.band.toUpperCase())
-                : song.band.toUpperCase() === filter.toUpperCase();
+                ? !knownBands.includes(bandUpper)
+                : bandUpper === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesFilter || !matchesSearch) return false;
         // Status filter at data level
@@ -9579,14 +9583,30 @@ function notifShareAppLink(url) {
     }
 }
 
+function notifIsDesktop() {
+    return !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function notifSendSMS(phones, msg) {
+    if (notifIsDesktop()) {
+        navigator.clipboard.writeText(msg).catch(() => {});
+        notifShowSMSCopyModal(msg,
+            'You\'re on a desktop — group SMS doesn\'t work reliably here (Mac Messages only takes the first recipient). ' +
+            'The message has been copied to your clipboard. Paste it into your band group text, or open this page on your phone to auto-send to everyone at once.'
+        );
+        return;
+    }
+    window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(msg)}`);
+}
+
 async function notifSMSAppLink(url) {
     const phones = await notifGetAllPhones();
-    const msg = `🎸 Hey! Here's the Deadcetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
-    if (phones.length > 0) {
-        window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(msg)}`);
-    } else {
+    const msg = `🎸 Hey! Here\'s the Deadcetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
+    if (phones.length === 0) {
         notifShowSMSCopyModal(msg, 'Add phone numbers in the Band Contact Directory to auto-fill recipients.');
+        return;
     }
+    notifSendSMS(phones, msg);
 }
 
 function notifTextOne(phone, name) {
@@ -9636,11 +9656,11 @@ async function notifSendSMSPracticePlan() {
     const appUrl = window.location.href.split('?')[0];
     const msg = `🎸 DEADCETERA — ${displayDate}${plan.startTime?'\n⏰ '+plan.startTime:''}${plan.location?'\n📍 '+plan.location:''}\n\nSONGS:\n${songs}\n\nGOALS:\n${goals}${plan.notes?'\n\nNOTES:\n'+plan.notes:''}\n\n📱 Full plan: ${appUrl}`;
     const phones = await notifGetAllPhones();
-    if (phones.length > 0) {
-        window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(msg)}`);
-    } else {
+    if (phones.length === 0) {
         notifShowSMSCopyModal(msg, 'No phone numbers saved yet — tap ✏️ Edit on each band member above to add their number, then try again.');
+        return;
     }
+    notifSendSMS(phones, msg);
 }
 
 async function notifSendPracticePlanPush() {
@@ -9687,28 +9707,43 @@ async function notifSendAnnouncementSMS() {
     const appUrl = window.location.href.split('?')[0];
     const full = `🎸 Deadcetera: ${msg}\n\n📱 ${appUrl}`;
     const phones = await notifGetAllPhones();
-    if (phones.length > 0) {
-        window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(full)}`);
-    } else {
+    if (phones.length === 0) {
         notifShowSMSCopyModal(full, 'No phone numbers saved — tap ✏️ Edit on each member above to add their number.');
+        return;
     }
+    notifSendSMS(phones, full);
 }
 
 function notifShowSMSCopyModal(msg, hint) {
+    const isDesktop = notifIsDesktop();
     const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
     modal.innerHTML = `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <h3 style="margin:0;color:var(--accent-light)">💬 Copy & Send</h3>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:500px;width:100%;color:var(--text)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0;color:var(--accent-light)">💬 ${isDesktop ? 'Message Not Auto-Sent' : 'Copy & Send'}</h3>
             <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
         </div>
-        ${hint?`<p style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:8px 12px;font-size:0.82em;color:var(--yellow);margin-bottom:10px">⚠️ ${hint}</p>`:''}
-        <textarea class="app-textarea" rows="10" style="font-size:0.78em;font-family:monospace" readonly>${msg}</textarea>
-        <button class="btn btn-primary" style="width:100%;margin-top:10px"
-            onclick="navigator.clipboard.writeText(this.previousElementSibling.value).then(()=>{this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Message',1800)})">
-            📋 Copy Message
-        </button>
+        ${isDesktop ? `
+        <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.35);border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:1.4em;flex-shrink:0">⚠️</span>
+            <div style="font-size:0.83em;color:#fca5a5;line-height:1.5">
+                <strong style="display:block;margin-bottom:4px;font-size:1em">Group text didn't send — you're on desktop.</strong>
+                Mac can only text one person at a time via SMS. <strong>Open this page on your phone</strong> to auto-send to the whole band at once, or copy the message below and paste it into your group chat manually.
+            </div>
+        </div>
+        <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:8px 12px;font-size:0.8em;color:#6ee7b7;margin-bottom:10px">
+            ✅ Message already copied to your clipboard — just paste it!
+        </div>` 
+        : hint ? `<p style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:8px 12px;font-size:0.82em;color:var(--yellow);margin-bottom:10px">⚠️ ${hint}</p>` : ''}
+        <textarea class="app-textarea" rows="8" style="font-size:0.78em;font-family:monospace" readonly>${msg}</textarea>
+        <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" style="flex:1"
+                onclick="navigator.clipboard.writeText(this.closest('[style*=fixed]').querySelector('textarea').value).then(()=>{this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Message',1800)})">
+                📋 Copy Message
+            </button>
+            <button class="btn btn-ghost" onclick="this.closest('[style*=fixed]').remove()">Close</button>
+        </div>
     </div>`;
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
