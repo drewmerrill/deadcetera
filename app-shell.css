@@ -481,3 +481,72 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
 #harmonyMembersRow label {
     white-space: nowrap;
 }
+
+/* ── Hamburger menu: visible item separators on mobile ── */
+@media(max-width:768px) {
+    .menu-item {
+        border-bottom: 1px solid var(--border) !important;
+        border-radius: 0 !important;
+        padding: 12px 16px !important;
+    }
+    .menu-item:last-child { border-bottom: none !important; }
+    .menu-section { padding: 0 !important; }
+    .menu-section-title {
+        border-bottom: 1px solid var(--border) !important;
+        border-top: 1px solid var(--border) !important;
+        padding: 6px 16px !important;
+        margin: 0 !important;
+        background: rgba(255,255,255,0.02) !important;
+    }
+    .slide-menu { width: 260px !important; }
+}
+
+/* ── Step card header: DEFINITIVE vertical centering fix ── */
+/* Belt, suspenders, AND duct tape */
+.step-card > div:first-child,
+.step-card > div:first-child[style] {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px !important;
+    flex-wrap: nowrap !important;
+}
+.step-number,
+.step-card > div:first-child > .step-number,
+.step-card > div:first-child > div.step-number {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    border-radius: 50% !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.step-card > div:first-child h2,
+.step-card > div:first-child > h2 {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+    align-self: center !important;
+    flex: 1 !important;
+    display: block !important;
+    /* Remove any inherited transforms that could shift it */
+    transform: none !important;
+    position: static !important;
+}
+
+/* ── Other / Custom band badge ── */
+.song-badge.other { background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.25); }
+
+/* ── Custom song indicator in song list ── */
+.song-item[data-custom="true"] .song-name::after {
+    content: ' ✨';
+    font-size: 0.7em;
+    opacity: 0.6;
+}

@@ -108,6 +108,9 @@
                 <div class="step-number" style="flex-shrink:0">1</div>
                 <h2 style="margin:0;line-height:1.2">Song Library</h2>
                 <span style="color:var(--text-dim,#64748b);font-size:0.8em;margin-left:auto" id="songCount"></span>
+                <button onclick="showCustomSongsList()" class="btn btn-ghost btn-sm" title="Add a custom song not in the library" style="margin-left:6px;font-size:0.75em;padding:4px 8px">
+                    ➕ <span id="customSongCount" style="background:var(--accent);color:white;border-radius:10px;padding:1px 5px;font-size:0.85em;display:none"></span>
+                </button>
             </div>
             <div class="search-box">
                 <input 
@@ -128,6 +131,7 @@
                     <option value="ABB">Allman Brothers</option>
                     <option value="Goose">Goose</option>
                     <option value="DMB">Dave Matthews Band</option>
+                    <option value="Other">🎵 Other</option>
                 </select>
                 <select id="statusFilter" class="app-select" onchange="filterByStatus(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
                     <option value="all">📊 All Statuses</option>
@@ -242,17 +246,16 @@
     </div>
     <p class="subtitle">The definitive version your band is learning — voted by the group</p>
     
-    <div class="resource-section" id="spotifySection">
+    <div class="resource-section" id="refVersionSection">
         <div class="section-header">
             <h3>⭐ Reference Version (Band Voted)</h3>
             <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
-                Vote on which version to learn
-                <button onclick="searchSpotify()" title="Find your song on Spotify, copy the share URL, then come back and paste it here" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search Spotify</button>
-                <button onclick="searchYouTubeReference()" title="Find your song on YouTube, copy the video URL, then come back and paste it here" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search YouTube</button>
+                Vote on which version to learn — any link works (Spotify, YouTube, Archive.org, etc.)
+                <button onclick="searchRefVersion()" title="Search for this song and paste any URL here" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Find on Spotify / YouTube</button>
             </p>
         </div>
         <div id="spotifyVersionsContainer"></div>
-        <button class="secondary-btn" id="addSpotifyVersionBtn" style="margin-top:12px">+ Suggest New/Alternate Version</button>
+        <button class="secondary-btn" id="addRefVersionBtn" style="margin-top:12px">+ Suggest Reference Version</button>
     </div>
 </div>
 
