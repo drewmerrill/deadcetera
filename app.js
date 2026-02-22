@@ -1919,7 +1919,65 @@ function renderSpotifyVersions(songTitle, bandData) {
 async function renderPersonalTabs(songTitle) {
     const container = document.getElementById('personalTabsContainer');
     const tabs = await loadPersonalTabs(songTitle);
+
+    // Email → member key mapping for legacy data
+    const emailToKey = {
+        'drewmerrill1029@gmail.com': 'drew',
+        'cmjalbert@gmail.com': 'chris',
+        'brian@hrestoration.com': 'brian',
+        'pierce.d.hale@gmail.com': 'pierce',
+        'jnault@fegholdings.com': 'jay'
+    };
+
     const tabsByMember = {};
+    (tabs || []).forEach((tab, index) => {
+        // Resolve to short key: try memberKey first, then map email addedBy
+        let key = tab.memberKey || emailToKey[tab.addedBy] || tab.addedBy || 'unknown';
+        if (!tabsByMember[key]) tabsByMember[key] = [];
+        tabsByMember[key].push({ ...tab, _index: index });
+    });
+
+    // Determine current user's member key
+    const currentMemberKey = getCurrentMemberKey();
+
+    const memberHTML = Object.entries(bandMembers).map(([key, member]) => {
+        const memberTabs = tabsByMember[key] || [];
+        const isMe = (key === currentMemberKey);
+        const emoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' }[key] || '👤';
+        const tabItems = memberTabs.map(tab => `
+            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                <a href="${tab.url}" target="_blank" style="flex:1;color:var(--accent-light);font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tab.url}">${tab.label || tab.notes || tab.url}</a>
+                ${tab.notes && tab.label ? `<span style="color:var(--text-dim);font-size:0.75em;flex-shrink:0">${tab.notes}</span>` : ''}
+                ${isMe ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
+            </div>
+        `).join('');
+
+        return `
+        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${memberTabs.length > 0 || isMe ? '10px' : '0'}">
+                <span style="font-size:1.2em">${emoji}</span>
+                <strong style="color:var(--accent-light);font-size:0.95em">${member.name}</strong>
+                <span style="color:var(--text-dim);font-size:0.78em">${member.role}</span>
+                ${memberTabs.length > 0 ? `<span style="margin-left:auto;background:rgba(16,185,129,0.15);color:var(--green);font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:600">${memberTabs.length} ref${memberTabs.length>1?'s':''}</span>` : `<span style="margin-left:auto;color:var(--text-dim);font-size:0.75em">No refs yet</span>`}
+            </div>
+            ${tabItems || ''}
+            <div id="addTabInline_${key}" style="display:none">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+                    <input type="text" id="tabUrl_${key}" placeholder="URL (Ultimate Guitar, Chordify…)" class="app-input" style="font-size:0.82em">
+                    <input type="text" id="tabLabel_${key}" placeholder="Label (e.g. 'My Chord Chart')" class="app-input" style="font-size:0.82em">
+                </div>
+                <input type="text" id="tabNotes_${key}" placeholder="Notes (optional)" class="app-input" style="font-size:0.82em;margin-top:6px">
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    <button onclick="addPersonalTabForMember('${songTitle.replace(/'/g,"\\'")}','${key}')" class="btn btn-primary btn-sm">➕ Add</button>
+                    <button onclick="document.getElementById('addTabInline_${key}').style.display='none';document.getElementById('addTabBtn_${key}').style.display='block'" class="btn btn-ghost btn-sm">Cancel</button>
+                </div>
+            </div>
+            <button id="addTabBtn_${key}" onclick="document.getElementById('addTabInline_${key}').style.display='block';this.style.display='none'" class="btn btn-ghost btn-sm" style="margin-top:${memberTabs.length>0?'8':'4'}px;width:100%">+ Add My Reference</button>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = memberHTML || '<div style="padding:20px;color:var(--text-dim)">No members found</div>';
+}
     (tabs || []).forEach((tab, index) => {
         const key = tab.memberKey || tab.addedBy || 'unknown';
         if (!tabsByMember[key]) tabsByMember[key] = [];
@@ -2519,7 +2577,7 @@ async function renderGigNotes(songTitle, bandData) {
                         <span id="gigNoteText_${index}" style="flex:1">${note}</span>
                         <div style="display:flex;gap:4px;flex-shrink:0">
                             <button onclick="editGigNote(${index})" style="background: rgba(102,126,234,0.15); color: var(--accent-light); border: 1px solid rgba(102,126,234,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">✏️</button>
-                            <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">Delete</button>
+                            <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white !important; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; line-height:1;">✕</button>
                         </div>
                     </li>
                 `).join('')}
@@ -5387,18 +5445,19 @@ async function loadHarmonyMembers(songTitle) {
 function updateSongStructureSummary(data) {
     const el = document.getElementById('songStructureSummary');
     if (!el) return;
-    if (!data || (!data.whoStarts?.length && !data.whoCuesEnding?.length && !data.whoCuesEnding)) {
+    if (!data || (!data.whoStarts?.length && !data.whoCuesEnding?.length && !data.whoCuesEnding && !data.howStarts && !data.howEnds)) {
         el.textContent = '—';
         return;
     }
     const getName = (k) => k === 'whole_band' ? 'Whole Band' : (bandMembers[k]?.name || k);
+    const val = (text) => `<span style="color:var(--text,#f1f5f9);font-weight:600">${text}</span>`;
     const parts = [];
-    if (data.whoStarts?.length) parts.push('Starts: ' + data.whoStarts.map(getName).join(', '));
-    if (data.howStarts) parts.push(data.howStarts);
+    if (data.whoStarts?.length) parts.push(`Starts — Who? ${val(data.whoStarts.map(getName).join(', '))}`);
+    if (data.howStarts) parts.push(`How? ${val(data.howStarts)}`);
     const endings = Array.isArray(data.whoCuesEnding) ? data.whoCuesEnding : (data.whoCuesEnding ? [data.whoCuesEnding] : []);
-    if (endings.length) parts.push('Ends: ' + endings.map(getName).join(', '));
-    if (data.howEnds) parts.push(data.howEnds);
-    el.textContent = parts.join(' · ');
+    if (endings.length) parts.push(`Ends — Who? ${val(endings.map(getName).join(', '))}`);
+    if (data.howEnds) parts.push(`How? ${val(data.howEnds)}`);
+    el.innerHTML = parts.join(' &nbsp;·&nbsp; ');
 }
 
 async function loadHasHarmonies(songTitle) {
@@ -5569,13 +5628,14 @@ async function populateSongMetadata(songTitle) {
 async function updateSongKey(key) {
     if (!selectedSong) return;
     const songTitle = typeof selectedSong === 'string' ? selectedSong : selectedSong.title;
-    await saveSongDataToDrive(songTitle, 'key', key);
+    await saveBandDataToDrive(songTitle, 'key', { key, updatedAt: new Date().toISOString() });
     console.log('🎵 Key updated:', key);
 }
 
 async function loadSongKey(songTitle) {
     try {
-        return await loadSongDataFromDrive(songTitle, 'key') || '';
+        const data = await loadBandDataFromDrive(songTitle, 'key');
+        return (data && typeof data === 'object') ? (data.key || '') : (data || '');
     } catch(e) { return ''; }
 }
 
