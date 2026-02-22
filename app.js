@@ -8259,24 +8259,9 @@ function renderCalendarInner() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const todayStr = new Date().toISOString().split('T')[0];
+    const monthPrefix = `${year}-${String(month+1).padStart(2,'0')}-`;
 
-    let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
-    dNames.forEach((d,i) => {
-        const w = i===0||i===6;
-        g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`;
-    });
-    for (let i=0;i<firstDay;i++) g += '<div style="aspect-ratio:1;padding:4px;"></div>';
-    for (let d=1;d<=daysInMonth;d++) {
-        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const isToday = ds===todayStr;
-        const dow = new Date(year,month,d).getDay();
-        const w = dow===0||dow===6;
-        g += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:${w?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
-            <span style="${isToday?'color:var(--accent);font-weight:700;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
-        </div>`;
-    }
-    g += '</div>';
-
+    // Render shell immediately, then load events async and paint dots
     el.innerHTML = `
     <div class="app-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -8284,7 +8269,7 @@ function renderCalendarInner() {
             <h3 style="margin:0;font-size:1.05em;font-weight:700">${mNames[month]} ${year}</h3>
             <button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next →</button>
         </div>
-        ${g}
+        <div id="calGrid"></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
@@ -8297,7 +8282,38 @@ function renderCalendarInner() {
     <div class="app-card"><h3>🚫 Blocked Dates</h3>
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
     </div>`;
-    loadCalendarEvents();
+
+    // Load events, then build calendar grid with dots
+    loadCalendarEvents().then(eventDates => {
+        // eventDates = Map of dateStr -> array of event type icons
+        const grid = document.getElementById('calGrid');
+        if (!grid) return;
+        const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'};
+        let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+        dNames.forEach((d,i) => {
+            const w = i===0||i===6;
+            g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`;
+        });
+        for (let i=0;i<firstDay;i++) g += '<div style="aspect-ratio:1;padding:4px;"></div>';
+        for (let d=1;d<=daysInMonth;d++) {
+            const ds = `${monthPrefix}${String(d).padStart(2,'0')}`;
+            const isToday = ds===todayStr;
+            const dow = new Date(year,month,d).getDay();
+            const w = dow===0||dow===6;
+            const dayEvents = eventDates ? (eventDates[ds] || []) : [];
+            const hasEvent = dayEvents.length > 0;
+            // Dot row — up to 3 event icons
+            const dots = hasEvent
+                ? `<div style="display:flex;gap:1px;flex-wrap:wrap;justify-content:center;margin-top:2px">${dayEvents.slice(0,3).map(t=>`<span style="font-size:0.7em;line-height:1">${typeIcon[t]||'📌'}</span>`).join('')}</div>`
+                : '';
+            g += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:3px 2px;background:${hasEvent?'rgba(102,126,234,0.12)':w?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':hasEvent?'border:1px solid rgba(102,126,234,0.3);':''}" onclick="calDayClick(${year},${month},${d})">
+                <span style="${isToday?'color:var(--accent);font-weight:700;':hasEvent?'color:white;font-weight:600;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
+                ${dots}
+            </div>`;
+        }
+        g += '</div>';
+        grid.innerHTML = g;
+    });
 }
 
 function calNavMonth(dir) {
@@ -8309,8 +8325,18 @@ function calNavMonth(dir) {
 
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+
+    // Build date map for grid dots (all events, not just upcoming)
+    const dateMap = {};
+    events.forEach(e => {
+        if (e.date) {
+            if (!dateMap[e.date]) dateMap[e.date] = [];
+            dateMap[e.date].push(e.type || 'other');
+        }
+    });
+
     const el = document.getElementById('calendarEvents');
-    if (!el) return;
+    if (!el) return dateMap;
     const today = new Date().toISOString().split('T')[0];
     const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
     if (upcoming.length === 0) {
@@ -8339,6 +8365,7 @@ async function loadCalendarEvents() {
             <button onclick="calDeleteBlocked(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>
         </div>`).join('');
     }
+    return dateMap;  // ← grid needs this to paint event dots
 }
 
 function calBlockDates() {
