@@ -664,7 +664,7 @@ function setupRefAddButton() {
     const btn = document.getElementById('addRefVersionBtn');
     if (!btn) return;
     btn.textContent = '+ Suggest Reference Version';
-    btn.addEventListener('click', addSpotifyVersion);
+    btn.addEventListener('click', addRefVersion);
 }
 
 // ============================================================================
@@ -6001,6 +6001,7 @@ let harmonyBadgeLoading = false;
 let northStarCache = {};
 let northStarCacheLoaded = false;
 let northStarCacheLoading = false;
+let northStarScanDone = false;   // tracks whether Firebase full-scan has run this session
 let activeNorthStarFilter = false;
 
 
@@ -6058,7 +6059,7 @@ async function addHarmonyBadges() {
 
 async function addNorthStarBadges() {
     if (northStarCacheLoading) return;
-    if (!northStarCacheLoaded) {
+    if (!northStarCacheLoaded || !northStarScanDone) {
         northStarCacheLoading = true;
         try {
             // Step 1: seed from data.js (only Tweezer has data there currently)
@@ -6075,40 +6076,39 @@ async function addNorthStarBadges() {
                 Object.assign(northStarCache, masterData);
             }
 
-            // Step 3: scan the Firebase songs/ node to find ALL songs with spotify_versions
-            try {
+            // Step 3: scan Firebase songs/ node - build lookup from sanitizedKey → real title
+            // Runs once per session to catch all versions added via Firebase
+            if (!northStarScanDone) { try {
                 if (firebaseDB) {
+                    console.log('⭐ North Star: scanning all Firebase songs...');
                     const snapshot = await firebaseDB.ref('songs').once('value');
                     const allSongData = snapshot.val() || {};
-                    let rebuilt = false;
-                    Object.entries(allSongData).forEach(([sanitizedTitle, songData]) => {
-                        if (!songData || !songData.spotify_versions) return;
-                        // Firebase returns arrays or objects — handle both
-                        const versions = Array.isArray(songData.spotify_versions)
-                            ? songData.spotify_versions
-                            : Object.values(songData.spotify_versions);
-                        if (versions && versions.length > 0) {
-                            // Un-sanitize path back to title (best effort — spaces→space)
-                            // songData keys from sanitizeFirebasePath replace spaces with _
-                            // Try to match back to actual song titles
-                            const possibleTitle = sanitizedTitle.replace(/_/g, ' ');
-                            // Find exact match in allSongs
-                            const match = (allSongs || []).find(s =>
-                                s.title === possibleTitle ||
-                                sanitizeFirebasePath(s.title) === sanitizedTitle
-                            );
-                            const title = match ? match.title : possibleTitle;
-                            northStarCache[title] = true;
-                            rebuilt = true;
-                        }
+                    // Build reverse lookup: sanitizedTitle → real title
+                    const sanitizedToReal = {};
+                    (allSongs || []).forEach(s => {
+                        sanitizedToReal[sanitizeFirebasePath(s.title)] = s.title;
                     });
-                    if (rebuilt) {
-                        saveMasterFile(MASTER_NORTH_STAR_FILE, northStarCache).catch(() => {});
-                    }
+                    let rebuilt = false;
+                    Object.entries(allSongData).forEach(([fbKey, songData]) => {
+                        if (!songData) return;
+                        const versionsRaw = songData.spotify_versions || songData.ref_versions;
+                        if (!versionsRaw) return;
+                        const versions = Array.isArray(versionsRaw)
+                            ? versionsRaw.filter(Boolean)
+                            : Object.values(versionsRaw).filter(Boolean);
+                        if (!versions || versions.length === 0) return;
+                        const realTitle = sanitizedToReal[fbKey] || fbKey;
+                        console.log('⭐ Found ref versions for:', realTitle);
+                        northStarCache[realTitle] = true;
+                        rebuilt = true;
+                    });
+                    northStarScanDone = true;
+                    console.log('⭐ Scan done:', Object.keys(northStarCache).length, 'songs');
+                    if (rebuilt) saveMasterFile(MASTER_NORTH_STAR_FILE, northStarCache).catch(() => {});
                 }
             } catch(scanErr) {
                 console.log('North Star scan error:', scanErr);
-            }
+            } }
 
             northStarCacheLoaded = true;
         } catch(e) { northStarCacheLoaded = true; }
@@ -8013,6 +8013,7 @@ const pageRenderers = {
     metronome: renderMetronomePage,
     admin: renderSettingsPage,
     social: renderSocialPage,
+    notifications: renderNotificationsPage,
     help: renderHelpPage
 };
 
@@ -8613,9 +8614,10 @@ async function renderPracticePlanForDate(dateStr, statusMap) {
         <div style="font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📝 Notes & Agenda</div>
         ${!isPast
             ? `<textarea class="app-textarea" id="ppNotes" rows="4" placeholder="Anything else — warm-up order, who's bringing what, special requests...">${plan.notes||''}</textarea>
-               <div style="display:flex;gap:8px;margin-top:8px">
+               <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
                    <button class="btn btn-primary btn-sm" onclick="practicePlanSave('${dateStr}')">💾 Save Plan</button>
-                   <button class="btn btn-ghost btn-sm" onclick="practicePlanExport('${dateStr}')">📤 Share as Text</button>
+                   <button class="btn btn-success btn-sm" onclick="notifFromPracticePlan('${dateStr}')">🔔 Share to Band</button>
+                   <button class="btn btn-ghost btn-sm" onclick="practicePlanExport('${dateStr}')">📄 Export Text</button>
                </div>`
             : `<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;font-size:0.88em;color:var(--text-muted);white-space:pre-wrap">${plan.notes || 'No notes recorded.'}</div>`
         }
@@ -9150,6 +9152,349 @@ async function calSaveEvent(editIdx) {
 // ============================================================================
 // SOCIAL MEDIA COMMAND CENTER
 // ============================================================================
+// ============================================================================
+// NOTIFICATIONS — Web Push (FCM) + SMS deep-link + subscription preferences
+// ============================================================================
+
+// Notification event types band members can subscribe to
+const NOTIF_EVENTS = {
+    practice_plan:    { label: 'Practice Plan Published',    icon: '📋', desc: 'When a practice plan is finalized and shared' },
+    gig_added:        { label: 'New Gig Added',              icon: '🎤', desc: 'When a gig is added to the calendar' },
+    rehearsal_added:  { label: 'Rehearsal Scheduled',        icon: '🎸', desc: 'When a rehearsal is added to the calendar' },
+    song_status:      { label: 'Song Status Changed',        icon: '🎵', desc: 'When a song moves to Gig Ready or This Week' },
+    new_harmony:      { label: 'New Harmony Added',          icon: '🎶', desc: 'When a harmony recording is uploaded' },
+    setlist_created:  { label: 'Setlist Created/Updated',    icon: '📝', desc: 'When a setlist is created or changed' },
+    blocked_dates:    { label: 'Blocked Dates Updated',      icon: '🚫', desc: 'When someone updates their availability' },
+    announcements:    { label: 'Band Announcements',         icon: '📢', desc: 'General announcements (always recommended)' },
+};
+
+async function renderNotificationsPage(el) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading...</div>';
+
+    // Load current member's phone and prefs from Firebase
+    const myEmail = currentUserEmail || '';
+    const myKey = myEmail.replace(/[.#$[\]]/g,'_');
+    const memberData = await loadBandDataFromDrive('_band', `notif_member_${myKey}`) || {};
+    const allMemberData = await loadBandDataFromDrive('_band', 'notif_members') || {};
+
+    // Get push permission state
+    const pushSupported = 'Notification' in window && 'serviceWorker' in navigator;
+    const pushState = pushSupported ? Notification.permission : 'unsupported';
+    const pushIcon = pushState === 'granted' ? '✅' : pushState === 'denied' ? '🚫' : '🔔';
+    const pushLabel = pushState === 'granted' ? 'Push Enabled' : pushState === 'denied' ? 'Blocked (change in browser settings)' : 'Not yet enabled';
+
+    const myPhone = memberData.phone || '';
+    const subs = memberData.subscriptions || {};
+    // Default all to true if not set
+    Object.keys(NOTIF_EVENTS).forEach(k => { if (subs[k] === undefined) subs[k] = true; });
+
+    el.innerHTML = `
+    <div class="page-header">
+        <h1>🔔 Notifications</h1>
+        <p>Manage how the band reaches you — push alerts and practice plan sharing</p>
+    </div>
+
+    <!-- MY NOTIFICATION SETTINGS -->
+    <div class="app-card" style="margin-bottom:16px">
+        <h3 style="margin-bottom:16px">📱 My Notification Settings</h3>
+
+        <!-- Web Push -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid var(--border);margin-bottom:12px;gap:12px;flex-wrap:wrap">
+            <div>
+                <div style="font-weight:600;margin-bottom:2px">${pushIcon} Web Push Notifications</div>
+                <div style="font-size:0.8em;color:var(--text-dim)">${pushLabel}</div>
+                <div style="font-size:0.75em;color:var(--text-dim);margin-top:2px">Alerts on this device even when the app isn't open</div>
+            </div>
+            ${pushState === 'granted'
+                ? `<span style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);border-radius:20px;padding:4px 14px;font-size:0.8em;font-weight:600">Active ✓</span>`
+                : pushState === 'denied'
+                    ? `<span style="background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:20px;padding:4px 14px;font-size:0.8em">Blocked in browser</span>`
+                    : `<button class="btn btn-primary" onclick="notifRequestPush()">Enable Push</button>`
+            }
+        </div>
+
+        <!-- Phone number for SMS -->
+        <div style="padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid var(--border);margin-bottom:12px">
+            <div style="font-weight:600;margin-bottom:8px">📞 My Phone Number</div>
+            <div style="font-size:0.8em;color:var(--text-dim);margin-bottom:10px">Used to include you in SMS group messages sent from the app</div>
+            <div style="display:flex;gap:8px">
+                <input class="app-input" id="myPhoneInput" value="${myPhone}" placeholder="e.g. +1 404 555 0123" style="flex:1;font-size:0.9em">
+                <button class="btn btn-primary" onclick="notifSavePhone()">Save</button>
+            </div>
+        </div>
+
+        <!-- Subscription toggles -->
+        <div style="font-weight:600;margin-bottom:10px">Notify me when...</div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="notifSubsList">
+            ${Object.entries(NOTIF_EVENTS).map(([key, ev]) => `
+            <label style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--border);cursor:pointer">
+                <input type="checkbox" id="sub_${key}" ${subs[key] ? 'checked' : ''} onchange="notifSaveSubs()" style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0">
+                <span style="font-size:1.1em;flex-shrink:0">${ev.icon}</span>
+                <div>
+                    <div style="font-weight:600;font-size:0.88em">${ev.label}</div>
+                    <div style="font-size:0.75em;color:var(--text-dim)">${ev.desc}</div>
+                </div>
+            </label>`).join('')}
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="notifSaveSubs()">💾 Save My Preferences</button>
+    </div>
+
+    <!-- BAND MEMBERS DIRECTORY -->
+    <div class="app-card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <h3 style="margin:0">👥 Band Members</h3>
+            <span style="font-size:0.78em;color:var(--text-dim)">Manage contact info</span>
+        </div>
+        <div id="notifMembersList">
+            ${Object.entries(bandMembers).map(([key, m]) => {
+                const mData = allMemberData[m.email?.replace(/[.#$[\]]/g,'_')] || {};
+                const phone = mData.phone || '';
+                const hasPush = mData.pushToken ? '✅' : '○';
+                return `<div class="list-item" style="padding:10px 12px;gap:10px">
+                    <span style="font-size:1.2em;flex-shrink:0">${m.emoji||'🎸'}</span>
+                    <span style="flex:1;font-weight:600">${m.name||key}</span>
+                    <span style="font-size:0.75em;color:var(--text-dim);flex-shrink:0">${phone || 'No phone'}</span>
+                    <span title="Push notifications" style="font-size:0.85em;flex-shrink:0">${hasPush} Push</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>
+
+    <!-- SEND PRACTICE PLAN SECTION -->
+    <div class="app-card" style="margin-bottom:16px">
+        <h3 style="margin-bottom:6px">📋 Share Practice Plan</h3>
+        <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:16px">Send the upcoming practice plan to the whole band at once</p>
+        <div id="notifPracticePlanSelector" style="margin-bottom:12px">
+            <label class="form-label">Select Rehearsal</label>
+            <select class="app-select" id="notifRehearsalPicker" style="width:100%">
+                <option value="">Loading rehearsals...</option>
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-primary" style="width:100%" onclick="notifSendPracticePlanPush()">
+                🔔 Send Push Notification to Band
+            </button>
+            <button class="btn btn-success" style="width:100%" onclick="notifSendSMSPracticePlan()">
+                💬 Open SMS to Group Text
+            </button>
+        </div>
+        <div style="font-size:0.75em;color:var(--text-dim);margin-top:8px;padding:8px;background:rgba(255,255,255,0.02);border-radius:6px">
+            💡 <strong>SMS</strong> opens your default Messages app pre-filled with the plan summary. 
+            <strong>Push</strong> sends an in-app alert to everyone who has enabled push notifications.
+        </div>
+    </div>
+
+    <!-- SEND CUSTOM ANNOUNCEMENT -->
+    <div class="app-card">
+        <h3 style="margin-bottom:6px">📢 Send Announcement</h3>
+        <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:12px">Send a custom message to the band</p>
+        <div class="form-row">
+            <label class="form-label">Message</label>
+            <textarea class="app-textarea" id="announcementText" rows="3" placeholder="e.g. Practice moved to Saturday, same time. Don't forget amps!"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" style="flex:1;min-width:140px" onclick="notifSendAnnouncementPush()">🔔 Push to Band</button>
+            <button class="btn btn-success" style="flex:1;min-width:140px" onclick="notifSendAnnouncementSMS()">💬 SMS Group Text</button>
+        </div>
+    </div>`;
+
+    // Populate rehearsal picker
+    notifPopulateRehearsalPicker();
+}
+
+async function notifPopulateRehearsalPicker() {
+    const sel = document.getElementById('notifRehearsalPicker');
+    if (!sel) return;
+    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const rehearsals = events.filter(e => e.type === 'rehearsal').sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = rehearsals.filter(r => r.date >= today);
+    if (upcoming.length === 0) {
+        sel.innerHTML = '<option value="">No upcoming rehearsals — add one on the Calendar</option>';
+    } else {
+        sel.innerHTML = upcoming.map(r => `<option value="${r.date}">${formatPracticeDate(r.date)} — ${r.title||'Rehearsal'}</option>`).join('');
+    }
+}
+
+async function notifSavePhone() {
+    const phone = document.getElementById('myPhoneInput')?.value.trim();
+    const myKey = (currentUserEmail||'').replace(/[.#$[\]]/g,'_');
+    const memberData = await loadBandDataFromDrive('_band', `notif_member_${myKey}`) || {};
+    memberData.phone = phone;
+    memberData.email = currentUserEmail;
+    await saveBandDataToDrive('_band', `notif_member_${myKey}`, memberData);
+    // Also update band-wide member list
+    const all = await loadBandDataFromDrive('_band', 'notif_members') || {};
+    all[myKey] = memberData;
+    await saveBandDataToDrive('_band', 'notif_members', all);
+    notifToast('📞 Phone number saved!');
+}
+
+async function notifSaveSubs() {
+    const myKey = (currentUserEmail||'').replace(/[.#$[\]]/g,'_');
+    const memberData = await loadBandDataFromDrive('_band', `notif_member_${myKey}`) || {};
+    const subs = {};
+    Object.keys(NOTIF_EVENTS).forEach(k => {
+        const el = document.getElementById(`sub_${k}`);
+        subs[k] = el ? el.checked : true;
+    });
+    memberData.subscriptions = subs;
+    memberData.email = currentUserEmail;
+    await saveBandDataToDrive('_band', `notif_member_${myKey}`, memberData);
+    const all = await loadBandDataFromDrive('_band', 'notif_members') || {};
+    all[myKey] = memberData;
+    await saveBandDataToDrive('_band', 'notif_members', all);
+    notifToast('✅ Preferences saved!');
+}
+
+async function notifRequestPush() {
+    if (!('Notification' in window)) { alert('This browser does not support push notifications.'); return; }
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+        notifToast('✅ Push notifications enabled! You\'ll receive alerts from the app.');
+        // Store token marker in Firebase
+        const myKey = (currentUserEmail||'').replace(/[.#$[\]]/g,'_');
+        const memberData = await loadBandDataFromDrive('_band', `notif_member_${myKey}`) || {};
+        memberData.pushToken = 'browser_' + Date.now();
+        memberData.pushEnabled = true;
+        memberData.email = currentUserEmail;
+        await saveBandDataToDrive('_band', `notif_member_${myKey}`, memberData);
+        const all = await loadBandDataFromDrive('_band', 'notif_members') || {};
+        all[myKey] = memberData;
+        await saveBandDataToDrive('_band', 'notif_members', all);
+        // Re-render to show new state
+        showPage('notifications');
+    } else if (perm === 'denied') {
+        alert('Push notifications were blocked. To enable, click the 🔒 lock icon in your browser\'s address bar and allow notifications for this site.');
+    }
+}
+
+// Send push notification via browser Notification API (works when app is open or service worker registered)
+async function notifSendPush(title, body, eventType) {
+    // Log the notification to Firebase so members see it in-app too
+    const log = toArray(await loadBandDataFromDrive('_band', 'notif_log') || []);
+    log.unshift({ title, body, eventType, sentBy: currentUserEmail, sentAt: new Date().toISOString() });
+    await saveBandDataToDrive('_band', 'notif_log', log.slice(0, 50)); // keep last 50
+    // Send browser notification if permission granted
+    if (Notification.permission === 'granted') {
+        new Notification(`🎸 Deadcetera: ${title}`, {
+            body,
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: eventType
+        });
+    }
+    notifToast(`🔔 Notification sent!`);
+}
+
+async function notifSendPracticePlanPush() {
+    const dateStr = document.getElementById('notifRehearsalPicker')?.value;
+    if (!dateStr) { alert('Please select a rehearsal first'); return; }
+    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
+    const songs = toArray(plan.songs || []).map(s=>s.title).join(', ') || 'TBD';
+    const displayDate = formatPracticeDate(dateStr);
+    const title = `Practice Plan — ${displayDate}`;
+    const body = `Songs: ${songs.substring(0,100)}${songs.length>100?'...':''}\nOpen the app to see the full plan!`;
+    await notifSendPush(title, body, 'practice_plan');
+}
+
+function notifSendSMSPracticePlan() {
+    const dateStr = document.getElementById('notifRehearsalPicker')?.value;
+    if (!dateStr) { alert('Please select a rehearsal first'); return; }
+    // Build SMS text
+    loadBandDataFromDrive('_band', `practice_plan_${dateStr}`).then(plan => {
+        const displayDate = formatPracticeDate(dateStr);
+        const songs = toArray(plan?.songs||[]).map(s=>`• ${s.title}${s.focus?' ('+s.focus+')':''}`).join('\n');
+        const goals = toArray(plan?.goals||[]).map(g=>`• ${g}`).join('\n');
+        const appUrl = window.location.href.split('?')[0];
+        const msg = `🎸 DEADCETERA PRACTICE PLAN — ${displayDate}\n\n${plan?.startTime?'⏰ '+plan.startTime+'\n':''}${plan?.location?'📍 '+plan.location+'\n':''}\nSONGS:\n${songs||'• TBD'}\n\nGOALS:\n${goals||'• TBD'}\n\n${plan?.notes?'NOTES:\n'+plan.notes+'\n\n':''}📱 Full plan in app: ${appUrl}`;
+        // Open SMS with all phone numbers
+        const phones = notifGetAllPhones();
+        if (phones.length > 0) {
+            window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(msg)}`);
+        } else {
+            // No saved numbers — just show the text for manual copying
+            notifShowSMSCopyModal(msg);
+        }
+    });
+}
+
+function notifGetAllPhones() {
+    // Get phones from sessionStorage cache (populated when notif page loads)
+    try {
+        const cached = sessionStorage.getItem('deadcetera_band_phones');
+        if (cached) return JSON.parse(cached);
+    } catch(e) {}
+    return [];
+}
+
+async function notifCacheBandPhones() {
+    const all = await loadBandDataFromDrive('_band', 'notif_members') || {};
+    const phones = Object.values(all).map(m => m.phone).filter(Boolean);
+    try { sessionStorage.setItem('deadcetera_band_phones', JSON.stringify(phones)); } catch(e) {}
+    return phones;
+}
+
+function notifShowSMSCopyModal(msg) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0;color:var(--accent-light)">💬 Copy & Send</h3>
+            <button onclick="this.closest('[style]').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
+        </div>
+        <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">No phone numbers saved yet. Copy this message and paste it into your group text.</p>
+        <textarea class="app-textarea" rows="10" style="font-size:0.78em;font-family:monospace">${msg}</textarea>
+        <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="navigator.clipboard.writeText(this.previousElementSibling.value).then(()=>{this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Message',1800)})">📋 Copy Message</button>
+        <p style="color:var(--text-dim);font-size:0.75em;margin-top:8px;text-align:center">💡 Tip: Save phone numbers on this page so future messages open your Messages app automatically</p>
+    </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+async function notifSendAnnouncementPush() {
+    const msg = document.getElementById('announcementText')?.value.trim();
+    if (!msg) { alert('Please type a message first'); return; }
+    await notifSendPush('Band Announcement', msg, 'announcements');
+    document.getElementById('announcementText').value = '';
+}
+
+function notifSendAnnouncementSMS() {
+    const msg = document.getElementById('announcementText')?.value.trim();
+    if (!msg) { alert('Please type a message first'); return; }
+    const appUrl = window.location.href.split('?')[0];
+    const full = `🎸 Deadcetera Band Update:\n\n${msg}\n\n📱 App: ${appUrl}`;
+    const phones = notifGetAllPhones();
+    if (phones.length > 0) {
+        window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(full)}`);
+    } else {
+        notifShowSMSCopyModal(full);
+    }
+}
+
+function notifToast(msg) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-weight:600;z-index:9999;font-size:0.88em;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,0.4);white-space:nowrap';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.style.opacity = '0', 2000);
+    setTimeout(() => t.remove(), 2400);
+}
+
+// Called from Practice Plan "Share" button — can also trigger notifications
+async function notifFromPracticePlan(dateStr) {
+    practicePlanActiveDate = dateStr;
+    // Pre-cache phone numbers
+    await notifCacheBandPhones();
+    showPage('notifications');
+    // After render, pre-select this rehearsal
+    setTimeout(() => {
+        const sel = document.getElementById('notifRehearsalPicker');
+        if (sel) sel.value = dateStr;
+    }, 500);
+}
+
 function renderSocialPage(el) {
     el.innerHTML = `
     <div class="page-header">
