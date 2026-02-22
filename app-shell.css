@@ -10,7 +10,7 @@ a{color:var(--accent-light);}
 .topbar-right{display:flex;align-items:center;gap:6px;}
 .topbar-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-muted);padding:6px 10px;border-radius:8px;font-size:0.78em;cursor:pointer;transition:all 0.15s;white-space:nowrap;font-weight:500;font-family:inherit;}
 .topbar-btn:hover{background:rgba(255,255,255,0.12);color:white;}
-.topbar-btn.connected{background:rgba(16,185,129,0.25);color:#ffffff;border-color:rgba(16,185,129,0.4);font-weight:600;}
+.topbar-btn.connected{background:rgba(16,185,129,0.4);color:#ffffff!important;border-color:rgba(16,185,129,0.6);font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.3);}
 .menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1100;opacity:0;pointer-events:none;transition:opacity 0.25s;}
 .menu-overlay.open{opacity:1;pointer-events:auto;}
 .slide-menu{position:fixed;top:0;left:-300px;bottom:0;width:280px;z-index:1200;background:var(--bg-card);border-right:1px solid var(--border);transition:left 0.3s cubic-bezier(0.4,0,0.2,1);overflow-y:auto;padding:16px 0;}
@@ -231,3 +231,31 @@ header p, header .subtitle {color:var(--text-muted)!important;}
 .note-header [style*="color"]{color:var(--text-muted)!important;}
 #practiceTracksContainer [style*="color: #4"]{color:var(--text-muted)!important;}
 #spotifyVersionsContainer [style*="color: #4"]{color:var(--text-muted)!important;}
+
+/* Tab bar for settings */
+.tab-bar{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08));margin-bottom:16px}
+.tab-btn{background:none;border:none;color:var(--text-dim,#64748b);padding:8px 14px;font-size:0.82em;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;border-radius:0;transition:all 0.15s}
+.tab-btn:hover{color:var(--text-muted,#94a3b8)}
+.tab-btn.active{color:var(--accent-light,#818cf8);border-bottom-color:var(--accent,#667eea)}
+
+/* Stat cards for practice page */
+.stat-card{background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:14px;text-align:center}
+.stat-value{font-size:1.8em;font-weight:800;line-height:1}
+.stat-label{font-size:0.72em;color:var(--text-dim,#64748b);text-transform:uppercase;font-weight:600;margin-top:4px}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
+
+/* Form grid */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.form-grid{grid-template-columns:1fr}}
+.form-row{display:flex;flex-direction:column;gap:4px}
+.form-label{font-size:0.78em;font-weight:600;color:var(--text-dim,#64748b);text-transform:uppercase;letter-spacing:0.03em}
+
+/* App inputs for dark theme */
+.app-input,.app-select,.app-textarea{background:rgba(255,255,255,0.06)!important;border:1px solid var(--border,rgba(255,255,255,0.1))!important;color:var(--text,#f1f5f9)!important;border-radius:8px!important;padding:9px 12px!important;font-size:0.88em!important}
+.app-input:focus,.app-select:focus,.app-textarea:focus{border-color:var(--accent,#667eea)!important;outline:none!important}
+.app-textarea{min-height:80px;resize:vertical}
+
+/* Stem button dark theme fix */
+.stem-button{background:rgba(255,255,255,0.06)!important;border:1px solid var(--border,rgba(255,255,255,0.1))!important;color:var(--text,#f1f5f9)!important}
+.stem-button:hover{background:rgba(255,255,255,0.1)!important}
+.stem-label,.stem-info{color:var(--text-muted,#94a3b8)!important}

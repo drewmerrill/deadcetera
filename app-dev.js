@@ -1799,8 +1799,8 @@ function renderSpotifyVersions(songTitle, bandData) {
                 
                 <div class="votes-container">
                     ${Object.entries(version.votes).map(([member, voted]) => `
-                        <span class="vote-chip ${voted ? 'yes' : 'no'}">
-                            ${voted ? '✅ ' : ''}${bandMembers[member].name}
+                        <span class="vote-chip ${voted ? 'yes' : 'no'}" onclick="toggleVersionVote('${songTitle.replace(/'/g,"\\'")}','${version.id||''}','${member}')" style="cursor:pointer" title="Click to toggle vote for ${bandMembers[member]?.name||member}">
+                            ${voted ? '✅ ' : ''}${bandMembers[member]?.name||member}
                         </span>
                     `).join('')}
                 </div>
@@ -1945,10 +1945,14 @@ async function renderMoisesStems(songTitle, bandData) {
     
     if (!stems.folderUrl && (!stems.stems || Object.keys(stems.stems).length === 0)) {
         container.innerHTML = `
-            <div class="empty-state" style="padding: 20px;">
-                <p>No Moises stems uploaded yet</p>
-                <button onclick="showMoisesUploadForm()" class="primary-btn" style="margin-top: 10px;">📤 Upload Stems from Computer</button>
-                <p style="margin-top: 10px; color: #6b7280; font-size: 0.85em;">Or <a href="#" onclick="addMoisesStems(); return false;" style="color: #667eea;">paste Drive links</a> if already uploaded</p>
+            <div style="padding: 16px;">
+                <p style="color:var(--text-dim,#6b7280);margin-bottom:12px">No stems uploaded yet. Add a source to isolate parts:</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+                    <button onclick="moisesAddYouTube()" class="btn btn-primary" style="padding:10px">📺 YouTube Link</button>
+                    <button onclick="showMoisesUploadForm()" class="btn btn-ghost" style="padding:10px">📤 Upload MP3</button>
+                </div>
+                <button onclick="moisesShowSplitter()" class="btn btn-ghost" style="width:100%;padding:10px;color:var(--yellow,#f59e0b)">✂️ Split Long Show Recording (Moises 20min limit)</button>
+                <p style="margin-top:8px;color:var(--text-dim,#6b7280);font-size:0.78em">Or <a href="#" onclick="addMoisesStems();return false;" style="color:var(--accent-light,#667eea)">paste Drive links</a> if already uploaded</p>
             </div>
         `;
         return;
@@ -2660,61 +2664,35 @@ async function renderPracticeTracksSimplified(songTitle) {
         whole_band: 'Whole Band'
     };
     
+    // Group tracks by instrument into quadrants (#19)
+    const instruments = ['vocals','leadGuitar','rhythmGuitar','bass','keys','drums'];
+    const instLabels = {vocals:'🎤 Vocals',leadGuitar:'🎸 Lead Guitar',rhythmGuitar:'🎸 Rhythm Guitar',bass:'🎸 Bass',keys:'🎹 Keys',drums:'🥁 Drums'};
+    const grouped = {};
+    instruments.forEach(i => grouped[i] = []);
+    allTracks.forEach(t => {
+        const key = t.instrument?.replace('_','') || 'vocals';
+        const norm = key === 'lead_guitar' ? 'leadGuitar' : key === 'rhythm_guitar' ? 'rhythmGuitar' : key === 'keyboards' ? 'keys' : key === 'whole_band' ? 'vocals' : key;
+        if (!grouped[norm]) grouped[norm] = [];
+        grouped[norm].push(t);
+    });
+    
     container.innerHTML = `
-        <div class="practice-tracks-grid">
-            ${allTracks.map((track, index) => {
-                const url = track.videoUrl || track.youtubeUrl;
-                const thumbnail = track.thumbnail || getYouTubeThumbnail(url);
-                const icon = instrumentIcons[track.instrument] || '🎵';
-                const instName = instrumentNames[track.instrument] || track.instrument.replace('_', ' ');
-                const isUserAdded = track.source !== 'data.js';
-                
-                return `
-                    <div class="practice-track-card" style="position: relative;">
-                        ${isUserAdded ? `
-                            <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10;">
-                                <button onclick="editPracticeTrack('${songTitle}', ${index - dataTracks.length})" 
-                                    style="background: #667eea; color: white; border: none; border-radius: 4px; width: 28px; height: 24px; cursor: pointer; font-size: 12px;"
-                                    title="Edit track">✏️</button>
-                                <button onclick="deletePracticeTrackConfirm('${songTitle}', ${index - dataTracks.length})" 
-                                    style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px;"
-                                    title="Delete track">✕</button>
-                            </div>
-                        ` : ''}
-                        
-                        ${thumbnail ? `
-                            <div style="position: relative; margin-bottom: 12px; border-radius: 8px; overflow: hidden; max-width: 200px;">
-                                <img src="${thumbnail}" alt="Video thumbnail" style="width: 100%; height: auto; display: block;">
-                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    <span style="color: white; font-size: 20px;">▶</span>
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <span style="font-size: 1.5em;">${icon}</span>
-                            <div style="font-weight: 600; color: #667eea;">${instName}</div>
-                        </div>
-                        
-                        <h4 style="margin: 0 0 8px 0; font-size: 0.95em; color: #2d3748; line-height: 1.4;">
-                            ${track.title}
-                        </h4>
-                        
-                        ${track.notes ? `<p style="font-size: 0.85em; margin-bottom: 10px; color: #6b7280;">${track.notes}</p>` : ''}
-                        
-                        <button class="chart-btn chart-btn-primary" style="width: 100%;" onclick="window.open('${url}', '_blank')">
-                            📺 Watch Video
-                        </button>
-                        
-                        <p style="margin-top: 8px; font-size: 0.8em; color: #9ca3af;">
-                            Added by ${track.uploadedBy || 'unknown'}
-                            ${track.source === 'Google Drive' ? ' <span style="color: #10b981;">- Google Drive</span>' : ''}
-                        </p>
-                    </div>
-                `;
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${instruments.map(inst => {
+                const tracks = grouped[inst] || [];
+                return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:10px;min-height:80px">
+                    <div style="font-size:0.78em;font-weight:700;color:var(--text-muted,#94a3b8);margin-bottom:6px">${instLabels[inst]||inst}</div>
+                    ${tracks.length ? tracks.map((track,ti) => {
+                        const url = track.videoUrl || track.youtubeUrl;
+                        const title = track.title || track.notes || url?.substring(0,40) || 'Track';
+                        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.82em;border-bottom:1px solid rgba(255,255,255,0.04)">
+                            <a href="${url||'#'}" target="_blank" style="flex:1;color:var(--accent-light,#818cf8);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</a>
+                            ${track.source!=='data.js'?'<button onclick="deletePracticeTrackConfirm(\''+songTitle+'\','+ti+')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8em" title="Delete">✕</button>':''}
+                        </div>`;
+                    }).join('') : '<div style="font-size:0.75em;color:var(--text-dim,#64748b);font-style:italic">No tracks yet</div>'}
+                </div>`;
             }).join('')}
-        </div>
-    `;
+        </div>`;
 }
 
 async function deletePracticeTrackConfirm(songTitle, index) {
@@ -7451,7 +7429,7 @@ function renderSetlistsPage(el) {
     <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
     <div id="setlistsList"></div>`;
-    loadSetlists();
+    loadGigHistory().then(() => loadSetlists());
 }
 
 async function loadSetlists() {
@@ -7510,7 +7488,8 @@ function slRenderSetSongs(setIdx) {
     el.innerHTML = items.map((item, i) => {
         const s = typeof item === 'string' ? item : item.title;
         const trans = typeof item === 'object' && item.transition;
-        return `<div class="list-item" style="padding:6px 10px;font-size:0.85em;gap:6px">
+        const histTip = getSongHistoryTooltip(s);
+        return `<div class="list-item" style="padding:6px 10px;font-size:0.85em;gap:6px" title="${histTip.replace(/"/g,'&quot;')}">
             <span style="color:var(--text-dim);min-width:20px;font-weight:600">${i + 1}.</span>
             <span style="flex:1;font-weight:500">${s}${trans ? ' <span style="color:var(--accent-light);font-weight:700">→</span>' : ''}</span>
             <button class="btn btn-sm ${trans?'btn-primary':'btn-ghost'}" onclick="slToggleTransition(${setIdx},${i})" title="${trans?'Song transitions into next':'Click to mark as transition'}" style="padding:2px 8px;font-size:0.75em">${trans?'→':'⏹'}</button>
@@ -7838,16 +7817,23 @@ async function loadVenues() {
     const el = document.getElementById('venuesList');
     if (!el || data.length === 0) return;
     el.innerHTML = data.map((v, i) => `<div class="app-card">
-        <h3 style="margin-bottom:6px">${v.name || 'Unnamed'}</h3>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <h3 style="margin-bottom:6px">${v.name || 'Unnamed'}</h3>
+            ${v.website?`<a href="${v.website}" target="_blank" class="btn btn-sm btn-ghost" title="Website">🌐</a>`:''}
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:0.82em;color:var(--text-muted)">
             ${v.address?`<span>📍 ${v.address}</span>`:''}
             ${v.phone?`<span>📞 ${v.phone}</span>`:''}
             ${v.email?`<span>📧 ${v.email}</span>`:''}
             ${v.capacity?`<span>👥 ${v.capacity}</span>`:''}
-            ${v.contactName?`<span>🤝 ${v.contactName}</span>`:''}
-            ${v.owner?`<span>👤 Owned by: ${bandMembers[v.owner]?.name||v.owner}</span>`:''}
-            ${v.soundPerson?`<span>🔊 Sound: ${v.soundPerson}</span>`:''}
+            ${v.stage?`<span>🎭 ${v.stage}</span>`:''}
+            ${v.pA||v.pa?`<span>🔊 PA: ${v.pA||v.pa}</span>`:''}
+            ${v.contactName||v.contact?`<span>🤝 ${v.contactName||v.contact}</span>`:''}
+            ${v.owner?`<span>👤 ${bandMembers[v.owner]?.name||v.owner}</span>`:''}
+            ${v.soundPerson?`<span>🎛️ Sound: ${v.soundPerson}</span>`:''}
             ${v.soundPhone?`<span>📱 ${v.soundPhone}</span>`:''}
+            ${v.loadIn?`<span>🚪 ${v.loadIn}</span>`:''}
+            ${v.parking?`<span>🅿️ ${v.parking}</span>`:''}
         </div>
         ${v.notes?`<div style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">${v.notes}</div>`:''}
         ${v.pay?`<div style="margin-top:4px;font-size:0.82em;color:var(--green)">💰 ${v.pay}</div>`:''}
@@ -7858,26 +7844,41 @@ function addVenue() {
     const el = document.getElementById('venuesList');
     el.innerHTML = `<div class="app-card">
         <h3>Add Venue</h3>
+        <div style="margin-bottom:12px;padding:10px;background:rgba(102,126,234,0.06);border-radius:8px;display:flex;gap:8px;align-items:center">
+            <input class="app-input" id="vSearchGoogle" placeholder="Search Google for venue info..." style="flex:1;margin:0">
+            <button class="btn btn-sm btn-primary" onclick="searchVenueGoogle()">🔍 Search</button>
+        </div>
         <div class="form-grid">
             <div class="form-row"><label class="form-label">Venue Name</label><input class="app-input" id="vName"></div>
             <div class="form-row"><label class="form-label">Address</label><input class="app-input" id="vAddress"></div>
             <div class="form-row"><label class="form-label">Phone</label><input class="app-input" id="vPhone"></div>
             <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="vEmail"></div>
+            <div class="form-row"><label class="form-label">Website</label><input class="app-input" id="vWebsite" placeholder="https://..."></div>
             <div class="form-row"><label class="form-label">Capacity</label><input class="app-input" id="vCapacity" placeholder="e.g. 200"></div>
+            <div class="form-row"><label class="form-label">Stage Size</label><input class="app-input" id="vStage" placeholder="e.g. 20x12 ft"></div>
+            <div class="form-row"><label class="form-label">PA System</label><input class="app-input" id="vPA" placeholder="e.g. JBL PRX, 2 monitors"></div>
             <div class="form-row"><label class="form-label">Booking Contact</label><input class="app-input" id="vContact"></div>
             <div class="form-row"><label class="form-label">Band Contact Owner</label><select class="app-select" id="vOwner"><option value="">Select...</option>${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join('')}</select></div>
             <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="vSoundPerson"></div>
             <div class="form-row"><label class="form-label">Sound Phone</label><input class="app-input" id="vSoundPhone"></div>
             <div class="form-row"><label class="form-label">Typical Pay</label><input class="app-input" id="vPay" placeholder="e.g. $500/night"></div>
+            <div class="form-row"><label class="form-label">Load-in Info</label><input class="app-input" id="vLoadIn" placeholder="e.g. Back door, 5pm"></div>
+            <div class="form-row"><label class="form-label">Parking</label><input class="app-input" id="vParking" placeholder="e.g. Street parking, lot behind"></div>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes" placeholder="Load-in, parking, stage size, PA info..."></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveVenue()">💾 Save</button><button class="btn btn-ghost" onclick="loadVenues()">Cancel</button></div>
     </div>` + el.innerHTML;
 }
 
+function searchVenueGoogle() {
+    const q = document.getElementById('vSearchGoogle')?.value;
+    if (!q) return;
+    window.open('https://www.google.com/search?q=' + encodeURIComponent(q + ' venue'), '_blank');
+}
+
 async function saveVenue() {
     const v = {};
-    ['Name','Address','Phone','Email','Capacity','Contact','Owner','SoundPerson','SoundPhone','Pay','Notes'].forEach(f => {
+    ['Name','Address','Phone','Email','Website','Capacity','Stage','PA','Contact','Owner','SoundPerson','SoundPhone','Pay','LoadIn','Parking','Notes'].forEach(f => {
         const id = 'v' + f, el = document.getElementById(id);
         v[f.charAt(0).toLowerCase() + f.slice(1)] = el?.value || '';
     });
@@ -8384,3 +8385,146 @@ function filterByBand(band) {
     // If renderSongs exists and uses currentBandFilter, call it
     if (typeof renderSongs === 'function') renderSongs();
 }
+
+// ---- MOISES ENHANCED (#18) ----
+function moisesAddYouTube() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const container = document.getElementById('moisesStemsContainer');
+    container.innerHTML = `
+    <div class="app-card" style="background:rgba(255,255,255,0.03)">
+        <h4 style="color:var(--accent-light);margin-bottom:10px">📺 Add YouTube Link for Stem Separation</h4>
+        <div class="form-row"><label class="form-label">YouTube URL</label>
+            <input class="app-input" id="moisesYTUrl" placeholder="https://youtube.com/watch?v=..."></div>
+        <div class="form-row"><label class="form-label">Version Description</label>
+            <input class="app-input" id="moisesYTDesc" placeholder="e.g. Grateful Dead 5/8/77 Cornell"></div>
+        <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
+            <b>Workflow:</b> Copy the YouTube link → Go to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> → 
+            Paste link → Download separated stems → Upload stems back here<br>
+            <b>Note:</b> Moises has a 20-minute limit. Use the Show Splitter for longer recordings.
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveMoisesYTLink()">💾 Save Link</button>
+            <button class="btn btn-ghost" onclick="window.open('https://moises.ai','_blank')">🔗 Open Moises</button>
+            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveMoisesYTLink() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const url = document.getElementById('moisesYTUrl')?.value;
+    const desc = document.getElementById('moisesYTDesc')?.value;
+    if (!url) { alert('URL required'); return; }
+    const existing = await loadMoisesStems(songTitle) || {};
+    if (!existing.sourceLinks) existing.sourceLinks = [];
+    existing.sourceLinks.push({ url, description: desc, type: 'youtube', addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() });
+    existing.sourceVersion = desc || url;
+    await saveMoisesStems(songTitle, existing);
+    alert('✅ YouTube link saved!');
+    renderMoisesStems(songTitle, bandKnowledgeBase[songTitle]||{});
+}
+
+function moisesShowSplitter() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const container = document.getElementById('moisesStemsContainer');
+    container.innerHTML = `
+    <div class="app-card" style="background:rgba(255,255,255,0.03)">
+        <h4 style="color:var(--yellow);margin-bottom:10px">✂️ Show Splitter — Break Long Recordings for Moises</h4>
+        <p style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">
+            Moises.ai has a <b>20-minute limit</b>. If you have a full show recording, you need to split it into sections first.
+        </p>
+        <div class="form-row"><label class="form-label">Source URL or File</label>
+            <input class="app-input" id="splitterSource" placeholder="YouTube URL or archive.org link"></div>
+        <div class="form-row"><label class="form-label">Song start time</label>
+            <input class="app-input" id="splitterStart" placeholder="e.g. 45:30 (minutes:seconds)"></div>
+        <div class="form-row"><label class="form-label">Song end time</label>
+            <input class="app-input" id="splitterEnd" placeholder="e.g. 52:15"></div>
+        <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
+            <b>How to split:</b><br>
+            1. Note the start/end times for "${songTitle}" in the recording<br>
+            2. Use a free tool like <a href="https://mp3cut.net" target="_blank" style="color:var(--accent-light)">mp3cut.net</a> or 
+               <a href="https://audiotrimmer.com" target="_blank" style="color:var(--accent-light)">audiotrimmer.com</a><br>
+            3. Download the trimmed clip (under 20 min)<br>
+            4. Upload to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> for stem separation<br>
+            5. Upload the stems back here
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveSplitterInfo()">💾 Save Timestamps</button>
+            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveSplitterInfo() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const source = document.getElementById('splitterSource')?.value;
+    const start = document.getElementById('splitterStart')?.value;
+    const end = document.getElementById('splitterEnd')?.value;
+    const existing = await loadMoisesStems(songTitle) || {};
+    existing.showSplitter = { source, startTime: start, endTime: end, addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() };
+    await saveMoisesStems(songTitle, existing);
+    alert('✅ Timestamps saved!');
+    renderMoisesStems(songTitle, bandKnowledgeBase[songTitle]||{});
+}
+
+// ---- SETLIST SONG HISTORY (#24) ----
+// Store gig history for hover tooltips
+window._gigHistory = null;
+async function loadGigHistory() {
+    if (window._gigHistory) return window._gigHistory;
+    try {
+        const gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        const history = {};
+        setlists.forEach(sl => {
+            (sl.sets || []).forEach((set, si) => {
+                (set.songs || []).forEach((song, songIdx) => {
+                    const title = typeof song === 'string' ? song : song.title;
+                    if (!title) return;
+                    if (!history[title]) history[title] = [];
+                    const isOpener = songIdx === 0;
+                    const isCloser = songIdx === (set.songs.length - 1);
+                    const setName = set.name || ('Set ' + (si+1));
+                    const isEncore = setName.toLowerCase().includes('encore');
+                    let position = 'middle';
+                    if (isEncore) position = 'encore';
+                    else if (isOpener) position = 'opener';
+                    else if (isCloser) position = 'closer';
+                    history[title].push({ date: sl.date || '', venue: sl.venue || sl.name || '', position, set: setName });
+                });
+            });
+        });
+        // Sort each song's history by date descending
+        Object.values(history).forEach(arr => arr.sort((a,b) => (b.date||'').localeCompare(a.date||'')));
+        window._gigHistory = history;
+        return history;
+    } catch(e) { console.log('Gig history load error:', e); return {}; }
+}
+
+function getSongHistoryTooltip(title) {
+    const h = window._gigHistory?.[title];
+    if (!h || !h.length) return 'No gig history for this song yet';
+    return h.slice(0, 8).map(g => {
+        const posIcon = g.position === 'opener' ? '🟢' : g.position === 'closer' ? '🔴' : g.position === 'encore' ? '⭐' : '·';
+        return `${g.date||'?'} — ${g.venue||'?'} ${posIcon} ${g.position}`;
+    }).join('\n') + (h.length > 8 ? '\n... +' + (h.length-8) + ' more' : '');
+}
+
+// ---- TAB BAR CSS ----
+(function(){
+    if(document.getElementById('tab-bar-css'))return;
+    const s=document.createElement('style');s.id='tab-bar-css';
+    s.textContent=`
+        .tab-bar{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08));margin-bottom:16px}
+        .tab-btn{background:none;border:none;color:var(--text-dim,#64748b);padding:8px 14px;font-size:0.82em;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;border-radius:0;transition:all 0.15s}
+        .tab-btn:hover{color:var(--text-muted,#94a3b8)}
+        .tab-btn.active{color:var(--accent-light,#818cf8);border-bottom-color:var(--accent,#667eea)}
+    `;
+    document.head.appendChild(s);
+})();
+
+console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
