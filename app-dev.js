@@ -366,16 +366,7 @@
     document.head.appendChild(style);
 })();
 
-console.log('🎸 Deadcetera v5.2.1 - MASTER FILE STATUS SYSTEM!');
-console.log('⚡ Statuses load from 1 file instead of 358 API calls');
-console.log('⚡ Filtering is INSTANT on page load');
-console.log('🔄 First load migrates existing data automatically');
-console.log('🎤 Harmonies also use master file (no more looping!)');
-console.log('🎵 ABC playback: iOS AudioContext fix - SOUND NOW WORKS on iPhone!');
-console.log('🎙️ Recording: Stops ABC playback first (no conflicts)');
-console.log('🎙️ Recording: iOS-compatible format (MP4/M4A instead of WebM)');
-console.log('🎙️ Recording: Better error messages for permissions');
-console.log('🎸 Critical for gigs and practice - tested for mobile!');
+console.log('🎸 Deadcetera v5.3 — Firebase · Per-member Crib Notes · iPad Export · Stage-ready!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -4856,39 +4847,29 @@ function loadGoogleDriveAPI() {
     return new Promise((resolve, reject) => {
         console.log('🔥 Loading Firebase + Google Identity...');
         
-        const loadFirebaseApp = new Promise((res, rej) => {
-            if (window.firebase?.apps?.length) { res(); return; }
+        const loadScript = (src) => new Promise((res, rej) => {
             const s = document.createElement('script');
-            s.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js';
-            s.onload = res; s.onerror = rej;
+            s.src = src; s.onload = res; s.onerror = rej;
             document.head.appendChild(s);
         });
-        
-        const loadFirebaseDB = new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js';
-            s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
-        
-        const loadFirebaseStorage = new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js';
-            s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
-        
+
         const loadGIS = new Promise((res, rej) => {
             if (window.google?.accounts?.oauth2) { res(); return; }
-            const s = document.createElement('script');
-            s.src = 'https://accounts.google.com/gsi/client';
-            s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
+            loadScript('https://accounts.google.com/gsi/client').then(res).catch(rej);
         });
-        
-        // Firebase App must load first, then DB and Storage
-        loadFirebaseApp
-            .then(() => Promise.all([loadFirebaseDB, loadFirebaseStorage, loadGIS]))
+
+        // CRITICAL: firebase-app-compat MUST fully execute before database/storage load
+        // Do NOT create DB/Storage script elements until after app-compat onload fires
+        const firebaseAppReady = window.firebase?.apps !== undefined
+            ? Promise.resolve()
+            : loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+
+        firebaseAppReady
+            .then(() => Promise.all([
+                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js'),
+                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js'),
+                loadGIS
+            ]))
             .then(() => {
                 console.log('✅ Firebase + Google scripts loaded');
                 initFirebase().then(resolve).catch(reject);
