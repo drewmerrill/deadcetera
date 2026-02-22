@@ -625,3 +625,11 @@ button[style*="background:rgba(29"],
     overflow: hidden;
     max-width: 100%;
 }
+
+/* ── Connected button: hide text label on very small screens ── */
+@media(max-width:400px) {
+    .conn-label { display: none !important; }
+    .hamburger svg { width: 22px !important; height: 22px !important; display: block !important; }
+}
+/* ── Ensure hamburger SVG always renders ── */
+.hamburger svg { width: 22px; height: 22px; display: block; flex-shrink: 0; }

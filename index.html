@@ -32,13 +32,13 @@
     <div class="topbar">
         <div class="topbar-left">
             <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             <span class="topbar-brand" onclick="showPage('songs')" style="cursor:pointer">Deadcetera</span>
         </div>
         <div class="topbar-right">
             <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()">🔗 Connect</button>
-            <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin">⚙️</button>
+            <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin" style="padding:6px 8px">⚙️</button>
         </div>
     </div>
 
@@ -50,8 +50,7 @@
             <div class="menu-section-title">Music</div>
             <button class="menu-item active" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Song Library</button>
             <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
-            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎵</span> Playlists</button>
-            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎵</span> Playlists</button>
+            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
             <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">📅</span> Practice Plan</button>
         </div>
         <div class="menu-divider"></div>
@@ -95,9 +94,7 @@
             <div id="signInPrompt" style="text-align:center;margin-top:12px;">
                 <div style="position:relative;display:inline-block;">
                     <button id="googleDriveAuthBtn2" onclick="handleGoogleDriveAuth()" 
-                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;"
-                        onmouseenter="document.getElementById('signInTooltip').style.display='block'"
-                        onmouseleave="document.getElementById('signInTooltip').style.display='none'">
+                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;">
                         👤 Sign In
                     </button>
                     <button onclick="const t=document.getElementById('signInTooltip');t.style.display=t.style.display==='block'?'none':'block';event.stopPropagation();"
@@ -548,7 +545,6 @@
 
         <!-- Dynamic pages rendered by JS -->
         <div id="page-setlists" class="app-page hidden"></div>
-        <div id="page-playlists" class="app-page hidden"></div>
         <div id="page-playlists" class="app-page hidden"></div>
         <div id="page-practice" class="app-page hidden"></div>
         <div id="page-calendar" class="app-page hidden"></div>

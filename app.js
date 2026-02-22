@@ -5310,9 +5310,9 @@ function updateDriveAuthButton() {
     if (!button) return;
     
     if (isUserSignedIn) {
-        button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span> Connected';
+        button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span><span class="conn-label"> Connected</span>';
         button.className = 'topbar-btn connected';
-        button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 12px!important;border-radius:8px!important;';
+        button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 10px!important;border-radius:8px!important;white-space:nowrap!important;';
         // Update the hero Sign In button to show Sign Out
         const heroBtn = document.getElementById('googleDriveAuthBtn2');
         if (heroBtn) {
@@ -8142,16 +8142,6 @@ const pageRenderers = {
     notifications: renderNotificationsPage,
     help: renderHelpPage
 };
-
-// Handle ?playlist= URL param — launch Smart Player directly
-(function checkPlaylistParam() {
-    const params = new URLSearchParams(window.location.search);
-    const playlistId = params.get('playlist');
-    if (playlistId) {
-        // Wait for app init then launch Smart Player
-        window.__launchSmartPlayer = playlistId;
-    }
-})();
 
 // ============================================================================
 // SETLIST BUILDER
@@ -11114,8 +11104,6 @@ function filterHelpTopics(query) {
         if (q.length > 2 && text.includes(q)) d.open = true;
     });
 }
-
-// ============================================================================
 // PLAYLISTS — PHASE 1: DATA LAYER
 // ============================================================================
 // All playlist data lives in Firebase (via saveBandDataToDrive / loadBandDataFromDrive)
