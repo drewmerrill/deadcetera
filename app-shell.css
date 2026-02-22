@@ -264,3 +264,173 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
 [style*="background:#667eea"],[style*="background: #667eea"],[style*="background:#8b5cf6"],[style*="background: #8b5cf6"]{color:white!important;}
 [style*="background:#667eea"] *,[style*="background: #667eea"] *,[style*="background:#8b5cf6"] *,[style*="background: #8b5cf6"] *{color:white!important;}
 .spotify-play-btn{color:white!important;}
+
+/* ==========================================================================
+   MOBILE RESPONSIVE — COMPREHENSIVE
+   Breakpoints: 480px (phone), 640px (large phone / small tablet)
+   ========================================================================== */
+
+/* ── Song list: on mobile collapse badges to save space ── */
+@media(max-width:640px) {
+    /* Song row: name | mic | status | band — tighter */
+    #songDropdown > div {
+        grid-template-columns: 1fr 22px 70px 40px !important;
+        padding: 9px 10px !important;
+        gap: 3px !important;
+    }
+    .song-name, .song-item .song-name { font-size: 0.85em !important; }
+    .song-badge { font-size: 0.6em !important; padding: 2px 6px !important; min-width: 28px !important; }
+    .status-badge { font-size: 0.62em !important; padding: 2px 5px !important; }
+
+    /* Filter bar: stack into 2-col grid on small screens */
+    .filter-row {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+        align-items: stretch !important;
+    }
+    /* ⓘ icons go full width across both columns */
+    .filter-row > span[style*="cursor:help"] { display: none !important; }
+    /* Band and status selects fill their grid cell */
+    #bandFilter, #statusFilter { width: 100% !important; min-width: unset !important; font-size: 0.78em !important; padding: 6px 8px !important; }
+    /* Checkbox labels fill their cell */
+    .filter-row label { min-width: unset !important; width: 100% !important; font-size: 0.78em !important; justify-content: center !important; }
+
+    /* Step cards: reduce padding */
+    .step-card { padding: 14px !important; }
+    .step-card > div:first-child { gap: 8px !important; }
+    .step-card > div:first-child > h2 { font-size: 1em !important; }
+    .step-number { width: 32px !important; height: 32px !important; min-width: 32px !important; font-size: 0.95em !important; }
+
+    /* Song dropdown: taller scroll area on phone */
+    #songDropdown { max-height: 40vh !important; }
+
+    /* Topbar: tighten */
+    .topbar { padding: 0 8px !important; }
+    .topbar-brand { font-size: 1em !important; }
+    .topbar-btn { padding: 5px 8px !important; font-size: 0.72em !important; }
+
+    /* Main content padding */
+    .main-content { padding: 10px 10px !important; }
+    .app-card { padding: 12px !important; }
+    .resource-section { padding: 12px !important; }
+
+    /* Page header */
+    .page-header h1 { font-size: 1.15em !important; }
+
+    /* Vote chips — wrap cleanly */
+    .votes-container { flex-wrap: wrap !important; gap: 4px !important; }
+    .vote-chip { font-size: 0.72em !important; padding: 3px 8px !important; }
+
+    /* Spotify play button full width on mobile */
+    .spotify-play-btn { width: 100% !important; justify-content: center !important; margin-top: 8px !important; }
+
+    /* Harmony studio / multi-track */
+    .mt-track { padding: 8px !important; }
+    
+    /* Calendar month nav */
+    .btn-sm { font-size: 0.72em !important; padding: 4px 8px !important; }
+}
+
+/* ── Very small phones (375px and below) ── */
+@media(max-width:400px) {
+    #songDropdown > div {
+        grid-template-columns: 1fr 20px 60px !important; /* drop band badge column */
+        padding: 8px !important;
+    }
+    /* Hide band badge on very small phones — it's in the filter anyway */
+    .song-badge { display: none !important; }
+    .song-name { font-size: 0.82em !important; }
+    .topbar-brand { font-size: 0.9em !important; }
+}
+
+/* ── Fix inline-style grids that don't respond to CSS overrides ── */
+@media(max-width:640px) {
+    /* Section title row: step number + h2 always horizontal */
+    [style*="display:flex"][style*="align-items:center"] > .step-number { flex-shrink: 0 !important; }
+
+    /* Two-column grids inside cards → single column */
+    [style*="grid-template-columns: 1fr 1fr"],
+    [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+
+    /* Member crib notes grid → single column */
+    [style*="grid-template-columns:1fr auto"],
+    [style*="grid-template-columns: 1fr auto"] { grid-template-columns: 1fr !important; }
+
+    /* Song DNA flex rows → stack */
+    [style*="display:flex"][style*="gap:12px"][style*="align-items:center"],
+    [style*="display:flex"][style*="gap:16px"][style*="align-items:center"] { flex-wrap: wrap !important; }
+
+    /* Chord/key/BPM metadata row */
+    .song-metadata, [id="songMetaRow"] { flex-wrap: wrap !important; gap: 6px !important; }
+
+    /* Practice track cards */
+    #practiceTracksContainer [style*="display:flex"] { flex-wrap: wrap !important; }
+
+    /* Social media profile tiles: 3-col on phone */
+    #socialProfileLinks { grid-template-columns: repeat(3, 1fr) !important; }
+
+    /* Tab bar scrolls horizontally — already set, just enforce */
+    .tab-bar { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+
+    /* Woodshed section headers */
+    .section-header h3 { font-size: 0.9em !important; }
+
+    /* Harmony cards */
+    .harmony-card { padding: 10px !important; }
+
+    /* Calendar events list — buttons don't overflow */
+    #calendarEvents .list-item { flex-wrap: wrap !important; gap: 4px !important; }
+
+    /* Performance Tips bullets */
+    #gigNotesContainer li { flex-wrap: wrap !important; }
+
+    /* Filter checkbox labels: don't force min-width */
+    label[style*="min-width:140px"] { min-width: unset !important; flex: 1 !important; }
+    
+    /* Setlist cards */
+    .setlist-card [style*="display:flex"] { flex-wrap: wrap !important; }
+}
+
+/* ── Touch targets: ensure all buttons are at least 44px tall on mobile ── */
+@media(max-width:640px) {
+    .btn, .tab-btn, .menu-item { min-height: 40px !important; }
+    .btn-sm { min-height: 34px !important; }
+    input[type="checkbox"] { width: 18px !important; height: 18px !important; }
+}
+
+/* ── Song metadata row: wrap on mobile ── */
+.meta-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+@media(max-width:640px) {
+    .meta-row { gap: 8px !important; }
+    .meta-item { flex: 1 1 calc(50% - 8px); min-width: 120px; }
+    .meta-item .app-select, .meta-item .app-input { width: 100% !important; }
+    /* Song structure summary — don't overflow */
+    #structureSummary, [id*="structure"] { font-size: 0.78em !important; word-break: break-word !important; }
+    /* Search input full width */
+    .search-input, #songSearch { font-size: 0.9em !important; }
+    /* Step 2 tabs */
+    .tab-bar .tab-btn { padding: 7px 10px !important; font-size: 0.72em !important; }
+    /* Version cards */
+    .spotify-version-card { padding: 12px !important; }
+    /* Personal tabs member cards */
+    #personalTabsContainer > div > div { padding: 10px !important; }
+    /* Harmony studio track controls — stack */
+    .mt-track > div[style*="display:flex"] { flex-wrap: wrap !important; }
+    /* Setlists page cards */
+    #setlistsList .app-card [style*="display:flex"][style*="justify-content:space-between"] { flex-wrap: wrap !important; gap: 6px !important; }
+    /* Gigs page */
+    #gigsList .app-card [style*="display:flex"][style*="justify-content:space-between"] { flex-wrap: wrap !important; gap: 6px !important; }
+    /* Calendar */
+    #calendarInner .app-card [style*="grid-template-columns:repeat(7"] { gap: 1px !important; }
+    /* Social media profiles 3x2 grid */
+    #socialProfileLinks { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+    /* Help page */
+    .app-card [style*="grid-template-columns: repeat"] { grid-template-columns: 1fr !important; }
+}
+
+/* Ensure topbar sign-in button text doesn't truncate on small screens */
+@media(max-width:480px) {
+    #googleDriveAuthBtn { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topbar-right { gap: 4px !important; }
+}
