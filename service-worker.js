@@ -1,17 +1,20 @@
 // Deadcetera Service Worker
 // Handles: offline caching, push notifications, background sync
-const CACHE_NAME = 'deadcetera-v1';
+const CACHE_NAME = 'deadcetera-v2';
+
+// Derive base path from SW location (works at root or subdirectory)
+const BASE = self.registration.scope;
+
 const CACHE_URLS = [
-    '/',
-    '/index.html',
-    '/styles.css',
-    '/app-shell.css',
-    '/app.js',
-    '/data.js',
-    '/manifest.json',
-    '/icon-192.png',
-    '/icon-512.png',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
+    BASE,
+    BASE + 'index.html',
+    BASE + 'styles.css',
+    BASE + 'app-shell.css',
+    BASE + 'app.js',
+    BASE + 'data.js',
+    BASE + 'manifest.json',
+    BASE + 'icon-192.png',
+    BASE + 'icon-512.png',
 ];
 
 // ── Install: cache core app shell ──────────────────────────────────────────

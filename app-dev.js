@@ -485,10 +485,11 @@ function getDefaultResources() {
 // ── PWA: Register service worker ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
+        // Use relative path so it works whether hosted at root or in a subdirectory
+        const swPath = new URL('service-worker.js', window.location.href).href;
+        navigator.serviceWorker.register(swPath)
             .then(reg => {
                 console.log('[PWA] Service worker registered:', reg.scope);
-                // Listen for SW messages (e.g. navigation from push notification click)
                 navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data?.type === 'NAVIGATE' && event.data.url) {
                         const params = new URLSearchParams(event.data.url.split('?')[1] || '');
