@@ -8130,6 +8130,8 @@ function showPage(page) {
 const pageRenderers = {
     setlists: renderSetlistsPage,
     playlists: renderPlaylistsPage,
+    playlists: renderPlaylistsPage,
+    playlists: renderPlaylistsPage,
     practice: renderPracticePage,
     calendar: renderCalendarPage,
     gigs: renderGigsPage,
