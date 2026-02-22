@@ -231,3 +231,12 @@ footer p{color:var(--text-dim)!important;}
     .topbar{padding:0 10px;}
     .card-grid{grid-template-columns:repeat(2,1fr);}
 }
+
+/* Red backgrounds always get white text */
+[style*="background:#ef4444"],[style*="background: #ef4444"],[style*="background:#dc2626"],[style*="background: #dc2626"]{color:white!important;}
+/* Mobile: karaoke & multi-track responsive */
+@media(max-width:600px){
+    .form-grid{grid-template-columns:1fr!important;}
+    [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important;}
+    #mtKaraokeSheet{max-height:35vh!important;}
+}

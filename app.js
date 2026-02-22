@@ -2745,20 +2745,20 @@ async function renderPracticeTracksSimplified(songTitle) {
     };
     
     // Group tracks by instrument into quadrants (#19)
-    const instruments = ['vocals','leadGuitar','rhythmGuitar','bass','keys','drums'];
-    const instLabels = {vocals:'🎤 Vocals',leadGuitar:'🎸 Lead Guitar',rhythmGuitar:'🎸 Rhythm Guitar',bass:'🎸 Bass',keys:'🎹 Keys',drums:'🥁 Drums'};
+    const instruments = ['vocals','leadGuitar','rhythmGuitar','bass','keys','drums','wholeBand'];
+    const instLabels = {vocals:'🎤 Vocals',leadGuitar:'🎸 Lead Guitar',rhythmGuitar:'🎸 Rhythm Guitar',bass:'🎸 Bass',keys:'🎹 Keys',drums:'🥁 Drums',wholeBand:'🎶 Whole Band'};
     const grouped = {};
     instruments.forEach(i => grouped[i] = []);
     allTracks.forEach(t => {
         const key = t.instrument?.replace('_','') || 'vocals';
-        const norm = key === 'lead_guitar' ? 'leadGuitar' : key === 'rhythm_guitar' ? 'rhythmGuitar' : key === 'keyboards' ? 'keys' : key === 'whole_band' ? 'vocals' : key;
+        const norm = key === 'leadguitar' || key === 'lead_guitar' ? 'leadGuitar' : key === 'rhythmguitar' || key === 'rhythm_guitar' ? 'rhythmGuitar' : key === 'keyboards' ? 'keys' : key === 'wholeband' || key === 'whole_band' ? 'wholeBand' : key;
         if (!grouped[norm]) grouped[norm] = [];
         grouped[norm].push(t);
     });
     
     container.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            ${instruments.map(inst => {
+            ${instruments.filter(i=>i!=='wholeBand').map(inst => {
                 const tracks = grouped[inst] || [];
                 return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:10px;min-height:80px">
                     <div style="font-size:0.78em;font-weight:700;color:var(--text-muted,#94a3b8);margin-bottom:6px">${instLabels[inst]||inst}</div>
@@ -2772,7 +2772,19 @@ async function renderPracticeTracksSimplified(songTitle) {
                     }).join('') : '<div style="font-size:0.75em;color:var(--text-dim,#64748b);font-style:italic">No tracks yet</div>'}
                 </div>`;
             }).join('')}
-        </div>`;
+        </div>
+        ${(grouped.wholeBand||[]).length ? `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:10px;margin-top:8px">
+            <div style="font-size:0.78em;font-weight:700;color:var(--text-muted,#94a3b8);margin-bottom:6px">🎶 Whole Band</div>
+            ${(grouped.wholeBand||[]).map((track,ti) => {
+                const url = track.videoUrl || track.youtubeUrl;
+                const title = track.title || track.notes || url?.substring(0,40) || 'Track';
+                return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.82em;border-bottom:1px solid rgba(255,255,255,0.04)"><a href="'+(url||'#')+'" target="_blank" style="flex:1;color:var(--accent-light,#818cf8);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+title+'">'+title+'</a>'+(track.source!=='data.js'?'<button onclick="deletePracticeTrackConfirm(\''+songTitle+'\','+ti+')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8em" title="Delete">✕</button>':'')+'</div>';
+            }).join('')}
+        </div>` : `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:10px;margin-top:8px">
+            <div style="font-size:0.78em;font-weight:700;color:var(--text-muted,#94a3b8);margin-bottom:6px">🎶 Whole Band</div>
+            <div style="font-size:0.75em;color:var(--text-dim,#64748b);font-style:italic">No tracks yet</div>
+        </div>`}
+    `;
 }
 
 async function deletePracticeTrackConfirm(songTitle, index) {
@@ -6434,7 +6446,7 @@ Before your first recording session, click 🎯 Calibrate with speakers at moder
 <b>🔧 If tracks sound out of sync:</b><br>
 Use the Nudge slider right after recording. +ms = later, -ms = earlier. Small adjustments (10-30ms) are normal. If ALL tracks drift, adjust the Sync offset.`
 };
-function mtHelp(k){return `<span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('${k}')" title="${(mtTips[k]||'').replace(/<[^>]*>/g,'').replace(/'/g,'&#39;').substring(0,80)}">ⓘ</span>`;}
+function mtHelp(k){return `<span class="mt-help-icon" onclick="event.stopPropagation();mtShowHelp('${k}')" title="${(mtTips[k]||'').replace(/<[^>]*>/g,'').replace(/'/g,'&#39;').substring(0,200)}">ⓘ</span>`;}
 function mtShowHelp(k){
     document.getElementById('mtHelpPopup')?.remove();
     const d=document.createElement('div');d.id='mtHelpPopup';
@@ -6507,7 +6519,7 @@ ${hasAbc?`
         <strong style="font-size:0.85em">🎤 Karaoke ${mtHelp('karaoke')}</strong>
         <button id="mtKaraokeBtn_${sectionIndex}" onclick="mtToggleKaraoke('${ss}',${sectionIndex})" style="background:#8b5cf6;color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:0.8em;font-weight:600">🎤 Start</button>
     </div>
-    <div id="mtKaraokeSheet_${sectionIndex}" style="background:white;border-radius:6px;padding:8px;display:none;max-height:180px;overflow-y:auto"></div>
+    <div id="mtKaraokeSheet_${sectionIndex}" style="background:white;border-radius:8px;padding:12px;display:none;max-height:50vh;overflow-y:auto;resize:vertical;min-height:120px"></div>
     <div id="mtKaraokeLyrics_${sectionIndex}" style="display:none;margin-top:6px;text-align:center;font-size:1.2em;font-weight:600;color:#fbbf24;min-height:36px"></div>
 </div>`:''}
 
