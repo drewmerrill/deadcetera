@@ -8130,8 +8130,6 @@ function showPage(page) {
 const pageRenderers = {
     setlists: renderSetlistsPage,
     playlists: renderPlaylistsPage,
-    playlists: renderPlaylistsPage,
-    playlists: renderPlaylistsPage,
     practice: renderPracticePage,
     calendar: renderCalendarPage,
     gigs: renderGigsPage,
@@ -11607,3 +11605,422 @@ function renderPlaylistsPage(el) {
 }
 
 console.log('🎵 Playlists Phase 1 — data layer loaded');
+
+// ============================================================================
+// PLAYLISTS — PHASE 2: INDEX PAGE + EDITOR
+// ============================================================================
+
+// ── Index Page ────────────────────────────────────────────────────────────────
+
+function renderPlaylistsPage(el) {
+    el.innerHTML = `
+    <div class="page-header">
+        <h1>🎵 Playlists</h1>
+        <p>Curated listening for the whole band — from any source, in any order</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="plCreateNew()">+ New Playlist</button>
+        <div class="tab-bar" id="plTypeFilter" style="margin-bottom:0;flex:1;min-width:0">
+            <button class="tab-btn active" data-type="all" onclick="plFilterByType('all',this)">All</button>
+            ${Object.entries(PLAYLIST_TYPES).map(([k,v]) =>
+                `<button class="tab-btn" data-type="${k}" onclick="plFilterByType('${k}',this)">${v.label}</button>`
+            ).join('')}
+        </div>
+    </div>
+    <div id="plList"></div>`;
+    plLoadIndex();
+}
+
+let _plAllLoaded = [];
+let _plActiveType = 'all';
+
+async function plLoadIndex() {
+    const container = document.getElementById('plList');
+    if (!container) return;
+    container.innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center">Loading playlists…</div>';
+
+    _plAllLoaded = await loadPlaylists();
+
+    if (_plAllLoaded.length === 0) {
+        container.innerHTML = `<div class="app-card" style="text-align:center;padding:40px;color:var(--text-dim)">
+            <div style="font-size:2.5em;margin-bottom:12px">🎵</div>
+            <div style="font-weight:700;margin-bottom:6px">No playlists yet</div>
+            <div style="font-size:0.85em;margin-bottom:16px">Create your first playlist — North Star versions, pre-gig prep, whatever the band needs.</div>
+            <button class="btn btn-primary" onclick="plCreateNew()">+ Create First Playlist</button>
+        </div>`;
+        return;
+    }
+
+    // Load listened data once for progress bars
+    const listens = await loadPlaylistListens();
+    plRenderIndex(_plAllLoaded, listens, _plActiveType);
+}
+
+function plFilterByType(type, btn) {
+    _plActiveType = type;
+    document.querySelectorAll('#plTypeFilter .tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    plRenderIndex(_plAllLoaded, null, type);
+}
+
+async function plRenderIndex(playlists, listens, typeFilter) {
+    const container = document.getElementById('plList');
+    if (!container) return;
+
+    if (!listens) listens = await loadPlaylistListens();
+
+    const filtered = typeFilter === 'all'
+        ? playlists
+        : playlists.filter(p => p.type === typeFilter);
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<div class="app-card" style="text-align:center;padding:32px;color:var(--text-dim)">No ${typeFilter} playlists yet.</div>`;
+        return;
+    }
+
+    container.innerHTML = filtered.map((pl, i) => {
+        const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
+        const songs = pl.linkedSetlistId ? null : toArray(pl.songs || []);
+        const songCount = songs ? songs.length : '?';
+        const listenedByUser = listens[pl.id] || {};
+        const memberCount = Object.keys(bandMembers).length;
+
+        // Progress bar: average % across all members
+        const totalSongs = songs ? songs.length : 0;
+        const progressHTML = totalSongs > 0
+            ? Object.entries(bandMembers).map(([key, member]) => {
+                const heard = (listenedByUser[key] || []).length;
+                const pct = Math.round((heard / totalSongs) * 100);
+                return `<div title="${member.name}: ${heard}/${totalSongs}" style="display:flex;align-items:center;gap:5px;font-size:0.72em;color:var(--text-muted)">
+                    <span style="width:36px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${member.name.split(' ')[0]}</span>
+                    <div style="flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;min-width:50px">
+                        <div style="height:5px;border-radius:3px;background:${pct===100?'var(--green)':'var(--accent)'};width:${pct}%;transition:width 0.3s"></div>
+                    </div>
+                    <span style="width:26px;text-align:right;color:var(--text-dim)">${pct}%</span>
+                </div>`;
+            }).join('')
+            : '';
+
+        const linkedBadge = pl.linkedSetlistId
+            ? `<span style="font-size:0.7em;background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);padding:2px 7px;border-radius:10px;font-weight:600">⚡ Live from setlist</span>`
+            : '';
+
+        const createdDate = pl.createdAt ? new Date(pl.createdAt).toLocaleDateString() : '';
+
+        return `<div class="app-card" id="plCard_${pl.id}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div style="flex:1;min-width:0;cursor:pointer" onclick="plEdit('${pl.id}')">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                        <span style="font-weight:700;font-size:0.98em">${pl.name || 'Untitled'}</span>
+                        <span style="font-size:0.72em;font-weight:600;padding:2px 8px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};white-space:nowrap">${meta.label}</span>
+                        ${linkedBadge}
+                    </div>
+                    ${pl.description ? `<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.description}</div>` : ''}
+                    <div style="display:flex;gap:10px;font-size:0.78em;color:var(--text-dim);flex-wrap:wrap">
+                        <span>🎵 ${pl.linkedSetlistId ? 'Synced' : songCount + ' song' + (songCount !== 1 ? 's' : '')}</span>
+                        ${createdDate ? `<span>📅 ${createdDate}</span>` : ''}
+                        <span>👤 ${bandMembers[pl.createdBy]?.name || pl.createdBy || 'Unknown'}</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start">
+                    <button class="btn btn-sm btn-ghost" onclick="plEdit('${pl.id}')" title="Edit">✏️</button>
+                    <button class="btn btn-sm btn-ghost" onclick="copyPlaylistShareUrl('${pl.id}')" title="Copy share link" style="color:var(--accent-light)">🔗</button>
+                    <button class="btn btn-sm btn-ghost" onclick="plConfirmDelete('${pl.id}')" title="Delete" style="color:var(--red)">🗑️</button>
+                </div>
+            </div>
+            ${progressHTML ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px">${progressHTML}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+async function plConfirmDelete(playlistId) {
+    const pl = _plAllLoaded.find(p => p.id === playlistId);
+    if (!confirm(`Delete "${pl?.name || 'this playlist'}"? This cannot be undone.`)) return;
+    await deletePlaylist(playlistId);
+    showToast('🗑️ Playlist deleted', 2000);
+    plLoadIndex();
+}
+
+// ── Editor ────────────────────────────────────────────────────────────────────
+
+let _plEditing = null;       // playlist object currently being edited
+let _plEditorSongs = [];     // working copy of songs array in editor
+
+async function plCreateNew() {
+    _plEditing = null;
+    _plEditorSongs = [];
+    await plRenderEditor(null);
+}
+
+async function plEdit(playlistId) {
+    const playlists = await loadPlaylists();
+    _plEditing = playlists.find(p => p.id === playlistId) || null;
+    _plEditorSongs = _plEditing ? await getPlaylistSongs(_plEditing) : [];
+    await plRenderEditor(_plEditing);
+}
+
+async function plRenderEditor(pl) {
+    const container = document.getElementById('plList');
+    if (!container) return;
+
+    // Load setlists for the dropdown
+    const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+
+    const isLinked = !!(pl?.linkedSetlistId);
+    const typeOptions = Object.entries(PLAYLIST_TYPES).map(([k, v]) =>
+        `<option value="${k}" ${(pl?.type || 'custom') === k ? 'selected' : ''}>${v.label}</option>`
+    ).join('');
+
+    const setlistOptions = `<option value="">— Not linked to a setlist —</option>` +
+        allSetlists.map(sl =>
+            `<option value="${sl.id || sl.name}" ${pl?.linkedSetlistId === (sl.id || sl.name) ? 'selected' : ''}>${sl.name || 'Untitled'} ${sl.date ? '(' + sl.date + ')' : ''}</option>`
+        ).join('');
+
+    container.innerHTML = `
+    <div class="app-card">
+        <h3 style="margin-bottom:16px">${pl ? '✏️ Edit Playlist' : '➕ New Playlist'}</h3>
+
+        <!-- Metadata -->
+        <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row">
+                <label class="form-label">Name</label>
+                <input class="app-input" id="plEdName" placeholder="e.g. Pre-Gig Prep — March 1st" value="${(pl?.name || '').replace(/"/g,'&quot;')}">
+            </div>
+            <div class="form-row">
+                <label class="form-label">Type</label>
+                <select class="app-select" id="plEdType">${typeOptions}</select>
+            </div>
+        </div>
+        <div class="form-row" style="margin-bottom:12px">
+            <label class="form-label">Description</label>
+            <input class="app-input" id="plEdDesc" placeholder="Optional — what's this playlist for?" value="${(pl?.description || '').replace(/"/g,'&quot;')}">
+        </div>
+        <div class="form-row" style="margin-bottom:16px">
+            <label class="form-label">🔗 Link to Setlist (optional — songs will live-sync)</label>
+            <select class="app-select" id="plEdSetlist" onchange="plHandleSetlistLink(this.value)">${setlistOptions}</select>
+        </div>
+
+        ${isLinked ? `
+        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.85em;color:var(--green)">
+            ⚡ Songs are live-synced from the linked setlist. Per-song notes and source preferences are still editable below.
+        </div>` : ''}
+
+        <!-- Song list -->
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:0.78em;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em">Songs <span id="plEdSongCount" style="color:var(--accent-light)">${_plEditorSongs.length}</span></span>
+            ${!isLinked ? `<span style="font-size:0.78em;color:var(--text-dim)">Drag to reorder</span>` : ''}
+        </div>
+
+        <div id="plEdSongList" style="margin-bottom:12px"></div>
+
+        ${!isLinked ? `
+        <!-- Add songs -->
+        <div style="margin-bottom:16px">
+            <input class="app-input" id="plEdSearch" placeholder="Search songs to add…" oninput="plEdSearchSong(this.value)" autocomplete="off">
+            <div id="plEdSearchResults" style="margin-top:4px"></div>
+        </div>` : ''}
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-success" onclick="plEdSave()">💾 Save Playlist</button>
+            <button class="btn btn-ghost" onclick="plLoadIndex()">Cancel</button>
+            ${pl ? `<button class="btn btn-ghost" onclick="copyPlaylistShareUrl('${pl.id}')" style="margin-left:auto;color:var(--accent-light)">🔗 Copy Share Link</button>` : ''}
+        </div>
+    </div>`;
+
+    plEdRenderSongList();
+    plEdInitDragDrop();
+}
+
+function plHandleSetlistLink(setlistId) {
+    // Re-render editor with live-sync notice updated
+    const nameVal = document.getElementById('plEdName')?.value;
+    const typeVal = document.getElementById('plEdType')?.value;
+    const descVal = document.getElementById('plEdDesc')?.value;
+
+    // Temporarily patch _plEditing to reflect new linked state for re-render
+    const tempPl = _plEditing ? { ..._plEditing } : {};
+    tempPl.linkedSetlistId = setlistId || null;
+    tempPl.name = nameVal || tempPl.name;
+    tempPl.type = typeVal || tempPl.type;
+    tempPl.description = descVal || tempPl.description;
+    _plEditing = Object.keys(tempPl).length ? tempPl : null;
+    plRenderEditor(_plEditing);
+}
+
+// ── Editor song list ──────────────────────────────────────────────────────────
+
+function plEdRenderSongList() {
+    const el = document.getElementById('plEdSongList');
+    if (!el) return;
+
+    const linked = !!(document.getElementById('plEdSetlist')?.value);
+
+    if (_plEditorSongs.length === 0) {
+        el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em;border:1px dashed rgba(255,255,255,0.1);border-radius:8px">
+            ${linked ? 'Select a setlist above to populate songs' : 'Search for songs below to add them'}
+        </div>`;
+        return;
+    }
+
+    el.innerHTML = _plEditorSongs.map((song, i) => {
+        const sourceMeta = getSourceMeta(song.preferredSource || 'auto');
+        const songData = allSongs.find(s => s.title === song.songTitle);
+        const band = songData?.band || '';
+        const badgeClass = band.toLowerCase().replace(/\s/g,'');
+
+        return `<div class="list-item" id="plEdSong_${i}" draggable="true"
+            style="gap:8px;padding:8px 10px;cursor:grab;position:relative"
+            ondragstart="plEdDragStart(event,${i})"
+            ondragover="plEdDragOver(event,${i})"
+            ondrop="plEdDrop(event,${i})"
+            ondragend="plEdDragEnd(event)">
+            <span style="color:var(--text-dim);font-size:0.8em;min-width:20px;text-align:right;flex-shrink:0">${i + 1}</span>
+            <span style="color:var(--text-dim);cursor:grab;flex-shrink:0" title="Drag to reorder">⠿</span>
+            <span style="flex:1;font-size:0.88em;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${song.songTitle}</span>
+            ${band ? `<span class="song-badge ${badgeClass}" style="flex-shrink:0">${band}</span>` : ''}
+            <input placeholder="Note…" value="${(song.note || '').replace(/"/g,'&quot;')}"
+                oninput="plEdUpdateNote(${i},this.value)"
+                style="width:110px;flex-shrink:0;font-size:0.78em;padding:3px 7px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit"
+                onclick="event.stopPropagation()">
+            <select onchange="plEdUpdateSource(${i},this.value)" onclick="event.stopPropagation()"
+                style="font-size:0.75em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;flex-shrink:0">
+                <option value="auto" ${(song.preferredSource||'auto')==='auto'?'selected':''}>Auto</option>
+                <option value="spotify" ${song.preferredSource==='spotify'?'selected':''}>Spotify</option>
+                <option value="youtube" ${song.preferredSource==='youtube'?'selected':''}>YouTube</option>
+                <option value="archive" ${song.preferredSource==='archive'?'selected':''}>Archive</option>
+            </select>
+            <button onclick="plEdRemoveSong(${i})" class="btn btn-sm btn-ghost" style="padding:2px 6px;flex-shrink:0;color:var(--red)">✕</button>
+        </div>`;
+    }).join('');
+
+    const countEl = document.getElementById('plEdSongCount');
+    if (countEl) countEl.textContent = _plEditorSongs.length;
+}
+
+function plEdUpdateNote(idx, val) {
+    if (_plEditorSongs[idx]) _plEditorSongs[idx].note = val;
+}
+
+function plEdUpdateSource(idx, val) {
+    if (_plEditorSongs[idx]) _plEditorSongs[idx].preferredSource = val;
+}
+
+function plEdRemoveSong(idx) {
+    _plEditorSongs.splice(idx, 1);
+    plEdRenderSongList();
+}
+
+// ── Song search ───────────────────────────────────────────────────────────────
+
+function plEdSearchSong(query) {
+    const results = document.getElementById('plEdSearchResults');
+    if (!results) return;
+    if (!query || query.length < 2) { results.innerHTML = ''; return; }
+
+    const q = query.toLowerCase();
+    const existing = new Set(_plEditorSongs.map(s => s.songTitle));
+    const matches = (allSongs || [])
+        .filter(s => s.title.toLowerCase().includes(q) && !existing.has(s.title))
+        .slice(0, 10);
+
+    if (matches.length === 0) {
+        results.innerHTML = `<div style="padding:8px 10px;font-size:0.82em;color:var(--text-dim)">No songs found</div>`;
+        return;
+    }
+
+    results.innerHTML = matches.map(s =>
+        `<div class="list-item" style="cursor:pointer;padding:7px 10px;font-size:0.85em;gap:8px"
+            onclick="plEdAddSong('${s.title.replace(/'/g,"\\'")}','${s.band||''}')">
+            <span style="flex:1">${s.title}</span>
+            <span class="song-badge ${(s.band||'').toLowerCase().replace(/\s/g,'')}">${s.band||''}</span>
+        </div>`
+    ).join('');
+}
+
+function plEdAddSong(title, band) {
+    // Avoid duplicates
+    if (_plEditorSongs.find(s => s.songTitle === title)) {
+        showToast('Already in playlist', 1500);
+        return;
+    }
+    _plEditorSongs.push({ songTitle: title, note: '', preferredSource: 'auto', customUrl: null });
+    plEdRenderSongList();
+
+    // Clear search
+    const searchEl = document.getElementById('plEdSearch');
+    const resultsEl = document.getElementById('plEdSearchResults');
+    if (searchEl) searchEl.value = '';
+    if (resultsEl) resultsEl.innerHTML = '';
+}
+
+// ── Drag-and-drop reorder ─────────────────────────────────────────────────────
+
+let _plDragIdx = null;
+
+function plEdInitDragDrop() {
+    // Drag is handled inline via ondragstart/over/drop attributes
+}
+
+function plEdDragStart(e, idx) {
+    _plDragIdx = idx;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => {
+        const el = document.getElementById('plEdSong_' + idx);
+        if (el) el.style.opacity = '0.4';
+    }, 0);
+}
+
+function plEdDragOver(e, idx) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    // Highlight drop target
+    document.querySelectorAll('#plEdSongList .list-item').forEach((el, i) => {
+        el.style.borderColor = i === idx ? 'var(--accent)' : '';
+    });
+}
+
+function plEdDrop(e, dropIdx) {
+    e.preventDefault();
+    if (_plDragIdx === null || _plDragIdx === dropIdx) return;
+    const moved = _plEditorSongs.splice(_plDragIdx, 1)[0];
+    _plEditorSongs.splice(dropIdx, 0, moved);
+    _plDragIdx = null;
+    plEdRenderSongList();
+}
+
+function plEdDragEnd(e) {
+    _plDragIdx = null;
+    document.querySelectorAll('#plEdSongList .list-item').forEach(el => {
+        el.style.opacity = '';
+        el.style.borderColor = '';
+    });
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+async function plEdSave() {
+    const name     = document.getElementById('plEdName')?.value?.trim();
+    const type     = document.getElementById('plEdType')?.value || 'custom';
+    const desc     = document.getElementById('plEdDesc')?.value?.trim() || '';
+    const setlistId = document.getElementById('plEdSetlist')?.value || null;
+
+    if (!name) { showToast('Please enter a playlist name', 2000); return; }
+
+    const songsToSave = setlistId
+        ? _plEditorSongs.filter(s => s.note || s.preferredSource !== 'auto' || s.customUrl) // only store overrides
+        : _plEditorSongs;
+
+    const fields = { name, type, description: desc, linkedSetlistId: setlistId || null, songs: songsToSave };
+
+    if (_plEditing?.id) {
+        await updatePlaylist(_plEditing.id, fields);
+        showToast('✅ Playlist updated!', 2000);
+    } else {
+        await createPlaylist(fields);
+        showToast('✅ Playlist created!', 2000);
+    }
+
+    plLoadIndex();
+}
+
+console.log('🎵 Playlists Phase 2 — index + editor loaded');
