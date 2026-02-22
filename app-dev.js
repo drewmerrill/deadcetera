@@ -568,7 +568,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     console.log('Filtered songs:', filtered.length);
     
     if (filtered.length === 0) {
-        dropdown.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim, #64748b);">No songs found</div>';
+        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)"><div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:6px">No songs found</div><div style="font-size:0.9em">Try a different search or filter</div></div>';
         return;
     }
     
@@ -5266,7 +5266,6 @@ async function filterByStatus(status) {
     
     if (!statusCacheLoaded && status !== 'all') {
         alert('Song statuses are still loading. Please wait a moment.');
-        // Reset dropdown
         const sel = document.getElementById('statusFilter');
         if (sel) sel.value = 'all';
         return;
@@ -5275,10 +5274,8 @@ async function filterByStatus(status) {
     activeStatusFilter = (status === 'all') ? null : status;
     
     if (!activeStatusFilter) {
-        // Show all songs
-        document.querySelectorAll('.song-item').forEach(item => {
-            item.style.display = 'grid';
-        });
+        // Re-render the full song list
+        renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
         return;
     }
     
@@ -5293,9 +5290,7 @@ function applyStatusFilter(status) {
     let visibleCount = 0;
     
     songItems.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
-        
+        const songTitle = item.dataset.title || '';
         if (getStatusFromCache(songTitle) === status) {
             item.style.display = 'grid';
             visibleCount++;
@@ -5314,11 +5309,11 @@ function applyStatusFilter(status) {
             'on_deck': 'On Deck'
         };
         document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding: 40px; text-align: center; color: #6b7280;">' +
-            '<div style="font-size: 2em; margin-bottom: 15px;">🎸</div>' +
-            '<div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No songs marked as "' + (statusNames[status] || status) + '"</div>' +
-            '<div style="margin-bottom: 20px;">Click any song and set its status!</div>' +
-            '<button onclick="filterByStatus(\'all\')" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">Show All Songs</button>' +
+            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);grid-column:1/-1">' +
+            '<div style="font-size:2em;margin-bottom:12px">🎸</div>' +
+            '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No songs marked as "' + (statusNames[status] || status) + '"</div>' +
+            '<div style="margin-bottom:16px;font-size:0.9em">Click any song and set its status!</div>' +
+            '<button onclick="filterByStatus(\'all\');document.getElementById(\'statusFilter\').value=\'all\'" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>' +
             '</div>';
     }
 }
@@ -5604,11 +5599,11 @@ function applyHarmonyFilter() {
     
     if (visibleCount === 0) {
         document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding: 40px; text-align: center; color: #6b7280;">' +
-            '<div style="font-size: 2em; margin-bottom: 15px;">🎵</div>' +
-            '<div style="font-size: 1.2em; font-weight: 600; margin-bottom: 10px; color: #2d3748;">No harmony songs marked yet</div>' +
-            '<div style="margin-bottom: 20px;">Click any song and check the "Has Harmonies" box to mark it!</div>' +
-            '<button onclick="filterSongsSync(\'all\')" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">Show All Songs</button>' +
+            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)">' +
+            '<div style="font-size:2em;margin-bottom:12px">🎵</div>' +
+            '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No harmony songs marked yet</div>' +
+            '<div style="margin-bottom:16px;font-size:0.9em">Click any song and check the "Has Harmonies" box to mark it!</div>' +
+            '<button onclick="filterSongsSync(\'all\');document.getElementById(\'harmoniesOnlyFilter\').checked=false" class="btn btn-primary" style="padding:10px 24px">Show All Songs</button>' +
             '</div>';
     }
 }
@@ -7612,12 +7607,23 @@ async function loadSetlists() {
     const container = document.getElementById('setlistsList');
     if (!container) return;
     if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
-    container.innerHTML = data.map((sl, i) => `<div class="app-card" style="cursor:pointer" onclick="editSetlist(${i})">
-        <h3>${sl.name||'Untitled'}</h3>
-        <div style="display:flex;gap:16px;font-size:0.8em;color:var(--text-muted)">
-            <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
-            <span>🎵 ${(sl.sets||[]).reduce((a,s)=>a+(s.songs||[]).length,0)} songs</span>
-        </div></div>`).join('');
+    container.innerHTML = data.map((sl, i) => `<div class="app-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="flex:1;cursor:pointer" onclick="editSetlist(${i})">
+                <h3 style="margin-bottom:4px">${sl.name||'Untitled'}</h3>
+                <div style="display:flex;gap:12px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">
+                    <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
+                    <span>🎵 ${(sl.sets||[]).reduce((a,s)=>a+(s.songs||[]).length,0)} songs</span>
+                    <span>📋 ${(sl.sets||[]).length} set${(sl.sets||[]).length!==1?'s':''}</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+            </div>
+        </div>
+        ${(sl.sets||[]).map(s => `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map(sg => typeof sg==='string'?sg:sg.title).join(' → ')}</div>`).join('')}
+    </div>`).join('');
 }
 
 function createNewSetlist() {
@@ -7717,9 +7723,114 @@ async function slSaveSetlist() {
     loadSetlists();
 }
 
-function editSetlist(idx) {
-    // TODO: Full edit mode
-    alert('Editing coming soon! For now, create a new setlist.');
+async function editSetlist(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const sl = data[idx];
+    if (!sl) { alert('Setlist not found'); return; }
+    
+    window._slSets = sl.sets || [{ name: 'Set 1', songs: [] }];
+    window._slEditIndex = idx;
+    _slSetCount = window._slSets.length;
+    
+    const container = document.getElementById('setlistsList');
+    container.innerHTML = `<div class="app-card"><h3>Edit: ${sl.name||'Untitled'}</h3>
+        <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" value="${(sl.name||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${sl.date||''}"></div>
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" value="${(sl.venue||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" value="${(sl.notes||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div id="slSets">${window._slSets.map((set, si) => `
+            <div class="app-card" style="background:rgba(255,255,255,0.02)">
+                <h3 style="color:var(--accent-light)">${set.name||'Set '+(si+1)}</h3>
+                <div id="slSet${si}Songs"></div>
+                <div style="margin-top:8px"><input class="app-input" id="slAddSong${si}" placeholder="Type song name..." oninput="slSearchSong(this,${si})" style="margin-bottom:4px"><div id="slSongResults${si}"></div></div>
+            </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
+            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
+            <button class="btn btn-success" onclick="slSaveSetlistEdit(${idx})" style="margin-left:auto">💾 Save Changes</button>
+            <button class="btn btn-ghost" onclick="loadSetlists()">Cancel</button>
+        </div></div>`;
+    
+    // Render existing songs in each set
+    window._slSets.forEach((set, si) => slRenderSetSongs(si));
+}
+
+async function slSaveSetlistEdit(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    data[idx] = {
+        ...data[idx],
+        name: document.getElementById('slName')?.value || 'Untitled',
+        date: document.getElementById('slDate')?.value || '',
+        venue: document.getElementById('slVenue')?.value || '',
+        notes: document.getElementById('slNotes')?.value || '',
+        sets: window._slSets || [],
+        updated: new Date().toISOString()
+    };
+    await saveBandDataToDrive('_band', 'setlists', data);
+    alert('✅ Setlist updated!');
+    loadSetlists();
+}
+
+async function deleteSetlist(idx) {
+    if (!confirm('Delete this setlist? This cannot be undone.')) return;
+    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    data.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'setlists', data);
+    alert('Setlist deleted.');
+    loadSetlists();
+}
+
+async function deleteGig(idx) {
+    if (!confirm('Delete this gig? This cannot be undone.')) return;
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    data.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'gigs', data);
+    alert('Gig deleted.');
+    loadGigs();
+}
+
+async function editGig(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const g = data[idx];
+    if (!g) return;
+    const el = document.getElementById('gigsList');
+    el.innerHTML = `<div class="app-card">
+        <h3>Edit Gig</h3>
+        <div class="form-grid">
+            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="gigVenue" value="${(g.venue||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date" value="${g.date||''}"></div>
+            <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="gigTime" value="${(g.time||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" value="${(g.soundPerson||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Contact</label><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success" onclick="saveGigEdit(${idx})">💾 Save</button>
+            <button class="btn btn-ghost" onclick="loadGigs()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveGigEdit(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    data[idx] = {
+        ...data[idx],
+        venue: document.getElementById('gigVenue')?.value,
+        date: document.getElementById('gigDate')?.value,
+        time: document.getElementById('gigTime')?.value,
+        pay: document.getElementById('gigPay')?.value,
+        soundPerson: document.getElementById('gigSound')?.value,
+        contact: document.getElementById('gigContact')?.value,
+        notes: document.getElementById('gigNotes')?.value,
+        updated: new Date().toISOString()
+    };
+    await saveBandDataToDrive('_band', 'gigs', data);
+    alert('✅ Gig updated!');
+    loadGigs();
 }
 
 // ============================================================================
@@ -7922,7 +8033,7 @@ function renderGigsPage(el) {
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="addGig()">+ Add Gig</button>
-        <button class="btn btn-ghost" onclick="seedGigData()" title="Pre-populate with sample past gigs, setlists, and venues">🌱 Seed Demo Data</button>
+        <button class="btn btn-ghost" onclick="seedGigData()" title="Import past gigs, setlists, and venues from master spreadsheet">📥 Import Spreadsheet Data</button>
     </div>
     <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
     loadGigs();
@@ -7934,18 +8045,24 @@ async function loadGigs() {
     if (!el || data.length === 0) return;
     data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     el.innerHTML = data.map((g, i) => `<div class="app-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div><h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
-                <div style="font-size:0.85em;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="flex:1">
+                <h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
+                <div style="font-size:0.82em;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap">
                     <span>📅 ${g.date || 'TBD'}</span>
-                    <span>⏰ ${g.time || ''}</span>
-                    <span>💰 ${g.pay || 'TBD'}</span>
-                    <span>🔊 ${g.soundPerson || 'TBD'}</span>
-                </div></div>
-            <span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+                    ${g.time?`<span>⏰ ${g.time}</span>`:''}
+                    ${g.pay?`<span>💰 ${g.pay}</span>`:''}
+                    ${g.soundPerson?`<span>🔊 ${g.soundPerson}</span>`:''}
+                </div>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+                <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+                <button class="btn btn-sm btn-ghost" onclick="editGig(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteGig(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+            </div>
         </div>
-        ${g.notes ? `<div style="margin-top:8px;font-size:0.85em;color:var(--text-muted)">${g.notes}</div>` : ''}
-        ${g.setlistName ? `<div style="margin-top:6px;font-size:0.8em"><span style="color:var(--accent-light)">📋 ${g.setlistName}</span></div>` : ''}
+        ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
+        ${g.setlistName ? `<div style="margin-top:4px;font-size:0.78em"><span style="color:var(--accent-light)">📋 ${g.setlistName}</span></div>` : ''}
     </div>`).join('');
 }
 
