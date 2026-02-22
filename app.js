@@ -1821,9 +1821,9 @@ function showBandResources(songTitle) {
     
     // Update title with song name
     const titleEl = document.getElementById('step2Title');
-    if (titleEl) titleEl.innerHTML = 'Song Blueprint: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
+    if (titleEl) titleEl.innerHTML = 'Song DNA: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
     document.getElementById('bandResourcesSubtitle').textContent = 
-        `The DNA of "${songTitle}" — everything your band needs at a glance`;
+        `Everything your band needs at a glance`;
     
     // Get band data from data.js if available
     const bandData = bandKnowledgeBase[songTitle] || {};
@@ -3138,6 +3138,16 @@ function searchSpotify() {
     setTimeout(() => {
         window.open(`https://open.spotify.com/search/${query}`, '_blank');
     }, 1000);
+}
+
+function searchYouTubeReference() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) { alert('Please select a song first!'); return; }
+    const songData = allSongs.find(s => s.title === songTitle);
+    const bandAbbr = songData ? songData.band : 'GD';
+    const bandName = getFullBandName(bandAbbr);
+    const query = encodeURIComponent(`${songTitle} ${bandName}`);
+    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
 }
 
 function searchUltimateGuitar() {
@@ -4854,7 +4864,6 @@ function updateSignInStatus(signedIn) {
 
 async function getCurrentUserEmail() {
     try {
-        // Use Google's userinfo endpoint instead of Drive API
         const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: 'Bearer ' + accessToken }
         });
@@ -4863,6 +4872,8 @@ async function getCurrentUserEmail() {
         console.log('👤 Signed in as:', currentUserEmail);
         logActivity('sign_in');
         injectAdminButton();
+        // Re-update button now that we have the email
+        updateDriveAuthButton();
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
@@ -5253,6 +5264,10 @@ async function updateHasHarmonies(hasHarmonies) {
     // Update badge on song list
     addHarmonyBadges();
     
+    // Show/hide harmony members row
+    const membersRow = document.getElementById('harmonyMembersRow');
+    if (membersRow) membersRow.style.display = hasHarmonies ? 'flex' : 'none';
+    
     // Refresh harmonies display
     const bandData = bandKnowledgeBase[selectedSong.title];
     if (bandData) {
@@ -5260,6 +5275,33 @@ async function updateHasHarmonies(hasHarmonies) {
     }
     
     console.log(`Has harmonies: ${hasHarmonies} - saved to Google Drive!`);
+}
+
+async function updateHarmonyMembers() {
+    if (!selectedSong || !selectedSong.title) return;
+    const checkboxes = document.querySelectorAll('.harmony-member-cb:checked');
+    const members = Array.from(checkboxes).map(cb => cb.value);
+    await saveBandDataToDrive(selectedSong.title, 'harmony_members', members);
+    console.log('🎶 Harmony members updated:', members);
+}
+
+async function loadHarmonyMembers(songTitle) {
+    try {
+        return await loadBandDataFromDrive(songTitle, 'harmony_members') || [];
+    } catch(e) { return []; }
+}
+
+function updateSongStructureSummary(data) {
+    const el = document.getElementById('songStructureSummary');
+    if (!el) return;
+    if (!data || (!data.whoStarts && !data.whoCuesEnding)) {
+        el.textContent = '—';
+        return;
+    }
+    const parts = [];
+    if (data.whoStarts) parts.push('Starts: ' + data.whoStarts);
+    if (data.whoCuesEnding) parts.push('Ends: ' + data.whoCuesEnding);
+    el.textContent = parts.join(' · ');
 }
 
 async function loadHasHarmonies(songTitle) {
@@ -5401,6 +5443,16 @@ async function populateSongMetadata(songTitle) {
     const harmoniesCheckbox = document.getElementById('hasHarmoniesCheckbox');
     if (harmoniesCheckbox) harmoniesCheckbox.checked = hasHarmonies;
     
+    // Show/hide harmony members row
+    const membersRow = document.getElementById('harmonyMembersRow');
+    if (membersRow) membersRow.style.display = hasHarmonies ? 'flex' : 'none';
+    
+    // Load harmony members
+    const harmonyMembers = await loadHarmonyMembers(songTitle);
+    document.querySelectorAll('.harmony-member-cb').forEach(cb => {
+        cb.checked = harmonyMembers.includes(cb.value);
+    });
+    
     const statusSelect = document.getElementById('songStatusSelect');
     if (statusSelect) statusSelect.value = songStatus || '';
     
@@ -5409,6 +5461,12 @@ async function populateSongMetadata(songTitle) {
     
     const keySelect = document.getElementById('songKeySelect');
     if (keySelect) keySelect.value = songKey || '';
+    
+    // Load song structure summary
+    try {
+        const structure = await loadBandDataFromDrive(songTitle, 'song_structure');
+        updateSongStructureSummary(structure);
+    } catch(e) { updateSongStructureSummary(null); }
 }
 
 async function updateSongKey(key) {
@@ -5964,6 +6022,9 @@ async function renderSongStructure(songTitle) {
             ` : ''}
         </div>
     `;
+    
+    // Update inline summary in metadata row
+    updateSongStructureSummary(structure);
 }
 
 async function editSongStructure() {
@@ -8812,7 +8873,7 @@ function addContact(){const el=document.getElementById('ctList');el.innerHTML=`<
 async function saveCt(){const c={firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};if(!c.firstName&&!c.lastName){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','contacts')||[]);ex.push(c);await saveBandDataToDrive('_band','contacts',ex);alert('✅ Saved!');loadContacts();}
 
 // ---- FIX #11: Step 2 header ----
-if(typeof document!=='undefined'){const obs=new MutationObserver(()=>{const s=document.getElementById('step2');if(s&&!s.classList.contains('hidden')){const h=s.querySelector('h2');if(h&&typeof selectedSong!=='undefined'&&selectedSong&&!h.dataset.patched){h.dataset.patched='true';h.innerHTML='🎸 Steps to Master: <span style="color:var(--accent-light,#818cf8)">'+selectedSong.title+'</span>';}}});document.addEventListener('DOMContentLoaded',()=>{const s=document.getElementById('step2');if(s)obs.observe(s,{attributes:true,attributeFilter:['class']});});}
+
 
 console.log('📦 Settings, Equipment, Contacts loaded');
 

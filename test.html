@@ -144,9 +144,9 @@
 <div class="step-card hidden" id="step2">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">2</div>
-        <h2 style="margin:0" id="step2Title">Song Blueprint</h2>
+        <h2 style="margin:0" id="step2Title">Song DNA</h2>
     </div>
-    <p class="subtitle" id="bandResourcesSubtitle">The DNA of the song — everything your band needs at a glance</p>
+    <p class="subtitle" id="bandResourcesSubtitle">Everything your band needs at a glance</p>
     
     <!-- SONG METADATA -->
     <div class="song-metadata" style="background:rgba(255,255,255,0.04);padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border,rgba(255,255,255,0.08))">
@@ -173,7 +173,7 @@
                 </select>
             </div>
             <div class="meta-item">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎵 Key:</span>
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🔑 Key:</span>
                 <select id="songKeySelect" onchange="updateSongKey(this.value)" class="app-select" style="width:auto;min-width:70px;padding:5px 8px;font-size:0.85em">
                     <option value="">—</option>
                     <option>A</option><option>Am</option><option>Bb</option><option>Bbm</option>
@@ -189,24 +189,34 @@
                 <input type="number" id="songBpmInput" min="40" max="240" step="1" placeholder="120" onchange="updateSongBpm(this.value)"
                     class="app-input" style="width:65px;padding:5px 8px;font-size:0.85em">
             </div>
+            <div class="meta-item" title="Who starts, who cues the ending, transitions & arrangement">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px;cursor:help">🏗️ Structure:</span>
+                <span id="songStructureSummary" style="font-size:0.85em;color:var(--text,#f1f5f9)">—</span>
+                <button class="btn btn-sm btn-ghost" onclick="showSongStructureForm()" style="margin-left:4px;padding:2px 6px;font-size:0.75em" title="Edit song structure">✏️</button>
+            </div>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
             <div class="meta-item">
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
                     <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
                     <span style="font-weight:600;color:var(--text-muted,#94a3b8)">🎶 Harmonies</span>
                 </label>
             </div>
+            <div class="meta-item" id="harmonyMembersRow" style="display:none">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">Singers:</span>
+                <label style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9)"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
+                <label style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9)"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
+                <label style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9)"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
+                <label style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9)"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
+                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9)"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+            </div>
         </div>
     </div>
     
-    <!-- SONG STRUCTURE (moved here from below) -->
-    <div class="resource-section" id="songStructureSection">
-        <div class="section-header">
-            <h3>🏗️ Song Structure</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Who starts, who cues the ending, transitions & arrangement</p>
-        </div>
+    <!-- Song Structure form (hidden, opens as modal) -->
+    <div id="songStructureSection" style="display:none">
         <div id="songStructureContainer"></div>
-        <button class="secondary-btn" id="editSongStructureBtn" onclick="showSongStructureForm()" style="margin-top:12px">✏️ Add / Edit Song Structure</button>
-        <div id="songStructureFormContainer" style="display:none;margin-top:15px"></div>
+        <div id="songStructureFormContainer"></div>
     </div>
 </div>
 
@@ -223,7 +233,8 @@
             <h3>⭐ Reference Version (Band Voted)</h3>
             <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
                 Vote on which version to learn
-                <button onclick="searchSpotify()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search Spotify</button>
+                <button onclick="searchSpotify()" title="Find your song on Spotify, copy the share URL, then come back and paste it here" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search Spotify</button>
+                <button onclick="searchYouTubeReference()" title="Find your song on YouTube, copy the video URL, then come back and paste it here" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search YouTube</button>
             </p>
         </div>
         <div id="spotifyVersionsContainer"></div>
