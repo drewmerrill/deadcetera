@@ -5856,52 +5856,21 @@ async function addNorthStarBadges() {
     if (!northStarCacheLoaded) {
         northStarCacheLoading = true;
         try {
+            // Always seed from data.js first (songs with pre-loaded versions)
+            (allSongs || []).forEach(song => {
+                const bk = bandKnowledgeBase[song.title];
+                if (bk && bk.spotifyVersions && bk.spotifyVersions.length > 0) {
+                    northStarCache[song.title] = true;
+                }
+            });
+            // Then load master file and merge (Firebase-added versions take precedence)
             const masterData = await loadMasterFile(MASTER_NORTH_STAR_FILE);
-            if (masterData && typeof masterData === 'object' && Object.keys(masterData).length > 0) {
-                northStarCache = masterData;
-            } else {
-                // Build from data.js spotifyVersions as baseline
-                (typeof allSongs !== 'undefined' ? allSongs : []).forEach(song => {
-                    const bk = bandKnowledgeBase[song.title];
-                    if (bk?.spotifyVersions?.length > 0) northStarCache[song.title] = true;
-                });
+            if (masterData && typeof masterData === 'object') {
+                Object.assign(northStarCache, masterData);
             }
-            northStarCacheLoaded = true;
-        } catch(e) { northStarCacheLoaded = true; }
-        northStarCacheLoading = false;
-    }
-    const songItems = document.querySelectorAll('.song-item');
-    songItems.forEach(item => {
-        const badgesContainer = item.querySelector('.song-badges');
-        if (!badgesContainer) return;
-        const existing = badgesContainer.querySelector('.northstar-badge');
-        if (existing) existing.remove();
-        const songTitle = item.dataset.title || '';
-        if (northStarCache[songTitle]) {
-            const badge = document.createElement('span');
-            badge.className = 'northstar-badge';
-            badge.textContent = '⭐';
-            badge.title = 'Has reference version';
-            badge.style.cssText = 'font-size:0.85em;flex-shrink:0;';
-            badgesContainer.appendChild(badge);
-        }
-    });
-}
-
-async function addNorthStarBadges() {
-    if (northStarCacheLoading) return;
-    if (!northStarCacheLoaded) {
-        northStarCacheLoading = true;
-        try {
-            const masterData = await loadMasterFile(MASTER_NORTH_STAR_FILE);
-            if (masterData && typeof masterData === 'object' && Object.keys(masterData).length > 0) {
-                northStarCache = masterData;
-            } else {
-                // Seed from data.js
-                (allSongs || []).forEach(song => {
-                    const bk = bandKnowledgeBase[song.title];
-                    if (bk && bk.spotifyVersions && bk.spotifyVersions.length > 0) northStarCache[song.title] = true;
-                });
+            // Save the merged result back so future loads are complete
+            if (Object.keys(northStarCache).length > 0) {
+                saveMasterFile(MASTER_NORTH_STAR_FILE, northStarCache).catch(() => {});
             }
             northStarCacheLoaded = true;
         } catch(e) { northStarCacheLoaded = true; }
@@ -6167,48 +6136,42 @@ async function renderSongStructure(songTitle) {
     }
     
     container.innerHTML = `
-        <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 2px solid #e5e7eb; position: relative;">
-            <button onclick="editSongStructure()" style="position: absolute; top: 10px; right: 10px; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">Edit</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;position:relative;">
+            <button onclick="showSongStructureForm()" style="position:absolute;top:-4px;right:0;background:var(--accent);color:white;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:600;z-index:1">✏️ Edit</button>
             
-            ${structure.whoStarts && structure.whoStarts.length > 0 ? `
-                <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎤 Who Starts the Song:</strong>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        ${structure.whoStarts.map(member => 
-                            `<span style="background: #667eea; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
-                                ${bandMembers[member]?.name || member}
-                            </span>`
-                        ).join('')}
-                    </div>
-                </div>
-            ` : ''}
+            <!-- START panel -->
+            <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:14px;">
+                <div style="font-size:0.7em;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:10px">▶ START</div>
+                ${structure.whoStarts && structure.whoStarts.length > 0 ? `
+                    <div style="margin-bottom:8px">
+                        <div style="font-size:0.72em;font-weight:600;color:var(--text-dim);text-transform:uppercase;margin-bottom:5px">Who kicks it off</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px">${structure.whoStarts.map(m =>
+                            `<span style="background:rgba(16,185,129,0.2);color:#34d399;padding:3px 10px;border-radius:20px;font-size:0.8em;font-weight:600">${bandMembers[m]?.name || m}</span>`
+                        ).join('')}</div>
+                    </div>` : '<div style="color:var(--text-dim);font-size:0.8em;margin-bottom:8px">Who — not set</div>'}
+                ${structure.howStarts ? `
+                    <div>
+                        <div style="font-size:0.72em;font-weight:600;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">How it starts</div>
+                        <div style="font-size:0.85em;color:var(--text);background:rgba(255,255,255,0.04);border-radius:6px;padding:8px">${structure.howStarts}</div>
+                    </div>` : '<div style="color:var(--text-dim);font-size:0.8em">How — not set</div>'}
+            </div>
             
-            ${structure.howStarts ? `
-                <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎵 How It Starts:</strong>
-                    <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
-                        ${structure.howStarts}
-                    </div>
-                </div>
-            ` : ''}
-            
-            ${structure.whoCuesEnding ? `
-                <div style="margin-bottom: 15px;">
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎤 Who Cues the Ending:</strong>
-                    <div style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; display: inline-block; font-weight: 600;">
-                        ${bandMembers[structure.whoCuesEnding]?.name || structure.whoCuesEnding}
-                    </div>
-                </div>
-            ` : ''}
-            
-            ${structure.howEnds ? `
-                <div>
-                    <strong style="color: #1f2937; display: block; margin-bottom: 8px;">🎵 How It Ends:</strong>
-                    <div style="background: white; padding: 12px; border-radius: 6px; color: #4b5563;">
-                        ${structure.howEnds}
-                    </div>
-                </div>
-            ` : ''}
+            <!-- END panel -->
+            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px;">
+                <div style="font-size:0.7em;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:10px">⏹ END</div>
+                ${structure.whoCuesEnding && (Array.isArray(structure.whoCuesEnding) ? structure.whoCuesEnding.length > 0 : structure.whoCuesEnding) ? `
+                    <div style="margin-bottom:8px">
+                        <div style="font-size:0.72em;font-weight:600;color:var(--text-dim);text-transform:uppercase;margin-bottom:5px">Who cues it</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px">${(Array.isArray(structure.whoCuesEnding)?structure.whoCuesEnding:[structure.whoCuesEnding]).map(m =>
+                            `<span style="background:rgba(239,68,68,0.2);color:#f87171;padding:3px 10px;border-radius:20px;font-size:0.8em;font-weight:600">${bandMembers[m]?.name || m}</span>`
+                        ).join('')}</div>
+                    </div>` : '<div style="color:var(--text-dim);font-size:0.8em;margin-bottom:8px">Who — not set</div>'}
+                ${structure.howEnds ? `
+                    <div>
+                        <div style="font-size:0.72em;font-weight:600;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">How it ends</div>
+                        <div style="font-size:0.85em;color:var(--text);background:rgba(255,255,255,0.04);border-radius:6px;padding:8px">${structure.howEnds}</div>
+                    </div>` : '<div style="color:var(--text-dim);font-size:0.8em">How — not set</div>'}
+            </div>
         </div>
     `;
     
@@ -8283,18 +8246,18 @@ function renderCalendarInner() {
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
     </div>`;
 
-    // Load events, then build calendar grid with dots
-    loadCalendarEvents().then(eventDates => {
-        // eventDates = Map of dateStr -> array of event type icons
+    // Load events, then build calendar grid with dots and blocked ranges
+    loadCalendarEvents().then(result => {
+        const eventDates = result ? result.dateMap : {};
+        const blockedRanges = result ? (result.blockedRanges || []) : [];
         const grid = document.getElementById('calGrid');
         if (!grid) return;
-        const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'};
         let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
         dNames.forEach((d,i) => {
             const w = i===0||i===6;
             g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`;
         });
-        for (let i=0;i<firstDay;i++) g += '<div style="aspect-ratio:1;padding:4px;"></div>';
+        for (let i=0;i<firstDay;i++) g += '<div style="min-height:60px;padding:4px;"></div>';
         for (let d=1;d<=daysInMonth;d++) {
             const ds = `${monthPrefix}${String(d).padStart(2,'0')}`;
             const isToday = ds===todayStr;
@@ -8302,13 +8265,31 @@ function renderCalendarInner() {
             const w = dow===0||dow===6;
             const dayEvents = eventDates ? (eventDates[ds] || []) : [];
             const hasEvent = dayEvents.length > 0;
-            // Dot row — up to 3 event icons
-            const dots = hasEvent
-                ? `<div style="display:flex;gap:1px;flex-wrap:wrap;justify-content:center;margin-top:2px">${dayEvents.slice(0,3).map(t=>`<span style="font-size:0.7em;line-height:1">${typeIcon[t]||'📌'}</span>`).join('')}</div>`
+            // For each event show icon + truncated name
+            const eventPills = hasEvent
+                ? dayEvents.slice(0,2).map((ev,ei) => {
+                    const icon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
+                    const name = (ev.title||'').substring(0,10) + ((ev.title||'').length > 10 ? '…' : '');
+                    const evIdx = ev._idx !== undefined ? ev._idx : ei;
+                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx})" style="display:flex;align-items:center;gap:2px;background:rgba(102,126,234,0.25);border-radius:3px;padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
+                        <span style="font-size:0.75em;flex-shrink:0">${icon}</span>
+                        <span style="font-size:0.6em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white">${name}</span>
+                    </div>`;
+                }).join('')
                 : '';
-            g += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:3px 2px;background:${hasEvent?'rgba(102,126,234,0.12)':w?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':hasEvent?'border:1px solid rgba(102,126,234,0.3);':''}" onclick="calDayClick(${year},${month},${d})">
-                <span style="${isToday?'color:var(--accent);font-weight:700;':hasEvent?'color:white;font-weight:600;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
-                ${dots}
+            const moreCount = dayEvents.length > 2 ? `<div style="font-size:0.55em;color:var(--accent-light);text-align:center">+${dayEvents.length-2} more</div>` : '';
+            // Blocked date bars
+            const blockBars = blockedRanges
+                .filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate)
+                .map(b => `<div style="background:rgba(239,68,68,0.7);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden" title="${b.person||''}: ${b.reason||''}">
+                    <span style="font-size:0.55em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">🚫 ${(b.person||'').split(' ')[0]}</span>
+                </div>`).join('');
+            const isBlocked = blockedRanges.some(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
+            g += `<div style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;background:${isBlocked?'rgba(239,68,68,0.06)':hasEvent?'rgba(102,126,234,0.08)':w?'rgba(102,126,234,0.04)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':isBlocked?'border:1px solid rgba(239,68,68,0.3);':hasEvent?'border:1px solid rgba(102,126,234,0.25);':''}" onclick="calDayClick(${year},${month},${d})">
+                <span style="text-align:center;${isToday?'color:var(--accent);font-weight:700;':hasEvent?'color:white;font-weight:600;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
+                ${eventPills}
+                ${moreCount}
+                ${blockBars}
             </div>`;
         }
         g += '</div>';
@@ -8323,15 +8304,42 @@ function calNavMonth(dir) {
     renderCalendarInner();
 }
 
+// Show event detail in form area (clicking an event pill)
+async function calShowEvent(idx) {
+    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const ev = events[idx];
+    if (!ev) return;
+    const area = document.getElementById('calEventFormArea');
+    if (!area) return;
+    const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
+    area.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h3 style="margin:0;font-size:1em">${typeIcon} ${ev.title||'Untitled'}</h3>
+        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
+    </div>
+    <div style="font-size:0.85em;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+        <span>📅 ${ev.date||''}</span>
+        ${ev.time ? `<span>⏰ ${ev.time}</span>` : ''}
+        <span style="text-transform:capitalize">📂 ${ev.type||'other'}</span>
+    </div>
+    ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
+    <div style="display:flex;gap:8px">
+        <button onclick="calEditEvent(${idx})" class="btn btn-ghost btn-sm">✏️ Edit</button>
+        <button onclick="calDeleteEvent(${idx})" class="btn btn-danger btn-sm">✕ Delete</button>
+        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
+    </div>`;
+    area.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
 
     // Build date map for grid dots (all events, not just upcoming)
     const dateMap = {};
-    events.forEach(e => {
+    events.forEach((e, idx) => {
         if (e.date) {
             if (!dateMap[e.date]) dateMap[e.date] = [];
-            dateMap[e.date].push(e.type || 'other');
+            dateMap[e.date].push({...e, _idx: idx});
         }
     });
 
@@ -8365,7 +8373,7 @@ async function loadCalendarEvents() {
             <button onclick="calDeleteBlocked(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>
         </div>`).join('');
     }
-    return dateMap;  // ← grid needs this to paint event dots
+    return { dateMap, blockedRanges: blocked };
 }
 
 function calBlockDates() {
