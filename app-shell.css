@@ -106,6 +106,7 @@ a{color:var(--accent-light);}
 #songDropdown > div.selected{background:#2d3a5c!important;border-color:#667eea!important;}
 #songDropdown > div.selected *{color:inherit!important;}
 #songDropdown > div.selected .song-name{color:#c7d2fe!important;}
+#songDropdown > div:not(.song-item){display:block!important;grid-template-columns:none!important;background:transparent!important;border:none!important;margin:0!important;padding:0!important;}
 
 /* Song name text — MUST be visible */
 #songDropdown > div .song-name,

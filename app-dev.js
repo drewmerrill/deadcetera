@@ -580,7 +580,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
         const msg = activeStatusFilter
             ? `<div style="font-size:2em;margin-bottom:12px">🎸</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:8px">No songs marked "${statusLabel}"</div><div style="margin-bottom:16px;font-size:0.9em">Click any song and set its status!</div><button onclick="document.getElementById('statusFilter').value='all';filterByStatus('all')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>`
             : `<div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:var(--text,#f1f5f9);margin-bottom:6px">No songs found</div><div style="font-size:0.9em">Try a different search or filter</div>`;
-        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)">' + msg + '</div>';
+        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);display:block !important;grid-template-columns:none !important">' + msg + '</div>';
         return;
     }
     
@@ -5565,7 +5565,7 @@ function applyHarmonyFilter() {
     
     if (visibleCount === 0) {
         document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8)">' +
+            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);display:block !important;grid-template-columns:none !important">' +
             '<div style="font-size:2em;margin-bottom:12px">🎵</div>' +
             '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No harmony songs marked yet</div>' +
             '<div style="margin-bottom:16px;font-size:0.9em">Click any song and check the "Has Harmonies" box to mark it!</div>' +
