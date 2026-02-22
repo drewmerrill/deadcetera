@@ -491,6 +491,12 @@ if ('serviceWorker' in navigator) {
             .then(reg => {
                 console.log('[PWA] Service worker registered:', reg.scope);
                 navigator.serviceWorker.addEventListener('message', event => {
+                    if (event.data?.type === 'SW_UPDATED') {
+                        console.log('[PWA] New version deployed:', event.data.version, '— reloading...');
+                        // Small delay so the SW finishes activating before reload
+                        setTimeout(() => window.location.reload(), 1000);
+                        return;
+                    }
                     if (event.data?.type === 'NAVIGATE' && event.data.url) {
                         const params = new URLSearchParams(event.data.url.split('?')[1] || '');
                         const page = params.get('page');
@@ -9324,8 +9330,8 @@ async function renderNotificationsPage(el) {
             </div>
         </div>
         <div style="margin-top:12px;padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:8px;font-size:0.78em;color:var(--text-dim)">
-            <strong style="color:var(--text-muted)">iPhone instructions:</strong> Open in Safari → tap the Share button (□↑) → "Add to Home Screen"<br>
-            <strong style="color:var(--text-muted)">Android instructions:</strong> Open in Chrome → tap ⋮ menu → "Add to Home screen" or tap the Install banner
+            <strong style="color:var(--text-muted)">iPhone (Safari only):</strong> Open link in Safari → Share (□↑) → "Add to Home Screen" → turn <strong style="color:#10b981">Open as Web App ON</strong> → Add<br><br>
+            <strong style="color:var(--text-muted)">Android (Chrome):</strong> Open in Chrome → tap the Install banner, or ⋮ menu → "Add to Home screen" → Install
         </div>
     </div>
 
@@ -9575,7 +9581,7 @@ function notifShareAppLink(url) {
 
 async function notifSMSAppLink(url) {
     const phones = await notifGetAllPhones();
-    const msg = `🎸 Hey! Here's the Deadcetera band app — add it to your home screen so you always have it handy:\n\n${url}\n\niPhone: open in Safari → Share (□↑) → "Add to Home Screen"\nAndroid: open in Chrome → ⋮ menu → "Add to Home screen"`;
+    const msg = `🎸 Hey! Here's the Deadcetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
     if (phones.length > 0) {
         window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(msg)}`);
     } else {
