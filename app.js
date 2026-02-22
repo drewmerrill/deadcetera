@@ -615,6 +615,14 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    // ── Auto-init Firebase DB on page load ──────────────────────────────────
+    // Firebase RTDB doesn't require user sign-in to read/write. 
+    // We initialize it immediately so all saves go to Firebase, not just localStorage.
+    // Google Identity (for user email) is still loaded on first "Connect" click.
+    initFirebaseOnly().catch(err => {
+        console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
+    });
+
     // Preload north star cache and custom songs in parallel, then render
     Promise.all([
         preloadNorthStarCache(),
@@ -3421,6 +3429,11 @@ async function saveRefVersionFromModal() {
     if (!url) { alert('Please paste a URL'); return; }
     try { new URL(url); } catch(e) { alert('Please paste a valid URL'); return; }
     
+    if (!firebaseDB) {
+        const proceed = confirm('⚠️ Not connected to Firebase yet.\n\nYour link will save to this browser only and won\'t be visible to other band members.\n\nProceed anyway?');
+        if (!proceed) return;
+    }
+    
     let platform = 'link';
     if (url.includes('spotify.com')) platform = 'spotify';
     else if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
@@ -5188,6 +5201,39 @@ let firebaseStorage = null;
 // FIREBASE INITIALIZATION
 // ============================================================================
 
+// ── Lightweight Firebase-only init (no Google Identity) ─────────────────────
+// Called automatically on page load so firebaseDB is ready immediately.
+// loadGoogleDriveAPI() (full init including Google Identity) is called on 
+// first "Connect" click and handles sign-in + email attribution.
+async function initFirebaseOnly() {
+    if (firebaseDB) return; // Already initialized
+    
+    const loadScript = (src) => new Promise((res, rej) => {
+        // Check if already loaded
+        if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+        const s = document.createElement('script');
+        s.src = src; s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+    });
+
+    // Load Firebase app compat then database compat
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js');
+    
+    if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    firebaseDB = firebase.database();
+    
+    // Also try storage
+    try {
+        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js');
+        if (firebase.storage) firebaseStorage = firebase.storage();
+    } catch(e) { /* storage optional */ }
+
+    console.log('🔥 Firebase DB ready (auto-init)');
+}
+
 function loadGoogleDriveAPI() {
     // Now loads Firebase SDK + Google Identity Services for sign-in
     return new Promise((resolve, reject) => {
@@ -5228,16 +5274,19 @@ async function initFirebase() {
     try {
         console.log('⚙️ Initializing Firebase...');
         
-        // Initialize Firebase
+        // Initialize Firebase app if not already done (may have been done by initFirebaseOnly)
         if (!firebase.apps.length) {
             firebase.initializeApp(FIREBASE_CONFIG);
         }
         
-        firebaseDB = firebase.database();
+        // Re-use existing firebaseDB if already set by initFirebaseOnly
+        if (!firebaseDB) {
+            firebaseDB = firebase.database();
+        }
         
         // Firebase Storage is optional - we primarily use RTDB for audio (base64)
         try {
-            if (firebase.storage) {
+            if (firebase.storage && !firebaseStorage) {
                 firebaseStorage = firebase.storage();
             }
         } catch(e) {
@@ -5302,9 +5351,55 @@ async function getCurrentUserEmail() {
         injectAdminButton();
         // Re-update button now that we have the email
         updateDriveAuthButton();
+        // Migrate any localStorage-only data to Firebase (recovers data saved before Firebase was ready)
+        recoverLocalStorageToFirebase();
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
+    }
+}
+
+// Scan localStorage for any Deadcetera data saved before Firebase was initialized.
+// Pushes to Firebase so it's shared with the band. Runs silently on each sign-in.
+async function recoverLocalStorageToFirebase() {
+    if (!firebaseDB) return;
+    let recovered = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('deadcetera_')) continue;
+        // Key format: deadcetera_{dataType}_{songTitle}
+        // Extract parts — dataType is the second segment, songTitle is the rest
+        const withoutPrefix = key.replace('deadcetera_', '');
+        // Known dataTypes used in saveBandDataToDrive
+        const dataTypes = ['spotify_versions','song_status','song_metadata','song_structure',
+                          'practice_tracks','rehearsal_notes','gig_notes','moises_stems',
+                          'harmony_metadata','part_notes','custom_songs','calendar_events',
+                          'blocked_dates','gig_history','setlists','equipment','contacts',
+                          'playlists','finances','social_profiles'];
+        let matchedType = null, matchedSong = null;
+        for (const dt of dataTypes) {
+            if (withoutPrefix.startsWith(dt + '_')) {
+                matchedType = dt;
+                matchedSong = withoutPrefix.slice(dt.length + 1);
+                break;
+            }
+        }
+        if (!matchedType || !matchedSong) continue;
+        try {
+            // Check if Firebase already has this data
+            const path = songPath(matchedSong, matchedType);
+            const snap = await firebaseDB.ref(path).once('value');
+            if (snap.val() !== null) continue; // Firebase already has it — skip
+            // Push to Firebase
+            const data = JSON.parse(localStorage.getItem(key));
+            if (!data || (Array.isArray(data) && data.length === 0)) continue;
+            await firebaseDB.ref(path).set(data);
+            recovered++;
+            console.log(`🔄 Recovered ${matchedType} for "${matchedSong}" from localStorage to Firebase`);
+        } catch(e) { /* skip errors on individual keys */ }
+    }
+    if (recovered > 0) {
+        showToast(`✅ Synced ${recovered} data item(s) from this device to Firebase`);
     }
 }
 
@@ -6284,7 +6379,7 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
     localStorage.setItem(localKey, JSON.stringify(data));
     
     if (!firebaseDB) {
-        console.log('⚠️ Firebase not ready, using localStorage fallback');
+        console.warn('⚠️ Firebase not ready — saved to localStorage only (not shared with band)');
         return false;
     }
     
