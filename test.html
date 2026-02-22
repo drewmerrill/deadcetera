@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deadcetera</title>
+    <title>Deadcetera — Band HQ</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="app-shell.css">
@@ -25,7 +25,7 @@
         </div>
         <div class="topbar-right">
             <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()">🔗 Connect</button>
-            <button class="topbar-btn" onclick="showPage('admin')">⚙️</button>
+            <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin">⚙️</button>
         </div>
     </div>
 
@@ -55,6 +55,8 @@
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
+            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
+            <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
             <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
         </div>
     </nav>
@@ -67,23 +69,37 @@
         <header>
             <!-- Logo placeholder - replace logo.png with your actual logo -->
             <img src="logo.png" alt="Deadcetera" class="logo" onerror="this.style.display='none'">
-            <h1>🎸 Deadcetera Practice Tool</h1>
-            <p class="subtitle">Pick a song → Find the best version → Download → Practice your part</p>
+            <h1>🎸 Deadcetera</h1>
+            <p class="subtitle">One app to jam, plan, and manage — so you can focus on the music.</p>
             
-            <!-- Google Drive Connection -->
-            <div style="text-align: center; margin-top: 15px;">
-                <button id="googleDriveAuthBtn" onclick="handleGoogleDriveAuth()" 
-                    style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.95em; cursor: pointer; font-weight: 600;">
-                    🔗 Connect Google Drive
-                </button>
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 8px;">Connect to share recordings with your band!</p>
+            <!-- Sign In -->
+            <div id="signInPrompt" style="text-align:center;margin-top:12px;">
+                <div style="position:relative;display:inline-block;">
+                    <button id="googleDriveAuthBtn2" onclick="handleGoogleDriveAuth()" 
+                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;"
+                        onmouseenter="document.getElementById('signInTooltip').style.display='block'"
+                        onmouseleave="document.getElementById('signInTooltip').style.display='none'">
+                        👤 Sign In
+                    </button>
+                    <div id="signInTooltip" style="display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:8px;background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:14px;width:300px;z-index:100;text-align:left;font-size:0.82em;line-height:1.5;color:var(--text-muted,#94a3b8);box-shadow:0 8px 30px rgba(0,0,0,0.4);">
+                        <div style="font-weight:700;color:white;margin-bottom:6px;">Why sign in?</div>
+                        <div style="color:var(--green,#10b981);margin-bottom:4px;">✅ <b>Signed in:</b></div>
+                        <div style="margin-left:18px;margin-bottom:8px;">Your name appears on recordings, uploads & votes · Band data syncs across all members · Access shared setlists, finances & calendar</div>
+                        <div style="color:var(--yellow,#f59e0b);margin-bottom:4px;">⚠️ <b>Not signed in:</b></div>
+                        <div style="margin-left:18px;">You can browse songs & use tools · Uploads won't have your name · No access to shared band data</div>
+                    </div>
+                </div>
+                <p style="font-size:0.82em;color:var(--text-dim,#64748b);margin-top:6px;">Sign in to sync with your bandmates</p>
             </div>
         </header>
 
         <!-- Step 1: Song Selection -->
         <div class="step-card" id="step1">
-            <div class="step-number">1</div>
-            <h2>Choose Your Song</h2>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <div class="step-number" style="flex-shrink:0">1</div>
+                <h2 style="margin:0;display:inline">Song Library</h2>
+                <span style="color:var(--text-dim,#64748b);font-size:0.8em;margin-left:auto" id="songCount"></span>
+            </div>
             <div class="search-box">
                 <input 
                     type="text" 
@@ -92,44 +108,29 @@
                     class="search-input"
                 >
             </div>
-            <div class="band-filters">
-                <button class="filter-btn active" data-filter="all">All Songs</button>
-                <button class="filter-btn" data-filter="GD">Grateful Dead</button>
-                <button class="filter-btn" data-filter="JGB">Jerry Garcia Band</button>
-                <button class="filter-btn" data-filter="WSP">Widespread Panic</button>
-                <button class="filter-btn" data-filter="Phish">Phish</button>
-            </div>
-            
-            <!-- STATUS FILTERS -->
-            <div class="status-filters" style="margin: 15px 0; display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="filter-btn" onclick="filterByStatus('all')" 
-                    style="padding: 8px 14px; border: 2px solid #10b981; background: white; color: #10b981; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                    All Statuses
-                </button>
-                <button class="filter-btn" onclick="filterByStatus('this_week')" 
-                    style="padding: 8px 14px; border: 2px solid #ef4444; background: white; color: #ef4444; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                    🎯 This Week
-                </button>
-                <button class="filter-btn" onclick="filterByStatus('gig_ready')" 
-                    style="padding: 8px 14px; border: 2px solid #10b981; background: white; color: #10b981; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                    ✅ Gig Ready
-                </button>
-                <button class="filter-btn" onclick="filterByStatus('needs_polish')" 
-                    style="padding: 8px 14px; border: 2px solid #f59e0b; background: white; color: #f59e0b; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                    ⚠️ Needs Polish
-                </button>
-                <button class="filter-btn" onclick="filterByStatus('on_deck')" 
-                    style="padding: 8px 14px; border: 2px solid #3b82f6; background: white; color: #3b82f6; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em;">
-                    📚 On Deck
-                </button>
-            </div>
-            
-            <!-- HARMONY FILTER (kept for backward compatibility) -->
-            <div class="harmony-filters" style="margin: 0 0 15px 0; display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="filter-btn" onclick="filterSongsSync('harmonies')" 
-                    style="padding: 6px 12px; border: 1px solid #667eea; background: white; color: #667eea; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85em;">
-                    🎤 Harmonies Only
-                </button>
+            <!-- COMPACT FILTERS ROW -->
+            <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;align-items:center">
+                <select id="bandFilter" class="app-select" onchange="filterByBand(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
+                    <option value="all">🎵 All Bands</option>
+                    <option value="GD">Grateful Dead</option>
+                    <option value="JGB">Jerry Garcia Band</option>
+                    <option value="WSP">Widespread Panic</option>
+                    <option value="Phish">Phish</option>
+                    <option value="ABB">Allman Brothers</option>
+                    <option value="Goose">Goose</option>
+                    <option value="DMB">Dave Matthews Band</option>
+                </select>
+                <select id="statusFilter" class="app-select" onchange="filterByStatus(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
+                    <option value="all">📊 All Statuses</option>
+                    <option value="this_week">🎯 This Week</option>
+                    <option value="gig_ready">✅ Gig Ready</option>
+                    <option value="needs_polish">⚠️ Needs Polish</option>
+                    <option value="on_deck">📚 On Deck</option>
+                </select>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.82em;color:var(--text-muted,#94a3b8);padding:6px 10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.04)" title="Show only songs that have documented vocal harmony parts for the band to practice together">
+                    <input type="checkbox" id="harmoniesOnlyFilter" onchange="filterSongsSync(this.checked?'harmonies':'all')" style="accent-color:var(--accent,#667eea);width:14px;height:14px">
+                    🎤 Harmonies <span title="Filter to show only songs with documented multi-part vocal harmonies" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.85em">ⓘ</span>
+                </label>
             </div>
             
             <div class="song-dropdown" id="songDropdown">
@@ -139,8 +140,10 @@
 
 <!-- Step 2: Band Resources (REPLACES Learning Resources) -->
 <div class="step-card hidden" id="step2">
-    <div class="step-number">2</div>
-    <h2>🎸 Band Resources</h2>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">2</div>
+        <h2 style="margin:0" id="step2Title">🎸 Steps to Master</h2>
+    </div>
     <p class="subtitle" id="bandResourcesSubtitle">Collaborative resources for your band</p>
     
     <!-- SONG METADATA -->
@@ -204,7 +207,7 @@
         </div>
         
         <button class="secondary-btn" id="addSpotifyVersionBtn" style="margin-top: 12px;">
-            + Suggest Different Version
+            + Suggest New/Alternate Version
         </button>
     </div>
     
@@ -253,8 +256,8 @@
     <!-- MOISES STEMS -->
     <div class="resource-section" id="moisesSection">
         <div class="section-header">
-            <h3>🎚️ Moises Stems (Practice Parts)</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Download individual instrument tracks</p>
+            <h3>🎚️ Moises Stems (Isolate Practice Parts)</h3>
+            <p style="color: #6b7280; font-size: 0.9em;">Isolate practice parts</p>
         </div>
         
         <div id="moisesStemsContainer">
@@ -562,11 +565,14 @@
         <div id="page-finances" class="app-page hidden"></div>
         <div id="page-tuner" class="app-page hidden"></div>
         <div id="page-metronome" class="app-page hidden"></div>
+        <div id="page-equipment" class="app-page hidden"></div>
+        <div id="page-contacts" class="app-page hidden"></div>
         <div id="page-admin" class="app-page hidden"></div>
     </div>
 
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
-        <p>Made for Deadcetera | Data from Archive.org • Stem separation by Moises.ai</p>
+        <p style="margin-bottom:4px">Deadcetera — Band HQ · Less admin. More jams. 🤘</p>
+        <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
     <script src="data.js"></script>
