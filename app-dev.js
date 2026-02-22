@@ -38,15 +38,14 @@
             color: #f1f5f9;
         }
         .song-item:hover {
-            background: rgba(102,126,234,0.1);
-            border-color: rgba(102,126,234,0.3);
+            background: rgba(102,126,234,0.08);
+            border-color: rgba(102,126,234,0.2);
         }
         .song-item.selected {
-            background: rgba(102,126,234,0.2);
-            border-color: #667eea;
-            box-shadow: inset 0 0 0 1px rgba(102,126,234,0.3);
+            background: rgba(102,126,234,0.15);
+            border-color: rgba(102,126,234,0.5);
         }
-        .song-item.selected .song-name { color: #e0e7ff; }
+        .song-item.selected .song-name { color: #c7d2fe; }
         .song-name {
             min-width: 0;
             overflow: hidden;
@@ -342,9 +341,12 @@
             overflow-y: auto;
             scrollbar-width: thin;
             scrollbar-color: rgba(255,255,255,0.15) transparent;
+            margin: 0 -2px;
+            padding: 0 2px;
         }
-        #songDropdown::-webkit-scrollbar { width: 6px; }
-        #songDropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+        #songDropdown::-webkit-scrollbar { width: 4px; }
+        #songDropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+        #songDropdown::-webkit-scrollbar-track { background: transparent; }
 
         #songSearch { width: 100%; box-sizing: border-box; }
 
@@ -5334,10 +5336,10 @@ async function addStatusBadges() {
         
         if (status) {
             const badges = {
-                'this_week': { text: '🎯 THIS WEEK', color: '#fca5a5', bg: 'rgba(239,68,68,0.2)' },
-                'gig_ready': { text: '✅ READY', color: '#6ee7b7', bg: 'rgba(16,185,129,0.2)' },
-                'needs_polish': { text: '⚠️ POLISH', color: '#fcd34d', bg: 'rgba(245,158,11,0.2)' },
-                'on_deck': { text: '📚 ON DECK', color: '#93c5fd', bg: 'rgba(59,130,246,0.2)' }
+                'this_week': { text: '🎯 THIS WEEK', color: '#fff', bg: '#dc2626' },
+                'gig_ready': { text: '✅ READY', color: '#fff', bg: '#059669' },
+                'needs_polish': { text: '⚠️ POLISH', color: '#fff', bg: '#d97706' },
+                'on_deck': { text: '📚 ON DECK', color: '#fff', bg: '#2563eb' }
             };
             
             const badge = badges[status];
@@ -7582,7 +7584,8 @@ const pageRenderers = {
     finances: renderFinancesPage,
     tuner: renderTunerPage,
     metronome: renderMetronomePage,
-    admin: renderSettingsPage
+    admin: renderSettingsPage,
+    help: renderHelpPage
 };
 
 // ============================================================================
@@ -7973,96 +7976,85 @@ async function saveGig() {
 // ============================================================================
 async function seedGigData() {
     if (!isUserSignedIn) { alert('Sign in first to seed gig data.'); return; }
-    if (!confirm('This will add sample past gigs and setlists. Continue?')) return;
+    if (!confirm('This will import your past gigs, setlists, and venues from the master spreadsheet. Continue?')) return;
     
-    // Past gigs
+    // Real gigs from DeadCetera Master List spreadsheet tabs
     const gigs = [
-        { venue:'Buckhead Theatre', date:'2025-11-15', time:'9:00 PM', pay:'$600 + door', soundPerson:'Mike R.', notes:'3 sets, 45 min each. Great crowd.', setlistName:'Buckhead 11/15' },
-        { venue:'Smith\'s Olde Bar', date:'2025-10-04', time:'10:00 PM', pay:'$400', soundPerson:'Dave', notes:'2 sets. Tight stage, watch monitor placement.', setlistName:'Smith\'s 10/4' },
-        { venue:'Red Light Café', date:'2025-09-20', time:'8:00 PM', pay:'$300 + tips', soundPerson:'House', notes:'Acoustic-friendly room. 2 sets.', setlistName:'Red Light 9/20' },
-        { venue:'Variety Playhouse', date:'2025-08-09', time:'8:30 PM', pay:'$800', soundPerson:'Tony', contact:'Sarah M.', notes:'Opening for local act. 1 set, 75 min. Big stage.', setlistName:'Variety 8/9' },
-        { venue:'Eddie\'s Attic', date:'2025-07-12', time:'9:00 PM', pay:'$350', soundPerson:'House', notes:'Intimate room. 2 sets. Crowd loved the Garcia stuff.', setlistName:'Eddie\'s 7/12' },
-        { venue:'Buckhead Theatre', date:'2025-06-07', time:'9:00 PM', pay:'$600 + door', soundPerson:'Mike R.', notes:'3 sets. Pierce\'s birthday show - extra long encore.', setlistName:'Buckhead 6/7' },
-        { venue:'Blind Willie\'s', date:'2025-05-17', time:'10:00 PM', pay:'$250 + tips', soundPerson:'House', notes:'Blues night. Heavy on the Garcia Band.', setlistName:'Blind Willie\'s 5/17' },
-        { venue:'The Earl', date:'2025-04-05', time:'9:30 PM', pay:'$500', soundPerson:'Jeff', notes:'Rock crowd. Leaned heavy on Phish and WSP.', setlistName:'Earl 4/5' },
-        { venue:'Terrapin Taproom', date:'2025-03-08', time:'7:00 PM', pay:'$400 + food', soundPerson:'House', notes:'Dead-themed venue. All Dead/JGB set. Very receptive.', setlistName:'Terrapin 3/8' },
-        { venue:'Smith\'s Olde Bar', date:'2025-02-01', time:'10:00 PM', pay:'$400', soundPerson:'Dave', notes:'Super Bowl weekend. Light crowd but solid performance.', setlistName:'Smith\'s 2/1' },
+        { venue:'From The Earth Brewing', date:'2026-02-01', time:'8:00 PM', notes:'Brewery gig' },
+        { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'' },
+        { venue:'Dunwoody (Private)', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
+        { venue:'Wild Wing Café', date:'2025-05-23', time:'9:00 PM', notes:'' },
+        { venue:'Dead Fest', date:'2025-04-12', time:'TBD', notes:'Festival' },
+        { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM', notes:'' },
+        { venue:'Reformation Brewery', date:'2025-03-29', time:'7:00 PM', notes:'' },
+        { venue:'Wing Café', date:'2024-12-14', time:'9:00 PM', notes:'' },
+        { venue:'Wild Wings', date:'2024-12-06', time:'9:00 PM', notes:'' },
+        { venue:'Truck & Tap', date:'2024-11-16', time:'8:00 PM', notes:'' },
+        { venue:'PDH / Meth Shed', date:'2024-10-26', time:'9:00 PM', notes:'Pierce\'s place' },
+        { venue:'MadLife Stage & Studios', date:'2024-09-04', time:'8:00 PM', notes:'' },
+        { venue:'Wings Café', date:'2024-06-15', time:'9:00 PM', notes:'' },
+        { venue:'MadLife Stage & Studios', date:'2024-05-28', time:'8:00 PM', notes:'' },
+        { venue:'MadLife Patio', date:'2024-05-31', time:'7:00 PM', notes:'Patio stage' },
+        { venue:'Alpharetta (Private)', date:'2024-07-19', time:'7:00 PM', notes:'Private event' },
+        { venue:'Coastal Grill', date:'2024-05-11', time:'8:00 PM', notes:'' },
+        { venue:'Wild Wings Café', date:'2024-01-19', time:'9:00 PM', notes:'' },
+        { venue:'Wild Wings Alpharetta', date:'2023-12-29', time:'9:00 PM', notes:'' },
+        { venue:'Wild Wings Café', date:'2023-12-15', time:'9:00 PM', notes:'' },
+        { venue:'Wild Wings Café', date:'2023-10-27', time:'9:00 PM', notes:'' },
+        { venue:'Wild Wing Café', date:'2023-09-08', time:'9:00 PM', notes:'' },
+        { venue:'Private Party', date:'2023-08-19', time:'7:00 PM', notes:'House party' },
+        { venue:'Legends', date:'2023-07-22', time:'8:00 PM', notes:'' },
+        { venue:'Meth Shed', date:'2023-06-03', time:'8:00 PM', notes:'Pierce\'s place' },
+        { venue:'Wild Wings Alpharetta', date:'2023-05-12', time:'9:00 PM', notes:'' },
+        { venue:'Meth Shed', date:'2023-04-15', time:'8:00 PM', notes:'' },
+        { venue:'Skulls', date:'2023-03-23', time:'9:00 PM', notes:'' },
+        { venue:'Wild Wings Café', date:'2023-03-18', time:'9:00 PM', notes:'' },
+        { venue:'Skulls', date:'2023-01-13', time:'9:00 PM', notes:'' },
     ];
     gigs.forEach(g => g.created = new Date().toISOString());
     
-    // Setlists matching gigs
+    // Setlists from the main sheet (the most recent / template setlist visible)
     const setlists = [
-        { name:'Buckhead 11/15', date:'2025-11-15', venue:'Buckhead Theatre', sets:[
-            { name:'Set 1', songs:[{title:'Alabama Getaway'},{title:'Greatest Story Ever Told'},{title:'Brown Eyed Women'},{title:'Loose Lucy'},{title:'Althea'},{title:'Tennessee Jed',transition:true},{title:'Cumberland Blues'}]},
-            { name:'Set 2', songs:[{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Estimated Prophet',transition:true},{title:'Eyes of the World'},{title:'Wharf Rat'},{title:'Sugar Magnolia'}]},
-            { name:'Encore', songs:[{title:'Ripple'}]}
-        ]},
-        { name:'Smith\'s 10/4', date:'2025-10-04', venue:'Smith\'s Olde Bar', sets:[
-            { name:'Set 1', songs:[{title:'Cold Rain and Snow'},{title:'Jack Straw'},{title:'Row Jimmy'},{title:'Bertha'},{title:'Sugaree'}]},
-            { name:'Set 2', songs:[{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Truckin\''},{title:'The Other One'},{title:'Stella Blue'},{title:'Not Fade Away'}]},
-        ]},
-        { name:'Red Light 9/20', date:'2025-09-20', venue:'Red Light Café', sets:[
-            { name:'Set 1', songs:[{title:'Friend of the Devil'},{title:'Dire Wolf'},{title:'Bird Song'},{title:'Cassidy'},{title:'Deal'}]},
-            { name:'Set 2', songs:[{title:'Help on the Way',transition:true},{title:'Slipknot',transition:true},{title:'Franklin\'s Tower'},{title:'Ship of Fools'},{title:'Brokedown Palace'}]},
-        ]},
-        { name:'Variety 8/9', date:'2025-08-09', venue:'Variety Playhouse', sets:[
-            { name:'Set 1', songs:[{title:'Shakedown Street'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Estimated Prophet'},{title:'Saint of Circumstance'},{title:'Eyes of the World'},{title:'Terrapin Station'},{title:'Morning Dew'},{title:'One More Saturday Night'}]},
-        ]},
-        { name:'Eddie\'s 7/12', date:'2025-07-12', venue:'Eddie\'s Attic', sets:[
-            { name:'Set 1', songs:[{title:'After Midnight'},{title:'Catfish John'},{title:'They Love Each Other'},{title:'Mission in the Rain'},{title:'Deal'}]},
-            { name:'Set 2', songs:[{title:'Sugaree'},{title:'Tangled Up in Blue'},{title:'Waiting for a Miracle'},{title:'Dear Prudence'},{title:'The Harder They Come'}]},
-        ]},
-        { name:'Buckhead 6/7', date:'2025-06-07', venue:'Buckhead Theatre', sets:[
-            { name:'Set 1', songs:[{title:'Feel Like a Stranger'},{title:'Althea'},{title:'Tennessee Jed'},{title:'Looks Like Rain'},{title:'Might as Well'}]},
-            { name:'Set 2', songs:[{title:'Playing in the Band'},{title:'Uncle John\'s Band'},{title:'Terrapin Station'},{title:'Morning Dew'},{title:'Casey Jones'}]},
-            { name:'Set 3', songs:[{title:'Drums',transition:true},{title:'Space',transition:true},{title:'The Other One'},{title:'Wharf Rat'},{title:'Sugar Magnolia'}]},
-            { name:'Encore', songs:[{title:'Brokedown Palace'},{title:'U.S. Blues'}]}
-        ]},
-        { name:'Blind Willie\'s 5/17', date:'2025-05-17', venue:'Blind Willie\'s', sets:[
-            { name:'Set 1', songs:[{title:'After Midnight'},{title:'That\'s What Love Will Make You Do'},{title:'Catfish John'},{title:'Waiting for a Miracle'},{title:'Tangled Up in Blue'},{title:'Deal'}]},
-            { name:'Set 2', songs:[{title:'Shining Star'},{title:'Dear Prudence'},{title:'Mission in the Rain'},{title:'Midnight Moonlight'},{title:'The Harder They Come'}]},
-        ]},
-        { name:'Earl 4/5', date:'2025-04-05', venue:'The Earl', sets:[
-            { name:'Set 1', songs:[{title:'Alaska'},{title:'Chalk Dust Torture'},{title:'Pillow Jets'},{title:'Henry Parsons Died'},{title:'Fishwater'},{title:'Aunt Avis'}]},
-            { name:'Set 2', songs:[{title:'Porch Song'},{title:'Driving Song',transition:true},{title:'Travelin\' Light'},{title:'Imitation Leather Shoes'},{title:'Ain\'t Life Grand'}]},
-        ]},
-        { name:'Terrapin 3/8', date:'2025-03-08', venue:'Terrapin Taproom', sets:[
-            { name:'Set 1', songs:[{title:'Bertha'},{title:'Greatest Story Ever Told'},{title:'Loser'},{title:'Cumberland Blues'},{title:'Jack Straw'},{title:'Friend of the Devil'},{title:'Cassidy'}]},
-            { name:'Set 2', songs:[{title:'Playing in the Band'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Terrapin Station'},{title:'Stella Blue'},{title:'Not Fade Away'}]},
-            { name:'Encore', songs:[{title:'Ripple'}]}
-        ]},
-        { name:'Smith\'s 2/1', date:'2025-02-01', venue:'Smith\'s Olde Bar', sets:[
-            { name:'Set 1', songs:[{title:'Cold Rain and Snow'},{title:'Brown Eyed Women'},{title:'Ramble On Rose'},{title:'Bird Song'},{title:'Deal'}]},
-            { name:'Set 2', songs:[{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Estimated Prophet'},{title:'Eyes of the World'},{title:'Sugar Magnolia'}]},
+        { name:'From The Earth 02/01/26', date:'2026-02-01', venue:'From The Earth Brewing', sets:[
+            { name:'Set 1', songs:[{title:'Tall Boy'},{title:'Deal'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Superstition'},{title:'U.S. Blues'},{title:'Althea'},{title:'Deep Elem Blues'},{title:'Funky Bitch'},{title:'Chilly Water'}]},
+            { name:'Set 2', songs:[{title:'Birthday'},{title:"Ain't Life Grand"},{title:'After Midnight'},{title:'Ramble On Rose'},{title:'Ophelia'},{title:'Cumberland Blues'},{title:"Franklin's Tower"},{title:'All Time Low'},{title:'Shakedown Street'},{title:'Not Fade Away'},{title:'Life During Wartime'}]}
         ]},
     ];
     setlists.forEach(sl => sl.created = new Date().toISOString());
     
-    // Venues
+    // Venues from spreadsheet tabs
     const venues = [
-        { name:'Buckhead Theatre', address:'3110 Roswell Rd NE, Atlanta, GA 30305', phone:'(404) 843-2825', capacity:'500', stage:'30x20 ft', pA:'House JBL VTX', contact:'Sarah M.', loadIn:'Back door, 5pm', parking:'Lot behind venue', pay:'$600 + door', soundPerson:'Mike R.', notes:'Great room. 3 sets preferred.' },
-        { name:'Smith\'s Olde Bar', address:'1578 Piedmont Ave NE, Atlanta, GA 30324', phone:'(404) 875-1522', capacity:'250', stage:'20x15 ft, tight', pA:'House system, 2 monitors', contact:'Tom', loadIn:'Side door, 6pm', parking:'Street parking', pay:'$400', soundPerson:'Dave', notes:'Tight stage. Watch monitor placement on SR.' },
-        { name:'Red Light Café', address:'553 Amsterdam Ave NE, Atlanta, GA 30306', phone:'(404) 874-7828', capacity:'100', stage:'Small, acoustic friendly', contact:'Maria', parking:'Street parking', pay:'$300 + tips', notes:'Intimate room. Good for acoustic sets.' },
-        { name:'Variety Playhouse', address:'1099 Euclid Ave NE, Atlanta, GA 30307', phone:'(404) 524-7354', capacity:'1100', stage:'Large, full production', pA:'House Meyer Sound', contact:'Jake B.', loadIn:'Loading dock, 3pm', parking:'Lot across street', pay:'$800', soundPerson:'Tony', notes:'Big stage. Full production. Need to book months ahead.' },
-        { name:'Eddie\'s Attic', address:'515-B N McDonough St, Decatur, GA 30030', phone:'(404) 377-4976', capacity:'150', stage:'Medium', contact:'Front desk', parking:'Decatur Square garage', pay:'$350', notes:'Listening room vibe. Crowd is attentive. JGB material goes great here.' },
-        { name:'Blind Willie\'s', address:'828 N Highland Ave NE, Atlanta, GA 30306', phone:'(404) 873-2583', capacity:'150', stage:'Small', contact:'Bar staff', parking:'Street only', pay:'$250 + tips', notes:'Blues bar. Garcia Band and soulful stuff works best.' },
-        { name:'The Earl', address:'488 Flat Shoals Ave SE, Atlanta, GA 30316', phone:'(404) 522-3950', capacity:'300', stage:'25x18 ft', pA:'House system', contact:'Night manager', loadIn:'Front door, 5pm', parking:'Lot', pay:'$500', soundPerson:'Jeff', notes:'Rock crowd. WSP and Phish material goes over well.' },
-        { name:'Terrapin Taproom', address:'1580 Terrapin Way, Athens, GA 30601', capacity:'200', stage:'Medium outdoor', contact:'Events', parking:'Brewery lot', pay:'$400 + food', notes:'Dead-themed brewery. All Dead/JGB set is a home run. Worth the drive to Athens.' },
+        { name:'From The Earth Brewing', address:'Roswell, GA', notes:'Brewery with stage area' },
+        { name:'MoonShadow Tavern', address:'Atlanta area, GA', notes:'' },
+        { name:'Wild Wing Café', address:'Multiple locations, GA', notes:'Regular gig spot. Several locations.' },
+        { name:'Wild Wings Alpharetta', address:'Alpharetta, GA', notes:'Alpharetta location' },
+        { name:'Reformation Brewery', address:'Woodstock, GA', notes:'Brewery gig, family friendly early shows' },
+        { name:'Truck & Tap', address:'Woodstock, GA', notes:'' },
+        { name:'MadLife Stage & Studios', address:'Woodstock, GA', notes:'Professional venue, great sound system' },
+        { name:'Coastal Grill', address:'Atlanta area, GA', notes:'Restaurant venue' },
+        { name:'Legends', address:'Atlanta area, GA', notes:'' },
+        { name:'Skulls', address:'Atlanta area, GA', notes:'' },
+        { name:'Meth Shed / PDH', address:'Pierce\'s place', notes:'Private practice/party spot' },
     ];
     venues.forEach(v => v.created = new Date().toISOString());
     
-    // Save all
     try {
         const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
         const existingSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
         const existingVenues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
         
-        await saveBandDataToDrive('_band', 'gigs', [...existingGigs, ...gigs]);
-        await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...setlists]);
-        await saveBandDataToDrive('_band', 'venues', [...existingVenues, ...venues]);
+        // Deduplicate by venue+date for gigs
+        const gigKeys = new Set(existingGigs.map(g => g.venue + '|' + g.date));
+        const newGigs = gigs.filter(g => !gigKeys.has(g.venue + '|' + g.date));
         
-        alert('✅ Seeded ' + gigs.length + ' gigs, ' + setlists.length + ' setlists, and ' + venues.length + ' venues!');
-        // Refresh current page
+        const venueKeys = new Set(existingVenues.map(v => v.name));
+        const newVenues = venues.filter(v => !venueKeys.has(v.name));
+        
+        if (newGigs.length > 0) await saveBandDataToDrive('_band', 'gigs', [...existingGigs, ...newGigs]);
+        if (setlists.length > 0 && existingSetlists.length === 0) await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...setlists]);
+        if (newVenues.length > 0) await saveBandDataToDrive('_band', 'venues', [...existingVenues, ...newVenues]);
+        
+        alert('✅ Imported ' + newGigs.length + ' gigs, ' + setlists.length + ' setlist(s), and ' + newVenues.length + ' venues from your spreadsheet!');
         if (typeof loadGigs === 'function') loadGigs();
         if (typeof loadSetlists === 'function') loadSetlists();
         if (typeof loadVenues === 'function') loadVenues();
@@ -8794,3 +8786,107 @@ function getSongHistoryTooltip(title) {
 })();
 
 console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
+
+// ============================================================================
+// HELP & GUIDE
+// ============================================================================
+const helpTopics = [
+    { id:'getting-started', icon:'🚀', title:'Getting Started', content:`
+        <p><strong>Welcome to Deadcetera!</strong> This app is your band's central hub for learning songs, managing setlists, tracking gigs, and collaborating on harmonies.</p>
+        <ol>
+            <li><strong>Sign In</strong> — Click "Connect" in the top right to sign in with Google. This syncs your data across all band members via Firebase.</li>
+            <li><strong>Pick a Song</strong> — Use the Song Library to search or filter by band (GD, JGB, WSP, Phish). Click a song to see its resources.</li>
+            <li><strong>Learn It</strong> — Each song has tabs/chords, reference versions, practice tracks, and YouTube lessons.</li>
+            <li><strong>Track Progress</strong> — Set song statuses (Gig Ready, Needs Polish, On Deck, This Week) so everyone knows where things stand.</li>
+        </ol>`},
+    { id:'song-library', icon:'🎵', title:'Song Library', content:`
+        <p>The Song Library (Step 1) contains all ${typeof allSongs!=='undefined'?allSongs.length:'350+' } songs in the band's repertoire.</p>
+        <p><strong>Filters:</strong> Use the Band dropdown to show only GD, JGB, WSP, or Phish songs. Use Status to filter by readiness. Check "Harmonies" to see only songs with documented vocal parts.</p>
+        <p><strong>Badges:</strong> 🎤 = has vocal harmonies documented. Status pills (READY, POLISH, ON DECK, THIS WEEK) show the song's current state.</p>
+        <p><strong>Selecting a song</strong> opens its full resource page with tabs, reference versions, practice tracks, harmonies, and performance notes.</p>`},
+    { id:'reference-versions', icon:'🎧', title:'Reference Versions & Voting', content:`
+        <p>Each song can have multiple reference versions (Spotify, YouTube, Apple Music, Archive.org, etc.).</p>
+        <p><strong>Adding:</strong> Click "+ Add Reference Version" and paste any music URL.</p>
+        <p><strong>Voting:</strong> Band members vote on their preferred version. When 3+ members vote for the same version, it becomes the "Band Choice" (👑).</p>
+        <p><strong>Platform support:</strong> Spotify, YouTube, Apple Music, Tidal, SoundCloud, Archive.org, and any direct link.</p>`},
+    { id:'harmonies', icon:'🎤', title:'Harmonies & Vocal Parts', content:`
+        <p>The Harmony Section Builder lets you document which songs have vocal harmonies and who sings what.</p>
+        <p><strong>Adding harmonies:</strong> Click "Add Harmony Section" on any song. You can paste the lyrics, tag sections (Verse, Chorus, Bridge), and assign singers to each part.</p>
+        <p><strong>Part tracking:</strong> Each section shows who sings lead, who harmonizes, and practice notes for that section.</p>
+        <p><strong>Recording:</strong> The multi-track recorder (Step 5) lets you record harmony parts with metronome, looping, and individual track mixing.</p>`},
+    { id:'practice-tracks', icon:'🎸', title:'Practice Tracks & Moises', content:`
+        <p>Practice tracks are organized by instrument (Vocals, Lead Guitar, Rhythm Guitar, Bass, Keys, Drums).</p>
+        <p><strong>Adding tracks:</strong> Upload audio files or paste URLs to learning resources for each instrument.</p>
+        <p><strong>Moises Integration:</strong> Use the Moises workflow to separate stems from recordings:</p>
+        <ol>
+            <li>Add a YouTube link or upload an MP3</li>
+            <li>Go to moises.ai and paste the link</li>
+            <li>Download the separated stems</li>
+            <li>Upload stems back to Deadcetera</li>
+        </ol>
+        <p><strong>Show Splitter:</strong> For long recordings (>20 min), use the Show Splitter to note timestamps and trim clips before sending to Moises.</p>`},
+    { id:'setlists', icon:'📋', title:'Building Setlists', content:`
+        <p>Create setlists for upcoming gigs with drag-and-drop song ordering.</p>
+        <p><strong>Creating:</strong> Click "+ New Setlist", name it, set the date/venue, then search and add songs to each set.</p>
+        <p><strong>Sets:</strong> Add multiple sets, encores, and soundcheck lists. Mark transitions between songs with the → button.</p>
+        <p><strong>Gig History:</strong> Hover over any song in a setlist to see its gig history — where and when you've played it before, and its position (opener, closer, encore).</p>`},
+    { id:'gigs', icon:'🎤', title:'Gigs & Venues', content:`
+        <p>Track past and upcoming shows with venue details, pay, sound person, and linked setlists.</p>
+        <p><strong>Seed Data:</strong> Click "🌱 Seed Demo Data" on the Gigs page to import your past gig history from the master spreadsheet.</p>
+        <p><strong>Venues:</strong> Store venue info including address, capacity, stage size, PA system, load-in details, parking, and booking contacts.</p>`},
+    { id:'status-system', icon:'📊', title:'Song Status System', content:`
+        <p>Every song can have a status to track band readiness:</p>
+        <p>🎯 <strong>THIS WEEK</strong> — Focus songs for this week's rehearsal<br>
+        ✅ <strong>GIG READY</strong> — Solid enough to play live<br>
+        ⚠️ <strong>NEEDS POLISH</strong> — We know it but need more work<br>
+        📚 <strong>ON DECK</strong> — Next up to learn</p>
+        <p>Set status from any song's detail page. Filter the Song Library by status to focus rehearsals.</p>`},
+    { id:'recorder', icon:'🎙️', title:'Multi-Track Recorder', content:`
+        <p>Record harmony parts and practice takes directly in the app.</p>
+        <p><strong>Features:</strong> Built-in metronome with count-in, looping, multiple takes, individual track mixing (volume, pan, mute/solo), latency calibration, and WAV export.</p>
+        <p><strong>Karaoke mode:</strong> Play a backing track while recording your part.</p>
+        <p><strong>Tips:</strong> Use headphones to avoid bleed. Calibrate latency once for your device. Record in a quiet space.</p>`},
+    { id:'tools', icon:'🛠️', title:'Tools (Tuner, Metronome)', content:`
+        <p><strong>Guitar Tuner:</strong> Uses your device microphone to detect pitch. Supports standard and alternate tunings.</p>
+        <p><strong>Metronome:</strong> Tap tempo, adjustable BPM, time signatures, and accent patterns. BPM is saved per-song.</p>`},
+    { id:'data-sync', icon:'☁️', title:'Data & Sync', content:`
+        <p>All band data syncs through Firebase Realtime Database. When you sign in with Google, your changes are visible to all band members.</p>
+        <p><strong>What syncs:</strong> Song statuses, reference versions & votes, harmonies, practice tracks, rehearsal notes, setlists, gigs, venues, and performance tips.</p>
+        <p><strong>What's local:</strong> Your instrument preference, display settings, and search history stay on your device.</p>
+        <p><strong>Backup:</strong> Use Settings → Data → Export All Data to download a JSON backup of your local data.</p>`},
+    { id:'troubleshooting', icon:'🔧', title:'Troubleshooting', content:`
+        <p><strong>Can't sign in?</strong> Try a different browser. Edge sometimes blocks Google API calls. Chrome works best.</p>
+        <p><strong>Data not loading?</strong> Check your internet connection. Try signing out and back in. Use Settings → Data → Clear Cache if stale.</p>
+        <p><strong>Audio not working on iPhone?</strong> iOS requires a user gesture before playing audio. Tap a play button first.</p>
+        <p><strong>Songs not filtering?</strong> Wait for statuses to load (they cache in the background on first sign-in).</p>
+        <p><strong>Lost data?</strong> Firebase stores everything server-side. Sign in again to restore. Local-only data can be exported/imported via Settings.</p>`},
+];
+
+function renderHelpPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>❓ Help & Guide</h1><p>How to use Deadcetera</p></div>
+    <div style="margin-bottom:16px">
+        <input class="app-input" id="helpSearch" placeholder="Search help topics..." oninput="filterHelpTopics(this.value)" style="max-width:400px">
+    </div>
+    <div id="helpTopics">
+        ${helpTopics.map(t => `
+            <details class="app-card" style="cursor:pointer" id="help-${t.id}">
+                <summary style="font-weight:600;font-size:0.95em;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px">
+                    <span style="font-size:1.2em">${t.icon}</span>
+                    <span>${t.title}</span>
+                    <span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">▶</span>
+                </summary>
+                <div style="padding:10px 0 4px;font-size:0.88em;color:var(--text-muted);line-height:1.6">${t.content}</div>
+            </details>
+        `).join('')}
+    </div>`;
+}
+
+function filterHelpTopics(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('#helpTopics details').forEach(d => {
+        const text = d.textContent.toLowerCase();
+        d.style.display = text.includes(q) ? '' : 'none';
+        if (q.length > 2 && text.includes(q)) d.open = true;
+    });
+}
