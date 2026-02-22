@@ -113,7 +113,7 @@
             <!-- COMPACT FILTERS ROW -->
             <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;align-items:center">
                 <select id="bandFilter" class="app-select" onchange="filterByBand(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
-                    <option value="all">🎵 All Bands</option>
+                    <option value="all">🎸 All Bands</option>
                     <option value="GD">Grateful Dead</option>
                     <option value="JGB">Jerry Garcia Band</option>
                     <option value="WSP">Widespread Panic</option>
@@ -129,6 +129,7 @@
                     <option value="needs_polish">⚠️ Needs Polish</option>
                     <option value="on_deck">📚 On Deck</option>
                 </select>
+                <span title="🎯 This Week = songs you're actively rehearsing this week&#10;✅ Gig Ready = polished and ready to play live&#10;⚠️ Needs Polish = know it but needs work&#10;📚 On Deck = learning, not yet rehearsed" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
                 <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.82em;color:var(--text-muted,#94a3b8);padding:6px 10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.04)" title="Show only songs that have documented vocal harmony parts for the band to practice together">
                     <input type="checkbox" id="harmoniesOnlyFilter" onchange="filterSongsSync(this.checked?'harmonies':'all')" style="accent-color:var(--accent,#667eea);width:14px;height:14px">
                     🎤 Harmonies <span title="Filter to show only songs with documented multi-part vocal harmonies" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.85em">ⓘ</span>

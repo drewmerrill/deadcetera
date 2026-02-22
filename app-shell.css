@@ -97,8 +97,8 @@ a{color:var(--accent-light);}
     padding:10px 12px!important;
     background:#1e293b!important;
     border:1px solid rgba(255,255,255,0.08)!important;
-    border-radius:8px!important;
-    margin-bottom:3px!important;
+    border-radius:6px!important;
+    margin-bottom:2px!important;
     cursor:pointer!important;
     color:#f1f5f9!important;
 }
@@ -140,8 +140,8 @@ a{color:var(--accent-light);}
 /* ===== STEP CARDS ===== */
 .container{max-width:960px;margin:0 auto;}
 .step-card{background:var(--bg-card)!important;border:1px solid var(--border)!important;border-radius:var(--radius)!important;padding:20px!important;margin-bottom:16px!important;}
-.step-card h2{color:var(--text)!important;}
-.step-card p,.subtitle{color:var(--text-muted)!important;}
+.step-card h2{color:var(--text)!important;margin:0!important;padding:0!important;line-height:1.2!important;}
+.step-card p,.subtitle{color:var(--text-muted)!important;margin-bottom:16px!important;}
 .step-number{background:var(--accent)!important;color:white!important;width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1em;flex-shrink:0;}
 .search-input{background:rgba(255,255,255,0.06)!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:8px!important;}
 .search-input::placeholder{color:var(--text-dim)!important;}
@@ -242,3 +242,8 @@ footer p{color:var(--text-dim)!important;}
     [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important;}
     #mtKaraokeSheet{max-height:35vh!important;}
 }
+
+/* Purple/accent backgrounds always white text */
+[style*="background:#667eea"],[style*="background: #667eea"],[style*="background:#8b5cf6"],[style*="background: #8b5cf6"]{color:white!important;}
+[style*="background:#667eea"] *,[style*="background: #667eea"] *,[style*="background:#8b5cf6"] *,[style*="background: #8b5cf6"] *{color:white!important;}
+.spotify-play-btn{color:white!important;}

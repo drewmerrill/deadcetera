@@ -1898,7 +1898,7 @@ function renderSpotifyVersions(songTitle, bandData) {
                     `).join('')}
                 </div>
                 
-                ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
+                ${version.notes ? `<p style="margin-bottom:12px;font-style:italic;color:var(--text-muted,#94a3b8);display:flex;align-items:center;gap:6px">${version.notes} <button onclick="editVersionNotes(${index})" style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.8em" title="Edit notes">✏️</button></p>` : ''}
                 
                 <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
                     ${getPlayButtonLabel(version)}
@@ -2959,13 +2959,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 ${version.addedBy === currentUserEmail ? `
                     <button onclick="deleteSpotifyVersion(${index})" 
-                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10;">✕</button>
-                ` : ''}
-                
-                ${version.thumbnail ? `
-                    <div style="margin-bottom: 12px; text-align: center;">
-                        <img src="${version.thumbnail}" alt="Album art" style="max-width: 200px; max-height: 200px; width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                    </div>
+                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center">✕</button>
                 ` : ''}
                 
                 <div class="version-header">
@@ -2984,7 +2978,7 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
                     }).join('')}
                 </div>
                 
-                ${version.notes ? `<p style="margin-bottom: 12px; font-style: italic; color: #6b7280;">${version.notes}</p>` : ''}
+                ${version.notes ? `<p style="margin-bottom:12px;font-style:italic;color:var(--text-muted,#94a3b8);display:flex;align-items:center;gap:6px">${version.notes} <button onclick="editVersionNotes(${index})" style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.8em" title="Edit notes">✏️</button></p>` : ''}
                 
                 <button class="spotify-play-btn" onclick="window.open('${version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
                     ${getPlayButtonLabel(version)}
@@ -3088,6 +3082,19 @@ async function toggleSpotifyVote(versionIndex, voterEmail) {
     await saveSpotifyVersions(songTitle, versions);
     
     // Re-render
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderSpotifyVersionsWithMetadata(songTitle, bandData);
+}
+
+async function editVersionNotes(versionIndex) {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    let versions = await loadSpotifyVersions(songTitle) || [];
+    if (!versions[versionIndex]) return;
+    const newNotes = prompt('Edit notes for this version:', versions[versionIndex].notes || '');
+    if (newNotes === null) return;
+    versions[versionIndex].notes = newNotes;
+    await saveSpotifyVersions(songTitle, versions);
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderSpotifyVersionsWithMetadata(songTitle, bandData);
 }
@@ -5294,13 +5301,17 @@ async function loadHarmonyMembers(songTitle) {
 function updateSongStructureSummary(data) {
     const el = document.getElementById('songStructureSummary');
     if (!el) return;
-    if (!data || (!data.whoStarts && !data.whoCuesEnding)) {
+    if (!data || (!data.whoStarts?.length && !data.whoCuesEnding?.length && !data.whoCuesEnding)) {
         el.textContent = '—';
         return;
     }
+    const getName = (k) => k === 'whole_band' ? 'Whole Band' : (bandMembers[k]?.name || k);
     const parts = [];
-    if (data.whoStarts) parts.push('Starts: ' + data.whoStarts);
-    if (data.whoCuesEnding) parts.push('Ends: ' + data.whoCuesEnding);
+    if (data.whoStarts?.length) parts.push('Starts: ' + data.whoStarts.map(getName).join(', '));
+    if (data.howStarts) parts.push(data.howStarts);
+    const endings = Array.isArray(data.whoCuesEnding) ? data.whoCuesEnding : (data.whoCuesEnding ? [data.whoCuesEnding] : []);
+    if (endings.length) parts.push('Ends: ' + endings.map(getName).join(', '));
+    if (data.howEnds) parts.push(data.howEnds);
     el.textContent = parts.join(' · ');
 }
 
@@ -6074,80 +6085,58 @@ async function editSongStructure() {
 function showSongStructureForm() {
     if (!selectedSong || !selectedSong.title) return;
     
-    const formContainer = document.getElementById('songStructureFormContainer');
-    const button = document.getElementById('editSongStructureBtn');
-    
-    // Load existing data
     loadBandDataFromDrive(selectedSong.title, 'song_structure').then(structure => {
         structure = structure || {};
         
-        formContainer.innerHTML = `
-            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 2px solid #667eea;">
-                <h4 style="margin-top: 0; color: #667eea;">Edit Song Structure</h4>
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.id = 'structureModal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        modal.innerHTML = `
+            <div style="background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:12px;padding:24px;max-width:500px;width:100%;max-height:85vh;overflow-y:auto;color:var(--text,#f1f5f9)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h3 style="margin:0;color:var(--accent-light,#818cf8)">🏗️ Edit Song Structure</h3>
+                    <button onclick="document.getElementById('structureModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
+                </div>
                 
-                <div style="margin-bottom: 15px;">
-                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">🎤 Who Starts the Song? (check all)</strong>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        ${Object.keys(bandMembers).map(key => `
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" value="${key}" 
-                                    ${structure.whoStarts && structure.whoStarts.includes(key) ? 'checked' : ''}
-                                    class="who-starts-checkbox"
-                                    style="width: 16px; height: 16px; cursor: pointer;">
-                                <span>${bandMembers[key].name}</span>
-                            </label>
-                        `).join('')}
+                <div style="margin-bottom:16px">
+                    <strong style="display:block;margin-bottom:8px;color:var(--text-muted,#94a3b8);font-size:0.9em">🎤 Who Starts the Song?</strong>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px">
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="whole_band" ${structure.whoStarts?.includes('whole_band')?'checked':''} class="who-starts-checkbox" style="accent-color:var(--accent)"> Whole Band</label>
+                        ${Object.keys(bandMembers).map(key => 
+                            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="'+key+'" '+(structure.whoStarts?.includes(key)?'checked':'')+' class="who-starts-checkbox" style="accent-color:var(--accent)"> '+bandMembers[key].name+'</label>'
+                        ).join('')}
                     </div>
                 </div>
                 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
-                        🎵 How Is It Started?
-                    </label>
-                    <textarea id="howStartsInput" 
-                        style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
-                        rows="2"
-                        placeholder="E.g., Count off by Drew, Cold start, Guitar intro...">${structure.howStarts || ''}</textarea>
+                <div style="margin-bottom:16px">
+                    <label style="display:block;margin-bottom:6px;color:var(--text-muted,#94a3b8);font-size:0.9em;font-weight:600">🎵 How Does It Start?</label>
+                    <textarea id="howStartsInput" class="app-textarea" rows="2" placeholder="Count off by Drew, Cold start, Guitar intro...">${structure.howStarts||''}</textarea>
                 </div>
                 
-                <div style="margin-bottom: 15px;">
-                    <strong style="display: block; margin-bottom: 8px; color: #1f2937;">🎤 Who Cues the Ending? (select one)</strong>
-                    <select id="whoCuesEndingSelect" 
-                        style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">
-                        <option value="">- Select -</option>
-                        ${Object.keys(bandMembers).map(key => `
-                            <option value="${key}" ${structure.whoCuesEnding === key ? 'selected' : ''}>
-                                ${bandMembers[key].name}
-                            </option>
-                        `).join('')}
-                    </select>
+                <div style="margin-bottom:16px">
+                    <strong style="display:block;margin-bottom:8px;color:var(--text-muted,#94a3b8);font-size:0.9em">🎤 Who Cues the Ending?</strong>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px">
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="whole_band" ${structure.whoCuesEnding?.includes?.('whole_band')||(structure.whoCuesEnding==='whole_band')?'checked':''} class="who-ends-checkbox" style="accent-color:var(--accent)"> Whole Band</label>
+                        ${Object.keys(bandMembers).map(key => 
+                            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="'+key+'" '+(Array.isArray(structure.whoCuesEnding)?structure.whoCuesEnding.includes(key):(structure.whoCuesEnding===key)?true:false?'checked':'')+' class="who-ends-checkbox" style="accent-color:var(--accent)"> '+bandMembers[key].name+'</label>'
+                        ).join('')}
+                    </div>
                 </div>
                 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; color: #1f2937; font-weight: 600;">
-                        🎵 How Does the Song End?
-                    </label>
-                    <textarea id="howEndsInput" 
-                        style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
-                        rows="2"
-                        placeholder="E.g., Big finish on 1, Fade out, Abrupt stop...">${structure.howEnds || ''}</textarea>
+                <div style="margin-bottom:20px">
+                    <label style="display:block;margin-bottom:6px;color:var(--text-muted,#94a3b8);font-size:0.9em;font-weight:600">🎵 How Does It End?</label>
+                    <textarea id="howEndsInput" class="app-textarea" rows="2" placeholder="Big finish on 1, Fade out, Abrupt stop...">${structure.howEnds||''}</textarea>
                 </div>
                 
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="saveSongStructure()" 
-                        style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                        💾 Save
-                    </button>
-                    <button onclick="hideSongStructureForm()" 
-                        style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
-                        Cancel
-                    </button>
+                <div style="display:flex;gap:8px">
+                    <button onclick="saveSongStructure()" class="btn btn-success" style="flex:1">💾 Save</button>
+                    <button onclick="document.getElementById('structureModal').remove()" class="btn btn-ghost">Cancel</button>
                 </div>
             </div>
         `;
-        
-        formContainer.style.display = 'block';
-        button.style.display = 'none';
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     });
 }
 
@@ -6159,26 +6148,23 @@ function hideSongStructureForm() {
 async function saveSongStructure() {
     if (!selectedSong || !selectedSong.title) return;
     
-    // Get all checked "who starts"
-    const whoStarts = Array.from(document.querySelectorAll('.who-starts-checkbox:checked'))
-        .map(cb => cb.value);
+    const whoStarts = Array.from(document.querySelectorAll('.who-starts-checkbox:checked')).map(cb => cb.value);
+    const whoCuesEnding = Array.from(document.querySelectorAll('.who-ends-checkbox:checked')).map(cb => cb.value);
     
     const structure = {
         whoStarts: whoStarts,
         howStarts: document.getElementById('howStartsInput').value.trim(),
-        whoCuesEnding: document.getElementById('whoCuesEndingSelect').value,
+        whoCuesEnding: whoCuesEnding,
         howEnds: document.getElementById('howEndsInput').value.trim()
     };
     
-    // Save to Google Drive
     await saveBandDataToDrive(selectedSong.title, 'song_structure', structure);
-    
-    alert('✅ Song structure saved to Google Drive!');
     logActivity('song_structure', { song: selectedSong.title });
     
-    // Hide form and refresh display
-    hideSongStructureForm();
+    // Close modal and refresh
+    document.getElementById('structureModal')?.remove();
     renderSongStructure(selectedSong.title);
+    updateSongStructureSummary(structure);
 }
 
 console.log('📋 Song Structure functions loaded');
@@ -7631,8 +7617,7 @@ function showPage(page) {
     if (el) { el.classList.remove('hidden'); el.classList.add('fade-in'); }
     document.querySelectorAll('.menu-item').forEach(m => { m.classList.toggle('active', m.dataset.page === page); });
     currentPage = page;
-    if (el && !el.dataset.loaded && page !== 'songs') {
-        el.dataset.loaded = 'true';
+    if (el && page !== 'songs') {
         const renderer = pageRenderers[page];
         if (renderer) renderer(el);
     }
