@@ -11221,7 +11221,14 @@ async function getPlaylistSongs(playlist) {
     // Live-synced from setlist
     if (playlist.linkedSetlistId) {
         const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-        const setlist = allSetlists.find(sl => sl.id === playlist.linkedSetlistId);
+        const lid = playlist.linkedSetlistId || '';
+        const setlist = allSetlists.find(sl =>
+            (sl.id && sl.id === lid) ||
+            sl.name === lid ||
+            `${sl.name} (${sl.date})` === lid ||
+            `${sl.name} ${sl.date}` === lid ||
+            lid.startsWith(sl.name)
+        );
 
         if (!setlist) {
             // Setlist was deleted — return last-known songs with a flag
@@ -11761,7 +11768,7 @@ async function plRenderEditor(pl) {
 
     const setlistOptions = `<option value="">— Not linked to a setlist —</option>` +
         allSetlists.map(sl =>
-            `<option value="${sl.id || sl.name}" ${pl?.linkedSetlistId === (sl.id || sl.name) ? 'selected' : ''}>${sl.name || 'Untitled'} ${sl.date ? '(' + sl.date + ')' : ''}</option>`
+            `<option value="${sl.name}" ${pl?.linkedSetlistId === sl.name ? 'selected' : ''}>${sl.name || 'Untitled'} ${sl.date ? '(' + sl.date + ')' : ''}</option>`
         ).join('');
 
     container.innerHTML = `
@@ -11833,6 +11840,9 @@ async function plHandleSetlistLink(setlistId) {
 
     // Fetch songs from linked setlist (or clear if unlinked)
     if (setlistId) {
+        // Show loading state immediately
+        const songListEl = document.getElementById('plEdSongList');
+        if (songListEl) songListEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em">⏳ Loading songs from setlist…</div>';
         _plEditorSongs = await getPlaylistSongs(_plEditing);
     } else {
         _plEditorSongs = [];
@@ -11868,9 +11878,14 @@ function plEdRenderSongList() {
     const linked = !!(document.getElementById('plEdSetlist')?.value);
 
     if (_plEditorSongs.length === 0) {
-        el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em;border:1px dashed rgba(255,255,255,0.1);border-radius:8px">
-            ${linked ? 'Select a setlist above to populate songs' : 'Search for songs below to add them'}
-        </div>`;
+        const linkedId = document.getElementById('plEdSetlist')?.value;
+        let msg;
+        if (linkedId) {
+            msg = '⏳ Loading songs from setlist… (if this persists, the setlist may be empty)';
+        } else {
+            msg = linked ? 'Select a setlist above to populate songs' : 'Search for songs below to add them';
+        }
+        el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em;border:1px dashed rgba(255,255,255,0.1);border-radius:8px">${msg}</div>`;
         return;
     }
 
