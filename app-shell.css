@@ -91,9 +91,9 @@ a{color:var(--accent-light);}
 /* EVERY child div in songDropdown = a song row */
 #songDropdown > div {
     display:grid!important;
-    grid-template-columns:1fr 28px 80px 52px!important;
+    grid-template-columns:1fr auto auto 52px!important;
     align-items:center!important;
-    gap:4px!important;
+    gap:6px!important;
     padding:10px 12px!important;
     background:#1e293b!important;
     border:1px solid rgba(255,255,255,0.08)!important;
@@ -134,8 +134,40 @@ a{color:var(--accent-light);}
 .song-badge.dmb{background:rgba(20,184,166,0.15);color:#2dd4bf;border:1px solid rgba(20,184,166,0.25);}
 
 /* Harmony + Status badges inline */
-.harmony-badge{flex-shrink:0!important;font-size:0.75em!important;color:var(--accent-light)!important;}
-.status-badge{flex-shrink:0!important;white-space:nowrap!important;font-size:0.7em!important;padding:2px 8px!important;border-radius:20px!important;font-weight:600!important;}
+.harmony-badge{
+    flex-shrink:0!important;
+    font-size:0.85em!important;
+    color:var(--accent-light)!important;
+    line-height:1!important;
+    display:inline-flex!important;
+    align-items:center!important;
+    vertical-align:middle!important;
+}
+.northstar-badge{
+    flex-shrink:0!important;
+    font-size:0.85em!important;
+    line-height:1!important;
+    display:inline-flex!important;
+    align-items:center!important;
+    vertical-align:middle!important;
+    cursor:default!important;
+}
+/* Badges container — horizontal row, vertically centered */
+.song-badges{
+    display:inline-flex!important;
+    align-items:center!important;
+    gap:3px!important;
+    height:100%!important;
+    flex-shrink:0!important;
+}
+/* Status badge cell */
+.song-status-cell{
+    display:inline-flex!important;
+    align-items:center!important;
+    justify-content:flex-end!important;
+    flex-shrink:0!important;
+}
+.status-badge{flex-shrink:0!important;white-space:nowrap!important;font-size:0.7em!important;padding:2px 8px!important;border-radius:20px!important;font-weight:700!important;color:white!important;}
 
 /* ===== STEP CARDS ===== */
 .container{max-width:960px;margin:0 auto;}
@@ -445,17 +477,15 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
 
 /* ── Song row on mobile: when status badge is present, drop band badge ── */
 @media(max-width:580px) {
-    /* Switch to 3-col: name | mic | status — hide band badge */
+    /* Mobile: name expands, badges auto-size, hide band badge */
     #songDropdown > div {
-        grid-template-columns: 1fr 20px 72px !important;
+        grid-template-columns: 1fr auto auto !important;
     }
-    /* Hide band badge at this breakpoint — visible in filter dropdown */
+    /* Hide band badge on narrow screens — visible in filter dropdown */
     #songDropdown > div .song-badge { display: none !important; }
-    /* Keep mic + status visible */
-    #songDropdown > div .harmony-badge { font-size: 0.8em !important; }
-    #songDropdown > div .status-badge { font-size: 0.65em !important; padding: 2px 6px !important; }
-    /* North Star badge moves inline */
-    #songDropdown > div .northstar-badge { font-size: 0.75em !important; }
+    #songDropdown > div .status-badge { font-size: 0.62em !important; padding: 2px 5px !important; }
+    #songDropdown > div .northstar-badge { font-size: 0.78em !important; }
+    #songDropdown > div .harmony-badge { font-size: 0.78em !important; }
 }
 
 /* ── Structure section: stack to single col on mobile ── */
