@@ -1978,56 +1978,6 @@ async function renderPersonalTabs(songTitle) {
 
     container.innerHTML = memberHTML || '<div style="padding:20px;color:var(--text-dim)">No members found</div>';
 }
-    (tabs || []).forEach((tab, index) => {
-        const key = tab.memberKey || tab.addedBy || 'unknown';
-        if (!tabsByMember[key]) tabsByMember[key] = [];
-        tabsByMember[key].push({ ...tab, _index: index });
-    });
-
-    // Determine current user's member key
-    const currentMemberKey = getCurrentMemberKey();
-
-    const memberHTML = Object.entries(bandMembers).map(([key, member]) => {
-        const memberTabs = tabsByMember[key] || [];
-        const isMe = (key === currentMemberKey);
-        const emoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' }[key] || '👤';
-        const tabItems = memberTabs.map(tab => `
-            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;margin-bottom:6px">
-                <a href="${tab.url}" target="_blank" style="flex:1;color:var(--accent-light);font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tab.url}">${tab.label || tab.notes || tab.url}</a>
-                ${tab.notes && tab.label ? `<span style="color:var(--text-dim);font-size:0.75em;flex-shrink:0">${tab.notes}</span>` : ''}
-                ${isMe ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
-            </div>
-        `).join('');
-
-        return `
-        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span style="font-size:1.2em">${emoji}</span>
-                <strong style="color:var(--accent-light);font-size:0.95em">${member.name}</strong>
-                <span style="color:var(--text-dim);font-size:0.78em">${member.role}</span>
-                ${memberTabs.length > 0 ? `<span style="margin-left:auto;background:rgba(16,185,129,0.15);color:var(--green);font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:600">${memberTabs.length} ref${memberTabs.length>1?'s':''}</span>` : `<span style="margin-left:auto;color:var(--text-dim);font-size:0.75em">No refs yet</span>`}
-            </div>
-            ${tabItems || ''}
-            ${isMe ? `
-            <div id="addTabInline_${key}" style="display:none">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-                    <input type="text" id="tabUrl_${key}" placeholder="URL (Ultimate Guitar, Chordify…)" class="app-input" style="font-size:0.82em">
-                    <input type="text" id="tabLabel_${key}" placeholder="Label (e.g. 'My Chord Chart')" class="app-input" style="font-size:0.82em">
-                </div>
-                <input type="text" id="tabNotes_${key}" placeholder="Notes (optional)" class="app-input" style="font-size:0.82em;margin-top:6px">
-                <div style="display:flex;gap:6px;margin-top:8px">
-                    <button onclick="addPersonalTabForMember('${songTitle.replace(/'/g,"\\'")}','${key}')" class="btn btn-primary btn-sm">➕ Add</button>
-                    <button onclick="document.getElementById('addTabInline_${key}').style.display='none'" class="btn btn-ghost btn-sm">Cancel</button>
-                </div>
-            </div>
-            <button onclick="document.getElementById('addTabInline_${key}').style.display='block';this.style.display='none'" class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%">+ Add My Reference</button>
-            ` : ''}
-        </div>`;
-    }).join('');
-
-    container.innerHTML = memberHTML || '<div style="padding:20px;color:var(--text-dim)">No members found</div>';
-}
-
 function getCurrentMemberKey() {
     // Try localStorage first
     const stored = localStorage.getItem('deadcetera_current_user');
