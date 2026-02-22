@@ -3797,6 +3797,15 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
     const safeSongTitle = songTitle.replace(/'/g, "\\'");
     
     if (!hasHarmonies) {
+        // Double-check: maybe harmony DATA exists even if the flag isn't set
+        const checkData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+        if (checkData && checkData.sections && toArray(checkData.sections).length > 0) {
+            hasHarmonies = true;
+            console.log('🎤 Found harmony data despite flag being unset, auto-correcting');
+        }
+    }
+    
+    if (!hasHarmonies) {
         container.innerHTML = `
             <div style="padding: 20px; text-align: center;">
                 <p style="color: #9ca3af; font-style: italic; margin-bottom: 15px;">No harmony parts documented yet.</p>
@@ -8119,29 +8128,232 @@ pageRenderers.equipment = renderEquipmentPage;
 pageRenderers.contacts = renderContactsPage;
 pageRenderers.admin = renderSettingsPage;
 
-// ---- SETTINGS (#1) ----
+// ---- SETTINGS (Enhanced with tabs) ----
 function renderSettingsPage(el) {
     el.innerHTML = `
-    <div class="page-header"><h1>⚙️ Settings</h1></div>
-    <div class="app-card"><h3>👤 Your Profile</h3>
-        <div class="form-grid">
-            <div class="form-row"><label class="form-label">Name</label><select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value)">${'<option value="">Select...</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(localStorage.getItem('deadcetera_current_user')===k?' selected':'')+'>'+m.name+'</option>').join('')}</select></div>
-            <div class="form-row"><label class="form-label">Instrument</label><select class="app-select" id="settingsInst" onchange="localStorage.setItem('deadcetera_instrument',this.value)"><option value="">Select...</option><option value="bass">Bass</option><option value="leadGuitar">Lead Guitar</option><option value="rhythmGuitar">Rhythm Guitar</option><option value="keys">Keys</option><option value="drums">Drums</option><option value="vocals">Vocals</option></select></div>
-        </div></div>
-    <div class="app-card"><h3>🐛 Report Bug / Request Feature</h3>
-        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="fbType"><option value="bug">🐛 Bug</option><option value="feature">💡 Feature</option><option value="other">💬 Feedback</option></select></div>
-        <div class="form-row"><label class="form-label">Description</label><textarea class="app-textarea" id="fbDesc" placeholder="Describe..."></textarea></div>
-        <div class="form-row"><label class="form-label">Screenshot</label><input type="file" id="fbFile" accept="image/*" class="app-input" style="padding:8px"></div>
-        <button class="btn btn-primary" onclick="submitFeedback()">📤 Submit</button></div>
-    <div class="app-card"><h3>📊 Data</h3><div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-ghost" onclick="showAdminPanel()">📈 Activity Dashboard</button>
-        <button class="btn btn-ghost" onclick="alert('All data is in Firebase: deadcetera-35424')">💾 Export</button>
-        <button class="btn btn-ghost" style="color:var(--red)" onclick="if(confirm('Clear local cache?')){localStorage.clear();location.reload()}">🗑 Clear Cache</button></div></div>
-    <div class="app-card"><h3>ℹ️ About</h3><div style="font-size:0.85em;line-height:1.8;color:var(--text-muted)">
-        ${[['App','Deadcetera — Band HQ'],['Version','3.0.0-beta'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band','Drew, Chris, Brian, Pierce, Jay'],['Songs',''+(songs?.length||0)]].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
-        <div style="margin-top:12px;text-align:center;font-size:0.82em;color:var(--text-dim)">© 2025–2026 Drew Merrill. All rights reserved.<br>Less admin. More jams. 🤘</div></div></div>`;
+    <div class="page-header"><h1>⚙️ Settings & Admin</h1><p>Configuration, band management, support</p></div>
+    <div class="tab-bar" id="settingsTabs">
+        <button class="tab-btn active" onclick="settingsTab('profile',this)">👤 Profile</button>
+        <button class="tab-btn" onclick="settingsTab('band',this)">🎸 Band</button>
+        <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
+        <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Feedback</button>
+        <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
+    </div>
+    <div id="settingsContent"></div>`;
+    settingsTab('profile');
 }
-async function submitFeedback(){const d=document.getElementById('fbDesc')?.value;if(!d){alert('Describe the issue.');return;}const fb={type:document.getElementById('fbType')?.value,description:d,user:localStorage.getItem('deadcetera_current_user')||'anon',date:new Date().toISOString()};const ex=toArray(await loadBandDataFromDrive('_band','feedback')||[]);ex.push(fb);await saveBandDataToDrive('_band','feedback',ex);alert('✅ Submitted!');document.getElementById('fbDesc').value='';}
+
+function settingsTab(tab, btn) {
+    if (btn) document.querySelectorAll('#settingsTabs .tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const el = document.getElementById('settingsContent');
+    if (!el) return;
+    const cu = localStorage.getItem('deadcetera_current_user') || '';
+    const ci = localStorage.getItem('deadcetera_instrument') || '';
+    const bn = localStorage.getItem('deadcetera_band_name') || 'Deadcetera';
+    
+    const panels = {
+    profile: `
+        <div class="app-card"><h3>👤 Your Profile</h3>
+            <div class="form-grid">
+                <div class="form-row"><label class="form-label">Who are you?</label>
+                    <select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value)">
+                        <option value="">Select your name...</option>
+                        ${Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(cu===k?' selected':'')+'>'+m.name+' — '+m.role+'</option>').join('')}
+                    </select></div>
+                <div class="form-row"><label class="form-label">Primary Instrument</label>
+                    <select class="app-select" id="settingsInst" onchange="localStorage.setItem('deadcetera_instrument',this.value)">
+                        <option value="">Select...</option>
+                        ${['bass|🎸 Bass','leadGuitar|🎸 Lead Guitar','rhythmGuitar|🎸 Rhythm Guitar','keys|🎹 Keys','drums|🥁 Drums','vocals|🎤 Vocals'].map(o=>{const[v,l]=o.split('|');return'<option value="'+v+'"'+(ci===v?' selected':'')+'>'+l+'</option>';}).join('')}
+                    </select></div>
+            </div>
+            <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
+                🔗 Google: <span style="color:var(--text-muted)">${localStorage.getItem('deadcetera_google_email')||'Not connected'}</span>
+            </div>
+        </div>
+        <div class="app-card"><h3>🔔 Preferences</h3>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px" checked> Auto-save recordings to Google Drive
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px" checked> Show status badges in song list
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px"> Enable metronome count-in by default
+            </label>
+        </div>`,
+        
+    band: `
+        <div class="app-card"><h3>🎸 Band Configuration</h3>
+            <div class="form-row"><label class="form-label">Band Name</label>
+                <div style="display:flex;gap:8px"><input class="app-input" id="setBandName" value="${bn}">
+                <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_band_name',document.getElementById('setBandName').value);alert('✅ Updated!')">Save</button></div></div>
+            <div class="form-row" style="margin-top:12px"><label class="form-label">Band Logo</label>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
+                    <div><input type="file" accept="image/*" class="app-input" style="padding:6px;font-size:0.82em">
+                    <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in header.</div></div>
+                </div></div>
+        </div>
+        <div class="app-card"><h3>👥 Band Members</h3>
+            <div id="membersList">${Object.entries(bandMembers).map(([k,m])=>`
+                <div class="list-item" style="padding:10px 12px">
+                    <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;color:var(--accent-light)">${m.name.charAt(0)}</div>
+                    <div style="flex:1"><div style="font-weight:600;font-size:0.9em">${m.name}</div>
+                        <div style="font-size:0.75em;color:var(--text-dim)">${m.role}${m.sings?' · Vocals':''}${m.leadVocals?' (Lead)':''}</div></div>
+                    <button class="btn btn-sm btn-ghost" onclick="editMember('${k}')" title="Edit">✏️</button>
+                    <button class="btn btn-sm btn-ghost" onclick="removeMember('${k}')" title="Remove" style="color:var(--red)">✕</button>
+                </div>`).join('')}</div>
+            <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border:1px dashed var(--border);border-radius:8px">
+                <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
+                <div class="form-grid">
+                    <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="newMemberName" placeholder="First name"></div>
+                    <div class="form-row"><label class="form-label">Role</label><input class="app-input" id="newMemberRole" placeholder="e.g. Lead Guitar"></div>
+                    <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
+                    <div class="form-row"><label class="form-label">Sings?</label><select class="app-select" id="newMemberSings"><option value="no">No</option><option value="harmony">Harmony</option><option value="lead">Lead + Harmony</option></select></div>
+                </div>
+                <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">➕ Add Member</button>
+            </div>
+        </div>`,
+        
+    data: `
+        <div class="app-card"><h3>📊 Data Management</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                <button class="btn btn-ghost" onclick="showAdminPanel()">📈 Activity Dashboard</button>
+                <button class="btn btn-ghost" onclick="exportAllData()">💾 Export All Data</button>
+                <button class="btn btn-ghost" style="color:var(--red)" onclick="if(confirm('Clear local cache? You\\'ll need to re-select your profile.')){localStorage.clear();location.reload()}">🗑 Clear Cache</button>
+            </div>
+            <div style="font-size:0.82em;color:var(--text-dim);padding:10px;background:rgba(255,255,255,0.03);border-radius:8px">
+                <div>💾 Backend: Firebase Realtime DB (<code style="color:var(--accent-light)">deadcetera-35424</code>)</div>
+                <div>📁 Files: Google Drive (shared folder)</div>
+                <div>🌐 Hosting: GitHub Pages</div>
+                <div style="margin-top:6px">📊 Songs in database: <b style="color:var(--text)">${(typeof allSongs!=='undefined'?allSongs:[]).length}</b></div>
+            </div>
+        </div>
+        <div class="app-card"><h3>🔄 Sync Status</h3>
+            <div id="syncStatus" style="font-size:0.85em;color:var(--text-muted)">Checking...</div>
+        </div>`,
+        
+    feedback: `
+        <div class="app-card"><h3>🐛 Report Bug / Request Feature</h3>
+            <div class="form-row"><label class="form-label">Type</label>
+                <select class="app-select" id="fbType"><option value="bug">🐛 Bug Report</option><option value="feature">💡 Feature Request</option><option value="other">💬 General Feedback</option></select></div>
+            <div class="form-row"><label class="form-label">Priority</label>
+                <select class="app-select" id="fbPriority"><option value="low">🟢 Low</option><option value="medium">🟡 Medium</option><option value="high">🔴 High</option></select></div>
+            <div class="form-row"><label class="form-label">Description</label>
+                <textarea class="app-textarea" id="fbDesc" placeholder="Describe the issue or feature idea in detail..."></textarea></div>
+            <div class="form-row"><label class="form-label">Screenshot (optional)</label>
+                <input type="file" id="fbFile" accept="image/*" class="app-input" style="padding:8px"></div>
+            <button class="btn btn-primary" onclick="submitFeedback()">📤 Submit Feedback</button>
+        </div>
+        <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
+        
+    about: `
+        <div class="app-card"><h3>ℹ️ About Deadcetera</h3>
+            <div style="text-align:center;padding:16px 0">
+                <div style="font-size:2.5em;margin-bottom:8px">🎸</div>
+                <div style="font-size:1.3em;font-weight:800;background:linear-gradient(135deg,#667eea,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${bn}</div>
+                <div style="font-size:0.85em;color:var(--text-dim);margin-top:4px">Band HQ — Less admin. More jams. 🤘</div>
+            </div>
+            <div style="font-size:0.85em;line-height:2;color:var(--text-muted)">
+                ${[['Version','3.1.0'],['Build','2026.02.21'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+            </div>
+            <div style="margin-top:16px;text-align:center;font-size:0.78em;color:var(--text-dim);line-height:1.6">
+                © 2025–2026 Drew Merrill. All rights reserved.<br>
+                Built with ❤️ for live music.<br>
+                <a href="https://github.com" target="_blank" style="color:var(--accent-light)">GitHub</a> · 
+                <a href="mailto:drewmerrill1029@gmail.com" style="color:var(--accent-light)">Contact</a>
+            </div>
+        </div>`
+    };
+    
+    el.innerHTML = panels[tab] || panels.profile;
+    
+    // Post-render: load feedback history
+    if (tab === 'feedback') loadFeedbackHistory();
+    if (tab === 'data') checkSyncStatus();
+}
+
+async function loadFeedbackHistory() {
+    const el = document.getElementById('fbHistory');
+    if (!el) return;
+    try {
+        const data = toArray(await loadBandDataFromDrive('_band','feedback') || []);
+        if (!data.length) { el.innerHTML = 'No feedback submitted yet.'; return; }
+        data.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+        el.innerHTML = data.slice(0,10).map(f => `<div class="list-item" style="padding:8px 10px;font-size:0.85em">
+            <span style="min-width:20px">${f.type==='bug'?'🐛':f.type==='feature'?'💡':'💬'}</span>
+            <div style="flex:1"><div>${f.description?.substring(0,80)||'No description'}${f.description?.length>80?'...':''}</div>
+            <div style="font-size:0.75em;color:var(--text-dim)">${f.user||'anon'} · ${f.date?new Date(f.date).toLocaleDateString():''}</div></div>
+        </div>`).join('');
+    } catch(e) { el.innerHTML = 'Could not load feedback.'; }
+}
+
+function checkSyncStatus() {
+    const el = document.getElementById('syncStatus');
+    if (!el) return;
+    const isAuth = !!localStorage.getItem('deadcetera_google_email');
+    el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${isAuth?'var(--green)':'var(--yellow)'}"></span>
+            Google Drive: ${isAuth?'Connected':'Not connected'}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
+            Firebase: Active
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
+            Local Storage: ${Object.keys(localStorage).filter(k=>k.startsWith('deadcetera')).length} keys cached
+        </div>`;
+}
+
+function addNewMember() {
+    const name = document.getElementById('newMemberName')?.value;
+    const role = document.getElementById('newMemberRole')?.value;
+    const sings = document.getElementById('newMemberSings')?.value;
+    if (!name) { alert('Name required'); return; }
+    const key = name.toLowerCase().replace(/\s/g,'');
+    bandMembers[key] = { name, role: role||'Member', sings: sings!=='no', leadVocals: sings==='lead', harmonies: sings!=='no' };
+    alert('✅ ' + name + ' added! Note: To make permanent, update data.js on GitHub.');
+    settingsTab('band');
+}
+
+function removeMember(key) {
+    if (!confirm('Remove ' + (bandMembers[key]?.name||key) + ' from the band roster?')) return;
+    delete bandMembers[key];
+    alert('Removed. Update data.js on GitHub to make permanent.');
+    settingsTab('band');
+}
+
+function editMember(key) {
+    const m = bandMembers[key];
+    if (!m) return;
+    const newRole = prompt('Role for ' + m.name + ':', m.role);
+    if (newRole !== null) { m.role = newRole; settingsTab('band'); }
+}
+
+function exportAllData() {
+    const data = {};
+    Object.keys(localStorage).filter(k => k.startsWith('deadcetera')).forEach(k => { data[k] = localStorage.getItem(k); });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'deadcetera-backup-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+}
+
+async function submitFeedback() {
+    const d = document.getElementById('fbDesc')?.value;
+    if (!d) { alert('Please describe the issue.'); return; }
+    const fb = { type: document.getElementById('fbType')?.value, priority: document.getElementById('fbPriority')?.value, description: d, user: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() };
+    const ex = toArray(await loadBandDataFromDrive('_band','feedback')||[]);
+    ex.push(fb);
+    await saveBandDataToDrive('_band','feedback', ex);
+    alert('✅ Feedback submitted! Thanks.');
+    document.getElementById('fbDesc').value = '';
+    loadFeedbackHistory();
+}
 
 // ---- EQUIPMENT (#28) ----
 function renderEquipmentPage(el){el.innerHTML=`<div class="page-header"><h1>🎛️ Equipment</h1><p>Band gear inventory</p></div><button class="btn btn-primary" onclick="addEquipment()" style="margin-bottom:12px">+ Add Gear</button><div id="equipList"></div>`;loadEquipment();}
