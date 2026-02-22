@@ -531,7 +531,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     const dropdown = document.getElementById('songDropdown');
     
     let filtered = allSongs.filter(song => {
-        const matchesFilter = filter === 'all' || song.band === filter;
+        const matchesFilter = filter === 'all' || song.band.toUpperCase() === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
         return matchesFilter && matchesSearch;
     });
@@ -539,7 +539,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     console.log('Filtered songs:', filtered.length);
     
     if (filtered.length === 0) {
-        dropdown.innerHTML = '<div style="padding: 20px; text-align: center; color: #718096;">No songs found</div>';
+        dropdown.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim, #64748b);">No songs found</div>';
         return;
     }
     
@@ -613,7 +613,13 @@ function selectSong(songTitle) {
     document.querySelectorAll('.song-item').forEach(item => {
         item.classList.remove('selected');
     });
-    event.target.closest('.song-item').classList.add('selected');
+    const clickedItem = event?.target?.closest('.song-item');
+    if (clickedItem) {
+        clickedItem.classList.add('selected');
+        // Add a brief glow effect
+        clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
+        setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
+    }
     
     // Show Step 2: Band Resources
     showBandResources(songTitle);
@@ -624,10 +630,10 @@ function selectSong(songTitle) {
     document.getElementById('step5').classList.add('hidden');
     document.getElementById('resetContainer').classList.add('hidden');
     
-    // Scroll to step 2
+    // Scroll to step 2 after a short delay (gives user time to see selection)
     setTimeout(() => {
         document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
+    }, 500);
 }
 
 // ============================================================================
@@ -692,7 +698,7 @@ function renderTabSection(songTitle, instrument, resources) {
                         <a href="${resources.tab}" target="_blank" class="resource-link" title="${resources.tab}">
                             ${displayName}
                         </a>
-                        ${isUG ? '<div style="font-size: 0.85em; color: #718096; margin-top: 4px;">Ultimate Guitar</div>' : ''}
+                        ${isUG ? '<div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">Ultimate Guitar</div>' : ''}
                     </div>
                 </div>
                 <div class="resource-actions">
@@ -744,7 +750,7 @@ async function renderLessonsSection(songTitle, instrument, resources) {
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
                         ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
+                    <div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">${platform} - Click to open</div>
                 </div>
                 <div class="resource-actions">
                     <button class="resource-btn remove-btn" onclick="removeLesson(${index})">🗑️</button>
@@ -819,7 +825,7 @@ async function renderReferencesSection(songTitle, instrument, resources) {
                     <a href="${url}" target="_blank" class="resource-link" title="${url}">
                         ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
                     </a>
-                    <div style="font-size: 0.85em; color: #718096; margin-top: 4px;">${platform} - Click to open</div>
+                    <div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">${platform} - Click to open</div>
                 </div>
                 <div class="resource-actions">
                     <button class="resource-btn remove-btn" onclick="removeReference(${index})">🗑️</button>
@@ -1168,7 +1174,7 @@ function updateUrlPreview(url) {
             <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border: 2px solid #e2e8f0;">
                 <div style="font-weight: 600; color: #4a5568; margin-bottom: 10px;">Preview:</div>
                 <img src="${thumbnail}" alt="Video preview" style="width: 100%; max-width: 320px; border-radius: 8px;">
-                <div style="margin-top: 8px; color: #718096; font-size: 0.9em;">Video ID: ${videoId}</div>
+                <div style="margin-top: 8px; color: var(--text-dim, #64748b); font-size: 0.9em;">Video ID: ${videoId}</div>
             </div>
         `;
     } else {
@@ -1508,13 +1514,13 @@ function showNoVersionsMessage(songTitle, bandName = 'Grateful Dead') {
             <p style="font-size: 1.2em; color: #4a5568; margin-bottom: 15px;">
                 <strong>"${songTitle}"</strong> by <strong>${bandName}</strong> is in our catalog!
             </p>
-            <p style="color: #718096; margin-bottom: 20px;">
+            <p style="color: var(--text-dim, #64748b); margin-bottom: 20px;">
                 We haven't pre-loaded the top 5 versions for this song yet.
             </p>
             <button class="primary-btn" onclick="searchArchiveForSong('${songTitle.replace(/'/g, "\\'")}', '${bandName}')" style="margin-bottom: 15px;">
                 🔍 Find Best Versions on Archive.org
             </button>
-            <p style="color: #718096; font-size: 0.9em;">
+            <p style="color: var(--text-dim, #64748b); font-size: 0.9em;">
                 This will search Archive.org for popular downloadable versions
             </p>
         </div>
@@ -4798,11 +4804,13 @@ function updateDriveAuthButton() {
     if (!button) return;
     
     if (isUserSignedIn) {
-        button.textContent = '✅ Connected';
-        button.style.background = '#10b981';
+        button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span> Connected';
+        button.className = 'topbar-btn connected';
+        button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 12px!important;border-radius:8px!important;';
     } else {
-        button.textContent = '🔥 Sign In';
-        button.style.background = '#667eea';
+        button.textContent = '👤 Sign In';
+        button.className = 'topbar-btn';
+        button.style.cssText = 'background:#667eea;color:#fff;border-color:#667eea;';
     }
 }
 
@@ -5229,7 +5237,7 @@ async function filterByStatus(status) {
     document.querySelectorAll('.status-filters .filter-btn').forEach(btn => {
         const originalColor = btn.dataset.color || btn.style.color || '#667eea';
         btn.dataset.color = originalColor;
-        btn.style.background = 'white';
+        btn.style.background = 'rgba(255,255,255,0.04)';
         btn.style.color = originalColor;
     });
     // Only highlight clicked button if we're NOT toggling off
@@ -5545,7 +5553,7 @@ async function filterSongsAsync(type) {
     // Update button states - reset all harmony buttons
     document.querySelectorAll('.harmony-filters .filter-btn').forEach(btn => {
         btn.classList.remove('active');
-        btn.style.background = 'white';
+        btn.style.background = 'rgba(255,255,255,0.04)';
         btn.style.color = '#667eea';
     });
     
@@ -5663,8 +5671,8 @@ async function addHarmonyBadges() {
             const badge = document.createElement('span');
             badge.className = 'harmony-badge';
             badge.textContent = '🎤';
-            badge.style.cssText = 'margin-left: 8px; font-size: 0.8em; opacity: 0.6;';
-            badge.title = 'This song has harmonies';
+            badge.style.cssText = 'margin-left:6px;font-size:0.8em;background:rgba(129,140,248,0.25);padding:2px 6px;border-radius:6px;border:1px solid rgba(129,140,248,0.35);';
+            badge.title = 'Has vocal harmonies';
             // Append inside the song-name span so it sits next to the title
             if (songNameElement) {
                 songNameElement.appendChild(badge);
@@ -7911,7 +7919,10 @@ async function calSaveEvent() {
 function renderGigsPage(el) {
     el.innerHTML = `
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
-    <button class="btn btn-primary" onclick="addGig()" style="margin-bottom:16px">+ Add Gig</button>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="addGig()">+ Add Gig</button>
+        <button class="btn btn-ghost" onclick="seedGigData()" title="Pre-populate with sample past gigs, setlists, and venues">🌱 Seed Demo Data</button>
+    </div>
     <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
     loadGigs();
 }
@@ -7965,6 +7976,110 @@ async function saveGig() {
     await saveBandDataToDrive('_band', 'gigs', existing);
     alert('✅ Gig saved!');
     loadGigs();
+}
+
+// ============================================================================
+// SEED DATA — Pre-populate past gigs, setlists, and venues
+// ============================================================================
+async function seedGigData() {
+    if (!isUserSignedIn) { alert('Sign in first to seed gig data.'); return; }
+    if (!confirm('This will add sample past gigs and setlists. Continue?')) return;
+    
+    // Past gigs
+    const gigs = [
+        { venue:'Buckhead Theatre', date:'2025-11-15', time:'9:00 PM', pay:'$600 + door', soundPerson:'Mike R.', notes:'3 sets, 45 min each. Great crowd.', setlistName:'Buckhead 11/15' },
+        { venue:'Smith\'s Olde Bar', date:'2025-10-04', time:'10:00 PM', pay:'$400', soundPerson:'Dave', notes:'2 sets. Tight stage, watch monitor placement.', setlistName:'Smith\'s 10/4' },
+        { venue:'Red Light Café', date:'2025-09-20', time:'8:00 PM', pay:'$300 + tips', soundPerson:'House', notes:'Acoustic-friendly room. 2 sets.', setlistName:'Red Light 9/20' },
+        { venue:'Variety Playhouse', date:'2025-08-09', time:'8:30 PM', pay:'$800', soundPerson:'Tony', contact:'Sarah M.', notes:'Opening for local act. 1 set, 75 min. Big stage.', setlistName:'Variety 8/9' },
+        { venue:'Eddie\'s Attic', date:'2025-07-12', time:'9:00 PM', pay:'$350', soundPerson:'House', notes:'Intimate room. 2 sets. Crowd loved the Garcia stuff.', setlistName:'Eddie\'s 7/12' },
+        { venue:'Buckhead Theatre', date:'2025-06-07', time:'9:00 PM', pay:'$600 + door', soundPerson:'Mike R.', notes:'3 sets. Pierce\'s birthday show - extra long encore.', setlistName:'Buckhead 6/7' },
+        { venue:'Blind Willie\'s', date:'2025-05-17', time:'10:00 PM', pay:'$250 + tips', soundPerson:'House', notes:'Blues night. Heavy on the Garcia Band.', setlistName:'Blind Willie\'s 5/17' },
+        { venue:'The Earl', date:'2025-04-05', time:'9:30 PM', pay:'$500', soundPerson:'Jeff', notes:'Rock crowd. Leaned heavy on Phish and WSP.', setlistName:'Earl 4/5' },
+        { venue:'Terrapin Taproom', date:'2025-03-08', time:'7:00 PM', pay:'$400 + food', soundPerson:'House', notes:'Dead-themed venue. All Dead/JGB set. Very receptive.', setlistName:'Terrapin 3/8' },
+        { venue:'Smith\'s Olde Bar', date:'2025-02-01', time:'10:00 PM', pay:'$400', soundPerson:'Dave', notes:'Super Bowl weekend. Light crowd but solid performance.', setlistName:'Smith\'s 2/1' },
+    ];
+    gigs.forEach(g => g.created = new Date().toISOString());
+    
+    // Setlists matching gigs
+    const setlists = [
+        { name:'Buckhead 11/15', date:'2025-11-15', venue:'Buckhead Theatre', sets:[
+            { name:'Set 1', songs:[{title:'Alabama Getaway'},{title:'Greatest Story Ever Told'},{title:'Brown Eyed Women'},{title:'Loose Lucy'},{title:'Althea'},{title:'Tennessee Jed',transition:true},{title:'Cumberland Blues'}]},
+            { name:'Set 2', songs:[{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Estimated Prophet',transition:true},{title:'Eyes of the World'},{title:'Wharf Rat'},{title:'Sugar Magnolia'}]},
+            { name:'Encore', songs:[{title:'Ripple'}]}
+        ]},
+        { name:'Smith\'s 10/4', date:'2025-10-04', venue:'Smith\'s Olde Bar', sets:[
+            { name:'Set 1', songs:[{title:'Cold Rain and Snow'},{title:'Jack Straw'},{title:'Row Jimmy'},{title:'Bertha'},{title:'Sugaree'}]},
+            { name:'Set 2', songs:[{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Truckin\''},{title:'The Other One'},{title:'Stella Blue'},{title:'Not Fade Away'}]},
+        ]},
+        { name:'Red Light 9/20', date:'2025-09-20', venue:'Red Light Café', sets:[
+            { name:'Set 1', songs:[{title:'Friend of the Devil'},{title:'Dire Wolf'},{title:'Bird Song'},{title:'Cassidy'},{title:'Deal'}]},
+            { name:'Set 2', songs:[{title:'Help on the Way',transition:true},{title:'Slipknot',transition:true},{title:'Franklin\'s Tower'},{title:'Ship of Fools'},{title:'Brokedown Palace'}]},
+        ]},
+        { name:'Variety 8/9', date:'2025-08-09', venue:'Variety Playhouse', sets:[
+            { name:'Set 1', songs:[{title:'Shakedown Street'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Estimated Prophet'},{title:'Saint of Circumstance'},{title:'Eyes of the World'},{title:'Terrapin Station'},{title:'Morning Dew'},{title:'One More Saturday Night'}]},
+        ]},
+        { name:'Eddie\'s 7/12', date:'2025-07-12', venue:'Eddie\'s Attic', sets:[
+            { name:'Set 1', songs:[{title:'After Midnight'},{title:'Catfish John'},{title:'They Love Each Other'},{title:'Mission in the Rain'},{title:'Deal'}]},
+            { name:'Set 2', songs:[{title:'Sugaree'},{title:'Tangled Up in Blue'},{title:'Waiting for a Miracle'},{title:'Dear Prudence'},{title:'The Harder They Come'}]},
+        ]},
+        { name:'Buckhead 6/7', date:'2025-06-07', venue:'Buckhead Theatre', sets:[
+            { name:'Set 1', songs:[{title:'Feel Like a Stranger'},{title:'Althea'},{title:'Tennessee Jed'},{title:'Looks Like Rain'},{title:'Might as Well'}]},
+            { name:'Set 2', songs:[{title:'Playing in the Band'},{title:'Uncle John\'s Band'},{title:'Terrapin Station'},{title:'Morning Dew'},{title:'Casey Jones'}]},
+            { name:'Set 3', songs:[{title:'Drums',transition:true},{title:'Space',transition:true},{title:'The Other One'},{title:'Wharf Rat'},{title:'Sugar Magnolia'}]},
+            { name:'Encore', songs:[{title:'Brokedown Palace'},{title:'U.S. Blues'}]}
+        ]},
+        { name:'Blind Willie\'s 5/17', date:'2025-05-17', venue:'Blind Willie\'s', sets:[
+            { name:'Set 1', songs:[{title:'After Midnight'},{title:'That\'s What Love Will Make You Do'},{title:'Catfish John'},{title:'Waiting for a Miracle'},{title:'Tangled Up in Blue'},{title:'Deal'}]},
+            { name:'Set 2', songs:[{title:'Shining Star'},{title:'Dear Prudence'},{title:'Mission in the Rain'},{title:'Midnight Moonlight'},{title:'The Harder They Come'}]},
+        ]},
+        { name:'Earl 4/5', date:'2025-04-05', venue:'The Earl', sets:[
+            { name:'Set 1', songs:[{title:'Alaska'},{title:'Chalk Dust Torture'},{title:'Pillow Jets'},{title:'Henry Parsons Died'},{title:'Fishwater'},{title:'Aunt Avis'}]},
+            { name:'Set 2', songs:[{title:'Porch Song'},{title:'Driving Song',transition:true},{title:'Travelin\' Light'},{title:'Imitation Leather Shoes'},{title:'Ain\'t Life Grand'}]},
+        ]},
+        { name:'Terrapin 3/8', date:'2025-03-08', venue:'Terrapin Taproom', sets:[
+            { name:'Set 1', songs:[{title:'Bertha'},{title:'Greatest Story Ever Told'},{title:'Loser'},{title:'Cumberland Blues'},{title:'Jack Straw'},{title:'Friend of the Devil'},{title:'Cassidy'}]},
+            { name:'Set 2', songs:[{title:'Playing in the Band'},{title:'Scarlet Begonias',transition:true},{title:'Fire on the Mountain'},{title:'Terrapin Station'},{title:'Stella Blue'},{title:'Not Fade Away'}]},
+            { name:'Encore', songs:[{title:'Ripple'}]}
+        ]},
+        { name:'Smith\'s 2/1', date:'2025-02-01', venue:'Smith\'s Olde Bar', sets:[
+            { name:'Set 1', songs:[{title:'Cold Rain and Snow'},{title:'Brown Eyed Women'},{title:'Ramble On Rose'},{title:'Bird Song'},{title:'Deal'}]},
+            { name:'Set 2', songs:[{title:'China Cat Sunflower',transition:true},{title:'I Know You Rider'},{title:'Estimated Prophet'},{title:'Eyes of the World'},{title:'Sugar Magnolia'}]},
+        ]},
+    ];
+    setlists.forEach(sl => sl.created = new Date().toISOString());
+    
+    // Venues
+    const venues = [
+        { name:'Buckhead Theatre', address:'3110 Roswell Rd NE, Atlanta, GA 30305', phone:'(404) 843-2825', capacity:'500', stage:'30x20 ft', pA:'House JBL VTX', contact:'Sarah M.', loadIn:'Back door, 5pm', parking:'Lot behind venue', pay:'$600 + door', soundPerson:'Mike R.', notes:'Great room. 3 sets preferred.' },
+        { name:'Smith\'s Olde Bar', address:'1578 Piedmont Ave NE, Atlanta, GA 30324', phone:'(404) 875-1522', capacity:'250', stage:'20x15 ft, tight', pA:'House system, 2 monitors', contact:'Tom', loadIn:'Side door, 6pm', parking:'Street parking', pay:'$400', soundPerson:'Dave', notes:'Tight stage. Watch monitor placement on SR.' },
+        { name:'Red Light Café', address:'553 Amsterdam Ave NE, Atlanta, GA 30306', phone:'(404) 874-7828', capacity:'100', stage:'Small, acoustic friendly', contact:'Maria', parking:'Street parking', pay:'$300 + tips', notes:'Intimate room. Good for acoustic sets.' },
+        { name:'Variety Playhouse', address:'1099 Euclid Ave NE, Atlanta, GA 30307', phone:'(404) 524-7354', capacity:'1100', stage:'Large, full production', pA:'House Meyer Sound', contact:'Jake B.', loadIn:'Loading dock, 3pm', parking:'Lot across street', pay:'$800', soundPerson:'Tony', notes:'Big stage. Full production. Need to book months ahead.' },
+        { name:'Eddie\'s Attic', address:'515-B N McDonough St, Decatur, GA 30030', phone:'(404) 377-4976', capacity:'150', stage:'Medium', contact:'Front desk', parking:'Decatur Square garage', pay:'$350', notes:'Listening room vibe. Crowd is attentive. JGB material goes great here.' },
+        { name:'Blind Willie\'s', address:'828 N Highland Ave NE, Atlanta, GA 30306', phone:'(404) 873-2583', capacity:'150', stage:'Small', contact:'Bar staff', parking:'Street only', pay:'$250 + tips', notes:'Blues bar. Garcia Band and soulful stuff works best.' },
+        { name:'The Earl', address:'488 Flat Shoals Ave SE, Atlanta, GA 30316', phone:'(404) 522-3950', capacity:'300', stage:'25x18 ft', pA:'House system', contact:'Night manager', loadIn:'Front door, 5pm', parking:'Lot', pay:'$500', soundPerson:'Jeff', notes:'Rock crowd. WSP and Phish material goes over well.' },
+        { name:'Terrapin Taproom', address:'1580 Terrapin Way, Athens, GA 30601', capacity:'200', stage:'Medium outdoor', contact:'Events', parking:'Brewery lot', pay:'$400 + food', notes:'Dead-themed brewery. All Dead/JGB set is a home run. Worth the drive to Athens.' },
+    ];
+    venues.forEach(v => v.created = new Date().toISOString());
+    
+    // Save all
+    try {
+        const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        const existingSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        const existingVenues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+        
+        await saveBandDataToDrive('_band', 'gigs', [...existingGigs, ...gigs]);
+        await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...setlists]);
+        await saveBandDataToDrive('_band', 'venues', [...existingVenues, ...venues]);
+        
+        alert('✅ Seeded ' + gigs.length + ' gigs, ' + setlists.length + ' setlists, and ' + venues.length + ' venues!');
+        // Refresh current page
+        if (typeof loadGigs === 'function') loadGigs();
+        if (typeof loadSetlists === 'function') loadSetlists();
+        if (typeof loadVenues === 'function') loadVenues();
+    } catch(e) {
+        console.error('Seed error:', e);
+        alert('Error seeding data: ' + e.message);
+    }
 }
 
 // ============================================================================
@@ -8541,15 +8656,9 @@ console.log('📦 Settings, Equipment, Contacts loaded');
 
 // Band dropdown filter (#7)
 function filterByBand(band) {
-    // Reuse existing filter mechanism - simulate the button click
-    if (typeof currentBandFilter !== 'undefined') currentBandFilter = band;
-    // Trigger existing renderSongs with filter
-    const btns = document.querySelectorAll('.filter-btn[data-filter]');
-    btns.forEach(b => b.classList.remove('active'));
-    const match = document.querySelector('.filter-btn[data-filter="'+band+'"]');
-    if (match) match.classList.add('active');
-    // If renderSongs exists and uses currentBandFilter, call it
-    if (typeof renderSongs === 'function') renderSongs();
+    currentFilter = band || 'all';
+    const searchTerm = document.getElementById('songSearch')?.value || '';
+    renderSongs(currentFilter, searchTerm);
 }
 
 // ---- MOISES ENHANCED (#18) ----

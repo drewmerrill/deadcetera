@@ -13,11 +13,11 @@ a{color:var(--accent-light);}
 .topbar-right{display:flex;align-items:center;gap:6px;}
 .topbar-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-muted);padding:6px 10px;border-radius:8px;font-size:0.78em;cursor:pointer;transition:all 0.15s;white-space:nowrap;font-weight:500;font-family:inherit;}
 .topbar-btn:hover{background:rgba(255,255,255,0.12);color:white;}
-/* CONNECTED — solid green, maximum contrast */
+/* CONNECTED — light green bg with dark green text for maximum contrast */
 .topbar-btn.connected,
 .topbar-btn.connected:hover{
-    background:#047857!important;color:#fff!important;border-color:#047857!important;
-    font-weight:700!important;text-shadow:0 1px 3px rgba(0,0,0,0.5)!important;
+    background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;
+    font-weight:700!important;
 }
 
 /* ===== SLIDE MENU ===== */
