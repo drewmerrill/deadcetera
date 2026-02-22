@@ -142,13 +142,14 @@ a{color:var(--accent-light);}
 .step-card{background:var(--bg-card)!important;border:1px solid var(--border)!important;border-radius:var(--radius)!important;padding:20px!important;margin-bottom:16px!important;}
 .step-card h2{color:var(--text)!important;margin:0!important;padding:0!important;line-height:1.2!important;}
 .step-card p,.subtitle{color:var(--text-muted)!important;margin-bottom:16px!important;}
-.step-number{background:var(--accent)!important;color:white!important;width:40px;height:40px;min-width:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1em;flex-shrink:0;line-height:1;vertical-align:middle;}
-/* Step header row: circle + title vertically centered */
-.step-card > div:first-child{display:flex!important;align-items:center!important;gap:10px!important;}
-.step-card > div:first-child h2{margin:0!important;padding:0!important;line-height:1.2!important;font-size:1.25em!important;align-self:center!important;}
-/* Inline style overrides for step headers */
-[style*="display:flex"][style*="align-items:center"] > .step-number,
-[style*="display: flex"][style*="align-items: center"] > .step-number { vertical-align: middle; }
+.step-number{background:var(--accent)!important;color:white!important;width:40px;height:40px;min-width:40px;border-radius:50%;display:flex!important;align-items:center!important;justify-content:center!important;font-weight:700;font-size:1.1em;flex-shrink:0;line-height:1;}
+/* Step header row: force everything to center-align */
+.step-card > div:first-child { display:flex!important; align-items:center!important; gap:10px!important; }
+.step-card > div:first-child > .step-number { align-self:center!important; }
+.step-card > div:first-child > h2 { margin:0!important; padding:0!important; line-height:1!important; align-self:center!important; display:block!important; }
+/* Also target step headers built with inline styles */
+div[style*="display:flex"][style*="align-items:center"] > .step-number,
+div[style*="display: flex"][style*="align-items: center"] > .step-number { align-self:center!important; }
 .search-input{background:rgba(255,255,255,0.06)!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:8px!important;}
 .search-input::placeholder{color:var(--text-dim)!important;}
 .search-input:focus{border-color:var(--accent)!important;outline:none!important;box-shadow:0 0 0 3px rgba(102,126,234,0.15)!important;}
@@ -238,16 +239,23 @@ footer p{color:var(--text-dim)!important;}
     .card-grid{grid-template-columns:repeat(2,1fr);}
 }
 
-/* Gig notes / performance tips */
+/* Gig notes / performance tips — force dark theme, no yellow */
+#gigNotesSection, #gigNotesSection * { background-color: unset; }
+#gigNotesSection { background: rgba(255,255,255,0.02) !important; border: 1px solid var(--border) !important; border-left: 1px solid var(--border) !important; }
+.gig-notes-box { background: transparent !important; color: var(--text) !important; }
 .gig-notes-box ul { list-style: none; padding: 0; margin: 0; }
-.gig-notes-box li span { color: var(--text) !important; }
-.gig-notes-box { color: var(--text) !important; }
+.gig-notes-box li, .gig-notes-box li span { color: var(--text) !important; }
 
-/* Red backgrounds always get white text */
-[style*="background:#ef4444"],[style*="background: #ef4444"],[style*="background:#dc2626"],[style*="background: #dc2626"]{color:white!important;}
-[style*="background:#ef4444"] *,[style*="background: #ef4444"] *,[style*="background:#dc2626"] *,[style*="background: #dc2626"] *{color:white!important;}
+/* Red backgrounds always get white text — all variants */
+[style*="background:#ef4444"],[style*="background: #ef4444"],[style*="background:#dc2626"],[style*="background: #dc2626"],
+[style*="background:#ff0000"],[style*="background: #ff0000"],[style*="background:#e00"],[style*="background: #e00"],
+[style*="background:red"],[style*="background: red"]{color:white!important;}
+[style*="background:#ef4444"] *,[style*="background: #ef4444"] *,[style*="background:#dc2626"] *,[style*="background: #dc2626"] *,
+[style*="background:#ff0000"] *,[style*="background: #ff0000"] *{color:white!important;}
 .btn-danger,.btn-danger *{color:white!important;}
-button[style*="background: #ef4444"],button[style*="background:#ef4444"],button[style*="background: #dc2626"],button[style*="background:#dc2626"]{color:white!important;}
+button[style*="background: #ef4444"],button[style*="background:#ef4444"],
+button[style*="background: #dc2626"],button[style*="background:#dc2626"],
+button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:white!important;}
 /* Mobile: karaoke & multi-track responsive */
 @media(max-width:600px){
     .form-grid{grid-template-columns:1fr!important;}
