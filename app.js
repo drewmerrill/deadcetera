@@ -490,11 +490,30 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register(swPath)
             .then(reg => {
                 console.log('[PWA] Service worker registered:', reg.scope);
+
+                // ── iOS PWA fix: poll for updates every 5 min ──────────────
+                // iOS installed PWAs don't receive postMessage from SW reliably.
+                // Polling reg.update() forces the browser to re-check the SW script.
+                // If the SW changed, it installs + activates, then reloads via message OR
+                // via the controllerchange event below.
+                setInterval(() => reg.update(), 5 * 60 * 1000);
+
+                // ── controllerchange fires when a new SW takes over ─────────
+                // This is the most reliable cross-platform reload trigger.
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (!refreshing) {
+                        refreshing = true;
+                        console.log('[PWA] New SW controller — reloading for update');
+                        window.location.reload();
+                    }
+                });
+
+                // ── postMessage handler (Chrome/Android) ───────────────────
                 navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data?.type === 'SW_UPDATED') {
                         console.log('[PWA] New version deployed:', event.data.version, '— reloading...');
-                        // Small delay so the SW finishes activating before reload
-                        setTimeout(() => window.location.reload(), 1000);
+                        setTimeout(() => window.location.reload(), 500);
                         return;
                     }
                     if (event.data?.type === 'NAVIGATE' && event.data.url) {
