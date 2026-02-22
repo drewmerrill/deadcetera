@@ -482,6 +482,113 @@ function getDefaultResources() {
 // INITIALIZE APP
 // ============================================================================
 
+// ── PWA: Register service worker ────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(reg => {
+                console.log('[PWA] Service worker registered:', reg.scope);
+                // Listen for SW messages (e.g. navigation from push notification click)
+                navigator.serviceWorker.addEventListener('message', event => {
+                    if (event.data?.type === 'NAVIGATE' && event.data.url) {
+                        const params = new URLSearchParams(event.data.url.split('?')[1] || '');
+                        const page = params.get('page');
+                        if (page) showPage(page);
+                    }
+                });
+            })
+            .catch(err => console.log('[PWA] SW registration failed:', err));
+    });
+}
+
+// ── PWA: Capture install prompt and show smart banner ───────────────────────
+let pwaInstallPrompt = null;
+let pwaInstalled = false;
+
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    pwaInstallPrompt = e;
+    // Show banner after a 3s delay so it doesn't pop up immediately
+    setTimeout(showPWAInstallBanner, 3000);
+});
+
+window.addEventListener('appinstalled', () => {
+    pwaInstalled = true;
+    pwaInstallPrompt = null;
+    hidePWAInstallBanner();
+    console.log('[PWA] App installed!');
+});
+
+function showPWAInstallBanner() {
+    if (pwaInstalled || document.getElementById('pwa-install-banner')) return;
+    // Don't show if already running as standalone (already installed)
+    if (window.matchMedia('(display-mode: standalone)').matches) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'pwa-install-banner';
+    banner.style.cssText = `
+        position: fixed; bottom: 70px; left: 12px; right: 12px;
+        background: linear-gradient(135deg, #1e2a4a, #252d4a);
+        border: 1px solid rgba(99,102,241,0.5);
+        border-radius: 14px; padding: 14px 16px;
+        display: flex; align-items: center; gap: 12px;
+        z-index: 8000; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        animation: slideUpBanner 0.3s ease-out;
+    `;
+    banner.innerHTML = `
+        <img src="icon-192.png" style="width:44px;height:44px;border-radius:10px;flex-shrink:0" onerror="this.style.display='none'">
+        <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:0.92em;color:#f1f5f9">Add Deadcetera to Home Screen</div>
+            <div style="font-size:0.75em;color:#94a3b8;margin-top:2px">Opens like an app, works offline</div>
+        </div>
+        <button onclick="pwaTriggerInstall()" style="
+            background:#6366f1;color:white;border:none;border-radius:8px;
+            padding:8px 14px;font-weight:700;font-size:0.82em;cursor:pointer;
+            flex-shrink:0;white-space:nowrap">
+            Install
+        </button>
+        <button onclick="hidePWAInstallBanner()" style="
+            background:none;border:none;color:#64748b;cursor:pointer;
+            font-size:1.2em;padding:4px;flex-shrink:0;line-height:1">✕</button>
+    `;
+
+    // Add animation keyframe once
+    if (!document.getElementById('pwa-banner-style')) {
+        const style = document.createElement('style');
+        style.id = 'pwa-banner-style';
+        style.textContent = `
+            @keyframes slideUpBanner {
+                from { transform: translateY(20px); opacity: 0; }
+                to   { transform: translateY(0);    opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    document.body.appendChild(banner);
+}
+
+function hidePWAInstallBanner() {
+    const b = document.getElementById('pwa-install-banner');
+    if (b) { b.style.opacity = '0'; b.style.transition = 'opacity 0.2s'; setTimeout(() => b.remove(), 250); }
+}
+
+async function pwaTriggerInstall() {
+    if (!pwaInstallPrompt) return;
+    hidePWAInstallBanner();
+    pwaInstallPrompt.prompt();
+    const { outcome } = await pwaInstallPrompt.userChoice;
+    console.log('[PWA] Install outcome:', outcome);
+    pwaInstallPrompt = null;
+}
+
+// ── Handle deep-link shortcuts (?page=xxx from manifest shortcuts) ──────────
+window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const startPage = params.get('page');
+    if (startPage) setTimeout(() => showPage(startPage), 800);
+});
+
 document.addEventListener('DOMContentLoaded', function() {
     // Preload north star cache and custom songs in parallel, then render
     Promise.all([
@@ -9178,14 +9285,47 @@ const NOTIF_EVENTS = {
 async function renderNotificationsPage(el) {
     el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading...</div>';
 
-    // Load stored contacts (keyed by member name key: brian, chris, drew, pierce, jay)
     const contacts = await loadBandDataFromDrive('_band', 'band_contacts') || {};
     const pushState = ('Notification' in window) ? Notification.permission : 'unsupported';
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const appUrl = window.location.origin + window.location.pathname.replace(/\/(index|test)\.html$/, '/');
 
     el.innerHTML = `
     <div class="page-header">
         <h1>🔔 Notifications</h1>
-        <p>Band contact info, push alerts, and practice plan sharing</p>
+        <p>Install the app, share the link, manage contacts &amp; push alerts</p>
+    </div>
+
+    <!-- INSTALL APP CARD -->
+    <div class="app-card" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.06));border-color:rgba(99,102,241,0.35)">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <img src="icon-192.png" style="width:56px;height:56px;border-radius:12px;flex-shrink:0" onerror="this.style.display='none'">
+            <div style="flex:1;min-width:180px">
+                <h3 style="margin:0 0 4px 0">📲 Install Deadcetera App</h3>
+                <p style="color:var(--text-dim);font-size:0.82em;margin:0">Add to your home screen — opens like a native app, no App Store needed</p>
+            </div>
+            ${isStandalone
+                ? '<span style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);border-radius:20px;padding:6px 16px;font-size:0.82em;font-weight:700;flex-shrink:0">✓ Already Installed</span>'
+                : `<button class="btn btn-primary" onclick="pwaTriggerInstall()" id="installAppBtn" style="flex-shrink:0">
+                    Install App
+                   </button>`
+            }
+        </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06)">
+            <div style="font-weight:600;font-size:0.85em;margin-bottom:10px;color:var(--text-muted)">📨 Share the app link with your bandmates:</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <code style="flex:1;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:0.8em;color:var(--accent-light);word-break:break-all;min-width:0">${appUrl}</code>
+                <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="navigator.clipboard.writeText('${appUrl}').then(()=>{this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy',1800)})">📋 Copy</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" onclick="notifShareAppLink('${appUrl}')">🔗 Share via Messages / Email</button>
+                <button class="btn btn-ghost btn-sm" onclick="notifSMSAppLink('${appUrl}')">💬 Text the link to band</button>
+            </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:8px;font-size:0.78em;color:var(--text-dim)">
+            <strong style="color:var(--text-muted)">iPhone instructions:</strong> Open in Safari → tap the Share button (□↑) → "Add to Home Screen"<br>
+            <strong style="color:var(--text-muted)">Android instructions:</strong> Open in Chrome → tap ⋮ menu → "Add to Home screen" or tap the Install banner
+        </div>
     </div>
 
     <!-- BAND CONTACT DIRECTORY -->
@@ -9418,6 +9558,28 @@ async function notifDeleteMember(key) {
     await saveBandDataToDrive('_band', 'band_contacts', contacts);
     document.getElementById(`contact-row-${key}`)?.remove();
     notifToast('Contact removed');
+}
+
+function notifShareAppLink(url) {
+    if (navigator.share) {
+        navigator.share({
+            title: 'Deadcetera — Band HQ',
+            text: '🎸 Our band app — songs, setlists, rehearsals, harmonies. Add it to your home screen!',
+            url: url
+        }).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(url).then(() => notifToast('📋 Link copied!'));
+    }
+}
+
+async function notifSMSAppLink(url) {
+    const phones = await notifGetAllPhones();
+    const msg = `🎸 Hey! Here's the Deadcetera band app — add it to your home screen so you always have it handy:\n\n${url}\n\niPhone: open in Safari → Share (□↑) → "Add to Home Screen"\nAndroid: open in Chrome → ⋮ menu → "Add to Home screen"`;
+    if (phones.length > 0) {
+        window.open(`sms:${phones.join(',')}?body=${encodeURIComponent(msg)}`);
+    } else {
+        notifShowSMSCopyModal(msg, 'Add phone numbers in the Band Contact Directory to auto-fill recipients.');
+    }
 }
 
 function notifTextOne(phone, name) {

@@ -1,0 +1,62 @@
+{
+  "name": "Deadcetera — Band HQ",
+  "short_name": "Deadcetera",
+  "description": "Band management app for Deadcetera — songs, setlists, rehearsals, harmonies",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1628",
+  "theme_color": "#6366f1",
+  "categories": ["music", "productivity"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Song Library",
+      "short_name": "Songs",
+      "description": "Browse all songs",
+      "url": "/?page=songs",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Practice Plan",
+      "short_name": "Practice",
+      "description": "View rehearsal plans",
+      "url": "/?page=practice",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "description": "Band schedule",
+      "url": "/?page=calendar",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
