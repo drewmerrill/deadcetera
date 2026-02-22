@@ -2,8 +2,8 @@
   "name": "Deadcetera — Band HQ",
   "short_name": "Deadcetera",
   "description": "Band management app for Deadcetera — songs, setlists, rehearsals, harmonies",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/deadcetera/",
+  "scope": "/deadcetera/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0f1628",
@@ -41,21 +41,21 @@
       "name": "Song Library",
       "short_name": "Songs",
       "description": "Browse all songs",
-      "url": "/?page=songs",
+      "url": "/deadcetera/?page=songs",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Practice Plan",
       "short_name": "Practice",
       "description": "View rehearsal plans",
-      "url": "/?page=practice",
+      "url": "/deadcetera/?page=practice",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Calendar",
       "short_name": "Calendar",
       "description": "Band schedule",
-      "url": "/?page=calendar",
+      "url": "/deadcetera/?page=calendar",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ]
