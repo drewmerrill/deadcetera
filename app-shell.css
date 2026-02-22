@@ -142,15 +142,6 @@ a{color:var(--accent-light);}
 .step-card{background:var(--bg-card)!important;border:1px solid var(--border)!important;border-radius:var(--radius)!important;padding:20px!important;margin-bottom:16px!important;}
 .step-card h2{color:var(--text)!important;margin:0!important;padding:0!important;line-height:1.2!important;}
 .step-card p,.subtitle{color:var(--text-muted)!important;margin-bottom:16px!important;}
-.step-number{background:var(--accent)!important;color:white!important;width:40px;height:40px;min-width:40px;border-radius:50%;display:flex!important;align-items:center!important;justify-content:center!important;font-weight:700;font-size:1.1em;flex-shrink:0;line-height:1;}
-/* Step header row: force everything to center-align */
-.step-card > div:first-child { display:flex!important; align-items:center!important; gap:10px!important; }
-.step-card > div:first-child > .step-number { align-self:center!important; }
-.step-card > div:first-child > h2 { margin:0!important; padding:0!important; line-height:1!important; align-self:center!important; display:block!important; }
-/* Also target step headers built with inline styles */
-div[style*="display:flex"][style*="align-items:center"] > .step-number,
-div[style*="display: flex"][style*="align-items: center"] > .step-number { align-self:center!important; }
-.search-input{background:rgba(255,255,255,0.06)!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:8px!important;}
 .search-input::placeholder{color:var(--text-dim)!important;}
 .search-input:focus{border-color:var(--accent)!important;outline:none!important;box-shadow:0 0 0 3px rgba(102,126,234,0.15)!important;}
 .filter-btn{color:var(--text-muted)!important;border-color:var(--border)!important;background:rgba(255,255,255,0.04)!important;}
@@ -178,8 +169,14 @@ div[style*="display: flex"][style*="align-items: center"] > .step-number { align
 /* ===== REFERENCE VERSIONS ===== */
 .version-title,.version-badge{color:var(--text)!important;}
 .vote-chip{color:var(--text)!important;background:rgba(255,255,255,0.06)!important;border:1px solid var(--border)!important;border-radius:20px!important;padding:4px 10px!important;font-size:0.8em!important;}
-.vote-chip.yes{background:rgba(16,185,129,0.15)!important;color:var(--green)!important;border-color:rgba(16,185,129,0.3)!important;}
-.spotify-play-btn,.spotify-play-btn *{color:white!important;}
+.vote-chip.yes{background:rgba(16,185,129,0.85)!important;color:white!important;border-color:rgba(16,185,129,0.5)!important;font-weight:600!important;}
+.spotify-play-btn{color:white!important;display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:20px;border:none;cursor:pointer;font-weight:700;font-size:0.9em;}
+.spotify-play-btn *{color:white!important;}
+/* Step number + title alignment - belt AND suspenders */
+.step-number{background:var(--accent)!important;color:white!important;width:40px;height:40px;min-width:40px;border-radius:50%;display:flex!important;align-items:center!important;justify-content:center!important;font-weight:700;font-size:1.1em;flex-shrink:0;line-height:1;vertical-align:middle;}
+.step-card > div:first-child{display:flex!important;align-items:center!important;gap:12px!important;flex-direction:row!important;}
+.step-card > div:first-child > *{align-self:center!important;}
+.step-card > div:first-child > h2{margin:0!important;padding:0!important;line-height:1.1!important;display:block!important;flex:1;}
 .spotify-version-card{background:rgba(255,255,255,0.03)!important;border:1px solid var(--border)!important;border-radius:10px!important;padding:16px!important;}
 .spotify-version-card.default{border-color:var(--accent)!important;background:rgba(102,126,234,0.08)!important;}
 

@@ -564,6 +564,10 @@ function renderSongs(filter = 'all', searchTerm = '') {
         if (activeHarmonyFilter === 'harmonies') {
             if (!harmonyBadgeCache[song.title] && !harmonyCache[song.title]) return false;
         }
+        // North Star filter at data level
+        if (activeNorthStarFilter) {
+            if (!northStarCache[song.title]) return false;
+        }
         return true;
     });
     
@@ -596,6 +600,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     // Add badges after rendering (no setTimeout race condition)
     requestAnimationFrame(() => {
         addHarmonyBadges();
+        addNorthStarBadges();
         preloadAllStatuses();
         if (statusCacheLoaded) addStatusBadges();
     });
@@ -3045,10 +3050,8 @@ async function renderSpotifyVersionsWithMetadata(songTitle, bandData) {
         
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
-                ${version.addedBy === currentUserEmail ? `
-                    <button onclick="deleteSpotifyVersion(${index})" 
-                        style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center">✕</button>
-                ` : ''}
+                <button onclick="deleteSpotifyVersion(${index})" 
+                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
                 
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
@@ -3203,7 +3206,16 @@ async function deleteSpotifyVersion(versionIndex) {
 }
 
 async function saveSpotifyVersions(songTitle, versions) {
-    return await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+    const result = await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+    // Update North Star cache
+    const hasVersions = versions && versions.length > 0;
+    if (northStarCache[songTitle] !== hasVersions) {
+        northStarCache[songTitle] = hasVersions || undefined;
+        if (!hasVersions) delete northStarCache[songTitle];
+        saveMasterFile(MASTER_NORTH_STAR_FILE, northStarCache).catch(() => {});
+        addNorthStarBadges();
+    }
+    return result;
 }
 
 async function loadSpotifyVersions(songTitle) {
@@ -5595,6 +5607,7 @@ let statusPreloadRunning = false;
 
 const MASTER_STATUS_FILE = '_master_song_statuses.json';
 const MASTER_HARMONIES_FILE = '_master_harmonies.json';
+const MASTER_NORTH_STAR_FILE = '_master_north_stars.json';
 const MASTER_ACTIVITY_LOG = '_master_activity_log.json';
 
 async function preloadAllStatuses() {
@@ -5760,6 +5773,11 @@ function applyHarmonyFilter() {
     }
 }
 
+function toggleNorthStarFilter(enabled) {
+    activeNorthStarFilter = enabled;
+    renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
+}
+
 function filterSongsSync(type) {
     filterSongsAsync(type);
 }
@@ -5773,6 +5791,13 @@ async function filterSongs(type) {
 let harmonyBadgeCache = {};
 let harmonyBadgeCacheLoaded = false;
 let harmonyBadgeLoading = false;
+
+// North Star (reference version) cache
+let northStarCache = {};
+let northStarCacheLoaded = false;
+let northStarCacheLoading = false;
+let activeNorthStarFilter = false;
+
 
 async function addHarmonyBadges() {
     // Don't run multiple times simultaneously
@@ -5822,6 +5847,79 @@ async function addHarmonyBadges() {
             badge.textContent = '🎤';
             badge.title = 'Has vocal harmonies';
             badgesContainer.appendChild(badge);
+        }
+    });
+}
+
+async function addNorthStarBadges() {
+    if (northStarCacheLoading) return;
+    if (!northStarCacheLoaded) {
+        northStarCacheLoading = true;
+        try {
+            const masterData = await loadMasterFile(MASTER_NORTH_STAR_FILE);
+            if (masterData && typeof masterData === 'object' && Object.keys(masterData).length > 0) {
+                northStarCache = masterData;
+            } else {
+                // Build from data.js spotifyVersions as baseline
+                (typeof allSongs !== 'undefined' ? allSongs : []).forEach(song => {
+                    const bk = bandKnowledgeBase[song.title];
+                    if (bk?.spotifyVersions?.length > 0) northStarCache[song.title] = true;
+                });
+            }
+            northStarCacheLoaded = true;
+        } catch(e) { northStarCacheLoaded = true; }
+        northStarCacheLoading = false;
+    }
+    const songItems = document.querySelectorAll('.song-item');
+    songItems.forEach(item => {
+        const badgesContainer = item.querySelector('.song-badges');
+        if (!badgesContainer) return;
+        const existing = badgesContainer.querySelector('.northstar-badge');
+        if (existing) existing.remove();
+        const songTitle = item.dataset.title || '';
+        if (northStarCache[songTitle]) {
+            const badge = document.createElement('span');
+            badge.className = 'northstar-badge';
+            badge.textContent = '⭐';
+            badge.title = 'Has reference version';
+            badge.style.cssText = 'font-size:0.85em;flex-shrink:0;';
+            badgesContainer.appendChild(badge);
+        }
+    });
+}
+
+async function addNorthStarBadges() {
+    if (northStarCacheLoading) return;
+    if (!northStarCacheLoaded) {
+        northStarCacheLoading = true;
+        try {
+            const masterData = await loadMasterFile(MASTER_NORTH_STAR_FILE);
+            if (masterData && typeof masterData === 'object' && Object.keys(masterData).length > 0) {
+                northStarCache = masterData;
+            } else {
+                // Seed from data.js
+                (allSongs || []).forEach(song => {
+                    const bk = bandKnowledgeBase[song.title];
+                    if (bk && bk.spotifyVersions && bk.spotifyVersions.length > 0) northStarCache[song.title] = true;
+                });
+            }
+            northStarCacheLoaded = true;
+        } catch(e) { northStarCacheLoaded = true; }
+        northStarCacheLoading = false;
+    }
+    document.querySelectorAll('.song-item').forEach(item => {
+        const bc = item.querySelector('.song-badges');
+        if (!bc) return;
+        const ex = bc.querySelector('.northstar-badge');
+        if (ex) ex.remove();
+        const t = item.dataset.title || '';
+        if (northStarCache[t]) {
+            const b = document.createElement('span');
+            b.className = 'northstar-badge';
+            b.textContent = '⭐';
+            b.title = 'Has reference version (North Star)';
+            b.style.cssText = 'font-size:0.85em;flex-shrink:0;line-height:1;';
+            bc.appendChild(b);
         }
     });
 }
@@ -7713,6 +7811,7 @@ const pageRenderers = {
     tuner: renderTunerPage,
     metronome: renderMetronomePage,
     admin: renderSettingsPage,
+    social: renderSocialPage,
     help: renderHelpPage
 };
 
@@ -8142,40 +8241,58 @@ async function saveRehearsalAgenda() {
 // ============================================================================
 // CALENDAR
 // ============================================================================
+// Calendar state - persists during session
+let calViewYear = new Date().getFullYear();
+let calViewMonth = new Date().getMonth();
+
 function renderCalendarPage(el) {
-    const now = new Date();
-    const year = now.getFullYear(), month = now.getMonth();
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    el.innerHTML = `<div class="page-header"><h1>📆 Calendar</h1><p>Band schedule and availability</p></div><div id="calendarInner"></div>`;
+    renderCalendarInner();
+}
+
+function renderCalendarInner() {
+    const el = document.getElementById('calendarInner');
+    if (!el) return;
+    const year = calViewYear, month = calViewMonth;
+    const mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const today = now.getDate();
-    
-    let calHTML = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
-    dayNames.forEach((d,i) => { 
-        const isWkend = i === 0 || i === 6;
-        calHTML += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${isWkend?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`; 
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+    dNames.forEach((d,i) => {
+        const w = i===0||i===6;
+        g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`;
     });
-    for (let i = 0; i < firstDay; i++) calHTML += '<div style="aspect-ratio:1;padding:4px;"></div>';
-    for (let d = 1; d <= daysInMonth; d++) {
-        const isToday = d === today;
-        const dow = new Date(year, month, d).getDay();
-        const isWkend = dow === 0 || dow === 6;
-        calHTML += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:${isWkend?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
-            <span style="${isToday?'color:var(--accent);font-weight:700;':isWkend?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
+    for (let i=0;i<firstDay;i++) g += '<div style="aspect-ratio:1;padding:4px;"></div>';
+    for (let d=1;d<=daysInMonth;d++) {
+        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const isToday = ds===todayStr;
+        const dow = new Date(year,month,d).getDay();
+        const w = dow===0||dow===6;
+        g += `<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px;background:${w?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':''}" onclick="calDayClick(${year},${month},${d})">
+            <span style="${isToday?'color:var(--accent);font-weight:700;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
         </div>`;
     }
-    calHTML += '</div>';
+    g += '</div>';
 
     el.innerHTML = `
-    <div class="page-header"><h1>📆 Calendar</h1><p>${monthNames[month]} ${year}</p></div>
-    <div class="app-card">${calHTML}</div>
+    <div class="app-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <button class="btn btn-ghost btn-sm" onclick="calNavMonth(-1)">← Prev</button>
+            <h3 style="margin:0;font-size:1.05em;font-weight:700">${mNames[month]} ${year}</h3>
+            <button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next →</button>
+        </div>
+        ${g}
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
-        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Block Dates (Unavailable)</button>
+        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Block Dates</button>
     </div>
+    <div class="app-card" id="calEventFormArea"></div>
     <div class="app-card"><h3>📌 Upcoming Events</h3>
-        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">No events yet. Click a date to add one.</div></div>
+        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading…</div></div>
     </div>
     <div class="app-card"><h3>🚫 Blocked Dates</h3>
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
@@ -8183,41 +8300,62 @@ function renderCalendarPage(el) {
     loadCalendarEvents();
 }
 
+function calNavMonth(dir) {
+    calViewMonth += dir;
+    if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
+    if (calViewMonth < 0)  { calViewMonth = 11; calViewYear--; }
+    renderCalendarInner();
+}
+
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     const el = document.getElementById('calendarEvents');
     if (!el) return;
-    const upcoming = events.filter(e => e.date >= new Date().toISOString().split('T')[0]).sort((a,b) => (a.date||'').localeCompare(b.date||''));
-    if (upcoming.length === 0) return;
-    el.innerHTML = upcoming.map(e => `<div class="list-item" style="padding:8px 10px">
-        <span style="font-size:0.8em;color:var(--text-dim);min-width:80px">${e.date||''}</span>
-        <span style="font-weight:600;flex:1">${e.title||'Untitled'}</span>
-        <span style="font-size:0.75em;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06)">${e.type||''}</span>
-    </div>`).join('');
-    // Also load blocked dates
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    if (upcoming.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">No upcoming events. Click a date or + Add Event.</div>';
+    } else {
+        el.innerHTML = upcoming.map((e,i) => {
+            const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[e.type]||'📌';
+            return `<div class="list-item" style="padding:10px 12px;gap:10px">
+                <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
+                <span style="flex:1;font-weight:600">${typeIcon} ${e.title||'Untitled'}</span>
+                ${e.time?`<span style="font-size:0.75em;color:var(--text-muted)">${e.time}</span>`:''}
+                <div style="display:flex;gap:4px;flex-shrink:0">
+                    <button onclick="calEditEvent(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
+                    <button onclick="calDeleteEvent(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;">✕</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+    // Blocked dates
     const blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     const bEl = document.getElementById('blockedDates');
     if (bEl && blocked.length > 0) {
-        bEl.innerHTML = blocked.map(b => `<div class="list-item" style="padding:6px 10px;font-size:0.85em">
+        bEl.innerHTML = blocked.map((b,i) => `<div class="list-item" style="padding:6px 12px;font-size:0.85em">
             <span style="color:var(--red)">${b.startDate} → ${b.endDate}</span>
-            <span style="flex:1;color:var(--text-muted)">${b.person||''}: ${b.reason||''}</span>
+            <span style="flex:1;color:var(--text-muted);margin-left:8px">${b.person||''}: ${b.reason||''}</span>
+            <button onclick="calDeleteBlocked(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>
         </div>`).join('');
     }
 }
 
 function calBlockDates() {
-    const el = document.getElementById('calendarEvents');
-    if (!el) return;
-    el.innerHTML = `<div style="padding:12px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:10px;margin-bottom:12px">
-        <h3 style="font-size:0.9em;color:var(--red);margin-bottom:8px">🚫 Block Dates — I'm Unavailable</h3>
-        <div class="form-grid">
-            <div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>
-            <div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>
-            <div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>'<option value="'+m.name+'">'+m.name+'</option>').join('')}</select></div>
-            <div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>
-        </div>
-        <button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Block These Dates</button>
+    const area = document.getElementById('calEventFormArea');
+    if (!area) return;
+    area.innerHTML = `<h3 style="font-size:0.9em;color:var(--red);margin-bottom:12px">🚫 Block Dates — I'm Unavailable</h3>
+    <div class="form-grid">
+        <div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>
+        <div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>
+        <div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>'<option value="'+m.name+'">'+m.name+'</option>').join('')}</select></div>
+        <div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Block Dates</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('calEventFormArea').innerHTML=''">Cancel</button>
     </div>`;
+    area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 async function saveBlockedDates() {
@@ -8225,39 +8363,388 @@ async function saveBlockedDates() {
         person: document.getElementById('blockPerson')?.value, reason: document.getElementById('blockReason')?.value };
     if (!b.startDate || !b.endDate) { alert('Both dates required'); return; }
     const ex = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
-    ex.push(b); await saveBandDataToDrive('_band', 'blocked_dates', ex);
-    alert('✅ Dates blocked!'); loadCalendarEvents();
+    ex.push(b);
+    await saveBandDataToDrive('_band', 'blocked_dates', ex);
+    document.getElementById('calEventFormArea').innerHTML = '';
+    loadCalendarEvents();
 }
 
-function calDayClick(y, m, d) { calAddEvent(new Date(y, m, d).toISOString().split('T')[0]); }
-function calAddEvent(date) {
-    const el = document.getElementById('calendarEvents');
-    if (!el) return;
-    el.innerHTML = `<div class="form-grid">
-        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||''}"></div>
-        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType"><option value="rehearsal">🎸 Rehearsal</option><option value="gig">🎤 Gig</option><option value="meeting">👥 Meeting</option><option value="other">📌 Other</option></select></div>
-        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's"></div>
-        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time"></div>
+async function calDeleteBlocked(idx) {
+    if (!confirm('Remove this blocked date range?')) return;
+    let blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    blocked.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'blocked_dates', blocked);
+    loadCalendarEvents();
+}
+
+function calDayClick(y, m, d) {
+    calViewYear = y; calViewMonth = m;
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    calAddEvent(ds);
+}
+
+function calAddEvent(date, editIdx, existing) {
+    const area = document.getElementById('calEventFormArea');
+    if (!area) return;
+    const isEdit = editIdx !== undefined;
+    const ev = existing || {};
+    area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'✏️ Edit Event':'➕ Add Event'}</h3>
+    <div class="form-grid">
+        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}"></div>
+        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType">
+            <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>🎸 Rehearsal</option>
+            <option value="gig" ${ev.type==='gig'?'selected':''}>🎤 Gig</option>
+            <option value="meeting" ${ev.type==='meeting'?'selected':''}>👥 Meeting</option>
+            <option value="other" ${ev.type==='other'?'selected':''}>📌 Other</option>
+        </select></div>
+        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's" value="${ev.title||''}"></div>
+        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}"></div>
     </div>
-    <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="calNotes" placeholder="Optional details"></textarea></div>
-    <button class="btn btn-success" onclick="calSaveEvent()">💾 Save Event</button>`;
+    <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="calNotes" placeholder="Optional notes" style="height:60px">${ev.notes||''}</textarea></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-success" onclick="calSaveEvent(${isEdit?editIdx:'undefined'})">${isEdit?'💾 Update':'💾 Save Event'}</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('calEventFormArea').innerHTML=''">Cancel</button>
+    </div>`;
+    area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
-async function calSaveEvent() {
+async function calEditEvent(idx) {
+    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    if (upcoming[idx]) calAddEvent(upcoming[idx].date, idx, upcoming[idx]);
+}
+
+async function calDeleteEvent(idx) {
+    if (!confirm('Delete this event?')) return;
+    let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    const evToDelete = upcoming[idx];
+    if (!evToDelete) return;
+    events = events.filter(e => e !== evToDelete && !(e.date===evToDelete.date && e.title===evToDelete.title && e.created===evToDelete.created));
+    await saveBandDataToDrive('_band', 'calendar_events', events);
+    loadCalendarEvents();
+}
+
+async function calSaveEvent(editIdx) {
     const ev = {
         date: document.getElementById('calDate')?.value,
         type: document.getElementById('calType')?.value,
         title: document.getElementById('calTitle')?.value,
         time: document.getElementById('calTime')?.value,
         notes: document.getElementById('calNotes')?.value,
-        created: new Date().toISOString()
     };
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
-    const existing = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-    existing.push(ev);
-    await saveBandDataToDrive('_band', 'calendar_events', existing);
-    alert('✅ Event saved!');
+    let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    if (editIdx !== undefined) {
+        // Find event by position in upcoming sorted list
+        const today = new Date().toISOString().split('T')[0];
+        const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+        const old = upcoming[editIdx];
+        if (old) {
+            const i = events.findIndex(e => e.date===old.date && e.title===old.title);
+            if (i >= 0) { events[i] = {...events[i], ...ev}; }
+        }
+    } else {
+        ev.created = new Date().toISOString();
+        events.push(ev);
+    }
+    await saveBandDataToDrive('_band', 'calendar_events', events);
+    document.getElementById('calEventFormArea').innerHTML = '';
+    loadCalendarEvents();
 }
+
+
+// ============================================================================
+// SOCIAL MEDIA COMMAND CENTER
+// ============================================================================
+function renderSocialPage(el) {
+    el.innerHTML = `
+    <div class="page-header">
+        <h1>📣 Social Media</h1>
+        <p>Plan content, draft posts, and coordinate across platforms</p>
+    </div>
+
+    <!-- PLATFORM LINKS -->
+    <div class="app-card">
+        <h3 style="margin-bottom:12px">🔗 Our Profiles</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px" id="socialProfileLinks">
+            <div style="text-align:center;padding:12px;color:var(--text-dim);grid-column:1/-1">Loading…</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="socialEditProfiles()">✏️ Edit Profile Links</button>
+    </div>
+
+    <!-- CONTENT CALENDAR -->
+    <div class="app-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <h3 style="margin:0">📅 Content Queue</h3>
+            <button class="btn btn-primary btn-sm" onclick="socialAddPost()">+ Draft Post</button>
+        </div>
+        <div id="socialPostsList"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading…</div></div>
+    </div>
+
+    <!-- POST FORM (hidden initially) -->
+    <div class="app-card" id="socialPostFormArea" style="display:none"></div>
+
+    <!-- IDEAS BANK -->
+    <div class="app-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <h3 style="margin:0">💡 Content Ideas</h3>
+            <button class="btn btn-ghost btn-sm" onclick="socialAddIdea()">+ Add Idea</button>
+        </div>
+        <div id="socialIdeasList"></div>
+        <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid var(--border)">
+            <div style="font-size:0.8em;color:var(--text-dim);margin-bottom:8px;font-weight:600">💡 Content ideas for bands</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;font-size:0.78em;color:var(--text-muted)">
+                <span>📸 Behind-the-scenes rehearsal photos</span>
+                <span>🎵 30-sec clip of new song you're working on</span>
+                <span>🎥 Time-lapse of gear setup</span>
+                <span>📢 "We're learning [song]" announcement</span>
+                <span>🎤 Shoutout to a fan who came to a show</span>
+                <span>📆 Upcoming gig announcement with flyer</span>
+                <span>🎸 Gear spotlight — whose rig is it?</span>
+                <span>🎶 Cover preview (acoustic / stripped down)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- BEST PRACTICES -->
+    <div class="app-card">
+        <h3 style="margin-bottom:10px">📖 Band Social Media Playbook</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+            ${[
+                {icon:'📸',title:'Instagram / TikTok',tip:'Best for visual content. Post Reels of rehearsal clips, gear, live moments. Stories for day-of gig hype. Hashtags: #deadhead #gratefuldeadfan #livejam + local city tags.'},
+                {icon:'🎵',title:'Facebook',tip:'Great for local event promotion and fan community. Create an event for every gig. Share setlists after shows. Your older/local fans are here.'},
+                {icon:'▶️',title:'YouTube',tip:'Upload full live sets or highlight reels. Great long-term SEO. Fans search for "[song] cover" constantly — be in those results.'},
+                {icon:'🐦',title:'X / Twitter',tip:'Real-time gig updates, setlist reveals live during shows, quick reactions. Use it day-of for "Heading to soundcheck" energy.'},
+                {icon:'📅',title:'Posting Cadence',tip:'Aim for 3-4 posts/week total across platforms. Batch content on Sundays. Use Buffer or Later (free tiers) to schedule ahead.'},
+                {icon:'🎯',title:'Post After Shows',tip:'Best engagement window: 30 min – 2 hrs after a gig. Quick iPhone shot + setlist + "Thanks [venue]!" = easy high-engagement post.'},
+            ].map(c=>`<div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:12px">
+                <div style="font-size:1.3em;margin-bottom:6px">${c.icon}</div>
+                <div style="font-weight:600;font-size:0.85em;color:var(--accent-light);margin-bottom:4px">${c.title}</div>
+                <div style="font-size:0.78em;color:var(--text-muted);line-height:1.4">${c.tip}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(102,126,234,0.08);border-radius:8px;border:1px solid rgba(102,126,234,0.2);font-size:0.8em;color:var(--text-muted)">
+            <strong style="color:var(--accent-light)">⚡ Pro tip:</strong> Since Deadcetera is on GitHub Pages, <strong>auto-publishing</strong> to social platforms requires a paid tool like Buffer ($6/mo) or Later (free tier). 
+            Use the queue below to draft posts with text + notes, then tap "Copy & Post" to open the platform and paste instantly.
+        </div>
+    </div>`;
+    loadSocialProfiles();
+    loadSocialPosts();
+    loadSocialIdeas();
+}
+
+async function loadSocialProfiles() {
+    const profiles = (await loadBandDataFromDrive('_band', 'social_profiles') || {});
+    const container = document.getElementById('socialProfileLinks');
+    if (!container) return;
+    const platforms = [
+        {key:'instagram',icon:'📸',label:'Instagram',color:'#e1306c',url:'https://instagram.com/'},
+        {key:'facebook',icon:'👥',label:'Facebook',color:'#1877f2',url:'https://facebook.com/'},
+        {key:'youtube',icon:'▶️',label:'YouTube',color:'#ff0000',url:'https://youtube.com/'},
+        {key:'tiktok',icon:'🎵',label:'TikTok',color:'#69c9d0',url:'https://tiktok.com/'},
+        {key:'twitter',icon:'🐦',label:'X / Twitter',color:'#1da1f2',url:'https://x.com/'},
+        {key:'spotify',icon:'🟢',label:'Spotify Artist',color:'#1db954',url:'https://artists.spotify.com/'},
+    ];
+    container.innerHTML = platforms.map(p => {
+        const handle = profiles[p.key] || '';
+        const href = handle ? (handle.startsWith('http') ? handle : p.url + handle.replace('@','')) : '#';
+        return `<a href="${href}" target="${handle?'_blank':'_self'}" onclick="${!handle?'event.preventDefault();':''}" 
+            style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;text-decoration:none;cursor:${handle?'pointer':'default'};opacity:${handle?'1':'0.45'}">
+            <span style="font-size:1.5em">${p.icon}</span>
+            <span style="font-size:0.72em;font-weight:600;color:${handle?p.color:'var(--text-dim)'}">${p.label}</span>
+            <span style="font-size:0.65em;color:var(--text-dim);word-break:break-all;text-align:center">${handle||'Not set'}</span>
+        </a>`;
+    }).join('');
+}
+
+function socialEditProfiles() {
+    const area = document.getElementById('socialPostFormArea');
+    area.style.display = 'block';
+    const platforms = ['instagram','facebook','youtube','tiktok','twitter','spotify'];
+    const icons = {instagram:'📸',facebook:'👥',youtube:'▶️',tiktok:'🎵',twitter:'🐦',spotify:'🟢'};
+    loadBandDataFromDrive('_band', 'social_profiles').then(profiles => {
+        profiles = profiles || {};
+        area.innerHTML = `<h3 style="margin-bottom:12px">✏️ Edit Profile Links</h3>
+        <div class="form-grid">
+            ${platforms.map(p=>`<div class="form-row">
+                <label class="form-label">${icons[p]} ${p.charAt(0).toUpperCase()+p.slice(1)}</label>
+                <input class="app-input" id="sp_${p}" placeholder="@handle or full URL" value="${profiles[p]||''}">
+            </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-success" onclick="socialSaveProfiles(['${platforms.join("','")}'])">💾 Save</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('socialPostFormArea').style.display='none'">Cancel</button>
+        </div>`;
+        area.scrollIntoView({behavior:'smooth',block:'nearest'});
+    });
+}
+
+async function socialSaveProfiles(platforms) {
+    const profiles = {};
+    platforms.forEach(p => { const v = document.getElementById('sp_'+p)?.value.trim(); if(v) profiles[p]=v; });
+    await saveBandDataToDrive('_band', 'social_profiles', profiles);
+    document.getElementById('socialPostFormArea').style.display = 'none';
+    loadSocialProfiles();
+}
+
+async function loadSocialPosts() {
+    const posts = toArray(await loadBandDataFromDrive('_band', 'social_posts') || []);
+    const el = document.getElementById('socialPostsList');
+    if (!el) return;
+    if (posts.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">No posts drafted yet. Hit "+ Draft Post" to start building your content queue!</div>';
+        return;
+    }
+    const statusColors = {draft:'#667eea',ready:'#10b981',posted:'#64748b'};
+    const statusLabels = {draft:'✏️ Draft',ready:'✅ Ready',posted:'📤 Posted'};
+    const platformIcons = {instagram:'📸',facebook:'👥',youtube:'▶️',tiktok:'🎵',twitter:'🐦',spotify:'🟢',all:'📣'};
+    el.innerHTML = posts.map((p,i) => `<div style="padding:12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+            <span style="font-size:1.2em;flex-shrink:0">${platformIcons[p.platform||'all']||'📣'}</span>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:0.88em;margin-bottom:4px">${p.title||'Untitled Draft'}</div>
+                ${p.caption?`<div style="font-size:0.78em;color:var(--text-muted);white-space:pre-wrap;line-height:1.4">${p.caption.substring(0,120)}${p.caption.length>120?'…':''}</div>`:''}
+            </div>
+            <span style="font-size:0.68em;padding:2px 8px;border-radius:10px;background:${statusColors[p.status||'draft']}22;color:${statusColors[p.status||'draft']};font-weight:600;white-space:nowrap;flex-shrink:0">${statusLabels[p.status||'draft']}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            ${p.scheduledDate?`<span style="font-size:0.72em;color:var(--text-dim)">📅 ${p.scheduledDate}</span>`:''}
+            <div style="margin-left:auto;display:flex;gap:4px">
+                <button onclick="socialCopyPost(${i})" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.72em;font-weight:600">📋 Copy & Post</button>
+                <button onclick="socialEditPost(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.72em;">✏️</button>
+                <button onclick="socialDeletePost(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.72em;font-weight:700;">✕</button>
+            </div>
+        </div>
+    </div>`).join('');
+}
+
+let _socialPosts = [];
+async function getSocialPosts() {
+    _socialPosts = toArray(await loadBandDataFromDrive('_band', 'social_posts') || []);
+    return _socialPosts;
+}
+
+function socialAddPost(editIdx) {
+    const area = document.getElementById('socialPostFormArea');
+    area.style.display = 'block';
+    const isEdit = editIdx !== undefined;
+    const ev = isEdit ? (_socialPosts[editIdx]||{}) : {};
+    area.innerHTML = `<h3 style="margin-bottom:12px">${isEdit?'✏️ Edit Post':'📝 Draft New Post'}</h3>
+    <div class="form-grid">
+        <div class="form-row"><label class="form-label">Title / Internal Name</label><input class="app-input" id="sp_title" placeholder="e.g. Post-gig recap Sat 3/1" value="${ev.title||''}"></div>
+        <div class="form-row"><label class="form-label">Platform</label><select class="app-select" id="sp_platform">
+            ${[['all','📣 All Platforms'],['instagram','📸 Instagram'],['tiktok','🎵 TikTok'],['facebook','👥 Facebook'],['youtube','▶️ YouTube'],['twitter','🐦 X / Twitter']].map(([v,l])=>`<option value="${v}" ${(ev.platform||'all')===v?'selected':''}>${l}</option>`).join('')}
+        </select></div>
+        <div class="form-row"><label class="form-label">Status</label><select class="app-select" id="sp_status">
+            <option value="draft" ${(ev.status||'draft')==='draft'?'selected':''}>✏️ Draft</option>
+            <option value="ready" ${ev.status==='ready'?'selected':''}>✅ Ready to Post</option>
+            <option value="posted" ${ev.status==='posted'?'selected':''}>📤 Posted</option>
+        </select></div>
+        <div class="form-row"><label class="form-label">Scheduled Date (optional)</label><input class="app-input" id="sp_date" type="date" value="${ev.scheduledDate||''}"></div>
+    </div>
+    <div class="form-row" style="margin-top:8px"><label class="form-label">Caption / Copy</label>
+        <textarea class="app-textarea" id="sp_caption" placeholder="Write your post caption here…
+Hashtags, emojis, links — the whole thing." style="height:100px;white-space:pre-wrap">${ev.caption||''}</textarea>
+    </div>
+    <div class="form-row" style="margin-top:8px"><label class="form-label">Notes (internal only)</label>
+        <input class="app-input" id="sp_notes" placeholder="e.g. Need photo from Jay" value="${ev.notes||''}">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-success" onclick="socialSavePost(${isEdit?editIdx:'undefined'})">💾 ${isEdit?'Update':'Save Draft'}</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('socialPostFormArea').style.display='none'">Cancel</button>
+    </div>`;
+    area.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function socialSavePost(editIdx) {
+    const post = {
+        title: document.getElementById('sp_title')?.value.trim()||'',
+        platform: document.getElementById('sp_platform')?.value||'all',
+        status: document.getElementById('sp_status')?.value||'draft',
+        scheduledDate: document.getElementById('sp_date')?.value||'',
+        caption: document.getElementById('sp_caption')?.value||'',
+        notes: document.getElementById('sp_notes')?.value||'',
+        updatedAt: new Date().toISOString()
+    };
+    let posts = await getSocialPosts();
+    if (editIdx !== undefined && editIdx < posts.length) posts[editIdx] = {...posts[editIdx], ...post};
+    else { post.createdAt = new Date().toISOString(); posts.push(post); }
+    await saveBandDataToDrive('_band', 'social_posts', posts);
+    document.getElementById('socialPostFormArea').style.display = 'none';
+    loadSocialPosts();
+}
+
+async function socialEditPost(idx) {
+    await getSocialPosts();
+    socialAddPost(idx);
+}
+
+async function socialDeletePost(idx) {
+    if (!confirm('Delete this post draft?')) return;
+    let posts = await getSocialPosts();
+    posts.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'social_posts', posts);
+    loadSocialPosts();
+}
+
+async function socialCopyPost(idx) {
+    await getSocialPosts();
+    const p = _socialPosts[idx];
+    if (!p) return;
+    const text = p.caption || p.title || '';
+    if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        alert('✅ Caption copied to clipboard! Now open the platform and paste.');
+    } else {
+        prompt('Copy this caption:', text);
+    }
+}
+
+async function loadSocialIdeas() {
+    const ideas = toArray(await loadBandDataFromDrive('_band', 'social_ideas') || []);
+    const el = document.getElementById('socialIdeasList');
+    if (!el) return;
+    if (ideas.length === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = ideas.map((idea,i) => `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <span style="flex:1;font-size:0.85em">${idea.text}</span>
+        <button onclick="socialIdeaToPost(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:0.72em">→ Draft</button>
+        <button onclick="socialDeleteIdea(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:0.72em;font-weight:700;">✕</button>
+    </div>`).join('');
+}
+
+async function socialAddIdea() {
+    const text = prompt('Content idea:');
+    if (!text) return;
+    const ideas = toArray(await loadBandDataFromDrive('_band', 'social_ideas') || []);
+    ideas.push({text, addedAt: new Date().toISOString()});
+    await saveBandDataToDrive('_band', 'social_ideas', ideas);
+    loadSocialIdeas();
+}
+
+async function socialDeleteIdea(idx) {
+    let ideas = toArray(await loadBandDataFromDrive('_band', 'social_ideas') || []);
+    ideas.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'social_ideas', ideas);
+    loadSocialIdeas();
+}
+
+async function socialIdeaToPost(idx) {
+    const ideas = toArray(await loadBandDataFromDrive('_band', 'social_ideas') || []);
+    const idea = ideas[idx];
+    if (!idea) return;
+    await getSocialPosts();
+    // Pre-fill post form with the idea text
+    document.getElementById('socialPostFormArea').style.display = 'block';
+    socialAddPost();
+    setTimeout(() => {
+        const cap = document.getElementById('sp_caption');
+        if (cap) cap.value = idea.text;
+    }, 50);
+}
+
 
 // ============================================================================
 // GIGS

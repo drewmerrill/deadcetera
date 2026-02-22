@@ -39,6 +39,7 @@
             <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
             <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
             <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
+            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
             <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
         </div>
         <div class="menu-divider"></div>
@@ -129,6 +130,11 @@
                     🎤 Harmonies
                 </label>
                 <span title="Filter to show only songs with documented multi-part vocal harmonies" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85em;font-weight:600;color:var(--text-muted,#94a3b8);padding:7px 10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.04);min-width:140px" title="Show only songs with a North Star reference version voted on by the band">
+                    <input type="checkbox" id="northStarFilter" onchange="toggleNorthStarFilter(this.checked)" style="accent-color:#f59e0b;width:14px;height:14px">
+                    ⭐ North Star
+                </label>
+                <span title="Show only songs that have a North Star reference version chosen by the band" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
             </div>
             
             <div class="song-dropdown" id="songDropdown">
