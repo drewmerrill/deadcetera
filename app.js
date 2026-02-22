@@ -607,7 +607,6 @@ function renderSongs(filter = 'all', searchTerm = '') {
         addHarmonyBadges();
         preloadAllStatuses();
         if (statusCacheLoaded) addStatusBadges();
-        if (activeHarmonyFilter && activeHarmonyFilter !== 'all') applyHarmonyFilter();
     });
 }
 
@@ -662,14 +661,25 @@ function selectSong(songTitle) {
         setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
     }
     
-    // Show Step 2: Band Resources
+    // Show Step 2: Song Blueprint
     showBandResources(songTitle);
     
-    // Hide later steps until user continues
-    document.getElementById('step3').classList.add('hidden');
-    document.getElementById('step4').classList.add('hidden');
-    document.getElementById('step5').classList.add('hidden');
-    document.getElementById('resetContainer').classList.add('hidden');
+    // Show steps 3-5 (new sections)
+    const step3ref = document.getElementById('step3ref');
+    const step4ref = document.getElementById('step4ref');
+    const step5ref = document.getElementById('step5ref');
+    if (step3ref) step3ref.classList.remove('hidden');
+    if (step4ref) step4ref.classList.remove('hidden');
+    if (step5ref) step5ref.classList.remove('hidden');
+    
+    // Hide old steps
+    const step3 = document.getElementById('step3');
+    const step4 = document.getElementById('step4');
+    const step5 = document.getElementById('step5');
+    if (step3) step3.classList.add('hidden');
+    if (step4) step4.classList.add('hidden');
+    if (step5) step5.classList.add('hidden');
+    document.getElementById('resetContainer')?.classList.add('hidden');
     
     // Scroll to step 2 after a short delay (gives user time to see selection)
     setTimeout(() => {
@@ -1809,17 +1819,14 @@ function showBandResources(songTitle) {
     const step2 = document.getElementById('step2');
     step2.classList.remove('hidden');
     
-    // Update title with song name (#11)
+    // Update title with song name
     const titleEl = document.getElementById('step2Title');
-    if (titleEl) titleEl.innerHTML = '🎸 Steps to Master: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
+    if (titleEl) titleEl.innerHTML = 'Song Blueprint: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
     document.getElementById('bandResourcesSubtitle').textContent = 
-        `Collaborative resources for "${songTitle}"`;
+        `The DNA of "${songTitle}" — everything your band needs at a glance`;
     
     // Get band data from data.js if available
     const bandData = bandKnowledgeBase[songTitle] || {};
-    
-    // ALWAYS show the interface - even if no data yet!
-    // Band members can add data collaboratively
     
     // Render each section IN PARALLEL for fast loading
     Promise.all([
@@ -5386,6 +5393,7 @@ async function populateSongMetadata(songTitle) {
     const hasHarmonies = await loadHasHarmonies(songTitle);
     const songStatus = await loadSongStatus(songTitle);
     const songBpm = await loadSongBpm(songTitle);
+    const songKey = await loadSongKey(songTitle);
     
     const leadSelect = document.getElementById('leadSingerSelect');
     if (leadSelect) leadSelect.value = leadSinger;
@@ -5397,7 +5405,23 @@ async function populateSongMetadata(songTitle) {
     if (statusSelect) statusSelect.value = songStatus || '';
     
     const bpmInput = document.getElementById('songBpmInput');
-    if (bpmInput && songBpm) bpmInput.value = songBpm;
+    if (bpmInput) bpmInput.value = songBpm || '';
+    
+    const keySelect = document.getElementById('songKeySelect');
+    if (keySelect) keySelect.value = songKey || '';
+}
+
+async function updateSongKey(key) {
+    if (!selectedSong) return;
+    const songTitle = typeof selectedSong === 'string' ? selectedSong : selectedSong.title;
+    await saveSongDataToDrive(songTitle, 'key', key);
+    console.log('🎵 Key updated:', key);
+}
+
+async function loadSongKey(songTitle) {
+    try {
+        return await loadSongDataFromDrive(songTitle, 'key') || '';
+    } catch(e) { return ''; }
 }
 
 // ============================================================================
@@ -5588,10 +5612,6 @@ function applyHarmonyFilter() {
 }
 
 function filterSongsSync(type) {
-    // Re-render the song list first in case it was replaced with a message
-    if (document.querySelectorAll('.song-item').length === 0) {
-        renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
-    }
     filterSongsAsync(type);
 }
 

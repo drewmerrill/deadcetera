@@ -140,34 +140,31 @@
             </div>
         </div>
 
-<!-- Step 2: Band Resources (REPLACES Learning Resources) -->
+<!-- Step 2: Song Blueprint -->
 <div class="step-card hidden" id="step2">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">2</div>
-        <h2 style="margin:0" id="step2Title">🎸 Steps to Master</h2>
+        <h2 style="margin:0" id="step2Title">Song Blueprint</h2>
     </div>
-    <p class="subtitle" id="bandResourcesSubtitle">Collaborative resources for your band</p>
+    <p class="subtitle" id="bandResourcesSubtitle">The DNA of the song — everything your band needs at a glance</p>
     
     <!-- SONG METADATA -->
-    <div class="song-metadata" style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+    <div class="song-metadata" style="background:rgba(255,255,255,0.04);padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border,rgba(255,255,255,0.08))">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
             <div class="meta-item">
-                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎤 Lead Singer:</span>
-                <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" 
-                    style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer;">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎤 Lead:</span>
+                <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" class="app-select" style="width:auto;min-width:100px;padding:5px 8px;font-size:0.85em">
                     <option value="">Select...</option>
                     <option value="drew">Drew</option>
                     <option value="chris">Chris</option>
                     <option value="brian">Brian</option>
                     <option value="pierce">Pierce</option>
-                    <option value="drew,chris">Drew & Chris (trading)</option>
+                    <option value="drew,chris">Drew & Chris</option>
                 </select>
             </div>
-            
             <div class="meta-item">
-                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🎸 Status:</span>
-                <select id="songStatusSelect" onchange="updateSongStatus(this.value)"
-                    style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer; font-weight: 600;">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎯 Status:</span>
+                <select id="songStatusSelect" onchange="updateSongStatus(this.value)" class="app-select" style="width:auto;min-width:120px;padding:5px 8px;font-size:0.85em;font-weight:600">
                     <option value="">Not Started</option>
                     <option value="on_deck">📚 On Deck</option>
                     <option value="this_week">🎯 This Week</option>
@@ -175,120 +172,130 @@
                     <option value="gig_ready">✅ Gig Ready</option>
                 </select>
             </div>
-            
             <div class="meta-item">
-                <span style="font-weight: 600; color: #6b7280; margin-right: 8px;">🥁 BPM:</span>
-                <input type="number" id="songBpmInput" min="40" max="240" step="1" 
-                    placeholder="120"
-                    onchange="updateSongBpm(this.value)"
-                    style="width: 70px; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; background: white;">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎵 Key:</span>
+                <select id="songKeySelect" onchange="updateSongKey(this.value)" class="app-select" style="width:auto;min-width:70px;padding:5px 8px;font-size:0.85em">
+                    <option value="">—</option>
+                    <option>A</option><option>Am</option><option>Bb</option><option>Bbm</option>
+                    <option>B</option><option>Bm</option><option>C</option><option>Cm</option>
+                    <option>C#</option><option>C#m</option><option>D</option><option>Dm</option>
+                    <option>Eb</option><option>Ebm</option><option>E</option><option>Em</option>
+                    <option>F</option><option>Fm</option><option>F#</option><option>F#m</option>
+                    <option>G</option><option>Gm</option><option>Ab</option><option>Abm</option>
+                </select>
             </div>
-            
             <div class="meta-item">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)"
-                        style="width: 18px; height: 18px; cursor: pointer;">
-                    <span style="font-weight: 600; color: #6b7280;">🎵 Has Harmonies</span>
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🥁 BPM:</span>
+                <input type="number" id="songBpmInput" min="40" max="240" step="1" placeholder="120" onchange="updateSongBpm(this.value)"
+                    class="app-input" style="width:65px;padding:5px 8px;font-size:0.85em">
+            </div>
+            <div class="meta-item">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
+                    <span style="font-weight:600;color:var(--text-muted,#94a3b8)">🎶 Harmonies</span>
                 </label>
             </div>
         </div>
     </div>
     
-    <!-- SPOTIFY REFERENCE VERSION - Voting -->
+    <!-- SONG STRUCTURE (moved here from below) -->
+    <div class="resource-section" id="songStructureSection">
+        <div class="section-header">
+            <h3>🏗️ Song Structure</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Who starts, who cues the ending, transitions & arrangement</p>
+        </div>
+        <div id="songStructureContainer"></div>
+        <button class="secondary-btn" id="editSongStructureBtn" onclick="showSongStructureForm()" style="margin-top:12px">✏️ Add / Edit Song Structure</button>
+        <div id="songStructureFormContainer" style="display:none;margin-top:15px"></div>
+    </div>
+</div>
+
+<!-- Step 3: North Star (Reference Version) -->
+<div class="step-card hidden" id="step3ref">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">3</div>
+        <h2 style="margin:0">The North Star</h2>
+    </div>
+    <p class="subtitle">The definitive version your band is learning — voted by the group</p>
+    
     <div class="resource-section" id="spotifySection">
         <div class="section-header">
-            <h3>🎵 Reference Version (Band Voted)</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">
-                Vote on which Spotify version to learn
-                <button onclick="searchSpotify()" style="background: none; border: none; color: #667eea; text-decoration: underline; cursor: pointer; font-size: 0.9em; padding: 0; margin-left: 15px;">🔍 Search Spotify</button>
+            <h3>⭐ Reference Version (Band Voted)</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
+                Vote on which version to learn
+                <button onclick="searchSpotify()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search Spotify</button>
             </p>
         </div>
-        
-        <div id="spotifyVersionsContainer">
-            <!-- Dynamically populated -->
-        </div>
-        
-        <button class="secondary-btn" id="addSpotifyVersionBtn" style="margin-top: 12px;">
-            + Suggest New/Alternate Version
-        </button>
+        <div id="spotifyVersionsContainer"></div>
+        <button class="secondary-btn" id="addSpotifyVersionBtn" style="margin-top:12px">+ Suggest New/Alternate Version</button>
     </div>
+</div>
+
+<!-- Step 4: Stage Cheat Sheets -->
+<div class="step-card hidden" id="step4ref">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">4</div>
+        <h2 style="margin:0">Stage Crib Notes</h2>
+    </div>
+    <p class="subtitle">Your on-stage cheat sheet — one glance and you're locked in</p>
     
-    <!-- CHORD CHART -->
     <div class="resource-section" id="personalTabsSection">
         <div class="section-header">
-            <h3>📝 Personal Tab Links</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">
-                Each person can add their own Ultimate Guitar tab link
-                <button onclick="searchUltimateGuitar()" style="background: none; border: none; color: #667eea; text-decoration: underline; cursor: pointer; font-size: 0.9em; padding: 0; margin-left: 15px;">🔍 Search Ultimate Guitar</button>
+            <h3>📋 Personal Reference Sheets</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
+                Each member's go-to tab, chord chart, or lyrics for stage/iPad
+                <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Search Ultimate Guitar</button>
             </p>
         </div>
+        <div id="personalTabsContainer"></div>
         
-        <div id="personalTabsContainer">
-            <!-- Dynamically populated -->
-        </div>
-        
-        <!-- Add Your Tab Form -->
-        <div id="addTabForm" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-top: 20px; border: 2px solid #e2e8f0;">
-            <h4 style="margin: 0 0 15px 0; color: #2d3748;">Add Your Tab Link</h4>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Tab URL:</label>
-                <input type="text" id="tabUrlInput" 
-                    placeholder="Paste your Ultimate Guitar tab link" 
-                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
-                    💡 Go to Ultimate Guitar, find your preferred tab, copy the full URL
-                </p>
+        <div id="addTabForm" style="background:rgba(255,255,255,0.03);padding:16px;border-radius:10px;margin-top:16px;border:1px solid var(--border,rgba(255,255,255,0.08))">
+            <h4 style="margin:0 0 12px 0;color:var(--text,#f1f5f9);font-size:0.95em">Add Your Reference</h4>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Tab/Chart URL:</label>
+                <input type="text" id="tabUrlInput" placeholder="Paste Ultimate Guitar, Chordify, or any link" class="app-input" style="width:100%;box-sizing:border-box">
             </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Notes (optional):</label>
-                <input type="text" id="tabNotesInput" 
-                    placeholder="E.g., Lead guitar tab, Bass with my edits, etc." 
-                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Notes (optional):</label>
+                <input type="text" id="tabNotesInput" placeholder="E.g., Lead tab with my edits" class="app-input" style="width:100%;box-sizing:border-box">
             </div>
-            
-            <button onclick="addPersonalTab()" 
-                style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                ➕ Add My Tab Link
-            </button>
+            <button onclick="addPersonalTab()" class="btn btn-primary" style="width:100%">➕ Add My Reference</button>
         </div>
     </div>
+</div>
+
+<!-- Step 5: Practice Workshop -->
+<div class="step-card hidden" id="step5ref">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">5</div>
+        <h2 style="margin:0">The Woodshed</h2>
+    </div>
+    <p class="subtitle">Practice tools, stems, harmony parts & band notes</p>
     
     <!-- MOISES STEMS -->
     <div class="resource-section" id="moisesSection">
         <div class="section-header">
-            <h3>🎚️ Moises Stems (Isolate Practice Parts)</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Isolate practice parts</p>
+            <h3>🎚️ Moises Stems</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Isolate individual instruments for practice</p>
         </div>
-        
-        <div id="moisesStemsContainer">
-            <!-- Dynamically populated -->
-        </div>
+        <div id="moisesStemsContainer"></div>
     </div>
     
     <!-- PRACTICE TRACKS -->
     <div class="resource-section" id="practiceTracksSection">
         <div class="section-header">
             <h3>🎵 Practice Tracks</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Add videos instantly - auto-fetches title & thumbnail!</p>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Add videos — auto-fetches title & thumbnail</p>
         </div>
-        
-        <!-- Simple Add Form -->
-        <div id="practiceTrackAddForm" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0;">
-            <h4 style="margin: 0 0 15px 0; color: #2d3748;">Add Practice Track</h4>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Video URL:</label>
-                <input type="text" id="practiceTrackUrlInput" 
-                    placeholder="Paste YouTube, YouTube Shorts, Vimeo, or any video URL" 
-                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+        <div id="practiceTrackAddForm" style="background:rgba(255,255,255,0.03);padding:16px;border-radius:10px;margin-bottom:16px;border:1px solid var(--border,rgba(255,255,255,0.08))">
+            <h4 style="margin:0 0 12px 0;color:var(--text,#f1f5f9);font-size:0.95em">Add Practice Track</h4>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Video URL:</label>
+                <input type="text" id="practiceTrackUrlInput" placeholder="Paste YouTube, Vimeo, or any video URL" class="app-input" style="width:100%;box-sizing:border-box">
             </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Instrument:</label>
-                <select id="practiceTrackInstrument" 
-                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Instrument:</label>
+                <select id="practiceTrackInstrument" class="app-select" style="width:100%">
                     <option value="">-- Select Instrument --</option>
                     <option value="bass">🎸 Bass</option>
                     <option value="leadGuitar">🎸 Lead Guitar</option>
@@ -299,91 +306,44 @@
                     <option value="wholeBand">🎶 Whole Band</option>
                 </select>
             </div>
-            
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #4b5563;">Notes (optional):</label>
-                <input type="text" id="practiceTrackNotes" 
-                    placeholder="E.g., Great breakdown of the bass line" 
-                    style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em;">
+            <div style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Notes (optional):</label>
+                <input type="text" id="practiceTrackNotes" placeholder="E.g., Great breakdown of the bass line" class="app-input" style="width:100%;box-sizing:border-box">
             </div>
-            
-            <button id="addPracticeTrackBtn" class="chart-btn chart-btn-primary" onclick="addPracticeTrackSimple()" 
-                style="width: 100%; padding: 14px; font-size: 1em;">
-                ✨ Add Track (Auto-Fetch Title & Thumbnail)
-            </button>
-            
-            <p style="margin: 12px 0 0 0; font-size: 0.85em; color: #6b7280;">
-                💡 Just paste URL & select instrument - we'll fetch the rest automatically!
-            </p>
+            <button id="addPracticeTrackBtn" class="btn btn-primary" onclick="addPracticeTrackSimple()" style="width:100%">✨ Add Track (Auto-Fetch Title & Thumbnail)</button>
         </div>
-        
-        <!-- Saved Tracks -->
-        <div id="practiceTracksContainer">
-            <!-- Dynamically populated -->
-        </div>
+        <div id="practiceTracksContainer"></div>
     </div>
     
     <!-- HARMONIES -->
     <div class="resource-section" id="harmoniesSection">
         <div class="section-header">
-            <h3>🎤 Harmony Parts</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Who sings what, when</p>
+            <h3>🎶 Harmony Parts</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Who sings what, when</p>
         </div>
-        
-        <div id="harmoniesContainer">
-            <!-- Dynamically populated -->
-        </div>
+        <div id="harmoniesContainer"></div>
     </div>
     
     <!-- REHEARSAL NOTES -->
     <div class="resource-section" id="rehearsalNotesSection">
         <div class="section-header">
             <h3>📋 Rehearsal Notes</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">Band feedback and tips - anyone can add!</p>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Band feedback and tips — anyone can add</p>
         </div>
-        
         <div id="rehearsalNoteFormContainer"></div>
-        
-        <div id="rehearsalNotesContainer">
-            <!-- Dynamically populated -->
-        </div>
-        
-        <button class="secondary-btn" onclick="showRehearsalNoteForm()" style="margin-top: 12px;">
-            + Add Note
-        </button>
+        <div id="rehearsalNotesContainer"></div>
+        <button class="secondary-btn" onclick="showRehearsalNoteForm()" style="margin-top:12px">+ Add Note</button>
     </div>
     
-    <!-- SONG STRUCTURE -->
-    <div class="resource-section" id="songStructureSection">
-        <div class="section-header">
-            <h3>🎭 Song Structure</h3>
-            <p style="color: #6b7280; font-size: 0.9em;">How the song starts and ends</p>
-        </div>
-        
-        <div id="songStructureContainer">
-            <!-- Dynamically populated -->
-        </div>
-        
-        <button class="secondary-btn" id="editSongStructureBtn" onclick="showSongStructureForm()" style="margin-top: 12px;">
-            ✏️ Edit Song Structure
-        </button>
-        
-        <div id="songStructureFormContainer" style="display: none; margin-top: 15px;">
-            <!-- Form will be inserted here -->
-        </div>
-    </div>
-    
-    <!-- GIG NOTES -->
+    <!-- GIG NOTES / PERFORMANCE TIPS -->
     <div class="resource-section" id="gigNotesSection">
         <div class="section-header">
-            <h3>🎸 Performance Tips</h3>
+            <h3>🎤 Performance Tips</h3>
         </div>
-        
-        <div id="gigNotesContainer">
-            <!-- Dynamically populated -->
-        </div>
+        <div id="gigNotesContainer"></div>
     </div>
-</div>
+    
+    <!-- MULTI-TRACK STUDIO (Audio Snippets) -->
         <!-- Step 3: Version Selection (renumbered from Step 2) -->
         <div class="step-card hidden" id="step3">
             <div class="step-number">3</div>
