@@ -10848,9 +10848,12 @@ async function plRenderIndex(playlists, listens, typeFilter) {
 
 
 // ── Playlist Player ──────────────────────────────────────────────────────────
-// Opens a full-screen modal listing all songs in the playlist.
-// Each song row shows its best source and opens it on click.
-// "Open All in Tabs" opens every song at once (user may need to allow popups).
+// Queue-based player: one song at a time. Tap ▶ Open to launch it in Spotify/YouTube,
+// then tap ▶▶ Next when you're ready for the next song. No tab explosion.
+
+let _plPlayerSongs = [];      // resolved songs for current session
+let _plPlayerIndex = 0;       // which song is "now playing"
+let _plPlayerPlaylist = null; // current playlist object
 
 async function plPlay(playlistId) {
     const playlists = await loadPlaylists();
@@ -10860,92 +10863,156 @@ async function plPlay(playlistId) {
     const songs = await getPlaylistSongs(pl);
     if (!songs.length) { showToast('This playlist has no songs yet', 2000); return; }
 
-    // Build modal shell immediately, resolve URLs progressively
+    _plPlayerPlaylist = pl;
+    _plPlayerIndex = 0;
+    _plPlayerSongs = songs; // store raw songs, resolve on demand
+
+    plPlayerRender();
+}
+
+function plPlayerRender() {
     const existing = document.getElementById('plPlayerModal');
     if (existing) existing.remove();
 
+    const pl = _plPlayerPlaylist;
+    const songs = _plPlayerSongs;
+    const idx = _plPlayerIndex;
+    const current = songs[idx];
+    const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
+    const total = songs.length;
+
     const modal = document.createElement('div');
     modal.id = 'plPlayerModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;overflow:hidden';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;flex-direction:column;overflow:hidden';
 
-    const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
+    // Build the song queue list (all songs, current one highlighted)
+    const queueRows = songs.map((s, i) => {
+        const isCurrent = i === idx;
+        const isDone = i < idx;
+        return `<div id="plQueueRow_${i}" onclick="plPlayerJumpTo(${i})"
+            style="padding:10px 16px;display:flex;align-items:center;gap:10px;
+                   cursor:pointer;transition:background 0.15s;
+                   background:${isCurrent ? 'rgba(102,126,234,0.15)' : 'transparent'};
+                   border-left:3px solid ${isCurrent ? 'var(--accent)' : 'transparent'}">
+            <span style="font-size:0.78em;min-width:22px;text-align:right;flex-shrink:0;
+                         color:${isCurrent ? 'var(--accent-light)' : isDone ? 'var(--green)' : 'var(--text-dim)'}">
+                ${isDone ? '✓' : isCurrent ? '▶' : i + 1}
+            </span>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:0.88em;font-weight:${isCurrent ? '700' : '500'};
+                            color:${isCurrent ? 'var(--text)' : isDone ? 'var(--text-dim)' : 'var(--text-muted)'};
+                            white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                    ${s.songTitle}
+                </div>
+                ${s.note ? `<div style="font-size:0.72em;color:var(--text-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.note}</div>` : ''}
+            </div>
+            ${isCurrent ? `<span style="font-size:0.7em;color:var(--accent-light);flex-shrink:0">Now</span>` : ''}
+        </div>`;
+    }).join('');
 
     modal.innerHTML = `
-        <div style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <!-- Header -->
+        <div style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
             <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:1em;color:var(--text)">${pl.name || 'Playlist'}</div>
-                <div style="font-size:0.78em;color:var(--text-muted);margin-top:2px">
-                    <span style="padding:1px 8px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};font-weight:600">${meta.label}</span>
-                    &nbsp;${songs.length} songs &nbsp;·&nbsp; Tap a song to open it
+                <div style="font-weight:700;font-size:0.95em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pl.name || 'Playlist'}</div>
+                <div style="font-size:0.72em;color:var(--text-muted);margin-top:2px">
+                    <span style="padding:1px 7px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};font-weight:600">${meta.label}</span>
+                    &nbsp;Song ${idx + 1} of ${total}
                 </div>
             </div>
-            <button onclick="document.getElementById('plPlayerModal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.4em;cursor:pointer;flex-shrink:0;padding:4px">✕</button>
+            <button onclick="document.getElementById('plPlayerModal').remove()"
+                style="background:none;border:none;color:var(--text-muted);font-size:1.4em;cursor:pointer;flex-shrink:0;padding:4px;line-height:1">✕</button>
         </div>
-        <div style="flex:1;overflow-y:auto;padding:8px 0" id="plPlayerList">
-            ${songs.map((s,i) => `
-                <div style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.05)" id="plPlayerRow_${i}">
-                    <span style="color:var(--text-dim);font-size:0.82em;min-width:24px;text-align:right;flex-shrink:0">${i+1}</span>
-                    <div style="flex:1;min-width:0">
-                        <div style="font-weight:600;font-size:0.92em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.songTitle}</div>
-                        ${s.note ? `<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.note}</div>` : ''}
-                    </div>
-                    <div id="plPlayerBtn_${i}" style="flex-shrink:0">
-                        <span style="font-size:0.75em;color:var(--text-dim)">⏳</span>
-                    </div>
-                </div>`).join('')}
+
+        <!-- Now Playing card -->
+        <div style="background:rgba(102,126,234,0.08);border-bottom:1px solid var(--border);padding:20px 20px 16px;flex-shrink:0">
+            <div style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--accent-light);text-transform:uppercase;margin-bottom:6px">Now Playing</div>
+            <div style="font-size:1.15em;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.3">${current.songTitle}</div>
+            ${current.note ? `<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:10px">${current.note}</div>` : '<div style="margin-bottom:10px"></div>'}
+
+            <!-- Action buttons -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <button id="plOpenBtn" onclick="plPlayerOpenCurrent()"
+                    class="btn btn-primary" style="font-size:0.88em;padding:9px 18px;gap:6px">
+                    ⏳ Loading…
+                </button>
+                ${idx > 0 ? `
+                <button onclick="plPlayerJumpTo(${idx - 1})"
+                    class="btn btn-ghost" style="font-size:0.82em;padding:8px 14px">
+                    ◀ Prev
+                </button>` : ''}
+                ${idx < total - 1 ? `
+                <button onclick="plPlayerJumpTo(${idx + 1})"
+                    class="btn btn-success" style="font-size:0.88em;padding:9px 18px">
+                    Next ▶▶
+                </button>` : `
+                <div style="font-size:0.82em;color:var(--green);padding:8px;font-weight:600">
+                    ✅ End of playlist
+                </div>`}
+                <div style="flex:1"></div>
+                <div style="font-size:0.72em;color:var(--text-dim);text-align:right;line-height:1.4">
+                    Opens in Spotify<br>or YouTube
+                </div>
+            </div>
         </div>
-        <div style="background:var(--bg-card);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
-            <button class="btn btn-primary" onclick="plPlayOpenAll()" style="font-size:0.82em">↗ Open All in Tabs</button>
-            <div style="font-size:0.72em;color:var(--text-dim);display:flex;align-items:center">(allow popups if prompted)</div>
+
+        <!-- Queue -->
+        <div style="flex:1;overflow-y:auto" id="plQueueList">
+            ${queueRows}
         </div>`;
 
     document.body.appendChild(modal);
 
-    // Store resolved URLs for "Open All" button
-    window._plPlayerResolvedUrls = [];
+    // Scroll current song into view in the queue
+    setTimeout(() => {
+        const row = document.getElementById(`plQueueRow_${idx}`);
+        if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 100);
 
-    // Resolve each song URL progressively so the modal appears instantly
-    for (let i = 0; i < songs.length; i++) {
-        const s = songs[i];
-        const resolved = await resolvePlaylistSongUrl(s);
-        window._plPlayerResolvedUrls[i] = resolved;
+    // Resolve the current song's URL (and pre-resolve next)
+    plPlayerResolveAndUpdate(idx);
+    if (idx + 1 < songs.length) plPlayerResolveAndUpdate(idx + 1);
+}
 
-        const srcMeta = getSourceMeta(resolved.source);
-        const btn = document.getElementById(`plPlayerBtn_${i}`);
-        if (!btn) continue; // modal was closed
+// Cache of resolved URLs so we don't re-fetch on navigation
+const _plPlayerUrlCache = {};
 
-        btn.innerHTML = `
-            <a href="${resolved.url}" target="_blank" rel="noopener"
-               onclick="plMarkRowPlayed(${i})"
-               style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;
-                      background:${srcMeta.bg};color:${srcMeta.color};font-size:0.78em;font-weight:600;
-                      text-decoration:none;border:1px solid ${srcMeta.color}33;white-space:nowrap">
-                ${srcMeta.icon} ${srcMeta.label}
-            </a>`;
-
-        // Make entire row clickable too
-        const row = document.getElementById(`plPlayerRow_${i}`);
-        if (row) {
-            row.style.cursor = 'pointer';
-            row.onclick = (e) => {
-                if (e.target.closest('a')) return; // let link handle it
-                window.open(resolved.url, '_blank', 'noopener');
-                plMarkRowPlayed(i);
-            };
-        }
+async function plPlayerResolveAndUpdate(idx) {
+    if (_plPlayerUrlCache[idx]) {
+        plPlayerUpdateOpenBtn(idx, _plPlayerUrlCache[idx]);
+        return;
     }
+    const song = _plPlayerSongs[idx];
+    if (!song) return;
+    const resolved = await resolvePlaylistSongUrl(song);
+    _plPlayerUrlCache[idx] = resolved;
+    if (idx === _plPlayerIndex) plPlayerUpdateOpenBtn(idx, resolved);
 }
 
-function plMarkRowPlayed(idx) {
-    const row = document.getElementById(`plPlayerRow_${idx}`);
-    if (row) row.style.background = 'rgba(16,185,129,0.06)';
+function plPlayerUpdateOpenBtn(idx, resolved) {
+    if (idx !== _plPlayerIndex) return; // user moved on
+    const btn = document.getElementById('plOpenBtn');
+    if (!btn) return;
+    const srcMeta = getSourceMeta(resolved.source);
+    btn.innerHTML = `${srcMeta.icon} Open in ${srcMeta.label}`;
+    btn.style.background = srcMeta.color;
+    btn.style.color = 'white';
+    btn.dataset.url = resolved.url;
 }
 
-function plPlayOpenAll() {
-    const urls = window._plPlayerResolvedUrls || [];
-    const resolved = urls.filter(Boolean);
-    if (!resolved.length) { showToast('Still resolving URLs…', 1500); return; }
-    resolved.forEach((r, i) => setTimeout(() => window.open(r.url, '_blank', 'noopener'), i * 100));
+function plPlayerOpenCurrent() {
+    const btn = document.getElementById('plOpenBtn');
+    const url = btn?.dataset.url;
+    if (!url || url === '') { showToast('Still loading URL…', 1500); return; }
+    window.open(url, '_blank', 'noopener');
+    // Auto-highlight this row as played
+    const row = document.getElementById(`plQueueRow_${_plPlayerIndex}`);
+    if (row) row.style.borderLeftColor = 'var(--green)';
+}
+
+function plPlayerJumpTo(idx) {
+    _plPlayerIndex = idx;
+    plPlayerRender();
 }
 
 async function plConfirmDelete(playlistId) {
