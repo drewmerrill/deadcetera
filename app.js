@@ -5198,7 +5198,8 @@ let isUserSignedIn = false;
 let accessToken = null;
 let tokenClient = null;
 let sharedFolderId = 'firebase'; // Dummy value so existing checks pass
-let currentUserEmail = null;
+let currentUserEmail = localStorage.getItem('deadcetera_google_email') || null;
+// ^ Pre-populated from last session so Profile shows email before auth re-fires
 
 // Firebase references (set during init)
 let firebaseDB = null;
@@ -5395,6 +5396,8 @@ async function getCurrentUserEmail() {
         const userInfo = await response.json();
         currentUserEmail = userInfo.email;
         console.log('👤 Signed in as:', currentUserEmail);
+        // Persist email to localStorage so Profile page can show it immediately on reload
+        localStorage.setItem('deadcetera_google_email', currentUserEmail);
         // Sign-in is critical — save immediately, don't wait for debounce
         logActivity('sign_in').then(() => {
             if (activityLogCache) {
@@ -5508,6 +5511,8 @@ async function handleGoogleDriveAuth() {
         google.accounts.oauth2.revoke(accessToken, () => {
             console.log('👋 User signed out');
             accessToken = null;
+            currentUserEmail = null;
+            localStorage.removeItem('deadcetera_google_email');
             updateSignInStatus(false);
         });
     } else {
@@ -10788,7 +10793,7 @@ function settingsTab(tab, btn) {
                     </select></div>
             </div>
             <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
-                🔗 Google: <span style="color:var(--text-muted)">${localStorage.getItem('deadcetera_google_email')||'Not connected'}</span>
+                🔗 Google: <span style="color:${isUserSignedIn && currentUserEmail ? '#10b981' : 'var(--text-muted)'}">${isUserSignedIn && currentUserEmail ? currentUserEmail : 'Not connected — click Sign In above'}</span>
             </div>
         </div>
         <div class="app-card"><h3>🔔 Preferences</h3>
@@ -10912,11 +10917,11 @@ async function loadFeedbackHistory() {
 function checkSyncStatus() {
     const el = document.getElementById('syncStatus');
     if (!el) return;
-    const isAuth = !!localStorage.getItem('deadcetera_google_email');
+    const isAuth = isUserSignedIn && !!currentUserEmail;
     el.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="width:8px;height:8px;border-radius:50%;background:${isAuth?'var(--green)':'var(--yellow)'}"></span>
-            Google Drive: ${isAuth?'Connected':'Not connected'}
+            Google: ${isAuth ? currentUserEmail : 'Not signed in'}
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
