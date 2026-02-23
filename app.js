@@ -619,7 +619,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
     // Google Identity (for user email) is still loaded on first "Connect" click.
-    initFirebaseOnly().catch(err => {
+    initFirebaseOnly().then(() => {
+        // Retry status/north-star preload now that Firebase is connected
+        // (First attempt at DOMContentLoaded may have run before Firebase was ready)
+        statusCacheLoaded = false;
+        statusPreloadRunning = false;
+        preloadAllStatuses();
+        preloadNorthStarCache();
+    }).catch(err => {
         console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
     });
 
@@ -3429,9 +3436,9 @@ async function saveRefVersionFromModal() {
     if (!url) { alert('Please paste a URL'); return; }
     try { new URL(url); } catch(e) { alert('Please paste a valid URL'); return; }
     
-    if (!firebaseDB) {
-        const proceed = confirm('⚠️ Not connected to Firebase yet.\n\nYour link will save to this browser only and won\'t be visible to other band members.\n\nProceed anyway?');
-        if (!proceed) return;
+    if (!isUserSignedIn || !firebaseDB) {
+        showSignInNudge();
+        // Still proceed — data saves to localStorage and will sync when they sign in
     }
     
     let platform = 'link';
@@ -5201,6 +5208,47 @@ let firebaseStorage = null;
 // FIREBASE INITIALIZATION
 // ============================================================================
 
+// ── Sign-in nudge banner — shown once per session when unsaved data risk ────
+let signInNudgeShown = false;
+function showSignInNudge() {
+    if (signInNudgeShown || isUserSignedIn) return;
+    signInNudgeShown = true;
+    
+    // Don't stack with existing nudge
+    if (document.getElementById('signInNudgeBanner')) return;
+    
+    const banner = document.createElement('div');
+    banner.id = 'signInNudgeBanner';
+    banner.style.cssText = `
+        position: fixed; bottom: 76px; left: 12px; right: 12px;
+        background: linear-gradient(135deg, #1e2a4a, #2d1f4e);
+        border: 1px solid rgba(245,158,11,0.5);
+        border-radius: 14px; padding: 14px 16px;
+        display: flex; align-items: center; gap: 12px;
+        z-index: 8500; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        animation: slideUpBanner 0.3s ease-out;
+    `;
+    banner.innerHTML = `
+        <span style="font-size:1.6em;flex-shrink:0">⚠️</span>
+        <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:0.9em;color:#fbbf24">Sign in to share with the band</div>
+            <div style="font-size:0.75em;color:#94a3b8;margin-top:2px">Your changes are saved on this device only until you sign in</div>
+        </div>
+        <button onclick="handleGoogleDriveAuth();document.getElementById('signInNudgeBanner')?.remove()" style="
+            background:#f59e0b;color:#1a1a1a;border:none;border-radius:8px;
+            padding:8px 14px;font-weight:700;font-size:0.82em;cursor:pointer;
+            flex-shrink:0;white-space:nowrap">
+            Sign In
+        </button>
+        <button onclick="document.getElementById('signInNudgeBanner')?.remove()" style="
+            background:none;border:none;color:#64748b;cursor:pointer;
+            font-size:1.2em;padding:4px;flex-shrink:0;line-height:1">✕</button>
+    `;
+    document.body.appendChild(banner);
+    // Auto-dismiss after 12 seconds
+    setTimeout(() => banner?.remove(), 12000);
+}
+
 // ── Lightweight Firebase-only init (no Google Identity) ─────────────────────
 // Called automatically on page load so firebaseDB is ready immediately.
 // loadGoogleDriveAPI() (full init including Google Identity) is called on 
@@ -5613,7 +5661,7 @@ async function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
 
 async function updateLeadSinger(singer) {
     if (!selectedSong || !selectedSong.title) return;
-    
+    if (!isUserSignedIn) showSignInNudge();
     await saveBandDataToDrive(selectedSong.title, 'lead_singer', { singer });
     console.log(`🎤 Lead singer updated: ${singer} - saved to Google Drive!`);
 }
@@ -5843,6 +5891,7 @@ async function loadHasHarmonies(songTitle) {
 
 async function updateSongStatus(status) {
     if (!selectedSong || !selectedSong.title) return;
+    if (!isUserSignedIn) showSignInNudge();
     
     const statusNames = {
         '': 'Not Started',
@@ -5942,6 +5991,7 @@ async function addStatusBadges() {
 
 async function updateSongBpm(bpm) {
     if (!selectedSong || !selectedSong.title) return;
+    if (!isUserSignedIn) showSignInNudge();
     
     const bpmNum = parseInt(bpm);
     if (isNaN(bpmNum) || bpmNum < 40 || bpmNum > 240) {
@@ -6380,16 +6430,18 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
     
     if (!firebaseDB) {
         console.warn('⚠️ Firebase not ready — saved to localStorage only (not shared with band)');
+        showSignInNudge();
         return false;
     }
     
     try {
         const path = songPath(songTitle, dataType);
         await firebaseDB.ref(path).set(data);
-        console.log(`✅ Saved ${dataType} for ${songTitle} to Firebase`);
         return true;
     } catch (error) {
         console.error('❌ Failed to save to Firebase:', error);
+        // Show error toast so user knows their save didn't reach the band
+        showToast('⚠️ Could not sync to band — check your connection');
         return false;
     }
 }
