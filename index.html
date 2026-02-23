@@ -85,6 +85,8 @@
         <div id="page-songs" class="app-page">
     <div class="container">
         <header>
+            <!-- Logo placeholder - replace logo.png with your actual logo -->
+            <img src="logo.png" alt="Deadcetera" class="logo" onerror="this.style.display='none'">
             <h1>🎸 Deadcetera</h1>
             <p class="subtitle">One app to jam, plan, and manage — so you can focus on the music.</p>
             
@@ -92,7 +94,9 @@
             <div id="signInPrompt" style="text-align:center;margin-top:12px;">
                 <div style="position:relative;display:inline-block;">
                     <button id="googleDriveAuthBtn2" onclick="handleGoogleDriveAuth()" 
-                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;">
+                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;"
+                        onmouseenter="document.getElementById('signInTooltip').style.display='block'"
+                        onmouseleave="document.getElementById('signInTooltip').style.display='none'">
                         👤 Sign In
                     </button>
                     <button onclick="const t=document.getElementById('signInTooltip');t.style.display=t.style.display==='block'?'none':'block';event.stopPropagation();"

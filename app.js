@@ -6130,6 +6130,15 @@ async function showAdminPanel() {
 // BAND CONFIGURATION
 // ============================================================================
 
+const BAND_MEMBER_EMAILS = [
+    'drewmerrill1029@gmail.com',   // Drew (owner)
+    'pierce.d.hale@gmail.com',     // Pierce
+    'brian@hrestoration.com',      // Brian
+    'cmjalbert@gmail.com',         // Chris
+    'jnault@fegholdings.com'       // Jay
+];
+const OWNER_EMAIL = 'drewmerrill1029@gmail.com';
+
 // ============================================================================
 // MULTI-TRACK HARMONY STUDIO v3
 // ============================================================================
