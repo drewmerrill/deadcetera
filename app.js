@@ -586,24 +586,25 @@ document.addEventListener('DOMContentLoaded', function() {
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
     // Google Identity (for user email) is still loaded on first "Connect" click.
+    // Render songs immediately from built-in data (fast, no Firebase needed)
+    renderSongs();
+
+    // Then init Firebase and reload everything that depends on it
     initFirebaseOnly().then(() => {
-        // Retry status/north-star preload now that Firebase is connected
-        // (First attempt at DOMContentLoaded may have run before Firebase was ready)
+        // Now that Firebase is ready, load custom songs and re-render
+        // (Running before this would fall back to localStorage → invisible in incognito)
+        loadCustomSongs().then(() => renderSongs());
+
+        // Also load statuses and north stars with live Firebase data
         statusCacheLoaded = false;
         statusPreloadRunning = false;
         preloadAllStatuses();
         preloadNorthStarCache();
+        backgroundScanNorthStars();
     }).catch(err => {
         console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
-    });
-
-    // Preload north star cache and custom songs in parallel, then render
-    Promise.all([
-        preloadNorthStarCache(),
-        loadCustomSongs()
-    ]).then(() => {
-        renderSongs();
-        backgroundScanNorthStars(); // background scan after render
+        // Fallback: try loading custom songs from localStorage anyway
+        loadCustomSongs().then(() => renderSongs());
     });
     setupSearchAndFilters();
     setupInstrumentSelector();
@@ -656,6 +657,13 @@ function updateCustomSongCount() {
     if (badge) {
         badge.textContent = count;
         badge.style.display = count > 0 ? 'inline' : 'none';
+    }
+    // Update button tooltip so the count makes sense
+    const btn = document.getElementById('customSongBtn');
+    if (btn) {
+        btn.title = count > 0
+            ? `${count} custom song${count !== 1 ? 's' : ''} added by the band`
+            : 'Add a custom song not in the library';
     }
 }
 
