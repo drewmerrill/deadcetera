@@ -5395,7 +5395,13 @@ async function getCurrentUserEmail() {
         const userInfo = await response.json();
         currentUserEmail = userInfo.email;
         console.log('👤 Signed in as:', currentUserEmail);
-        logActivity('sign_in');
+        // Sign-in is critical — save immediately, don't wait for debounce
+        logActivity('sign_in').then(() => {
+            if (activityLogCache) {
+                saveMasterFile(MASTER_ACTIVITY_LOG, activityLogCache).catch(() => {});
+                activityLogDirty = false;
+            }
+        });
         injectAdminButton();
         // Re-update button now that we have the email
         updateDriveAuthButton();
@@ -6864,7 +6870,7 @@ async function logActivity(action, details = {}) {
                 activityLogDirty = false;
             }
             activityLogSaveTimer = null;
-        }, 10000);
+        }, 3000); // 3s debounce (was 10s) — less data lost if tab closes quickly
     }
 }
 
@@ -6904,16 +6910,27 @@ function injectAdminButton() {
 }
 
 async function showAdminPanel() {
-    // Load activity log
-    let log = activityLogCache;
-    if (!log) {
-        log = await loadMasterFile(MASTER_ACTIVITY_LOG) || [];
-        activityLogCache = log;
-    }
-    
     // Remove existing panel if open
     const existing = document.getElementById('adminPanel');
     if (existing) { existing.remove(); return; }
+
+    // Show loading state immediately
+    const loadingPanel = document.createElement('div');
+    loadingPanel.id = 'adminPanel';
+    loadingPanel.style.cssText = `position:fixed;top:0;right:0;width:420px;height:100vh;background:#1a1a2e;color:#e0e0e0;z-index:10000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;`;
+    loadingPanel.innerHTML = `<div style="text-align:center"><div style="font-size:2em;margin-bottom:12px">⏳</div><div style="color:#667eea">Loading activity from Firebase...</div></div>`;
+    document.body.appendChild(loadingPanel);
+
+    // ALWAYS force-load from Firebase (never use stale local cache)
+    // This ensures you see ALL band members' activity, not just your own session
+    let log = [];
+    try {
+        log = await loadMasterFile(MASTER_ACTIVITY_LOG) || [];
+        activityLogCache = log; // Update local cache after fresh load
+    } catch(e) {
+        log = activityLogCache || [];
+    }
+    loadingPanel.remove();
     
     const panel = document.createElement('div');
     panel.id = 'adminPanel';
@@ -6933,7 +6950,6 @@ async function showAdminPanel() {
     const weekLog = log.filter(e => new Date(e.time) > last7days);
     
     // Per-member stats
-    const memberStats = {};
     const memberNames = {
         'drewmerrill1029@gmail.com': 'Drew',
         'brian@hrestoration.com': 'Brian',
@@ -6941,9 +6957,18 @@ async function showAdminPanel() {
         'cmjalbert@gmail.com': 'Chris',
         'jnault@fegholdings.com': 'Jay'
     };
-    
-    for (const email of BAND_MEMBER_EMAILS) {
-        const name = memberNames[email] || email.split('@')[0];
+
+    // Build stats for ALL emails that appear in the log (not just hardcoded 5)
+    // This catches members who signed in with a different Google account
+    const allEmails = new Set([
+        ...BAND_MEMBER_EMAILS,
+        ...recentLog.map(e => e.user).filter(Boolean)
+    ]);
+
+    const memberStats = {};
+    for (const email of allEmails) {
+        const name = memberNames[email] || ('⚠️ Unknown: ' + email.split('@')[0]);
+        const isKnown = BAND_MEMBER_EMAILS.includes(email);
         const memberEntries = recentLog.filter(e => e.user === email);
         const weekEntries = weekLog.filter(e => e.user === email);
         
@@ -6960,7 +6985,7 @@ async function showAdminPanel() {
         });
         
         memberStats[email] = {
-            name, signIns: signIns.length, lastSignIn,
+            name, email, isKnown, signIns: signIns.length, lastSignIn,
             contributions: contributions.length,
             weekContributions: weekContributions.length,
             byType,
@@ -6968,8 +6993,11 @@ async function showAdminPanel() {
         };
     }
     
-    // Sort by contributions (most active first)
-    const sorted = Object.values(memberStats).sort((a, b) => b.contributions - a.contributions);
+    // Sort: known members first (by contributions), then unknown emails
+    const sorted = Object.values(memberStats).sort((a, b) => {
+        if (a.isKnown !== b.isKnown) return a.isKnown ? -1 : 1;
+        return b.contributions - a.contributions;
+    });
     
     // Action labels
     const actionLabels = {
@@ -7026,7 +7054,7 @@ async function showAdminPanel() {
                     .join(', ') || 'No contributions yet';
                     
                 return `
-                <div style="background: #16213e; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+                <div style="background: #16213e; border-radius: 10px; padding: 14px; margin-bottom: 10px; border: 1px solid ${m.isKnown ? 'transparent' : '#f59e0b33'}">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <span style="font-size: 1.1em;">${medal} <strong>${m.name}</strong></span>
@@ -7045,10 +7073,12 @@ async function showAdminPanel() {
                         <div style="background: linear-gradient(90deg, #667eea, #10b981); height: 100%; border-radius: 4px; width: ${barWidth}%; transition: width 0.5s;"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #888;">
-                        <span>🔑 ${m.signIns} sign-ins</span>
+                        <span>🔑 ${m.signIns} sign-ins · Last: ${timeAgo(m.lastSignIn)}</span>
                         <span>Last active: ${timeAgo(m.lastActivity?.time)}</span>
                     </div>
+                    <div style="font-size: 0.7em; color: #555; margin-top: 3px;">${m.email}</div>
                     <div style="font-size: 0.72em; color: #667; margin-top: 4px;">${typeBreakdown}</div>
+                    ${!m.isKnown ? '<div style="font-size:0.72em;color:#f59e0b;margin-top:4px">⚠️ Email not in band list — may be wrong Google account</div>' : ''}
                 </div>`;
             }).join('')}
             
