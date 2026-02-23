@@ -10826,6 +10826,7 @@ async function plRenderIndex(playlists, listens, typeFilter) {
                     </div>
                 </div>
                 <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start">
+                    <button class="btn btn-sm btn-primary" onclick="plPlay('${pl.id}')" title="Play this playlist" style="font-size:0.78em;padding:4px 10px">▶ Play</button>
                     <button class="btn btn-sm btn-ghost" onclick="plEdit('${pl.id}')" title="Edit">✏️</button>
                     <button class="btn btn-sm btn-ghost" onclick="copyPlaylistShareUrl('${pl.id}')" title="Copy share link" style="color:var(--accent-light)">🔗</button>
                     <button class="btn btn-sm btn-ghost" onclick="plConfirmDelete('${pl.id}')" title="Delete" style="color:var(--red)">🗑️</button>
@@ -10834,6 +10835,108 @@ async function plRenderIndex(playlists, listens, typeFilter) {
             ${progressHTML ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px">${progressHTML}</div>` : ''}
         </div>`;
     }).join('');
+}
+
+
+// ── Playlist Player ──────────────────────────────────────────────────────────
+// Opens a full-screen modal listing all songs in the playlist.
+// Each song row shows its best source and opens it on click.
+// "Open All in Tabs" opens every song at once (user may need to allow popups).
+
+async function plPlay(playlistId) {
+    const playlists = await loadPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (!pl) { showToast('Playlist not found', 2000); return; }
+
+    const songs = await getPlaylistSongs(pl);
+    if (!songs.length) { showToast('This playlist has no songs yet', 2000); return; }
+
+    // Build modal shell immediately, resolve URLs progressively
+    const existing = document.getElementById('plPlayerModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'plPlayerModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;overflow:hidden';
+
+    const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
+
+    modal.innerHTML = `
+        <div style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:1em;color:var(--text)">${pl.name || 'Playlist'}</div>
+                <div style="font-size:0.78em;color:var(--text-muted);margin-top:2px">
+                    <span style="padding:1px 8px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};font-weight:600">${meta.label}</span>
+                    &nbsp;${songs.length} songs &nbsp;·&nbsp; Tap a song to open it
+                </div>
+            </div>
+            <button onclick="document.getElementById('plPlayerModal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.4em;cursor:pointer;flex-shrink:0;padding:4px">✕</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px 0" id="plPlayerList">
+            ${songs.map((s,i) => `
+                <div style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.05)" id="plPlayerRow_${i}">
+                    <span style="color:var(--text-dim);font-size:0.82em;min-width:24px;text-align:right;flex-shrink:0">${i+1}</span>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-weight:600;font-size:0.92em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.songTitle}</div>
+                        ${s.note ? `<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.note}</div>` : ''}
+                    </div>
+                    <div id="plPlayerBtn_${i}" style="flex-shrink:0">
+                        <span style="font-size:0.75em;color:var(--text-dim)">⏳</span>
+                    </div>
+                </div>`).join('')}
+        </div>
+        <div style="background:var(--bg-card);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
+            <button class="btn btn-primary" onclick="plPlayOpenAll()" style="font-size:0.82em">↗ Open All in Tabs</button>
+            <div style="font-size:0.72em;color:var(--text-dim);display:flex;align-items:center">(allow popups if prompted)</div>
+        </div>`;
+
+    document.body.appendChild(modal);
+
+    // Store resolved URLs for "Open All" button
+    window._plPlayerResolvedUrls = [];
+
+    // Resolve each song URL progressively so the modal appears instantly
+    for (let i = 0; i < songs.length; i++) {
+        const s = songs[i];
+        const resolved = await resolvePlaylistSongUrl(s);
+        window._plPlayerResolvedUrls[i] = resolved;
+
+        const srcMeta = getSourceMeta(resolved.source);
+        const btn = document.getElementById(`plPlayerBtn_${i}`);
+        if (!btn) continue; // modal was closed
+
+        btn.innerHTML = `
+            <a href="${resolved.url}" target="_blank" rel="noopener"
+               onclick="plMarkRowPlayed(${i})"
+               style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;
+                      background:${srcMeta.bg};color:${srcMeta.color};font-size:0.78em;font-weight:600;
+                      text-decoration:none;border:1px solid ${srcMeta.color}33;white-space:nowrap">
+                ${srcMeta.icon} ${srcMeta.label}
+            </a>`;
+
+        // Make entire row clickable too
+        const row = document.getElementById(`plPlayerRow_${i}`);
+        if (row) {
+            row.style.cursor = 'pointer';
+            row.onclick = (e) => {
+                if (e.target.closest('a')) return; // let link handle it
+                window.open(resolved.url, '_blank', 'noopener');
+                plMarkRowPlayed(i);
+            };
+        }
+    }
+}
+
+function plMarkRowPlayed(idx) {
+    const row = document.getElementById(`plPlayerRow_${idx}`);
+    if (row) row.style.background = 'rgba(16,185,129,0.06)';
+}
+
+function plPlayOpenAll() {
+    const urls = window._plPlayerResolvedUrls || [];
+    const resolved = urls.filter(Boolean);
+    if (!resolved.length) { showToast('Still resolving URLs…', 1500); return; }
+    resolved.forEach((r, i) => setTimeout(() => window.open(r.url, '_blank', 'noopener'), i * 100));
 }
 
 async function plConfirmDelete(playlistId) {
@@ -11004,27 +11107,30 @@ function plEdRenderSongList() {
         const badgeClass = band.toLowerCase().replace(/\s/g,'');
 
         return `<div class="list-item" id="plEdSong_${i}" draggable="true"
-            style="gap:8px;padding:8px 10px;cursor:grab;position:relative"
+            style="flex-wrap:wrap;gap:4px 6px;padding:8px 10px;cursor:grab;position:relative;align-items:center"
             ondragstart="plEdDragStart(event,${i})"
             ondragover="plEdDragOver(event,${i})"
             ondrop="plEdDrop(event,${i})"
             ondragend="plEdDragEnd(event)">
+            <!-- Top row: number · drag · title · band badge · remove -->
             <span style="color:var(--text-dim);font-size:0.8em;min-width:20px;text-align:right;flex-shrink:0">${i + 1}</span>
             <span style="color:var(--text-dim);cursor:grab;flex-shrink:0" title="Drag to reorder">⠿</span>
-            <span style="flex:1;font-size:0.88em;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${song.songTitle}</span>
+            <span style="flex:1;font-size:0.9em;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:80px">${song.songTitle}</span>
             ${band ? `<span class="song-badge ${badgeClass}" style="flex-shrink:0">${band}</span>` : ''}
-            <input placeholder="Note…" value="${(song.note || '').replace(/"/g,'&quot;')}"
-                oninput="plEdUpdateNote(${i},this.value)"
-                style="width:110px;flex-shrink:0;font-size:0.78em;padding:3px 7px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit"
-                onclick="event.stopPropagation()">
-            <select onchange="plEdUpdateSource(${i},this.value)" onclick="event.stopPropagation()"
-                style="font-size:0.75em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;flex-shrink:0">
-                <option value="auto" ${(song.preferredSource||'auto')==='auto'?'selected':''}>Auto</option>
-                <option value="spotify" ${song.preferredSource==='spotify'?'selected':''}>Spotify</option>
-                <option value="youtube" ${song.preferredSource==='youtube'?'selected':''}>YouTube</option>
-                <option value="archive" ${song.preferredSource==='archive'?'selected':''}>Archive</option>
-            </select>
             <button onclick="plEdRemoveSong(${i})" class="btn btn-sm btn-ghost" style="padding:2px 6px;flex-shrink:0;color:var(--red)">✕</button>
+            <!-- Bottom row: note + source — indented to align under title, wraps on mobile -->
+            <div style="display:flex;gap:6px;width:100%;padding-left:46px;box-sizing:border-box" onclick="event.stopPropagation()">
+                <input placeholder="Note (optional)…" value="${(song.note || '').replace(/"/g,'&quot;')}"
+                    oninput="plEdUpdateNote(${i},this.value)"
+                    style="flex:1;min-width:60px;font-size:0.78em;padding:3px 8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit">
+                <select onchange="plEdUpdateSource(${i},this.value)"
+                    style="font-size:0.75em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;flex-shrink:0">
+                    <option value="auto" ${(song.preferredSource||'auto')==='auto'?'selected':''}>Auto</option>
+                    <option value="spotify" ${song.preferredSource==='spotify'?'selected':''}>Spotify</option>
+                    <option value="youtube" ${song.preferredSource==='youtube'?'selected':''}>YouTube</option>
+                    <option value="archive" ${song.preferredSource==='archive'?'selected':''}>Archive</option>
+                </select>
+            </div>
         </div>`;
     }).join('');
 
