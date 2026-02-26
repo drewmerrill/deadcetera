@@ -633,3 +633,204 @@ button[style*="background:rgba(29"],
 }
 /* ── Ensure hamburger SVG always renders ── */
 .hamburger svg { width: 22px; height: 22px; display: block; flex-shrink: 0; }
+
+/* ==========================================================================
+   MOBILE POLISH SPRINT — iPhone small (375px) targeted fixes
+   ========================================================================== */
+
+/* ── Playlist player modal: compact on small phones ── */
+@media(max-width:480px) {
+    /* Now Playing card: tighter padding */
+    #plPlayerModal > div:nth-child(3) {
+        padding: 14px 14px 12px !important;
+    }
+    /* Now Playing title: slightly smaller */
+    #plPlayerModal [style*="font-size:1.15em"] {
+        font-size: 1em !important;
+    }
+    /* Party bar: stack presence + buttons */
+    #plPartyBar > div {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+    /* Queue rows: tighter */
+    #plQueueList > div {
+        padding: 8px 12px !important;
+    }
+    /* Player action buttons: wrap cleanly */
+    #plPlayerModal [style*="display:flex"][style*="flex-wrap:wrap"] {
+        gap: 6px !important;
+    }
+    /* Start Party button full-width on small screens */
+    #plPlayerModal button[onclick="plPartyStart()"] {
+        width: 100% !important;
+        justify-content: center !important;
+        margin-top: 4px !important;
+    }
+}
+
+/* ── Ref version vote chips: wrap to 2-3 per row on mobile ── */
+@media(max-width:480px) {
+    .votes-container {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 5px !important;
+    }
+    .vote-chip {
+        text-align: center !important;
+        justify-content: center !important;
+        font-size: 0.75em !important;
+        padding: 6px 4px !important;
+        min-height: 36px !important;
+    }
+    /* Ref version card: full-width play button */
+    .spotify-version-card .spotify-play-btn {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+    /* Ref version card: reduce padding */
+    .spotify-version-card {
+        padding: 12px !important;
+    }
+}
+
+/* ── Song detail step cards: reduce padding on small phones ── */
+@media(max-width:480px) {
+    .step-card {
+        padding: 12px !important;
+        margin-bottom: 10px !important;
+    }
+    .step-card > p.subtitle {
+        font-size: 0.8em !important;
+        margin-bottom: 10px !important;
+    }
+    .resource-section {
+        padding: 10px !important;
+        margin-bottom: 8px !important;
+    }
+    .section-header h3 {
+        font-size: 0.88em !important;
+    }
+    .section-header p {
+        font-size: 0.78em !important;
+    }
+}
+
+/* ── Topbar: hide "Connect" text on very small screens, show icon only ── */
+@media(max-width:375px) {
+    #googleDriveAuthBtn .conn-text { display: none !important; }
+    .topbar-brand { font-size: 0.92em !important; }
+}
+
+/* ── Playlist index: card action buttons wrap on small phones ── */
+@media(max-width:480px) {
+    /* Playlist card button row: stack to 2 rows */
+    #plList .app-card [style*="display:flex"][style*="flex-shrink:0"] {
+        flex-wrap: wrap !important;
+        justify-content: flex-end !important;
+        gap: 4px !important;
+        max-width: 80px !important;
+    }
+    /* Playlist name: allow wrapping */
+    #plList .app-card [style*="font-weight:700"] {
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+    /* Progress bars: tighter */
+    #plList .app-card [style*="gap:5px"] {
+        gap: 3px !important;
+    }
+}
+
+/* ── Practice track grid: single column on small phones ── */
+@media(max-width:480px) {
+    #practiceTracksContainer > div[style*="grid-template-columns:1fr 1fr"],
+    #practiceTracksContainer > div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+    /* Audio player: don't let it overflow */
+    #practiceTracksContainer audio {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+}
+
+/* ── Add ref version modal: full-screen on small phones ── */
+@media(max-width:480px) {
+    #addRefModal > div {
+        max-height: 92vh !important;
+        overflow-y: auto !important;
+        padding: 16px !important;
+        border-radius: 14px 14px 0 0 !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    #addRefModal {
+        align-items: flex-end !important;
+    }
+}
+
+/* ── Harmony member checkboxes: 3-col grid on mobile ── */
+@media(max-width:480px) {
+    #harmonyMembersRow {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr 1fr !important;
+        gap: 4px !important;
+    }
+    #harmonyMembersRow label {
+        justify-content: center !important;
+        font-size: 0.78em !important;
+        padding: 4px 6px !important;
+        text-align: center !important;
+    }
+}
+
+/* ── Meta row selects: proper sizing on 375px ── */
+@media(max-width:375px) {
+    #songStatusSelect { font-size: 0.72em !important; padding: 4px 4px !important; min-width: 88px !important; }
+    #songKeySelect    { font-size: 0.72em !important; padding: 4px 4px !important; min-width: 48px !important; }
+    #songBpmInput     { width: 44px !important; font-size: 0.72em !important; padding: 4px !important; }
+    #leadSingerSelect { font-size: 0.72em !important; min-width: 72px !important; }
+}
+
+/* ── Setlist cards: action buttons don't overflow ── */
+@media(max-width:480px) {
+    #setlistsList .app-card {
+        padding: 10px !important;
+    }
+    #setlistsList .app-card [style*="justify-content:space-between"] {
+        gap: 6px !important;
+    }
+    #setlistsList .app-card h3 {
+        font-size: 0.9em !important;
+    }
+}
+
+/* ── Gig cards: same treatment ── */
+@media(max-width:480px) {
+    #gigsList .app-card {
+        padding: 10px !important;
+    }
+    #gigsList .app-card [style*="justify-content:space-between"] {
+        gap: 6px !important;
+    }
+}
+
+/* ── Song search input: bigger tap target on mobile ── */
+@media(max-width:480px) {
+    #songSearch, .search-input {
+        font-size: 16px !important; /* prevents iOS auto-zoom on focus */
+        padding: 12px !important;
+    }
+}
+
+/* ── Prevent iOS font size auto-zoom on ALL inputs ── */
+@media(max-width:768px) {
+    input, select, textarea {
+        font-size: max(16px, 0.9em) !important;
+    }
+}
