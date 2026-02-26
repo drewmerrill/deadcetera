@@ -1,7 +1,7 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v5.2.1 - MASTER FILE + iOS AUDIO + CLEANUP
-// All fixes applied: Query escaping, delete buttons, metadata persistence
-// Last updated: 2026-02-18
+// DEADCETERA WORKFLOW APP v5.5.0 - Firebase · Playlists · Mobile-Ready
+// DEV BRANCH — safe to experiment here
+// Last updated: 2026-02-26
 // ============================================================================
 
 // Inject favicon to prevent 404 error
@@ -366,7 +366,7 @@
     document.head.appendChild(style);
 })();
 
-console.log('🎸 Deadcetera v5.3 — Firebase · Per-member Crib Notes · iPad Export · Stage-ready!');
+console.log('🎸 Deadcetera v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -402,25 +402,6 @@ function getPlayButtonStyle(version) {
     return 'color:white;';
 }
 
-// Helper: find band member name from any identifier (email, key, etc.)
-function getBandMemberName(identifier) {
-    if (!identifier) return 'Unknown';
-    // Direct key match
-    if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
-    // Search by email property
-    if (bandMembers) {
-        const entry = Object.entries(bandMembers).find(([key, member]) => 
-            member.email === identifier || 
-            member.email?.toLowerCase() === identifier.toLowerCase() ||
-            key.toLowerCase() === identifier.toLowerCase()
-        );
-        if (entry) return entry[1].name;
-    }
-    // Extract name from email (drewmerrill1029@gmail.com -> Drew)
-    const emailName = identifier.split('@')[0].replace(/[0-9]/g, '').replace(/\./g, ' ');
-    return emailName.charAt(0).toUpperCase() + emailName.slice(1);
-}
-
 // ============================================================================
 // BAND NAME CONVERTER
 // ============================================================================
@@ -444,39 +425,6 @@ function getFullBandName(bandAbbr) {
 // ============================================================================
 
 // Get storage key for a song+instrument combination
-function getStorageKey(songTitle, instrument) {
-    return `deadcetera_resources_${songTitle}_${instrument}`;
-}
-
-// Load resources for current song and instrument
-function loadResources(songTitle, instrument) {
-    const key = getStorageKey(songTitle, instrument);
-    const stored = localStorage.getItem(key);
-    if (stored) {
-        try {
-            return JSON.parse(stored);
-        } catch (e) {
-            console.error('Error parsing stored resources:', e);
-            return getDefaultResources();
-        }
-    }
-    return getDefaultResources();
-}
-
-// Save resources for current song and instrument
-function saveResources(songTitle, instrument, resources) {
-    const key = getStorageKey(songTitle, instrument);
-    localStorage.setItem(key, JSON.stringify(resources));
-}
-
-// Default empty resources structure
-function getDefaultResources() {
-    return {
-        tab: null,
-        lessons: [],
-        references: []
-    };
-}
 
 // ============================================================================
 // INITIALIZE APP
@@ -490,11 +438,30 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register(swPath)
             .then(reg => {
                 console.log('[PWA] Service worker registered:', reg.scope);
+
+                // ── iOS PWA fix: poll for updates every 5 min ──────────────
+                // iOS installed PWAs don't receive postMessage from SW reliably.
+                // Polling reg.update() forces the browser to re-check the SW script.
+                // If the SW changed, it installs + activates, then reloads via message OR
+                // via the controllerchange event below.
+                setInterval(() => reg.update(), 5 * 60 * 1000);
+
+                // ── controllerchange fires when a new SW takes over ─────────
+                // This is the most reliable cross-platform reload trigger.
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (!refreshing) {
+                        refreshing = true;
+                        console.log('[PWA] New SW controller — reloading for update');
+                        window.location.reload();
+                    }
+                });
+
+                // ── postMessage handler (Chrome/Android) ───────────────────
                 navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data?.type === 'SW_UPDATED') {
                         console.log('[PWA] New version deployed:', event.data.version, '— reloading...');
-                        // Small delay so the SW finishes activating before reload
-                        setTimeout(() => window.location.reload(), 1000);
+                        setTimeout(() => window.location.reload(), 500);
                         return;
                     }
                     if (event.data?.type === 'NAVIGATE' && event.data.url) {
@@ -597,13 +564,29 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Preload north star cache and custom songs in parallel, then render
-    Promise.all([
-        preloadNorthStarCache(),
-        loadCustomSongs()
-    ]).then(() => {
-        renderSongs();
-        backgroundScanNorthStars(); // background scan after render
+    // ── Auto-init Firebase DB on page load ──────────────────────────────────
+    // Firebase RTDB doesn't require user sign-in to read/write. 
+    // We initialize it immediately so all saves go to Firebase, not just localStorage.
+    // Google Identity (for user email) is still loaded on first "Connect" click.
+    // Render songs immediately from built-in data (fast, no Firebase needed)
+    renderSongs();
+
+    // Then init Firebase and reload everything that depends on it
+    initFirebaseOnly().then(() => {
+        // Now that Firebase is ready, load custom songs and re-render
+        // (Running before this would fall back to localStorage → invisible in incognito)
+        loadCustomSongs().then(() => renderSongs());
+
+        // Also load statuses and north stars with live Firebase data
+        statusCacheLoaded = false;
+        statusPreloadRunning = false;
+        preloadAllStatuses();
+        preloadNorthStarCache();
+        backgroundScanNorthStars();
+    }).catch(err => {
+        console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
+        // Fallback: try loading custom songs from localStorage anyway
+        loadCustomSongs().then(() => renderSongs());
     });
     setupSearchAndFilters();
     setupInstrumentSelector();
@@ -656,6 +639,13 @@ function updateCustomSongCount() {
     if (badge) {
         badge.textContent = count;
         badge.style.display = count > 0 ? 'inline' : 'none';
+    }
+    // Update button tooltip so the count makes sense
+    const btn = document.getElementById('customSongBtn');
+    if (btn) {
+        btn.title = count > 0
+            ? `${count} custom song${count !== 1 ? 's' : ''} added by the band`
+            : 'Add a custom song not in the library';
     }
 }
 
@@ -803,13 +793,8 @@ function setupInstrumentSelector() {
         currentInstrument = e.target.value;
         localStorage.setItem('deadcetera_instrument', currentInstrument);
         
-        // If a song is selected, refresh the resources display
-        if (selectedSong) {
-            renderLearningResources(selectedSong, currentInstrument);
-        }
         
-        console.log('🎸 Instrument changed to:', currentInstrument);
-    });
+        });
 }
 
 // ============================================================================
@@ -817,7 +802,6 @@ function setupInstrumentSelector() {
 // ============================================================================
 
 function renderSongs(filter = 'all', searchTerm = '') {
-    console.log('renderSongs called - filter:', filter, 'searchTerm:', searchTerm);
     const dropdown = document.getElementById('songDropdown');
     
     // Pre-filter by status and harmony if active (do it at data level, not DOM level)
@@ -846,8 +830,6 @@ function renderSongs(filter = 'all', searchTerm = '') {
         }
         return true;
     });
-    
-    console.log('Filtered songs:', filtered.length, activeStatusFilter ? '(status: ' + activeStatusFilter + ')' : '');
     
     if (filtered.length === 0) {
         const statusNames = { 'this_week':'This Week', 'gig_ready':'Gig Ready', 'needs_polish':'Needs Polish', 'on_deck':'On Deck' };
@@ -891,7 +873,6 @@ function setupSearchAndFilters() {
     const filterBtns = document.querySelectorAll('.filter-btn');
     
     searchInput.addEventListener('input', (e) => {
-        console.log('Search input changed:', e.target.value);
         renderSongs(currentFilter, e.target.value);
     });
     
@@ -959,804 +940,6 @@ function selectSong(songTitle) {
     }, 500);
 }
 
-// ============================================================================
-// LEARNING RESOURCES
-// ============================================================================
-
-function showLearningResources(songTitle, bandName) {
-    const step2 = document.getElementById('step2');
-    step2.classList.remove('hidden');
-    
-    // Update title
-    document.getElementById('resourcesSongTitle').textContent = 
-        `Get tabs, chords, and lessons for "${songTitle}"`;
-    
-    // Render resources for current instrument
-    renderLearningResources(songTitle, currentInstrument);
-}
-
-function renderLearningResources(songTitle, instrument) {
-    console.log('📋 Rendering resources for:', songTitle, 'Instrument:', instrument);
-    
-    const resources = loadResources(songTitle, instrument);
-    
-    // Update tab type label based on instrument
-    const tabTypeLabel = document.getElementById('tabTypeLabel');
-    switch(instrument) {
-        case 'bass':
-            tabTypeLabel.textContent = 'Bass Tab';
-            break;
-        case 'rhythm_guitar':
-        case 'keyboards':
-        case 'vocals':
-            tabTypeLabel.textContent = 'Chords';
-            break;
-        case 'lead_guitar':
-            tabTypeLabel.textContent = 'Lead Tab';
-            break;
-    }
-    
-    // Render each section
-    renderTabSection(songTitle, instrument, resources);
-    renderLessonsSection(songTitle, instrument, resources);
-    renderReferencesSection(songTitle, instrument, resources);
-}
-
-function renderTabSection(songTitle, instrument, resources) {
-    const container = document.getElementById('tabResourceContent');
-    const songData = allSongs.find(s => s.title === songTitle);
-    const bandAbbr = songData ? songData.band : 'GD';
-    
-    if (resources.tab) {
-        // Check if it's Ultimate Guitar
-        const isUG = resources.tab.includes('ultimate-guitar.com');
-        const displayName = getResourceDisplayName(resources.tab);
-        
-        // Show saved tab/chart with icon
-        container.innerHTML = `
-            <div class="resource-item">
-                <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-                    ${isUG ? '<span style="font-size: 1.5em;">🎸</span>' : ''}
-                    <div style="flex: 1;">
-                        <a href="${resources.tab}" target="_blank" class="resource-link" title="${resources.tab}">
-                            ${displayName}
-                        </a>
-                        ${isUG ? '<div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">Ultimate Guitar</div>' : ''}
-                    </div>
-                </div>
-                <div class="resource-actions">
-                    <button class="resource-btn change-btn" onclick="findTab()">Change</button>
-                </div>
-            </div>
-        `;
-    } else {
-        // Show find button
-        container.innerHTML = `
-            <button class="find-resource-btn" onclick="findTab()">
-                🔍 Find on Ultimate Guitar 🎸
-            </button>
-        `;
-    }
-}
-
-async function renderLessonsSection(songTitle, instrument, resources) {
-    const container = document.getElementById('lessonsResourceContent');
-    
-    if (resources.lessons.length > 0) {
-        // Fetch titles for all YouTube videos
-        const lessonsWithTitles = await Promise.all(
-            resources.lessons.map(async (url, index) => {
-                const thumbnail = getYouTubeThumbnail(url);
-                const videoId = getYouTubeVideoId(url);
-                const spotifyId = getSpotifyTrackId(url);
-                
-                let title = 'Loading...';
-                let platform = 'YouTube';
-                
-                if (videoId) {
-                    const fetchedTitle = await getYouTubeTitle(url);
-                    title = fetchedTitle || `YouTube: ${videoId}`;
-                    platform = 'YouTube';
-                } else if (spotifyId) {
-                    const fetchedTitle = await getSpotifyTrackName(url); title = fetchedTitle || `Spotify Track: ${spotifyId}`;
-                    platform = 'Spotify';
-                }
-                
-                return { url, thumbnail, title, platform, index };
-            })
-        );
-        
-        container.innerHTML = lessonsWithTitles.map(({ url, thumbnail, title, platform, index }) => `
-            <div class="resource-item-with-thumbnail">
-                ${thumbnail ? `<img src="${thumbnail}" alt="Video thumbnail" class="youtube-thumbnail-small">` : ''}
-                <div style="flex: 1;">
-                    <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
-                    </a>
-                    <div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">${platform} - Click to open</div>
-                </div>
-                <div class="resource-actions">
-                    <button class="resource-btn remove-btn" onclick="removeLesson(${index})">🗑️</button>
-                </div>
-            </div>
-        `).join('');
-        
-        // Add button if less than 2 lessons
-        if (resources.lessons.length < 2) {
-            container.innerHTML += `
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <button class="add-resource-btn" onclick="searchYouTubeForLesson()" style="flex: 1;">
-                        🔍 Search YouTube for Lessons
-                    </button>
-                    <button class="add-resource-btn" onclick="searchSpotifyForLesson()" style="flex: 1;">
-                        🔍 Find Reference
-                    </button>
-                    <button class="add-resource-btn" onclick="addLesson()" style="flex: 1;">
-                        + Paste URL
-                    </button>
-                </div>
-            `;
-        }
-    } else {
-        container.innerHTML = `
-            <div style="display: flex; gap: 10px;">
-                <button class="add-resource-btn" onclick="searchYouTubeForLesson()" style="flex: 1;">
-                    📺 YouTube Lessons
-                </button>
-                <button class="add-resource-btn" onclick="searchSpotifyForLesson()" style="flex: 1;">
-                    🎵 Spotify
-                </button>
-                <button class="add-resource-btn" onclick="addLesson()" style="flex: 1;">
-                    + Paste URL
-                </button>
-            </div>
-        `;
-    }
-}
-
-async function renderReferencesSection(songTitle, instrument, resources) {
-    const container = document.getElementById('referencesResourceContent');
-    
-    if (resources.references.length > 0) {
-        // Fetch titles for all videos/tracks
-        const referencesWithTitles = await Promise.all(
-            resources.references.map(async (url, index) => {
-                const thumbnail = getYouTubeThumbnail(url);
-                const videoId = getYouTubeVideoId(url);
-                const spotifyId = getSpotifyTrackId(url);
-                
-                let title = 'Loading...';
-                let platform = 'YouTube';
-                
-                if (videoId) {
-                    const fetchedTitle = await getYouTubeTitle(url);
-                    title = fetchedTitle || `YouTube: ${videoId}`;
-                    platform = 'YouTube';
-                } else if (spotifyId) {
-                    const fetchedTitle = await getSpotifyTrackName(url); title = fetchedTitle || `Spotify Track: ${spotifyId}`;
-                    platform = 'Spotify';
-                }
-                
-                return { url, thumbnail, title, platform, index };
-            })
-        );
-        
-        container.innerHTML = referencesWithTitles.map(({ url, thumbnail, title, platform, index }) => `
-            <div class="resource-item-with-thumbnail">
-                ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail" class="youtube-thumbnail-small">` : ''}
-                <div style="flex: 1;">
-                    <a href="${url}" target="_blank" class="resource-link" title="${url}">
-                        ${platform === 'YouTube' ? '📺' : '🎵'} ${title}
-                    </a>
-                    <div style="font-size: 0.85em; color: var(--text-dim, #64748b); margin-top: 4px;">${platform} - Click to open</div>
-                </div>
-                <div class="resource-actions">
-                    <button class="resource-btn remove-btn" onclick="removeReference(${index})">🗑️</button>
-                </div>
-            </div>
-        `).join('');
-        
-        // Add button if less than 2 references
-        if (resources.references.length < 2) {
-            container.innerHTML += `
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <button class="add-resource-btn" onclick="searchYouTubeForReference()" style="flex: 1;">
-                        📺 YouTube Performances
-                    </button>
-                    <button class="add-resource-btn" onclick="searchSpotifyForReference()" style="flex: 1;">
-                        🎵 Spotify
-                    </button>
-                    <button class="add-resource-btn" onclick="addReference()" style="flex: 1;">
-                        + Paste URL
-                    </button>
-                </div>
-            `;
-        }
-    } else {
-        container.innerHTML = `
-            <div style="display: flex; gap: 10px;">
-                <button class="add-resource-btn" onclick="searchYouTubeForReference()" style="flex: 1;">
-                    📺 YouTube Performances
-                </button>
-                <button class="add-resource-btn" onclick="searchSpotifyForReference()" style="flex: 1;">
-                    🎵 Spotify
-                </button>
-                <button class="add-resource-btn" onclick="addReference()" style="flex: 1;">
-                    + Paste URL
-                </button>
-            </div>
-        `;
-    }
-}
-
-function getResourceDisplayName(url) {
-    // Extract a friendly name from URL
-    try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.replace('www.', '');
-        const path = urlObj.pathname;
-        
-        // For Ultimate Guitar
-        if (hostname.includes('ultimate-guitar.com')) {
-            return '🔗 ' + path.split('/').filter(p => p).pop().replace(/-/g, ' ');
-        }
-        
-        // For YouTube
-        if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-            // Try to get video title from URL params or just show "YouTube Video"
-            const videoId = urlObj.searchParams.get('v') || path.split('/').pop();
-            return '📺 YouTube: ' + videoId;
-        }
-        
-        // Generic
-        return hostname;
-    } catch (e) {
-        return url.substring(0, 50) + '...';
-    }
-}
-
-// Get YouTube video ID from URL
-function getYouTubeVideoId(url) {
-    try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.replace('www.', '');
-        
-        // youtube.com/watch?v=VIDEO_ID
-        if (hostname.includes('youtube.com')) {
-            return urlObj.searchParams.get('v');
-        }
-        
-        // youtu.be/VIDEO_ID
-        if (hostname.includes('youtu.be')) {
-            return urlObj.pathname.substring(1);
-        }
-        
-        return null;
-    } catch (e) {
-        return null;
-    }
-}
-
-// Get YouTube thumbnail URL
-function getYouTubeThumbnail(url) {
-    const videoId = getYouTubeVideoId(url);
-    if (videoId) {
-        // Use high quality thumbnail
-        return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-    }
-    return null;
-}
-
-// Fetch YouTube video title using oEmbed API
-async function getYouTubeTitle(url) {
-    const videoId = getYouTubeVideoId(url);
-    if (!videoId) return null;
-    
-    try {
-        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-        const response = await fetch(oembedUrl);
-        const data = await response.json();
-        return data.title;
-    } catch (e) {
-        console.error('Error fetching YouTube title:', e);
-        return null;
-    }
-}
-
-// Get Spotify track ID from URL
-function getSpotifyTrackId(url) {
-    try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.replace('www.', '');
-        
-        // open.spotify.com/track/TRACK_ID
-        if (hostname.includes('spotify.com')) {
-            const match = urlObj.pathname.match(/\/track\/([a-zA-Z0-9]+)/);
-            return match ? match[1] : null;
-        }
-        
-        return null;
-    } catch (e) {
-        return null;
-    }
-}
-
-// Fetch Spotify track name using oEmbed API
-async function getSpotifyTrackName(url) {
-    const trackId = getSpotifyTrackId(url);
-    if (!trackId) return null;
-    
-    try {
-        const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
-        const response = await fetch(oembedUrl);
-        const data = await response.json();
-        return data.title || null;
-    } catch (e) {
-        console.error('Error fetching Spotify track name:', e);
-        return null;
-    }
-}
-
-// ============================================================================
-// TAB FUNCTIONS
-// ============================================================================
-
-function findTab() {
-    if (!selectedSong) return;
-    
-    const songData = allSongs.find(s => s.title === selectedSong);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    // Construct Ultimate Guitar search URL
-    const searchQuery = encodeURIComponent(`${bandName} ${selectedSong}`);
-    const ugUrl = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${searchQuery}`;
-    
-    // Open in new tab
-    window.open(ugUrl, '_blank');
-    
-    // Show modal to save URL
-    currentResourceType = 'tab';
-    showAddResourceModal('tab');
-}
-
-// ============================================================================
-// LESSON FUNCTIONS
-// ============================================================================
-
-function addLesson() {
-    currentResourceType = 'lesson';
-    showAddResourceModal('lesson');
-}
-
-function searchYouTubeForLesson() {
-    if (!selectedSong) return;
-    
-    const songData = allSongs.find(s => s.title === selectedSong);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    // Determine instrument-specific search
-    let searchTerm = '';
-    switch(currentInstrument) {
-        case 'bass':
-            searchTerm = `${bandName} ${selectedSong} bass lesson`;
-            break;
-        case 'rhythm_guitar':
-            searchTerm = `${bandName} ${selectedSong} rhythm guitar lesson`;
-            break;
-        case 'lead_guitar':
-            searchTerm = `${bandName} ${selectedSong} lead guitar lesson`;
-            break;
-        case 'keyboards':
-            searchTerm = `${bandName} ${selectedSong} keyboard lesson`;
-            break;
-        case 'vocals':
-            searchTerm = `${bandName} ${selectedSong} vocals lesson`;
-            break;
-    }
-    
-    // Show YouTube search modal
-    currentResourceType = 'lesson';
-    showYouTubeSearchModal(searchTerm);
-}
-
-function searchSpotifyForLesson() {
-    if (!selectedSong) return;
-    
-    const songData = allSongs.find(s => s.title === selectedSong);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    const searchTerm = `${bandName} ${selectedSong}`;
-    const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(searchTerm)}`;
-    
-    // Show manual paste modal with Spotify instructions
-    currentResourceType = 'lesson';
-    showSpotifyPasteModal(spotifyUrl, 'lesson');
-}
-
-function removeLesson(index) {
-    if (!selectedSong) return;
-    
-    const resources = loadResources(selectedSong, currentInstrument);
-    resources.lessons.splice(index, 1);
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
-    
-    console.log('🗑️ Lesson removed');
-}
-
-// ============================================================================
-// REFERENCE FUNCTIONS
-// ============================================================================
-
-function addReference() {
-    currentResourceType = 'reference';
-    showAddResourceModal('reference');
-}
-
-function searchYouTubeForReference() {
-    if (!selectedSong) return;
-    
-    const songData = allSongs.find(s => s.title === selectedSong);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    // Search for live performances
-    const searchTerm = `${bandName} ${selectedSong} live`;
-    
-    // Show YouTube search modal
-    currentResourceType = 'reference';
-    showYouTubeSearchModal(searchTerm);
-}
-
-function searchSpotifyForReference() {
-    if (!selectedSong) return;
-    
-    const songData = allSongs.find(s => s.title === selectedSong);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    const searchTerm = `${bandName} ${selectedSong}`;
-    const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(searchTerm)}`;
-    
-    // Show manual paste modal with Spotify instructions
-    currentResourceType = 'reference';
-    showSpotifyPasteModal(spotifyUrl, 'reference');
-}
-
-function removeReference(index) {
-    if (!selectedSong) return;
-    
-    const resources = loadResources(selectedSong, currentInstrument);
-    resources.references.splice(index, 1);
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
-    
-    console.log('🗑️ Reference removed');
-}
-
-// ============================================================================
-// ADD RESOURCE MODAL
-// ============================================================================
-
-function showAddResourceModal(type) {
-    const modal = document.getElementById('addResourceModal');
-    const title = document.getElementById('addResourceTitle');
-    const instructions = document.getElementById('addResourceInstructions');
-    const input = document.getElementById('resourceUrlInput');
-    
-    // Set title and instructions based on type
-    switch(type) {
-        case 'tab':
-            title.textContent = 'Save Your Preferred Tab/Chart';
-            instructions.textContent = 'Paste the URL of the Ultimate Guitar tab or chord chart you want to use:';
-            break;
-        case 'lesson':
-            title.textContent = 'Add Lesson Video';
-            instructions.textContent = 'Paste the URL of a YouTube lesson or tutorial:';
-            break;
-        case 'reference':
-            title.textContent = 'Add Reference Recording';
-            instructions.textContent = 'Paste the URL of a YouTube performance or reference recording:';
-            break;
-    }
-    
-    // Clear input and preview
-    input.value = '';
-    updateUrlPreview('');
-    
-    // Show modal
-    modal.classList.remove('hidden');
-    input.focus();
-    
-    // Add event listener for URL preview
-    input.removeEventListener('input', handleUrlPreview);
-    input.addEventListener('input', handleUrlPreview);
-}
-
-function handleUrlPreview(e) {
-    updateUrlPreview(e.target.value);
-}
-
-function updateUrlPreview(url) {
-    const previewContainer = document.getElementById('urlPreviewContainer');
-    if (!previewContainer) return;
-    
-    if (!url || url.trim() === '') {
-        previewContainer.innerHTML = '';
-        return;
-    }
-    
-    // Check if it's a YouTube URL
-    const videoId = getYouTubeVideoId(url);
-    if (videoId) {
-        const thumbnail = getYouTubeThumbnail(url);
-        previewContainer.innerHTML = `
-            <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border: 2px solid #e2e8f0;">
-                <div style="font-weight: 600; color: #4a5568; margin-bottom: 10px;">Preview:</div>
-                <img src="${thumbnail}" alt="Video preview" style="width: 100%; max-width: 320px; border-radius: 8px;">
-                <div style="margin-top: 8px; color: var(--text-dim, #64748b); font-size: 0.9em;">Video ID: ${videoId}</div>
-            </div>
-        `;
-    } else {
-        previewContainer.innerHTML = `
-            <div style="margin-top: 15px; padding: 10px; background: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                <div style="color: #92400e; font-size: 0.9em;">URL detected (preview not available)</div>
-            </div>
-        `;
-    }
-}
-
-function closeAddResourceModal() {
-    const modal = document.getElementById('addResourceModal');
-    modal.classList.add('hidden');
-    currentResourceType = null;
-}
-
-// ============================================================================
-// YOUTUBE SEARCH IN-APP
-// ============================================================================
-
-function showYouTubeSearchModal(searchTerm) {
-    const modal = document.getElementById('youtubeSearchModal');
-    const searchInput = document.getElementById('youtubeSearchInput');
-    const resultsContainer = document.getElementById('youtubeSearchResultsContainer');
-    
-    // Reset modal title to "Search YouTube"
-    const modalTitle = modal.querySelector('.modal-header h2');
-    if (modalTitle) {
-        modalTitle.textContent = '🔍 Search YouTube';
-    }
-    
-    // Show and set search term
-    searchInput.style.display = 'block';
-    searchInput.value = searchTerm;
-    
-    // Show modal
-    modal.classList.remove('hidden');
-    
-    // Perform search
-    performYouTubeSearch(searchTerm, resultsContainer);
-}
-
-function closeYouTubeSearchModal() {
-    const modal = document.getElementById('youtubeSearchModal');
-    modal.classList.add('hidden');
-}
-
-async function performYouTubeSearch(query, resultsContainer) {
-    resultsContainer.innerHTML = '<div class="spinner" style="margin: 40px auto;"></div>';
-    
-    try {
-        // Use YouTube's simple search (no API key needed for basic search)
-        // We'll open YouTube search and let user pick, then paste URL
-        const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-        
-        resultsContainer.innerHTML = `
-            <div style="text-align: center; padding: 30px;">
-                <p style="margin-bottom: 20px; color: #4a5568;">
-                    Click below to search YouTube for: <strong>"${query}"</strong>
-                </p>
-                <button class="primary-btn" onclick="window.open('${youtubeSearchUrl}', '_blank')" style="margin-bottom: 20px;">
-                    🔍 Search on YouTube
-                </button>
-                <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; text-align: left;">
-                    <strong style="color: #2d3748; display: block; margin-bottom: 10px;">How to use:</strong>
-                    <ol style="color: #4a5568; line-height: 1.8; margin-left: 20px;">
-                        <li>Click "Search on YouTube" above</li>
-                        <li>Find the video you want</li>
-                        <li>Copy the URL from the address bar</li>
-                        <li>Come back here and paste it below:</li>
-                    </ol>
-                    <input type="text" id="youtubeQuickPasteInput" class="search-input" placeholder="Paste YouTube URL here..." style="margin-top: 15px;">
-                    <button class="primary-btn" onclick="saveFromYouTubeSearch()" style="margin-top: 10px; width: 100%;">
-                        💾 Save This Video
-                    </button>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('YouTube search error:', error);
-        resultsContainer.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #e53e3e;">
-                ❌ Search failed. Please try again.
-            </div>
-        `;
-    }
-}
-
-function saveFromYouTubeSearch() {
-    const input = document.getElementById('youtubeQuickPasteInput');
-    const url = input.value.trim();
-    
-    if (!url) {
-        alert('Please paste a YouTube URL');
-        return;
-    }
-    
-    // Validate it's a YouTube URL
-    const videoId = getYouTubeVideoId(url);
-    if (!videoId) {
-        alert('Please enter a valid YouTube URL');
-        return;
-    }
-    
-    // Save based on current resource type
-    const resources = loadResources(selectedSong, currentInstrument);
-    
-    switch(currentResourceType) {
-        case 'lesson':
-            if (resources.lessons.length < 2) {
-                resources.lessons.push(url);
-            }
-            break;
-        case 'reference':
-            if (resources.references.length < 2) {
-                resources.references.push(url);
-            }
-            break;
-    }
-    
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
-    closeYouTubeSearchModal();
-    
-    console.log('✅ Video saved from YouTube search:', url);
-}
-
-// ============================================================================
-// SPOTIFY INTEGRATION
-// ============================================================================
-
-function showSpotifyPasteModal(searchUrl, type) {
-    const modal = document.getElementById('youtubeSearchModal');
-    const searchInput = document.getElementById('youtubeSearchInput');
-    const resultsContainer = document.getElementById('youtubeSearchResultsContainer');
-    
-    // Hide the search input for Spotify (confusing UX)
-    searchInput.style.display = 'none';
-    
-    // Show modal
-    modal.classList.remove('hidden');
-    
-    // Change modal title to "Find Reference"
-    const modalTitle = modal.querySelector('.modal-header h2');
-    if (modalTitle) {
-        modalTitle.textContent = '🔍 Find Reference';
-    }
-    
-    // Show Spotify instructions
-    resultsContainer.innerHTML = `
-        <div style="text-align: center; padding: 30px;">
-            <p style="margin-bottom: 20px; color: #4a5568; font-size: 1.1em;">
-                Find Reference for: <strong>"${selectedSong}"</strong>
-            </p>
-            <button class="primary-btn" onclick="window.open('${searchUrl}', '_blank')" style="margin-bottom: 20px; background: #1db954;">
-                🔍 Search on Spotify
-            </button>
-            <div style="margin-top: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; text-align: left;">
-                <strong style="color: #2d3748; display: block; margin-bottom: 10px;">How to use:</strong>
-                <ol style="color: #4a5568; line-height: 1.8; margin-left: 20px;">
-                    <li>Click "Search on Spotify" above</li>
-                    <li>Find the track you want</li>
-                    <li>Click the three dots (---) on the track</li>
-                    <li>Select "Share" → "Copy Song Link"</li>
-                    <li>Come back here and paste it below:</li>
-                </ol>
-                <input type="text" id="youtubeQuickPasteInput" class="search-input" placeholder="Paste Spotify URL here..." style="margin-top: 15px;">
-                <button class="primary-btn" onclick="saveFromSpotifySearch()" style="margin-top: 10px; width: 100%; background: #1db954;">
-                    💾 Save This Track
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-function saveFromSpotifySearch() {
-    const input = document.getElementById('youtubeQuickPasteInput');
-    const url = input.value.trim();
-    
-    if (!url) {
-        alert('Please paste a Spotify URL');
-        return;
-    }
-    
-    // Validate it's a Spotify URL
-    const trackId = getSpotifyTrackId(url);
-    if (!trackId) {
-        alert('Please enter a valid Spotify track URL');
-        return;
-    }
-    
-    // Save based on current resource type
-    const resources = loadResources(selectedSong, currentInstrument);
-    
-    switch(currentResourceType) {
-        case 'lesson':
-            if (resources.lessons.length < 2) {
-                resources.lessons.push(url);
-            }
-            break;
-        case 'reference':
-            if (resources.references.length < 2) {
-                resources.references.push(url);
-            }
-            break;
-    }
-    
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
-    closeYouTubeSearchModal();
-    
-    console.log('✅ Track saved from Spotify search:', url);
-}
-
-function saveResource() {
-    if (!selectedSong || !currentResourceType) return;
-    
-    const input = document.getElementById('resourceUrlInput');
-    const url = input.value.trim();
-    
-    if (!url) {
-        alert('Please enter a URL');
-        return;
-    }
-    
-    // Validate URL
-    try {
-        new URL(url);
-    } catch (e) {
-        alert('Please enter a valid URL');
-        return;
-    }
-    
-    const resources = loadResources(selectedSong, currentInstrument);
-    
-    // Save based on type
-    switch(currentResourceType) {
-        case 'tab':
-            resources.tab = url;
-            break;
-        case 'lesson':
-            if (resources.lessons.length < 2) {
-                resources.lessons.push(url);
-            }
-            break;
-        case 'reference':
-            if (resources.references.length < 2) {
-                resources.references.push(url);
-            }
-            break;
-    }
-    
-    saveResources(selectedSong, currentInstrument, resources);
-    renderLearningResources(selectedSong, currentInstrument);
-    closeAddResourceModal();
-    
-    console.log('✅ Resource saved:', currentResourceType, url);
-}
 
 // ============================================================================
 // CONTINUE TO VERSION SELECTION
@@ -1958,7 +1141,7 @@ function handleSmartDownload(songTitle, version) {
     
     // Check if AudioSplitter is loaded
     if (typeof AudioSplitter === 'undefined') {
-        alert('⚠️ Audio Splitter not loaded. Make sure audio-splitter.js is included.');
+        showToast('⚠️ Audio Splitter not loaded');
         progressContainer.classList.add('hidden');
         return;
     }
@@ -2034,10 +1217,6 @@ function searchYouTube(songTitle) {
     window.open(youtubeUrl, '_blank');
 }
 
-function closeYoutubeModal() {
-    const modal = document.getElementById('youtubeModal');
-    modal.classList.add('hidden');
-}
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -2116,69 +1295,6 @@ function showBandResources(songTitle) {
     });
 }
 
-function showNoBandResourcesMessage(songTitle) {
-    const step2 = document.getElementById('step2');
-    step2.innerHTML = `
-        <div class="step-number">2</div>
-        <h2>🎸 Band Resources</h2>
-        <div class="empty-state">
-            <div class="empty-state-icon">🎵</div>
-            <div class="empty-state-text">No band resources yet for "${songTitle}"</div>
-            <div class="empty-state-subtext">This song hasn't been set up with collaborative resources</div>
-            <button class="primary-btn" style="margin-top: 20px;" onclick="skipToBandResources()">
-                Skip to Version Selection ▶
-            </button>
-        </div>
-    `;
-}
-
-function skipToBandResources() {
-    document.getElementById('step3').classList.remove('hidden');
-    document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
-}
-
-// ============================================================================
-// reference versionS & VOTING
-// ============================================================================
-
-function renderRefVersionsLegacy(songTitle, bandData) {
-    const container = document.getElementById('spotifyVersionsContainer');
-    const versions = bandData.spotifyVersions || [];
-    
-    if (versions.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No reference versions added yet</div>';
-        return;
-    }
-    
-    container.innerHTML = versions.map(version => {
-        const voteCount = version.totalVotes || 0;
-        const totalMembers = Object.keys(bandMembers).length;
-        const isDefault = version.isDefault;
-        
-        return `
-            <div class="spotify-version-card ${isDefault ? 'default' : ''}">
-                <div class="version-header">
-                    <div class="version-title">${version.title}</div>
-                    ${isDefault ? '<div class="version-badge">👑 BAND CHOICE (' + voteCount + '/' + totalMembers + ')</div>' : ''}
-                </div>
-                
-                <div class="votes-container">
-                    ${Object.entries(version.votes).map(([member, voted]) => `
-                        <span class="vote-chip ${voted ? 'yes' : 'no'}" onclick="toggleVersionVote('${songTitle.replace(/'/g,"\\'")}','${version.id||''}','${member}')" style="cursor:pointer" title="Click to toggle vote for ${bandMembers[member]?.name||member}">
-                            ${voted ? '✅ ' : ''}${bandMembers[member]?.name||member}
-                        </span>
-                    `).join('')}
-                </div>
-                
-                ${version.notes ? `<p style="margin-bottom:12px;font-style:italic;color:var(--text-muted,#94a3b8);display:flex;align-items:center;gap:6px">${version.notes} <button onclick="editVersionNotes(${index})" style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.8em" title="Edit notes">✏️</button></p>` : ''}
-                
-                <button class="spotify-play-btn" onclick="window.open('${version.url || version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
-                    ${getPlayButtonLabel(version)}
-                </button>
-            </div>
-        `;
-    }).join('');
-}
 
 // ============================================================================
 // CHORD CHART
@@ -2266,6 +1382,28 @@ function getCurrentMemberKey() {
         return emailToKey[currentUserEmail] || null;
     }
     return null;
+}
+
+// Resolve a display name from any identifier (email, member key, etc.)
+function getBandMemberName(identifier) {
+    if (!identifier) return 'Unknown';
+    // Direct key match (drew, chris, brian, etc.)
+    if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
+    // Search by email property
+    if (bandMembers) {
+        const entry = Object.entries(bandMembers).find(([key, member]) =>
+            member.email === identifier ||
+            member.email?.toLowerCase() === identifier.toLowerCase() ||
+            key.toLowerCase() === identifier.toLowerCase()
+        );
+        if (entry) return entry[1].name;
+    }
+    // Fallback: extract from email (drewmerrill1029@gmail.com → Drew)
+    if (identifier.includes('@')) {
+        const emailName = identifier.split('@')[0].replace(/[0-9]/g, '').replace(/[._]/g, ' ');
+        return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    }
+    return identifier;
 }
 
 async function addPersonalTabForMember(songTitle, memberKey) {
@@ -2523,7 +1661,7 @@ async function uploadMoisesStems() {
         progressBar.style.width = '10%';
         
         // Create folder in shared Drive folder
-        const folderId = await createDriveFolder(folderName, SHARED_FOLDER_ID);
+        const folderId = await createDriveFolder(folderName);
         
         if (!folderId) {
             throw new Error('Failed to create folder');
@@ -2670,75 +1808,6 @@ async function renderPracticeTracks(songTitle, bandData) {
     await renderPracticeTracksSimplified(songTitle);
 }
 
-// ============================================================================
-// HARMONIES
-// ============================================================================
-
-function renderHarmonies(songTitle, bandData) {
-    const container = document.getElementById('harmoniesContainer');
-    const harmonies = bandData.harmonies;
-    
-    if (!harmonies || !harmonies.sections || harmonies.sections.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No harmony parts documented yet</div>';
-        return;
-    }
-    
-    const sections = harmonies.sections.map(section => {
-        const statusClass = section.workedOut ? 'worked-out' : 'needs-work';
-        const statusText = section.workedOut ? (section.soundsGood ? '✅ Sounds Great' : '⚠️ Needs Polish') : '🔴 Needs Work';
-        const statusBadgeClass = section.soundsGood ? 'status-good' : 'status-needs-work';
-        
-        return `
-            <div class="harmony-card ${statusClass}">
-                <div class="harmony-header">
-                    <div class="harmony-lyric">"${section.lyric}"</div>
-                    <div class="harmony-status ${statusBadgeClass}">${statusText}</div>
-                </div>
-                
-                <div class="harmony-timing">${section.timing}</div>
-                
-                <div class="parts-list">
-                    ${section.parts.map(part => `
-                        <div class="part-row">
-                            <div class="part-singer">${bandMembers[part.singer]?.name || part.singer}</div>
-                            <div class="part-role">${part.part.replace('_', ' ')}</div>
-                            <div class="part-notes">${part.notes}</div>
-                        </div>
-                    `).join('')}
-                </div>
-                
-                ${section.practiceNotes && section.practiceNotes.length > 0 ? `
-                    <div class="practice-notes-box">
-                        <strong>Practice Notes:</strong>
-                        <ul style="margin-left: 20px; margin-top: 8px;">
-                            ${section.practiceNotes.map(note => `<li>${note}</li>`).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-                
-                ${section.referenceRecording ? `
-                    <button class="chart-btn chart-btn-primary" style="margin-top: 12px;" onclick="window.open('${section.referenceRecording}', '_blank')">
-                        ▶️ Play Reference Recording
-                    </button>
-                ` : ''}
-            </div>
-        `;
-    }).join('');
-    
-    let generalNotesHTML = '';
-    if (harmonies.generalNotes && harmonies.generalNotes.length > 0) {
-        generalNotesHTML = `
-            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                <strong>General Harmony Notes:</strong>
-                <ul style="margin-left: 20px; margin-top: 8px;">
-                    ${harmonies.generalNotes.map(note => `<li>${note}</li>`).join('')}
-                </ul>
-            </div>
-        `;
-    }
-    
-    container.innerHTML = sections + generalNotesHTML;
-}
 
 // ============================================================================
 // REHEARSAL NOTES
@@ -3179,31 +2248,6 @@ async function deletePracticeTrackConfirm(songTitle, index) {
     }
 }
 
-async function editPracticeTrack(songTitle, index) {
-    const tracks = await loadPracticeTracksFromDrive(songTitle) || [];
-    const track = tracks[index];
-    if (!track) return;
-    
-    const newUrl = prompt('Edit video URL:', track.videoUrl || track.youtubeUrl || '');
-    if (newUrl === null) return; // Canceled
-    
-    const newNotes = prompt('Edit notes:', track.notes || '');
-    if (newNotes === null) return;
-    
-    // Re-fetch metadata with new URL
-    const metadata = await fetchVideoMetadata(newUrl);
-    
-    tracks[index] = {
-        ...track,
-        videoUrl: newUrl,
-        title: metadata.title || track.title,
-        thumbnail: metadata.thumbnail || track.thumbnail,
-        notes: newNotes.trim()
-    };
-    
-    await savePracticeTracks(songTitle, tracks);
-    await renderPracticeTracksSimplified(songTitle);
-}
 // ============================================================================
 // SPOTIFY API INTEGRATION
 // Fetch real track names and metadata from Spotify
@@ -3418,6 +2462,11 @@ async function saveRefVersionFromModal() {
     if (!url) { alert('Please paste a URL'); return; }
     try { new URL(url); } catch(e) { alert('Please paste a valid URL'); return; }
     
+    if (!isUserSignedIn || !firebaseDB) {
+        showSignInNudge();
+        // Still proceed — data saves to localStorage and will sync when they sign in
+    }
+    
     let platform = 'link';
     if (url.includes('spotify.com')) platform = 'spotify';
     else if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
@@ -3451,14 +2500,6 @@ async function saveRefVersionFromModal() {
 }
 
 // Alias for old render function compatibility
-async function toggleVersionVote(songTitle, versionId, voterEmail) {
-    // Find version index by ID
-    const versions = toArray(await loadRefVersions(songTitle) || []);
-    const idx = versions.findIndex(v => v.id === versionId);
-    if (idx >= 0) {
-        await toggleRefVote(idx, voterEmail);
-    }
-}
 
 async function toggleRefVote(versionIndex, voterEmail) {
     const songTitle = selectedSong?.title || selectedSong;
@@ -3578,13 +2619,6 @@ function searchRefVersion() {
     </div>`;
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
-}
-
-function searchYouTubeReference() {
-    // Legacy — now handled by searchRefVersion modal
-    searchRefVersion();
-}
-
 function searchUltimateGuitar() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) {
@@ -3685,7 +2719,7 @@ async function addRehearsalNote() {
     await saveRehearsalNotes(selectedSong.title, notes);
     
     // Show success
-    alert(`✅ Note added by ${bandMembers[author].name} - saved to Google Drive!`);
+    showToast(`✅ Note added by ${bandMembers[author].name}`);
     logActivity('rehearsal_note', { song: selectedSong.title, extra: bandMembers[author].name });
     
     // Clear form
@@ -3856,7 +2890,7 @@ async function uploadHarmonyAudio(sectionIndex) {
         const localKey = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
         localStorage.setItem(localKey, JSON.stringify(existing));
         
-        alert(`✅ Audio uploaded to Google Drive! All band members can now hear it.`);
+        showToast('✅ Audio uploaded — shared with band!');
         
         // Clear form
         hideHarmonyAudioForm();
@@ -3897,12 +2931,6 @@ async function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
     return stored ? JSON.parse(stored) : [];
 }
 
-function playHarmonySnippet(base64Data) {
-    const audio = new Audio(base64Data);
-    audio.play().catch(err => {
-        alert('Error playing audio: ' + err.message);
-    });
-}
 
 async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     if (!confirm('Delete this audio snippet?')) return;
@@ -3924,273 +2952,6 @@ async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     const bandData = bandKnowledgeBase[selectedSong.title];
     if (bandData) {
         renderHarmoniesEnhanced(selectedSong.title, bandData);
-    }
-}
-// ============================================================================
-// ENHANCED HARMONY SYSTEM
-// 1. Browser microphone recording
-// 2. Collaborative delete/rename
-// 3. Sheet music generation from notes
-// ============================================================================
-
-// ============================================================================
-// MICROPHONE RECORDING
-// ============================================================================
-
-let mediaRecorder = null;
-let audioChunks = [];
-let recordingStream = null;
-
-async function startMicrophoneRecording(sectionIndex) {
-    try {
-        // MOBILE FIX: Stop ALL audio playback first
-        // 1. Stop ABC synth if playing
-        if (window.currentSynthControl) {
-            try {
-                window.currentSynthControl.pause();
-                console.log('⏹️ Stopped ABC playback');
-            } catch (e) {
-                console.warn('Could not stop ABC playback:', e);
-            }
-        }
-        
-        // 2. Pause all <audio> elements on page
-        document.querySelectorAll('audio').forEach(audio => {
-            try {
-                audio.pause();
-                audio.currentTime = 0;
-            } catch (e) {
-                console.warn('Could not stop audio element:', e);
-            }
-        });
-        
-        // 3. Wait a moment for audio to fully stop
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Request microphone access with better error handling
-        const constraints = {
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                sampleRate: 44100
-            }
-        };
-        
-        recordingStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // iOS FIX: Use compatible MIME type
-        let mimeType = 'audio/webm';
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            mimeType = 'audio/webm;codecs=opus';
-        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-            mimeType = 'audio/ogg';
-        }
-        
-        console.log('🎙️ Using MIME type:', mimeType);
-        
-        // Create recorder with compatible MIME type
-        mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
-        audioChunks = [];
-        
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
-            }
-        };
-        
-        mediaRecorder.onstop = async () => {
-            try {
-                // Create blob from chunks
-                const audioBlob = new Blob(audioChunks, { type: mimeType });
-                
-                if (audioBlob.size === 0) {
-                    throw new Error('Recording failed - no audio data captured');
-                }
-                
-                // Convert to base64
-                const base64 = await blobToBase64(audioBlob);
-                
-                // Show save form with recorded audio
-                showSaveRecordingForm(sectionIndex, base64, audioBlob.size, mimeType);
-                
-                // Stop all tracks
-                recordingStream.getTracks().forEach(track => track.stop());
-            } catch (error) {
-                console.error('Recording save error:', error);
-                alert('Recording failed to save: ' + error.message);
-                // Clean up
-                if (recordingStream) {
-                    recordingStream.getTracks().forEach(track => track.stop());
-                }
-            }
-        };
-        
-        mediaRecorder.onerror = (error) => {
-            console.error('MediaRecorder error:', error);
-            alert('Recording error: ' + (error.error?.message || 'Unknown error'));
-        };
-        
-        // Start recording
-        mediaRecorder.start();
-        
-        // Show recording UI
-        showRecordingUI(sectionIndex);
-        
-    } catch (error) {
-        console.error('Microphone access error:', error);
-        let errorMessage = 'Microphone access denied or not available.';
-        
-        if (error.name === 'NotAllowedError') {
-            errorMessage = 'Please allow microphone access in your browser settings.';
-        } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No microphone found. Please check your device.';
-        } else if (error.name === 'NotReadableError') {
-            errorMessage = 'Microphone is already in use by another app.';
-        }
-        
-        alert(errorMessage + '\n\nError: ' + error.message);
-    }
-}
-
-function stopMicrophoneRecording() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-    }
-}
-
-function showRecordingUI(sectionIndex) {
-    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
-    
-    let seconds = 0;
-    const timerInterval = setInterval(() => {
-        seconds++;
-        const display = document.getElementById('recordingTimer');
-        if (display) {
-            display.textContent = formatTime(seconds);
-        }
-    }, 1000);
-    
-    container.innerHTML = `
-        <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 25px; border-radius: 12px; color: white; text-align: center; margin-top: 15px;">
-            <div style="font-size: 3em; margin-bottom: 10px;">🎙️</div>
-            <div style="font-size: 1.5em; font-weight: 600; margin-bottom: 10px;">Recording...</div>
-            <div id="recordingTimer" style="font-size: 2em; font-weight: 700; font-family: monospace;">0:00</div>
-            <button onclick="stopMicrophoneRecording(); clearInterval(${timerInterval})" 
-                style="background: white; color: #ef4444; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin-top: 20px; cursor: pointer; font-size: 1em;">
-                ⏹️ Stop Recording
-            </button>
-        </div>
-    `;
-}
-
-function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function showSaveRecordingForm(sectionIndex, base64Audio, fileSize, mimeType) {
-    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
-    
-    // Get file extension from MIME type
-    let extension = 'webm';
-    if (mimeType.includes('mp4')) extension = 'm4a';
-    else if (mimeType.includes('ogg')) extension = 'ogg';
-    
-    container.innerHTML = `
-        <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #10b981; margin-top: 15px;">
-            <h4 style="margin: 0 0 15px 0; color: #10b981;">✅ Recording Complete!</h4>
-            
-            <div style="margin-bottom: 15px; text-align: center;">
-                <audio controls src="${base64Audio}" style="width: 100%; max-width: 400px;"></audio>
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">Format: ${extension.toUpperCase()} - Size: ${(fileSize / 1024).toFixed(1)} KB</p>
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Who recorded this?</label>
-                <select id="recordingAuthor" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                    ${Object.entries(bandMembers).map(([key, member]) => `
-                        <option value="${key}">${member.name}</option>
-                    `).join('')}
-                </select>
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Name this recording:</label>
-                <input type="text" id="recordingName" 
-                    placeholder="E.g., Drew lead vocal - harmony practice"
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes (optional):</label>
-                <input type="text" id="recordingNotes" 
-                    placeholder="E.g., Trying the high harmony part"
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-            </div>
-            
-            <div style="display: flex; gap: 10px;">
-                <button class="chart-btn chart-btn-primary" onclick="saveRecording(${sectionIndex}, '${base64Audio}', ${fileSize})" style="flex: 1;">
-                    💾 Save Recording
-                </button>
-                <button class="chart-btn chart-btn-secondary" onclick="discardRecording(${sectionIndex})">
-                    🗑️ Discard
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-// blobToBase64 defined later in Google Drive section
-
-async function saveRecording(sectionIndex, base64Audio, fileSize) {
-    const author = document.getElementById('recordingAuthor').value;
-    const name = document.getElementById('recordingName').value.trim();
-    const notes = document.getElementById('recordingNotes').value.trim();
-    
-    if (!name) {
-        alert('Please enter a name for this recording');
-        return;
-    }
-    
-    const snippet = {
-        name: name,
-        notes: notes,
-        filename: 'recording.webm',
-        type: 'audio/webm',
-        size: fileSize,
-        data: base64Audio,
-        uploadedBy: author,
-        uploadedDate: new Date().toISOString().split('T')[0],
-        isRecording: true
-    };
-    
-    // Save to localStorage as backup
-    const key = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
-    const existing = localStorage.getItem(key);
-    const snippets = existing ? JSON.parse(existing) : [];
-    snippets.push(snippet);
-    localStorage.setItem(key, JSON.stringify(snippets));
-    
-    // Also save to Firebase so all band members can hear it
-    const fbKey = `harmony_audio_section_${sectionIndex}`;
-    await saveBandDataToDrive(selectedSong.title, fbKey, snippets);
-    
-    alert(`✅ Recording saved: ${name}`);
-    
-    // Clear form
-    hideHarmonyAudioForm();
-    
-    // Refresh harmony display
-    const bandData = bandKnowledgeBase[selectedSong.title];
-    renderHarmoniesEnhanced(selectedSong.title, bandData);
-}
-
-function discardRecording(sectionIndex) {
-    if (confirm('Discard this recording?')) {
-        hideHarmonyAudioForm();
     }
 }
 
@@ -4226,120 +2987,15 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
     saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
     
     const bandData = bandKnowledgeBase[songTitle];
-    if (bandData) {
-        renderHarmoniesEnhanced(songTitle, bandData);
-    } else {
-        
-    }
+    if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
 // ============================================================================
-// SHEET MUSIC GENERATION
-// ============================================================================
-
-// ============================================================================
-// ENHANCED ABC EDITOR - Integrated
+// ABC EDITOR
 // ============================================================================
 
 // generateSheetMusic wrapper defined later (after enhanced version)
 
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        alert('✅ ABC notation copied to clipboard!\n\nPaste it into https://abcjs.net/abcjs-editor.html to see the sheet music.');
-    }).catch(err => {
-        alert('Could not copy. Please select and copy manually.');
-    });
-}
-
-// Render audio snippets section even when there's no harmony data
-async function renderAudioSnippetsOnly(songTitle, container) {
-    // Check if there are any audio snippets saved
-    let hasAnySnippets = false;
-    let snippetsHTML = '';
-    
-    // Check all possible section indices (0-9 should be enough)
-    for (let sectionIndex = 0; sectionIndex < 10; sectionIndex++) {
-        const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
-        
-        if (audioSnippets.length > 0) {
-            hasAnySnippets = true;
-            
-            snippetsHTML += `
-                <div style="margin-bottom: 30px; padding: 20px; background: #f9fafb; border-radius: 12px; border: 2px solid #e2e8f0;">
-                    <h4 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Audio Snippets - Section ${sectionIndex + 1}</h4>
-                    
-                    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
-                        <button class="chart-btn chart-btn-primary" onclick="openMultiTrackStudio('${songTitle}', ${sectionIndex})" 
-                            style="padding: 8px 16px; font-size: 0.9em;">
-                            🎛️ Multi-Track Studio
-                        </button>
-                        <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
-                            style="padding: 8px 16px; font-size: 0.9em;">
-                            📤 Upload File
-                        </button>
-                    </div>
-                    
-                    <div id="harmonyAudioFormContainer${sectionIndex}"></div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
-                        ${audioSnippets.map((snippet, snippetIndex) => `
-                            <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
-                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-                                    <div>
-                                        <strong style="color: #2d3748;">${snippet.name}</strong>
-                                        ${snippet.notes ? `<p style="margin: 5px 0 0 0; font-size: 0.85em; color: #6b7280;">${snippet.notes}</p>` : ''}
-                                    </div>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                            style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ✏️ Rename
-                                        </button>
-                                        <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                            style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ✕
-                                        </button>
-                                    </div>
-                                </div>
-                                <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
-                                <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
-                                    ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
-                                    ${snippet.isRecording ? ' - 🎙️ Recorded in browser' : ''}
-                                </p>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-    }
-    
-    if (hasAnySnippets) {
-        container.innerHTML = `
-            <div style="margin-bottom: 20px; padding: 15px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                <p style="margin: 0; font-size: 0.9em;"><strong>Note:</strong> This song doesn't have harmony parts documented yet, but you have audio snippets saved below.</p>
-            </div>
-            ${snippetsHTML}
-        `;
-    } else {
-        // No harmony data and no snippets - show a helpful message with record button
-        container.innerHTML = `
-            <div style="padding: 30px; text-align: center; background: #f9fafb; border-radius: 12px; border: 2px dashed #e2e8f0;">
-                <p style="color: #6b7280; margin-bottom: 20px;">No harmony parts documented yet, but you can still record audio snippets!</p>
-                
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="chart-btn chart-btn-primary" onclick="openMultiTrackStudio(selectedSong?.title || '', 0)">
-                        🎛️ Multi-Track Studio
-                    </button>
-                    <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(0)">
-                        📤 Upload File
-                    </button>
-                </div>
-                
-                <div id="harmonyAudioFormContainer0" style="margin-top: 20px;"></div>
-            </div>
-        `;
-    }
-}
 
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
 async function renderHarmoniesEnhanced(songTitle, bandData) {
@@ -5121,7 +3777,7 @@ async function saveABCNotation(sectionIndex) {
     const localKey = `deadcetera_abc_${songTitle}_section${sectionIndex}`;
     localStorage.setItem(localKey, abc);
     
-    alert('✅ Sheet music saved to Google Drive! All band members can now see it.');
+    showToast('✅ Sheet music saved — shared with band!');
     
     // Close modal
     const modal = document.getElementById('abcEditorModal');
@@ -5174,8 +3830,8 @@ let isGoogleDriveInitialized = false; // Keep name for compatibility - means "ba
 let isUserSignedIn = false;
 let accessToken = null;
 let tokenClient = null;
-let sharedFolderId = 'firebase'; // Dummy value so existing checks pass
-let currentUserEmail = null;
+let currentUserEmail = localStorage.getItem('deadcetera_google_email') || null;
+// ^ Pre-populated from last session so Profile shows email before auth re-fires
 
 // Firebase references (set during init)
 let firebaseDB = null;
@@ -5184,6 +3840,80 @@ let firebaseStorage = null;
 // ============================================================================
 // FIREBASE INITIALIZATION
 // ============================================================================
+
+// ── Sign-in nudge banner — shown once per session when unsaved data risk ────
+let signInNudgeShown = false;
+function showSignInNudge() {
+    if (signInNudgeShown || isUserSignedIn) return;
+    signInNudgeShown = true;
+    
+    // Don't stack with existing nudge
+    if (document.getElementById('signInNudgeBanner')) return;
+    
+    const banner = document.createElement('div');
+    banner.id = 'signInNudgeBanner';
+    banner.style.cssText = `
+        position: fixed; bottom: 76px; left: 12px; right: 12px;
+        background: linear-gradient(135deg, #1e2a4a, #2d1f4e);
+        border: 1px solid rgba(245,158,11,0.5);
+        border-radius: 14px; padding: 14px 16px;
+        display: flex; align-items: center; gap: 12px;
+        z-index: 8500; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        animation: slideUpBanner 0.3s ease-out;
+    `;
+    banner.innerHTML = `
+        <span style="font-size:1.6em;flex-shrink:0">⚠️</span>
+        <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:0.9em;color:#fbbf24">Sign in to share with the band</div>
+            <div style="font-size:0.75em;color:#94a3b8;margin-top:2px">Your changes are saved on this device only until you sign in</div>
+        </div>
+        <button onclick="handleGoogleDriveAuth();document.getElementById('signInNudgeBanner')?.remove()" style="
+            background:#f59e0b;color:#1a1a1a;border:none;border-radius:8px;
+            padding:8px 14px;font-weight:700;font-size:0.82em;cursor:pointer;
+            flex-shrink:0;white-space:nowrap">
+            Sign In
+        </button>
+        <button onclick="document.getElementById('signInNudgeBanner')?.remove()" style="
+            background:none;border:none;color:#64748b;cursor:pointer;
+            font-size:1.2em;padding:4px;flex-shrink:0;line-height:1">✕</button>
+    `;
+    document.body.appendChild(banner);
+    // Auto-dismiss after 12 seconds
+    setTimeout(() => banner?.remove(), 12000);
+}
+
+// ── Lightweight Firebase-only init (no Google Identity) ─────────────────────
+// Called automatically on page load so firebaseDB is ready immediately.
+// loadGoogleDriveAPI() (full init including Google Identity) is called on 
+// first "Connect" click and handles sign-in + email attribution.
+async function initFirebaseOnly() {
+    if (firebaseDB) return; // Already initialized
+    
+    const loadScript = (src) => new Promise((res, rej) => {
+        // Check if already loaded
+        if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+        const s = document.createElement('script');
+        s.src = src; s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+    });
+
+    // Load Firebase app compat then database compat
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js');
+    
+    if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    firebaseDB = firebase.database();
+    
+    // Also try storage
+    try {
+        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js');
+        if (firebase.storage) firebaseStorage = firebase.storage();
+    } catch(e) { /* storage optional */ }
+
+    console.log('🔥 Firebase DB ready (auto-init)');
+}
 
 function loadGoogleDriveAPI() {
     // Now loads Firebase SDK + Google Identity Services for sign-in
@@ -5225,16 +3955,19 @@ async function initFirebase() {
     try {
         console.log('⚙️ Initializing Firebase...');
         
-        // Initialize Firebase
+        // Initialize Firebase app if not already done (may have been done by initFirebaseOnly)
         if (!firebase.apps.length) {
             firebase.initializeApp(FIREBASE_CONFIG);
         }
         
-        firebaseDB = firebase.database();
+        // Re-use existing firebaseDB if already set by initFirebaseOnly
+        if (!firebaseDB) {
+            firebaseDB = firebase.database();
+        }
         
         // Firebase Storage is optional - we primarily use RTDB for audio (base64)
         try {
-            if (firebase.storage) {
+            if (firebase.storage && !firebaseStorage) {
                 firebaseStorage = firebase.storage();
             }
         } catch(e) {
@@ -5275,13 +4008,6 @@ async function initFirebase() {
     }
 }
 
-// Keep same function name for compatibility
-async function initializeSharedFolder() {
-    // No-op - Firebase doesn't need folder management
-    sharedFolderId = 'firebase';
-    console.log('🔥 Using Firebase - no shared folder needed');
-}
-
 function updateSignInStatus(signedIn) {
     isUserSignedIn = signedIn;
     updateDriveAuthButton();
@@ -5295,13 +4021,67 @@ async function getCurrentUserEmail() {
         const userInfo = await response.json();
         currentUserEmail = userInfo.email;
         console.log('👤 Signed in as:', currentUserEmail);
-        logActivity('sign_in');
+        // Persist email to localStorage so Profile page can show it immediately on reload
+        localStorage.setItem('deadcetera_google_email', currentUserEmail);
+        // Sign-in is critical — save immediately, don't wait for debounce
+        logActivity('sign_in').then(() => {
+            if (activityLogCache) {
+                saveMasterFile(MASTER_ACTIVITY_LOG, activityLogCache).catch(() => {});
+                activityLogDirty = false;
+            }
+        });
         injectAdminButton();
         // Re-update button now that we have the email
         updateDriveAuthButton();
+        // Migrate any localStorage-only data to Firebase (recovers data saved before Firebase was ready)
+        recoverLocalStorageToFirebase();
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
+    }
+}
+
+// Scan localStorage for any Deadcetera data saved before Firebase was initialized.
+// Pushes to Firebase so it's shared with the band. Runs silently on each sign-in.
+async function recoverLocalStorageToFirebase() {
+    if (!firebaseDB) return;
+    let recovered = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('deadcetera_')) continue;
+        // Key format: deadcetera_{dataType}_{songTitle}
+        // Extract parts — dataType is the second segment, songTitle is the rest
+        const withoutPrefix = key.replace('deadcetera_', '');
+        // Known dataTypes used in saveBandDataToDrive
+        const dataTypes = ['spotify_versions','song_status','song_metadata','song_structure',
+                          'practice_tracks','rehearsal_notes','gig_notes','moises_stems',
+                          'harmony_metadata','part_notes','custom_songs','calendar_events',
+                          'blocked_dates','gig_history','setlists','equipment','contacts',
+                          'playlists','finances','social_profiles'];
+        let matchedType = null, matchedSong = null;
+        for (const dt of dataTypes) {
+            if (withoutPrefix.startsWith(dt + '_')) {
+                matchedType = dt;
+                matchedSong = withoutPrefix.slice(dt.length + 1);
+                break;
+            }
+        }
+        if (!matchedType || !matchedSong) continue;
+        try {
+            // Check if Firebase already has this data
+            const path = songPath(matchedSong, matchedType);
+            const snap = await firebaseDB.ref(path).once('value');
+            if (snap.val() !== null) continue; // Firebase already has it — skip
+            // Push to Firebase
+            const data = JSON.parse(localStorage.getItem(key));
+            if (!data || (Array.isArray(data) && data.length === 0)) continue;
+            await firebaseDB.ref(path).set(data);
+            recovered++;
+            console.log(`🔄 Recovered ${matchedType} for "${matchedSong}" from localStorage to Firebase`);
+        } catch(e) { /* skip errors on individual keys */ }
+    }
+    if (recovered > 0) {
+        showToast(`✅ Synced ${recovered} data item(s) from this device to Firebase`);
     }
 }
 
@@ -5310,9 +4090,9 @@ function updateDriveAuthButton() {
     if (!button) return;
     
     if (isUserSignedIn) {
-        button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span> Connected';
+        button.innerHTML = '<span style="color:#065f46;font-size:1.1em">●</span><span class="conn-label"> Connected</span>';
         button.className = 'topbar-btn connected';
-        button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 12px!important;border-radius:8px!important;';
+        button.style.cssText = 'background:#d1fae5!important;color:#065f46!important;border:2px solid #10b981!important;font-weight:700!important;padding:6px 10px!important;border-radius:8px!important;white-space:nowrap!important;';
         // Update the hero Sign In button to show Sign Out
         const heroBtn = document.getElementById('googleDriveAuthBtn2');
         if (heroBtn) {
@@ -5356,6 +4136,8 @@ async function handleGoogleDriveAuth() {
         google.accounts.oauth2.revoke(accessToken, () => {
             console.log('👋 User signed out');
             accessToken = null;
+            currentUserEmail = null;
+            localStorage.removeItem('deadcetera_google_email');
             updateSignInStatus(false);
         });
     } else {
@@ -5399,38 +4181,6 @@ function masterPath(fileName) {
 
 // ============================================================================
 // UPLOAD AUDIO TO FIREBASE STORAGE
-// ============================================================================
-
-async function uploadAudioToDrive(audioBlob, fileName, metadata) {
-    // Now uploads to Firebase Storage instead of Drive
-    if (!isUserSignedIn) {
-        alert('Please sign in first!');
-        return null;
-    }
-    
-    try {
-        console.log('📤 Uploading to Firebase Storage:', fileName);
-        
-        const safeName = sanitizeFirebasePath(fileName);
-        const storageRef = firebaseStorage.ref(`audio/${safeName}`);
-        
-        await storageRef.put(audioBlob);
-        const downloadURL = await storageRef.getDownloadURL();
-        
-        console.log('✅ Upload successful:', downloadURL);
-        
-        return {
-            id: safeName,
-            name: fileName,
-            webViewLink: downloadURL
-        };
-    } catch (error) {
-        console.error('Upload failed:', error);
-        alert('Failed to upload audio: ' + error.message);
-        return null;
-    }
-}
-
 async function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -5515,7 +4265,7 @@ async function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
 
 async function updateLeadSinger(singer) {
     if (!selectedSong || !selectedSong.title) return;
-    
+    if (!isUserSignedIn) showSignInNudge();
     await saveBandDataToDrive(selectedSong.title, 'lead_singer', { singer });
     console.log(`🎤 Lead singer updated: ${singer} - saved to Google Drive!`);
 }
@@ -5745,6 +4495,7 @@ async function loadHasHarmonies(songTitle) {
 
 async function updateSongStatus(status) {
     if (!selectedSong || !selectedSong.title) return;
+    if (!isUserSignedIn) showSignInNudge();
     
     const statusNames = {
         '': 'Not Started',
@@ -5793,11 +4544,6 @@ async function filterByStatus(status) {
 }
 
 // Legacy - kept for backward compat but renderSongs now handles filtering at data level
-function applyStatusFilter(status) {
-    activeStatusFilter = (status === 'all') ? null : status;
-    const searchTerm = document.getElementById('songSearch')?.value || '';
-    renderSongs(currentFilter, searchTerm);
-}
 
 async function addStatusBadges() {
     if (!statusCacheLoaded) {
@@ -5844,6 +4590,7 @@ async function addStatusBadges() {
 
 async function updateSongBpm(bpm) {
     if (!selectedSong || !selectedSong.title) return;
+    if (!isUserSignedIn) showSignInNudge();
     
     const bpmNum = parseInt(bpm);
     if (isNaN(bpmNum) || bpmNum < 40 || bpmNum > 240) {
@@ -5958,7 +4705,7 @@ async function preloadAllStatuses() {
             const count = Object.values(masterData).filter(v => v).length;
             console.log(`Loaded ${count} song statuses from master file (1 API call!)`);
             statusCacheLoaded = true;
-        } else if (isUserSignedIn && sharedFolderId) {
+        } else if (isUserSignedIn) {
             // Drive is ready but no master file - migrate
             console.log('No master status file found. Migrating from individual files...');
             await migrateStatusesToMaster();
@@ -6041,21 +4788,6 @@ function getStatusFromCache(songTitle) {
     return statusCache[songTitle] || '';
 }
 
-// Don't pre-load - too slow! Just cache as songs are clicked
-async function cacheHarmonyState(songTitle) {
-    // Use the master harmony badge cache first (instant!)
-    if (harmonyBadgeCache[songTitle] !== undefined) {
-        return harmonyBadgeCache[songTitle];
-    }
-    // Fallback to old per-song cache
-    if (harmonyCache[songTitle] === undefined) {
-        harmonyCache[songTitle] = await loadHasHarmonies(songTitle);
-        // Also update master cache
-        harmonyBadgeCache[songTitle] = harmonyCache[songTitle];
-    }
-    return harmonyCache[songTitle];
-}
-
 async function filterSongsAsync(type) {
     console.log('Filtering songs:', type);
     
@@ -6071,36 +4803,6 @@ async function filterSongsAsync(type) {
     renderSongs(currentFilter, searchTerm);
 }
 
-// Separate function so renderSongs can re-apply after re-rendering
-function applyHarmonyFilter() {
-    const items = document.querySelectorAll('.song-item');
-    let visibleCount = 0;
-    
-    items.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
-        
-        if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
-            item.style.display = 'grid';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-    
-    console.log('Harmony filter: ' + visibleCount + ' songs');
-    
-    if (visibleCount === 0) {
-        document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);display:block !important;grid-template-columns:none !important">' +
-            '<div style="font-size:2em;margin-bottom:12px">🎵</div>' +
-            '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No harmony songs marked yet</div>' +
-            '<div style="margin-bottom:16px;font-size:0.9em">Click any song and check the "Has Harmonies" box to mark it!</div>' +
-            '<button onclick="filterSongsSync(\'all\');document.getElementById(\'harmoniesOnlyFilter\').checked=false" class="btn btn-primary" style="padding:10px 24px">Show All Songs</button>' +
-            '</div>';
-    }
-}
-
 function toggleNorthStarFilter(enabled) {
     activeNorthStarFilter = enabled;
     renderSongs(currentFilter, document.getElementById('songSearch')?.value || '');
@@ -6110,10 +4812,6 @@ function filterSongsSync(type) {
     filterSongsAsync(type);
 }
 
-// Old async version - redirect to new version
-async function filterSongs(type) {
-    filterSongsAsync(type);
-}
 
 // Cache for harmony data - loaded from master file
 let harmonyBadgeCache = {};
@@ -6141,7 +4839,7 @@ async function addHarmonyBadges() {
                 harmonyBadgeCache = masterData;
                 harmonyBadgeCacheLoaded = true;
                 console.log('Loaded harmonies from master file');
-            } else if (isUserSignedIn && sharedFolderId) {
+            } else if (isUserSignedIn) {
                 // Drive is ready but no data found - mark as loaded (no harmonies set yet)
                 harmonyBadgeCacheLoaded = true;
                 console.log('No harmony data found in master file');
@@ -6149,7 +4847,7 @@ async function addHarmonyBadges() {
             // If Drive not ready yet, DON'T mark as loaded - will retry on next render
         } catch (e) {
             console.error('Error loading harmony master:', e);
-            if (isUserSignedIn && sharedFolderId) {
+            if (isUserSignedIn) {
                 harmonyBadgeCacheLoaded = true; // Drive was ready, real error
             }
         }
@@ -6281,17 +4979,19 @@ async function saveBandDataToDrive(songTitle, dataType, data) {
     localStorage.setItem(localKey, JSON.stringify(data));
     
     if (!firebaseDB) {
-        console.log('⚠️ Firebase not ready, using localStorage fallback');
+        console.warn('⚠️ Firebase not ready — saved to localStorage only (not shared with band)');
+        showSignInNudge();
         return false;
     }
     
     try {
         const path = songPath(songTitle, dataType);
         await firebaseDB.ref(path).set(data);
-        console.log(`✅ Saved ${dataType} for ${songTitle} to Firebase`);
         return true;
     } catch (error) {
         console.error('❌ Failed to save to Firebase:', error);
+        // Show error toast so user knows their save didn't reach the band
+        showToast('⚠️ Could not sync to band — check your connection');
         return false;
     }
 }
@@ -6391,22 +5091,6 @@ async function loadRehearsalNotes(songTitle) {
     return toArray(data || []);
 }
 
-async function saveSpotifyUrls(songTitle, urls) {
-    return await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.SPOTIFY_URLS, urls);
-}
-
-async function loadSpotifyUrls(songTitle) {
-    return await loadBandDataFromDrive(songTitle, BAND_DATA_TYPES.SPOTIFY_URLS) || {};
-}
-
-async function savePartNotesToDrive(key, type, notes) {
-    return await saveBandDataToDrive(key, BAND_DATA_TYPES.PART_NOTES, notes);
-}
-
-async function loadPartNotesFromDrive(key, type) {
-    return await loadBandDataFromDrive(key, BAND_DATA_TYPES.PART_NOTES) || [];
-}
-
 async function saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata) {
     const key = `${songTitle}_section${sectionIndex}`;
     logActivity('harmony_edit', { song: songTitle, extra: `section ${sectionIndex}` });
@@ -6449,19 +5133,6 @@ console.log('🔥 Firebase storage system loaded');
 // FIREBASE HELPER FUNCTIONS (replaces Drive folder/file management)
 // ============================================================================
 
-// These exist for compatibility - no longer needed with Firebase
-const _folderIdCache = {};
-const _folderCreationLocks = {};
-
-async function findOrCreateFolder(folderName, parentFolderId) {
-    // No-op - Firebase doesn't use folders
-    return 'firebase';
-}
-
-async function findFileInFolder(fileName, folderId) {
-    // No-op - Firebase doesn't use file search
-    return null;
-}
 
 console.log('✅ Firebase helper functions loaded');
 
@@ -6722,7 +5393,7 @@ async function logActivity(action, details = {}) {
                 activityLogDirty = false;
             }
             activityLogSaveTimer = null;
-        }, 10000);
+        }, 3000); // 3s debounce (was 10s) — less data lost if tab closes quickly
     }
 }
 
@@ -6762,16 +5433,27 @@ function injectAdminButton() {
 }
 
 async function showAdminPanel() {
-    // Load activity log
-    let log = activityLogCache;
-    if (!log) {
-        log = await loadMasterFile(MASTER_ACTIVITY_LOG) || [];
-        activityLogCache = log;
-    }
-    
     // Remove existing panel if open
     const existing = document.getElementById('adminPanel');
     if (existing) { existing.remove(); return; }
+
+    // Show loading state immediately
+    const loadingPanel = document.createElement('div');
+    loadingPanel.id = 'adminPanel';
+    loadingPanel.style.cssText = `position:fixed;top:0;right:0;width:420px;height:100vh;background:#1a1a2e;color:#e0e0e0;z-index:10000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;`;
+    loadingPanel.innerHTML = `<div style="text-align:center"><div style="font-size:2em;margin-bottom:12px">⏳</div><div style="color:#667eea">Loading activity from Firebase...</div></div>`;
+    document.body.appendChild(loadingPanel);
+
+    // ALWAYS force-load from Firebase (never use stale local cache)
+    // This ensures you see ALL band members' activity, not just your own session
+    let log = [];
+    try {
+        log = await loadMasterFile(MASTER_ACTIVITY_LOG) || [];
+        activityLogCache = log; // Update local cache after fresh load
+    } catch(e) {
+        log = activityLogCache || [];
+    }
+    loadingPanel.remove();
     
     const panel = document.createElement('div');
     panel.id = 'adminPanel';
@@ -6791,7 +5473,6 @@ async function showAdminPanel() {
     const weekLog = log.filter(e => new Date(e.time) > last7days);
     
     // Per-member stats
-    const memberStats = {};
     const memberNames = {
         'drewmerrill1029@gmail.com': 'Drew',
         'brian@hrestoration.com': 'Brian',
@@ -6799,9 +5480,18 @@ async function showAdminPanel() {
         'cmjalbert@gmail.com': 'Chris',
         'jnault@fegholdings.com': 'Jay'
     };
-    
-    for (const email of BAND_MEMBER_EMAILS) {
-        const name = memberNames[email] || email.split('@')[0];
+
+    // Build stats for ALL emails that appear in the log (not just hardcoded 5)
+    // This catches members who signed in with a different Google account
+    const allEmails = new Set([
+        ...BAND_MEMBER_EMAILS,
+        ...recentLog.map(e => e.user).filter(Boolean)
+    ]);
+
+    const memberStats = {};
+    for (const email of allEmails) {
+        const name = memberNames[email] || ('⚠️ Unknown: ' + email.split('@')[0]);
+        const isKnown = BAND_MEMBER_EMAILS.includes(email);
         const memberEntries = recentLog.filter(e => e.user === email);
         const weekEntries = weekLog.filter(e => e.user === email);
         
@@ -6818,7 +5508,7 @@ async function showAdminPanel() {
         });
         
         memberStats[email] = {
-            name, signIns: signIns.length, lastSignIn,
+            name, email, isKnown, signIns: signIns.length, lastSignIn,
             contributions: contributions.length,
             weekContributions: weekContributions.length,
             byType,
@@ -6826,8 +5516,11 @@ async function showAdminPanel() {
         };
     }
     
-    // Sort by contributions (most active first)
-    const sorted = Object.values(memberStats).sort((a, b) => b.contributions - a.contributions);
+    // Sort: known members first (by contributions), then unknown emails
+    const sorted = Object.values(memberStats).sort((a, b) => {
+        if (a.isKnown !== b.isKnown) return a.isKnown ? -1 : 1;
+        return b.contributions - a.contributions;
+    });
     
     // Action labels
     const actionLabels = {
@@ -6884,7 +5577,7 @@ async function showAdminPanel() {
                     .join(', ') || 'No contributions yet';
                     
                 return `
-                <div style="background: #16213e; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+                <div style="background: #16213e; border-radius: 10px; padding: 14px; margin-bottom: 10px; border: 1px solid ${m.isKnown ? 'transparent' : '#f59e0b33'}">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <span style="font-size: 1.1em;">${medal} <strong>${m.name}</strong></span>
@@ -6903,10 +5596,12 @@ async function showAdminPanel() {
                         <div style="background: linear-gradient(90deg, #667eea, #10b981); height: 100%; border-radius: 4px; width: ${barWidth}%; transition: width 0.5s;"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #888;">
-                        <span>🔑 ${m.signIns} sign-ins</span>
+                        <span>🔑 ${m.signIns} sign-ins · Last: ${timeAgo(m.lastSignIn)}</span>
                         <span>Last active: ${timeAgo(m.lastActivity?.time)}</span>
                     </div>
+                    <div style="font-size: 0.7em; color: #555; margin-top: 3px;">${m.email}</div>
                     <div style="font-size: 0.72em; color: #667; margin-top: 4px;">${typeBreakdown}</div>
+                    ${!m.isKnown ? '<div style="font-size:0.72em;color:#f59e0b;margin-top:4px">⚠️ Email not in band list — may be wrong Google account</div>' : ''}
                 </div>`;
             }).join('')}
             
@@ -6939,10 +5634,6 @@ async function showAdminPanel() {
 // BAND CONFIGURATION
 // ============================================================================
 
-const SHARED_FOLDER_ID = 'firebase'; // Kept for compatibility checks
-const METADATA_FOLDER_ID = 'firebase'; // Kept for compatibility checks
-
-// Band member emails (used for display purposes)
 const BAND_MEMBER_EMAILS = [
     'drewmerrill1029@gmail.com',   // Drew (owner)
     'pierce.d.hale@gmail.com',     // Pierce
@@ -6952,24 +5643,6 @@ const BAND_MEMBER_EMAILS = [
 ];
 const OWNER_EMAIL = 'drewmerrill1029@gmail.com';
 
-// ============================================================================
-// NO SHARING AUDIT NEEDED - Firebase is accessible to everyone!
-// ============================================================================
-
-async function silentSharingAudit() {
-    // No-op - Firebase doesn't need sharing management
-    console.log('🔥 Using Firebase - no sharing audit needed!');
-}
-
-async function shareFolderWithBand() {
-    alert('Using Firebase now - data is automatically shared with all band members!');
-}
-
-function showFolderSharingInstructions(folderId) {
-    // No-op
-}
-
-console.log('🔥 Firebase configuration loaded - no sharing needed!');
 // ============================================================================
 // MULTI-TRACK HARMONY STUDIO v3
 // ============================================================================
@@ -7858,10 +6531,6 @@ async function mtDrawAllWaveforms(songTitle, si) {
     }
 }
 
-function mtDrawWaveform(si, trackIndex) {
-    const canvas = document.getElementById(`mtWaveformCanvas_${si}`);
-    if (canvas) canvas.style.display = canvas.style.display === 'none' ? 'block' : 'none';
-}
 
 // ============================================================================
 // EXPORT MIX
@@ -8129,6 +6798,7 @@ function showPage(page) {
 
 const pageRenderers = {
     setlists: renderSetlistsPage,
+    playlists: renderPlaylistsPage,
     practice: renderPracticePage,
     calendar: renderCalendarPage,
     gigs: renderGigsPage,
@@ -8379,7 +7049,7 @@ async function slSaveSetlist() {
     const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     existing.push(sl);
     await saveBandDataToDrive('_band', 'setlists', existing);
-    alert('✅ Setlist saved!');
+    showToast('✅ Setlist saved!');
     loadSetlists();
 }
 
@@ -8430,7 +7100,7 @@ async function slSaveSetlistEdit(idx) {
         updated: new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'setlists', data);
-    alert('✅ Setlist updated!');
+    showToast('✅ Setlist updated!');
     loadSetlists();
 }
 
@@ -8439,7 +7109,7 @@ async function deleteSetlist(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'setlists', data);
-    alert('Setlist deleted.');
+    showToast('🗑️ Setlist deleted');
     loadSetlists();
 }
 
@@ -8448,7 +7118,7 @@ async function deleteGig(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'gigs', data);
-    alert('Gig deleted.');
+    showToast('🗑️ Gig deleted');
     loadGigs();
 }
 
@@ -8489,7 +7159,7 @@ async function saveGigEdit(idx) {
         updated: new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'gigs', data);
-    alert('✅ Gig updated!');
+    showToast('✅ Gig updated!');
     loadGigs();
 }
 
@@ -9053,32 +7723,6 @@ function calNavMonth(dir) {
     renderCalendarInner();
 }
 
-// Show event detail in form area (clicking an event pill)
-async function calShowEvent(idx) {
-    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-    const ev = events[idx];
-    if (!ev) return;
-    const area = document.getElementById('calEventFormArea');
-    if (!area) return;
-    const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
-    area.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <h3 style="margin:0;font-size:1em">${typeIcon} ${ev.title||'Untitled'}</h3>
-        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
-    </div>
-    <div style="font-size:0.85em;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <span>📅 ${ev.date||''}</span>
-        ${ev.time ? `<span>⏰ ${ev.time}</span>` : ''}
-        <span style="text-transform:capitalize">📂 ${ev.type||'other'}</span>
-    </div>
-    ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
-    <div style="display:flex;gap:8px">
-        <button onclick="calEditEvent(${idx})" class="btn btn-ghost btn-sm">✏️ Edit</button>
-        <button onclick="calDeleteEvent(${idx})" class="btn btn-danger btn-sm">✕ Delete</button>
-        <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
-    </div>`;
-    area.scrollIntoView({behavior:'smooth', block:'nearest'});
-}
 
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -10124,7 +8768,7 @@ async function saveGig() {
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);
     await saveBandDataToDrive('_band', 'gigs', existing);
-    alert('✅ Gig saved!');
+    showToast('✅ Gig saved!');
     loadGigs();
 }
 
@@ -10645,7 +9289,7 @@ function settingsTab(tab, btn) {
                     </select></div>
             </div>
             <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
-                🔗 Google: <span style="color:var(--text-muted)">${localStorage.getItem('deadcetera_google_email')||'Not connected'}</span>
+                🔗 Google: <span style="color:${isUserSignedIn && currentUserEmail ? '#10b981' : 'var(--text-muted)'}">${isUserSignedIn && currentUserEmail ? currentUserEmail : 'Not connected — click Sign In above'}</span>
             </div>
         </div>
         <div class="app-card"><h3>🔔 Preferences</h3>
@@ -10769,11 +9413,11 @@ async function loadFeedbackHistory() {
 function checkSyncStatus() {
     const el = document.getElementById('syncStatus');
     if (!el) return;
-    const isAuth = !!localStorage.getItem('deadcetera_google_email');
+    const isAuth = isUserSignedIn && !!currentUserEmail;
     el.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="width:8px;height:8px;border-radius:50%;background:${isAuth?'var(--green)':'var(--yellow)'}"></span>
-            Google Drive: ${isAuth?'Connected':'Not connected'}
+            Google: ${isAuth ? currentUserEmail : 'Not signed in'}
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
@@ -11103,3 +9747,1097 @@ function filterHelpTopics(query) {
         if (q.length > 2 && text.includes(q)) d.open = true;
     });
 }
+// PLAYLISTS — PHASE 1: DATA LAYER
+// ============================================================================
+// All playlist data lives in Firebase (via saveBandDataToDrive / loadBandDataFromDrive)
+// under two top-level keys:
+//   _band / playlists        — the playlist objects (shared, writable by all)
+//   _band / playlist_listens — per-user listened tracking (shared, writable by all)
+//
+// Listening Party state lives in Firebase Realtime DB at:
+//   /listening_parties/{playlistId}
+//
+// Playlist types: northstar | pregig | practice | ondeck | custom
+// ============================================================================
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const PLAYLIST_TYPES = {
+    northstar: { label: '⭐ North Star',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.3)'  },
+    pregig:    { label: '🎤 Pre-Gig Prep',  color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.3)' },
+    practice:  { label: '🎸 Practice',      color: '#34d399', bg: 'rgba(52,211,153,0.15)',  border: 'rgba(52,211,153,0.3)'  },
+    ondeck:    { label: '📋 On Deck',        color: '#60a5fa', bg: 'rgba(96,165,250,0.15)',  border: 'rgba(96,165,250,0.3)'  },
+    custom:    { label: '🎵 Custom',         color: '#94a3b8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)' },
+};
+
+// Source priority order for resolvePlaylistSongUrl
+const SOURCE_PRIORITY = ['spotify', 'youtube', 'archive', 'soundcloud', 'other'];
+
+// ── Storage helpers ───────────────────────────────────────────────────────────
+
+async function loadPlaylists() {
+    const data = await loadBandDataFromDrive('_band', 'playlists');
+    return toArray(data || []);
+}
+
+async function savePlaylists(playlists) {
+    return await saveBandDataToDrive('_band', 'playlists', playlists);
+}
+
+async function loadPlaylistListens() {
+    const data = await loadBandDataFromDrive('_band', 'playlist_listens');
+    return (data && typeof data === 'object') ? data : {};
+}
+
+async function savePlaylistListens(listens) {
+    return await saveBandDataToDrive('_band', 'playlist_listens', listens);
+}
+
+// ── CRUD ─────────────────────────────────────────────────────────────────────
+
+async function createPlaylist(fields = {}) {
+    const playlists = await loadPlaylists();
+    const id = 'pl_' + Date.now();
+    const userKey = getCurrentMemberKey() || 'unknown';
+    const now = new Date().toISOString();
+
+    const playlist = {
+        id,
+        name:           fields.name        || 'Untitled Playlist',
+        type:           fields.type        || 'custom',
+        description:    fields.description || '',
+        createdBy:      userKey,
+        createdAt:      now,
+        updatedAt:      now,
+        linkedSetlistId: fields.linkedSetlistId || null,
+        linkedGigId:    fields.linkedGigId || null,
+        // songs only stored here when NOT linked to a setlist
+        songs:          fields.linkedSetlistId ? [] : (fields.songs || []),
+    };
+
+    playlists.push(playlist);
+    await savePlaylists(playlists);
+    console.log('✅ Playlist created:', id);
+    return playlist;
+}
+
+async function updatePlaylist(playlistId, changes = {}) {
+    const playlists = await loadPlaylists();
+    const idx = playlists.findIndex(p => p.id === playlistId);
+    if (idx === -1) { console.warn('Playlist not found:', playlistId); return null; }
+
+    playlists[idx] = {
+        ...playlists[idx],
+        ...changes,
+        id:        playlistId,               // never overwrite id
+        updatedAt: new Date().toISOString(),
+    };
+    await savePlaylists(playlists);
+    return playlists[idx];
+}
+
+async function deletePlaylist(playlistId) {
+    const playlists = await loadPlaylists();
+    const filtered = playlists.filter(p => p.id !== playlistId);
+    await savePlaylists(filtered);
+
+    // Clean up listened data for this playlist
+    const listens = await loadPlaylistListens();
+    delete listens[playlistId];
+    await savePlaylistListens(listens);
+
+    // End any active listening party
+    if (firebaseDB) {
+        await firebaseDB.ref(`listening_parties/${playlistId}`).remove().catch(() => {});
+    }
+    console.log('🗑️ Playlist deleted:', playlistId);
+    return true;
+}
+
+// ── Song resolution ───────────────────────────────────────────────────────────
+// Returns the songs array for a playlist, handling live-sync from setlist.
+// Also merges in per-song notes/overrides stored on the playlist.
+
+async function getPlaylistSongs(playlist) {
+    if (!playlist) return [];
+
+    // Live-synced from setlist
+    if (playlist.linkedSetlistId) {
+        const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        const lid = playlist.linkedSetlistId || '';
+        const setlist = allSetlists.find(sl =>
+            (sl.id && sl.id === lid) ||
+            sl.name === lid ||
+            `${sl.name} (${sl.date})` === lid ||
+            `${sl.name} ${sl.date}` === lid ||
+            lid.startsWith(sl.name)
+        );
+
+        if (!setlist) {
+            // Setlist was deleted — return last-known songs with a flag
+            return (playlist.songs || []).map(s => ({ ...s, _setlistMissing: true }));
+        }
+
+        // Flatten all sets into ordered song array
+        const flatSongs = [];
+        (setlist.sets || []).forEach(set => {
+            (set.songs || []).forEach(item => {
+                const title = typeof item === 'string' ? item : item.title;
+                if (title) flatSongs.push(title);
+            });
+        });
+
+        // Build song entries, merging overrides stored on the playlist (by title)
+        const overrideMap = {};
+        (playlist.songs || []).forEach(s => { overrideMap[s.songTitle] = s; });
+
+        return flatSongs.map(title => ({
+            songTitle:       title,
+            note:            overrideMap[title]?.note            || '',
+            preferredSource: overrideMap[title]?.preferredSource || 'auto',
+            customUrl:       overrideMap[title]?.customUrl       || null,
+        }));
+    }
+
+    // Manual playlist — return stored songs as-is
+    return toArray(playlist.songs || []);
+}
+
+// ── URL resolution ────────────────────────────────────────────────────────────
+// Given a playlist song entry, returns the best available URL to play.
+// Priority: customUrl → preferredSource match → spotify → youtube → archive → search fallback
+
+async function resolvePlaylistSongUrl(playlistSong) {
+    const { songTitle, preferredSource, customUrl } = playlistSong;
+
+    // 1. Manual override always wins
+    if (customUrl) return { url: customUrl, source: detectUrlSource(customUrl) };
+
+    // 2. Load the song's saved versions from Drive
+    const versions = toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
+    const allUrls = versions.map(v => ({
+        url:    v.url || v.spotifyUrl || '',
+        source: detectUrlSource(v.url || v.spotifyUrl || ''),
+    })).filter(v => v.url);
+
+    // 3. Try preferred source first
+    if (preferredSource && preferredSource !== 'auto') {
+        const match = allUrls.find(v => v.source === preferredSource);
+        if (match) return match;
+    }
+
+    // 4. Try sources in priority order
+    for (const src of SOURCE_PRIORITY) {
+        const match = allUrls.find(v => v.source === src);
+        if (match) return match;
+    }
+
+    // 5. Practice tracks as fallback
+    const practiceTracks = toArray(await loadBandDataFromDrive(songTitle, 'practice_tracks') || []);
+    if (practiceTracks.length) {
+        const pt = practiceTracks[0];
+        const url = pt.url || pt.spotifyUrl || '';
+        if (url) return { url, source: detectUrlSource(url) };
+    }
+
+    // 6. Spotify search fallback — always works
+    const fallbackUrl = `https://open.spotify.com/search/${encodeURIComponent(songTitle)}`;
+    return { url: fallbackUrl, source: 'search' };
+}
+
+// Detect which streaming platform a URL belongs to
+function detectUrlSource(url) {
+    if (!url) return 'other';
+    const u = url.toLowerCase();
+    if (u.includes('spotify.com'))               return 'spotify';
+    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+    if (u.includes('archive.org'))               return 'archive';
+    if (u.includes('soundcloud.com'))            return 'soundcloud';
+    return 'other';
+}
+
+// Source display metadata (icon, label, color)
+function getSourceMeta(source) {
+    const map = {
+        spotify:    { icon: '🟢', label: 'Spotify',       color: '#1db954', bg: 'rgba(29,185,84,0.15)'  },
+        youtube:    { icon: '🔴', label: 'YouTube',       color: '#ff0000', bg: 'rgba(255,0,0,0.15)'    },
+        archive:    { icon: '🟠', label: 'Archive.org',   color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+        soundcloud: { icon: '🟣', label: 'SoundCloud',    color: '#ff7700', bg: 'rgba(255,119,0,0.15)'  },
+        search:     { icon: '🔍', label: 'Search Spotify',color: '#94a3b8', bg: 'rgba(148,163,184,0.15)'},
+        other:      { icon: '▶️',  label: 'Play',          color: '#667eea', bg: 'rgba(102,126,234,0.15)'},
+    };
+    return map[source] || map.other;
+}
+
+// ── YouTube playlist export ───────────────────────────────────────────────────
+// Builds an instant shareable YouTube playlist URL (no API key, no login needed).
+// Limit: ~50 videos. Returns { url, count, total } so caller can show truncation notice.
+
+function buildYouTubePlaylistUrl(resolvedSongs) {
+    const MAX = 50;
+    const ids = [];
+
+    for (const song of resolvedSongs) {
+        if (ids.length >= MAX) break;
+        const url = song._resolvedUrl || '';
+        const id = extractYouTubeId(url);
+        if (id) ids.push(id);
+    }
+
+    if (!ids.length) return null;
+
+    return {
+        url:   `https://www.youtube.com/watch_videos?video_ids=${ids.join(',')}`,
+        count: ids.length,
+        total: resolvedSongs.length,
+    };
+}
+
+// extractYouTubeId defined in core section above
+
+// ── Share URL builder ─────────────────────────────────────────────────────────
+
+function buildPlaylistShareUrl(playlistId) {
+    const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    return `${base}/?playlist=${encodeURIComponent(playlistId)}`;
+}
+
+async function copyPlaylistShareUrl(playlistId) {
+    const url = buildPlaylistShareUrl(playlistId);
+    try {
+        await navigator.clipboard.writeText(url);
+        showToast('📋 Link copied! Send it to the band.', 2500);
+    } catch {
+        // Fallback for older iOS
+        prompt('Copy this link and send to the band:', url);
+    }
+    return url;
+}
+
+// ── Listened tracking ─────────────────────────────────────────────────────────
+
+async function markSongListened(playlistId, songTitle) {
+    if (!playlistId || !songTitle) return;
+    const userKey = getCurrentMemberKey();
+    if (!userKey) return;
+
+    const listens = await loadPlaylistListens();
+    if (!listens[playlistId]) listens[playlistId] = {};
+    if (!listens[playlistId][userKey]) listens[playlistId][userKey] = [];
+
+    if (!listens[playlistId][userKey].includes(songTitle)) {
+        listens[playlistId][userKey].push(songTitle);
+        await savePlaylistListens(listens);
+        console.log(`✅ Marked listened: ${songTitle} (${userKey})`);
+    }
+}
+
+// Returns an object: { drew: ['Song A', 'Song B'], chris: [...], ... }
+async function getPlaylistListenedByUser(playlistId) {
+    const listens = await loadPlaylistListens();
+    return listens[playlistId] || {};
+}
+
+// Returns array of song titles this user has listened to in this playlist
+async function getMyListenedSongs(playlistId) {
+    const userKey = getCurrentMemberKey();
+    if (!userKey) return [];
+    const byUser = await getPlaylistListenedByUser(playlistId);
+    return byUser[userKey] || [];
+}
+
+// Builds a per-member listen progress summary for display in cards
+// Returns: [{ key, name, listenedCount, totalCount, pct }]
+function buildListenProgress(listenedByUser, totalSongs) {
+    return Object.entries(bandMembers).map(([key, member]) => {
+        const count = (listenedByUser[key] || []).length;
+        return {
+            key,
+            name:          member.name,
+            listenedCount: count,
+            totalCount:    totalSongs,
+            pct:           totalSongs > 0 ? Math.round((count / totalSongs) * 100) : 0,
+        };
+    });
+}
+
+// ── Listening Party — Firebase Realtime DB ─────────────────────────────────────
+
+let _partyListener = null;   // active Firebase listener ref, for cleanup
+let _partyPlaylistId = null; // which playlist the current party is for
+
+async function startListeningParty(playlistId, songs) {
+    if (!firebaseDB) { alert('Firebase not connected — cannot start a Listening Party.'); return; }
+    const userKey = getCurrentMemberKey() || 'unknown';
+
+    const partyData = {
+        active:             true,
+        startedBy:          userKey,
+        startedAt:          Date.now(),
+        currentSongIndex:   0,
+        currentSongTitle:   songs[0]?.songTitle || '',
+        lastAdvancedBy:     userKey,
+        lastAdvancedAt:     Date.now(),
+        presence: {
+            [userKey]: { online: true, lastSeen: Date.now() }
+        }
+    };
+
+    await firebaseDB.ref(`listening_parties/${playlistId}`).set(partyData);
+    console.log('🎉 Listening Party started:', playlistId);
+    await joinListeningParty(playlistId, songs);
+    return partyData;
+}
+
+async function joinListeningParty(playlistId, songs) {
+    if (!firebaseDB) return;
+    const userKey = getCurrentMemberKey() || 'unknown';
+
+    // Register presence
+    const presenceRef = firebaseDB.ref(`listening_parties/${playlistId}/presence/${userKey}`);
+    await presenceRef.set({ online: true, lastSeen: Date.now() });
+    presenceRef.onDisconnect().update({ online: false, lastSeen: Date.now() });
+
+    // Refresh presence every 30s so lastSeen stays current
+    if (window._presenceInterval) clearInterval(window._presenceInterval);
+    window._presenceInterval = setInterval(() => {
+        presenceRef.update({ lastSeen: Date.now() }).catch(() => {});
+    }, 30000);
+
+    // Detach any previous listener
+    leaveListeningParty(false);
+
+    _partyPlaylistId = playlistId;
+    _partyListener = firebaseDB.ref(`listening_parties/${playlistId}`);
+
+    _partyListener.on('value', snap => {
+        const party = snap.val();
+        if (!party || !party.active) {
+            leaveListeningParty(false);
+            onPartyEnded();
+            return;
+        }
+        onPartyUpdate(party, songs);
+    });
+
+    console.log('👥 Joined Listening Party:', playlistId);
+}
+
+function leaveListeningParty(updatePresence = true) {
+    if (_partyListener) {
+        _partyListener.off('value');
+        _partyListener = null;
+    }
+    if (updatePresence && _partyPlaylistId && firebaseDB) {
+        const userKey = getCurrentMemberKey() || 'unknown';
+        firebaseDB.ref(`listening_parties/${_partyPlaylistId}/presence/${userKey}`)
+            .update({ online: false, lastSeen: Date.now() })
+            .catch(() => {});
+    }
+    if (window._presenceInterval) {
+        clearInterval(window._presenceInterval);
+        window._presenceInterval = null;
+    }
+    _partyPlaylistId = null;
+}
+
+async function endListeningParty(playlistId) {
+    if (!firebaseDB) return;
+    await firebaseDB.ref(`listening_parties/${playlistId}`).update({
+        active: false,
+        endedAt: Date.now(),
+    });
+    leaveListeningParty(false);
+    console.log('🛑 Listening Party ended:', playlistId);
+}
+
+// Advance everyone to a new song index — anyone can call this (collaborative mode)
+async function advancePartyToSong(playlistId, newIndex, songs) {
+    if (!firebaseDB) return;
+    const userKey = getCurrentMemberKey() || 'unknown';
+    const songTitle = songs[newIndex]?.songTitle || '';
+
+    await firebaseDB.ref(`listening_parties/${playlistId}`).update({
+        currentSongIndex: newIndex,
+        currentSongTitle: songTitle,
+        lastAdvancedBy:   userKey,
+        lastAdvancedAt:   Date.now(),
+    });
+
+    // Mark previous song as listened for this user
+    const prevTitle = songs[newIndex - 1]?.songTitle;
+    if (prevTitle) await markSongListened(playlistId, prevTitle);
+}
+
+// Get current party state (one-time read, not subscribed)
+async function getPartyState(playlistId) {
+    if (!firebaseDB) return null;
+    const snap = await firebaseDB.ref(`listening_parties/${playlistId}`).once('value');
+    return snap.val();
+}
+
+// ── Party event callbacks (overridden by Smart Player when active) ─────────────
+// These are no-ops here; renderSmartPlayer() (Phase 3) will replace them.
+
+function onPartyUpdate(party, songs) {
+    // Phase 3 will wire this to scroll + highlight the current song
+    console.log('[Party] Now playing:', party.currentSongTitle, '(advanced by', party.lastAdvancedBy + ')');
+}
+
+function onPartyEnded() {
+    // Phase 3 will update the UI
+    console.log('[Party] Party ended');
+    showToast('🛑 Listening Party has ended.', 3000);
+}
+
+// ── Toast helper (reusable) ───────────────────────────────────────────────────
+// Creates a brief notification at the bottom of the screen.
+
+function showToast(message, duration = 2500) {
+    const existing = document.getElementById('dc-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'dc-toast';
+    toast.style.cssText = `
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+        background: #1e293b; border: 1px solid rgba(102,126,234,0.4);
+        color: #f1f5f9; padding: 10px 20px; border-radius: 20px;
+        font-size: 0.88em; font-weight: 600; z-index: 9999;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        animation: slideUpBanner 0.25s ease-out;
+        white-space: nowrap; max-width: 90vw; text-align: center;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), duration);
+}
+
+// ── Stub page renderer (replaced by Phase 2) ─────────────────────────────────
+
+
+console.log('🎵 Playlists Phase 1 — data layer loaded');
+
+// ============================================================================
+// PLAYLISTS — PHASE 2: INDEX PAGE + EDITOR
+// ============================================================================
+
+// ── Index Page ────────────────────────────────────────────────────────────────
+
+function renderPlaylistsPage(el) {
+    el.innerHTML = `
+    <div class="page-header">
+        <h1>🎵 Playlists</h1>
+        <p>Curated listening for the whole band — from any source, in any order</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="plCreateNew()">+ New Playlist</button>
+        <div class="tab-bar" id="plTypeFilter" style="margin-bottom:0;flex:1;min-width:0">
+            <button class="tab-btn active" data-type="all" onclick="plFilterByType('all',this)">All</button>
+            ${Object.entries(PLAYLIST_TYPES).map(([k,v]) =>
+                `<button class="tab-btn" data-type="${k}" onclick="plFilterByType('${k}',this)">${v.label}</button>`
+            ).join('')}
+        </div>
+    </div>
+    <div id="plList"></div>`;
+    plLoadIndex();
+}
+
+let _plAllLoaded = [];
+let _plActiveType = 'all';
+
+async function plLoadIndex() {
+    const container = document.getElementById('plList');
+    if (!container) return;
+    container.innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center">Loading playlists…</div>';
+
+    _plAllLoaded = await loadPlaylists();
+
+    if (_plAllLoaded.length === 0) {
+        container.innerHTML = `<div class="app-card" style="text-align:center;padding:40px;color:var(--text-dim)">
+            <div style="font-size:2.5em;margin-bottom:12px">🎵</div>
+            <div style="font-weight:700;margin-bottom:6px">No playlists yet</div>
+            <div style="font-size:0.85em;margin-bottom:16px">Create your first playlist — North Star versions, pre-gig prep, whatever the band needs.</div>
+            <button class="btn btn-primary" onclick="plCreateNew()">+ Create First Playlist</button>
+        </div>`;
+        return;
+    }
+
+    // Load listened data once for progress bars
+    const listens = await loadPlaylistListens();
+    plRenderIndex(_plAllLoaded, listens, _plActiveType);
+}
+
+function plFilterByType(type, btn) {
+    _plActiveType = type;
+    document.querySelectorAll('#plTypeFilter .tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    plRenderIndex(_plAllLoaded, null, type);
+}
+
+async function plRenderIndex(playlists, listens, typeFilter) {
+    const container = document.getElementById('plList');
+    if (!container) return;
+
+    if (!listens) listens = await loadPlaylistListens();
+
+    const filtered = typeFilter === 'all'
+        ? playlists
+        : playlists.filter(p => p.type === typeFilter);
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<div class="app-card" style="text-align:center;padding:32px;color:var(--text-dim)">No ${typeFilter} playlists yet.</div>`;
+        return;
+    }
+
+    container.innerHTML = filtered.map((pl, i) => {
+        const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
+        const songs = pl.linkedSetlistId ? null : toArray(pl.songs || []);
+        const songCount = songs ? songs.length : '?';
+        const listenedByUser = listens[pl.id] || {};
+        const memberCount = Object.keys(bandMembers).length;
+
+        // Progress bar: average % across all members
+        const totalSongs = songs ? songs.length : 0;
+        const progressHTML = totalSongs > 0
+            ? Object.entries(bandMembers).map(([key, member]) => {
+                const heard = (listenedByUser[key] || []).length;
+                const pct = Math.round((heard / totalSongs) * 100);
+                return `<div title="${member.name}: ${heard}/${totalSongs}" style="display:flex;align-items:center;gap:5px;font-size:0.72em;color:var(--text-muted)">
+                    <span style="width:36px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${member.name.split(' ')[0]}</span>
+                    <div style="flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;min-width:50px">
+                        <div style="height:5px;border-radius:3px;background:${pct===100?'var(--green)':'var(--accent)'};width:${pct}%;transition:width 0.3s"></div>
+                    </div>
+                    <span style="width:26px;text-align:right;color:var(--text-dim)">${pct}%</span>
+                </div>`;
+            }).join('')
+            : '';
+
+        const linkedBadge = pl.linkedSetlistId
+            ? `<span style="font-size:0.7em;background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);padding:2px 7px;border-radius:10px;font-weight:600">⚡ Live from setlist</span>`
+            : '';
+
+        const createdDate = pl.createdAt ? new Date(pl.createdAt).toLocaleDateString() : '';
+
+        return `<div class="app-card" id="plCard_${pl.id}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div style="flex:1;min-width:0;cursor:pointer" onclick="plEdit('${pl.id}')">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                        <span style="font-weight:700;font-size:0.98em">${pl.name || 'Untitled'}</span>
+                        <span style="font-size:0.72em;font-weight:600;padding:2px 8px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};white-space:nowrap">${meta.label}</span>
+                        ${linkedBadge}
+                    </div>
+                    ${pl.description ? `<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.description}</div>` : ''}
+                    <div style="display:flex;gap:10px;font-size:0.78em;color:var(--text-dim);flex-wrap:wrap">
+                        <span>🎵 ${pl.linkedSetlistId ? 'Synced' : songCount + ' song' + (songCount !== 1 ? 's' : '')}</span>
+                        ${createdDate ? `<span>📅 ${createdDate}</span>` : ''}
+                        <span>👤 ${bandMembers[pl.createdBy]?.name || pl.createdBy || 'Unknown'}</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start">
+                    <button class="btn btn-sm btn-primary" onclick="plPlay('${pl.id}')" title="Play this playlist" style="font-size:0.78em;padding:4px 10px">▶ Play</button>
+                    <button class="btn btn-sm btn-ghost" onclick="plEdit('${pl.id}')" title="Edit">✏️</button>
+                    <button class="btn btn-sm btn-ghost" onclick="copyPlaylistShareUrl('${pl.id}')" title="Copy share link" style="color:var(--accent-light)">🔗</button>
+                    <button class="btn btn-sm btn-ghost" onclick="plConfirmDelete('${pl.id}')" title="Delete" style="color:var(--red)">🗑️</button>
+                </div>
+            </div>
+            ${progressHTML ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px">${progressHTML}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+
+// ── Playlist Player ──────────────────────────────────────────────────────────
+// Queue-based player: one song at a time. Tap ▶ Open to launch it in Spotify/YouTube,
+// then tap ▶▶ Next when you're ready for the next song. No tab explosion.
+
+let _plPlayerSongs = [];      // resolved songs for current session
+let _plPlayerIndex = 0;       // which song is "now playing"
+let _plPlayerPlaylist = null; // current playlist object
+
+async function plPlay(playlistId) {
+    const playlists = await loadPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (!pl) { showToast('Playlist not found', 2000); return; }
+
+    const songs = await getPlaylistSongs(pl);
+    if (!songs.length) { showToast('This playlist has no songs yet', 2000); return; }
+
+    _plPlayerPlaylist = pl;
+    _plPlayerIndex = 0;
+    _plPlayerSongs = songs; // store raw songs, resolve on demand
+
+    plPlayerRender();
+}
+
+function plPlayerRender() {
+    const existing = document.getElementById('plPlayerModal');
+    if (existing) existing.remove();
+
+    const pl = _plPlayerPlaylist;
+    const songs = _plPlayerSongs;
+    const idx = _plPlayerIndex;
+    const current = songs[idx];
+    const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
+    const total = songs.length;
+
+    const modal = document.createElement('div');
+    modal.id = 'plPlayerModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;flex-direction:column;overflow:hidden';
+
+    // Build the song queue list (all songs, current one highlighted)
+    const queueRows = songs.map((s, i) => {
+        const isCurrent = i === idx;
+        const isDone = i < idx;
+        return `<div id="plQueueRow_${i}" onclick="plPlayerJumpTo(${i})"
+            style="padding:10px 16px;display:flex;align-items:center;gap:10px;
+                   cursor:pointer;transition:background 0.15s;
+                   background:${isCurrent ? 'rgba(102,126,234,0.15)' : 'transparent'};
+                   border-left:3px solid ${isCurrent ? 'var(--accent)' : 'transparent'}">
+            <span style="font-size:0.78em;min-width:22px;text-align:right;flex-shrink:0;
+                         color:${isCurrent ? 'var(--accent-light)' : isDone ? 'var(--green)' : 'var(--text-dim)'}">
+                ${isDone ? '✓' : isCurrent ? '▶' : i + 1}
+            </span>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:0.88em;font-weight:${isCurrent ? '700' : '500'};
+                            color:${isCurrent ? 'var(--text)' : isDone ? 'var(--text-dim)' : 'var(--text-muted)'};
+                            white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                    ${s.songTitle}
+                </div>
+                ${s.note ? `<div style="font-size:0.72em;color:var(--text-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.note}</div>` : ''}
+            </div>
+            ${isCurrent ? `<span style="font-size:0.7em;color:var(--accent-light);flex-shrink:0">Now</span>` : ''}
+        </div>`;
+    }).join('');
+
+    modal.innerHTML = `
+        <!-- Header -->
+        <div style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:0.95em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pl.name || 'Playlist'}</div>
+                <div style="font-size:0.72em;color:var(--text-muted);margin-top:2px">
+                    <span style="padding:1px 7px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};font-weight:600">${meta.label}</span>
+                    &nbsp;Song ${idx + 1} of ${total}
+                </div>
+            </div>
+            <button onclick="document.getElementById('plPlayerModal').remove()"
+                style="background:none;border:none;color:var(--text-muted);font-size:1.4em;cursor:pointer;flex-shrink:0;padding:4px;line-height:1">✕</button>
+        </div>
+
+        <!-- Now Playing card -->
+        <div style="background:rgba(102,126,234,0.08);border-bottom:1px solid var(--border);padding:20px 20px 16px;flex-shrink:0">
+            <div style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--accent-light);text-transform:uppercase;margin-bottom:6px">Now Playing</div>
+            <div style="font-size:1.15em;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.3">${current.songTitle}</div>
+            ${current.note ? `<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:10px">${current.note}</div>` : '<div style="margin-bottom:10px"></div>'}
+
+            <!-- Action buttons -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <button id="plOpenBtn" onclick="plPlayerOpenCurrent()"
+                    class="btn btn-primary" style="font-size:0.88em;padding:9px 18px;gap:6px">
+                    ⏳ Loading…
+                </button>
+                ${idx > 0 ? `
+                <button onclick="plPlayerJumpTo(${idx - 1})"
+                    class="btn btn-ghost" style="font-size:0.82em;padding:8px 14px">
+                    ◀ Prev
+                </button>` : ''}
+                ${idx < total - 1 ? `
+                <button onclick="plPlayerJumpTo(${idx + 1})"
+                    class="btn btn-success" style="font-size:0.88em;padding:9px 18px">
+                    Next ▶▶
+                </button>` : `
+                <div style="font-size:0.82em;color:var(--green);padding:8px;font-weight:600">
+                    ✅ End of playlist
+                </div>`}
+                <div style="flex:1"></div>
+                <div style="font-size:0.72em;color:var(--text-dim);text-align:right;line-height:1.4">
+                    Opens in Spotify<br>or YouTube
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue -->
+        <div style="flex:1;overflow-y:auto" id="plQueueList">
+            ${queueRows}
+        </div>`;
+
+    document.body.appendChild(modal);
+
+    // Scroll current song into view in the queue
+    setTimeout(() => {
+        const row = document.getElementById(`plQueueRow_${idx}`);
+        if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 100);
+
+    // Resolve the current song's URL (and pre-resolve next)
+    plPlayerResolveAndUpdate(idx);
+    if (idx + 1 < songs.length) plPlayerResolveAndUpdate(idx + 1);
+}
+
+// Cache of resolved URLs so we don't re-fetch on navigation
+const _plPlayerUrlCache = {};
+
+async function plPlayerResolveAndUpdate(idx) {
+    if (_plPlayerUrlCache[idx]) {
+        plPlayerUpdateOpenBtn(idx, _plPlayerUrlCache[idx]);
+        return;
+    }
+    const song = _plPlayerSongs[idx];
+    if (!song) return;
+    const resolved = await resolvePlaylistSongUrl(song);
+    _plPlayerUrlCache[idx] = resolved;
+    if (idx === _plPlayerIndex) plPlayerUpdateOpenBtn(idx, resolved);
+}
+
+function plPlayerUpdateOpenBtn(idx, resolved) {
+    if (idx !== _plPlayerIndex) return; // user moved on
+    const btn = document.getElementById('plOpenBtn');
+    if (!btn) return;
+    const srcMeta = getSourceMeta(resolved.source);
+    btn.innerHTML = `${srcMeta.icon} Open in ${srcMeta.label}`;
+    btn.style.background = srcMeta.color;
+    btn.style.color = 'white';
+    btn.dataset.url = resolved.url;
+}
+
+function plPlayerOpenCurrent() {
+    const btn = document.getElementById('plOpenBtn');
+    const url = btn?.dataset.url;
+    if (!url || url === '') { showToast('Still loading URL…', 1500); return; }
+    window.open(url, '_blank', 'noopener');
+    // Auto-highlight this row as played
+    const row = document.getElementById(`plQueueRow_${_plPlayerIndex}`);
+    if (row) row.style.borderLeftColor = 'var(--green)';
+}
+
+function plPlayerJumpTo(idx) {
+    _plPlayerIndex = idx;
+    plPlayerRender();
+}
+
+async function plConfirmDelete(playlistId) {
+    const pl = _plAllLoaded.find(p => p.id === playlistId);
+    if (!confirm(`Delete "${pl?.name || 'this playlist'}"? This cannot be undone.`)) return;
+    await deletePlaylist(playlistId);
+    showToast('🗑️ Playlist deleted', 2000);
+    plLoadIndex();
+}
+
+// ── Editor ────────────────────────────────────────────────────────────────────
+
+let _plEditing = null;       // playlist object currently being edited
+let _plEditorSongs = [];     // working copy of songs array in editor
+
+async function plCreateNew() {
+    _plEditing = null;
+    _plEditorSongs = [];
+    await plRenderEditor(null);
+}
+
+async function plEdit(playlistId) {
+    const playlists = await loadPlaylists();
+    _plEditing = playlists.find(p => p.id === playlistId) || null;
+    _plEditorSongs = _plEditing ? await getPlaylistSongs(_plEditing) : [];
+    await plRenderEditor(_plEditing);
+}
+
+async function plRenderEditor(pl) {
+    const container = document.getElementById('plList');
+    if (!container) return;
+
+    // Load setlists for the dropdown
+    const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+
+    const isLinked = !!(pl?.linkedSetlistId);
+    const typeOptions = Object.entries(PLAYLIST_TYPES).map(([k, v]) =>
+        `<option value="${k}" ${(pl?.type || 'custom') === k ? 'selected' : ''}>${v.label}</option>`
+    ).join('');
+
+    const setlistOptions = `<option value="">— Not linked to a setlist —</option>` +
+        allSetlists.map(sl =>
+            `<option value="${sl.name}" ${pl?.linkedSetlistId === sl.name ? 'selected' : ''}>${sl.name || 'Untitled'} ${sl.date ? '(' + sl.date + ')' : ''}</option>`
+        ).join('');
+
+    container.innerHTML = `
+    <div class="app-card">
+        <h3 style="margin-bottom:16px">${pl ? '✏️ Edit Playlist' : '➕ New Playlist'}</h3>
+
+        <!-- Metadata -->
+        <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-row">
+                <label class="form-label">Name</label>
+                <input class="app-input" id="plEdName" placeholder="e.g. Pre-Gig Prep — March 1st" value="${(pl?.name || '').replace(/"/g,'&quot;')}">
+            </div>
+            <div class="form-row">
+                <label class="form-label">Type</label>
+                <select class="app-select" id="plEdType">${typeOptions}</select>
+            </div>
+        </div>
+        <div class="form-row" style="margin-bottom:12px">
+            <label class="form-label">Description</label>
+            <input class="app-input" id="plEdDesc" placeholder="Optional — what's this playlist for?" value="${(pl?.description || '').replace(/"/g,'&quot;')}">
+        </div>
+        <div class="form-row" style="margin-bottom:16px">
+            <label class="form-label">🔗 Link to Setlist (optional — songs will live-sync)</label>
+            <select class="app-select" id="plEdSetlist" onchange="plHandleSetlistLink(this.value)">${setlistOptions}</select>
+        </div>
+
+        ${isLinked ? `
+        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.85em;color:var(--green)">
+            ⚡ Songs are live-synced from the linked setlist. Per-song notes and source preferences are still editable below.
+        </div>` : ''}
+
+        <!-- Song list -->
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:0.78em;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em">Songs <span id="plEdSongCount" style="color:var(--accent-light)">${_plEditorSongs.length}</span></span>
+            ${!isLinked ? `<span style="font-size:0.78em;color:var(--text-dim)">Drag to reorder</span>` : ''}
+        </div>
+
+        <div id="plEdSongList" style="margin-bottom:12px"></div>
+
+        ${!isLinked ? `
+        <!-- Add songs -->
+        <div style="margin-bottom:16px">
+            <input class="app-input" id="plEdSearch" placeholder="Search songs to add…" oninput="plEdSearchSong(this.value)" autocomplete="off">
+            <div id="plEdSearchResults" style="margin-top:4px"></div>
+        </div>` : ''}
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-success" onclick="plEdSave()">💾 Save Playlist</button>
+            <button class="btn btn-ghost" onclick="plLoadIndex()">Cancel</button>
+            ${pl ? `<button class="btn btn-ghost" onclick="copyPlaylistShareUrl('${pl.id}')" style="margin-left:auto;color:var(--accent-light)">🔗 Copy Share Link</button>` : ''}
+        </div>
+    </div>`;
+
+    plEdRenderSongList();
+    plEdInitDragDrop();
+}
+
+async function plHandleSetlistLink(setlistId) {
+    // Preserve current field values without re-rendering entire editor
+    const nameVal = document.getElementById('plEdName')?.value;
+    const typeVal = document.getElementById('plEdType')?.value;
+    const descVal = document.getElementById('plEdDesc')?.value;
+
+    if (!_plEditing) _plEditing = {};
+    _plEditing.linkedSetlistId = setlistId || null;
+    _plEditing.name = nameVal || _plEditing.name;
+    _plEditing.type = typeVal || _plEditing.type;
+    _plEditing.description = descVal || _plEditing.description;
+
+    // Fetch songs from linked setlist (or clear if unlinked)
+    if (setlistId) {
+        // Show loading state immediately
+        const songListEl = document.getElementById('plEdSongList');
+        if (songListEl) songListEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em">⏳ Loading songs from setlist…</div>';
+        _plEditorSongs = await getPlaylistSongs(_plEditing);
+    } else {
+        _plEditorSongs = [];
+    }
+
+    // Show/hide live-sync notice inline without full re-render
+    const noticeId = 'plLiveSyncNotice';
+    let notice = document.getElementById(noticeId);
+    if (setlistId && !notice) {
+        notice = document.createElement('div');
+        notice.id = noticeId;
+        notice.style.cssText = 'background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.85em;color:#10b981';
+        notice.innerHTML = '⚡ Songs are live-synced from the linked setlist. Per-song notes and source preferences are still editable below.';
+        const setlistRow = document.getElementById('plEdSetlist')?.closest('.form-row');
+        if (setlistRow) setlistRow.insertAdjacentElement('afterend', notice);
+    } else if (!setlistId && notice) {
+        notice.remove();
+    }
+
+    // Hide/show the add-songs search bar
+    const searchArea = document.getElementById('plEdSearch')?.parentElement;
+    if (searchArea) searchArea.style.display = setlistId ? 'none' : '';
+
+    plEdRenderSongList();
+}
+
+// ── Editor song list ──────────────────────────────────────────────────────────
+
+function plEdRenderSongList() {
+    const el = document.getElementById('plEdSongList');
+    if (!el) return;
+
+    const linked = !!(document.getElementById('plEdSetlist')?.value);
+
+    if (_plEditorSongs.length === 0) {
+        const linkedId = document.getElementById('plEdSetlist')?.value;
+        let msg;
+        if (linkedId) {
+            msg = '⏳ Loading songs from setlist… (if this persists, the setlist may be empty)';
+        } else {
+            msg = linked ? 'Select a setlist above to populate songs' : 'Search for songs below to add them';
+        }
+        el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em;border:1px dashed rgba(255,255,255,0.1);border-radius:8px">${msg}</div>`;
+        return;
+    }
+
+    el.innerHTML = _plEditorSongs.map((song, i) => {
+        const sourceMeta = getSourceMeta(song.preferredSource || 'auto');
+        const songData = allSongs.find(s => s.title === song.songTitle);
+        const band = songData?.band || '';
+        const badgeClass = band.toLowerCase().replace(/\s/g,'');
+
+        return `<div class="list-item" id="plEdSong_${i}" draggable="true"
+            style="flex-wrap:wrap;gap:4px 6px;padding:8px 10px;cursor:grab;position:relative;align-items:center"
+            ondragstart="plEdDragStart(event,${i})"
+            ondragover="plEdDragOver(event,${i})"
+            ondrop="plEdDrop(event,${i})"
+            ondragend="plEdDragEnd(event)">
+            <!-- Top row: number · drag · title · band badge · remove -->
+            <span style="color:var(--text-dim);font-size:0.8em;min-width:20px;text-align:right;flex-shrink:0">${i + 1}</span>
+            <span style="color:var(--text-dim);cursor:grab;flex-shrink:0" title="Drag to reorder">⠿</span>
+            <span style="flex:1;font-size:0.9em;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:80px">${song.songTitle}</span>
+            ${band ? `<span class="song-badge ${badgeClass}" style="flex-shrink:0">${band}</span>` : ''}
+            <button onclick="plEdRemoveSong(${i})" class="btn btn-sm btn-ghost" style="padding:2px 6px;flex-shrink:0;color:var(--red)">✕</button>
+            <!-- Bottom row: note + source — indented to align under title, wraps on mobile -->
+            <div style="display:flex;gap:6px;width:100%;padding-left:46px;box-sizing:border-box" onclick="event.stopPropagation()">
+                <input placeholder="Note (optional)…" value="${(song.note || '').replace(/"/g,'&quot;')}"
+                    oninput="plEdUpdateNote(${i},this.value)"
+                    style="flex:1;min-width:60px;font-size:0.78em;padding:3px 8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit">
+                <select onchange="plEdUpdateSource(${i},this.value)"
+                    style="font-size:0.75em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;flex-shrink:0">
+                    <option value="auto" ${(song.preferredSource||'auto')==='auto'?'selected':''}>Auto</option>
+                    <option value="spotify" ${song.preferredSource==='spotify'?'selected':''}>Spotify</option>
+                    <option value="youtube" ${song.preferredSource==='youtube'?'selected':''}>YouTube</option>
+                    <option value="archive" ${song.preferredSource==='archive'?'selected':''}>Archive</option>
+                </select>
+            </div>
+        </div>`;
+    }).join('');
+
+    const countEl = document.getElementById('plEdSongCount');
+    if (countEl) countEl.textContent = _plEditorSongs.length;
+}
+
+function plEdUpdateNote(idx, val) {
+    if (_plEditorSongs[idx]) _plEditorSongs[idx].note = val;
+}
+
+function plEdUpdateSource(idx, val) {
+    if (_plEditorSongs[idx]) _plEditorSongs[idx].preferredSource = val;
+}
+
+function plEdRemoveSong(idx) {
+    _plEditorSongs.splice(idx, 1);
+    plEdRenderSongList();
+}
+
+// ── Song search ───────────────────────────────────────────────────────────────
+
+function plEdSearchSong(query) {
+    const results = document.getElementById('plEdSearchResults');
+    if (!results) return;
+    if (!query || query.length < 2) { results.innerHTML = ''; return; }
+
+    const q = query.toLowerCase();
+    const existing = new Set(_plEditorSongs.map(s => s.songTitle));
+    const matches = (allSongs || [])
+        .filter(s => s.title.toLowerCase().includes(q) && !existing.has(s.title))
+        .slice(0, 10);
+
+    if (matches.length === 0) {
+        results.innerHTML = `<div style="padding:8px 10px;font-size:0.82em;color:var(--text-dim)">No songs found</div>`;
+        return;
+    }
+
+    results.innerHTML = matches.map(s =>
+        `<div class="list-item" style="cursor:pointer;padding:7px 10px;font-size:0.85em;gap:8px"
+            onclick="plEdAddSong('${s.title.replace(/'/g,"\\'")}','${s.band||''}')">
+            <span style="flex:1">${s.title}</span>
+            <span class="song-badge ${(s.band||'').toLowerCase().replace(/\s/g,'')}">${s.band||''}</span>
+        </div>`
+    ).join('');
+}
+
+function plEdAddSong(title, band) {
+    // Avoid duplicates
+    if (_plEditorSongs.find(s => s.songTitle === title)) {
+        showToast('Already in playlist', 1500);
+        return;
+    }
+    _plEditorSongs.push({ songTitle: title, note: '', preferredSource: 'auto', customUrl: null });
+    plEdRenderSongList();
+
+    // Clear search
+    const searchEl = document.getElementById('plEdSearch');
+    const resultsEl = document.getElementById('plEdSearchResults');
+    if (searchEl) searchEl.value = '';
+    if (resultsEl) resultsEl.innerHTML = '';
+}
+
+// ── Drag-and-drop reorder ─────────────────────────────────────────────────────
+
+let _plDragIdx = null;
+
+function plEdInitDragDrop() {
+    // Drag is handled inline via ondragstart/over/drop attributes
+}
+
+function plEdDragStart(e, idx) {
+    _plDragIdx = idx;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => {
+        const el = document.getElementById('plEdSong_' + idx);
+        if (el) el.style.opacity = '0.4';
+    }, 0);
+}
+
+function plEdDragOver(e, idx) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    // Highlight drop target
+    document.querySelectorAll('#plEdSongList .list-item').forEach((el, i) => {
+        el.style.borderColor = i === idx ? 'var(--accent)' : '';
+    });
+}
+
+function plEdDrop(e, dropIdx) {
+    e.preventDefault();
+    if (_plDragIdx === null || _plDragIdx === dropIdx) return;
+    const moved = _plEditorSongs.splice(_plDragIdx, 1)[0];
+    _plEditorSongs.splice(dropIdx, 0, moved);
+    _plDragIdx = null;
+    plEdRenderSongList();
+}
+
+function plEdDragEnd(e) {
+    _plDragIdx = null;
+    document.querySelectorAll('#plEdSongList .list-item').forEach(el => {
+        el.style.opacity = '';
+        el.style.borderColor = '';
+    });
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+async function plEdSave() {
+    const name     = document.getElementById('plEdName')?.value?.trim();
+    const type     = document.getElementById('plEdType')?.value || 'custom';
+    const desc     = document.getElementById('plEdDesc')?.value?.trim() || '';
+    const setlistId = document.getElementById('plEdSetlist')?.value || null;
+
+    if (!name) { showToast('Please enter a playlist name', 2000); return; }
+
+    const songsToSave = setlistId
+        ? _plEditorSongs.filter(s => s.note || s.preferredSource !== 'auto' || s.customUrl) // only store overrides
+        : _plEditorSongs;
+
+    const fields = { name, type, description: desc, linkedSetlistId: setlistId || null, songs: songsToSave };
+
+    if (_plEditing?.id) {
+        await updatePlaylist(_plEditing.id, fields);
+        showToast('✅ Playlist updated!', 2000);
+    } else {
+        await createPlaylist(fields);
+        showToast('✅ Playlist created!', 2000);
+    }
+
+    plLoadIndex();
+}
+
+console.log('🎵 Playlists Phase 2 — index + editor loaded');

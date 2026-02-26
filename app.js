@@ -1383,6 +1383,28 @@ function getCurrentMemberKey() {
     return null;
 }
 
+// Resolve a display name from any identifier (email, member key, etc.)
+function getBandMemberName(identifier) {
+    if (!identifier) return 'Unknown';
+    // Direct key match (drew, chris, brian, etc.)
+    if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
+    // Search by email property
+    if (bandMembers) {
+        const entry = Object.entries(bandMembers).find(([key, member]) =>
+            member.email === identifier ||
+            member.email?.toLowerCase() === identifier.toLowerCase() ||
+            key.toLowerCase() === identifier.toLowerCase()
+        );
+        if (entry) return entry[1].name;
+    }
+    // Fallback: extract from email (drewmerrill1029@gmail.com → Drew)
+    if (identifier.includes('@')) {
+        const emailName = identifier.split('@')[0].replace(/[0-9]/g, '').replace(/[._]/g, ' ');
+        return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    }
+    return identifier;
+}
+
 async function addPersonalTabForMember(songTitle, memberKey) {
     const urlInput = document.getElementById(`tabUrl_${memberKey}`);
     const labelInput = document.getElementById(`tabLabel_${memberKey}`);
