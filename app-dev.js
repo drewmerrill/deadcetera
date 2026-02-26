@@ -1977,12 +1977,7 @@ async function deletePracticeTrack(songTitle, index) {
     const tracks = await loadPracticeTracksFromDrive(songTitle);
     tracks.splice(index, 1);
     await savePracticeTracks(songTitle, tracks);
-    
-    // Refresh display
-    const bandData = bandKnowledgeBase[songTitle];
-    if (bandData) {
-        renderPracticeTracks(songTitle, bandData);
-    }
+    await renderPracticeTracksSimplified(songTitle);
 }
 
 // Extract YouTube video ID from any YouTube URL format
