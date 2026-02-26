@@ -6998,6 +6998,23 @@ function toggleMenu() {
     overlay.classList.toggle('open', !isOpen);
 }
 
+const pageRenderers = {
+    setlists:      renderSetlistsPage,
+    playlists:     renderPlaylistsPage,
+    practice:      renderPracticePage,
+    calendar:      renderCalendarPage,
+    gigs:          renderGigsPage,
+    venues:        renderVenuesPage,
+    finances:      renderFinancesPage,
+    tuner:         renderTunerPage,
+    metronome:     renderMetronomePage,
+    admin:         renderSettingsPage,
+    social:        renderSocialPage,
+    notifications: renderNotificationsPage,
+    // help.js loads after app.js — resolve at call-time, not definition-time
+    help: (el) => (typeof renderHelpPage === 'function' ? renderHelpPage(el) : (el.innerHTML = '<p style="padding:20px;color:var(--text-muted)">Help loading…</p>'))
+};
+
 function showPage(page) {
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');
@@ -7011,22 +7028,6 @@ function showPage(page) {
         if (renderer) renderer(el);
     }
 }
-
-const pageRenderers = {
-    setlists: renderSetlistsPage,
-    playlists: renderPlaylistsPage,
-    practice: renderPracticePage,
-    calendar: renderCalendarPage,
-    gigs: renderGigsPage,
-    venues: renderVenuesPage,
-    finances: renderFinancesPage,
-    tuner: renderTunerPage,
-    metronome: renderMetronomePage,
-    admin: renderSettingsPage,
-    social: renderSocialPage,
-    notifications: renderNotificationsPage,
-    help: renderHelpPage
-};
 
 // ============================================================================
 // SETLIST BUILDER
@@ -7073,209 +7074,62 @@ async function printSetlistPDF(setlistIndex) {
     const sl = allSetlists[setlistIndex];
     if (!sl) return;
 
-    const bandName   = 'Deadcetera';
-    const slName     = sl.name || 'Setlist';
-    const slDate     = sl.date  || '';
-    const slVenue    = sl.venue || '';
-    const sets       = sl.sets  || [];
-
-    // Gather total song count across all sets
+    const bandName  = 'Deadcetera';
+    const slName    = sl.name  || 'Setlist';
+    const slDate    = sl.date  || '';
+    const slVenue   = sl.venue || '';
+    const sets      = sl.sets  || [];
     const totalSongs = sets.reduce((n, s) => n + (s.songs || []).length, 0);
 
-    // Build one page of HTML per set, plus the full sheet title block
     const setPages = sets.map((set, si) => {
-        const songs = set.songs || [];
-        const rows  = songs.map((item, idx) => {
-            const title      = typeof item === 'string' ? item : (item.title || '');
-            const isTransition = typeof item === 'object' && item.transition;
-            return `
-            <div class="sl-row ${isTransition ? 'sl-transition' : ''}">
+        const songs  = set.songs || [];
+        const isEncore = /encore|enc/i.test(set.name || '');
+        const rows = songs.map((item, idx) => {
+            const title = typeof item === 'string' ? item : (item.title || '');
+            const isTrans = typeof item === 'object' && item.transition;
+            return `<div class="sl-row">
                 <span class="sl-num">${idx + 1}</span>
                 <span class="sl-title">${title}</span>
-                ${isTransition ? '<span class="sl-arrow">→</span>' : ''}
+                ${isTrans ? '<span class="sl-arrow">→</span>' : ''}
             </div>`;
         }).join('');
 
-        // Is this the last set and is there an encore? (encore is last set named "Encore" etc.)
-        const isEncore = /encore|enc/i.test(set.name || '');
-
-        return `
-        <div class="sl-page ${si < sets.length - 1 ? 'sl-break' : ''}">
-            <!-- Page header -->
+        return `<div class="sl-page ${si < sets.length - 1 ? 'sl-break' : ''}">
             <div class="sl-page-header">
                 <div class="sl-band">${bandName}</div>
                 <div class="sl-meta">${slDate}${slDate && slVenue ? '  ·  ' : ''}${slVenue}</div>
             </div>
-            <!-- Set name -->
             <div class="sl-set-name ${isEncore ? 'sl-encore-label' : ''}">${set.name || ('Set ' + (si + 1))}</div>
-            <!-- Songs -->
-            <div class="sl-songs">
-                ${rows}
-            </div>
-            <!-- Footer -->
-            <div class="sl-page-footer">
-                ${slName} &nbsp;·&nbsp; ${totalSongs} songs &nbsp;·&nbsp; Page ${si + 1} of ${sets.length}
-            </div>
+            <div class="sl-songs">${rows}</div>
+            <div class="sl-page-footer">${slName} &nbsp;·&nbsp; ${totalSongs} songs &nbsp;·&nbsp; Page ${si + 1} of ${sets.length}</div>
         </div>`;
     }).join('');
 
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>${slName} — ${bandName}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
 <style>
-    /* Import an artistic but readable serif font */
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Playfair+Display+SC:wght@400;700&display=swap');
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-        font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
-        background: #fff;
-        color: #111;
-    }
-
-    /* Each .sl-page fills one printed page */
-    .sl-page {
-        width: 100%;
-        min-height: 100vh;
-        padding: 48px 56px 36px;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-    }
-
-    .sl-break {
-        page-break-after: always;
-        break-after: page;
-    }
-
-    /* ── Page header ── */
-    .sl-page-header {
-        border-bottom: 3px solid #111;
-        padding-bottom: 14px;
-        margin-bottom: 20px;
-    }
-
-    .sl-band {
-        font-family: 'Playfair Display SC', 'Playfair Display', Georgia, serif;
-        font-size: 2em;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        line-height: 1;
-    }
-
-    .sl-meta {
-        font-size: 1em;
-        color: #444;
-        margin-top: 6px;
-        font-style: italic;
-        letter-spacing: 0.02em;
-    }
-
-    /* ── Set name heading ── */
-    .sl-set-name {
-        font-family: 'Playfair Display SC', 'Playfair Display', serif;
-        font-size: 1.3em;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: #333;
-        margin-bottom: 24px;
-        padding-left: 4px;
-    }
-
-    .sl-encore-label {
-        color: #555;
-        border-top: 1px solid #ccc;
-        padding-top: 16px;
-        margin-top: 8px;
-    }
-
-    /* ── Song rows ── */
-    .sl-songs {
-        flex: 1;
-    }
-
-    .sl-row {
-        display: flex;
-        align-items: baseline;
-        gap: 0;
-        padding: 10px 0;
-        border-bottom: 1px solid #e8e8e8;
-        line-height: 1.2;
-    }
-
-    .sl-row:last-child {
-        border-bottom: none;
-    }
-
-    /* Transition row gets a subtle left accent */
-    .sl-transition {
-        background: none;
-    }
-
-    .sl-num {
-        font-family: 'Playfair Display SC', serif;
-        font-size: 0.95em;
-        color: #888;
-        min-width: 48px;
-        font-weight: 400;
-        letter-spacing: 0.04em;
-        flex-shrink: 0;
-    }
-
-    .sl-title {
-        font-size: 1.85em;
-        font-weight: 700;
-        flex: 1;
-        letter-spacing: -0.01em;
-    }
-
-    .sl-arrow {
-        font-size: 1.6em;
-        font-weight: 900;
-        color: #555;
-        padding-left: 14px;
-        flex-shrink: 0;
-        letter-spacing: -0.05em;
-        font-style: italic;
-    }
-
-    /* ── Page footer ── */
-    .sl-page-footer {
-        border-top: 1px solid #ddd;
-        padding-top: 10px;
-        margin-top: 20px;
-        font-size: 0.78em;
-        color: #999;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        font-style: italic;
-    }
-
-    /* ── Print rules ── */
-    @media print {
-        body { background: #fff; }
-        .sl-page { min-height: 100vh; }
-        .sl-break { page-break-after: always; break-after: page; }
-        @page {
-            size: letter portrait;
-            margin: 0;
-        }
-    }
-</style>
-</head>
-<body>
-    ${setPages}
-    <script>
-        // Auto-open print dialog after fonts load
-        window.addEventListener('load', () => setTimeout(() => window.print(), 600));
-    <\/script>
-</body>
-</html>`;
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Playfair Display',Georgia,serif;background:#fff;color:#111}
+.sl-page{width:100%;min-height:100vh;padding:48px 56px 36px;display:flex;flex-direction:column}
+.sl-break{page-break-after:always;break-after:page}
+.sl-page-header{border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:20px}
+.sl-band{font-family:'Playfair Display SC','Playfair Display',Georgia,serif;font-size:2em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;line-height:1}
+.sl-meta{font-size:1em;color:#444;margin-top:6px;font-style:italic}
+.sl-set-name{font-family:'Playfair Display SC','Playfair Display',serif;font-size:1.3em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#333;margin-bottom:24px}
+.sl-encore-label{color:#555;border-top:1px solid #ccc;padding-top:16px;margin-top:8px}
+.sl-songs{flex:1}
+.sl-row{display:flex;align-items:baseline;padding:10px 0;border-bottom:1px solid #e8e8e8;line-height:1.2}
+.sl-row:last-child{border-bottom:none}
+.sl-num{font-family:'Playfair Display SC',serif;font-size:0.95em;color:#888;min-width:48px;font-weight:400;letter-spacing:0.04em;flex-shrink:0}
+.sl-title{font-size:1.85em;font-weight:700;flex:1;letter-spacing:-0.01em}
+.sl-arrow{font-size:1.6em;font-weight:900;color:#555;padding-left:14px;flex-shrink:0;font-style:italic}
+.sl-page-footer{border-top:1px solid #ddd;padding-top:10px;margin-top:20px;font-size:0.78em;color:#999;letter-spacing:0.06em;text-transform:uppercase;font-style:italic}
+@media print{body{background:#fff}.sl-page{min-height:100vh}.sl-break{page-break-after:always;break-after:page}@page{size:letter portrait;margin:0}}
+</style></head><body>${setPages}
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),800));<\/script>
+</body></html>`;
 
     const win = window.open('', '_blank');
     if (!win) { alert('Pop-up blocked — please allow pop-ups for this site to print setlists.'); return; }
@@ -10080,108 +9934,9 @@ function getSongHistoryTooltip(title) {
 console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
 
 // ============================================================================
-// HELP & GUIDE
+// HELP & GUIDE — defined in help.js (loaded after app.js in index.html)
+// renderHelpPage() and filterHelpTopics() live in help.js
 // ============================================================================
-const helpTopics = [
-    { id:'getting-started', icon:'🚀', title:'Getting Started', content:`
-        <p><strong>Welcome to Deadcetera!</strong> This app is your band's central hub for learning songs, managing setlists, tracking gigs, and collaborating on harmonies.</p>
-        <ol>
-            <li><strong>Sign In</strong> — Click "Connect" in the top right to sign in with Google. This syncs your data across all band members via Firebase.</li>
-            <li><strong>Pick a Song</strong> — Use the Song Library to search or filter by band (GD, JGB, WSP, Phish). Click a song to see its resources.</li>
-            <li><strong>Learn It</strong> — Each song has tabs/chords, reference versions, practice tracks, and YouTube lessons.</li>
-            <li><strong>Track Progress</strong> — Set song statuses (Gig Ready, Needs Polish, On Deck, This Week) so everyone knows where things stand.</li>
-        </ol>`},
-    { id:'song-library', icon:'🎵', title:'Song Library', content:`
-        <p>The Song Library (Step 1) contains all ${typeof allSongs!=='undefined'?allSongs.length:'350+' } songs in the band's repertoire.</p>
-        <p><strong>Filters:</strong> Use the Band dropdown to show only GD, JGB, WSP, or Phish songs. Use Status to filter by readiness. Check "Harmonies" to see only songs with documented vocal parts.</p>
-        <p><strong>Badges:</strong> 🎤 = has vocal harmonies documented. Status pills (READY, POLISH, ON DECK, THIS WEEK) show the song's current state.</p>
-        <p><strong>Selecting a song</strong> opens its full resource page with tabs, reference versions, practice tracks, harmonies, and performance notes.</p>`},
-    { id:'reference-versions', icon:'🎧', title:'Reference Versions & Voting', content:`
-        <p>Each song can have multiple reference versions (Spotify, YouTube, Apple Music, Archive.org, etc.).</p>
-        <p><strong>Adding:</strong> Click "+ Add Reference Version" and paste any music URL.</p>
-        <p><strong>Voting:</strong> Band members vote on their preferred version. When 3+ members vote for the same version, it becomes the "Band Choice" (👑).</p>
-        <p><strong>Platform support:</strong> Spotify, YouTube, Apple Music, Tidal, SoundCloud, Archive.org, and any direct link.</p>`},
-    { id:'harmonies', icon:'🎤', title:'Harmonies & Vocal Parts', content:`
-        <p>The Harmony Section Builder lets you document which songs have vocal harmonies and who sings what.</p>
-        <p><strong>Adding harmonies:</strong> Click "Add Harmony Section" on any song. You can paste the lyrics, tag sections (Verse, Chorus, Bridge), and assign singers to each part.</p>
-        <p><strong>Part tracking:</strong> Each section shows who sings lead, who harmonizes, and practice notes for that section.</p>
-        <p><strong>Recording:</strong> The multi-track recorder (Step 5) lets you record harmony parts with metronome, looping, and individual track mixing.</p>`},
-    { id:'practice-tracks', icon:'🎸', title:'Practice Tracks & Moises', content:`
-        <p>Practice tracks are organized by instrument (Vocals, Lead Guitar, Rhythm Guitar, Bass, Keys, Drums).</p>
-        <p><strong>Adding tracks:</strong> Upload audio files or paste URLs to learning resources for each instrument.</p>
-        <p><strong>Moises Integration:</strong> Use the Moises workflow to separate stems from recordings:</p>
-        <ol>
-            <li>Add a YouTube link or upload an MP3</li>
-            <li>Go to moises.ai and paste the link</li>
-            <li>Download the separated stems</li>
-            <li>Upload stems back to Deadcetera</li>
-        </ol>
-        <p><strong>Show Splitter:</strong> For long recordings (>20 min), use the Show Splitter to note timestamps and trim clips before sending to Moises.</p>`},
-    { id:'setlists', icon:'📋', title:'Building Setlists', content:`
-        <p>Create setlists for upcoming gigs with drag-and-drop song ordering.</p>
-        <p><strong>Creating:</strong> Click "+ New Setlist", name it, set the date/venue, then search and add songs to each set.</p>
-        <p><strong>Sets:</strong> Add multiple sets, encores, and soundcheck lists. Mark transitions between songs with the → button.</p>
-        <p><strong>Gig History:</strong> Hover over any song in a setlist to see its gig history — where and when you've played it before, and its position (opener, closer, encore).</p>`},
-    { id:'gigs', icon:'🎤', title:'Gigs & Venues', content:`
-        <p>Track past and upcoming shows with venue details, pay, sound person, and linked setlists.</p>
-        <p><strong>Seed Data:</strong> Click "🌱 Seed Demo Data" on the Gigs page to import your past gig history from the master spreadsheet.</p>
-        <p><strong>Venues:</strong> Store venue info including address, capacity, stage size, PA system, load-in details, parking, and booking contacts.</p>`},
-    { id:'status-system', icon:'📊', title:'Song Status System', content:`
-        <p>Every song can have a status to track band readiness:</p>
-        <p>🎯 <strong>THIS WEEK</strong> — Focus songs for this week's rehearsal<br>
-        ✅ <strong>GIG READY</strong> — Solid enough to play live<br>
-        ⚠️ <strong>NEEDS POLISH</strong> — We know it but need more work<br>
-        📚 <strong>ON DECK</strong> — Next up to learn</p>
-        <p>Set status from any song's detail page. Filter the Song Library by status to focus rehearsals.</p>`},
-    { id:'recorder', icon:'🎙️', title:'Multi-Track Recorder', content:`
-        <p>Record harmony parts and practice takes directly in the app.</p>
-        <p><strong>Features:</strong> Built-in metronome with count-in, looping, multiple takes, individual track mixing (volume, pan, mute/solo), latency calibration, and WAV export.</p>
-        <p><strong>Karaoke mode:</strong> Play a backing track while recording your part.</p>
-        <p><strong>Tips:</strong> Use headphones to avoid bleed. Calibrate latency once for your device. Record in a quiet space.</p>`},
-    { id:'tools', icon:'🛠️', title:'Tools (Tuner, Metronome)', content:`
-        <p><strong>Guitar Tuner:</strong> Uses your device microphone to detect pitch. Supports standard and alternate tunings.</p>
-        <p><strong>Metronome:</strong> Tap tempo, adjustable BPM, time signatures, and accent patterns. BPM is saved per-song.</p>`},
-    { id:'data-sync', icon:'☁️', title:'Data & Sync', content:`
-        <p>All band data syncs through Firebase Realtime Database. When you sign in with Google, your changes are visible to all band members.</p>
-        <p><strong>What syncs:</strong> Song statuses, reference versions & votes, harmonies, practice tracks, rehearsal notes, setlists, gigs, venues, and performance tips.</p>
-        <p><strong>What's local:</strong> Your instrument preference, display settings, and search history stay on your device.</p>
-        <p><strong>Backup:</strong> Use Settings → Data → Export All Data to download a JSON backup of your local data.</p>`},
-    { id:'troubleshooting', icon:'🔧', title:'Troubleshooting', content:`
-        <p><strong>Can't sign in?</strong> Try a different browser. Edge sometimes blocks Google API calls. Chrome works best.</p>
-        <p><strong>Data not loading?</strong> Check your internet connection. Try signing out and back in. Use Settings → Data → Clear Cache if stale.</p>
-        <p><strong>Audio not working on iPhone?</strong> iOS requires a user gesture before playing audio. Tap a play button first.</p>
-        <p><strong>Songs not filtering?</strong> Wait for statuses to load (they cache in the background on first sign-in).</p>
-        <p><strong>Lost data?</strong> Firebase stores everything server-side. Sign in again to restore. Local-only data can be exported/imported via Settings.</p>`},
-];
-
-function renderHelpPage(el) {
-    el.innerHTML = `
-    <div class="page-header"><h1>❓ Help & Guide</h1><p>How to use Deadcetera</p></div>
-    <div style="margin-bottom:16px">
-        <input class="app-input" id="helpSearch" placeholder="Search help topics..." oninput="filterHelpTopics(this.value)" style="max-width:400px">
-    </div>
-    <div id="helpTopics">
-        ${helpTopics.map(t => `
-            <details class="app-card" style="cursor:pointer" id="help-${t.id}">
-                <summary style="font-weight:600;font-size:0.95em;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px">
-                    <span style="font-size:1.2em">${t.icon}</span>
-                    <span>${t.title}</span>
-                    <span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">▶</span>
-                </summary>
-                <div style="padding:10px 0 4px;font-size:0.88em;color:var(--text-muted);line-height:1.6">${t.content}</div>
-            </details>
-        `).join('')}
-    </div>`;
-}
-
-function filterHelpTopics(query) {
-    const q = query.toLowerCase();
-    document.querySelectorAll('#helpTopics details').forEach(d => {
-        const text = d.textContent.toLowerCase();
-        d.style.display = text.includes(q) ? '' : 'none';
-        if (q.length > 2 && text.includes(q)) d.open = true;
-    });
-}
 // PLAYLISTS — PHASE 1: DATA LAYER
 // ============================================================================
 // All playlist data lives in Firebase (via saveBandDataToDrive / loadBandDataFromDrive)
