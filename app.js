@@ -1,6 +1,6 @@
 // ============================================================================
-// DEADCETERA WORKFLOW APP v5.4.0 - Firebase · Playlists · Mobile-Ready
-// Last updated: 2026-02-22
+// DEADCETERA WORKFLOW APP v5.5.0 - Firebase · Playlists · Mobile-Ready
+// Last updated: 2026-02-26
 // ============================================================================
 
 // Inject favicon to prevent 404 error
@@ -399,25 +399,6 @@ function getPlayButtonStyle(version) {
     if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;color:white;';
     if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;color:white;';
     return 'color:white;';
-}
-
-// Helper: find band member name from any identifier (email, key, etc.)
-function getBandMemberName(identifier) {
-    if (!identifier) return 'Unknown';
-    // Direct key match
-    if (bandMembers && bandMembers[identifier]?.name) return bandMembers[identifier].name;
-    // Search by email property
-    if (bandMembers) {
-        const entry = Object.entries(bandMembers).find(([key, member]) => 
-            member.email === identifier || 
-            member.email?.toLowerCase() === identifier.toLowerCase() ||
-            key.toLowerCase() === identifier.toLowerCase()
-        );
-        if (entry) return entry[1].name;
-    }
-    // Extract name from email (drewmerrill1029@gmail.com -> Drew)
-    const emailName = identifier.split('@')[0].replace(/[0-9]/g, '').replace(/\./g, ' ');
-    return emailName.charAt(0).toUpperCase() + emailName.slice(1);
 }
 
 // ============================================================================
@@ -1657,7 +1638,7 @@ async function uploadMoisesStems() {
         progressBar.style.width = '10%';
         
         // Create folder in shared Drive folder
-        const folderId = await createDriveFolder(folderName, SHARED_FOLDER_ID);
+        const folderId = await createDriveFolder(folderName);
         
         if (!folderId) {
             throw new Error('Failed to create folder');
@@ -2244,31 +2225,6 @@ async function deletePracticeTrackConfirm(songTitle, index) {
     }
 }
 
-async function editPracticeTrack(songTitle, index) {
-    const tracks = await loadPracticeTracksFromDrive(songTitle) || [];
-    const track = tracks[index];
-    if (!track) return;
-    
-    const newUrl = prompt('Edit video URL:', track.videoUrl || track.youtubeUrl || '');
-    if (newUrl === null) return; // Canceled
-    
-    const newNotes = prompt('Edit notes:', track.notes || '');
-    if (newNotes === null) return;
-    
-    // Re-fetch metadata with new URL
-    const metadata = await fetchVideoMetadata(newUrl);
-    
-    tracks[index] = {
-        ...track,
-        videoUrl: newUrl,
-        title: metadata.title || track.title,
-        thumbnail: metadata.thumbnail || track.thumbnail,
-        notes: newNotes.trim()
-    };
-    
-    await savePracticeTracks(songTitle, tracks);
-    await renderPracticeTracksSimplified(songTitle);
-}
 // ============================================================================
 // SPOTIFY API INTEGRATION
 // Fetch real track names and metadata from Spotify
@@ -2521,14 +2477,6 @@ async function saveRefVersionFromModal() {
 }
 
 // Alias for old render function compatibility
-async function toggleVersionVote(songTitle, versionId, voterEmail) {
-    // Find version index by ID
-    const versions = toArray(await loadRefVersions(songTitle) || []);
-    const idx = versions.findIndex(v => v.id === versionId);
-    if (idx >= 0) {
-        await toggleRefVote(idx, voterEmail);
-    }
-}
 
 async function toggleRefVote(versionIndex, voterEmail) {
     const songTitle = selectedSong?.title || selectedSong;
@@ -2648,13 +2596,6 @@ function searchRefVersion() {
     </div>`;
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
-}
-
-function searchYouTubeReference() {
-    // Legacy — now handled by searchRefVersion modal
-    searchRefVersion();
-}
-
 function searchUltimateGuitar() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) {
@@ -2967,12 +2908,6 @@ async function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
     return stored ? JSON.parse(stored) : [];
 }
 
-function playHarmonySnippet(base64Data) {
-    const audio = new Audio(base64Data);
-    audio.play().catch(err => {
-        alert('Error playing audio: ' + err.message);
-    });
-}
 
 async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     if (!confirm('Delete this audio snippet?')) return;
@@ -2994,273 +2929,6 @@ async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     const bandData = bandKnowledgeBase[selectedSong.title];
     if (bandData) {
         renderHarmoniesEnhanced(selectedSong.title, bandData);
-    }
-}
-// ============================================================================
-// ENHANCED HARMONY SYSTEM
-// 1. Browser microphone recording
-// 2. Collaborative delete/rename
-// 3. Sheet music generation from notes
-// ============================================================================
-
-// ============================================================================
-// MICROPHONE RECORDING
-// ============================================================================
-
-let mediaRecorder = null;
-let audioChunks = [];
-let recordingStream = null;
-
-async function startMicrophoneRecording(sectionIndex) {
-    try {
-        // MOBILE FIX: Stop ALL audio playback first
-        // 1. Stop ABC synth if playing
-        if (window.currentSynthControl) {
-            try {
-                window.currentSynthControl.pause();
-                console.log('⏹️ Stopped ABC playback');
-            } catch (e) {
-                console.warn('Could not stop ABC playback:', e);
-            }
-        }
-        
-        // 2. Pause all <audio> elements on page
-        document.querySelectorAll('audio').forEach(audio => {
-            try {
-                audio.pause();
-                audio.currentTime = 0;
-            } catch (e) {
-                console.warn('Could not stop audio element:', e);
-            }
-        });
-        
-        // 3. Wait a moment for audio to fully stop
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Request microphone access with better error handling
-        const constraints = {
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                sampleRate: 44100
-            }
-        };
-        
-        recordingStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // iOS FIX: Use compatible MIME type
-        let mimeType = 'audio/webm';
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            mimeType = 'audio/webm;codecs=opus';
-        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-            mimeType = 'audio/ogg';
-        }
-        
-        console.log('🎙️ Using MIME type:', mimeType);
-        
-        // Create recorder with compatible MIME type
-        mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
-        audioChunks = [];
-        
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
-            }
-        };
-        
-        mediaRecorder.onstop = async () => {
-            try {
-                // Create blob from chunks
-                const audioBlob = new Blob(audioChunks, { type: mimeType });
-                
-                if (audioBlob.size === 0) {
-                    throw new Error('Recording failed - no audio data captured');
-                }
-                
-                // Convert to base64
-                const base64 = await blobToBase64(audioBlob);
-                
-                // Show save form with recorded audio
-                showSaveRecordingForm(sectionIndex, base64, audioBlob.size, mimeType);
-                
-                // Stop all tracks
-                recordingStream.getTracks().forEach(track => track.stop());
-            } catch (error) {
-                console.error('Recording save error:', error);
-                alert('Recording failed to save: ' + error.message);
-                // Clean up
-                if (recordingStream) {
-                    recordingStream.getTracks().forEach(track => track.stop());
-                }
-            }
-        };
-        
-        mediaRecorder.onerror = (error) => {
-            console.error('MediaRecorder error:', error);
-            alert('Recording error: ' + (error.error?.message || 'Unknown error'));
-        };
-        
-        // Start recording
-        mediaRecorder.start();
-        
-        // Show recording UI
-        showRecordingUI(sectionIndex);
-        
-    } catch (error) {
-        console.error('Microphone access error:', error);
-        let errorMessage = 'Microphone access denied or not available.';
-        
-        if (error.name === 'NotAllowedError') {
-            errorMessage = 'Please allow microphone access in your browser settings.';
-        } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No microphone found. Please check your device.';
-        } else if (error.name === 'NotReadableError') {
-            errorMessage = 'Microphone is already in use by another app.';
-        }
-        
-        alert(errorMessage + '\n\nError: ' + error.message);
-    }
-}
-
-function stopMicrophoneRecording() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-    }
-}
-
-function showRecordingUI(sectionIndex) {
-    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
-    
-    let seconds = 0;
-    const timerInterval = setInterval(() => {
-        seconds++;
-        const display = document.getElementById('recordingTimer');
-        if (display) {
-            display.textContent = formatTime(seconds);
-        }
-    }, 1000);
-    
-    container.innerHTML = `
-        <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 25px; border-radius: 12px; color: white; text-align: center; margin-top: 15px;">
-            <div style="font-size: 3em; margin-bottom: 10px;">🎙️</div>
-            <div style="font-size: 1.5em; font-weight: 600; margin-bottom: 10px;">Recording...</div>
-            <div id="recordingTimer" style="font-size: 2em; font-weight: 700; font-family: monospace;">0:00</div>
-            <button onclick="stopMicrophoneRecording(); clearInterval(${timerInterval})" 
-                style="background: white; color: #ef4444; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin-top: 20px; cursor: pointer; font-size: 1em;">
-                ⏹️ Stop Recording
-            </button>
-        </div>
-    `;
-}
-
-function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function showSaveRecordingForm(sectionIndex, base64Audio, fileSize, mimeType) {
-    const container = document.getElementById('harmonyAudioFormContainer' + sectionIndex);
-    
-    // Get file extension from MIME type
-    let extension = 'webm';
-    if (mimeType.includes('mp4')) extension = 'm4a';
-    else if (mimeType.includes('ogg')) extension = 'ogg';
-    
-    container.innerHTML = `
-        <div style="background: white; padding: 20px; border-radius: 12px; border: 2px solid #10b981; margin-top: 15px;">
-            <h4 style="margin: 0 0 15px 0; color: #10b981;">✅ Recording Complete!</h4>
-            
-            <div style="margin-bottom: 15px; text-align: center;">
-                <audio controls src="${base64Audio}" style="width: 100%; max-width: 400px;"></audio>
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">Format: ${extension.toUpperCase()} - Size: ${(fileSize / 1024).toFixed(1)} KB</p>
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Who recorded this?</label>
-                <select id="recordingAuthor" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                    ${Object.entries(bandMembers).map(([key, member]) => `
-                        <option value="${key}">${member.name}</option>
-                    `).join('')}
-                </select>
-            </div>
-            
-            <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Name this recording:</label>
-                <input type="text" id="recordingName" 
-                    placeholder="E.g., Drew lead vocal - harmony practice"
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes (optional):</label>
-                <input type="text" id="recordingNotes" 
-                    placeholder="E.g., Trying the high harmony part"
-                    style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
-            </div>
-            
-            <div style="display: flex; gap: 10px;">
-                <button class="chart-btn chart-btn-primary" onclick="saveRecording(${sectionIndex}, '${base64Audio}', ${fileSize})" style="flex: 1;">
-                    💾 Save Recording
-                </button>
-                <button class="chart-btn chart-btn-secondary" onclick="discardRecording(${sectionIndex})">
-                    🗑️ Discard
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-// blobToBase64 defined later in Google Drive section
-
-async function saveRecording(sectionIndex, base64Audio, fileSize) {
-    const author = document.getElementById('recordingAuthor').value;
-    const name = document.getElementById('recordingName').value.trim();
-    const notes = document.getElementById('recordingNotes').value.trim();
-    
-    if (!name) {
-        alert('Please enter a name for this recording');
-        return;
-    }
-    
-    const snippet = {
-        name: name,
-        notes: notes,
-        filename: 'recording.webm',
-        type: 'audio/webm',
-        size: fileSize,
-        data: base64Audio,
-        uploadedBy: author,
-        uploadedDate: new Date().toISOString().split('T')[0],
-        isRecording: true
-    };
-    
-    // Save to localStorage as backup
-    const key = `deadcetera_harmony_audio_${selectedSong.title}_section${sectionIndex}`;
-    const existing = localStorage.getItem(key);
-    const snippets = existing ? JSON.parse(existing) : [];
-    snippets.push(snippet);
-    localStorage.setItem(key, JSON.stringify(snippets));
-    
-    // Also save to Firebase so all band members can hear it
-    const fbKey = `harmony_audio_section_${sectionIndex}`;
-    await saveBandDataToDrive(selectedSong.title, fbKey, snippets);
-    
-    showToast(`✅ Recording saved: ${name}`);
-    
-    // Clear form
-    hideHarmonyAudioForm();
-    
-    // Refresh harmony display
-    const bandData = bandKnowledgeBase[selectedSong.title];
-    renderHarmoniesEnhanced(selectedSong.title, bandData);
-}
-
-function discardRecording(sectionIndex) {
-    if (confirm('Discard this recording?')) {
-        hideHarmonyAudioForm();
     }
 }
 
@@ -3296,120 +2964,15 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
     saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
     
     const bandData = bandKnowledgeBase[songTitle];
-    if (bandData) {
-        renderHarmoniesEnhanced(songTitle, bandData);
-    } else {
-        
-    }
+    if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
 // ============================================================================
-// SHEET MUSIC GENERATION
-// ============================================================================
-
-// ============================================================================
-// ENHANCED ABC EDITOR - Integrated
+// ABC EDITOR
 // ============================================================================
 
 // generateSheetMusic wrapper defined later (after enhanced version)
 
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        showToast('✅ ABC notation copied to clipboard!');
-    }).catch(err => {
-        alert('Could not copy. Please select and copy manually.');
-    });
-}
-
-// Render audio snippets section even when there's no harmony data
-async function renderAudioSnippetsOnly(songTitle, container) {
-    // Check if there are any audio snippets saved
-    let hasAnySnippets = false;
-    let snippetsHTML = '';
-    
-    // Check all possible section indices (0-9 should be enough)
-    for (let sectionIndex = 0; sectionIndex < 10; sectionIndex++) {
-        const audioSnippets = await loadHarmonyAudioSnippets(songTitle, sectionIndex);
-        
-        if (audioSnippets.length > 0) {
-            hasAnySnippets = true;
-            
-            snippetsHTML += `
-                <div style="margin-bottom: 30px; padding: 20px; background: #f9fafb; border-radius: 12px; border: 2px solid #e2e8f0;">
-                    <h4 style="margin: 0 0 15px 0; color: #2d3748;">🎵 Audio Snippets - Section ${sectionIndex + 1}</h4>
-                    
-                    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
-                        <button class="chart-btn chart-btn-primary" onclick="openMultiTrackStudio('${songTitle}', ${sectionIndex})" 
-                            style="padding: 8px 16px; font-size: 0.9em;">
-                            🎛️ Multi-Track Studio
-                        </button>
-                        <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(${sectionIndex})" 
-                            style="padding: 8px 16px; font-size: 0.9em;">
-                            📤 Upload File
-                        </button>
-                    </div>
-                    
-                    <div id="harmonyAudioFormContainer${sectionIndex}"></div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
-                        ${audioSnippets.map((snippet, snippetIndex) => `
-                            <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid #e2e8f0;">
-                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-                                    <div>
-                                        <strong style="color: #2d3748;">${snippet.name}</strong>
-                                        ${snippet.notes ? `<p style="margin: 5px 0 0 0; font-size: 0.85em; color: #6b7280;">${snippet.notes}</p>` : ''}
-                                    </div>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button onclick="renameHarmonySnippet('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                            style="background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ✏️ Rename
-                                        </button>
-                                        <button onclick="deleteHarmonySnippetEnhanced('${songTitle}', ${sectionIndex}, ${snippetIndex})" 
-                                            style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em;">
-                                            ✕
-                                        </button>
-                                    </div>
-                                </div>
-                                <audio controls src="${snippet.data}" style="width: 100%; margin-bottom: 8px;"></audio>
-                                <p style="margin: 0; font-size: 0.8em; color: #9ca3af;">
-                                    ${bandMembers[snippet.uploadedBy]?.name || snippet.uploadedBy} - ${snippet.uploadedDate}
-                                    ${snippet.isRecording ? ' - 🎙️ Recorded in browser' : ''}
-                                </p>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-    }
-    
-    if (hasAnySnippets) {
-        container.innerHTML = `
-            <div style="margin-bottom: 20px; padding: 15px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                <p style="margin: 0; font-size: 0.9em;"><strong>Note:</strong> This song doesn't have harmony parts documented yet, but you have audio snippets saved below.</p>
-            </div>
-            ${snippetsHTML}
-        `;
-    } else {
-        // No harmony data and no snippets - show a helpful message with record button
-        container.innerHTML = `
-            <div style="padding: 30px; text-align: center; background: #f9fafb; border-radius: 12px; border: 2px dashed #e2e8f0;">
-                <p style="color: #6b7280; margin-bottom: 20px;">No harmony parts documented yet, but you can still record audio snippets!</p>
-                
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="chart-btn chart-btn-primary" onclick="openMultiTrackStudio(selectedSong?.title || '', 0)">
-                        🎛️ Multi-Track Studio
-                    </button>
-                    <button class="chart-btn chart-btn-secondary" onclick="showHarmonyAudioUploadForm(0)">
-                        📤 Upload File
-                    </button>
-                </div>
-                
-                <div id="harmonyAudioFormContainer0" style="margin-top: 20px;"></div>
-            </div>
-        `;
-    }
-}
 
 // Enhanced harmony rendering with audio snippets, recording, and sheet music
 async function renderHarmoniesEnhanced(songTitle, bandData) {
@@ -4595,38 +4158,6 @@ function masterPath(fileName) {
 
 // ============================================================================
 // UPLOAD AUDIO TO FIREBASE STORAGE
-// ============================================================================
-
-async function uploadAudioToDrive(audioBlob, fileName, metadata) {
-    // Now uploads to Firebase Storage instead of Drive
-    if (!isUserSignedIn) {
-        alert('Please sign in first!');
-        return null;
-    }
-    
-    try {
-        console.log('📤 Uploading to Firebase Storage:', fileName);
-        
-        const safeName = sanitizeFirebasePath(fileName);
-        const storageRef = firebaseStorage.ref(`audio/${safeName}`);
-        
-        await storageRef.put(audioBlob);
-        const downloadURL = await storageRef.getDownloadURL();
-        
-        console.log('✅ Upload successful:', downloadURL);
-        
-        return {
-            id: safeName,
-            name: fileName,
-            webViewLink: downloadURL
-        };
-    } catch (error) {
-        console.error('Upload failed:', error);
-        alert('Failed to upload audio: ' + error.message);
-        return null;
-    }
-}
-
 async function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -4990,11 +4521,6 @@ async function filterByStatus(status) {
 }
 
 // Legacy - kept for backward compat but renderSongs now handles filtering at data level
-function applyStatusFilter(status) {
-    activeStatusFilter = (status === 'all') ? null : status;
-    const searchTerm = document.getElementById('songSearch')?.value || '';
-    renderSongs(currentFilter, searchTerm);
-}
 
 async function addStatusBadges() {
     if (!statusCacheLoaded) {
@@ -5156,7 +4682,7 @@ async function preloadAllStatuses() {
             const count = Object.values(masterData).filter(v => v).length;
             console.log(`Loaded ${count} song statuses from master file (1 API call!)`);
             statusCacheLoaded = true;
-        } else if (isUserSignedIn && sharedFolderId) {
+        } else if (isUserSignedIn) {
             // Drive is ready but no master file - migrate
             console.log('No master status file found. Migrating from individual files...');
             await migrateStatusesToMaster();
@@ -5239,21 +4765,6 @@ function getStatusFromCache(songTitle) {
     return statusCache[songTitle] || '';
 }
 
-// Don't pre-load - too slow! Just cache as songs are clicked
-async function cacheHarmonyState(songTitle) {
-    // Use the master harmony badge cache first (instant!)
-    if (harmonyBadgeCache[songTitle] !== undefined) {
-        return harmonyBadgeCache[songTitle];
-    }
-    // Fallback to old per-song cache
-    if (harmonyCache[songTitle] === undefined) {
-        harmonyCache[songTitle] = await loadHasHarmonies(songTitle);
-        // Also update master cache
-        harmonyBadgeCache[songTitle] = harmonyCache[songTitle];
-    }
-    return harmonyCache[songTitle];
-}
-
 async function filterSongsAsync(type) {
     console.log('Filtering songs:', type);
     
@@ -5267,36 +4778,6 @@ async function filterSongsAsync(type) {
     activeHarmonyFilter = (type === 'all') ? null : type;
     const searchTerm = document.getElementById('songSearch')?.value || '';
     renderSongs(currentFilter, searchTerm);
-}
-
-// Separate function so renderSongs can re-apply after re-rendering
-function applyHarmonyFilter() {
-    const items = document.querySelectorAll('.song-item');
-    let visibleCount = 0;
-    
-    items.forEach(item => {
-        const songNameElement = item.querySelector('.song-name');
-        const songTitle = item.dataset.title || (songNameElement ? songNameElement.textContent.trim() : '');
-        
-        if (harmonyBadgeCache[songTitle] || harmonyCache[songTitle]) {
-            item.style.display = 'grid';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-    
-    console.log('Harmony filter: ' + visibleCount + ' songs');
-    
-    if (visibleCount === 0) {
-        document.getElementById('songDropdown').innerHTML = 
-            '<div style="padding:40px 20px;text-align:center;color:var(--text-muted,#94a3b8);display:block !important;grid-template-columns:none !important">' +
-            '<div style="font-size:2em;margin-bottom:12px">🎵</div>' +
-            '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px;color:var(--text,#f1f5f9)">No harmony songs marked yet</div>' +
-            '<div style="margin-bottom:16px;font-size:0.9em">Click any song and check the "Has Harmonies" box to mark it!</div>' +
-            '<button onclick="filterSongsSync(\'all\');document.getElementById(\'harmoniesOnlyFilter\').checked=false" class="btn btn-primary" style="padding:10px 24px">Show All Songs</button>' +
-            '</div>';
-    }
 }
 
 function toggleNorthStarFilter(enabled) {
@@ -5335,7 +4816,7 @@ async function addHarmonyBadges() {
                 harmonyBadgeCache = masterData;
                 harmonyBadgeCacheLoaded = true;
                 console.log('Loaded harmonies from master file');
-            } else if (isUserSignedIn && sharedFolderId) {
+            } else if (isUserSignedIn) {
                 // Drive is ready but no data found - mark as loaded (no harmonies set yet)
                 harmonyBadgeCacheLoaded = true;
                 console.log('No harmony data found in master file');
@@ -5343,7 +4824,7 @@ async function addHarmonyBadges() {
             // If Drive not ready yet, DON'T mark as loaded - will retry on next render
         } catch (e) {
             console.error('Error loading harmony master:', e);
-            if (isUserSignedIn && sharedFolderId) {
+            if (isUserSignedIn) {
                 harmonyBadgeCacheLoaded = true; // Drive was ready, real error
             }
         }
@@ -7027,10 +6508,6 @@ async function mtDrawAllWaveforms(songTitle, si) {
     }
 }
 
-function mtDrawWaveform(si, trackIndex) {
-    const canvas = document.getElementById(`mtWaveformCanvas_${si}`);
-    if (canvas) canvas.style.display = canvas.style.display === 'none' ? 'block' : 'none';
-}
 
 // ============================================================================
 // EXPORT MIX
