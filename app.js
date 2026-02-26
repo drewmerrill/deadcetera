@@ -9945,10 +9945,247 @@ async function submitFeedback() {
 }
 
 // ---- EQUIPMENT (#28) ----
-function renderEquipmentPage(el){el.innerHTML=`<div class="page-header"><h1>🎛️ Equipment</h1><p>Band gear inventory</p></div><button class="btn btn-primary" onclick="addEquipment()" style="margin-bottom:12px">+ Add Gear</button><div id="equipList"></div>`;loadEquipment();}
-async function loadEquipment(){const d=toArray(await loadBandDataFromDrive('_band','equipment')||[]);const el=document.getElementById('equipList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet.</div>';return;}const g={};d.forEach(i=>{const o=i.owner||'shared';if(!g[o])g[o]=[];g[o].push(i);});el.innerHTML=Object.entries(g).map(([o,items])=>`<div class="app-card"><h3>${bandMembers[o]?.name||'Shared/Band'}</h3>${items.map(i=>`<div class="list-item" style="padding:8px 10px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${i.name||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${[i.category,i.brand,i.model].filter(Boolean).join(' · ')}</div></div>${i.manualUrl?'<a href="'+i.manualUrl+'" target="_blank" class="btn btn-sm btn-ghost">📄</a>':''}</div>`).join('')}</div>`).join('');}
-function addEquipment(){const el=document.getElementById('equipList');el.innerHTML=`<div class="app-card"><h3>Add Gear</h3><div class="form-grid">${[['Name','eqN',''],['Category','eqC','select:amp,guitar,pedal,mic,cable,pa,drum,keys,other'],['Brand','eqB',''],['Model','eqM',''],['Owner','eqO','members'],['Serial #','eqS',''],['Manual URL','eqU',''],['Value ($)','eqV','number']].map(([l,id,t])=>{if(t==='members')return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'">'+m.name+'</option>').join('')+'</select></div>';if(t.startsWith('select:'))return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(v=>'<option value="'+v+'">'+v+'</option>').join('')+'</select></div>';return'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'"></div>';}).join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="eqNotes"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveEquip()">💾 Save</button><button class="btn btn-ghost" onclick="loadEquipment()">Cancel</button></div></div>`+el.innerHTML;}
-async function saveEquip(){const eq={name:document.getElementById('eqN')?.value,category:document.getElementById('eqC')?.value,brand:document.getElementById('eqB')?.value,model:document.getElementById('eqM')?.value,owner:document.getElementById('eqO')?.value,serial:document.getElementById('eqS')?.value,manualUrl:document.getElementById('eqU')?.value,value:document.getElementById('eqV')?.value,notes:document.getElementById('eqNotes')?.value};if(!eq.name){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','equipment')||[]);ex.push(eq);await saveBandDataToDrive('_band','equipment',ex);alert('✅ Saved!');loadEquipment();}
+// ============================================================================
+// EQUIPMENT — full CRUD with photo upload
+// ============================================================================
+
+const EQ_FIELDS = [
+    { l: 'Name *',      id: 'eqN', type: '' },
+    { l: 'Category',    id: 'eqC', type: 'select:amp,guitar,pedal,mic,cable,pa,drum,keys,other' },
+    { l: 'Brand',       id: 'eqB', type: '' },
+    { l: 'Model',       id: 'eqM', type: '' },
+    { l: 'Owner',       id: 'eqO', type: 'members' },
+    { l: 'Serial #',    id: 'eqS', type: '' },
+    { l: 'Manual URL',  id: 'eqU', type: '' },
+    { l: 'Value ($)',   id: 'eqV', type: 'number' },
+];
+
+function renderEquipmentPage(el) {
+    el.innerHTML = `
+        <div class="page-header">
+            <h1>🎛️ Equipment</h1>
+            <p>Band gear inventory</p>
+        </div>
+        <button class="btn btn-primary" onclick="showEquipForm()" style="margin-bottom:16px">+ Add Gear</button>
+        <div id="equipFormContainer"></div>
+        <div id="equipList"></div>`;
+    loadEquipment();
+}
+
+async function loadEquipment() {
+    const data = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
+    const el = document.getElementById('equipList');
+    if (!el) return;
+
+    if (!data.length) {
+        el.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet. Add your first piece of gear above.</div>';
+        return;
+    }
+
+    // Group by owner
+    const groups = {};
+    data.forEach((item, i) => {
+        item._idx = i;
+        const key = item.owner || 'shared';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
+    });
+
+    const catIcons = { amp:'🔊', guitar:'🎸', pedal:'🎚️', mic:'🎤', cable:'🔌', pa:'📢', drum:'🥁', keys:'🎹', other:'🎛️' };
+
+    el.innerHTML = Object.entries(groups).map(([owner, items]) => `
+        <div class="app-card" style="margin-bottom:14px">
+            <h3 style="margin:0 0 12px;color:var(--accent-light)">${bandMembers[owner]?.name || 'Shared / Band'}</h3>
+            ${items.map(item => `
+            <div id="equipItem_${item._idx}" style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                    ${item.photo ? `
+                    <div onclick="showEquipPhoto('${item._idx}')" style="cursor:pointer;flex-shrink:0">
+                        <img src="${item.photo}" alt="${item.name}"
+                            style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+                    </div>` : `
+                    <div onclick="showEquipForm(${item._idx})" title="Add photo"
+                        style="width:64px;height:64px;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;color:var(--text-dim);font-size:1.4em">
+                        📷
+                    </div>`}
+                    <div style="flex:1;min-width:0">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                            <span style="font-weight:700;font-size:0.95em">${item.name || ''}</span>
+                            ${item.category ? `<span style="font-size:0.8em;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:1px 8px;border-radius:10px">${catIcons[item.category]||'🎛️'} ${item.category}</span>` : ''}
+                            ${item.value ? `<span style="font-size:0.78em;color:var(--text-dim)">$${item.value}</span>` : ''}
+                        </div>
+                        <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:4px">
+                            ${[item.brand, item.model].filter(Boolean).join(' ')}
+                            ${item.serial ? `<span style="color:var(--text-dim)"> · S/N: ${item.serial}</span>` : ''}
+                        </div>
+                        ${item.notes ? `<div style="font-size:0.8em;color:var(--text-dim);font-style:italic">${item.notes}</div>` : ''}
+                        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                            ${item.manualUrl ? `<a href="${item.manualUrl}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:0.78em">📄 Manual</a>` : ''}
+                            <button onclick="showEquipForm(${item._idx})" class="btn btn-sm btn-ghost" style="font-size:0.78em">✏️ Edit</button>
+                            <button onclick="deleteEquip(${item._idx})" class="btn btn-sm btn-ghost" style="font-size:0.78em;color:var(--red,#f87171)">🗑️ Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`).join('')}
+        </div>`).join('');
+}
+
+function showEquipForm(editIdx) {
+    const fc = document.getElementById('equipFormContainer');
+    if (!fc) return;
+
+    // Get existing data if editing
+    let existing = null;
+    if (editIdx !== undefined) {
+        // We need to read current data — do async then re-render form
+        loadBandDataFromDrive('_band', 'equipment').then(data => {
+            existing = toArray(data || [])[editIdx] || {};
+            fc.innerHTML = _buildEquipForm(editIdx, existing);
+            fc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        return;
+    }
+
+    fc.innerHTML = _buildEquipForm(undefined, {});
+    fc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _buildEquipForm(editIdx, d) {
+    const isEdit = editIdx !== undefined;
+    const selects = { amp:'amp', guitar:'guitar', pedal:'pedal', mic:'mic', cable:'cable', pa:'pa', drum:'drum', keys:'keys', other:'other' };
+    const fields = EQ_FIELDS.map(({ l, id, type }) => {
+        let input;
+        if (type === 'members') {
+            input = `<select class="app-select" id="${id}">
+                <option value="">Shared</option>
+                ${Object.entries(bandMembers).map(([k, m]) =>
+                    `<option value="${k}" ${d.owner === k ? 'selected' : ''}>${m.name}</option>`
+                ).join('')}
+            </select>`;
+        } else if (type.startsWith('select:')) {
+            const opts = type.slice(7).split(',');
+            input = `<select class="app-select" id="${id}">
+                ${opts.map(v => `<option value="${v}" ${d.category === v ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>`;
+        } else {
+            const val = d[id.slice(2).toLowerCase()] || d[{ eqN:'name',eqB:'brand',eqM:'model',eqS:'serial',eqU:'manualUrl',eqV:'value' }[id]] || '';
+            input = `<input class="app-input" id="${id}" ${type === 'number' ? 'type="number"' : ''} placeholder="${l.replace(' *','')}" value="${val}">`;
+        }
+        return `<div class="form-row"><label class="form-label">${l}</label>${input}</div>`;
+    }).join('');
+
+    const photoPreview = d.photo
+        ? `<img id="equipPhotoPreview" src="${d.photo}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:6px;display:block">`
+        : `<div id="equipPhotoPreview" style="display:none"></div>`;
+
+    return `
+    <div class="app-card" style="margin-bottom:16px;border:1px solid var(--accent,#6366f1)">
+        <h3 style="margin:0 0 14px;color:var(--accent-light)">${isEdit ? '✏️ Edit Gear' : '➕ Add Gear'}</h3>
+        <div class="form-grid">
+            ${fields}
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label>
+            <textarea class="app-textarea" id="eqNotes" style="min-height:60px">${d.notes || ''}</textarea>
+        </div>
+        <div class="form-row">
+            <label class="form-label">Photo</label>
+            <div>
+                <input type="file" id="equipPhotoFile" accept="image/*" onchange="equipPhotoPreview(this)"
+                    style="font-size:0.85em;color:var(--text-muted);background:transparent;border:none;padding:0;width:100%">
+                ${photoPreview}
+                ${d.photo ? `<button onclick="equipRemovePhoto()" class="btn btn-sm btn-ghost" style="font-size:0.75em;margin-top:4px;color:var(--red,#f87171)">✕ Remove photo</button>` : ''}
+            </div>
+        </div>
+        <input type="hidden" id="equipPhotoData" value="${d.photo || ''}">
+        <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary" onclick="saveEquip(${isEdit ? editIdx : ''})">💾 ${isEdit ? 'Save Changes' : 'Add Gear'}</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('equipFormContainer').innerHTML='';loadEquipment()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function equipPhotoPreview(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        // Resize to max 800px to keep Firebase storage reasonable
+        const img = new Image();
+        img.onload = () => {
+            const maxDim = 800;
+            let w = img.width, h = img.height;
+            if (w > maxDim || h > maxDim) {
+                if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                else       { w = Math.round(w * maxDim / h); h = maxDim; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+            document.getElementById('equipPhotoData').value = dataUrl;
+            const prev = document.getElementById('equipPhotoPreview');
+            if (prev) { prev.src = dataUrl; prev.style.display = 'block'; Object.assign(prev, { tagName:'IMG' }); }
+            // Replace preview div with img if it was a div
+            const container = document.getElementById('equipPhotoData').previousElementSibling?.querySelector('#equipPhotoPreview');
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function equipRemovePhoto() {
+    document.getElementById('equipPhotoData').value = '';
+    const prev = document.getElementById('equipPhotoPreview');
+    if (prev) { prev.src=''; prev.style.display='none'; }
+}
+
+async function saveEquip(editIdx) {
+    const eq = {
+        name:      document.getElementById('eqN')?.value.trim(),
+        category:  document.getElementById('eqC')?.value,
+        brand:     document.getElementById('eqB')?.value.trim(),
+        model:     document.getElementById('eqM')?.value.trim(),
+        owner:     document.getElementById('eqO')?.value,
+        serial:    document.getElementById('eqS')?.value.trim(),
+        manualUrl: document.getElementById('eqU')?.value.trim(),
+        value:     document.getElementById('eqV')?.value,
+        notes:     document.getElementById('eqNotes')?.value.trim(),
+        photo:     document.getElementById('equipPhotoData')?.value || '',
+    };
+    if (!eq.name) { alert('Name is required.'); return; }
+
+    const all = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
+    if (editIdx !== undefined) {
+        all[editIdx] = eq;
+    } else {
+        all.push(eq);
+    }
+    await saveBandDataToDrive('_band', 'equipment', all);
+    document.getElementById('equipFormContainer').innerHTML = '';
+    showToast(editIdx !== undefined ? '✅ Gear updated' : '✅ Gear added');
+    loadEquipment();
+}
+
+async function deleteEquip(idx) {
+    if (!confirm('Delete this gear item?')) return;
+    const all = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
+    all.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'equipment', all);
+    showToast('Gear deleted');
+    loadEquipment();
+}
+
+function showEquipPhoto(idx) {
+    loadBandDataFromDrive('_band', 'equipment').then(data => {
+        const item = toArray(data || [])[idx];
+        if (!item?.photo) return;
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer';
+        modal.onclick = () => modal.remove();
+        modal.innerHTML = `<img src="${item.photo}" style="max-width:90vw;max-height:85vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.8)" alt="${item.name}">`;
+        document.body.appendChild(modal);
+    });
+}
 
 // ---- CONTACTS (#27) ----
 function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
