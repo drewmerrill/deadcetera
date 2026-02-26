@@ -1330,14 +1330,18 @@ async function renderPersonalTabs(songTitle) {
     const memberHTML = Object.entries(bandMembers).map(([key, member]) => {
         const memberTabs = tabsByMember[key] || [];
         const isMe = (key === currentMemberKey);
+        const isAdmin = (currentMemberKey === 'drew');
         const emoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' }[key] || '👤';
-        const tabItems = memberTabs.map(tab => `
+        const tabItems = memberTabs.map(tab => {
+            // Show delete if: this is my section, OR I added this tab (by email), OR I'm Drew (admin)
+            const canDelete = isMe || isAdmin || (currentUserEmail && tab.addedBy === currentUserEmail);
+            return `
             <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;margin-bottom:6px">
                 <a href="${tab.url}" target="_blank" style="flex:1;color:var(--accent-light);font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tab.url}">${tab.label || tab.notes || tab.url}</a>
                 ${tab.notes && tab.label ? `<span style="color:var(--text-dim);font-size:0.75em;flex-shrink:0">${tab.notes}</span>` : ''}
-                ${isMe ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
-            </div>
-        `).join('');
+                ${canDelete ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
+            </div>`;
+        }).join('');
 
         return `
         <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
@@ -6998,7 +7002,7 @@ function toggleMenu() {
     overlay.classList.toggle('open', !isOpen);
 }
 
-// pageRenderers must be declared before showPage (const is not hoisted)
+// pageRenderers must be declared BEFORE showPage (const is not hoisted)
 const pageRenderers = {
     setlists:      renderSetlistsPage,
     playlists:     renderPlaylistsPage,
@@ -7012,7 +7016,7 @@ const pageRenderers = {
     admin:         renderSettingsPage,
     social:        renderSocialPage,
     notifications: renderNotificationsPage,
-    // help.js loads after app.js — poll until it's ready (handles mobile PWA timing)
+    // help.js loads after app.js — poll until ready (handles mobile PWA timing)
     help: function(el) {
         if (typeof window.renderHelpPage === 'function') {
             window.renderHelpPage(el);
@@ -7091,40 +7095,28 @@ async function printSetlistPDF(setlistIndex) {
     const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const sl = allSetlists[setlistIndex];
     if (!sl) return;
-
     const bandName   = 'Deadcetera';
     const slName     = sl.name  || 'Setlist';
     const slDate     = sl.date  || '';
     const slVenue    = sl.venue || '';
     const sets       = sl.sets  || [];
     const totalSongs = sets.reduce((n, s) => n + (s.songs || []).length, 0);
-
     const setPages = sets.map((set, si) => {
         const songs    = set.songs || [];
         const isEncore = /encore|enc/i.test(set.name || '');
         const rows = songs.map((item, idx) => {
             const title  = typeof item === 'string' ? item : (item.title || '');
             const isTrans = typeof item === 'object' && item.transition;
-            return `<div class="sl-row">
-                <span class="sl-num">${idx + 1}</span>
-                <span class="sl-title">${title}</span>
-                ${isTrans ? '<span class="sl-arrow">→</span>' : ''}
-            </div>`;
+            return `<div class="sl-row"><span class="sl-num">${idx + 1}</span><span class="sl-title">${title}</span>${isTrans ? '<span class="sl-arrow">→</span>' : ''}</div>`;
         }).join('');
-
         return `<div class="sl-page ${si < sets.length - 1 ? 'sl-break' : ''}">
-            <div class="sl-page-header">
-                <div class="sl-band">${bandName}</div>
-                <div class="sl-meta">${slDate}${slDate && slVenue ? '  ·  ' : ''}${slVenue}</div>
-            </div>
+            <div class="sl-page-header"><div class="sl-band">${bandName}</div><div class="sl-meta">${slDate}${slDate && slVenue ? '  ·  ' : ''}${slVenue}</div></div>
             <div class="sl-set-name ${isEncore ? 'sl-encore-label' : ''}">${set.name || ('Set ' + (si + 1))}</div>
             <div class="sl-songs">${rows}</div>
             <div class="sl-page-footer">${slName} &nbsp;·&nbsp; ${totalSongs} songs &nbsp;·&nbsp; Page ${si + 1} of ${sets.length}</div>
         </div>`;
     }).join('');
-
-    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<title>${slName} — ${bandName}</title>
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${slName}</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -7132,22 +7124,20 @@ body{font-family:'Playfair Display',Georgia,serif;background:#fff;color:#111}
 .sl-page{width:100%;min-height:100vh;padding:48px 56px 36px;display:flex;flex-direction:column}
 .sl-break{page-break-after:always;break-after:page}
 .sl-page-header{border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:20px}
-.sl-band{font-family:'Playfair Display SC','Playfair Display',Georgia,serif;font-size:2em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;line-height:1}
+.sl-band{font-family:'Playfair Display SC',serif;font-size:2em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
 .sl-meta{font-size:1em;color:#444;margin-top:6px;font-style:italic}
-.sl-set-name{font-family:'Playfair Display SC','Playfair Display',serif;font-size:1.3em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#333;margin-bottom:24px}
+.sl-set-name{font-family:'Playfair Display SC',serif;font-size:1.3em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#333;margin-bottom:24px}
 .sl-encore-label{color:#555;border-top:1px solid #ccc;padding-top:16px;margin-top:8px}
 .sl-songs{flex:1}
-.sl-row{display:flex;align-items:baseline;padding:10px 0;border-bottom:1px solid #e8e8e8;line-height:1.2}
+.sl-row{display:flex;align-items:baseline;padding:10px 0;border-bottom:1px solid #e8e8e8}
 .sl-row:last-child{border-bottom:none}
-.sl-num{font-family:'Playfair Display SC',serif;font-size:0.95em;color:#888;min-width:48px;font-weight:400;letter-spacing:0.04em;flex-shrink:0}
-.sl-title{font-size:1.85em;font-weight:700;flex:1;letter-spacing:-0.01em}
+.sl-num{font-family:'Playfair Display SC',serif;font-size:0.95em;color:#888;min-width:48px;flex-shrink:0}
+.sl-title{font-size:1.85em;font-weight:700;flex:1}
 .sl-arrow{font-size:1.6em;font-weight:900;color:#555;padding-left:14px;flex-shrink:0;font-style:italic}
 .sl-page-footer{border-top:1px solid #ddd;padding-top:10px;margin-top:20px;font-size:0.78em;color:#999;letter-spacing:0.06em;text-transform:uppercase;font-style:italic}
-@media print{body{background:#fff}.sl-page{min-height:100vh}.sl-break{page-break-after:always;break-after:page}@page{size:letter portrait;margin:0}}
+@media print{.sl-break{page-break-after:always;break-after:page}@page{size:letter portrait;margin:0}}
 </style></head><body>${setPages}
-<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),800));<\/script>
-</body></html>`;
-
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),800));<\/script></body></html>`;
     const win = window.open('', '_blank');
     if (!win) { alert('Pop-up blocked — please allow pop-ups for this site to print setlists.'); return; }
     win.document.write(html);
