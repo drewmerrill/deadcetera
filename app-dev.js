@@ -4030,7 +4030,7 @@ function generateSheetMusic(sectionIndex, section) {
 // ============================================================================
 
 const FIREBASE_CONFIG = {
-    apiKey: "REDACTED",
+    apiKey: "AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo",
     authDomain: "deadcetera-35424.firebaseapp.com",
     databaseURL: "https://deadcetera-35424-default-rtdb.firebaseio.com",
     projectId: "deadcetera-35424",
@@ -4041,7 +4041,7 @@ const FIREBASE_CONFIG = {
 
 // Keep Google config for sign-in identity only (email/profile, no Drive access needed)
 const GOOGLE_DRIVE_CONFIG = {
-    apiKey: 'REDACTED',
+    apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
     scope: 'email profile'
 };
@@ -10396,18 +10396,25 @@ async function getPartyState(playlistId) {
     return snap.val();
 }
 
-// ── Party event callbacks (overridden by Smart Player when active) ─────────────
-// These are no-ops here; renderSmartPlayer() (Phase 3) will replace them.
+// ── Party event callbacks — wired to the player UI ────────────────────────────
 
 function onPartyUpdate(party, songs) {
-    // Phase 3 will wire this to scroll + highlight the current song
-    console.log('[Party] Now playing:', party.currentSongTitle, '(advanced by', party.lastAdvancedBy + ')');
+    // Sync player to party's current song
+    if (_plPlayerIndex !== party.currentSongIndex) {
+        _plPlayerIndex = party.currentSongIndex;
+        plPlayerRender();
+        const advancer = getBandMemberName(party.lastAdvancedBy);
+        showToast(`${advancer} advanced to: ${party.currentSongTitle}`, 3000);
+    }
+    // Always refresh the party status bar
+    plPartyRenderStatus(party);
 }
 
 function onPartyEnded() {
-    // Phase 3 will update the UI
-    console.log('[Party] Party ended');
+    _plPartyActive = false;
     showToast('🛑 Listening Party has ended.', 3000);
+    // Refresh player header to remove party bar
+    if (document.getElementById('plPlayerModal')) plPlayerRender();
 }
 
 // ── Toast helper (reusable) ───────────────────────────────────────────────────
@@ -10510,6 +10517,15 @@ async function plRenderIndex(playlists, listens, typeFilter) {
         return;
     }
 
+    // Check which playlists have active listening parties
+    const partyStates = {};
+    if (firebaseDB && isUserSignedIn) {
+        await Promise.all(filtered.map(async pl => {
+            const state = await getPartyState(pl.id).catch(() => null);
+            if (state?.active) partyStates[pl.id] = state;
+        }));
+    }
+
     container.innerHTML = filtered.map((pl, i) => {
         const meta = PLAYLIST_TYPES[pl.type] || PLAYLIST_TYPES.custom;
         const songs = pl.linkedSetlistId ? null : toArray(pl.songs || []);
@@ -10537,7 +10553,15 @@ async function plRenderIndex(playlists, listens, typeFilter) {
             ? `<span style="font-size:0.7em;background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);padding:2px 7px;border-radius:10px;font-weight:600">⚡ Live from setlist</span>`
             : '';
 
+        // Listening party badge
+        const party = partyStates[pl.id];
+        const partyBadge = party
+            ? `<span style="font-size:0.7em;background:rgba(251,191,36,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:2px 7px;border-radius:10px;font-weight:600;animation:pulse 2s infinite">🎉 Party Live</span>`
+            : '';
+
         const createdDate = pl.createdAt ? new Date(pl.createdAt).toLocaleDateString() : '';
+
+        const partyCount = party ? Object.values(party.presence || {}).filter(p => p.online).length : 0;
 
         return `<div class="app-card" id="plCard_${pl.id}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -10546,15 +10570,18 @@ async function plRenderIndex(playlists, listens, typeFilter) {
                         <span style="font-weight:700;font-size:0.98em">${pl.name || 'Untitled'}</span>
                         <span style="font-size:0.72em;font-weight:600;padding:2px 8px;border-radius:10px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.border};white-space:nowrap">${meta.label}</span>
                         ${linkedBadge}
+                        ${partyBadge}
                     </div>
                     ${pl.description ? `<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.description}</div>` : ''}
                     <div style="display:flex;gap:10px;font-size:0.78em;color:var(--text-dim);flex-wrap:wrap">
                         <span>🎵 ${pl.linkedSetlistId ? 'Synced' : songCount + ' song' + (songCount !== 1 ? 's' : '')}</span>
                         ${createdDate ? `<span>📅 ${createdDate}</span>` : ''}
                         <span>👤 ${bandMembers[pl.createdBy]?.name || pl.createdBy || 'Unknown'}</span>
+                        ${partyCount > 0 ? `<span>👥 ${partyCount} listening now</span>` : ''}
                     </div>
                 </div>
-                <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start">
+                <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+                    ${party ? `<button class="btn btn-sm" onclick="plPlay('${pl.id}')" title="Join the active listening party" style="font-size:0.78em;padding:4px 10px;background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.4)">🎉 Join Party</button>` : ''}
                     <button class="btn btn-sm btn-primary" onclick="plPlay('${pl.id}')" title="Play this playlist" style="font-size:0.78em;padding:4px 10px">▶ Play</button>
                     <button class="btn btn-sm btn-ghost" onclick="plEdit('${pl.id}')" title="Edit">✏️</button>
                     <button class="btn btn-sm btn-ghost" onclick="copyPlaylistShareUrl('${pl.id}')" title="Copy share link" style="color:var(--accent-light)">🔗</button>
@@ -10574,6 +10601,7 @@ async function plRenderIndex(playlists, listens, typeFilter) {
 let _plPlayerSongs = [];      // resolved songs for current session
 let _plPlayerIndex = 0;       // which song is "now playing"
 let _plPlayerPlaylist = null; // current playlist object
+let _plPartyActive = false;   // true while a listening party is joined
 
 async function plPlay(playlistId) {
     const playlists = await loadPlaylists();
@@ -10584,8 +10612,18 @@ async function plPlay(playlistId) {
     if (!songs.length) { showToast('This playlist has no songs yet', 2000); return; }
 
     _plPlayerPlaylist = pl;
-    _plPlayerIndex = 0;
-    _plPlayerSongs = songs; // store raw songs, resolve on demand
+    _plPlayerSongs = songs;
+
+    // If a party is already active for this playlist, jump to its current song
+    const partyState = firebaseDB ? await getPartyState(playlistId) : null;
+    if (partyState?.active) {
+        _plPlayerIndex = partyState.currentSongIndex || 0;
+        _plPartyActive = true;
+        await joinListeningParty(playlistId, songs);
+    } else {
+        _plPlayerIndex = 0;
+        _plPartyActive = false;
+    }
 
     plPlayerRender();
 }
@@ -10640,8 +10678,22 @@ function plPlayerRender() {
                     &nbsp;Song ${idx + 1} of ${total}
                 </div>
             </div>
-            <button onclick="document.getElementById('plPlayerModal').remove()"
+            <button onclick="plPlayerClose()"
                 style="background:none;border:none;color:var(--text-muted);font-size:1.4em;cursor:pointer;flex-shrink:0;padding:4px;line-height:1">✕</button>
+        </div>
+
+        <!-- Party status bar (shown when party active) -->
+        <div id="plPartyBar" style="display:${_plPartyActive ? '' : 'none'};background:rgba(251,191,36,0.1);border-bottom:1px solid rgba(251,191,36,0.25);padding:8px 16px;flex-shrink:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:0.82em;font-weight:700;color:#fbbf24">🎉 Listening Party</span>
+                <div id="plPartyPresence" style="display:flex;gap:5px;flex:1;flex-wrap:wrap"></div>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                    <button onclick="plPartyAdvance()" class="btn btn-sm" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.35);font-size:0.75em;padding:4px 10px">▶▶ Advance All</button>
+                    <button id="plPartyHostBtn" onclick="plPartyEnd()" style="display:none" class="btn btn-sm" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);font-size:0.75em;padding:4px 10px">End Party</button>
+                    <button id="plPartyLeaveBtn" onclick="plPartyLeave()" class="btn btn-sm" style="background:rgba(255,255,255,0.05);color:var(--text-muted);border:1px solid var(--border);font-size:0.75em;padding:4px 10px">Leave</button>
+                </div>
+            </div>
+            <div id="plPartyLastAdvanced" style="font-size:0.72em;color:var(--text-dim);margin-top:3px"></div>
         </div>
 
         <!-- Now Playing card -->
@@ -10670,9 +10722,15 @@ function plPlayerRender() {
                     ✅ End of playlist
                 </div>`}
                 <div style="flex:1"></div>
+                ${isUserSignedIn && !_plPartyActive ? `
+                <button onclick="plPartyStart()" class="btn btn-sm"
+                    style="background:rgba(251,191,36,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);font-size:0.75em;padding:6px 12px;white-space:nowrap">
+                    🎉 Start Party
+                </button>` : ''}
+                ${!isUserSignedIn ? `
                 <div style="font-size:0.72em;color:var(--text-dim);text-align:right;line-height:1.4">
                     Opens in Spotify<br>or YouTube
-                </div>
+                </div>` : ''}
             </div>
         </div>
 
@@ -10730,10 +10788,94 @@ function plPlayerOpenCurrent() {
     if (row) row.style.borderLeftColor = 'var(--green)';
 }
 
+function plPlayerClose() {
+    if (_plPartyActive) leaveListeningParty(true);
+    _plPartyActive = false;
+    document.getElementById('plPlayerModal')?.remove();
+}
+
 function plPlayerJumpTo(idx) {
     _plPlayerIndex = idx;
+    // If in a party, advance all members too
+    if (_plPartyActive && _plPlayerPlaylist) {
+        advancePartyToSong(_plPlayerPlaylist.id, idx, _plPlayerSongs).catch(() => {});
+    }
     plPlayerRender();
 }
+
+// ── Listening Party actions ───────────────────────────────────────────────────
+
+async function plPartyStart() {
+    if (!isUserSignedIn) { showToast('Sign in to start a Listening Party', 2500); return; }
+    if (!_plPlayerPlaylist) return;
+    _plPartyActive = true;
+    await startListeningParty(_plPlayerPlaylist.id, _plPlayerSongs);
+    plPlayerRender();
+    showToast('🎉 Listening Party started! Band members can join when they open this playlist.', 4000);
+    // Refresh playlist index so the "Join Party" badge appears
+    plLoadIndex().catch(() => {});
+}
+
+async function plPartyAdvance() {
+    if (!_plPlayerPlaylist || !_plPartyActive) return;
+    const nextIdx = _plPlayerIndex + 1;
+    if (nextIdx >= _plPlayerSongs.length) { showToast('Already at the last song', 2000); return; }
+    await advancePartyToSong(_plPlayerPlaylist.id, nextIdx, _plPlayerSongs);
+    // onPartyUpdate will drive the render via Firebase listener
+}
+
+async function plPartyLeave() {
+    leaveListeningParty(true);
+    _plPartyActive = false;
+    plPlayerRender();
+    showToast('👋 Left the Listening Party', 2000);
+}
+
+async function plPartyEnd() {
+    if (!_plPlayerPlaylist) return;
+    if (!confirm('End the Listening Party for everyone?')) return;
+    await endListeningParty(_plPlayerPlaylist.id);
+    _plPartyActive = false;
+    plPlayerRender();
+    showToast('🛑 Listening Party ended', 2500);
+    plLoadIndex().catch(() => {});
+}
+
+// Update just the party status bar (called from onPartyUpdate — no full re-render)
+function plPartyRenderStatus(party) {
+    const bar = document.getElementById('plPartyBar');
+    if (!bar) return;
+    bar.style.display = '';
+
+    // Presence avatars
+    const presenceEl = document.getElementById('plPartyPresence');
+    if (presenceEl && party.presence) {
+        presenceEl.innerHTML = Object.entries(party.presence)
+            .filter(([, p]) => p.online)
+            .map(([key]) => {
+                const name = getBandMemberName(key);
+                const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                return `<span title="${name}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(251,191,36,0.25);color:#fbbf24;font-size:0.7em;font-weight:700;border:1px solid rgba(251,191,36,0.4)">${initials}</span>`;
+            }).join('');
+    }
+
+    // Last advanced by
+    const advEl = document.getElementById('plPartyLastAdvanced');
+    if (advEl && party.lastAdvancedBy) {
+        const who = getBandMemberName(party.lastAdvancedBy);
+        const when = party.lastAdvancedAt ? new Date(party.lastAdvancedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        advEl.textContent = `Last advanced by ${who}${when ? ' at ' + when : ''}`;
+    }
+
+    // Show End Party button only to the host
+    const hostBtn = document.getElementById('plPartyHostBtn');
+    if (hostBtn) {
+        const myKey = getCurrentMemberKey();
+        hostBtn.style.display = (myKey && myKey === party.startedBy) ? '' : 'none';
+    }
+}
+
+
 
 async function plConfirmDelete(playlistId) {
     const pl = _plAllLoaded.find(p => p.id === playlistId);
