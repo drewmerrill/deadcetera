@@ -365,7 +365,7 @@
     document.head.appendChild(style);
 })();
 
-console.log('🎸 Deadcetera v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
+console.log('🎸 DeadCetera v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -398,7 +398,7 @@ function getPlayButtonStyle(version) {
     if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;color:white;';
     if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;color:white;';
     if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;color:white;';
-    return 'color:white;';
+    return 'background:#1db954;color:#ffffff;';
 }
 
 // ============================================================================
@@ -511,7 +511,7 @@ function showPWAInstallBanner() {
     banner.innerHTML = `
         <img src="icon-192.png" style="width:44px;height:44px;border-radius:10px;flex-shrink:0" onerror="this.style.display='none'">
         <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:0.92em;color:#f1f5f9">Add Deadcetera to Home Screen</div>
+            <div style="font-weight:700;font-size:0.92em;color:#f1f5f9">Add DeadCetera to Home Screen</div>
             <div style="font-size:0.75em;color:#94a3b8;margin-top:2px">Opens like an app, works offline</div>
         </div>
         <button onclick="pwaTriggerInstall()" style="
@@ -1529,25 +1529,33 @@ async function renderCoverMe(songTitle, preloaded) {
     const isAdmin = (getCurrentMemberKey() === 'drew');
     container.innerHTML = covers.map((cover, i) => {
         const canDelete = isAdmin || (currentUserEmail && cover.addedBy === currentUserEmail);
+        const canEdit   = canDelete;
         const domain = (() => { try { return new URL(cover.url).hostname.replace('www.',''); } catch(e) { return ''; } })();
         const siteIcon = cover.url.includes('youtube') || cover.url.includes('youtu.be') ? '▶️' :
                          cover.url.includes('spotify') ? '🟢' :
                          cover.url.includes('archive.org') ? '📼' : '🔗';
+        const displayTitle = cover.fetchedTitle || '';
         return `
-        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div id="coverMeCard_${i}" style="background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:14px 16px;margin-bottom:10px">
             <div style="display:flex;align-items:flex-start;gap:10px">
                 <div style="flex:1;min-width:0">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
                         ${cover.band ? `<span style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:2px 10px;border-radius:12px;font-size:0.82em;font-weight:700">${cover.band}</span>` : ''}
                         <a href="${cover.url}" target="_blank" rel="noopener"
-                           style="color:var(--accent-light,#818cf8);font-size:0.82em;text-decoration:none;display:flex;align-items:center;gap:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                           style="color:var(--accent-light,#818cf8);font-size:0.82em;text-decoration:none;display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px"
                            title="${cover.url}">
-                           ${siteIcon} ${domain || cover.url}
+                           ${siteIcon} ${displayTitle || domain || cover.url}
                         </a>
                     </div>
-                    ${cover.note ? `<div style="color:var(--text-muted,#94a3b8);font-size:0.85em;line-height:1.5;font-style:italic">"${cover.note}"</div>` : ''}
-                    <div style="color:var(--text-dim,#64748b);font-size:0.73em;margin-top:6px">
-                        Added ${cover.dateAdded || ''}${cover.addedByName ? ' by ' + cover.addedByName : ''}
+                    <div id="coverMeNote_${i}">
+                        ${cover.note ? `<div style="color:var(--text-muted,#94a3b8);font-size:0.85em;line-height:1.5;font-style:italic">"${cover.note}"</div>` : ''}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+                        <span style="color:var(--text-dim,#64748b);font-size:0.73em">
+                            Added ${cover.dateAdded || ''}${cover.addedByName ? ' by ' + cover.addedByName : ''}
+                        </span>
+                        ${canEdit ? `<button onclick="editCoverMeNote('${songTitle.replace(/'/g,"\\'")}',${i})"
+                            style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.78em;padding:0" title="Edit note">✏️ edit</button>` : ''}
                     </div>
                 </div>
                 ${canDelete ? `<button onclick="deleteCoverMe('${songTitle.replace(/'/g,"\\'")}',${i})"
@@ -1555,6 +1563,52 @@ async function renderCoverMe(songTitle, preloaded) {
             </div>
         </div>`;
     }).join('');
+}
+
+function editCoverMeNote(songTitle, index) {
+    const noteEl = document.getElementById(`coverMeNote_${index}`);
+    if (!noteEl) return;
+    // Get current covers to find existing note
+    loadCoverMe(songTitle).then(covers => {
+        const current = covers[index]?.note || '';
+        noteEl.innerHTML = `
+            <textarea id="coverMeEditTA_${index}" class="app-input" rows="2"
+                style="width:100%;box-sizing:border-box;resize:vertical;font-size:0.85em;margin-bottom:6px">${current}</textarea>
+            <div style="display:flex;gap:6px">
+                <button class="btn btn-sm btn-primary" onclick="saveCoverMeNote('${songTitle.replace(/'/g,"\\'")}',${index})">Save</button>
+                <button class="btn btn-sm btn-ghost" onclick="renderCoverMe('${songTitle.replace(/'/g,"\\'")}')">Cancel</button>
+            </div>`;
+        document.getElementById(`coverMeEditTA_${index}`)?.focus();
+    });
+}
+
+async function saveCoverMeNote(songTitle, index) {
+    const ta = document.getElementById(`coverMeEditTA_${index}`);
+    if (!ta) return;
+    const note = ta.value.trim();
+    const covers = await loadCoverMe(songTitle);
+    if (!covers[index]) return;
+    covers[index].note = note;
+    await saveCoverMe(songTitle, covers);
+    await renderCoverMe(songTitle, covers);
+}
+
+// Fetch title from YouTube oEmbed or Spotify oEmbed
+async function fetchCoverMeTitle(url) {
+    try {
+        // YouTube
+        const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        if (ytMatch) {
+            const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytMatch[1]}&format=json`);
+            if (r.ok) { const d = await r.json(); return d.title || ''; }
+        }
+        // Spotify
+        if (url.includes('spotify.com')) {
+            const r = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
+            if (r.ok) { const d = await r.json(); return d.title || ''; }
+        }
+    } catch(e) {}
+    return '';
 }
 
 function showCoverMeForm() {
@@ -1570,14 +1624,17 @@ function showCoverMeForm() {
             </div>
             <div style="margin-bottom:10px">
                 <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">URL *</label>
-                <input id="coverMeUrlInput" class="app-input" placeholder="YouTube, Spotify, Archive.org..." style="width:100%;box-sizing:border-box">
+                <input id="coverMeUrlInput" class="app-input" placeholder="YouTube, Spotify, Archive.org..."
+                    style="width:100%;box-sizing:border-box"
+                    onblur="coverMeUrlBlur(this.value)">
+                <div id="coverMeFetchedTitle" style="font-size:0.78em;color:var(--accent-light,#818cf8);margin-top:3px;min-height:1.2em"></div>
             </div>
             <div style="margin-bottom:14px">
                 <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">What should the band listen for? *</label>
                 <textarea id="coverMeNoteInput" class="app-input" rows="2"
                     placeholder="e.g. Derek plays open E — listen to how he handles the outro. Great harmony on the chorus."
                     style="width:100%;box-sizing:border-box;resize:vertical;min-height:60px"></textarea>
-                <div style="font-size:0.73em;color:var(--text-dim,#64748b);margin-top:3px">Required — a bare link with no context is useless. Tell them what to listen for.</div>
+                <div style="font-size:0.73em;color:var(--text-dim,#64748b);margin-top:3px">Required — a bare link with no context is useless.</div>
             </div>
             <div style="display:flex;gap:8px">
                 <button class="btn btn-primary" onclick="addCoverMe()" style="flex:1">✅ Add Cover</button>
@@ -1585,6 +1642,15 @@ function showCoverMeForm() {
             </div>
         </div>`;
     document.getElementById('coverMeBandInput')?.focus();
+}
+
+async function coverMeUrlBlur(url) {
+    if (!url || !url.startsWith('http')) return;
+    const titleEl = document.getElementById('coverMeFetchedTitle');
+    if (!titleEl) return;
+    titleEl.textContent = '⏳ Fetching title…';
+    const title = await fetchCoverMeTitle(url);
+    titleEl.textContent = title ? `✅ "${title}"` : '';
 }
 
 async function addCoverMe() {
@@ -1599,8 +1665,11 @@ async function addCoverMe() {
     if (!url || !url.startsWith('http')) { alert('Please enter a valid URL starting with http.'); return; }
     if (!note) { alert('Please write what the band should listen for — a bare link is not helpful.'); return; }
 
+    // Try to fetch the title
+    const fetchedTitle = await fetchCoverMeTitle(url);
+
     const cover = {
-        band, url, note,
+        band, url, note, fetchedTitle,
         addedBy: currentUserEmail || '',
         addedByName: getCurrentMemberKey() || '',
         dateAdded: new Date().toLocaleDateString()
@@ -1610,7 +1679,6 @@ async function addCoverMe() {
     covers.push(cover);
     await saveCoverMe(songTitle, covers);
 
-    // Clear form, re-render from known data
     document.getElementById('coverMeFormContainer').innerHTML = '';
     await renderCoverMe(songTitle, covers);
     showToast('✅ Cover version added');
@@ -2591,7 +2659,7 @@ async function renderRefVersions(songTitle, bandData) {
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 <button onclick="deleteRefVersion(${index})" 
-                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
+                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: #ffffff; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
                 
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
@@ -4391,7 +4459,7 @@ async function getCurrentUserEmail() {
     }
 }
 
-// Scan localStorage for any Deadcetera data saved before Firebase was initialized.
+// Scan localStorage for any DeadCetera data saved before Firebase was initialized.
 // Pushes to Firebase so it's shared with the band. Runs silently on each sign-in.
 async function recoverLocalStorageToFirebase() {
     if (!firebaseDB) return;
@@ -7223,7 +7291,7 @@ async function printSetlistPDF(setlistIndex) {
     const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const sl = allSetlists[setlistIndex];
     if (!sl) return;
-    const bandName = 'Deadcetera', slName = sl.name||'Setlist', slDate = sl.date||'', slVenue = sl.venue||'';
+    const bandName = 'DeadCetera', slName = sl.name||'Setlist', slDate = sl.date||'', slVenue = sl.venue||'';
     const sets = sl.sets||[], totalSongs = sets.reduce((n,s)=>n+(s.songs||[]).length,0);
     const setPages = sets.map((set,si) => {
         const isEncore = /encore|enc/i.test(set.name||'');
@@ -7279,7 +7347,7 @@ async function exportSetlistToiPad(setlistIndex) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${sl.name || 'Setlist'} — Deadcetera Crib Sheet</title>
+<title>${sl.name || 'Setlist'} — DeadCetera Crib Sheet</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, 'Inter', sans-serif; background: #0f172a; color: #f1f5f9; padding: 20px; }
@@ -8356,7 +8424,7 @@ async function renderNotificationsPage(el) {
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <img src="icon-192.png" style="width:56px;height:56px;border-radius:12px;flex-shrink:0" onerror="this.style.display='none'">
             <div style="flex:1;min-width:180px">
-                <h3 style="margin:0 0 4px 0">📲 Install Deadcetera App</h3>
+                <h3 style="margin:0 0 4px 0">📲 Install DeadCetera App</h3>
                 <p style="color:var(--text-dim);font-size:0.82em;margin:0">Add to your home screen — opens like a native app, no App Store needed</p>
             </div>
             ${isStandalone
@@ -8618,7 +8686,7 @@ async function notifDeleteMember(key) {
 function notifShareAppLink(url) {
     if (navigator.share) {
         navigator.share({
-            title: 'Deadcetera — Band HQ',
+            title: 'DeadCetera — Band HQ',
             text: '🎸 Our band app — songs, setlists, rehearsals, harmonies. Add it to your home screen!',
             url: url
         }).catch(() => {});
@@ -8645,7 +8713,7 @@ function notifSendSMS(phones, msg) {
 
 async function notifSMSAppLink(url) {
     const phones = await notifGetAllPhones();
-    const msg = `🎸 Hey! Here\'s the Deadcetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
+    const msg = `🎸 Hey! Here\'s the DeadCetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
     if (phones.length === 0) {
         notifShowSMSCopyModal(msg, 'Add phone numbers in the Band Contact Directory to auto-fill recipients.');
         return;
@@ -8655,7 +8723,7 @@ async function notifSMSAppLink(url) {
 
 function notifTextOne(phone, name) {
     const appUrl = window.location.href.split('?')[0];
-    const msg = `Hey ${name}! 🎸 Check the Deadcetera app for updates: ${appUrl}`;
+    const msg = `Hey ${name}! 🎸 Check the DeadCetera app for updates: ${appUrl}`;
     window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`);
 }
 
@@ -8720,7 +8788,7 @@ async function notifSendPush(title, body, eventType) {
     log.unshift({ title, body, eventType, sentBy: currentUserEmail, sentAt: new Date().toISOString() });
     await saveBandDataToDrive('_band', 'notif_log', log.slice(0,50));
     if (Notification.permission === 'granted') {
-        new Notification(`🎸 Deadcetera: ${title}`, { body, icon: '/favicon.ico', tag: eventType });
+        new Notification(`🎸 DeadCetera: ${title}`, { body, icon: '/favicon.ico', tag: eventType });
         notifToast('🔔 Notification sent!');
     } else {
         notifToast('⚠️ Enable push notifications first');
@@ -8749,7 +8817,7 @@ async function notifSendAnnouncementSMS() {
     const msg = document.getElementById('announcementText')?.value.trim();
     if (!msg) { alert('Please type a message first'); return; }
     const appUrl = window.location.href.split('?')[0];
-    const full = `🎸 Deadcetera: ${msg}\n\n📱 ${appUrl}`;
+    const full = `🎸 DeadCetera: ${msg}\n\n📱 ${appUrl}`;
     const phones = await notifGetAllPhones();
     if (phones.length === 0) {
         notifShowSMSCopyModal(full, 'No phone numbers saved — tap ✏️ Edit on each member above to add their number.');
@@ -8882,7 +8950,7 @@ function renderSocialPage(el) {
             </div>`).join('')}
         </div>
         <div style="margin-top:12px;padding:10px 14px;background:rgba(102,126,234,0.08);border-radius:8px;border:1px solid rgba(102,126,234,0.2);font-size:0.8em;color:var(--text-muted)">
-            <strong style="color:var(--accent-light)">⚡ Pro tip:</strong> Since Deadcetera is on GitHub Pages, <strong>auto-publishing</strong> to social platforms requires a paid tool like Buffer ($6/mo) or Later (free tier). 
+            <strong style="color:var(--accent-light)">⚡ Pro tip:</strong> Since DeadCetera is on GitHub Pages, <strong>auto-publishing</strong> to social platforms requires a paid tool like Buffer ($6/mo) or Later (free tier). 
             Use the queue below to draft posts with text + notes, then tap "Copy & Post" to open the platform and paste instantly.
         </div>
     </div>`;
@@ -9642,7 +9710,7 @@ function metToggle() {
     _metInterval = setInterval(tick, 60000 / bpm);
 }
 
-console.log('🎸 Deadcetera Band App modules loaded');
+console.log('🎸 DeadCetera Band App modules loaded');
 
 // Register new pages
 pageRenderers.equipment = renderEquipmentPage;
@@ -9770,7 +9838,7 @@ function settingsTab(tab, btn) {
         <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
         
     about: `
-        <div class="app-card"><h3>ℹ️ About Deadcetera</h3>
+        <div class="app-card"><h3>ℹ️ About DeadCetera</h3>
             <div style="text-align:center;padding:16px 0">
                 <div style="font-size:2.5em;margin-bottom:8px">🎸</div>
                 <div style="font-size:1.3em;font-weight:800;background:linear-gradient(135deg,#667eea,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${bn}</div>

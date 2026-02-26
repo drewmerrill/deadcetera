@@ -12,9 +12,9 @@ function renderHelpPage(el) {
         ════════════════════════════════════════════════════════════════════ -->
         <div style="background:linear-gradient(135deg,rgba(99,102,241,0.25) 0%,rgba(168,85,247,0.15) 100%);border:1px solid rgba(99,102,241,0.35);border-radius:18px;padding:32px 28px;margin-bottom:28px;text-align:center">
             <div style="font-size:3em;margin-bottom:10px">🎸</div>
-            <h1 style="margin:0 0 8px;font-size:1.8em;color:var(--text)">Welcome to Deadcetera</h1>
+            <h1 style="margin:0 0 8px;font-size:1.8em;color:var(--text)">Welcome to DeadCetera</h1>
             <p style="color:var(--text-muted);font-size:1.05em;max-width:560px;margin:0 auto 20px;line-height:1.6">
-                The all-in-one band HQ for Deadcetera — built so five musicians spend less time on logistics and more time making music.
+                The all-in-one band HQ for DeadCetera — built so five musicians spend less time on logistics and more time making music.
             </p>
             <!-- Three pillars -->
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px">
@@ -60,7 +60,7 @@ function renderHelpPage(el) {
                 <p>Tap <strong>🔗 Connect</strong> in the top-right corner and sign in with your Google account. This is how the app knows who you are and syncs your data with the rest of the band.</p>
                 ${helpVisual(`
                     <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.3);border-radius:8px;padding:10px 14px;">
-                        <span style="font-weight:700;color:#818cf8">🎸 Deadcetera</span>
+                        <span style="font-weight:700;color:#818cf8">🎸 DeadCetera</span>
                         <div style="display:flex;gap:8px">
                             <div style="background:#6366f1;color:white;padding:5px 12px;border-radius:6px;font-size:0.8em;font-weight:700;animation:helpPulse 2s infinite">🔗 Connect</div>
                             <div style="background:rgba(255,255,255,0.1);color:var(--text-muted);padding:5px 8px;border-radius:6px;font-size:0.8em">⚙️</div>
@@ -92,7 +92,7 @@ function renderHelpPage(el) {
             `)}
 
             ${helpStep(4,'Install the app on your phone',`
-                <p>Deadcetera works best installed as a home-screen app — it loads faster, works offline, and looks native on iPhone and Android.</p>
+                <p>DeadCetera works best installed as a home-screen app — it loads faster, works offline, and looks native on iPhone and Android.</p>
                 ${helpCallout('info','iPhone (Safari)','Tap the Share button → "Add to Home Screen" → Add. The app icon appears on your home screen.')}
                 ${helpCallout('info','Android (Chrome)','Tap the three-dot menu → "Add to Home Screen" or "Install App".')}
             `)}
@@ -291,7 +291,7 @@ function renderHelpPage(el) {
 
             ${helpStep(3,'Mark song-to-song transitions (segues) →',`
                 <p>When one song flows directly into the next — a segue — tap the <strong>⏹ button</strong> to the right of that song. It turns into a purple <strong>→</strong> and the song card shows an arrow. Tap again to toggle it off.</p>
-                ${helpCallout('tip','Classic Deadcetera transitions','China Cat → I Know You Rider, Scarlet Begonias → Fire on the Mountain, Miss You → Shakedown Street. The → marker prints on the PDF so the band reads it right on stage.')}
+                ${helpCallout('tip','Classic DeadCetera transitions','China Cat → I Know You Rider, Scarlet Begonias → Fire on the Mountain, Miss You → Shakedown Street. The → marker prints on the PDF so the band reads it right on stage.')}
             `)}
 
             ${helpStep(4,'Check gig history',`
@@ -453,7 +453,7 @@ function renderHelpPage(el) {
                 {icon:'🌐', title:'Open Moises.ai', body:'Go to moises.ai, sign in (free tier works for up to a few tracks/month). Click Upload or paste the URL if it supports direct import.'},
                 {icon:'⚙️', title:'Choose 6 Stems separation', body:'Select "AI Music Separation" → "6 Stems" (vocals, guitar, bass, keys, drums, other). Wait 1–2 minutes for AI processing.'},
                 {icon:'🎧', title:'Solo your instrument', body:'In the Moises player, click Solo on your instrument. Adjust tempo (slow it down without changing pitch). Loop difficult sections.'},
-                {icon:'⬆️', title:'Upload stems back to Deadcetera', body:'Download your stem files from Moises, then upload them via Step 6 → Moises Stems in the song detail. Other members can then access them too.'},
+                {icon:'⬆️', title:'Upload stems back to DeadCetera', body:'Download your stem files from Moises, then upload them via Step 6 → Moises Stems in the song detail. Other members can then access them too.'},
             ])}
 
             ${helpCallout('tip','Show Splitter for long recordings','If the Archive.org file is a full 2-hour show, use the Show Splitter tool (in the song workflow) to note the timestamp for your song before sending it to Moises. Saves time and Moises processing credits.')}
