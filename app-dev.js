@@ -2839,6 +2839,8 @@ function searchRefVersion() {
     </div>`;
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
+}
+
 function searchUltimateGuitar() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) {
