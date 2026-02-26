@@ -777,4 +777,18 @@ function filterHelpTopics(query) {
     });
 }
 
+// Explicitly expose on window so app.js can always find them regardless of load order
+window.renderHelpPage    = renderHelpPage;
+window.filterHelpTopics  = filterHelpTopics;
+window.helpJump          = helpJump;
+
+// If the help page is already showing when this script finishes loading
+// (can happen on mobile PWA), render it immediately
+(function() {
+    const helpEl = document.getElementById('page-help');
+    if (helpEl && !helpEl.classList.contains('hidden')) {
+        renderHelpPage(helpEl);
+    }
+})();
+
 console.log('❓ Help system loaded');

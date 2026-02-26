@@ -6998,6 +6998,7 @@ function toggleMenu() {
     overlay.classList.toggle('open', !isOpen);
 }
 
+// pageRenderers must be declared before showPage (const is not hoisted)
 const pageRenderers = {
     setlists:      renderSetlistsPage,
     playlists:     renderPlaylistsPage,
@@ -7011,8 +7012,25 @@ const pageRenderers = {
     admin:         renderSettingsPage,
     social:        renderSocialPage,
     notifications: renderNotificationsPage,
-    // help.js loads after app.js — resolve at call-time, not definition-time
-    help: (el) => (typeof renderHelpPage === 'function' ? renderHelpPage(el) : (el.innerHTML = '<p style="padding:20px;color:var(--text-muted)">Help loading…</p>'))
+    // help.js loads after app.js — poll until it's ready (handles mobile PWA timing)
+    help: function(el) {
+        if (typeof window.renderHelpPage === 'function') {
+            window.renderHelpPage(el);
+        } else {
+            el.innerHTML = '<p style="padding:32px;text-align:center;color:var(--text-muted)">⏳ Loading help…</p>';
+            let attempts = 0;
+            const poll = setInterval(function() {
+                attempts++;
+                if (typeof window.renderHelpPage === 'function') {
+                    clearInterval(poll);
+                    window.renderHelpPage(el);
+                } else if (attempts > 30) {
+                    clearInterval(poll);
+                    el.innerHTML = '<p style="padding:32px;text-align:center;color:var(--text-muted)">Could not load help. Please refresh the page.</p>';
+                }
+            }, 100);
+        }
+    }
 };
 
 function showPage(page) {
@@ -7074,18 +7092,18 @@ async function printSetlistPDF(setlistIndex) {
     const sl = allSetlists[setlistIndex];
     if (!sl) return;
 
-    const bandName  = 'Deadcetera';
-    const slName    = sl.name  || 'Setlist';
-    const slDate    = sl.date  || '';
-    const slVenue   = sl.venue || '';
-    const sets      = sl.sets  || [];
+    const bandName   = 'Deadcetera';
+    const slName     = sl.name  || 'Setlist';
+    const slDate     = sl.date  || '';
+    const slVenue    = sl.venue || '';
+    const sets       = sl.sets  || [];
     const totalSongs = sets.reduce((n, s) => n + (s.songs || []).length, 0);
 
     const setPages = sets.map((set, si) => {
-        const songs  = set.songs || [];
+        const songs    = set.songs || [];
         const isEncore = /encore|enc/i.test(set.name || '');
         const rows = songs.map((item, idx) => {
-            const title = typeof item === 'string' ? item : (item.title || '');
+            const title  = typeof item === 'string' ? item : (item.title || '');
             const isTrans = typeof item === 'object' && item.transition;
             return `<div class="sl-row">
                 <span class="sl-num">${idx + 1}</span>
@@ -7107,7 +7125,6 @@ async function printSetlistPDF(setlistIndex) {
 
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>${slName} — ${bandName}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -9935,7 +9952,6 @@ console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
 
 // ============================================================================
 // HELP & GUIDE — defined in help.js (loaded after app.js in index.html)
-// renderHelpPage() and filterHelpTopics() live in help.js
 // ============================================================================
 // PLAYLISTS — PHASE 1: DATA LAYER
 // ============================================================================
