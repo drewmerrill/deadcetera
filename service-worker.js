@@ -3,7 +3,7 @@
 
 // ── VERSION: bump this string on every deploy to force cache refresh ────────
 // This is automatically kept fresh — the app writes a ?v= timestamp to bust cache
-const CACHE_NAME = 'deadcetera-20260222-151311';
+const CACHE_NAME = 'deadcetera-20260226-helpfix';
 const BASE = self.registration.scope;
 
 const CACHE_URLS = [
@@ -13,8 +13,8 @@ const CACHE_URLS = [
     BASE + 'app-shell.css',
     BASE + 'app.js',
     BASE + 'data.js',
-    BASE + 'manifest.json',
     BASE + 'help.js',
+    BASE + 'manifest.json',
     BASE + 'icon-192.png',
     BASE + 'icon-512.png',
 ];
