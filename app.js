@@ -1303,9 +1303,10 @@ function showBandResources(songTitle) {
 // PERSONAL TAB LINKS
 // ============================================================================
 
-async function renderPersonalTabs(songTitle) {
+async function renderPersonalTabs(songTitle, preloadedTabs) {
     const container = document.getElementById('personalTabsContainer');
-    const tabs = await loadPersonalTabs(songTitle);
+    // Use preloaded data if provided (avoids Firebase re-read race condition after save/delete)
+    const tabs = preloadedTabs !== undefined ? preloadedTabs : await loadPersonalTabs(songTitle);
 
     // Email → member key mapping for legacy data
     const emailToKey = {
@@ -1333,7 +1334,6 @@ async function renderPersonalTabs(songTitle) {
         const isAdmin = (currentMemberKey === 'drew');
         const emoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' }[key] || '👤';
         const tabItems = memberTabs.map(tab => {
-            // Show delete if: this is my section, OR I added this tab (by email), OR I'm Drew (admin)
             const canDelete = isMe || isAdmin || (currentUserEmail && tab.addedBy === currentUserEmail);
             return `
             <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;margin-bottom:6px">
@@ -1426,7 +1426,7 @@ async function addPersonalTabForMember(songTitle, memberKey) {
     let tabs = await loadPersonalTabs(songTitle) || [];
     tabs.push(tab);
     await savePersonalTabs(songTitle, tabs);
-    await renderPersonalTabs(songTitle);
+    await renderPersonalTabs(songTitle, tabs);  // pass tabs directly — avoids Firebase re-read race
 }
 
 async function addPersonalTab() {
@@ -1471,8 +1471,8 @@ async function addPersonalTab() {
     urlInput.value = '';
     notesInput.value = '';
     
-    // Re-render
-    await renderPersonalTabs(songTitle);
+    // Re-render with known data — avoids Firebase re-read race condition
+    await renderPersonalTabs(songTitle, tabs);
 }
 
 async function deletePersonalTab(songTitle, index) {
@@ -1482,7 +1482,7 @@ async function deletePersonalTab(songTitle, index) {
     tabs.splice(index, 1);
     
     await savePersonalTabs(songTitle, tabs);
-    await renderPersonalTabs(songTitle);
+    await renderPersonalTabs(songTitle, tabs);  // pass tabs directly — avoids Firebase re-read race
 }
 
 // Storage functions
@@ -7002,7 +7002,6 @@ function toggleMenu() {
     overlay.classList.toggle('open', !isOpen);
 }
 
-// pageRenderers must be declared BEFORE showPage (const is not hoisted)
 const pageRenderers = {
     setlists:      renderSetlistsPage,
     playlists:     renderPlaylistsPage,
@@ -7016,7 +7015,6 @@ const pageRenderers = {
     admin:         renderSettingsPage,
     social:        renderSocialPage,
     notifications: renderNotificationsPage,
-    // help.js loads after app.js — poll until ready (handles mobile PWA timing)
     help: function(el) {
         if (typeof window.renderHelpPage === 'function') {
             window.renderHelpPage(el);
@@ -7089,59 +7087,35 @@ async function loadSetlists() {
 }
 
 // ============================================================================
-// SETLIST PDF PRINTER — Large format, one set per page, stage-readable
+// SETLIST PDF PRINTER
 // ============================================================================
 async function printSetlistPDF(setlistIndex) {
     const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const sl = allSetlists[setlistIndex];
     if (!sl) return;
-    const bandName   = 'Deadcetera';
-    const slName     = sl.name  || 'Setlist';
-    const slDate     = sl.date  || '';
-    const slVenue    = sl.venue || '';
-    const sets       = sl.sets  || [];
-    const totalSongs = sets.reduce((n, s) => n + (s.songs || []).length, 0);
-    const setPages = sets.map((set, si) => {
-        const songs    = set.songs || [];
-        const isEncore = /encore|enc/i.test(set.name || '');
-        const rows = songs.map((item, idx) => {
-            const title  = typeof item === 'string' ? item : (item.title || '');
-            const isTrans = typeof item === 'object' && item.transition;
-            return `<div class="sl-row"><span class="sl-num">${idx + 1}</span><span class="sl-title">${title}</span>${isTrans ? '<span class="sl-arrow">→</span>' : ''}</div>`;
+    const bandName = 'Deadcetera', slName = sl.name||'Setlist', slDate = sl.date||'', slVenue = sl.venue||'';
+    const sets = sl.sets||[], totalSongs = sets.reduce((n,s)=>n+(s.songs||[]).length,0);
+    const setPages = sets.map((set,si) => {
+        const isEncore = /encore|enc/i.test(set.name||'');
+        const rows = (set.songs||[]).map((item,idx) => {
+            const title = typeof item==='string'?item:(item.title||'');
+            const isTrans = typeof item==='object'&&item.transition;
+            return `<div class="sl-row"><span class="sl-num">${idx+1}</span><span class="sl-title">${title}</span>${isTrans?'<span class="sl-arrow">→</span>':''}</div>`;
         }).join('');
-        return `<div class="sl-page ${si < sets.length - 1 ? 'sl-break' : ''}">
-            <div class="sl-page-header"><div class="sl-band">${bandName}</div><div class="sl-meta">${slDate}${slDate && slVenue ? '  ·  ' : ''}${slVenue}</div></div>
-            <div class="sl-set-name ${isEncore ? 'sl-encore-label' : ''}">${set.name || ('Set ' + (si + 1))}</div>
+        return `<div class="sl-page ${si<sets.length-1?'sl-break':''}">
+            <div class="sl-page-header"><div class="sl-band">${bandName}</div><div class="sl-meta">${slDate}${slDate&&slVenue?'  ·  ':''}${slVenue}</div></div>
+            <div class="sl-set-name ${isEncore?'sl-encore-label':''}">${set.name||('Set '+(si+1))}</div>
             <div class="sl-songs">${rows}</div>
-            <div class="sl-page-footer">${slName} &nbsp;·&nbsp; ${totalSongs} songs &nbsp;·&nbsp; Page ${si + 1} of ${sets.length}</div>
+            <div class="sl-page-footer">${slName} &nbsp;·&nbsp; ${totalSongs} songs &nbsp;·&nbsp; Page ${si+1} of ${sets.length}</div>
         </div>`;
     }).join('');
-    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${slName}</title>
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${slName}</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Playfair Display',Georgia,serif;background:#fff;color:#111}
-.sl-page{width:100%;min-height:100vh;padding:48px 56px 36px;display:flex;flex-direction:column}
-.sl-break{page-break-after:always;break-after:page}
-.sl-page-header{border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:20px}
-.sl-band{font-family:'Playfair Display SC',serif;font-size:2em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
-.sl-meta{font-size:1em;color:#444;margin-top:6px;font-style:italic}
-.sl-set-name{font-family:'Playfair Display SC',serif;font-size:1.3em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#333;margin-bottom:24px}
-.sl-encore-label{color:#555;border-top:1px solid #ccc;padding-top:16px;margin-top:8px}
-.sl-songs{flex:1}
-.sl-row{display:flex;align-items:baseline;padding:10px 0;border-bottom:1px solid #e8e8e8}
-.sl-row:last-child{border-bottom:none}
-.sl-num{font-family:'Playfair Display SC',serif;font-size:0.95em;color:#888;min-width:48px;flex-shrink:0}
-.sl-title{font-size:1.85em;font-weight:700;flex:1}
-.sl-arrow{font-size:1.6em;font-weight:900;color:#555;padding-left:14px;flex-shrink:0;font-style:italic}
-.sl-page-footer{border-top:1px solid #ddd;padding-top:10px;margin-top:20px;font-size:0.78em;color:#999;letter-spacing:0.06em;text-transform:uppercase;font-style:italic}
-@media print{.sl-break{page-break-after:always;break-after:page}@page{size:letter portrait;margin:0}}
-</style></head><body>${setPages}
-<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),800));<\/script></body></html>`;
-    const win = window.open('', '_blank');
-    if (!win) { alert('Pop-up blocked — please allow pop-ups for this site to print setlists.'); return; }
-    win.document.write(html);
-    win.document.close();
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Playfair Display',Georgia,serif;background:#fff;color:#111}.sl-page{width:100%;min-height:100vh;padding:48px 56px 36px;display:flex;flex-direction:column}.sl-break{page-break-after:always;break-after:page}.sl-page-header{border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:20px}.sl-band{font-family:'Playfair Display SC',serif;font-size:2em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}.sl-meta{font-size:1em;color:#444;margin-top:6px;font-style:italic}.sl-set-name{font-family:'Playfair Display SC',serif;font-size:1.3em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#333;margin-bottom:24px}.sl-encore-label{color:#555;border-top:1px solid #ccc;padding-top:16px;margin-top:8px}.sl-songs{flex:1}.sl-row{display:flex;align-items:baseline;padding:10px 0;border-bottom:1px solid #e8e8e8}.sl-row:last-child{border-bottom:none}.sl-num{font-family:'Playfair Display SC',serif;font-size:0.95em;color:#888;min-width:48px;flex-shrink:0}.sl-title{font-size:1.85em;font-weight:700;flex:1}.sl-arrow{font-size:1.6em;font-weight:900;color:#555;padding-left:14px;flex-shrink:0;font-style:italic}.sl-page-footer{border-top:1px solid #ddd;padding-top:10px;margin-top:20px;font-size:0.78em;color:#999;letter-spacing:0.06em;text-transform:uppercase;font-style:italic}@media print{.sl-break{page-break-after:always;break-after:page}@page{size:letter portrait;margin:0}}</style>
+</head><body>${setPages}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),800));<\/script></body></html>`;
+    const win=window.open('','_blank');
+    if(!win){alert('Pop-up blocked — please allow pop-ups for this site to print setlists.');return;}
+    win.document.write(html);win.document.close();
 }
 
 async function exportSetlistToiPad(setlistIndex) {
