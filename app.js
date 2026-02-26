@@ -6998,6 +6998,23 @@ function toggleMenu() {
     overlay.classList.toggle('open', !isOpen);
 }
 
+const pageRenderers = {
+    setlists:      renderSetlistsPage,
+    playlists:     renderPlaylistsPage,
+    practice:      renderPracticePage,
+    calendar:      renderCalendarPage,
+    gigs:          renderGigsPage,
+    venues:        renderVenuesPage,
+    finances:      renderFinancesPage,
+    tuner:         renderTunerPage,
+    metronome:     renderMetronomePage,
+    admin:         renderSettingsPage,
+    social:        renderSocialPage,
+    notifications: renderNotificationsPage,
+    // help.js loads after app.js — use a wrapper so renderHelpPage resolves at call-time
+    help: (el) => (typeof renderHelpPage === 'function' ? renderHelpPage(el) : (el.innerHTML = '<p style="padding:20px;color:var(--text-muted)">Help loading…</p>'))
+};
+
 function showPage(page) {
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');
@@ -7011,22 +7028,6 @@ function showPage(page) {
         if (renderer) renderer(el);
     }
 }
-
-const pageRenderers = {
-    setlists: renderSetlistsPage,
-    playlists: renderPlaylistsPage,
-    practice: renderPracticePage,
-    calendar: renderCalendarPage,
-    gigs: renderGigsPage,
-    venues: renderVenuesPage,
-    finances: renderFinancesPage,
-    tuner: renderTunerPage,
-    metronome: renderMetronomePage,
-    admin: renderSettingsPage,
-    social: renderSocialPage,
-    notifications: renderNotificationsPage,
-    help: renderHelpPage
-};
 
 // ============================================================================
 // SETLIST BUILDER
