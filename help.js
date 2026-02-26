@@ -149,12 +149,12 @@ function renderHelpPage(el) {
             <p>Hear how other bands interpret this song. Different arrangements, different vocal approaches, different tempos — all fuel for your own version.</p>
             ${helpTwoCol(
                 `<strong>What belongs here</strong><br><br>
-                ✅ Tedeschi Trucks Band doing Whipping Post<br>
+                ✅ Tedeschi Trucks Band doing Dark Star<br>
                 ✅ Gov't Mule covering Melissa<br>
                 ✅ moe. playing Friend of the Devil<br>
                 ✅ Any band that isn't the original artist`,
                 `<strong>What does NOT belong here</strong><br><br>
-                ❌ The Grateful Dead playing Whipping Post (→ Reference Versions)<br>
+                ❌ The Grateful Dead playing Dark Star (→ Reference Versions)<br>
                 ❌ Allman Brothers playing Melissa (→ Reference Versions)<br>
                 ❌ Your own band's recordings (→ The Woodshed)`
             )}
@@ -262,7 +262,7 @@ function renderHelpPage(el) {
         <!-- ═══════════════════════════════════════════════════════════════════
              SECTION: SETLISTS
         ════════════════════════════════════════════════════════════════════ -->
-        ${helpSection('setlists','📋','Building Setlists','From blank page to gig-night order.',`
+        ${helpSection('setlists','📋','Building Setlists','From blank page to gig-night order — including transitions and PDF printing.',`
             <p>The <strong>Setlists</strong> page (Menu → Setlists) is where you build and manage your song order for each show.</p>
 
             ${helpStep(1,'Create a setlist',`
@@ -274,28 +274,171 @@ function renderHelpPage(el) {
                 ${helpVisual(`
                     <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:14px;font-size:0.82em">
                         <div style="font-weight:700;color:var(--accent-light);margin-bottom:8px;font-size:0.9em">SET 1</div>
-                        ${['Shakedown Street','Franklin\'s Tower','Sugaree'].map((s,i) => `
-                        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:4px">
-                            <span style="color:var(--text-dim);font-size:0.75em;min-width:16px">${i+1}</span>
-                            <span style="flex:1">${s}</span>
-                            <span style="font-size:0.75em;color:var(--text-dim)">⠿</span>
+                        ${[{s:'Shakedown Street',t:false},{s:"Franklin's Tower",t:false},{s:'China Cat Sunflower',t:true},{s:'I Know You Rider',t:false}].map((item,i) => `
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                            <div style="display:flex;align-items:center;gap:6px;flex:1;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px">
+                                <span style="color:var(--text-dim);font-size:0.75em;min-width:16px">${i+1}</span>
+                                <span style="flex:1">${item.s}</span>
+                                ${item.t ? '<span style="color:#818cf8;font-weight:900">→</span>' : ''}
+                            </div>
+                            <div style="background:${item.t?'#6366f1':'rgba(255,255,255,0.06)'};color:${item.t?'white':'rgba(255,255,255,0.3)'};padding:2px 8px;border-radius:5px;font-size:0.7em;font-weight:700">${item.t?'→':'⏹'}</div>
                         </div>`).join('')}
                         <div style="margin-top:10px;font-weight:700;color:var(--accent-light);font-size:0.9em">ENCORE</div>
-                        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-top:6px">
-                            <span style="color:var(--text-dim);font-size:0.75em;min-width:16px">E</span>
-                            <span style="flex:1">Ripple</span>
-                        </div>
+                        <div style="padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-top:6px;font-size:0.85em">Ripple</div>
                     </div>
-                `,'A setlist with two sets and an encore')}
+                `,'China Cat → I Know You Rider shown as a transition')}
             `)}
 
-            ${helpStep(3,'Check gig history',`
-                <p>Hover over any song in a setlist to see when and where you last played it — position in the set (opener, closer, encore), date, and venue. Prevents playing the same songs too close together.</p>
+            ${helpStep(3,'Mark song-to-song transitions (segues) →',`
+                <p>When one song flows directly into the next — a segue — tap the <strong>⏹ button</strong> to the right of that song. It turns into a purple <strong>→</strong> and the song card shows an arrow. Tap again to toggle it off.</p>
+                ${helpCallout('tip','Classic Deadcetera transitions','China Cat → I Know You Rider, Scarlet Begonias → Fire on the Mountain, Miss You → Shakedown Street. The → marker prints on the PDF so the band reads it right on stage.')}
             `)}
 
-            ${helpStep(4,'Link to a playlist',`
+            ${helpStep(4,'Check gig history',`
+                <p>Hover over any song in a setlist to see when and where you last played it — date, venue, and position. Prevents playing the same songs too close together.</p>
+            `)}
+
+            ${helpStep(5,'Print to PDF 🖨️',`
+                <p>Once the setlist is locked, tap <strong>🖨️ Print PDF</strong>. You get a large-format, one-set-per-page PDF with an artistic font — designed to be readable from a music stand or taped to a monitor under stage lighting. The → transition arrows print too.</p>
+                ${helpCallout('info','What prints','Band name header, setlist name, date and venue, each set on its own page with large numbered songs, → arrows for transitions, and the encore on its own block at the end.')}
+            `)}
+
+            ${helpStep(6,'Link to a playlist',`
                 <p>Setlists can be linked to a Playlist so band members can pre-listen to all the songs in set order. Great for pre-gig prep listening parties.</p>
             `)}
+        `)}
+
+        <!-- ═══════════════════════════════════════════════════════════════════
+             SECTION: MULTI-TRACK STUDIO
+        ════════════════════════════════════════════════════════════════════ -->
+        ${helpSection('recorder','🎛️','Multi-Track Harmony Studio','Record, layer, mix, and export harmony parts — all in the browser.',`
+
+            <p>The Multi-Track Studio lives inside each harmony section (Step 6 → Harmony Parts → click the 🎛️ button). It's a full DAW-lite for capturing vocal parts and building reference recordings the whole band can listen to.</p>
+
+            ${helpCallout('info','First time?','Click the 📖 Tour button in the top-right of the studio for a guided 6-step walkthrough of every panel.')}
+
+            <h4 style="color:var(--accent-light);margin:20px 0 10px">Studio Panels at a Glance</h4>
+            ${helpGrid([
+                {icon:'🎤', label:'Karaoke', desc:'Sheet music with moving cursor — only shows when ABC notation is saved for this section'},
+                {icon:'🎵', label:'Pitch Monitor', desc:'Real-time note name while you sing. Green = in tune, yellow = close, red = off pitch'},
+                {icon:'🥁', label:'Metronome', desc:'Click track with 4 flashing beat dots. Red = beat 1, blue = beats 2–4'},
+                {icon:'🎚️', label:'Tracks', desc:'All recorded takes. Solo, Mute, Volume slider, Pan slider, Delete per track'},
+                {icon:'⏱️', label:'Sync / Latency', desc:'Compensates for device audio delay so recorded tracks line up correctly'},
+                {icon:'🎛️', label:'Effects', desc:'Dry · Warm · Bright · Room reverb · Hall reverb — applied to the full mix on playback'},
+                {icon:'🔴', label:'Record', desc:'Captures your mic while playing all checked tracks as backing. Headphones required for vocals.'},
+                {icon:'💾', label:'Export', desc:'Bounces all checked tracks to one downloadable WAV file'},
+            ])}
+
+            <h4 style="color:var(--accent-light);margin:24px 0 10px">Step-by-Step Recording Workflow</h4>
+            ${helpNumberedSteps([
+                {icon:'🎯', title:'Calibrate latency once per device',
+                 body:'Open the <strong>⏱️ Sync</strong> panel. Click <strong>🔍 Auto-detect</strong> — it reads your device\'s built-in audio delay estimate. If tracks still sound off after recording, use <strong>🎯 Calibrate</strong> (needs speakers in a quiet room — it plays a tone and measures the mic round-trip). Do this once per device. The value is saved permanently in your browser.'},
+                {icon:'🥁', title:'Set the tempo',
+                 body:'Enter BPM in the <strong>🥁 Metronome</strong> panel (the song\'s BPM from Song DNA auto-fills). Use +/− to nudge. Click <strong>▶ Start</strong> to hear the click before you start recording.'},
+                {icon:'🎸', title:'Record the foundation track',
+                 body:'Enable <strong>Count-in ✓</strong> — two measures of clicks before recording, the second louder so you know recording is starting. Optionally enable <strong>Click ✓</strong> to keep the metronome going during the take. Hit <strong>🔴 Record</strong>, play guitar or keys through the whole section, hit <strong>⏹ Stop</strong>. Name and save the track.'},
+                {icon:'🎧', title:'Put headphones on — mandatory for vocals',
+                 body:'<strong>Before recording any vocal part, put headphones on.</strong> If the backing track plays through speakers while you record, the mic picks it up and ruins the take. Headphones keep backing audio out of the mic. This is the most important step and the most commonly skipped.'},
+                {icon:'🎤', title:'Record vocal parts one at a time',
+                 body:'Check the foundation track so it plays as backing. Enable <strong>Pitch ✓</strong> to see your note in real time. Hit <strong>🔴 Record</strong> and sing your part. Repeat for each singer — each becomes its own named track. You can record multiple takes; keep the best.'},
+                {icon:'⏩', title:'Nudge timing if needed',
+                 body:'Right after recording, if the new track is slightly early or late, use the <strong>Nudge slider</strong> that appears. Drag left = earlier, right = later, range ±200ms. Hit <strong>Preview</strong> to hear before saving. 10–30ms adjustments are completely normal.'},
+                {icon:'🎚️', title:'Mix: volume, pan, effects',
+                 body:'Set <strong>Volume</strong> per track so nothing drowns out. Set <strong>Pan</strong> for stereo width: guitar center, harmony 1 slightly left, harmony 2 slightly right — much easier to hear each part. Use <strong>Solo (S)</strong> to isolate, <strong>Mute (M)</strong> to silence. In Effects, try <strong>🏠 Room</strong> for a natural vocal sound.'},
+                {icon:'💾', title:'Export the mix',
+                 body:'Click <strong>💾</strong> in the Tracks header. All checked tracks bounce to a WAV download. Share it with the band or upload it back as a Practice Track for the song.'},
+            ])}
+
+            <h4 style="color:var(--accent-light);margin:24px 0 10px">Track Controls Reference</h4>
+            ${helpVisual(`
+                <div style="background:rgba(0,0,0,0.4);border-radius:8px;padding:12px;font-size:0.8em">
+                    <div style="display:flex;align-items:center;gap:5px;padding:0 6px;margin-bottom:6px;font-size:0.65em;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.5px">
+                        <span style="width:14px">✓</span><span style="flex:1">Track</span>
+                        <span style="width:22px;text-align:center" title="Solo">S</span>
+                        <span style="width:22px;text-align:center" title="Mute">M</span>
+                        <span style="width:60px;text-align:center">Volume</span>
+                        <span style="width:50px;text-align:center">Pan</span>
+                        <span style="width:14px"></span>
+                    </div>
+                    ${[
+                        {name:'Guitar (Drew)', solo:false, mute:false, vol:80, pan:'C', panColor:'#667eea'},
+                        {name:'Lead Vox (Drew)', solo:true, mute:false, vol:75, pan:'C', panColor:'#667eea'},
+                        {name:'Harmony Hi (Chris)', solo:false, mute:false, vol:70, pan:'L', panColor:'#8b5cf6'},
+                        {name:'Harmony Lo (Brian)', solo:false, mute:true, vol:65, pan:'R', panColor:'#8b5cf6'},
+                    ].map(t => `
+                    <div style="display:flex;align-items:center;gap:5px;padding:5px 6px;background:rgba(255,255,255,0.03);border-radius:5px;margin-bottom:3px">
+                        <input type="checkbox" checked disabled style="width:14px;flex-shrink:0;accent-color:#667eea">
+                        <div style="flex:1;font-size:0.9em">${t.name}</div>
+                        <div style="background:${t.solo?'rgba(251,191,36,0.25)':'rgba(255,255,255,0.06)'};color:#fbbf24;border:1px solid rgba(251,191,36,0.2);width:22px;height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:0.65em;font-weight:800">S</div>
+                        <div style="background:${t.mute?'rgba(239,68,68,0.25)':'rgba(255,255,255,0.06)'};color:#ef4444;border:1px solid rgba(239,68,68,0.15);width:22px;height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:0.65em;font-weight:800">M</div>
+                        <div style="width:60px;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div style="width:${t.vol}%;height:100%;background:${t.panColor};border-radius:3px"></div></div>
+                        <div style="width:30px;text-align:center;font-size:0.75em;color:rgba(255,255,255,0.4);font-weight:700">${t.pan}</div>
+                        <div style="color:rgba(255,255,255,0.2);font-size:0.75em">🗑</div>
+                    </div>`).join('')}
+                    <div style="margin-top:8px;font-size:0.75em;color:rgba(255,255,255,0.3);line-height:1.6">
+                        S = Solo (hear only this track) &nbsp;·&nbsp; M = Mute (silence this track) &nbsp;·&nbsp; Pan: L = left · C = center · R = right
+                    </div>
+                </div>
+            `,'Four tracks: guitar + lead center, high harmony panned left, low harmony panned right and muted for isolation')}
+
+            <h4 style="color:var(--accent-light);margin:24px 0 10px">Effects Reference</h4>
+            ${helpGrid([
+                {icon:'🔇', label:'Dry', desc:'Raw signal, no processing. Use this to evaluate timing and pitch accuracy clearly.'},
+                {icon:'🔥', label:'Warm', desc:'Bass boost + slight high rolloff. Makes acoustic guitar and low harmonies feel fuller and richer.'},
+                {icon:'✨', label:'Bright', desc:'Presence boost. Helps vocals cut through a dense mix. Good for checking harmony audibility.'},
+                {icon:'🏠', label:'Room', desc:'Small room reverb. Most natural-sounding for vocal harmonies. Best for reference recordings.'},
+                {icon:'🏛️', label:'Hall', desc:'Large hall reverb. Dramatic and beautiful but obscures tight timing — avoid when evaluating tuning.'},
+            ])}
+
+            ${helpCallout('warn','The three most common mistakes',
+                '<strong>1. No headphones when recording vocals</strong> — you will get bleed and a ruined take. Always.<br>' +
+                '<strong>2. Skipping latency calibration</strong> — tracks that sound out of sync are almost always a latency issue. Calibrate once.<br>' +
+                '<strong>3. Recording the full song at once</strong> — work section by section (verse, chorus, bridge). Shorter takes are easier to fix.'
+            )}
+
+            ${helpCallout('tip','The best harmony reference recording workflow','Record guitar → lead vocal → high harmony → low harmony. Pan them L/C/R. Export with Room reverb. The result is a shareable reference that took 20 minutes instead of a home studio session.')}
+        `)}
+
+        <!-- ═══════════════════════════════════════════════════════════════════
+             SECTION: KARAOKE MODE
+        ════════════════════════════════════════════════════════════════════ -->
+        ${helpSection('karaoke','🎤','Karaoke Mode','Sing along to sheet music with a moving cursor and highlighted notes.',`
+
+            <p>Karaoke Mode lives inside the Multi-Track Studio and only appears when a harmony section has <strong>ABC notation</strong> saved. It renders the written sheet music and plays it back — a red cursor tracks the current note, notes highlight as they play, and lyrics scroll word-by-word below.</p>
+
+            ${helpCallout('warn','Prerequisite','Karaoke Mode requires ABC notation to be saved for the section. Use the <strong>🎼 Edit Notation</strong> button in the harmony section to write and save it first. Once saved, the Karaoke panel appears automatically in the studio.')}
+
+            <h4 style="color:var(--accent-light);margin:16px 0 10px">What You See</h4>
+            ${helpGrid([
+                {icon:'🎼', label:'Sheet music', desc:'Full rendered notation — staff, clef, key, time sig, notes — from the ABC you wrote'},
+                {icon:'📍', label:'Red cursor line', desc:'Vertical red line moves across the staff tracking current playback position in real time'},
+                {icon:'💜', label:'Note highlighting', desc:'Current note(s) turn purple as they play — follow without reading ahead'},
+                {icon:'🟡', label:'Lyrics scroll', desc:'If lyrics exist in the ABC, current word shows bright yellow in large text below the sheet'},
+                {icon:'▶️', label:'Playback controls', desc:'Standard ABCJS player: play, pause, restart, loop — appears below the sheet music'},
+                {icon:'↕️', label:'Resizable panel', desc:'Drag the bottom edge of the sheet to make it taller or shorter'},
+            ])}
+
+            <h4 style="color:var(--accent-light);margin:20px 0 10px">How to Use It</h4>
+            ${helpNumberedSteps([
+                {icon:'✍️', title:'Write ABC notation first',
+                 body:'In a harmony section, click <strong>🎼 Edit Notation</strong>. ABC notation is a plain-text music format — pitch, rhythm, and lyrics encoded as text. The editor has a live preview. Once saved, the Karaoke button appears in the studio for that section.'},
+                {icon:'🎤', title:'Launch Karaoke',
+                 body:'In the Multi-Track Studio, click <strong>🎤 Start</strong> in the Karaoke panel. The sheet renders (1–2 seconds first time as ABCJS loads). A white panel shows the notation with playback controls below.'},
+                {icon:'▶️', title:'Press Play and sing',
+                 body:'Hit <strong>▶ Play</strong>. The red cursor moves across the staff, notes light up purple, and lyrics scroll in yellow. Sing your part while the computer plays the melody. Use it as a pitch reference.'},
+                {icon:'🔁', title:'Loop difficult sections',
+                 body:'Click the loop icon in playback controls to repeat continuously. Good for drilling a tricky interval or the turn of a bridge.'},
+                {icon:'🎙️', title:'Combine with recording',
+                 body:'The most powerful use: run Karaoke through headphones while the mic is open and recording. The melody plays in your ears, you sing along, the recorder captures your voice. Perfect pitch reference without memorizing the part first.'},
+            ])}
+
+            ${helpCallout('info','What is ABC notation?',
+                'ABC is plain-text music notation — like Markdown for music. A line like ' +
+                '<code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px">|: G2 AB | c2 BA :|</code> ' +
+                'encodes a repeating two-bar phrase. Lyrics go on ' +
+                '<code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px">w:</code> ' +
+                'lines below the notes. The in-app editor shows a live rendered preview as you type.'
+            )}
         `)}
 
         <!-- ═══════════════════════════════════════════════════════════════════
