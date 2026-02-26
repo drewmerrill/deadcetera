@@ -2141,7 +2141,93 @@ async function addPracticeTrackSimple() {
     }
 }
 
-// Render practice tracks (combines localStorage + data.js)
+function ptToggleUploadForm() {
+    const form = document.getElementById('ptUploadForm');
+    if (!form) return;
+    const showing = form.style.display !== 'none';
+    form.style.display = showing ? 'none' : '';
+    if (!showing) document.getElementById('ptAudioFile')?.focus();
+}
+
+async function addPracticeTrackUpload() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) { alert('Please select a song first'); return; }
+
+    const fileInput = document.getElementById('ptAudioFile');
+    const title = document.getElementById('ptUploadTitle')?.value.trim();
+    const instrument = document.getElementById('practiceTrackInstrument')?.value;
+
+    if (!fileInput?.files?.[0]) { alert('Please choose an audio file'); return; }
+    if (!title) { alert('Please enter a track title'); return; }
+    if (!instrument) { alert('Please select an instrument'); return; }
+
+    const file = fileInput.files[0];
+    if (file.size > 20 * 1024 * 1024) { alert('File too large — max 20MB'); return; }
+
+    if (!firebaseStorage) { alert('Storage not ready — please sign in first'); return; }
+
+    const progWrapper = document.getElementById('ptUploadProgress');
+    const progBar = document.getElementById('ptUploadBar');
+    const progStatus = document.getElementById('ptUploadStatus');
+    const btn = document.querySelector('#ptUploadForm .btn-primary');
+    const origText = btn?.innerHTML;
+    if (btn) { btn.innerHTML = '⏳ Uploading…'; btn.disabled = true; }
+    progWrapper.style.display = '';
+
+    try {
+        const safeSong = sanitizeFirebasePath(songTitle);
+        const safeName = sanitizeFirebasePath(file.name);
+        const storageRef = firebaseStorage.ref(`practice_tracks/${safeSong}/${Date.now()}_${safeName}`);
+        const uploadTask = storageRef.put(file);
+
+        await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+                snap => {
+                    const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+                    progBar.style.width = pct + '%';
+                    progStatus.textContent = `Uploading… ${pct}%`;
+                },
+                reject,
+                resolve
+            );
+        });
+
+        const downloadURL = await storageRef.getDownloadURL();
+        progStatus.textContent = 'Saving…';
+
+        const track = {
+            title: title,
+            videoUrl: downloadURL,
+            audioUpload: true,
+            fileName: file.name,
+            fileSize: file.size,
+            instrument: instrument,
+            notes: '',
+            uploadedBy: currentUserEmail || 'drew',
+            dateAdded: new Date().toISOString().split('T')[0],
+            thumbnail: null
+        };
+
+        await savePracticeTrack(songTitle, track);
+        logActivity('practice_track', { song: songTitle, extra: instrument });
+
+        // Reset form
+        fileInput.value = '';
+        document.getElementById('ptUploadTitle').value = '';
+        progWrapper.style.display = 'none';
+        document.getElementById('ptUploadForm').style.display = 'none';
+
+        showToast('✅ MP3 uploaded & added as practice track!');
+        await renderPracticeTracksSimplified(songTitle);
+    } catch (err) {
+        progWrapper.style.display = 'none';
+        alert('Upload failed: ' + err.message);
+    } finally {
+        if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+    }
+}
+
+
 async function renderPracticeTracksSimplified(songTitle) {
     const container = document.getElementById('practiceTracksContainer');
     const bandData = bandKnowledgeBase[songTitle];
@@ -2218,9 +2304,15 @@ async function renderPracticeTracksSimplified(songTitle) {
                     ${tracks.length ? tracks.map((track,ti) => {
                         const url = track.videoUrl || track.youtubeUrl;
                         const title = track.title || track.notes || url?.substring(0,40) || 'Track';
-                        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.82em;border-bottom:1px solid rgba(255,255,255,0.04)">
-                            <a href="${url||'#'}" target="_blank" style="flex:1;color:var(--accent-light,#818cf8);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</a>
-                            ${track.source!=='data.js'?'<button onclick="deletePracticeTrackConfirm(\''+songTitle+'\','+ti+')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8em" title="Delete">✕</button>':''}
+                        const mediaEl = track.audioUpload
+                            ? `<audio controls src="${url}" style="flex:1;height:28px;min-width:0;max-width:100%" title="${title}"></audio>`
+                            : `<a href="${url||'#'}" target="_blank" style="flex:1;color:var(--accent-light,#818cf8);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</a>`;
+                        return `<div style="margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.04);padding-bottom:4px">
+                            ${track.audioUpload ? `<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div>` : ''}
+                            <div style="display:flex;align-items:center;gap:6px;font-size:0.82em">
+                                ${mediaEl}
+                                ${track.source!=='data.js'?'<button onclick="deletePracticeTrackConfirm(\''+songTitle+'\','+ti+')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8em;flex-shrink:0" title="Delete">✕</button>':''}
+                            </div>
                         </div>`;
                     }).join('') : '<div style="font-size:0.75em;color:var(--text-dim,#64748b);font-style:italic">No tracks yet</div>'}
                 </div>`;
@@ -2401,7 +2493,7 @@ async function renderRefVersions(songTitle, bandData) {
 async function addRefVersion() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) { alert('Please select a song first!'); return; }
-    
+
     const existing = document.getElementById('addRefModal');
     if (existing) existing.remove();
     const modal = document.createElement('div');
@@ -2409,32 +2501,160 @@ async function addRefVersion() {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
     modal.innerHTML = `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h3 style="margin:0;color:var(--accent-light)">⭐ Add Reference Version</h3>
             <button onclick="document.getElementById('addRefModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
         </div>
-        <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:14px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, or any other URL.</p>
-        <div id="refUrlDetect" style="height:28px;margin-bottom:6px;font-size:0.8em;color:var(--text-muted)"></div>
-        <div class="form-row">
-            <label class="form-label">URL</label>
-            <input class="app-input" id="refUrl" placeholder="https://..." oninput="detectRefPlatform(this.value)" autofocus>
+        <!-- Tab toggle -->
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px">
+            <button id="refTabLink" onclick="refSwitchTab('link')"
+                style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:0.88em;font-weight:600">
+                🔗 Paste Link
+            </button>
+            <button id="refTabUpload" onclick="refSwitchTab('upload')"
+                style="flex:1;padding:8px;background:transparent;color:var(--text-dim);border:none;cursor:pointer;font-size:0.88em;font-weight:600">
+                📁 Upload MP3
+            </button>
         </div>
-        <div class="form-row" style="margin-top:10px">
-            <label class="form-label">Version Title (optional)</label>
-            <input class="app-input" id="refTitle" placeholder="e.g. Live at Red Rocks 1987, Cornell '77...">
+        <!-- Link panel -->
+        <div id="refPanelLink">
+            <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, or any URL.</p>
+            <div id="refUrlDetect" style="height:24px;margin-bottom:6px;font-size:0.8em;color:var(--text-muted)"></div>
+            <div class="form-row">
+                <label class="form-label">URL</label>
+                <input class="app-input" id="refUrl" placeholder="https://..." oninput="detectRefPlatform(this.value)" autofocus>
+            </div>
+            <div class="form-row" style="margin-top:10px">
+                <label class="form-label">Version Title (optional)</label>
+                <input class="app-input" id="refTitle" placeholder="e.g. Live at Red Rocks 1987, Cornell '77...">
+            </div>
+            <div class="form-row" style="margin-top:10px">
+                <label class="form-label">Notes (optional)</label>
+                <input class="app-input" id="refNotes" placeholder="Why this version? What makes it special?">
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button class="btn btn-primary" style="flex:1" onclick="saveRefVersionFromModal()">⭐ Add Reference</button>
+                <button class="btn btn-ghost" onclick="document.getElementById('addRefModal').remove()">Cancel</button>
+            </div>
         </div>
-        <div class="form-row" style="margin-top:10px">
-            <label class="form-label">Notes (optional)</label>
-            <input class="app-input" id="refNotes" placeholder="Why this version? What makes it special?">
-        </div>
-        <div style="display:flex;gap:8px;margin-top:16px">
-            <button class="btn btn-primary" style="flex:1" onclick="saveRefVersionFromModal()">⭐ Add Reference</button>
-            <button class="btn btn-ghost" onclick="document.getElementById('addRefModal').remove()">Cancel</button>
+        <!-- Upload panel (hidden by default) -->
+        <div id="refPanelUpload" style="display:none">
+            <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Upload an MP3, M4A, or WAV — stored in Firebase and shared with the whole band.</p>
+            <div class="form-row">
+                <label class="form-label">Audio File</label>
+                <input type="file" id="refAudioFile" accept="audio/*,.mp3,.m4a,.wav,.aac"
+                    style="width:100%;padding:8px;background:var(--bg-input,rgba(255,255,255,0.05));border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88em">
+                <div style="font-size:0.78em;color:var(--text-dim);margin-top:4px">MP3, M4A, WAV · max 20MB</div>
+            </div>
+            <div class="form-row" style="margin-top:10px">
+                <label class="form-label">Version Title</label>
+                <input class="app-input" id="refUploadTitle" placeholder="e.g. Studio demo, Live rehearsal 3/15...">
+            </div>
+            <div class="form-row" style="margin-top:10px">
+                <label class="form-label">Notes (optional)</label>
+                <input class="app-input" id="refUploadNotes" placeholder="What makes this version useful?">
+            </div>
+            <div id="refUploadProgress" style="display:none;margin-top:10px">
+                <div style="background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;height:6px">
+                    <div id="refUploadBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.3s"></div>
+                </div>
+                <div id="refUploadStatus" style="font-size:0.8em;color:var(--text-dim);margin-top:4px;text-align:center">Uploading...</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button class="btn btn-primary" style="flex:1" onclick="saveRefVersionUpload()">📤 Upload & Add</button>
+                <button class="btn btn-ghost" onclick="document.getElementById('addRefModal').remove()">Cancel</button>
+            </div>
         </div>
     </div>`;
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
     document.getElementById('refUrl')?.focus();
+}
+
+function refSwitchTab(tab) {
+    const isLink = tab === 'link';
+    document.getElementById('refPanelLink').style.display = isLink ? '' : 'none';
+    document.getElementById('refPanelUpload').style.display = isLink ? 'none' : '';
+    document.getElementById('refTabLink').style.cssText =
+        `flex:1;padding:8px;background:${isLink ? 'var(--accent)' : 'transparent'};color:${isLink ? '#fff' : 'var(--text-dim)'};border:none;cursor:pointer;font-size:0.88em;font-weight:600`;
+    document.getElementById('refTabUpload').style.cssText =
+        `flex:1;padding:8px;background:${!isLink ? 'var(--accent)' : 'transparent'};color:${!isLink ? '#fff' : 'var(--text-dim)'};border:none;cursor:pointer;font-size:0.88em;font-weight:600`;
+    if (!isLink) document.getElementById('refAudioFile')?.focus();
+    else document.getElementById('refUrl')?.focus();
+}
+
+async function saveRefVersionUpload() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+
+    const fileInput = document.getElementById('refAudioFile');
+    const title = document.getElementById('refUploadTitle')?.value.trim();
+    const notes = document.getElementById('refUploadNotes')?.value.trim();
+
+    if (!fileInput?.files?.[0]) { alert('Please choose an audio file'); return; }
+    if (!title) { alert('Please add a version title'); return; }
+
+    const file = fileInput.files[0];
+    if (file.size > 20 * 1024 * 1024) { alert('File too large — max 20MB'); return; }
+
+    if (!firebaseStorage) { alert('Storage not ready — please sign in first'); return; }
+
+    // Show progress
+    const progWrapper = document.getElementById('refUploadProgress');
+    const progBar = document.getElementById('refUploadBar');
+    const progStatus = document.getElementById('refUploadStatus');
+    progWrapper.style.display = '';
+
+    try {
+        const safeSong = sanitizeFirebasePath(songTitle);
+        const safeName = sanitizeFirebasePath(file.name);
+        const storageRef = firebaseStorage.ref(`ref_audio/${safeSong}/${Date.now()}_${safeName}`);
+        const uploadTask = storageRef.put(file);
+
+        await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+                snap => {
+                    const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+                    progBar.style.width = pct + '%';
+                    progStatus.textContent = `Uploading… ${pct}%`;
+                },
+                reject,
+                resolve
+            );
+        });
+
+        const downloadURL = await storageRef.getDownloadURL();
+        progStatus.textContent = 'Saving…';
+
+        const version = {
+            id: 'version_' + Date.now(),
+            title: title,
+            url: downloadURL,
+            spotifyUrl: downloadURL,
+            platform: 'upload',
+            fileName: file.name,
+            fileSize: file.size,
+            votes: {},
+            totalVotes: 0,
+            isDefault: false,
+            addedBy: currentUserEmail,
+            notes: notes || '',
+            dateAdded: new Date().toLocaleDateString()
+        };
+        Object.keys(bandMembers).forEach(k => { version.votes[k] = false; });
+
+        document.getElementById('addRefModal')?.remove();
+
+        let versions = toArray(await loadRefVersions(songTitle) || []);
+        versions.push(version);
+        await saveRefVersions(songTitle, versions);
+        const bandData = bandKnowledgeBase[songTitle] || {};
+        await renderRefVersions(songTitle, bandData);
+        showToast('✅ Uploaded & added as reference version!');
+    } catch (err) {
+        progWrapper.style.display = 'none';
+        alert('Upload failed: ' + err.message);
+    }
 }
 
 function detectRefPlatform(url) {

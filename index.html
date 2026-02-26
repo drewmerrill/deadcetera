@@ -335,7 +335,30 @@
                 <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Notes (optional):</label>
                 <input type="text" id="practiceTrackNotes" placeholder="E.g., Great breakdown of the bass line" class="app-input" style="width:100%;box-sizing:border-box">
             </div>
-            <button id="addPracticeTrackBtn" class="btn btn-primary" onclick="addPracticeTrackSimple()" style="width:100%">✨ Add Track (Auto-Fetch Title & Thumbnail)</button>
+            <div style="display:flex;gap:8px">
+                <button id="addPracticeTrackBtn" class="btn btn-primary" onclick="addPracticeTrackSimple()" style="flex:1">✨ Add Track</button>
+                <button class="btn btn-ghost" onclick="ptToggleUploadForm()" style="white-space:nowrap">📁 Upload MP3</button>
+            </div>
+            <!-- MP3 upload form (hidden by default) -->
+            <div id="ptUploadForm" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,rgba(255,255,255,0.08))">
+                <div style="margin-bottom:10px">
+                    <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Audio File:</label>
+                    <input type="file" id="ptAudioFile" accept="audio/*,.mp3,.m4a,.wav,.aac"
+                        style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:8px;color:var(--text,#f1f5f9);font-size:0.85em;box-sizing:border-box">
+                    <div style="font-size:0.76em;color:var(--text-dim,#64748b);margin-top:3px">MP3, M4A, WAV · max 20MB · uploaded to Firebase, shared with band</div>
+                </div>
+                <div style="margin-bottom:10px">
+                    <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Track Title:</label>
+                    <input type="text" id="ptUploadTitle" placeholder="e.g. Bass isolated, Whole band slow run-through" class="app-input" style="width:100%;box-sizing:border-box">
+                </div>
+                <div id="ptUploadProgress" style="display:none;margin-bottom:8px">
+                    <div style="background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;height:6px">
+                        <div id="ptUploadBar" style="height:100%;background:var(--accent,#6366f1);width:0%;transition:width 0.3s"></div>
+                    </div>
+                    <div id="ptUploadStatus" style="font-size:0.78em;color:var(--text-dim,#64748b);margin-top:3px;text-align:center">Uploading…</div>
+                </div>
+                <button class="btn btn-primary" onclick="addPracticeTrackUpload()" style="width:100%">📤 Upload & Add Track</button>
+            </div>
         </div>
         <div id="practiceTracksContainer"></div>
     </div>
