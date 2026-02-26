@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="app-shell.css">
+    <link rel="stylesheet" href="rehearsal-mode.css">
 </head>
 <body>
     <!-- TOP BAR -->
@@ -279,6 +280,10 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">4</div>
         <h2 style="margin:0">Stage Crib Notes</h2>
+        <button class="rm-launch-btn" style="margin-left:auto;font-size:0.8em;padding:7px 14px"
+            onclick="openRehearsalMode((selectedSong?.title || selectedSong) || '')">
+            🎸 Rehearsal Mode
+        </button>
     </div>
     <p class="subtitle">Each member's go-to reference — tabs, chord charts, or lyrics for stage/iPad
         <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.85em;padding:0;margin-left:8px">🔍 Ultimate Guitar</button>
@@ -547,5 +552,6 @@
 
     <script src="data.js"></script>
     <script src="app.js"></script>
+    <script src="rehearsal-mode.js"></script>
 </body>
 </html>

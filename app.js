@@ -7565,6 +7565,7 @@ async function renderPracticePlanForDate(dateStr, statusMap) {
         </div>
         <div style="display:flex;gap:6px">
             <button class="btn btn-ghost btn-sm" onclick="practicePlanEditMeta('${dateStr}')">✏️ Details</button>
+            ${planSongs.length > 0 ? `<button class="rm-launch-btn" style="font-size:0.75em;padding:5px 12px" onclick="openRehearsalModeFromPlan('${dateStr}')">🎸 Rehearse</button>` : ''}
             ${!isPast ? `<button class="btn btn-primary btn-sm" onclick="practicePlanSave('${dateStr}')">💾 Save Plan</button>` : ''}
         </div>
     </div>
@@ -7603,6 +7604,7 @@ async function renderPracticePlanForDate(dateStr, statusMap) {
                 <span style="color:var(--text-dim);font-size:0.72em;min-width:28px">${s.band||''}</span>
                 <span style="flex:1;font-size:0.88em;cursor:pointer" onclick="selectSong('${(s.title||'').replace(/'/g,"\\'")}');showPage('songs')">${s.title||''}</span>
                 ${s.focus ? `<span style="font-size:0.7em;color:var(--yellow);flex-shrink:0">${s.focus}</span>` : ''}
+                <button onclick="openRehearsalModeFromPlan('${dateStr}',${i})" title="Rehearse starting here" style="background:rgba(102,126,234,0.18);border:1px solid rgba(102,126,234,0.3);color:#818cf8;padding:2px 7px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer;flex-shrink:0">▶</button>
                 ${!isPast ? `<button onclick="ppRemoveSong(${i},'${dateStr}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em;flex-shrink:0">✕</button>` : ''}
             </div>`).join('') : '<div style="color:var(--text-dim);font-size:0.85em;font-style:italic;padding:4px 0">No songs added yet</div>'}
         </div>

@@ -14,6 +14,8 @@ const CACHE_URLS = [
     BASE + 'app.js',
     BASE + 'data.js',
     BASE + 'manifest.json',
+    BASE + 'rehearsal-mode.js',
+    BASE + 'rehearsal-mode.css',
     BASE + 'icon-192.png',
     BASE + 'icon-512.png',
 ];

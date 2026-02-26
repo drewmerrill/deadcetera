@@ -25,7 +25,7 @@ function openRehearsalMode(songTitle) {
 }
 
 // ── Entry: from practice plan ────────────────────────────────────────────────
-async function openRehearsalModeFromPlan(dateStr) {
+async function openRehearsalModeFromPlan(dateStr, startIndex) {
     const date = dateStr || (typeof practicePlanActiveDate !== 'undefined' ? practicePlanActiveDate : null);
     if (!date) {
         showToast('⚠️ No rehearsal plan selected');
@@ -39,7 +39,8 @@ async function openRehearsalModeFromPlan(dateStr) {
         return;
     }
     rmQueue = planSongs.map(s => ({ title: s.title, band: s.band || '' }));
-    rmIndex = 0;
+    rmIndex = (typeof startIndex === 'number' && startIndex >= 0 && startIndex < rmQueue.length)
+        ? startIndex : 0;
     rmShow();
 }
 
