@@ -916,11 +916,13 @@ function selectSong(songTitle) {
     // Show Step 2: Song Blueprint
     showBandResources(songTitle);
     
-    // Show steps 3-5 (new sections)
+    // Show steps 3-6 (new sections)
     const step3ref = document.getElementById('step3ref');
+    const step4coverme = document.getElementById('step4coverme');
     const step4ref = document.getElementById('step4ref');
     const step5ref = document.getElementById('step5ref');
     if (step3ref) step3ref.classList.remove('hidden');
+    if (step4coverme) step4coverme.classList.remove('hidden');
     if (step4ref) step4ref.classList.remove('hidden');
     if (step5ref) step5ref.classList.remove('hidden');
     
@@ -1281,6 +1283,7 @@ function showBandResources(songTitle) {
     // Render each section IN PARALLEL for fast loading
     Promise.all([
         renderRefVersions(songTitle, bandData),
+        renderCoverMe(songTitle),
         renderPersonalTabs(songTitle),
         renderMoisesStems(songTitle, bandData),
         renderPracticeTracks(songTitle, bandData),
@@ -1495,6 +1498,133 @@ async function loadPersonalTabs(songTitle) {
 }
 
 console.log('📑 Personal tabs system loaded');
+
+// ============================================================================
+// COVER ME — Other bands' interpretations of this song
+// ============================================================================
+
+async function loadCoverMe(songTitle) {
+    return toArray(await loadBandDataFromDrive(songTitle, 'cover_me') || []);
+}
+
+async function saveCoverMe(songTitle, covers) {
+    return await saveBandDataToDrive(songTitle, 'cover_me', covers);
+}
+
+async function renderCoverMe(songTitle, preloaded) {
+    const container = document.getElementById('coverMeContainer');
+    if (!container) return;
+    const covers = preloaded !== undefined ? preloaded : await loadCoverMe(songTitle);
+
+    if (!covers.length) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:24px 16px;color:var(--text-dim);font-size:0.88em">
+                <div style="font-size:2em;margin-bottom:8px">🎸</div>
+                <div style="font-weight:600;margin-bottom:4px">No cover versions yet</div>
+                <div>Add a version by another band — different arrangement, different energy, different inspiration.</div>
+            </div>`;
+        return;
+    }
+
+    const isAdmin = (getCurrentMemberKey() === 'drew');
+    container.innerHTML = covers.map((cover, i) => {
+        const canDelete = isAdmin || (currentUserEmail && cover.addedBy === currentUserEmail);
+        const domain = (() => { try { return new URL(cover.url).hostname.replace('www.',''); } catch(e) { return ''; } })();
+        const siteIcon = cover.url.includes('youtube') || cover.url.includes('youtu.be') ? '▶️' :
+                         cover.url.includes('spotify') ? '🟢' :
+                         cover.url.includes('archive.org') ? '📼' : '🔗';
+        return `
+        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:14px 16px;margin-bottom:10px">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+                <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                        ${cover.band ? `<span style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:2px 10px;border-radius:12px;font-size:0.82em;font-weight:700">${cover.band}</span>` : ''}
+                        <a href="${cover.url}" target="_blank" rel="noopener"
+                           style="color:var(--accent-light,#818cf8);font-size:0.82em;text-decoration:none;display:flex;align-items:center;gap:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                           title="${cover.url}">
+                           ${siteIcon} ${domain || cover.url}
+                        </a>
+                    </div>
+                    ${cover.note ? `<div style="color:var(--text-muted,#94a3b8);font-size:0.85em;line-height:1.5;font-style:italic">"${cover.note}"</div>` : ''}
+                    <div style="color:var(--text-dim,#64748b);font-size:0.73em;margin-top:6px">
+                        Added ${cover.dateAdded || ''}${cover.addedByName ? ' by ' + cover.addedByName : ''}
+                    </div>
+                </div>
+                ${canDelete ? `<button onclick="deleteCoverMe('${songTitle.replace(/'/g,"\\'")}',${i})"
+                    style="background:none;border:none;color:var(--text-dim,#64748b);cursor:pointer;font-size:1em;padding:2px 4px;flex-shrink:0;line-height:1" title="Delete">✕</button>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function showCoverMeForm() {
+    const fc = document.getElementById('coverMeFormContainer');
+    if (!fc) return;
+    if (fc.innerHTML.trim()) { fc.innerHTML = ''; return; } // toggle
+    fc.innerHTML = `
+        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:10px;padding:16px;margin-bottom:12px">
+            <h4 style="margin:0 0 12px;color:var(--text,#f1f5f9);font-size:0.95em">Add a Cover Version</h4>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Band / Artist *</label>
+                <input id="coverMeBandInput" class="app-input" placeholder="e.g. Tedeschi Trucks Band, Gov't Mule, moe." style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">URL *</label>
+                <input id="coverMeUrlInput" class="app-input" placeholder="YouTube, Spotify, Archive.org..." style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:14px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">What should the band listen for? *</label>
+                <textarea id="coverMeNoteInput" class="app-input" rows="2"
+                    placeholder="e.g. Derek plays open E — listen to how he handles the outro. Great harmony on the chorus."
+                    style="width:100%;box-sizing:border-box;resize:vertical;min-height:60px"></textarea>
+                <div style="font-size:0.73em;color:var(--text-dim,#64748b);margin-top:3px">Required — a bare link with no context is useless. Tell them what to listen for.</div>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-primary" onclick="addCoverMe()" style="flex:1">✅ Add Cover</button>
+                <button class="btn btn-ghost" onclick="document.getElementById('coverMeFormContainer').innerHTML=''">Cancel</button>
+            </div>
+        </div>`;
+    document.getElementById('coverMeBandInput')?.focus();
+}
+
+async function addCoverMe() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) { alert('Please select a song first.'); return; }
+
+    const band = document.getElementById('coverMeBandInput')?.value.trim();
+    const url  = document.getElementById('coverMeUrlInput')?.value.trim();
+    const note = document.getElementById('coverMeNoteInput')?.value.trim();
+
+    if (!band) { alert('Please enter the covering band or artist name.'); return; }
+    if (!url || !url.startsWith('http')) { alert('Please enter a valid URL starting with http.'); return; }
+    if (!note) { alert('Please write what the band should listen for — a bare link is not helpful.'); return; }
+
+    const cover = {
+        band, url, note,
+        addedBy: currentUserEmail || '',
+        addedByName: getCurrentMemberKey() || '',
+        dateAdded: new Date().toLocaleDateString()
+    };
+
+    const covers = await loadCoverMe(songTitle);
+    covers.push(cover);
+    await saveCoverMe(songTitle, covers);
+
+    // Clear form, re-render from known data
+    document.getElementById('coverMeFormContainer').innerHTML = '';
+    await renderCoverMe(songTitle, covers);
+    showToast('✅ Cover version added');
+}
+
+async function deleteCoverMe(songTitle, index) {
+    if (!confirm('Delete this cover version?')) return;
+    const covers = await loadCoverMe(songTitle);
+    covers.splice(index, 1);
+    await saveCoverMe(songTitle, covers);
+    await renderCoverMe(songTitle, covers);
+}
+
+console.log('🎸 Cover Me system loaded');
 
 // ============================================================================
 // MOISES STEMS
