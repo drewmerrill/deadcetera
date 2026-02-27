@@ -3674,6 +3674,23 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                     - <a href="https://abcnotation.com/wiki/abc:standard:v2.1" target="_blank" style="color: #667eea;">📖 ABC Tutorial</a>
                     - <a href="https://abcjs.net/abcjs-editor.html" target="_blank" style="color: #667eea;">🎼 Full ABC Editor</a>
                 </p>
+                <!-- Import Toolbar -->
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                    <button onclick="importABCFromPhoto(${sectionIndex})" 
+                        style="background:#7c3aed;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        📷 Import from Photo
+                    </button>
+                    <button onclick="importABCFromMuseScore('${title.replace(/'/g,"\\'")}', ${sectionIndex})"
+                        style="background:#0369a1;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        🎼 Search MuseScore
+                    </button>
+                    <button onclick="importABCFromAudio(${sectionIndex})"
+                        style="background:#065f46;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        🎵 Import from Audio
+                    </button>
+                    <span id="abcImportStatus" style="color:#6b7280;font-size:0.82em;align-self:center"></span>
+                </div>
+                </p>
             </div>
             
             <div style="flex: 1; overflow: auto; padding: 25px; display: flex; gap: 20px; flex-wrap: wrap;">
@@ -4017,6 +4034,340 @@ async function saveABCNotation(sectionIndex) {
     // Refresh harmony display
     const bandData = bandKnowledgeBase[songTitle] || {};
     renderHarmoniesEnhanced(songTitle, bandData);
+}
+
+
+// ============================================================================
+// ABC NOTATION IMPORT: PHOTO, MUSESCORE, AUDIO
+// ============================================================================
+
+// ── 1. PHOTO → ABC (Claude Vision) ──────────────────────────────────────────
+
+async function importABCFromPhoto(sectionIndex) {
+    // Create file input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment'; // mobile camera
+    
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const status = document.getElementById('abcImportStatus');
+        if (status) status.textContent = '📷 Reading sheet music...';
+        
+        try {
+            // Convert to base64
+            const base64 = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = () => res(r.result.split(',')[1]);
+                r.onerror = rej;
+                r.readAsDataURL(file);
+            });
+            
+            if (status) status.textContent = '🤖 Analyzing with AI...';
+            
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'claude-opus-4-6',
+                    max_tokens: 2000,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'image',
+                                source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 }
+                            },
+                            {
+                                type: 'text',
+                                text: `Convert this sheet music to ABC notation. 
+Rules:
+- Output ONLY valid ABC notation, nothing else
+- Include X:1, T:, M:, L:, K: headers
+- Include lyrics on w: lines if visible
+- Use standard ABC note syntax: C D E F G A B for notes, lowercase for octave above middle C
+- Use numbers for note lengths: C2 = half note, C4 = quarter note in L:1/8 context
+- Include bar lines |
+- If multiple voices/staves are shown, use V:1, V:2 etc
+- Start directly with X:1
+
+Sheet music image to convert:`
+                            }
+                        ]
+                    }]
+                })
+            });
+            
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
+            const data = await response.json();
+            const abc = data.content[0]?.text?.trim();
+            
+            if (abc && abc.includes('X:')) {
+                const textarea = document.getElementById('abcEditorTextarea');
+                if (textarea) {
+                    textarea.value = abc;
+                    previewABC();
+                }
+                if (status) status.textContent = '✅ Sheet music imported!';
+            } else {
+                throw new Error('No valid ABC notation in response');
+            }
+        } catch(e) {
+            const status = document.getElementById('abcImportStatus');
+            if (status) status.textContent = '❌ ' + (e.message.includes('CORS') ? 'API needs proxy setup' : e.message);
+            console.error('Photo import error:', e);
+        }
+    };
+    
+    input.click();
+}
+
+// ── 2. MUSESCORE SEARCH ──────────────────────────────────────────────────────
+
+async function importABCFromMuseScore(songTitle, sectionIndex) {
+    const status = document.getElementById('abcImportStatus');
+    
+    // Show search modal
+    const modal = document.createElement('div');
+    modal.id = 'museScoreModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+    
+    // Search MuseScore via their public API
+    const query = encodeURIComponent(songTitle);
+    const searchUrl = `https://api.musescore.com/services/rest/score.json?text=${query}&soundfont=0&part=0&parts=vocal&sort=view_count&order=desc&note=0`;
+    
+    modal.innerHTML = `
+        <div style="background:#0f0f1a;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0;color:white">🎼 MuseScore Search: ${songTitle}</h3>
+                <button onclick="document.getElementById('museScoreModal').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            <p style="color:#9ca3af;font-size:0.85em;margin-bottom:16px">
+                Search MuseScore for vocal arrangements. Click a result to open it — then use their 
+                <strong style="color:white">Download → MusicXML</strong> option and use the 
+                <strong style="color:#818cf8">📄 Import MusicXML</strong> button below.
+            </p>
+            <div id="museScoreResults" style="color:#9ca3af;text-align:center;padding:20px">
+                🔍 Searching...
+            </div>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)">
+                <p style="color:#9ca3af;font-size:0.82em;margin-bottom:8px">Or paste MusicXML content directly:</p>
+                <textarea id="musicXmlPaste" placeholder="Paste MusicXML here..." 
+                    style="width:100%;height:80px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;color:white;font-size:0.8em;box-sizing:border-box"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                    <label style="background:#0369a1;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        📄 Upload MusicXML File
+                        <input type="file" accept=".xml,.mxl,.musicxml" style="display:none" onchange="handleMusicXmlUpload(event, ${sectionIndex})">
+                    </label>
+                    <button onclick="convertMusicXmlToABC(document.getElementById('musicXmlPaste').value, ${sectionIndex})"
+                        style="background:#065f46;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        🔄 Convert Pasted XML → ABC
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Try MuseScore search (public results page as fallback since API needs key)
+    const resultsEl = document.getElementById('museScoreResults');
+    const msSearchUrl = `https://musescore.com/sheetmusic?text=${query}&instrumentation=voice`;
+    
+    resultsEl.innerHTML = `
+        <div style="text-align:left">
+            <p style="color:#f1f5f9;margin-bottom:12px">MuseScore search results open in a new tab — look for arrangements with vocal parts:</p>
+            <a href="${msSearchUrl}" target="_blank" 
+               style="display:inline-block;background:#0369a1;color:white;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;margin-bottom:12px">
+                🔍 Search "${songTitle}" on MuseScore →
+            </a>
+            <p style="color:#9ca3af;font-size:0.82em">On MuseScore: find a score → click it → look for <strong style="color:white">Download → MusicXML</strong> (requires free account) → upload the .xml file here</p>
+            <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-top:8px;font-size:0.82em;color:#94a3b8">
+                <strong style="color:#818cf8">💡 Best search tips:</strong><br>
+                • Add "SATB" or "vocal" to find harmony arrangements<br>
+                • Grateful Dead songs: search "grateful dead ${songTitle}"<br>
+                • Look for scores with 4+ staves (usually has harmony parts)<br>
+                • Filter by "Voice" instrumentation
+            </div>
+        </div>
+    `;
+}
+
+async function handleMusicXmlUpload(event, sectionIndex) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    convertMusicXmlToABC(text, sectionIndex);
+}
+
+async function convertMusicXmlToABC(xmlText, sectionIndex) {
+    if (!xmlText?.trim()) { alert('No XML content to convert'); return; }
+    const status = document.getElementById('abcImportStatus');
+    if (status) status.textContent = '🔄 Converting MusicXML...';
+    
+    // Close musescore modal if open
+    document.getElementById('museScoreModal')?.remove();
+    
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 2000,
+                messages: [{
+                    role: 'user',
+                    content: `Convert this MusicXML to ABC notation. Extract ONLY the vocal parts (look for part names containing "Voice", "Vocal", "Soprano", "Alto", "Tenor", "Bass", or similar). If multiple vocal parts exist, include all as separate voices using V:1, V:2 etc with labels.
+
+Output ONLY valid ABC notation starting with X:1. Include lyrics on w: lines.
+
+MusicXML:
+${xmlText.substring(0, 8000)}`
+                }]
+            })
+        });
+        
+        if (!response.ok) throw new Error(`API ${response.status}`);
+        const data = await response.json();
+        const abc = data.content[0]?.text?.trim();
+        
+        if (abc?.includes('X:')) {
+            const textarea = document.getElementById('abcEditorTextarea');
+            if (textarea) { textarea.value = abc; previewABC(); }
+            if (status) status.textContent = '✅ MusicXML converted!';
+        } else {
+            throw new Error('No valid ABC in response');
+        }
+    } catch(e) {
+        if (status) status.textContent = '❌ ' + e.message;
+    }
+}
+
+// ── 3. AUDIO → ABC (Basic Pitch by Spotify) ─────────────────────────────────
+
+async function importABCFromAudio(sectionIndex) {
+    const modal = document.createElement('div');
+    modal.id = 'audioImportModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+    
+    modal.innerHTML = `
+        <div style="background:#0f0f1a;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:560px;width:100%;max-height:85vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0;color:white">🎵 Import from Audio</h3>
+                <button onclick="document.getElementById('audioImportModal').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            
+            <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.2);border-radius:8px;padding:14px;margin-bottom:16px;font-size:0.85em;color:#c7d2fe;line-height:1.6">
+                <strong style="color:white">How this works:</strong><br>
+                1. Use <strong>Moises</strong> to isolate the vocal stem from a recording<br>
+                2. Upload the isolated vocal audio file here<br>
+                3. We send it to <strong>Basic Pitch</strong> (Spotify's free AI) to detect notes<br>
+                4. The note data converts to ABC notation automatically
+            </div>
+            
+            <div style="margin-bottom:16px">
+                <label style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:8px">Upload isolated vocal audio (MP3, WAV, M4A):</label>
+                <label style="display:flex;align-items:center;justify-content:center;gap:10px;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.15);border-radius:10px;padding:24px;cursor:pointer;color:#9ca3af;font-size:0.9em">
+                    🎤 Click to select audio file
+                    <input type="file" accept="audio/*" style="display:none" onchange="processAudioForABC(event, ${sectionIndex})">
+                </label>
+            </div>
+            
+            <div id="audioImportProgress" style="display:none;text-align:center;padding:16px;color:#818cf8"></div>
+            
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;font-size:0.8em;color:#6b7280;line-height:1.6">
+                <strong style="color:#9ca3af">💡 Best results:</strong><br>
+                • Use Moises or Spleeter to isolate vocals first — mixed audio gives messy results<br>
+                • Short clips (one section, 8-16 bars) work better than full songs<br>
+                • The AI detects the main pitch — harmony lines need separate passes<br>
+                • Basic Pitch works best on clear, monophonic (single-note) vocal lines
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function processAudioForABC(event, sectionIndex) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const progress = document.getElementById('audioImportProgress');
+    if (progress) { progress.style.display = 'block'; progress.textContent = '📤 Uploading to Basic Pitch...'; }
+    
+    try {
+        // Basic Pitch API (Spotify's open source pitch detection)
+        const formData = new FormData();
+        formData.append('audio', file);
+        
+        const response = await fetch('https://basic-pitch.com/api/v1/predict', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) throw new Error(`Basic Pitch API: ${response.status}`);
+        const noteData = await response.json();
+        
+        if (progress) progress.textContent = '🎵 Converting notes to ABC...';
+        
+        // Convert Basic Pitch MIDI-like output to ABC
+        const abc = convertBasicPitchToABC(noteData, file.name.replace(/\.[^.]+$/, ''));
+        
+        document.getElementById('audioImportModal')?.remove();
+        const textarea = document.getElementById('abcEditorTextarea');
+        if (textarea) { textarea.value = abc; previewABC(); }
+        
+        const status = document.getElementById('abcImportStatus');
+        if (status) status.textContent = '✅ Audio converted to ABC!';
+        
+    } catch(e) {
+        if (progress) {
+            progress.innerHTML = `
+                <div style="color:#ef4444;margin-bottom:8px">❌ ${e.message}</div>
+                <div style="font-size:0.82em;color:#9ca3af">
+                    Try the manual workflow:<br>
+                    1. Upload your audio to <a href="https://basicpitch.spotify.com" target="_blank" style="color:#818cf8">basicpitch.spotify.com</a><br>
+                    2. Download the MIDI file<br>
+                    3. Convert MIDI→ABC at <a href="https://www.mandolintab.net/abcconverter.php" target="_blank" style="color:#818cf8">mandolintab.net/abcconverter</a><br>
+                    4. Paste the ABC into the editor
+                </div>
+            `;
+        }
+    }
+}
+
+function convertBasicPitchToABC(noteData, title) {
+    // Basic Pitch returns notes array: [{start_time, end_time, pitch, velocity}]
+    const notes = noteData.notes || noteData.midi?.notes || [];
+    if (!notes.length) return `X:1\nT:${title}\nM:4/4\nL:1/8\nK:C\n% No notes detected\n`;
+    
+    const MIDI_TO_ABC = ['C','C','D','D','E','F','F','G','G','A','A','B'];
+    const noteToABC = (midi) => {
+        const octave = Math.floor(midi / 12) - 1;
+        const name = MIDI_TO_ABC[midi % 12];
+        if (octave < 4) return name + ','.repeat(Math.max(0, 4 - octave));
+        if (octave === 4) return name;
+        if (octave === 5) return name.toLowerCase();
+        return name.toLowerCase() + "'".repeat(octave - 5);
+    };
+    
+    // Simple conversion: quarter note = 2 units at L:1/8
+    let abc = `X:1\nT:${title}\nM:4/4\nL:1/8\nK:C\n`;
+    let measure = '';
+    let measureBeats = 0;
+    
+    notes.slice(0, 128).forEach(note => {
+        const pitch = note.pitch || note.note;
+        const dur = Math.max(1, Math.round((note.end_time - note.start_time) * 4));
+        const abcNote = noteToABC(pitch) + (dur > 1 ? dur : '');
+        measure += abcNote;
+        measureBeats += dur;
+        if (measureBeats >= 8) { abc += measure + '|'; measure = ''; measureBeats = 0; }
+    });
+    if (measure) abc += measure + '|';
+    
+    return abc + '\n% Review and clean up this auto-generated notation\n';
 }
 
 async function loadABCNotation(songTitle, sectionIndex) {
