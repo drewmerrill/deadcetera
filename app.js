@@ -4826,6 +4826,19 @@ async function buildHarmonySections(songTitle) {
     }));
     
     const allSections = [...existingSections, ...newSections];
+
+    // Sort by canonical song section order
+    const SECTION_ORDER = ['intro','verse 1','verse 2','verse 3','verse 4','verse','pre-chorus','chorus','post-chorus','bridge','solo','outro','coda','tag','reprise'];
+    allSections.sort((a, b) => {
+        const aName = (a.name || a.lyric || '').toLowerCase();
+        const bName = (b.name || b.lyric || '').toLowerCase();
+        const aIdx = SECTION_ORDER.findIndex(s => aName.includes(s));
+        const bIdx = SECTION_ORDER.findIndex(s => bName.includes(s));
+        if (aIdx === -1 && bIdx === -1) return 0;
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
+    });
     const harmonies = { sections: allSections, lyrics: lyrics || undefined };
     
     // Update in-memory
@@ -11583,31 +11596,66 @@ function renderAIInsightsPanel(aiData, songTitle) {
 function renderColorCodedLyrics(lyrics, sections, aiData) {
     if (!lyrics) return '';
 
-    // Build singer color map from AI data or sections
+    // Build singer map: section name -> {lead, harmony[]}
     const singerForSection = {};
     if (aiData?.sections) {
         aiData.sections.forEach(s => {
-            singerForSection[s.name?.toLowerCase()] = {
+            singerForSection[(s.name||'').toLowerCase()] = {
                 lead: s.leadSinger,
                 harmony: s.harmonySingers || []
             };
         });
     }
+    // Also pull from actual harmony section parts if AI data missing for a section
+    if (sections) {
+        toArray(sections).forEach(s => {
+            const key = (s.name || s.lyric || '').toLowerCase();
+            if (!singerForSection[key]) {
+                const parts = toArray(s.parts || []);
+                const lead = parts.find(p => p.part === 'lead')?.singer;
+                const harmony = parts.filter(p => p.part !== 'lead').map(p => p.singer);
+                if (lead || harmony.length) singerForSection[key] = { lead, harmony };
+            }
+        });
+    }
 
-    // Highlight section headers with color based on who sings
-    const highlighted = lyrics
-        .replace(/</g, '&lt;')
-        .replace(/\[([^\]]+)\]/g, (match, name) => {
+    // Split into section blocks, each tagged with data-singers for filtering
+    const rawLines = lyrics.split('\n');
+    let html = '';
+    let currentSingers = [];
+    let blockLines = [];
+
+    const flushBlock = () => {
+        if (!blockLines.length) return;
+        const singerAttr = currentSingers.join(' ');
+        html += `<div class="lyric-block" data-singers="${singerAttr}" style="margin-bottom:8px;transition:opacity 0.25s,color 0.25s">`;
+        html += blockLines.map(l => `<div>${l ? l.replace(/</g,'&lt;') : '&nbsp;'}</div>`).join('');
+        html += `</div>`;
+        blockLines = [];
+    };
+
+    rawLines.forEach(line => {
+        const m = line.match(/^\[([^\]]+)\]$/);
+        if (m) {
+            flushBlock();
+            const name = m[1];
             const info = singerForSection[name.toLowerCase()];
             const lead = info?.lead;
+            const allSingers = info ? [info.lead, ...(info.harmony||[])].filter(Boolean) : [];
+            currentSingers = allSingers.map(s => (s||'').toLowerCase());
             const color = lead ? (HARMONY_SINGER_COLORS[lead]?.text || '#818cf8') : '#818cf8';
-            const singers = info ? [info.lead, ...(info.harmony || [])].filter(Boolean) : [];
-            const badges = singers.map(s =>
-                `<span style="background:${HARMONY_SINGER_COLORS[s]?.bg||'#374151'};color:${HARMONY_SINGER_COLORS[s]?.text||'white'};padding:1px 6px;border-radius:10px;font-size:0.7em;margin-left:4px">${HARMONY_SINGER_COLORS[s]?.name||s}</span>`
+            const badges = allSingers.map(s =>
+                `<span style="background:${HARMONY_SINGER_COLORS[s]?.bg||'#374151'};color:${HARMONY_SINGER_COLORS[s]?.text||'white'};padding:1px 7px;border-radius:10px;font-size:0.7em;margin-left:4px;font-weight:600">${HARMONY_SINGER_COLORS[s]?.name||s}</span>`
             ).join('');
-            return `<span style="color:${color};font-weight:700;display:inline-block;margin-top:12px">[${name}]${badges}</span>`;
-        })
-        .replace(/\n/g, '<br>');
+            const singerAttr = currentSingers.join(' ');
+            html += `<div class="lyric-block lyric-header-block" data-singers="${singerAttr}" style="margin-top:14px;margin-bottom:3px;transition:opacity 0.25s">`;
+            html += `<span style="color:${color};font-weight:700">[${name}]</span>${badges}`;
+            html += `</div>`;
+        } else {
+            blockLines.push(line);
+        }
+    });
+    flushBlock();
 
     return `
         <div id="harmonyLyricsPanel" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px;margin-bottom:16px">
@@ -11616,10 +11664,11 @@ function renderColorCodedLyrics(lyrics, sections, aiData) {
                 <button onclick="document.getElementById('harmonyLyricsPanel').style.display='none'"
                     style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Hide</button>
             </div>
-            <div style="font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.8">${highlighted}</div>
+            <div id="harmonyLyricsContent" style="font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.9">${html}</div>
         </div>
     `;
 }
+
 
 function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) {
     const safeSong = songTitle.replace(/'/g, "\\'");
@@ -11700,20 +11749,36 @@ function setHarmonyViewFilter(singer) {
     const activeBtn = document.getElementById('hFilter_' + singer);
     if (activeBtn) { activeBtn.classList.add('btn-primary'); activeBtn.classList.remove('btn-ghost'); }
 
-    // Show/hide singer chips
     if (singer === 'all') {
-        document.querySelectorAll('.harmony-singer-chip').forEach(el => el.style.display = '');
-        document.querySelectorAll('.harmony-learning-card').forEach(el => el.style.display = '');
+        // Show everything
+        document.querySelectorAll('.harmony-learning-card').forEach(el => {
+            el.style.display = '';
+            el.style.opacity = '1';
+        });
+        document.querySelectorAll('.harmony-singer-chip').forEach(el => el.style.opacity = '1');
+        document.querySelectorAll('.lyric-block').forEach(el => {
+            el.style.opacity = '1';
+            el.style.color = '';
+        });
     } else {
+        // Filter section cards
         document.querySelectorAll('.harmony-learning-card').forEach(card => {
             const hasSinger = card.querySelector(`.harmony-singer-chip[data-singer="${singer}"]`);
             card.style.display = hasSinger ? '' : 'none';
         });
         document.querySelectorAll('.harmony-singer-chip').forEach(chip => {
-            chip.style.opacity = chip.dataset.singer === singer ? '1' : '0.25';
+            chip.style.opacity = chip.dataset.singer === singer ? '1' : '0.3';
+        });
+        // Filter lyric blocks - dim sections that don't involve this singer
+        document.querySelectorAll('.lyric-block').forEach(block => {
+            const singers = (block.dataset.singers || '').split(' ').filter(Boolean);
+            const involved = singers.length === 0 || singers.includes(singer);
+            block.style.opacity = involved ? '1' : '0.2';
+            block.style.color = involved ? '' : 'rgba(255,255,255,0.3)';
         });
     }
 }
+
 
 // ── SECTION STATUS ────────────────────────────────────────────────────────────
 
