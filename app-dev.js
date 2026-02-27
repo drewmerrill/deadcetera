@@ -11626,7 +11626,7 @@ function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) 
         const colors = HARMONY_SINGER_COLORS[part.singer] || { bg: '#374151', light: '#f3f4f6', text: '#9ca3af', name: part.singer };
         const isLead = part.part === 'lead' || aiSection?.leadSinger === part.singer;
         return `
-            <div class="harmony-singer-chip" data-singer="${part.singer}"
+            <div class="harmony-singer-chip" data-singer="${(part.singer||'').toLowerCase()}"
                 style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
                        background:${colors.bg};border-radius:20px;margin:3px">
                 <span style="color:${colors.text};font-weight:600;font-size:0.85em">${colors.name}</span>
@@ -11766,7 +11766,7 @@ function openPracticeMode(songTitle) {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
 
     // Get current singer
-    const currentUser = getCurrentUser() || 'drew';
+    const currentUser = (typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null) || 'drew';;
     const colors = HARMONY_SINGER_COLORS[currentUser] || HARMONY_SINGER_COLORS.drew;
 
     modal.innerHTML = `
