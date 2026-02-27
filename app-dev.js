@@ -4538,7 +4538,7 @@ function saveAndHideGeniusKey() {
     if (row) row.style.display = 'none';
 }
 
-async function fetchLyricsFromGenius(songTitle) {
+async function fetchLyricsFromGenius(songTitle, artistName) {
     const apiKey = getGeniusApiKey();
     if (!apiKey) {
         alert('Please enter your Genius API key first. Get one free at genius.com/api-clients');
@@ -4550,8 +4550,9 @@ async function fetchLyricsFromGenius(songTitle) {
     if (statusEl) { statusEl.textContent = '🔍 Searching Genius...'; statusEl.style.display = 'block'; }
 
     try {
-        // Search Genius for the song
-        const searchUrl = `https://api.genius.com/search?q=${encodeURIComponent(songTitle)}&access_token=${apiKey}`;
+        // Search Genius — include artist name for accuracy
+        const query = artistName ? `${artistName} ${songTitle}` : songTitle;
+        const searchUrl = `https://api.genius.com/search?q=${encodeURIComponent(query)}&access_token=${apiKey}`;
         // Genius API doesn't allow direct browser calls — use a CORS proxy
         const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
         const searchRes = await fetch(proxyUrl);
@@ -4563,11 +4564,14 @@ async function fetchLyricsFromGenius(songTitle) {
             return null;
         }
 
-        // Pick the best hit — prefer Grateful Dead / official versions
+        // Pick the best hit — prefer exact artist match
         const hits = searchData.response.hits;
-        const gdKeywords = ['grateful dead', 'jerry garcia', 'garcia'];
-        let best = hits.find(h => gdKeywords.some(k => h.result.primary_artist.name.toLowerCase().includes(k)))
-                   || hits[0];
+        const artistLower = (artistName || '').toLowerCase();
+        let best = artistName
+            ? hits.find(h => h.result.primary_artist.name.toLowerCase().includes(artistLower))
+              || hits.find(h => h.result.full_title.toLowerCase().includes(artistLower))
+              || hits[0]
+            : hits[0];
 
         const songUrl = best.result.url;
         const songName = best.result.full_title;
@@ -4647,7 +4651,11 @@ function parseSectionsFromLyrics(lyricsText) {
 }
 
 async function harmonyFetchLyrics(songTitle) {
-    const result = await fetchLyricsFromGenius(songTitle);
+    // Get the band name for this song to improve search accuracy
+    const songData = allSongs ? allSongs.find(s => s.title === songTitle) : null;
+    const bandAbbr = songData?.band || (selectedSong?.band) || 'GD';
+    const artistName = getFullBandName(bandAbbr);
+    const result = await fetchLyricsFromGenius(songTitle, artistName);
     if (!result) return;
 
     // Populate textarea
