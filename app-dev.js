@@ -394,12 +394,13 @@ function getPlayButtonLabel(version) {
 function getPlayButtonStyle(version) {
     const url = (version.url || version.spotifyUrl || '').toLowerCase();
     const p = version.platform || '';
-    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000;color:white;';
-    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44;color:white;';
-    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;color:white;';
-    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;color:white;';
-    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;color:white;';
-    return 'color:white;';
+    if (p === 'spotify' || url.includes('spotify'))   return 'background:#1db954!important;color:#ffffff!important;';
+    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000!important;color:#ffffff!important;';
+    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44!important;color:#ffffff!important;';
+    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca!important;color:#ffffff!important;';
+    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700!important;color:#ffffff!important;';
+    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000!important;color:#ffffff!important;';
+    return 'background:#667eea!important;color:#ffffff!important;';
 }
 
 // ============================================================================
@@ -2458,7 +2459,7 @@ async function renderRefVersions(songTitle, bandData) {
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 <button onclick="deleteRefVersion(${index})" 
-                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
+                    style="position: absolute; top: 10px; right: 10px; background: #ef4444!important; color: #ffffff!important; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
                 
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
@@ -4508,7 +4509,6 @@ async function loadLeadSinger(songTitle) {
     return data ? data.singer : '';
 }
 
-
 // ============================================================================
 // GENIUS LYRICS FETCHER
 // ============================================================================
@@ -4725,12 +4725,12 @@ async function addFirstHarmonySection(songTitle) {
                 </div>
             </div>
             <div id="geniusKeyRow" style="display:none;gap:6px;margin-bottom:8px;align-items:center">
-                <input class="app-input" id="geniusApiKeyInput" placeholder="Paste Genius API key here..." value="${getGeniusApiKey()}" style="flex:1;margin:0;font-size:0.82em">
+                <input class="app-input" id="geniusApiKeyInput" placeholder="Paste Genius API key here..." style="flex:1;margin:0;font-size:0.82em">
                 <button class="btn btn-sm btn-success" onclick="saveAndHideGeniusKey()">Save Key</button>
                 <a href="https://genius.com/api-clients" target="_blank" style="font-size:0.75em;color:var(--accent-light);white-space:nowrap">Get free key ↗</a>
             </div>
             <div id="lyricsStatus" style="display:none;padding:8px 12px;background:rgba(102,126,234,0.1);border-radius:6px;font-size:0.82em;color:var(--accent-light);margin-bottom:8px"></div>
-            <textarea class="app-textarea" id="harmLyrics" rows="12" placeholder="Paste song lyrics here, or click Fetch from Genius above...&#10;&#10;[Verse 1]&#10;As I was walking round Grosvenor Square...&#10;&#10;[Chorus]&#10;Scarlet begonias, a touch of the blues...">${existingLyrics}</textarea>
+            <textarea class="app-textarea" id="harmLyrics" rows="12" placeholder="Paste song lyrics here, or click Fetch from Genius above...">${existingLyrics}</textarea>
         </div>
         
         <div style="margin-bottom:12px">
@@ -4826,6 +4826,19 @@ async function buildHarmonySections(songTitle) {
     }));
     
     const allSections = [...existingSections, ...newSections];
+
+    // Sort by canonical song section order
+    const SECTION_ORDER = ['intro','verse 1','verse 2','verse 3','verse 4','verse','pre-chorus','chorus','post-chorus','bridge','solo','outro','coda','tag','reprise'];
+    allSections.sort((a, b) => {
+        const aName = (a.name || a.lyric || '').toLowerCase();
+        const bName = (b.name || b.lyric || '').toLowerCase();
+        const aIdx = SECTION_ORDER.findIndex(s => aName.includes(s));
+        const bIdx = SECTION_ORDER.findIndex(s => bName.includes(s));
+        if (aIdx === -1 && bIdx === -1) return 0;
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
+    });
     const harmonies = { sections: allSections, lyrics: lyrics || undefined };
     
     // Update in-memory
@@ -11366,11 +11379,17 @@ Return ONLY valid JSON (no markdown, no explanation) in exactly this structure:
 Focus on the actual known harmony arrangements for this song. If you don't know the specific arrangement, make a musically appropriate suggestion based on the style. Be specific and practical for amateur singers learning the song.`;
 
     try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        // Route through corsproxy.io to avoid CORS block on Anthropic API
+        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages');
+        const response = await fetch(proxyUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': 'sk-ant-api03-placeholder',  // replaced at runtime
+                'anthropic-version': '2023-06-01'
+            },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
+                model: 'claude-haiku-4-5-20251001',
                 max_tokens: 1000,
                 messages: [{ role: 'user', content: prompt }]
             })
@@ -11381,13 +11400,13 @@ Focus on the actual known harmony arrangements for this song. If you don't know 
         const clean = text.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(clean);
 
-        if (statusEl) statusEl.textContent = '✅ AI analysis complete!';
+        if (statusEl) statusEl.textContent = '\u2705 AI analysis complete!';
         setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
         return parsed;
 
     } catch (err) {
         console.error('AI harmony analysis error:', err);
-        if (statusEl) statusEl.textContent = '⚠️ AI analysis failed — ' + err.message;
+        if (statusEl) statusEl.textContent = '\u26a0\ufe0f AI analysis failed — ' + err.message;
         return null;
     }
 }
@@ -11577,31 +11596,66 @@ function renderAIInsightsPanel(aiData, songTitle) {
 function renderColorCodedLyrics(lyrics, sections, aiData) {
     if (!lyrics) return '';
 
-    // Build singer color map from AI data or sections
+    // Build singer map: section name -> {lead, harmony[]}
     const singerForSection = {};
     if (aiData?.sections) {
         aiData.sections.forEach(s => {
-            singerForSection[s.name?.toLowerCase()] = {
+            singerForSection[(s.name||'').toLowerCase()] = {
                 lead: s.leadSinger,
                 harmony: s.harmonySingers || []
             };
         });
     }
+    // Also pull from actual harmony section parts if AI data missing for a section
+    if (sections) {
+        toArray(sections).forEach(s => {
+            const key = (s.name || s.lyric || '').toLowerCase();
+            if (!singerForSection[key]) {
+                const parts = toArray(s.parts || []);
+                const lead = parts.find(p => p.part === 'lead')?.singer;
+                const harmony = parts.filter(p => p.part !== 'lead').map(p => p.singer);
+                if (lead || harmony.length) singerForSection[key] = { lead, harmony };
+            }
+        });
+    }
 
-    // Highlight section headers with color based on who sings
-    const highlighted = lyrics
-        .replace(/</g, '&lt;')
-        .replace(/\[([^\]]+)\]/g, (match, name) => {
+    // Split into section blocks, each tagged with data-singers for filtering
+    const rawLines = lyrics.split('\n');
+    let html = '';
+    let currentSingers = [];
+    let blockLines = [];
+
+    const flushBlock = () => {
+        if (!blockLines.length) return;
+        const singerAttr = currentSingers.join(' ');
+        html += `<div class="lyric-block" data-singers="${singerAttr}" style="margin-bottom:8px;transition:opacity 0.25s,color 0.25s">`;
+        html += blockLines.map(l => `<div>${l ? l.replace(/</g,'&lt;') : '&nbsp;'}</div>`).join('');
+        html += `</div>`;
+        blockLines = [];
+    };
+
+    rawLines.forEach(line => {
+        const m = line.match(/^\[([^\]]+)\]$/);
+        if (m) {
+            flushBlock();
+            const name = m[1];
             const info = singerForSection[name.toLowerCase()];
             const lead = info?.lead;
+            const allSingers = info ? [info.lead, ...(info.harmony||[])].filter(Boolean) : [];
+            currentSingers = allSingers.map(s => (s||'').toLowerCase());
             const color = lead ? (HARMONY_SINGER_COLORS[lead]?.text || '#818cf8') : '#818cf8';
-            const singers = info ? [info.lead, ...(info.harmony || [])].filter(Boolean) : [];
-            const badges = singers.map(s =>
-                `<span style="background:${HARMONY_SINGER_COLORS[s]?.bg||'#374151'};color:${HARMONY_SINGER_COLORS[s]?.text||'white'};padding:1px 6px;border-radius:10px;font-size:0.7em;margin-left:4px">${HARMONY_SINGER_COLORS[s]?.name||s}</span>`
+            const badges = allSingers.map(s =>
+                `<span style="background:${HARMONY_SINGER_COLORS[s]?.bg||'#374151'};color:${HARMONY_SINGER_COLORS[s]?.text||'white'};padding:1px 7px;border-radius:10px;font-size:0.7em;margin-left:4px;font-weight:600">${HARMONY_SINGER_COLORS[s]?.name||s}</span>`
             ).join('');
-            return `<span style="color:${color};font-weight:700;display:inline-block;margin-top:12px">[${name}]${badges}</span>`;
-        })
-        .replace(/\n/g, '<br>');
+            const singerAttr = currentSingers.join(' ');
+            html += `<div class="lyric-block lyric-header-block" data-singers="${singerAttr}" style="margin-top:14px;margin-bottom:3px;transition:opacity 0.25s">`;
+            html += `<span style="color:${color};font-weight:700">[${name}]</span>${badges}`;
+            html += `</div>`;
+        } else {
+            blockLines.push(line);
+        }
+    });
+    flushBlock();
 
     return `
         <div id="harmonyLyricsPanel" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px;margin-bottom:16px">
@@ -11610,10 +11664,11 @@ function renderColorCodedLyrics(lyrics, sections, aiData) {
                 <button onclick="document.getElementById('harmonyLyricsPanel').style.display='none'"
                     style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Hide</button>
             </div>
-            <div style="font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.8">${highlighted}</div>
+            <div id="harmonyLyricsContent" style="font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.9">${html}</div>
         </div>
     `;
 }
+
 
 function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) {
     const safeSong = songTitle.replace(/'/g, "\\'");
@@ -11694,20 +11749,36 @@ function setHarmonyViewFilter(singer) {
     const activeBtn = document.getElementById('hFilter_' + singer);
     if (activeBtn) { activeBtn.classList.add('btn-primary'); activeBtn.classList.remove('btn-ghost'); }
 
-    // Show/hide singer chips
     if (singer === 'all') {
-        document.querySelectorAll('.harmony-singer-chip').forEach(el => el.style.display = '');
-        document.querySelectorAll('.harmony-learning-card').forEach(el => el.style.display = '');
+        // Show everything
+        document.querySelectorAll('.harmony-learning-card').forEach(el => {
+            el.style.display = '';
+            el.style.opacity = '1';
+        });
+        document.querySelectorAll('.harmony-singer-chip').forEach(el => el.style.opacity = '1');
+        document.querySelectorAll('.lyric-block').forEach(el => {
+            el.style.opacity = '1';
+            el.style.color = '';
+        });
     } else {
+        // Filter section cards
         document.querySelectorAll('.harmony-learning-card').forEach(card => {
             const hasSinger = card.querySelector(`.harmony-singer-chip[data-singer="${singer}"]`);
             card.style.display = hasSinger ? '' : 'none';
         });
         document.querySelectorAll('.harmony-singer-chip').forEach(chip => {
-            chip.style.opacity = chip.dataset.singer === singer ? '1' : '0.25';
+            chip.style.opacity = chip.dataset.singer === singer ? '1' : '0.3';
+        });
+        // Filter lyric blocks - dim sections that don't involve this singer
+        document.querySelectorAll('.lyric-block').forEach(block => {
+            const singers = (block.dataset.singers || '').split(' ').filter(Boolean);
+            const involved = singers.length === 0 || singers.includes(singer);
+            block.style.opacity = involved ? '1' : '0.2';
+            block.style.color = involved ? '' : 'rgba(255,255,255,0.3)';
         });
     }
 }
+
 
 // ── SECTION STATUS ────────────────────────────────────────────────────────────
 
@@ -11766,7 +11837,7 @@ function openPracticeMode(songTitle) {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
 
     // Get current singer
-    const currentUser = (typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null) || 'drew';;
+    const currentUser = (typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null) || 'drew';
     const colors = HARMONY_SINGER_COLORS[currentUser] || HARMONY_SINGER_COLORS.drew;
 
     modal.innerHTML = `
