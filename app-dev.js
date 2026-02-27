@@ -12085,6 +12085,13 @@ function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) 
                     ⭐ Sounds Good
                 </button>
             </div>
+            <div id="harmonyAudioFormContainer${sectionIndex}" style="margin-top:8px"></div>
+            <div style="margin-top:6px">
+                <button onclick="showABCEditorModal('${section.name || section.lyric} — ${songTitle}', '', ${sectionIndex})"
+                    style="background:rgba(139,92,246,0.1);color:#c4b5fd;border:1px solid rgba(139,92,246,0.2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">
+                    🎼 Edit ABC Notation
+                </button>
+            </div>
         </div>
     `;
 }
