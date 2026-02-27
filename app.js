@@ -365,7 +365,7 @@
     document.head.appendChild(style);
 })();
 
-console.log('🎸 DeadCetera v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
+console.log('🎸 Deadcetera v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -398,7 +398,7 @@ function getPlayButtonStyle(version) {
     if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;color:white;';
     if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;color:white;';
     if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;color:white;';
-    return 'background:#1db954;color:#ffffff;';
+    return 'color:white;';
 }
 
 // ============================================================================
@@ -511,7 +511,7 @@ function showPWAInstallBanner() {
     banner.innerHTML = `
         <img src="icon-192.png" style="width:44px;height:44px;border-radius:10px;flex-shrink:0" onerror="this.style.display='none'">
         <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:0.92em;color:#f1f5f9">Add DeadCetera to Home Screen</div>
+            <div style="font-weight:700;font-size:0.92em;color:#f1f5f9">Add Deadcetera to Home Screen</div>
             <div style="font-size:0.75em;color:#94a3b8;margin-top:2px">Opens like an app, works offline</div>
         </div>
         <button onclick="pwaTriggerInstall()" style="
@@ -916,13 +916,11 @@ function selectSong(songTitle) {
     // Show Step 2: Song Blueprint
     showBandResources(songTitle);
     
-    // Show steps 3-6 (new sections)
+    // Show steps 3-5 (new sections)
     const step3ref = document.getElementById('step3ref');
-    const step4coverme = document.getElementById('step4coverme');
     const step4ref = document.getElementById('step4ref');
     const step5ref = document.getElementById('step5ref');
     if (step3ref) step3ref.classList.remove('hidden');
-    if (step4coverme) step4coverme.classList.remove('hidden');
     if (step4ref) step4ref.classList.remove('hidden');
     if (step5ref) step5ref.classList.remove('hidden');
     
@@ -1283,7 +1281,6 @@ function showBandResources(songTitle) {
     // Render each section IN PARALLEL for fast loading
     Promise.all([
         renderRefVersions(songTitle, bandData),
-        renderCoverMe(songTitle),
         renderPersonalTabs(songTitle),
         renderMoisesStems(songTitle, bandData),
         renderPracticeTracks(songTitle, bandData),
@@ -1306,10 +1303,9 @@ function showBandResources(songTitle) {
 // PERSONAL TAB LINKS
 // ============================================================================
 
-async function renderPersonalTabs(songTitle, preloadedTabs) {
+async function renderPersonalTabs(songTitle) {
     const container = document.getElementById('personalTabsContainer');
-    // Use preloaded data if provided (avoids Firebase re-read race condition after save/delete)
-    const tabs = preloadedTabs !== undefined ? preloadedTabs : await loadPersonalTabs(songTitle);
+    const tabs = await loadPersonalTabs(songTitle);
 
     // Email → member key mapping for legacy data
     const emailToKey = {
@@ -1334,17 +1330,14 @@ async function renderPersonalTabs(songTitle, preloadedTabs) {
     const memberHTML = Object.entries(bandMembers).map(([key, member]) => {
         const memberTabs = tabsByMember[key] || [];
         const isMe = (key === currentMemberKey);
-        const isAdmin = (currentMemberKey === 'drew');
         const emoji = { drew: '🎸', chris: '🎸', brian: '🎸', pierce: '🎹', jay: '🥁' }[key] || '👤';
-        const tabItems = memberTabs.map(tab => {
-            const canDelete = isMe || isAdmin || (currentUserEmail && tab.addedBy === currentUserEmail);
-            return `
+        const tabItems = memberTabs.map(tab => `
             <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;margin-bottom:6px">
                 <a href="${tab.url}" target="_blank" style="flex:1;color:var(--accent-light);font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tab.url}">${tab.label || tab.notes || tab.url}</a>
                 ${tab.notes && tab.label ? `<span style="color:var(--text-dim);font-size:0.75em;flex-shrink:0">${tab.notes}</span>` : ''}
-                ${canDelete ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
-            </div>`;
-        }).join('');
+                ${isMe ? `<button onclick="deletePersonalTab('${songTitle.replace(/'/g,"\\'")}',${tab._index})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85em;flex-shrink:0" title="Delete">✕</button>` : ''}
+            </div>
+        `).join('');
 
         return `
         <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
@@ -1429,7 +1422,7 @@ async function addPersonalTabForMember(songTitle, memberKey) {
     let tabs = await loadPersonalTabs(songTitle) || [];
     tabs.push(tab);
     await savePersonalTabs(songTitle, tabs);
-    await renderPersonalTabs(songTitle, tabs);  // pass tabs directly — avoids Firebase re-read race
+    await renderPersonalTabs(songTitle);
 }
 
 async function addPersonalTab() {
@@ -1474,8 +1467,8 @@ async function addPersonalTab() {
     urlInput.value = '';
     notesInput.value = '';
     
-    // Re-render with known data — avoids Firebase re-read race condition
-    await renderPersonalTabs(songTitle, tabs);
+    // Re-render
+    await renderPersonalTabs(songTitle);
 }
 
 async function deletePersonalTab(songTitle, index) {
@@ -1485,7 +1478,7 @@ async function deletePersonalTab(songTitle, index) {
     tabs.splice(index, 1);
     
     await savePersonalTabs(songTitle, tabs);
-    await renderPersonalTabs(songTitle, tabs);  // pass tabs directly — avoids Firebase re-read race
+    await renderPersonalTabs(songTitle);
 }
 
 // Storage functions
@@ -1498,201 +1491,6 @@ async function loadPersonalTabs(songTitle) {
 }
 
 console.log('📑 Personal tabs system loaded');
-
-// ============================================================================
-// COVER ME — Other bands' interpretations of this song
-// ============================================================================
-
-async function loadCoverMe(songTitle) {
-    return toArray(await loadBandDataFromDrive(songTitle, 'cover_me') || []);
-}
-
-async function saveCoverMe(songTitle, covers) {
-    return await saveBandDataToDrive(songTitle, 'cover_me', covers);
-}
-
-async function renderCoverMe(songTitle, preloaded) {
-    const container = document.getElementById('coverMeContainer');
-    if (!container) return;
-    const covers = preloaded !== undefined ? preloaded : await loadCoverMe(songTitle);
-
-    if (!covers.length) {
-        container.innerHTML = `
-            <div style="text-align:center;padding:24px 16px;color:var(--text-dim);font-size:0.88em">
-                <div style="font-size:2em;margin-bottom:8px">🎸</div>
-                <div style="font-weight:600;margin-bottom:4px">No cover versions yet</div>
-                <div>Add a version by another band — different arrangement, different energy, different inspiration.</div>
-            </div>`;
-        return;
-    }
-
-    const isAdmin = (getCurrentMemberKey() === 'drew');
-    container.innerHTML = covers.map((cover, i) => {
-        const canDelete = isAdmin || (currentUserEmail && cover.addedBy === currentUserEmail);
-        const canEdit   = canDelete;
-        const domain = (() => { try { return new URL(cover.url).hostname.replace('www.',''); } catch(e) { return ''; } })();
-        const siteIcon = cover.url.includes('youtube') || cover.url.includes('youtu.be') ? '▶️' :
-                         cover.url.includes('spotify') ? '🟢' :
-                         cover.url.includes('archive.org') ? '📼' : '🔗';
-        const displayTitle = cover.fetchedTitle || '';
-        return `
-        <div id="coverMeCard_${i}" style="background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:14px 16px;margin-bottom:10px">
-            <div style="display:flex;align-items:flex-start;gap:10px">
-                <div style="flex:1;min-width:0">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-                        ${cover.band ? `<span style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:2px 10px;border-radius:12px;font-size:0.82em;font-weight:700">${cover.band}</span>` : ''}
-                        <a href="${cover.url}" target="_blank" rel="noopener"
-                           style="color:var(--accent-light,#818cf8);font-size:0.82em;text-decoration:none;display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px"
-                           title="${cover.url}">
-                           ${siteIcon} ${displayTitle || domain || cover.url}
-                        </a>
-                    </div>
-                    <div id="coverMeNote_${i}">
-                        ${cover.note ? `<div style="color:var(--text-muted,#94a3b8);font-size:0.85em;line-height:1.5;font-style:italic">"${cover.note}"</div>` : ''}
-                    </div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-                        <span style="color:var(--text-dim,#64748b);font-size:0.73em">
-                            Added ${cover.dateAdded || ''}${cover.addedByName ? ' by ' + cover.addedByName : ''}
-                        </span>
-                        ${canEdit ? `<button onclick="editCoverMeNote('${songTitle.replace(/'/g,"\\'")}',${i})"
-                            style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.78em;padding:0" title="Edit note">✏️ edit</button>` : ''}
-                    </div>
-                </div>
-                ${canDelete ? `<button onclick="deleteCoverMe('${songTitle.replace(/'/g,"\\'")}',${i})"
-                    style="background:none;border:none;color:var(--text-dim,#64748b);cursor:pointer;font-size:1em;padding:2px 4px;flex-shrink:0;line-height:1" title="Delete">✕</button>` : ''}
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function editCoverMeNote(songTitle, index) {
-    const noteEl = document.getElementById(`coverMeNote_${index}`);
-    if (!noteEl) return;
-    // Get current covers to find existing note
-    loadCoverMe(songTitle).then(covers => {
-        const current = covers[index]?.note || '';
-        noteEl.innerHTML = `
-            <textarea id="coverMeEditTA_${index}" class="app-input" rows="2"
-                style="width:100%;box-sizing:border-box;resize:vertical;font-size:0.85em;margin-bottom:6px">${current}</textarea>
-            <div style="display:flex;gap:6px">
-                <button class="btn btn-sm btn-primary" onclick="saveCoverMeNote('${songTitle.replace(/'/g,"\\'")}',${index})">Save</button>
-                <button class="btn btn-sm btn-ghost" onclick="renderCoverMe('${songTitle.replace(/'/g,"\\'")}')">Cancel</button>
-            </div>`;
-        document.getElementById(`coverMeEditTA_${index}`)?.focus();
-    });
-}
-
-async function saveCoverMeNote(songTitle, index) {
-    const ta = document.getElementById(`coverMeEditTA_${index}`);
-    if (!ta) return;
-    const note = ta.value.trim();
-    const covers = await loadCoverMe(songTitle);
-    if (!covers[index]) return;
-    covers[index].note = note;
-    await saveCoverMe(songTitle, covers);
-    await renderCoverMe(songTitle, covers);
-}
-
-// Fetch title from YouTube oEmbed or Spotify oEmbed
-async function fetchCoverMeTitle(url) {
-    try {
-        // YouTube
-        const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
-        if (ytMatch) {
-            const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytMatch[1]}&format=json`);
-            if (r.ok) { const d = await r.json(); return d.title || ''; }
-        }
-        // Spotify
-        if (url.includes('spotify.com')) {
-            const r = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
-            if (r.ok) { const d = await r.json(); return d.title || ''; }
-        }
-    } catch(e) {}
-    return '';
-}
-
-function showCoverMeForm() {
-    const fc = document.getElementById('coverMeFormContainer');
-    if (!fc) return;
-    if (fc.innerHTML.trim()) { fc.innerHTML = ''; return; } // toggle
-    fc.innerHTML = `
-        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:10px;padding:16px;margin-bottom:12px">
-            <h4 style="margin:0 0 12px;color:var(--text,#f1f5f9);font-size:0.95em">Add a Cover Version</h4>
-            <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Band / Artist *</label>
-                <input id="coverMeBandInput" class="app-input" placeholder="e.g. Tedeschi Trucks Band, Gov't Mule, moe." style="width:100%;box-sizing:border-box">
-            </div>
-            <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">URL *</label>
-                <input id="coverMeUrlInput" class="app-input" placeholder="YouTube, Spotify, Archive.org..."
-                    style="width:100%;box-sizing:border-box"
-                    onblur="coverMeUrlBlur(this.value)">
-                <div id="coverMeFetchedTitle" style="font-size:0.78em;color:var(--accent-light,#818cf8);margin-top:3px;min-height:1.2em"></div>
-            </div>
-            <div style="margin-bottom:14px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">What should the band listen for? *</label>
-                <textarea id="coverMeNoteInput" class="app-input" rows="2"
-                    placeholder="e.g. Derek plays open E — listen to how he handles the outro. Great harmony on the chorus."
-                    style="width:100%;box-sizing:border-box;resize:vertical;min-height:60px"></textarea>
-                <div style="font-size:0.73em;color:var(--text-dim,#64748b);margin-top:3px">Required — a bare link with no context is useless.</div>
-            </div>
-            <div style="display:flex;gap:8px">
-                <button class="btn btn-primary" onclick="addCoverMe()" style="flex:1">✅ Add Cover</button>
-                <button class="btn btn-ghost" onclick="document.getElementById('coverMeFormContainer').innerHTML=''">Cancel</button>
-            </div>
-        </div>`;
-    document.getElementById('coverMeBandInput')?.focus();
-}
-
-async function coverMeUrlBlur(url) {
-    if (!url || !url.startsWith('http')) return;
-    const titleEl = document.getElementById('coverMeFetchedTitle');
-    if (!titleEl) return;
-    titleEl.textContent = '⏳ Fetching title…';
-    const title = await fetchCoverMeTitle(url);
-    titleEl.textContent = title ? `✅ "${title}"` : '';
-}
-
-async function addCoverMe() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) { alert('Please select a song first.'); return; }
-
-    const band = document.getElementById('coverMeBandInput')?.value.trim();
-    const url  = document.getElementById('coverMeUrlInput')?.value.trim();
-    const note = document.getElementById('coverMeNoteInput')?.value.trim();
-
-    if (!band) { alert('Please enter the covering band or artist name.'); return; }
-    if (!url || !url.startsWith('http')) { alert('Please enter a valid URL starting with http.'); return; }
-    if (!note) { alert('Please write what the band should listen for — a bare link is not helpful.'); return; }
-
-    // Try to fetch the title
-    const fetchedTitle = await fetchCoverMeTitle(url);
-
-    const cover = {
-        band, url, note, fetchedTitle,
-        addedBy: currentUserEmail || '',
-        addedByName: getCurrentMemberKey() || '',
-        dateAdded: new Date().toLocaleDateString()
-    };
-
-    const covers = await loadCoverMe(songTitle);
-    covers.push(cover);
-    await saveCoverMe(songTitle, covers);
-
-    document.getElementById('coverMeFormContainer').innerHTML = '';
-    await renderCoverMe(songTitle, covers);
-    showToast('✅ Cover version added');
-}
-
-async function deleteCoverMe(songTitle, index) {
-    if (!confirm('Delete this cover version?')) return;
-    const covers = await loadCoverMe(songTitle);
-    covers.splice(index, 1);
-    await saveCoverMe(songTitle, covers);
-    await renderCoverMe(songTitle, covers);
-}
-
-console.log('🎸 Cover Me system loaded');
 
 // ============================================================================
 // MOISES STEMS
@@ -2659,7 +2457,7 @@ async function renderRefVersions(songTitle, bandData) {
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 <button onclick="deleteRefVersion(${index})" 
-                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: #ffffff; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
+                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
                 
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
@@ -4459,7 +4257,7 @@ async function getCurrentUserEmail() {
     }
 }
 
-// Scan localStorage for any DeadCetera data saved before Firebase was initialized.
+// Scan localStorage for any Deadcetera data saved before Firebase was initialized.
 // Pushes to Firebase so it's shared with the band. Runs silently on each sign-in.
 async function recoverLocalStorageToFirebase() {
     if (!firebaseDB) return;
@@ -4618,11 +4416,14 @@ console.log('🔥 Firebase integration loaded');
 // ============================================================================
 
 async function loadPartNotes(songTitle, sectionIndex, singer) {
-    return await loadPartNotesFromDrive(songTitle, sectionIndex, singer);
+    const key = `part_notes_${sectionIndex}_${singer}`;
+    const data = await loadBandDataFromDrive(songTitle, key);
+    return Array.isArray(data) ? data : (data ? [data] : []);
 }
 
 async function savePartNotes(songTitle, sectionIndex, singer, notes) {
-    await savePartNotesToDrive(songTitle, sectionIndex, singer, notes);
+    const key = `part_notes_${sectionIndex}_${singer}`;
+    await saveBandDataToDrive(songTitle, key, notes);
     logActivity('part_notes', { song: songTitle, extra: singer });
 }
 
@@ -7200,39 +7001,6 @@ function toggleMenu() {
     overlay.classList.toggle('open', !isOpen);
 }
 
-const pageRenderers = {
-    setlists:      renderSetlistsPage,
-    playlists:     renderPlaylistsPage,
-    practice:      renderPracticePage,
-    calendar:      renderCalendarPage,
-    gigs:          renderGigsPage,
-    venues:        renderVenuesPage,
-    finances:      renderFinancesPage,
-    tuner:         renderTunerPage,
-    metronome:     renderMetronomePage,
-    admin:         renderSettingsPage,
-    social:        renderSocialPage,
-    notifications: renderNotificationsPage,
-    help: function(el) {
-        if (typeof window.renderHelpPage === 'function') {
-            window.renderHelpPage(el);
-        } else {
-            el.innerHTML = '<p style="padding:32px;text-align:center;color:var(--text-muted)">⏳ Loading help…</p>';
-            let attempts = 0;
-            const poll = setInterval(function() {
-                attempts++;
-                if (typeof window.renderHelpPage === 'function') {
-                    clearInterval(poll);
-                    window.renderHelpPage(el);
-                } else if (attempts > 30) {
-                    clearInterval(poll);
-                    el.innerHTML = '<p style="padding:32px;text-align:center;color:var(--text-muted)">Could not load help. Please refresh the page.</p>';
-                }
-            }, 100);
-        }
-    }
-};
-
 function showPage(page) {
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');
@@ -7246,6 +7014,22 @@ function showPage(page) {
         if (renderer) renderer(el);
     }
 }
+
+const pageRenderers = {
+    setlists: renderSetlistsPage,
+    playlists: renderPlaylistsPage,
+    practice: renderPracticePage,
+    calendar: renderCalendarPage,
+    gigs: renderGigsPage,
+    venues: renderVenuesPage,
+    finances: renderFinancesPage,
+    tuner: renderTunerPage,
+    metronome: renderMetronomePage,
+    admin: renderSettingsPage,
+    social: renderSocialPage,
+    notifications: renderNotificationsPage,
+    help: renderHelpPage
+};
 
 // ============================================================================
 // SETLIST BUILDER
@@ -7275,45 +7059,12 @@ async function loadSetlists() {
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
-                <button class="btn btn-sm btn-ghost" onclick="printSetlistPDF(${i})" title="Print PDF" style="color:var(--accent-light)">🖨️</button>
                 <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${i})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
                 <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
         ${(sl.sets||[]).map(s => `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map(sg => typeof sg==='string'?sg:sg.title).join(' → ')}</div>`).join('')}
     </div>`).join('');
-}
-
-// ============================================================================
-// SETLIST PDF PRINTER
-// ============================================================================
-async function printSetlistPDF(setlistIndex) {
-    const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    const sl = allSetlists[setlistIndex];
-    if (!sl) return;
-    const bandName = 'DeadCetera', slName = sl.name||'Setlist', slDate = sl.date||'', slVenue = sl.venue||'';
-    const sets = sl.sets||[], totalSongs = sets.reduce((n,s)=>n+(s.songs||[]).length,0);
-    const setPages = sets.map((set,si) => {
-        const isEncore = /encore|enc/i.test(set.name||'');
-        const rows = (set.songs||[]).map((item,idx) => {
-            const title = typeof item==='string'?item:(item.title||'');
-            const isTrans = typeof item==='object'&&item.transition;
-            return `<div class="sl-row"><span class="sl-num">${idx+1}</span><span class="sl-title">${title}</span>${isTrans?'<span class="sl-arrow">→</span>':''}</div>`;
-        }).join('');
-        return `<div class="sl-page ${si<sets.length-1?'sl-break':''}">
-            <div class="sl-page-header"><div class="sl-band">${bandName}</div><div class="sl-meta">${slDate}${slDate&&slVenue?'  ·  ':''}${slVenue}</div></div>
-            <div class="sl-set-name ${isEncore?'sl-encore-label':''}">${set.name||('Set '+(si+1))}</div>
-            <div class="sl-songs">${rows}</div>
-            <div class="sl-page-footer">${slName} &nbsp;·&nbsp; ${totalSongs} songs &nbsp;·&nbsp; Page ${si+1} of ${sets.length}</div>
-        </div>`;
-    }).join('');
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${slName}</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Playfair Display',Georgia,serif;background:#fff;color:#111}.sl-page{width:100%;min-height:100vh;padding:48px 56px 36px;display:flex;flex-direction:column}.sl-break{page-break-after:always;break-after:page}.sl-page-header{border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:20px}.sl-band{font-family:'Playfair Display SC',serif;font-size:2em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}.sl-meta{font-size:1em;color:#444;margin-top:6px;font-style:italic}.sl-set-name{font-family:'Playfair Display SC',serif;font-size:1.3em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#333;margin-bottom:24px}.sl-encore-label{color:#555;border-top:1px solid #ccc;padding-top:16px;margin-top:8px}.sl-songs{flex:1}.sl-row{display:flex;align-items:baseline;padding:10px 0;border-bottom:1px solid #e8e8e8}.sl-row:last-child{border-bottom:none}.sl-num{font-family:'Playfair Display SC',serif;font-size:0.95em;color:#888;min-width:48px;flex-shrink:0}.sl-title{font-size:1.85em;font-weight:700;flex:1}.sl-arrow{font-size:1.6em;font-weight:900;color:#555;padding-left:14px;flex-shrink:0;font-style:italic}.sl-page-footer{border-top:1px solid #ddd;padding-top:10px;margin-top:20px;font-size:0.78em;color:#999;letter-spacing:0.06em;text-transform:uppercase;font-style:italic}@media print{.sl-break{page-break-after:always;break-after:page}@page{size:letter portrait;margin:0}}</style>
-</head><body>${setPages}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),800));<\/script></body></html>`;
-    const win=window.open('','_blank');
-    if(!win){alert('Pop-up blocked — please allow pop-ups for this site to print setlists.');return;}
-    win.document.write(html);win.document.close();
 }
 
 async function exportSetlistToiPad(setlistIndex) {
@@ -7347,7 +7098,7 @@ async function exportSetlistToiPad(setlistIndex) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${sl.name || 'Setlist'} — DeadCetera Crib Sheet</title>
+<title>${sl.name || 'Setlist'} — Deadcetera Crib Sheet</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, 'Inter', sans-serif; background: #0f172a; color: #f1f5f9; padding: 20px; }
@@ -8424,7 +8175,7 @@ async function renderNotificationsPage(el) {
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <img src="icon-192.png" style="width:56px;height:56px;border-radius:12px;flex-shrink:0" onerror="this.style.display='none'">
             <div style="flex:1;min-width:180px">
-                <h3 style="margin:0 0 4px 0">📲 Install DeadCetera App</h3>
+                <h3 style="margin:0 0 4px 0">📲 Install Deadcetera App</h3>
                 <p style="color:var(--text-dim);font-size:0.82em;margin:0">Add to your home screen — opens like a native app, no App Store needed</p>
             </div>
             ${isStandalone
@@ -8686,7 +8437,7 @@ async function notifDeleteMember(key) {
 function notifShareAppLink(url) {
     if (navigator.share) {
         navigator.share({
-            title: 'DeadCetera — Band HQ',
+            title: 'Deadcetera — Band HQ',
             text: '🎸 Our band app — songs, setlists, rehearsals, harmonies. Add it to your home screen!',
             url: url
         }).catch(() => {});
@@ -8713,7 +8464,7 @@ function notifSendSMS(phones, msg) {
 
 async function notifSMSAppLink(url) {
     const phones = await notifGetAllPhones();
-    const msg = `🎸 Hey! Here\'s the DeadCetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
+    const msg = `🎸 Hey! Here\'s the Deadcetera band app — add it to your home screen so you always have it:\n\n${url}\n\n📱 iPhone (Safari only — not Chrome):\n1. Open the link in Safari\n2. Tap the Share button (□↑) at the bottom\n3. Tap "Add to Home Screen"\n4. Make sure "Open as Web App" is ON ✅\n5. Tap Add\n\n🤖 Android (Chrome):\n1. Open the link in Chrome\n2. Tap the Install banner that appears, OR tap ⋮ menu → "Add to Home screen"\n3. Tap Install\n\nOpens like a real app — no browser bar, works offline!`;
     if (phones.length === 0) {
         notifShowSMSCopyModal(msg, 'Add phone numbers in the Band Contact Directory to auto-fill recipients.');
         return;
@@ -8723,7 +8474,7 @@ async function notifSMSAppLink(url) {
 
 function notifTextOne(phone, name) {
     const appUrl = window.location.href.split('?')[0];
-    const msg = `Hey ${name}! 🎸 Check the DeadCetera app for updates: ${appUrl}`;
+    const msg = `Hey ${name}! 🎸 Check the Deadcetera app for updates: ${appUrl}`;
     window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`);
 }
 
@@ -8788,7 +8539,7 @@ async function notifSendPush(title, body, eventType) {
     log.unshift({ title, body, eventType, sentBy: currentUserEmail, sentAt: new Date().toISOString() });
     await saveBandDataToDrive('_band', 'notif_log', log.slice(0,50));
     if (Notification.permission === 'granted') {
-        new Notification(`🎸 DeadCetera: ${title}`, { body, icon: '/favicon.ico', tag: eventType });
+        new Notification(`🎸 Deadcetera: ${title}`, { body, icon: '/favicon.ico', tag: eventType });
         notifToast('🔔 Notification sent!');
     } else {
         notifToast('⚠️ Enable push notifications first');
@@ -8817,7 +8568,7 @@ async function notifSendAnnouncementSMS() {
     const msg = document.getElementById('announcementText')?.value.trim();
     if (!msg) { alert('Please type a message first'); return; }
     const appUrl = window.location.href.split('?')[0];
-    const full = `🎸 DeadCetera: ${msg}\n\n📱 ${appUrl}`;
+    const full = `🎸 Deadcetera: ${msg}\n\n📱 ${appUrl}`;
     const phones = await notifGetAllPhones();
     if (phones.length === 0) {
         notifShowSMSCopyModal(full, 'No phone numbers saved — tap ✏️ Edit on each member above to add their number.');
@@ -8950,7 +8701,7 @@ function renderSocialPage(el) {
             </div>`).join('')}
         </div>
         <div style="margin-top:12px;padding:10px 14px;background:rgba(102,126,234,0.08);border-radius:8px;border:1px solid rgba(102,126,234,0.2);font-size:0.8em;color:var(--text-muted)">
-            <strong style="color:var(--accent-light)">⚡ Pro tip:</strong> Since DeadCetera is on GitHub Pages, <strong>auto-publishing</strong> to social platforms requires a paid tool like Buffer ($6/mo) or Later (free tier). 
+            <strong style="color:var(--accent-light)">⚡ Pro tip:</strong> Since Deadcetera is on GitHub Pages, <strong>auto-publishing</strong> to social platforms requires a paid tool like Buffer ($6/mo) or Later (free tier). 
             Use the queue below to draft posts with text + notes, then tap "Copy & Post" to open the platform and paste instantly.
         </div>
     </div>`;
@@ -9710,7 +9461,7 @@ function metToggle() {
     _metInterval = setInterval(tick, 60000 / bpm);
 }
 
-console.log('🎸 DeadCetera Band App modules loaded');
+console.log('🎸 Deadcetera Band App modules loaded');
 
 // Register new pages
 pageRenderers.equipment = renderEquipmentPage;
@@ -9838,7 +9589,7 @@ function settingsTab(tab, btn) {
         <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
         
     about: `
-        <div class="app-card"><h3>ℹ️ About DeadCetera</h3>
+        <div class="app-card"><h3>ℹ️ About Deadcetera</h3>
             <div style="text-align:center;padding:16px 0">
                 <div style="font-size:2.5em;margin-bottom:8px">🎸</div>
                 <div style="font-size:1.3em;font-weight:800;background:linear-gradient(135deg,#667eea,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${bn}</div>
@@ -9945,247 +9696,10 @@ async function submitFeedback() {
 }
 
 // ---- EQUIPMENT (#28) ----
-// ============================================================================
-// EQUIPMENT — full CRUD with photo upload
-// ============================================================================
-
-const EQ_FIELDS = [
-    { l: 'Name *',      id: 'eqN', type: '' },
-    { l: 'Category',    id: 'eqC', type: 'select:amp,guitar,pedal,mic,cable,pa,drum,keys,other' },
-    { l: 'Brand',       id: 'eqB', type: '' },
-    { l: 'Model',       id: 'eqM', type: '' },
-    { l: 'Owner',       id: 'eqO', type: 'members' },
-    { l: 'Serial #',    id: 'eqS', type: '' },
-    { l: 'Manual URL',  id: 'eqU', type: '' },
-    { l: 'Value ($)',   id: 'eqV', type: 'number' },
-];
-
-function renderEquipmentPage(el) {
-    el.innerHTML = `
-        <div class="page-header">
-            <h1>🎛️ Equipment</h1>
-            <p>Band gear inventory</p>
-        </div>
-        <button class="btn btn-primary" onclick="showEquipForm()" style="margin-bottom:16px">+ Add Gear</button>
-        <div id="equipFormContainer"></div>
-        <div id="equipList"></div>`;
-    loadEquipment();
-}
-
-async function loadEquipment() {
-    const data = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
-    const el = document.getElementById('equipList');
-    if (!el) return;
-
-    if (!data.length) {
-        el.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet. Add your first piece of gear above.</div>';
-        return;
-    }
-
-    // Group by owner
-    const groups = {};
-    data.forEach((item, i) => {
-        item._idx = i;
-        const key = item.owner || 'shared';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(item);
-    });
-
-    const catIcons = { amp:'🔊', guitar:'🎸', pedal:'🎚️', mic:'🎤', cable:'🔌', pa:'📢', drum:'🥁', keys:'🎹', other:'🎛️' };
-
-    el.innerHTML = Object.entries(groups).map(([owner, items]) => `
-        <div class="app-card" style="margin-bottom:14px">
-            <h3 style="margin:0 0 12px;color:var(--accent-light)">${bandMembers[owner]?.name || 'Shared / Band'}</h3>
-            ${items.map(item => `
-            <div id="equipItem_${item._idx}" style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
-                <div style="display:flex;gap:12px;align-items:flex-start">
-                    ${item.photo ? `
-                    <div onclick="showEquipPhoto('${item._idx}')" style="cursor:pointer;flex-shrink:0">
-                        <img src="${item.photo}" alt="${item.name}"
-                            style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
-                    </div>` : `
-                    <div onclick="showEquipForm(${item._idx})" title="Add photo"
-                        style="width:64px;height:64px;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;color:var(--text-dim);font-size:1.4em">
-                        📷
-                    </div>`}
-                    <div style="flex:1;min-width:0">
-                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-                            <span style="font-weight:700;font-size:0.95em">${item.name || ''}</span>
-                            ${item.category ? `<span style="font-size:0.8em;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:1px 8px;border-radius:10px">${catIcons[item.category]||'🎛️'} ${item.category}</span>` : ''}
-                            ${item.value ? `<span style="font-size:0.78em;color:var(--text-dim)">$${item.value}</span>` : ''}
-                        </div>
-                        <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:4px">
-                            ${[item.brand, item.model].filter(Boolean).join(' ')}
-                            ${item.serial ? `<span style="color:var(--text-dim)"> · S/N: ${item.serial}</span>` : ''}
-                        </div>
-                        ${item.notes ? `<div style="font-size:0.8em;color:var(--text-dim);font-style:italic">${item.notes}</div>` : ''}
-                        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-                            ${item.manualUrl ? `<a href="${item.manualUrl}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:0.78em">📄 Manual</a>` : ''}
-                            <button onclick="showEquipForm(${item._idx})" class="btn btn-sm btn-ghost" style="font-size:0.78em">✏️ Edit</button>
-                            <button onclick="deleteEquip(${item._idx})" class="btn btn-sm btn-ghost" style="font-size:0.78em;color:var(--red,#f87171)">🗑️ Delete</button>
-                        </div>
-                    </div>
-                </div>
-            </div>`).join('')}
-        </div>`).join('');
-}
-
-function showEquipForm(editIdx) {
-    const fc = document.getElementById('equipFormContainer');
-    if (!fc) return;
-
-    // Get existing data if editing
-    let existing = null;
-    if (editIdx !== undefined) {
-        // We need to read current data — do async then re-render form
-        loadBandDataFromDrive('_band', 'equipment').then(data => {
-            existing = toArray(data || [])[editIdx] || {};
-            fc.innerHTML = _buildEquipForm(editIdx, existing);
-            fc.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-        return;
-    }
-
-    fc.innerHTML = _buildEquipForm(undefined, {});
-    fc.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function _buildEquipForm(editIdx, d) {
-    const isEdit = editIdx !== undefined;
-    const selects = { amp:'amp', guitar:'guitar', pedal:'pedal', mic:'mic', cable:'cable', pa:'pa', drum:'drum', keys:'keys', other:'other' };
-    const fields = EQ_FIELDS.map(({ l, id, type }) => {
-        let input;
-        if (type === 'members') {
-            input = `<select class="app-select" id="${id}">
-                <option value="">Shared</option>
-                ${Object.entries(bandMembers).map(([k, m]) =>
-                    `<option value="${k}" ${d.owner === k ? 'selected' : ''}>${m.name}</option>`
-                ).join('')}
-            </select>`;
-        } else if (type.startsWith('select:')) {
-            const opts = type.slice(7).split(',');
-            input = `<select class="app-select" id="${id}">
-                ${opts.map(v => `<option value="${v}" ${d.category === v ? 'selected' : ''}>${v}</option>`).join('')}
-            </select>`;
-        } else {
-            const val = d[id.slice(2).toLowerCase()] || d[{ eqN:'name',eqB:'brand',eqM:'model',eqS:'serial',eqU:'manualUrl',eqV:'value' }[id]] || '';
-            input = `<input class="app-input" id="${id}" ${type === 'number' ? 'type="number"' : ''} placeholder="${l.replace(' *','')}" value="${val}">`;
-        }
-        return `<div class="form-row"><label class="form-label">${l}</label>${input}</div>`;
-    }).join('');
-
-    const photoPreview = d.photo
-        ? `<img id="equipPhotoPreview" src="${d.photo}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:6px;display:block">`
-        : `<div id="equipPhotoPreview" style="display:none"></div>`;
-
-    return `
-    <div class="app-card" style="margin-bottom:16px;border:1px solid var(--accent,#6366f1)">
-        <h3 style="margin:0 0 14px;color:var(--accent-light)">${isEdit ? '✏️ Edit Gear' : '➕ Add Gear'}</h3>
-        <div class="form-grid">
-            ${fields}
-        </div>
-        <div class="form-row"><label class="form-label">Notes</label>
-            <textarea class="app-textarea" id="eqNotes" style="min-height:60px">${d.notes || ''}</textarea>
-        </div>
-        <div class="form-row">
-            <label class="form-label">Photo</label>
-            <div>
-                <input type="file" id="equipPhotoFile" accept="image/*" onchange="equipPhotoPreview(this)"
-                    style="font-size:0.85em;color:var(--text-muted);background:transparent;border:none;padding:0;width:100%">
-                ${photoPreview}
-                ${d.photo ? `<button onclick="equipRemovePhoto()" class="btn btn-sm btn-ghost" style="font-size:0.75em;margin-top:4px;color:var(--red,#f87171)">✕ Remove photo</button>` : ''}
-            </div>
-        </div>
-        <input type="hidden" id="equipPhotoData" value="${d.photo || ''}">
-        <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-primary" onclick="saveEquip(${isEdit ? editIdx : ''})">💾 ${isEdit ? 'Save Changes' : 'Add Gear'}</button>
-            <button class="btn btn-ghost" onclick="document.getElementById('equipFormContainer').innerHTML='';loadEquipment()">Cancel</button>
-        </div>
-    </div>`;
-}
-
-function equipPhotoPreview(input) {
-    const file = input.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        // Resize to max 800px to keep Firebase storage reasonable
-        const img = new Image();
-        img.onload = () => {
-            const maxDim = 800;
-            let w = img.width, h = img.height;
-            if (w > maxDim || h > maxDim) {
-                if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
-                else       { w = Math.round(w * maxDim / h); h = maxDim; }
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-            document.getElementById('equipPhotoData').value = dataUrl;
-            const prev = document.getElementById('equipPhotoPreview');
-            if (prev) { prev.src = dataUrl; prev.style.display = 'block'; Object.assign(prev, { tagName:'IMG' }); }
-            // Replace preview div with img if it was a div
-            const container = document.getElementById('equipPhotoData').previousElementSibling?.querySelector('#equipPhotoPreview');
-        };
-        img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-}
-
-function equipRemovePhoto() {
-    document.getElementById('equipPhotoData').value = '';
-    const prev = document.getElementById('equipPhotoPreview');
-    if (prev) { prev.src=''; prev.style.display='none'; }
-}
-
-async function saveEquip(editIdx) {
-    const eq = {
-        name:      document.getElementById('eqN')?.value.trim(),
-        category:  document.getElementById('eqC')?.value,
-        brand:     document.getElementById('eqB')?.value.trim(),
-        model:     document.getElementById('eqM')?.value.trim(),
-        owner:     document.getElementById('eqO')?.value,
-        serial:    document.getElementById('eqS')?.value.trim(),
-        manualUrl: document.getElementById('eqU')?.value.trim(),
-        value:     document.getElementById('eqV')?.value,
-        notes:     document.getElementById('eqNotes')?.value.trim(),
-        photo:     document.getElementById('equipPhotoData')?.value || '',
-    };
-    if (!eq.name) { alert('Name is required.'); return; }
-
-    const all = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
-    if (editIdx !== undefined) {
-        all[editIdx] = eq;
-    } else {
-        all.push(eq);
-    }
-    await saveBandDataToDrive('_band', 'equipment', all);
-    document.getElementById('equipFormContainer').innerHTML = '';
-    showToast(editIdx !== undefined ? '✅ Gear updated' : '✅ Gear added');
-    loadEquipment();
-}
-
-async function deleteEquip(idx) {
-    if (!confirm('Delete this gear item?')) return;
-    const all = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
-    all.splice(idx, 1);
-    await saveBandDataToDrive('_band', 'equipment', all);
-    showToast('Gear deleted');
-    loadEquipment();
-}
-
-function showEquipPhoto(idx) {
-    loadBandDataFromDrive('_band', 'equipment').then(data => {
-        const item = toArray(data || [])[idx];
-        if (!item?.photo) return;
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer';
-        modal.onclick = () => modal.remove();
-        modal.innerHTML = `<img src="${item.photo}" style="max-width:90vw;max-height:85vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.8)" alt="${item.name}">`;
-        document.body.appendChild(modal);
-    });
-}
+function renderEquipmentPage(el){el.innerHTML=`<div class="page-header"><h1>🎛️ Equipment</h1><p>Band gear inventory</p></div><button class="btn btn-primary" onclick="addEquipment()" style="margin-bottom:12px">+ Add Gear</button><div id="equipList"></div>`;loadEquipment();}
+async function loadEquipment(){const d=toArray(await loadBandDataFromDrive('_band','equipment')||[]);const el=document.getElementById('equipList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet.</div>';return;}const g={};d.forEach(i=>{const o=i.owner||'shared';if(!g[o])g[o]=[];g[o].push(i);});el.innerHTML=Object.entries(g).map(([o,items])=>`<div class="app-card"><h3>${bandMembers[o]?.name||'Shared/Band'}</h3>${items.map(i=>`<div class="list-item" style="padding:8px 10px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${i.name||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${[i.category,i.brand,i.model].filter(Boolean).join(' · ')}</div></div>${i.manualUrl?'<a href="'+i.manualUrl+'" target="_blank" class="btn btn-sm btn-ghost">📄</a>':''}</div>`).join('')}</div>`).join('');}
+function addEquipment(){const el=document.getElementById('equipList');el.innerHTML=`<div class="app-card"><h3>Add Gear</h3><div class="form-grid">${[['Name','eqN',''],['Category','eqC','select:amp,guitar,pedal,mic,cable,pa,drum,keys,other'],['Brand','eqB',''],['Model','eqM',''],['Owner','eqO','members'],['Serial #','eqS',''],['Manual URL','eqU',''],['Value ($)','eqV','number']].map(([l,id,t])=>{if(t==='members')return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'">'+m.name+'</option>').join('')+'</select></div>';if(t.startsWith('select:'))return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(v=>'<option value="'+v+'">'+v+'</option>').join('')+'</select></div>';return'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'"></div>';}).join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="eqNotes"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveEquip()">💾 Save</button><button class="btn btn-ghost" onclick="loadEquipment()">Cancel</button></div></div>`+el.innerHTML;}
+async function saveEquip(){const eq={name:document.getElementById('eqN')?.value,category:document.getElementById('eqC')?.value,brand:document.getElementById('eqB')?.value,model:document.getElementById('eqM')?.value,owner:document.getElementById('eqO')?.value,serial:document.getElementById('eqS')?.value,manualUrl:document.getElementById('eqU')?.value,value:document.getElementById('eqV')?.value,notes:document.getElementById('eqNotes')?.value};if(!eq.name){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','equipment')||[]);ex.push(eq);await saveBandDataToDrive('_band','equipment',ex);alert('✅ Saved!');loadEquipment();}
 
 // ---- CONTACTS (#27) ----
 function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
@@ -10350,8 +9864,108 @@ function getSongHistoryTooltip(title) {
 console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
 
 // ============================================================================
-// HELP & GUIDE — defined in help.js (loaded after app.js in index.html)
+// HELP & GUIDE
 // ============================================================================
+const helpTopics = [
+    { id:'getting-started', icon:'🚀', title:'Getting Started', content:`
+        <p><strong>Welcome to Deadcetera!</strong> This app is your band's central hub for learning songs, managing setlists, tracking gigs, and collaborating on harmonies.</p>
+        <ol>
+            <li><strong>Sign In</strong> — Click "Connect" in the top right to sign in with Google. This syncs your data across all band members via Firebase.</li>
+            <li><strong>Pick a Song</strong> — Use the Song Library to search or filter by band (GD, JGB, WSP, Phish). Click a song to see its resources.</li>
+            <li><strong>Learn It</strong> — Each song has tabs/chords, reference versions, practice tracks, and YouTube lessons.</li>
+            <li><strong>Track Progress</strong> — Set song statuses (Gig Ready, Needs Polish, On Deck, This Week) so everyone knows where things stand.</li>
+        </ol>`},
+    { id:'song-library', icon:'🎵', title:'Song Library', content:`
+        <p>The Song Library (Step 1) contains all ${typeof allSongs!=='undefined'?allSongs.length:'350+' } songs in the band's repertoire.</p>
+        <p><strong>Filters:</strong> Use the Band dropdown to show only GD, JGB, WSP, or Phish songs. Use Status to filter by readiness. Check "Harmonies" to see only songs with documented vocal parts.</p>
+        <p><strong>Badges:</strong> 🎤 = has vocal harmonies documented. Status pills (READY, POLISH, ON DECK, THIS WEEK) show the song's current state.</p>
+        <p><strong>Selecting a song</strong> opens its full resource page with tabs, reference versions, practice tracks, harmonies, and performance notes.</p>`},
+    { id:'reference-versions', icon:'🎧', title:'Reference Versions & Voting', content:`
+        <p>Each song can have multiple reference versions (Spotify, YouTube, Apple Music, Archive.org, etc.).</p>
+        <p><strong>Adding:</strong> Click "+ Add Reference Version" and paste any music URL.</p>
+        <p><strong>Voting:</strong> Band members vote on their preferred version. When 3+ members vote for the same version, it becomes the "Band Choice" (👑).</p>
+        <p><strong>Platform support:</strong> Spotify, YouTube, Apple Music, Tidal, SoundCloud, Archive.org, and any direct link.</p>`},
+    { id:'harmonies', icon:'🎤', title:'Harmonies & Vocal Parts', content:`
+        <p>The Harmony Section Builder lets you document which songs have vocal harmonies and who sings what.</p>
+        <p><strong>Adding harmonies:</strong> Click "Add Harmony Section" on any song. You can paste the lyrics, tag sections (Verse, Chorus, Bridge), and assign singers to each part.</p>
+        <p><strong>Part tracking:</strong> Each section shows who sings lead, who harmonizes, and practice notes for that section.</p>
+        <p><strong>Recording:</strong> The multi-track recorder (Step 5) lets you record harmony parts with metronome, looping, and individual track mixing.</p>`},
+    { id:'practice-tracks', icon:'🎸', title:'Practice Tracks & Moises', content:`
+        <p>Practice tracks are organized by instrument (Vocals, Lead Guitar, Rhythm Guitar, Bass, Keys, Drums).</p>
+        <p><strong>Adding tracks:</strong> Upload audio files or paste URLs to learning resources for each instrument.</p>
+        <p><strong>Moises Integration:</strong> Use the Moises workflow to separate stems from recordings:</p>
+        <ol>
+            <li>Add a YouTube link or upload an MP3</li>
+            <li>Go to moises.ai and paste the link</li>
+            <li>Download the separated stems</li>
+            <li>Upload stems back to Deadcetera</li>
+        </ol>
+        <p><strong>Show Splitter:</strong> For long recordings (>20 min), use the Show Splitter to note timestamps and trim clips before sending to Moises.</p>`},
+    { id:'setlists', icon:'📋', title:'Building Setlists', content:`
+        <p>Create setlists for upcoming gigs with drag-and-drop song ordering.</p>
+        <p><strong>Creating:</strong> Click "+ New Setlist", name it, set the date/venue, then search and add songs to each set.</p>
+        <p><strong>Sets:</strong> Add multiple sets, encores, and soundcheck lists. Mark transitions between songs with the → button.</p>
+        <p><strong>Gig History:</strong> Hover over any song in a setlist to see its gig history — where and when you've played it before, and its position (opener, closer, encore).</p>`},
+    { id:'gigs', icon:'🎤', title:'Gigs & Venues', content:`
+        <p>Track past and upcoming shows with venue details, pay, sound person, and linked setlists.</p>
+        <p><strong>Seed Data:</strong> Click "🌱 Seed Demo Data" on the Gigs page to import your past gig history from the master spreadsheet.</p>
+        <p><strong>Venues:</strong> Store venue info including address, capacity, stage size, PA system, load-in details, parking, and booking contacts.</p>`},
+    { id:'status-system', icon:'📊', title:'Song Status System', content:`
+        <p>Every song can have a status to track band readiness:</p>
+        <p>🎯 <strong>THIS WEEK</strong> — Focus songs for this week's rehearsal<br>
+        ✅ <strong>GIG READY</strong> — Solid enough to play live<br>
+        ⚠️ <strong>NEEDS POLISH</strong> — We know it but need more work<br>
+        📚 <strong>ON DECK</strong> — Next up to learn</p>
+        <p>Set status from any song's detail page. Filter the Song Library by status to focus rehearsals.</p>`},
+    { id:'recorder', icon:'🎙️', title:'Multi-Track Recorder', content:`
+        <p>Record harmony parts and practice takes directly in the app.</p>
+        <p><strong>Features:</strong> Built-in metronome with count-in, looping, multiple takes, individual track mixing (volume, pan, mute/solo), latency calibration, and WAV export.</p>
+        <p><strong>Karaoke mode:</strong> Play a backing track while recording your part.</p>
+        <p><strong>Tips:</strong> Use headphones to avoid bleed. Calibrate latency once for your device. Record in a quiet space.</p>`},
+    { id:'tools', icon:'🛠️', title:'Tools (Tuner, Metronome)', content:`
+        <p><strong>Guitar Tuner:</strong> Uses your device microphone to detect pitch. Supports standard and alternate tunings.</p>
+        <p><strong>Metronome:</strong> Tap tempo, adjustable BPM, time signatures, and accent patterns. BPM is saved per-song.</p>`},
+    { id:'data-sync', icon:'☁️', title:'Data & Sync', content:`
+        <p>All band data syncs through Firebase Realtime Database. When you sign in with Google, your changes are visible to all band members.</p>
+        <p><strong>What syncs:</strong> Song statuses, reference versions & votes, harmonies, practice tracks, rehearsal notes, setlists, gigs, venues, and performance tips.</p>
+        <p><strong>What's local:</strong> Your instrument preference, display settings, and search history stay on your device.</p>
+        <p><strong>Backup:</strong> Use Settings → Data → Export All Data to download a JSON backup of your local data.</p>`},
+    { id:'troubleshooting', icon:'🔧', title:'Troubleshooting', content:`
+        <p><strong>Can't sign in?</strong> Try a different browser. Edge sometimes blocks Google API calls. Chrome works best.</p>
+        <p><strong>Data not loading?</strong> Check your internet connection. Try signing out and back in. Use Settings → Data → Clear Cache if stale.</p>
+        <p><strong>Audio not working on iPhone?</strong> iOS requires a user gesture before playing audio. Tap a play button first.</p>
+        <p><strong>Songs not filtering?</strong> Wait for statuses to load (they cache in the background on first sign-in).</p>
+        <p><strong>Lost data?</strong> Firebase stores everything server-side. Sign in again to restore. Local-only data can be exported/imported via Settings.</p>`},
+];
+
+function renderHelpPage(el) {
+    el.innerHTML = `
+    <div class="page-header"><h1>❓ Help & Guide</h1><p>How to use Deadcetera</p></div>
+    <div style="margin-bottom:16px">
+        <input class="app-input" id="helpSearch" placeholder="Search help topics..." oninput="filterHelpTopics(this.value)" style="max-width:400px">
+    </div>
+    <div id="helpTopics">
+        ${helpTopics.map(t => `
+            <details class="app-card" style="cursor:pointer" id="help-${t.id}">
+                <summary style="font-weight:600;font-size:0.95em;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px">
+                    <span style="font-size:1.2em">${t.icon}</span>
+                    <span>${t.title}</span>
+                    <span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">▶</span>
+                </summary>
+                <div style="padding:10px 0 4px;font-size:0.88em;color:var(--text-muted);line-height:1.6">${t.content}</div>
+            </details>
+        `).join('')}
+    </div>`;
+}
+
+function filterHelpTopics(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('#helpTopics details').forEach(d => {
+        const text = d.textContent.toLowerCase();
+        d.style.display = text.includes(q) ? '' : 'none';
+        if (q.length > 2 && text.includes(q)) d.open = true;
+    });
+}
 // PLAYLISTS — PHASE 1: DATA LAYER
 // ============================================================================
 // All playlist data lives in Firebase (via saveBandDataToDrive / loadBandDataFromDrive)
