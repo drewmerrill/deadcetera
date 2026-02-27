@@ -4517,6 +4517,24 @@ function saveGeniusApiKey(key) {
     localStorage.setItem('deadcetera_genius_key', key.trim());
 }
 
+function toggleGeniusKeyRow() {
+    const row = document.getElementById('geniusKeyRow');
+    if (!row) return;
+    const isHidden = row.style.display === 'none' || row.style.display === '';
+    row.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden) {
+        const input = document.getElementById('geniusApiKeyInput');
+        if (input) { input.value = getGeniusApiKey(); input.focus(); }
+    }
+}
+
+function saveAndHideGeniusKey() {
+    const input = document.getElementById('geniusApiKeyInput');
+    if (input) saveGeniusApiKey(input.value);
+    const row = document.getElementById('geniusKeyRow');
+    if (row) row.style.display = 'none';
+}
+
 async function fetchLyricsFromGenius(songTitle) {
     const apiKey = getGeniusApiKey();
     if (!apiKey) {
@@ -4691,12 +4709,12 @@ async function addFirstHarmonySection(songTitle) {
                     <button class="btn btn-sm btn-primary" onclick="harmonyFetchLyrics(this.dataset.song)" data-song="${songTitle.replace(/"/g,'&quot;')}">
                         🎵 Fetch from Genius
                     </button>
-                    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('geniusKeyRow').style.display=document.getElementById('geniusKeyRow').style.display==='none'?'flex':'none'" title="Set Genius API Key">🔑</button>
+                    <button class="btn btn-sm btn-ghost" onclick="toggleGeniusKeyRow()" title="Set Genius API Key">🔑</button>
                 </div>
             </div>
-            <div id="geniusKeyRow" style="display:${getGeniusApiKey()?'none':'flex'};gap:6px;margin-bottom:8px;align-items:center">
+            <div id="geniusKeyRow" style="display:none;gap:6px;margin-bottom:8px;align-items:center">
                 <input class="app-input" id="geniusApiKeyInput" placeholder="Paste Genius API key here..." value="${getGeniusApiKey()}" style="flex:1;margin:0;font-size:0.82em">
-                <button class="btn btn-sm btn-success" onclick="saveGeniusApiKey(document.getElementById('geniusApiKeyInput').value);document.getElementById('geniusKeyRow').style.display='none'">Save Key</button>
+                <button class="btn btn-sm btn-success" onclick="saveAndHideGeniusKey()">Save Key</button>
                 <a href="https://genius.com/api-clients" target="_blank" style="font-size:0.75em;color:var(--accent-light);white-space:nowrap">Get free key ↗</a>
             </div>
             <div id="lyricsStatus" style="display:none;padding:8px 12px;background:rgba(102,126,234,0.1);border-radius:6px;font-size:0.82em;color:var(--accent-light);margin-bottom:8px"></div>

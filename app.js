@@ -4517,6 +4517,24 @@ function saveGeniusApiKey(key) {
     localStorage.setItem('deadcetera_genius_key', key.trim());
 }
 
+function toggleGeniusKeyRow() {
+    const row = document.getElementById('geniusKeyRow');
+    if (!row) return;
+    const isHidden = row.style.display === 'none' || row.style.display === '';
+    row.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden) {
+        const input = document.getElementById('geniusApiKeyInput');
+        if (input) { input.value = getGeniusApiKey(); input.focus(); }
+    }
+}
+
+function saveAndHideGeniusKey() {
+    const input = document.getElementById('geniusApiKeyInput');
+    if (input) saveGeniusApiKey(input.value);
+    const row = document.getElementById('geniusKeyRow');
+    if (row) row.style.display = 'none';
+}
+
 async function fetchLyricsFromGenius(songTitle) {
     const apiKey = getGeniusApiKey();
     if (!apiKey) {
@@ -4691,7 +4709,7 @@ async function addFirstHarmonySection(songTitle) {
                     <button class="btn btn-sm btn-primary" onclick="harmonyFetchLyrics(this.dataset.song)" data-song="${songTitle.replace(/"/g,'&quot;')}">
                         🎵 Fetch from Genius
                     </button>
-                    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('geniusKeyRow').style.display=document.getElementById('geniusKeyRow').style.display==='none'?'flex':'none'" title="Set Genius API Key">🔑</button>
+                    <button class="btn btn-sm btn-ghost" onclick="toggleGeniusKeyRow()" title="Set Genius API Key">🔑</button>
                 </div>
         
         <div style="margin-bottom:12px">
