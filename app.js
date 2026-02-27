@@ -4430,11 +4430,14 @@ console.log('🔥 Firebase integration loaded');
 // ============================================================================
 
 async function loadPartNotes(songTitle, sectionIndex, singer) {
-    return await loadPartNotesFromDrive(songTitle, sectionIndex, singer);
+    const key = `part_notes_${sectionIndex}_${singer}`;
+    const data = await loadBandDataFromDrive(songTitle, key);
+    return Array.isArray(data) ? data : (data ? [data] : []);
 }
 
 async function savePartNotes(songTitle, sectionIndex, singer, notes) {
-    await savePartNotesToDrive(songTitle, sectionIndex, singer, notes);
+    const key = `part_notes_${sectionIndex}_${singer}`;
+    await saveBandDataToDrive(songTitle, key, notes);
     logActivity('part_notes', { song: songTitle, extra: singer });
 }
 
@@ -4510,7 +4513,7 @@ async function loadLeadSinger(songTitle) {
 // ============================================================================
 
 function getGeniusApiKey() {
-    return localStorage.getItem('deadcetera_genius_key') || '';
+    return localStorage.getItem('deadcetera_genius_key') || '4doT-zIl3i_5lLprnoL2y-yfEDMqCsZ8DgzKKYne6dLgIlRcKgb4oEtFRux_cFFL';
 }
 
 function saveGeniusApiKey(key) {
@@ -4711,6 +4714,15 @@ async function addFirstHarmonySection(songTitle) {
                     </button>
                     <button class="btn btn-sm btn-ghost" onclick="toggleGeniusKeyRow()" title="Set Genius API Key">🔑</button>
                 </div>
+            </div>
+            <div id="geniusKeyRow" style="display:none;gap:6px;margin-bottom:8px;align-items:center">
+                <input class="app-input" id="geniusApiKeyInput" placeholder="Paste Genius API key here..." style="flex:1;margin:0;font-size:0.82em">
+                <button class="btn btn-sm btn-success" onclick="saveAndHideGeniusKey()">Save Key</button>
+                <a href="https://genius.com/api-clients" target="_blank" style="font-size:0.75em;color:var(--accent-light);white-space:nowrap">Get free key ↗</a>
+            </div>
+            <div id="lyricsStatus" style="display:none;padding:8px 12px;background:rgba(102,126,234,0.1);border-radius:6px;font-size:0.82em;color:var(--accent-light);margin-bottom:8px"></div>
+            <textarea class="app-textarea" id="harmLyrics" rows="12" placeholder="Paste song lyrics here, or click Fetch from Genius above...">${existingLyrics}</textarea>
+        </div>
         
         <div style="margin-bottom:12px">
             <label class="form-label" style="margin-bottom:6px;display:block">Tag Sections with Harmonies</label>

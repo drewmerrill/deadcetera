@@ -4429,11 +4429,14 @@ console.log('🔥 Firebase integration loaded');
 // ============================================================================
 
 async function loadPartNotes(songTitle, sectionIndex, singer) {
-    return await loadPartNotesFromDrive(songTitle, sectionIndex, singer);
+    const key = `part_notes_${sectionIndex}_${singer}`;
+    const data = await loadBandDataFromDrive(songTitle, key);
+    return Array.isArray(data) ? data : (data ? [data] : []);
 }
 
 async function savePartNotes(songTitle, sectionIndex, singer, notes) {
-    await savePartNotesToDrive(songTitle, sectionIndex, singer, notes);
+    const key = `part_notes_${sectionIndex}_${singer}`;
+    await saveBandDataToDrive(songTitle, key, notes);
     logActivity('part_notes', { song: songTitle, extra: singer });
 }
 
@@ -4510,7 +4513,7 @@ async function loadLeadSinger(songTitle) {
 // ============================================================================
 
 function getGeniusApiKey() {
-    return localStorage.getItem('deadcetera_genius_key') || '';
+    return localStorage.getItem('deadcetera_genius_key') || '4doT-zIl3i_5lLprnoL2y-yfEDMqCsZ8DgzKKYne6dLgIlRcKgb4oEtFRux_cFFL';
 }
 
 function saveGeniusApiKey(key) {
