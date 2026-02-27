@@ -7243,7 +7243,7 @@ const pageRenderers = {
     admin: renderSettingsPage,
     social: renderSocialPage,
     notifications: renderNotificationsPage,
-    help: renderHelpPage
+    help: (el) => (typeof renderHelpPage === 'function' ? renderHelpPage(el) : (el.innerHTML = '<p>Help loading...</p>'))
 };
 
 // ============================================================================
