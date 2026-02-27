@@ -1,5 +1,6 @@
 // ============================================================================
 // DEADCETERA WORKFLOW APP v5.5.0 - Firebase · Playlists · Mobile-Ready
+// DEV BRANCH — safe to experiment here
 // Last updated: 2026-02-26
 // ============================================================================
 
@@ -393,12 +394,13 @@ function getPlayButtonLabel(version) {
 function getPlayButtonStyle(version) {
     const url = (version.url || version.spotifyUrl || '').toLowerCase();
     const p = version.platform || '';
-    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000;color:white;';
-    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44;color:white;';
-    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca;color:white;';
-    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700;color:white;';
-    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000;color:white;';
-    return 'color:white;';
+    if (p === 'spotify' || url.includes('spotify'))   return 'background:#1db954!important;color:#ffffff!important;';
+    if (p === 'youtube' || url.includes('youtube') || url.includes('youtu.be')) return 'background:#ff0000!important;color:#ffffff!important;';
+    if (p === 'apple_music' || url.includes('music.apple')) return 'background:#fc3c44!important;color:#ffffff!important;';
+    if (p === 'archive' || url.includes('archive.org')) return 'background:#428bca!important;color:#ffffff!important;';
+    if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700!important;color:#ffffff!important;';
+    if (p === 'tidal' || url.includes('tidal')) return 'background:#000000!important;color:#ffffff!important;';
+    return 'background:#667eea!important;color:#ffffff!important;';
 }
 
 // ============================================================================
@@ -2457,7 +2459,7 @@ async function renderRefVersions(songTitle, bandData) {
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
                 <button onclick="deleteRefVersion(${index})" 
-                    style="position: absolute; top: 10px; right: 10px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
+                    style="position: absolute; top: 10px; right: 10px; background: #ef4444!important; color: #ffffff!important; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
                 
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
@@ -3412,7 +3414,19 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         `;
     }));
     
-    container.innerHTML = (await Promise.all(sectionsHTML)).join('');
+    // Show full lyrics if available
+    const lyricsText = bandData.harmonies && bandData.harmonies.lyrics;
+    const lyricsBlock = lyricsText ? `
+        <div id="harmonyLyricsBlock" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <strong style="color:#818cf8;font-size:0.9em;">🎤 Lyrics</strong>
+                <button onclick="document.getElementById('harmonyLyricsBlock').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85em">Hide</button>
+            </div>
+            <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.7;margin:0">${lyricsText.replace(/</g,'&lt;')}</pre>
+        </div>
+    ` : '';
+
+    container.innerHTML = lyricsBlock + (await Promise.all(sectionsHTML)).join('');
     console.log('🎤 Harmony rendering complete');
     } catch (error) {
         console.error('❌ renderHarmoniesEnhanced error:', error);
@@ -4416,14 +4430,11 @@ console.log('🔥 Firebase integration loaded');
 // ============================================================================
 
 async function loadPartNotes(songTitle, sectionIndex, singer) {
-    const key = `part_notes_${sectionIndex}_${singer}`;
-    const data = await loadBandDataFromDrive(songTitle, key);
-    return Array.isArray(data) ? data : (data ? [data] : []);
+    return await loadPartNotesFromDrive(songTitle, sectionIndex, singer);
 }
 
 async function savePartNotes(songTitle, sectionIndex, singer, notes) {
-    const key = `part_notes_${sectionIndex}_${singer}`;
-    await saveBandDataToDrive(songTitle, key, notes);
+    await savePartNotesToDrive(songTitle, sectionIndex, singer, notes);
     logActivity('part_notes', { song: songTitle, extra: singer });
 }
 

@@ -3413,7 +3413,19 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         `;
     }));
     
-    container.innerHTML = (await Promise.all(sectionsHTML)).join('');
+    // Show full lyrics if available
+    const lyricsText = bandData.harmonies && bandData.harmonies.lyrics;
+    const lyricsBlock = lyricsText ? `
+        <div id="harmonyLyricsBlock" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <strong style="color:#818cf8;font-size:0.9em;">🎤 Lyrics</strong>
+                <button onclick="document.getElementById('harmonyLyricsBlock').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85em">Hide</button>
+            </div>
+            <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.7;margin:0">${lyricsText.replace(/</g,'&lt;')}</pre>
+        </div>
+    ` : '';
+
+    container.innerHTML = lyricsBlock + (await Promise.all(sectionsHTML)).join('');
     console.log('🎤 Harmony rendering complete');
     } catch (error) {
         console.error('❌ renderHarmoniesEnhanced error:', error);
