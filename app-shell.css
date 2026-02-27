@@ -878,3 +878,13 @@ button[style*="background: var(--red)"],
     color: #ffffff !important;
     -webkit-text-fill-color: #ffffff !important;
 }
+
+/* ── Spotify play button: force white text always ── */
+.spotify-play-btn,
+.spotify-play-btn *,
+.spotify-play-btn span,
+.spotify-play-btn svg {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    fill: #ffffff !important;
+}
