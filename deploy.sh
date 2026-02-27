@@ -1,23 +1,29 @@
 #!/bin/bash
-# deploy.sh — Run this instead of raw git push
-# Bumps the service worker cache version so all phones update within ~60 seconds
+# DeadCetera deploy script
+# Usage: deploy.sh "commit message"
+# Run from anywhere — copies latest files from Downloads and pushes to GitHub
 
-set -e
+REPO_DIR="/Users/drewmerrill/Documents/GitHub/deadcetera"
+DOWNLOADS="$HOME/Downloads"
+MSG="${1:-Auto-update from Claude}"
 
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-SW_FILE="service-worker.js"
+echo "🔍 Looking for updated files in ~/Downloads..."
 
-echo "🚀 Deadcetera Deploy — $TIMESTAMP"
+copied=0
+for file in app.js app-dev.js app-shell.css index.html help.js service-worker.js data.js push.py; do
+    if [ -f "$DOWNLOADS/$file" ]; then
+        cp "$DOWNLOADS/$file" "$REPO_DIR/$file"
+        echo "📋 Copied $file"
+        rm "$DOWNLOADS/$file"
+        copied=$((copied + 1))
+    fi
+done
 
-# Bump the cache version in service-worker.js
-sed -i '' "s/const CACHE_NAME = 'deadcetera-v[^']*'/const CACHE_NAME = 'deadcetera-$TIMESTAMP'/" "$SW_FILE"
-echo "✅ Cache version bumped to: deadcetera-$TIMESTAMP"
-
-# Stage, commit, push
-git add -A
-git commit -m "Deploy $TIMESTAMP"
-git push
+if [ $copied -eq 0 ]; then
+    echo "⚠️  No new files found in ~/Downloads"
+    exit 1
+fi
 
 echo ""
-echo "✅ Deployed! Band members' apps will auto-update within ~60 seconds."
-echo "   (They may see a brief reload — that's normal and means they got the update)"
+cd "$REPO_DIR"
+python3 push.py "$MSG"
