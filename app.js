@@ -4505,6 +4505,166 @@ async function loadLeadSinger(songTitle) {
     return data ? data.singer : '';
 }
 
+// ============================================================================
+// GENIUS LYRICS FETCHER
+// ============================================================================
+
+function getGeniusApiKey() {
+    return localStorage.getItem('deadcetera_genius_key') || '';
+}
+
+function saveGeniusApiKey(key) {
+    localStorage.setItem('deadcetera_genius_key', key.trim());
+}
+
+async function fetchLyricsFromGenius(songTitle) {
+    const apiKey = getGeniusApiKey();
+    if (!apiKey) {
+        alert('Please enter your Genius API key first. Get one free at genius.com/api-clients');
+        return null;
+    }
+
+    // Show status
+    const statusEl = document.getElementById('lyricsStatus');
+    if (statusEl) { statusEl.textContent = '🔍 Searching Genius...'; statusEl.style.display = 'block'; }
+
+    try {
+        // Search Genius for the song
+        const searchUrl = `https://api.genius.com/search?q=${encodeURIComponent(songTitle)}&access_token=${apiKey}`;
+        // Genius API doesn't allow direct browser calls — use a CORS proxy
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
+        const searchRes = await fetch(proxyUrl);
+        const searchJson = await searchRes.json();
+        const searchData = JSON.parse(searchJson.contents);
+
+        if (!searchData.response?.hits?.length) {
+            if (statusEl) statusEl.textContent = '❌ No results found on Genius.';
+            return null;
+        }
+
+        // Pick the best hit — prefer Grateful Dead / official versions
+        const hits = searchData.response.hits;
+        const gdKeywords = ['grateful dead', 'jerry garcia', 'garcia'];
+        let best = hits.find(h => gdKeywords.some(k => h.result.primary_artist.name.toLowerCase().includes(k)))
+                   || hits[0];
+
+        const songUrl = best.result.url;
+        const songName = best.result.full_title;
+        if (statusEl) statusEl.textContent = `📄 Found: ${songName} — fetching lyrics...`;
+
+        // Fetch the Genius page through proxy and parse lyrics
+        const pageProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(songUrl)}`;
+        const pageRes = await fetch(pageProxy);
+        const pageJson = await pageRes.json();
+        const html = pageJson.contents;
+
+        // Parse lyrics from the HTML — Genius uses data-lyrics-container divs
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        // Try modern containers first
+        let lyricsContainers = doc.querySelectorAll('[data-lyrics-container="true"]');
+        let rawText = '';
+
+        if (lyricsContainers.length > 0) {
+            rawText = Array.from(lyricsContainers).map(el => {
+                // Replace <br> tags with newlines
+                el.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                // Replace section headers like <h2> with [Section]
+                el.querySelectorAll('h2').forEach(h => {
+                    h.replaceWith('\n[' + h.textContent.trim() + ']\n');
+                });
+                return el.textContent;
+            }).join('\n');
+        } else {
+            // Fallback: look for .lyrics class or Lyrics__Container
+            const fallback = doc.querySelector('.lyrics') || doc.querySelector('.Lyrics__Container-sc-1ynbvzw-1');
+            if (fallback) {
+                fallback.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                rawText = fallback.textContent;
+            }
+        }
+
+        if (!rawText.trim()) {
+            if (statusEl) statusEl.textContent = '⚠️ Found song but couldn\'t extract lyrics. Try pasting manually.';
+            return null;
+        }
+
+        // Clean up the text
+        const lyrics = rawText
+            .replace(/\[([^\]]+)\]/g, '\n[$1]\n')  // ensure section headers on own lines
+            .replace(/\n{3,}/g, '\n\n')               // max 2 consecutive newlines
+            .replace(/^\n+/, '')                         // strip leading newlines
+            .trim();
+
+        if (statusEl) statusEl.textContent = `✅ Lyrics loaded from Genius!`;
+        setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
+
+        return { lyrics, songName };
+
+    } catch (err) {
+        console.error('Genius fetch error:', err);
+        if (statusEl) statusEl.textContent = '❌ Error: ' + err.message;
+        return null;
+    }
+}
+
+// Parse section names from lyrics text and auto-check the checkboxes
+function parseSectionsFromLyrics(lyricsText) {
+    const sectionPattern = /\[([^\]]+)\]/g;
+    const found = new Set();
+    let match;
+    while ((match = sectionPattern.exec(lyricsText)) !== null) {
+        const raw = match[1].trim();
+        // Normalize: "Verse 1", "VERSE 1" → "Verse 1"
+        const normalized = raw.replace(/^(verse|chorus|bridge|outro|intro|pre-chorus|refrain|hook|coda|tag|interlude|solo)(\s*\d*)/i,
+            (_, name, num) => name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + (num ? ' ' + num.trim() : '')
+        );
+        found.add(normalized || raw);
+    }
+    return Array.from(found);
+}
+
+async function harmonyFetchLyrics(songTitle) {
+    const result = await fetchLyricsFromGenius(songTitle);
+    if (!result) return;
+
+    // Populate textarea
+    const textarea = document.getElementById('harmLyrics');
+    if (textarea) textarea.value = result.lyrics;
+
+    // Parse sections and auto-check matching boxes
+    const sections = parseSectionsFromLyrics(result.lyrics);
+    const checkboxes = document.querySelectorAll('.harmSectionCheck');
+
+    // Uncheck all first
+    checkboxes.forEach(cb => cb.checked = false);
+
+    // Check any that match found sections
+    sections.forEach(sectionName => {
+        checkboxes.forEach(cb => {
+            if (cb.value.toLowerCase() === sectionName.toLowerCase()) {
+                cb.checked = true;
+            }
+        });
+    });
+
+    // Add custom section checkboxes for any we don\'t already have
+    const existingValues = Array.from(checkboxes).map(cb => cb.value.toLowerCase());
+    sections.forEach(sectionName => {
+        if (!existingValues.includes(sectionName.toLowerCase())) {
+            const container = document.getElementById('harmSectionTags');
+            if (container) {
+                container.insertAdjacentHTML('beforeend', `
+                    <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--green,#10b981)">
+                        <input type="checkbox" class="harmSectionCheck" value="${sectionName}" checked style="accent-color:var(--green)">
+                        ${sectionName}
+                    </label>`);
+            }
+        }
+    });
+}
+
 async function addFirstHarmonySection(songTitle) {
     // Show the lyrics-based harmony builder
     const container = document.getElementById('harmoniesContainer');
@@ -4525,9 +4685,14 @@ async function addFirstHarmonySection(songTitle) {
         </p>
         
         <div class="form-row" style="margin-bottom:10px">
-            <label class="form-label">Song Lyrics</label>
-            <textarea class="app-textarea" id="harmLyrics" rows="12" placeholder="Paste song lyrics here...&#10;&#10;[Verse 1]&#10;As I was walking round Grosvenor Square...&#10;&#10;[Chorus]&#10;Scarlet begonias, a touch of the blues...">${existingLyrics}</textarea>
-        </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <label class="form-label" style="margin:0">Song Lyrics</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <button class="btn btn-sm btn-primary" onclick="harmonyFetchLyrics(this.dataset.song)" data-song="${songTitle.replace(/"/g,'&quot;')}">
+                        🎵 Fetch from Genius
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('geniusKeyRow').style.display=document.getElementById('geniusKeyRow').style.display==='none'?'flex':'none'" title="Set Genius API Key">🔑</button>
+                </div>
         
         <div style="margin-bottom:12px">
             <label class="form-label" style="margin-bottom:6px;display:block">Tag Sections with Harmonies</label>
