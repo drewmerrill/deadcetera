@@ -3425,7 +3425,8 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         </div>
     ` : '';
 
-    container.innerHTML = lyricsBlock + (await Promise.all(sectionsHTML)).join('');
+    // Delegate to the AI learning view
+    await renderHarmonyLearningView(songTitle);
     console.log('🎤 Harmony rendering complete');
     } catch (error) {
         console.error('❌ renderHarmoniesEnhanced error:', error);
@@ -11416,3 +11417,746 @@ async function plEdSave() {
 }
 
 console.log('🎵 Playlists Phase 2 — index + editor loaded');
+
+
+// ============================================================================
+// HARMONY AI STUDIO v1 — AI-powered learning & practice system
+// ============================================================================
+
+const HARMONY_SINGER_COLORS = {
+    drew:   { bg: '#1e40af', light: '#dbeafe', text: '#93c5fd', name: 'Drew' },
+    brian:  { bg: '#065f46', light: '#d1fae5', text: '#6ee7b7', name: 'Brian' },
+    chris:  { bg: '#7c2d12', light: '#fed7aa', text: '#fb923c', name: 'Chris' },
+    pierce: { bg: '#4c1d95', light: '#ede9fe', text: '#c4b5fd', name: 'Pierce' },
+};
+
+// ── AI HARMONY ANALYSIS ──────────────────────────────────────────────────────
+
+async function analyzeHarmonyWithAI(songTitle, artistName, lyrics) {
+    const statusEl = document.getElementById('harmonyAIStatus');
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = '🤖 Asking AI to analyze harmonies...'; }
+
+    const singerList = Object.entries(bandMembers)
+        .filter(([k,m]) => m.sings || m.harmonies || m.leadVocals)
+        .map(([k,m]) => `${m.name} (${m.role})`)
+        .join(', ');
+
+    const prompt = `You are an expert music arranger and harmony coach. Analyze the vocal harmonies for "${songTitle}" by ${artistName}.
+
+Our band members who sing: ${singerList}
+
+${lyrics ? `Lyrics:\n${lyrics.substring(0, 2000)}` : ''}
+
+Return ONLY valid JSON (no markdown, no explanation) in exactly this structure:
+{
+  "summary": "2-3 sentence overview of the harmony style and difficulty",
+  "youtubeQuery": "best search query to find harmony tutorial or isolated vocals on YouTube",
+  "sections": [
+    {
+      "name": "Verse 1",
+      "hasHarmony": true,
+      "leadSinger": "drew",
+      "harmonySingers": ["brian", "pierce"],
+      "arrangement": "Brief description of who sings what",
+      "interval": "e.g. 3rd above, 5th below",
+      "difficulty": "easy|medium|hard",
+      "teachingNote": "Most important thing to know about singing this section correctly",
+      "lyricCue": "First few words of this section"
+    }
+  ]
+}
+
+Focus on the actual known harmony arrangements for this song. If you don't know the specific arrangement, make a musically appropriate suggestion based on the style. Be specific and practical for amateur singers learning the song.`;
+
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1000,
+                messages: [{ role: 'user', content: prompt }]
+            })
+        });
+
+        const data = await response.json();
+        const text = data.content?.find(b => b.type === 'text')?.text || '';
+        const clean = text.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(clean);
+
+        if (statusEl) statusEl.textContent = '✅ AI analysis complete!';
+        setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
+        return parsed;
+
+    } catch (err) {
+        console.error('AI harmony analysis error:', err);
+        if (statusEl) statusEl.textContent = '⚠️ AI analysis failed — ' + err.message;
+        return null;
+    }
+}
+
+// ── BULK POPULATE ────────────────────────────────────────────────────────────
+
+async function bulkPopulateHarmonies() {
+    const harmonySongs = allSongs ? allSongs.filter(s => s.hasHarmonies || harmonyBadgeCache[s.title]) : [];
+    if (!harmonySongs.length) {
+        alert('No songs marked as having harmonies found.');
+        return;
+    }
+
+    const container = document.getElementById('bulkHarmonyStatus');
+    if (!container) return;
+    container.style.display = 'block';
+
+    let done = 0, skipped = 0, failed = 0;
+    const total = harmonySongs.length;
+
+    for (const song of harmonySongs) {
+        container.innerHTML = `
+            <div style="margin-bottom:8px;font-weight:600;color:var(--accent-light)">
+                🤖 Bulk AI Harmony Population
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:6px;overflow:hidden;margin-bottom:8px">
+                <div style="background:var(--accent);height:8px;border-radius:6px;transition:width 0.3s;width:${Math.round((done+skipped+failed)/total*100)}%"></div>
+            </div>
+            <div style="font-size:0.82em;color:var(--text-dim)">
+                Processing: <strong style="color:white">${song.title}</strong><br>
+                ✅ ${done} done · ⏭️ ${skipped} skipped · ❌ ${failed} failed · ${total - done - skipped - failed} remaining
+            </div>
+        `;
+
+        try {
+            // Check if already has AI analysis
+            const existing = await loadBandDataFromDrive(song.title, 'harmony_ai');
+            if (existing && existing.sections) { skipped++; continue; }
+
+            // Fetch lyrics if we don't have them
+            let lyrics = '';
+            const lyricData = await loadBandDataFromDrive(song.title, 'harmonies_data');
+            if (lyricData?.lyrics) {
+                lyrics = lyricData.lyrics;
+            } else {
+                const fetched = await fetchLyricsFromGenius(song.title, getFullBandName(song.band));
+                if (fetched) lyrics = fetched.lyrics;
+            }
+
+            const artistName = getFullBandName(song.band || 'GD');
+            const aiData = await analyzeHarmonyWithAI(song.title, artistName, lyrics);
+
+            if (aiData) {
+                await saveBandDataToDrive(song.title, 'harmony_ai', { ...aiData, generatedAt: new Date().toISOString() });
+                // Also save lyrics if we fetched them
+                if (lyrics && !lyricData?.lyrics) {
+                    const currentHarmonies = lyricData || {};
+                    await saveBandDataToDrive(song.title, 'harmonies_data', { ...currentHarmonies, lyrics });
+                }
+                done++;
+            } else {
+                failed++;
+            }
+
+            // Rate limit — be nice to the API
+            await new Promise(r => setTimeout(r, 800));
+
+        } catch (e) {
+            console.error(`Bulk populate error for ${song.title}:`, e);
+            failed++;
+        }
+    }
+
+    container.innerHTML = `
+        <div style="color:var(--green);font-weight:600">✅ Bulk population complete!</div>
+        <div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">
+            ${done} analyzed · ${skipped} already had data · ${failed} failed
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('bulkHarmonyStatus').style.display='none'" style="margin-top:8px">Dismiss</button>
+    `;
+}
+
+// ── LEARNING VIEW ─────────────────────────────────────────────────────────────
+
+async function renderHarmonyLearningView(songTitle) {
+    const container = document.getElementById('harmoniesContainer');
+    if (!container) return;
+
+    container.innerHTML = '<p style="padding:20px;color:var(--accent-light)">🎵 Loading harmony learning view...</p>';
+
+    // Load all data in parallel
+    const [harmonyData, aiData, songData] = await Promise.all([
+        loadBandDataFromDrive(songTitle, 'harmonies_data'),
+        loadBandDataFromDrive(songTitle, 'harmony_ai'),
+        Promise.resolve(allSongs?.find(s => s.title === songTitle))
+    ]);
+
+    const artistName = getFullBandName(songData?.band || 'GD');
+    const lyrics = harmonyData?.lyrics || '';
+    const sections = harmonyData?.sections ? (Array.isArray(harmonyData.sections) ? harmonyData.sections : Object.values(harmonyData.sections)) : [];
+    const safeSong = songTitle.replace(/'/g, "\\'");
+
+    // If no AI data yet, show analyze button
+    const aiPanel = aiData ? renderAIInsightsPanel(aiData, songTitle) : `
+        <div style="background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
+            <div style="font-size:1.1em;margin-bottom:8px">🤖 No AI analysis yet</div>
+            <p style="font-size:0.82em;color:var(--text-dim);margin-bottom:12px">Let AI analyze the harmony arrangement, suggest who sings what, and provide teaching notes.</p>
+            <div id="harmonyAIStatus" style="display:none;padding:8px;background:rgba(102,126,234,0.1);border-radius:6px;font-size:0.82em;color:var(--accent-light);margin-bottom:10px"></div>
+            <button class="btn btn-primary" onclick="runAIAnalysisForSong('${safeSong}')">
+                🤖 Analyze with AI
+            </button>
+        </div>
+    `;
+
+    // Color-coded lyrics block
+    const lyricsPanel = lyrics ? renderColorCodedLyrics(lyrics, sections, aiData) : '';
+
+    // Sections with learning view
+    const sectionsHTML = sections.map((section, idx) => {
+        const aiSection = aiData?.sections?.find(s => s.name?.toLowerCase() === section.name?.toLowerCase());
+        return renderLearningSectionCard(songTitle, section, idx, aiSection);
+    }).join('');
+
+    // Practice mode button
+    const practiceBtn = `
+        <div style="position:sticky;bottom:16px;z-index:10;text-align:center;margin-top:16px">
+            <button class="btn btn-primary" onclick="openPracticeMode('${safeSong}')"
+                style="background:linear-gradient(135deg,#667eea,#764ba2);padding:12px 28px;font-size:1em;box-shadow:0 4px 20px rgba(102,126,234,0.4)">
+                🎤 Practice Mode
+            </button>
+        </div>
+    `;
+
+    // Singer filter tabs
+    const singerTabs = `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+            <span style="font-size:0.8em;color:var(--text-dim);margin-right:4px">View:</span>
+            <button onclick="setHarmonyViewFilter('all')" id="hFilter_all"
+                class="btn btn-sm btn-primary" style="font-size:0.8em">All Parts</button>
+            ${Object.entries(HARMONY_SINGER_COLORS).map(([key, c]) =>
+                `<button onclick="setHarmonyViewFilter('${key}')" id="hFilter_${key}"
+                    class="btn btn-sm btn-ghost" style="font-size:0.8em;border-color:${c.text};color:${c.text}">
+                    ${c.name} only
+                </button>`
+            ).join('')}
+        </div>
+    `;
+
+    container.innerHTML = `
+        <div id="harmonyLearningView">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0;color:var(--accent-light);font-size:1.1em">🎵 Harmony Guide — ${songTitle}</h3>
+                <div style="display:flex;gap:6px">
+                    <button class="btn btn-sm btn-ghost" onclick="addFirstHarmonySection('${safeSong}')">✏️ Edit</button>
+                    <button class="btn btn-sm btn-ghost" onclick="runAIAnalysisForSong('${safeSong}')">🤖 Re-analyze</button>
+                </div>
+            </div>
+
+            <div id="harmonyAIStatus" style="display:none;padding:8px 12px;background:rgba(102,126,234,0.1);border-radius:6px;font-size:0.82em;color:var(--accent-light);margin-bottom:12px"></div>
+            <div id="bulkHarmonyStatus" style="display:none;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px;margin-bottom:16px"></div>
+
+            ${aiPanel}
+            ${singerTabs}
+            ${lyricsPanel}
+            <div id="harmonySectionsContainer">
+                ${sectionsHTML || '<p style="color:var(--text-dim);text-align:center;padding:20px">No sections yet. Click Edit to add them.</p>'}
+            </div>
+            ${practiceBtn}
+        </div>
+    `;
+}
+
+function renderAIInsightsPanel(aiData, songTitle) {
+    if (!aiData) return '';
+    const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(aiData.youtubeQuery || songTitle + ' harmony')}`;
+    return `
+        <div style="background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;padding:16px;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                <strong style="color:var(--accent-light)">🤖 AI Harmony Analysis</strong>
+                <a href="${ytUrl}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:0.8em">▶️ Find on YouTube</a>
+            </div>
+            <p style="font-size:0.85em;color:var(--text,#f1f5f9);margin:0;line-height:1.6">${aiData.summary || ''}</p>
+        </div>
+    `;
+}
+
+function renderColorCodedLyrics(lyrics, sections, aiData) {
+    if (!lyrics) return '';
+
+    // Build singer color map from AI data or sections
+    const singerForSection = {};
+    if (aiData?.sections) {
+        aiData.sections.forEach(s => {
+            singerForSection[s.name?.toLowerCase()] = {
+                lead: s.leadSinger,
+                harmony: s.harmonySingers || []
+            };
+        });
+    }
+
+    // Highlight section headers with color based on who sings
+    const highlighted = lyrics
+        .replace(/</g, '&lt;')
+        .replace(/\[([^\]]+)\]/g, (match, name) => {
+            const info = singerForSection[name.toLowerCase()];
+            const lead = info?.lead;
+            const color = lead ? (HARMONY_SINGER_COLORS[lead]?.text || '#818cf8') : '#818cf8';
+            const singers = info ? [info.lead, ...(info.harmony || [])].filter(Boolean) : [];
+            const badges = singers.map(s =>
+                `<span style="background:${HARMONY_SINGER_COLORS[s]?.bg||'#374151'};color:${HARMONY_SINGER_COLORS[s]?.text||'white'};padding:1px 6px;border-radius:10px;font-size:0.7em;margin-left:4px">${HARMONY_SINGER_COLORS[s]?.name||s}</span>`
+            ).join('');
+            return `<span style="color:${color};font-weight:700;display:inline-block;margin-top:12px">[${name}]${badges}</span>`;
+        })
+        .replace(/\n/g, '<br>');
+
+    return `
+        <div id="harmonyLyricsPanel" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <strong style="color:#818cf8;font-size:0.9em">🎤 Lyrics</strong>
+                <button onclick="document.getElementById('harmonyLyricsPanel').style.display='none'"
+                    style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Hide</button>
+            </div>
+            <div style="font-size:0.85em;color:var(--text,#f1f5f9);line-height:1.8">${highlighted}</div>
+        </div>
+    `;
+}
+
+function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) {
+    const safeSong = songTitle.replace(/'/g, "\\'");
+    const difficulty = aiSection?.difficulty || 'medium';
+    const diffColor = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' }[difficulty] || '#6b7280';
+
+    // Assign colors to each part
+    const parts = Array.isArray(section.parts) ? section.parts : Object.values(section.parts || {});
+    const partsHTML = parts.map(part => {
+        const colors = HARMONY_SINGER_COLORS[part.singer] || { bg: '#374151', light: '#f3f4f6', text: '#9ca3af', name: part.singer };
+        const isLead = part.part === 'lead' || aiSection?.leadSinger === part.singer;
+        return `
+            <div class="harmony-singer-chip" data-singer="${part.singer}"
+                style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+                       background:${colors.bg};border-radius:20px;margin:3px">
+                <span style="color:${colors.text};font-weight:600;font-size:0.85em">${colors.name}</span>
+                <span style="color:rgba(255,255,255,0.5);font-size:0.75em">${isLead ? 'Lead' : 'Harmony'}</span>
+                ${part.notes ? `<span style="color:rgba(255,255,255,0.7);font-size:0.75em">· ${part.notes}</span>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    const teachingNote = aiSection?.teachingNote || section.timing || '';
+    const interval = aiSection?.interval || '';
+
+    return `
+        <div class="harmony-learning-card" data-section="${sectionIndex}"
+            style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+                   border-radius:12px;padding:16px;margin-bottom:12px">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <span style="font-weight:700;font-size:1.05em;color:white">${section.name || section.lyric || 'Section ' + (sectionIndex+1)}</span>
+                    <span style="background:${diffColor}22;color:${diffColor};padding:2px 8px;border-radius:10px;font-size:0.75em;font-weight:600">${difficulty}</span>
+                    ${section.workedOut ? '<span style="color:#10b981;font-size:0.8em">✓ Worked out</span>' : ''}
+                    ${section.soundsGood ? '<span style="color:#f59e0b;font-size:0.8em">⭐ Sounds good</span>' : ''}
+                </div>
+                <button onclick="openSectionPractice('${safeSong}', ${sectionIndex})"
+                    style="background:#667eea;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.82em">
+                    🎤 Practice
+                </button>
+            </div>
+
+            <div style="margin-bottom:10px">${partsHTML}</div>
+
+            ${interval ? `<div style="font-size:0.82em;color:#a5b4fc;margin-bottom:6px">🎵 Interval: ${interval}</div>` : ''}
+            ${teachingNote ? `
+                <div style="background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;padding:8px 12px;border-radius:0 6px 6px 0;font-size:0.82em;color:#fcd34d;margin-top:8px">
+                    💡 ${teachingNote}
+                </div>` : ''}
+
+            <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+                <button onclick="openMultiTrackStudio('${safeSong}', ${sectionIndex})"
+                    style="background:rgba(102,126,234,0.15);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">
+                    🎛️ Studio
+                </button>
+                <button onclick="markSectionStatus('${safeSong}', ${sectionIndex}, 'workedOut')"
+                    style="background:rgba(16,185,129,0.1);color:#6ee7b7;border:1px solid rgba(16,185,129,0.2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">
+                    ✓ Worked Out
+                </button>
+                <button onclick="markSectionStatus('${safeSong}', ${sectionIndex}, 'soundsGood')"
+                    style="background:rgba(245,158,11,0.1);color:#fcd34d;border:1px solid rgba(245,158,11,0.2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">
+                    ⭐ Sounds Good
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// ── SINGER FILTER ─────────────────────────────────────────────────────────────
+
+function setHarmonyViewFilter(singer) {
+    // Update button styles
+    document.querySelectorAll('[id^="hFilter_"]').forEach(btn => {
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-ghost');
+    });
+    const activeBtn = document.getElementById('hFilter_' + singer);
+    if (activeBtn) { activeBtn.classList.add('btn-primary'); activeBtn.classList.remove('btn-ghost'); }
+
+    // Show/hide singer chips
+    if (singer === 'all') {
+        document.querySelectorAll('.harmony-singer-chip').forEach(el => el.style.display = '');
+        document.querySelectorAll('.harmony-learning-card').forEach(el => el.style.display = '');
+    } else {
+        document.querySelectorAll('.harmony-learning-card').forEach(card => {
+            const hasSinger = card.querySelector(`.harmony-singer-chip[data-singer="${singer}"]`);
+            card.style.display = hasSinger ? '' : 'none';
+        });
+        document.querySelectorAll('.harmony-singer-chip').forEach(chip => {
+            chip.style.opacity = chip.dataset.singer === singer ? '1' : '0.25';
+        });
+    }
+}
+
+// ── SECTION STATUS ────────────────────────────────────────────────────────────
+
+async function markSectionStatus(songTitle, sectionIndex, field) {
+    const data = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+    if (!data || !data.sections) return;
+    const sections = Array.isArray(data.sections) ? data.sections : Object.values(data.sections);
+    if (sections[sectionIndex]) {
+        sections[sectionIndex][field] = !sections[sectionIndex][field];
+        data.sections = sections;
+        await saveBandDataToDrive(songTitle, 'harmonies_data', data);
+        renderHarmonyLearningView(songTitle);
+    }
+}
+
+// ── RUN AI ANALYSIS FOR ONE SONG ─────────────────────────────────────────────
+
+async function runAIAnalysisForSong(songTitle) {
+    const statusEl = document.getElementById('harmonyAIStatus');
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = '⏳ Loading song data...'; }
+
+    const songData = allSongs?.find(s => s.title === songTitle);
+    const artistName = getFullBandName(songData?.band || 'GD');
+
+    let lyrics = '';
+    const harmonyData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+    if (harmonyData?.lyrics) {
+        lyrics = harmonyData.lyrics;
+    } else {
+        if (statusEl) statusEl.textContent = '🎵 Fetching lyrics from Genius...';
+        const fetched = await fetchLyricsFromGenius(songTitle, artistName);
+        if (fetched) {
+            lyrics = fetched.lyrics;
+            // Save lyrics into harmonies_data
+            await saveBandDataToDrive(songTitle, 'harmonies_data', { ...(harmonyData||{}), lyrics });
+        }
+    }
+
+    const aiData = await analyzeHarmonyWithAI(songTitle, artistName, lyrics);
+    if (aiData) {
+        await saveBandDataToDrive(songTitle, 'harmony_ai', { ...aiData, generatedAt: new Date().toISOString() });
+        renderHarmonyLearningView(songTitle);
+    }
+}
+
+// ── PRACTICE MODE ─────────────────────────────────────────────────────────────
+
+let pitchDetectionActive = false;
+let pitchAudioContext = null;
+let pitchAnalyser = null;
+let pitchStream = null;
+
+function openPracticeMode(songTitle) {
+    const modal = document.createElement('div');
+    modal.id = 'practiceModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+
+    // Get current singer
+    const currentUser = getCurrentUser() || 'drew';
+    const colors = HARMONY_SINGER_COLORS[currentUser] || HARMONY_SINGER_COLORS.drew;
+
+    modal.innerHTML = `
+        <div style="background:#0f0f1a;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h3 style="margin:0;color:white">🎤 Practice Mode — ${songTitle}</h3>
+                <button onclick="closePracticeMode()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
+                <div style="font-size:0.82em;color:var(--text-dim);margin-bottom:8px">Practicing as</div>
+                <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:${colors.bg};border-radius:20px">
+                    <span style="color:${colors.text};font-weight:700">${colors.name}</span>
+                </div>
+                <div style="margin-top:10px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap">
+                    ${Object.entries(HARMONY_SINGER_COLORS).map(([key, c]) => `
+                        <button onclick="setPracticeSinger('${key}')" id="practiceBtn_${key}"
+                            style="background:${key===currentUser?c.bg:'rgba(255,255,255,0.05)'};color:${c.text};border:1px solid ${c.bg};padding:4px 10px;border-radius:12px;cursor:pointer;font-size:0.78em">
+                            ${c.name}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+
+            <!-- Pitch Detector -->
+            <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:16px;margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <strong style="color:white">🎵 Live Pitch Detector</strong>
+                    <button id="pitchToggleBtn" onclick="togglePitchDetection()"
+                        style="background:#667eea;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600">
+                        🎙️ Start Listening
+                    </button>
+                </div>
+
+                <div style="text-align:center;padding:20px 0">
+                    <div id="pitchNote" style="font-size:3em;font-weight:800;color:white;min-height:1.2em">—</div>
+                    <div id="pitchFreq" style="font-size:0.85em;color:#6b7280;margin-top:4px"></div>
+                    <div id="pitchMeter" style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:12px;overflow:hidden">
+                        <div id="pitchMeterBar" style="height:100%;width:0%;background:#10b981;border-radius:4px;transition:width 0.1s"></div>
+                    </div>
+                    <div id="pitchAccuracy" style="font-size:0.82em;margin-top:8px;color:#9ca3af"></div>
+                </div>
+            </div>
+
+            <!-- Metronome -->
+            <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px;margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                    <strong style="color:white">🥁 Metronome</strong>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <input type="range" id="practiceBpm" min="40" max="200" value="80"
+                            oninput="document.getElementById('practiceBpmVal').textContent=this.value"
+                            style="width:100px">
+                        <span id="practiceBpmVal" style="color:white;font-weight:600;min-width:35px">80</span>
+                        <span style="color:#6b7280;font-size:0.82em">BPM</span>
+                        <button id="metroBtn" onclick="togglePracticeMetronome()"
+                            style="background:#4b5563;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer">
+                            ▶ Start
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes for this singer -->
+            <div id="practiceNotesPanel" style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px">
+                <strong style="color:white;display:block;margin-bottom:10px">📝 My Notes</strong>
+                <textarea id="practiceNoteInput" rows="3" placeholder="Add practice notes for yourself..."
+                    style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;color:white;font-size:0.85em;resize:vertical"></textarea>
+                <button onclick="savePracticeNote('${songTitle.replace(/'/g,"\\'")}', '${currentUser}')"
+                    style="margin-top:8px;background:#667eea;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.82em">
+                    Save Note
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Load BPM from Firebase
+    loadBandDataFromDrive(songTitle, 'song_bpm').then(d => {
+        if (d?.bpm) {
+            const slider = document.getElementById('practiceBpm');
+            const val = document.getElementById('practiceBpmVal');
+            if (slider) slider.value = d.bpm;
+            if (val) val.textContent = d.bpm;
+        }
+    });
+}
+
+function openSectionPractice(songTitle, sectionIndex) {
+    openPracticeMode(songTitle);
+}
+
+function closePracticeMode() {
+    stopPitchDetection();
+    stopPracticeMetronome();
+    const modal = document.getElementById('practiceModal');
+    if (modal) modal.remove();
+}
+
+function setPracticeSinger(singer) {
+    const colors = HARMONY_SINGER_COLORS[singer];
+    Object.keys(HARMONY_SINGER_COLORS).forEach(k => {
+        const btn = document.getElementById('practiceBtn_' + k);
+        if (btn) btn.style.background = k === singer ? HARMONY_SINGER_COLORS[k].bg : 'rgba(255,255,255,0.05)';
+    });
+}
+
+// ── PITCH DETECTION ───────────────────────────────────────────────────────────
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function frequencyToNote(freq) {
+    if (freq <= 0) return null;
+    const noteNum = 12 * (Math.log(freq / 440) / Math.log(2));
+    const rounded = Math.round(noteNum) + 69;
+    const octave = Math.floor(rounded / 12) - 1;
+    const note = NOTE_NAMES[rounded % 12];
+    const cents = Math.round((noteNum - Math.round(noteNum)) * 100);
+    return { note, octave, cents, display: `${note}${octave}` };
+}
+
+function autoCorrelate(buffer, sampleRate) {
+    let SIZE = buffer.length;
+    let rms = 0;
+    for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1;
+
+    let r1 = 0, r2 = SIZE - 1;
+    const threshold = 0.2;
+    for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buffer[i]) < threshold) { r1 = i; break; } }
+    for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buffer[SIZE - i]) < threshold) { r2 = SIZE - i; break; } }
+    buffer = buffer.slice(r1, r2);
+    SIZE = buffer.length;
+
+    const c = new Float32Array(SIZE).fill(0);
+    for (let i = 0; i < SIZE; i++) for (let j = 0; j < SIZE - i; j++) c[i] += buffer[j] * buffer[j + i];
+
+    let d = 0;
+    while (c[d] > c[d + 1]) d++;
+    let maxval = -1, maxpos = -1;
+    for (let i = d; i < SIZE; i++) { if (c[i] > maxval) { maxval = c[i]; maxpos = i; } }
+
+    let T0 = maxpos;
+    const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+    const a = (x1 + x3 - 2 * x2) / 2;
+    const b = (x3 - x1) / 2;
+    if (a) T0 = T0 - b / (2 * a);
+    return sampleRate / T0;
+}
+
+async function togglePitchDetection() {
+    if (pitchDetectionActive) {
+        stopPitchDetection();
+    } else {
+        await startPitchDetection();
+    }
+}
+
+async function startPitchDetection() {
+    try {
+        pitchStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        pitchAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        pitchAnalyser = pitchAudioContext.createAnalyser();
+        pitchAnalyser.fftSize = 2048;
+
+        const source = pitchAudioContext.createMediaStreamSource(pitchStream);
+        source.connect(pitchAnalyser);
+
+        pitchDetectionActive = true;
+        const btn = document.getElementById('pitchToggleBtn');
+        if (btn) { btn.textContent = '⏹ Stop'; btn.style.background = '#ef4444'; }
+
+        const buffer = new Float32Array(pitchAnalyser.fftSize);
+        function detect() {
+            if (!pitchDetectionActive) return;
+            pitchAnalyser.getFloatTimeDomainData(buffer);
+            const freq = autoCorrelate(buffer, pitchAudioContext.sampleRate);
+
+            const noteEl = document.getElementById('pitchNote');
+            const freqEl = document.getElementById('pitchFreq');
+            const meterBar = document.getElementById('pitchMeterBar');
+            const accuracyEl = document.getElementById('pitchAccuracy');
+
+            if (freq > 60 && freq < 2000) {
+                const result = frequencyToNote(freq);
+                if (result && noteEl) {
+                    noteEl.textContent = result.display;
+                    noteEl.style.color = Math.abs(result.cents) < 10 ? '#10b981' : Math.abs(result.cents) < 25 ? '#f59e0b' : '#ef4444';
+                }
+                if (freqEl) freqEl.textContent = `${Math.round(freq)} Hz`;
+                if (meterBar) {
+                    const pct = Math.min(100, Math.max(0, 50 + result?.cents));
+                    meterBar.style.width = pct + '%';
+                    meterBar.style.background = Math.abs(result?.cents||99) < 15 ? '#10b981' : '#f59e0b';
+                }
+                if (accuracyEl && result) {
+                    const cents = result.cents;
+                    accuracyEl.textContent = cents === 0 ? '✅ In tune!' : cents > 0 ? `↑ ${cents}¢ sharp` : `↓ ${Math.abs(cents)}¢ flat`;
+                    accuracyEl.style.color = Math.abs(cents) < 10 ? '#10b981' : Math.abs(cents) < 25 ? '#f59e0b' : '#ef4444';
+                }
+            } else {
+                if (noteEl) { noteEl.textContent = '—'; noteEl.style.color = '#6b7280'; }
+                if (freqEl) freqEl.textContent = 'Sing into your mic...';
+                if (meterBar) meterBar.style.width = '0%';
+            }
+            requestAnimationFrame(detect);
+        }
+        detect();
+
+    } catch (err) {
+        alert('Could not access microphone: ' + err.message);
+    }
+}
+
+function stopPitchDetection() {
+    pitchDetectionActive = false;
+    if (pitchStream) { pitchStream.getTracks().forEach(t => t.stop()); pitchStream = null; }
+    if (pitchAudioContext) { pitchAudioContext.close(); pitchAudioContext = null; }
+    const btn = document.getElementById('pitchToggleBtn');
+    if (btn) { btn.textContent = '🎙️ Start Listening'; btn.style.background = '#667eea'; }
+    const noteEl = document.getElementById('pitchNote');
+    if (noteEl) { noteEl.textContent = '—'; noteEl.style.color = 'white'; }
+}
+
+// ── PRACTICE METRONOME ────────────────────────────────────────────────────────
+
+let practiceMetroCtx = null;
+let practiceMetroInterval = null;
+let practiceMetroActive = false;
+
+function togglePracticeMetronome() {
+    if (practiceMetroActive) {
+        stopPracticeMetronome();
+    } else {
+        startPracticeMetronome();
+    }
+}
+
+function startPracticeMetronome() {
+    const bpm = parseInt(document.getElementById('practiceBpm')?.value || '80');
+    practiceMetroCtx = new (window.AudioContext || window.webkitAudioContext)();
+    practiceMetroActive = true;
+
+    const btn = document.getElementById('metroBtn');
+    if (btn) { btn.textContent = '⏹ Stop'; btn.style.background = '#ef4444'; }
+
+    let beat = 0;
+    const interval = (60 / bpm) * 1000;
+
+    function tick() {
+        if (!practiceMetroActive) return;
+        const osc = practiceMetroCtx.createOscillator();
+        const gain = practiceMetroCtx.createGain();
+        osc.connect(gain);
+        gain.connect(practiceMetroCtx.destination);
+        osc.frequency.value = beat % 4 === 0 ? 1000 : 800;
+        gain.gain.setValueAtTime(0.3, practiceMetroCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, practiceMetroCtx.currentTime + 0.05);
+        osc.start(practiceMetroCtx.currentTime);
+        osc.stop(practiceMetroCtx.currentTime + 0.05);
+        beat++;
+        practiceMetroInterval = setTimeout(tick, interval);
+    }
+    tick();
+}
+
+function stopPracticeMetronome() {
+    practiceMetroActive = false;
+    if (practiceMetroInterval) clearTimeout(practiceMetroInterval);
+    if (practiceMetroCtx) { practiceMetroCtx.close(); practiceMetroCtx = null; }
+    const btn = document.getElementById('metroBtn');
+    if (btn) { btn.textContent = '▶ Start'; btn.style.background = '#4b5563'; }
+}
+
+// ── SAVE PRACTICE NOTE ────────────────────────────────────────────────────────
+
+async function savePracticeNote(songTitle, singer) {
+    const input = document.getElementById('practiceNoteInput');
+    if (!input?.value?.trim()) return;
+    const note = input.value.trim();
+    const existing = await loadBandDataFromDrive(songTitle, `practice_notes_${singer}`) || [];
+    const notes = Array.isArray(existing) ? existing : [existing];
+    notes.push({ text: note, date: new Date().toLocaleDateString() });
+    await saveBandDataToDrive(songTitle, `practice_notes_${singer}`, notes);
+    input.value = '';
+    alert('✅ Note saved!');
+}
+
+console.log('🎤 Harmony AI Studio v1 loaded');
