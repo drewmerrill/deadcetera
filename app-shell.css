@@ -415,7 +415,10 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
     #calendarEvents .list-item { flex-wrap: wrap !important; gap: 4px !important; }
 
     /* Performance Tips bullets */
-    #gigNotesContainer li { flex-wrap: wrap !important; }
+    #gigNotesContainer li { flex-wrap: wrap !important; color: #f1f5f9 !important; }
+    #gigNotesContainer li span { color: #f1f5f9 !important; }
+    #gigNotesContainer p { color: #94a3b8 !important; }
+    #gigNotesContainer button { color: #f1f5f9 !important; }
 
     /* Filter checkbox labels: don't force min-width */
     label[style*="min-width:140px"] { min-width: unset !important; flex: 1 !important; }
@@ -887,4 +890,15 @@ button[style*="background: var(--red)"],
     color: #ffffff !important;
     -webkit-text-fill-color: #ffffff !important;
     fill: #ffffff !important;
+}
+
+/* Harmony singer chips — wrap on mobile */
+.harmony-learning-card [style*="margin-bottom:10px"] {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+}
+.harmony-singer-chip {
+    flex-shrink: 0 !important;
+    max-width: 100% !important;
 }
