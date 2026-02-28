@@ -1880,9 +1880,10 @@ async function showAddCoverMeForm() {
     form.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px;margin-bottom:12px';
     form.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:8px">
-            <input id="coverMeArtist" class="app-input" placeholder="Artist / Band name" autocomplete="off">
-            <input id="coverMeUrl" class="app-input" placeholder="YouTube / Spotify link (optional)" autocomplete="off">
-            <input id="coverMeNotes" class="app-input" placeholder="Notes (optional)" autocomplete="off">
+            <input id="coverMeArtist" class="app-input" placeholder="Artist / Band name *" autocomplete="off">
+            <input id="coverMeUrl" class="app-input" placeholder="YouTube / Spotify / Archive link (optional)" autocomplete="off">
+            <textarea id="coverMeDescription" class="app-input" placeholder="What makes this version interesting? (optional)"
+                style="min-height:70px;resize:vertical;font-family:inherit"></textarea>
             <div style="display:flex;gap:8px">
                 <button onclick="saveCoverMe()" class="btn btn-primary">💾 Save</button>
                 <button onclick="document.getElementById('coverMeForm')?.remove()" class="btn btn-ghost">Cancel</button>
@@ -1893,19 +1894,48 @@ async function showAddCoverMeForm() {
     document.getElementById('coverMeArtist')?.focus();
 }
 
-async function saveCoverMe() {
+async function saveCoverMe(editIndex = null) {
     const artist = document.getElementById('coverMeArtist')?.value?.trim();
     if (!artist) { showToast('Enter an artist name'); return; }
     const url = document.getElementById('coverMeUrl')?.value?.trim();
-    const notes = document.getElementById('coverMeNotes')?.value?.trim();
+    const description = document.getElementById('coverMeDescription')?.value?.trim();
     const songTitle = selectedSong?.title || selectedSong;
     const existing = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
     const covers = Array.isArray(existing) ? existing : (existing.covers || []);
-    covers.push({ artist, url, notes, addedBy: currentUserEmail, addedAt: new Date().toISOString() });
+    const entry = { artist, url, description, addedBy: currentUserEmail, addedAt: new Date().toISOString() };
+    if (editIndex !== null) { covers[editIndex] = entry; } else { covers.push(entry); }
     await saveBandDataToDrive(songTitle, 'cover_me', covers);
     document.getElementById('coverMeForm')?.remove();
     await renderCoverMe(songTitle);
-    showToast('✅ Cover version added!');
+    showToast(editIndex !== null ? '✅ Cover updated!' : '✅ Cover version added!');
+}
+
+async function editCoverMe(index) {
+    const songTitle = selectedSong?.title || selectedSong;
+    const existing = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
+    const covers = Array.isArray(existing) ? existing : (existing.covers || []);
+    const c = covers[index];
+    if (!c) return;
+    document.getElementById('coverMeForm')?.remove();
+    const container = document.getElementById('coverMeSection');
+    const form = document.createElement('div');
+    form.id = 'coverMeForm';
+    form.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px;margin-bottom:12px';
+    form.innerHTML = `
+        <div style="font-size:0.82em;color:#818cf8;margin-bottom:8px;font-weight:600">✏️ Editing cover version</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <input id="coverMeArtist" class="app-input" placeholder="Artist / Band name *" value="${c.artist||''}" autocomplete="off">
+            <input id="coverMeUrl" class="app-input" placeholder="Link (optional)" value="${c.url||''}" autocomplete="off">
+            <textarea id="coverMeDescription" class="app-input" placeholder="Description (optional)"
+                style="min-height:70px;resize:vertical;font-family:inherit">${c.description||c.notes||''}</textarea>
+            <div style="display:flex;gap:8px">
+                <button onclick="saveCoverMe(${index})" class="btn btn-primary">💾 Save</button>
+                <button onclick="document.getElementById('coverMeForm')?.remove()" class="btn btn-ghost">Cancel</button>
+            </div>
+        </div>
+    `;
+    container.prepend(form);
+    document.getElementById('coverMeArtist')?.focus();
 }
 
 async function deleteCoverMe(index) {
@@ -1916,6 +1946,7 @@ async function deleteCoverMe(index) {
     covers.splice(index, 1);
     await saveBandDataToDrive(songTitle, 'cover_me', covers);
     await renderCoverMe(songTitle);
+    showToast('🗑️ Cover removed');
 }
 
 async function renderGigNotes(songTitle, bandData) {
