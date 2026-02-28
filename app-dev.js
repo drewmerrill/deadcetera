@@ -4043,6 +4043,14 @@ async function saveABCNotation(sectionIndex) {
 
 // ── 1. PHOTO → ABC (Claude Vision) ──────────────────────────────────────────
 
+async function openABCEditorForSection(songTitle, sectionIndex, sectionName) {
+    // Load any existing ABC notation first
+    const existing = await loadABCNotation(songTitle, sectionIndex);
+    const bpm = await loadSongBpm(songTitle) || 120;
+    const abc = existing || `X:1\nT:${sectionName}\nM:4/4\nQ:1/4=${bpm}\nL:1/8\nK:C\n`;
+    showABCEditorModal(sectionName + ' — ' + songTitle, abc, sectionIndex);
+}
+
 async function importABCFromPhoto(sectionIndex) {
     // Create file input
     const input = document.createElement('input');
@@ -12106,7 +12114,7 @@ function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) 
             </div>
             <div id="harmonyAudioFormContainer${sectionIndex}" style="margin-top:8px"></div>
             <div style="margin-top:6px">
-                <button onclick="showABCEditorModal('${section.name || section.lyric} — ${songTitle}', '', ${sectionIndex})"
+                <button onclick="openABCEditorForSection('${safeSong}', ${sectionIndex}, '${(section.name || section.lyric || '').replace(/'/g, '\\\'')}')"
                     style="background:rgba(139,92,246,0.1);color:#c4b5fd;border:1px solid rgba(139,92,246,0.2);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">
                     🎼 Edit ABC Notation
                 </button>
