@@ -2006,7 +2006,7 @@ async function renderGigNotes(songTitle, bandData) {
                         <span id="gigNoteText_${index}" style="flex:1;color:var(--text,#f1f5f9);font-size:0.9em">${note}</span>
                         <div style="display:flex;gap:4px;flex-shrink:0">
                             <button onclick="editGigNote(${index})" style="background: rgba(102,126,234,0.15); color: var(--accent-light,#818cf8); border: 1px solid rgba(102,126,234,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">✏️</button>
-                            <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight:700;">✕</button>
+                            <button onclick="deleteGigNote(${index},this)" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight:700;">✕</button>
                         </div>
                     </li>
                 `).join('')}
@@ -2053,19 +2053,24 @@ async function saveGigNoteInline() {
     await renderGigNotes(songTitle, bandData);
 }
 
-async function deleteGigNote(index) {
-    if (!confirm('Delete this performance tip?')) return;
-    
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    
-    let notes = await loadGigNotes(songTitle) || [];
-    notes.splice(index, 1);
-    
-    await saveGigNotes(songTitle, notes);
-    
-    const bandData = bandKnowledgeBase[songTitle] || {};
-    await renderGigNotes(songTitle, bandData);
+async function deleteGigNote(index, btn) {
+    if (btn && btn.dataset.confirming) {
+        const songTitle = selectedSong?.title || selectedSong;
+        if (!songTitle) return;
+        let notes = await loadGigNotes(songTitle) || [];
+        notes.splice(index, 1);
+        await saveGigNotes(songTitle, notes);
+        const bandData = bandKnowledgeBase[songTitle] || {};
+        await renderGigNotes(songTitle, bandData);
+
+        showToast('🗑️ Tip removed');
+    } else if (btn) {
+        btn.dataset.confirming = '1';
+        btn.textContent = 'Sure?';
+        btn.style.background = '#ef4444';
+        btn.style.color = 'white';
+        setTimeout(() => { if (btn) { btn.dataset.confirming = ''; btn.textContent = '🗑️'; btn.style.background = ''; btn.style.color = ''; }}, 3000);
+    }
 }
 
 async function editGigNote(index) {
@@ -3102,6 +3107,48 @@ async function addRehearsalNote() {
     renderRehearsalNotesWithStorage(selectedSong.title);
 }
 
+
+async function editRehearsalNote(songTitle, index) {
+    const notes = await loadRehearsalNotes(songTitle);
+    const note = notes[index];
+    if (!note) return;
+    const contentEl = document.getElementById(`rn_content_${index}`);
+    if (!contentEl) return;
+    contentEl.innerHTML = `
+        <textarea id="rn_edit_${index}" class="app-input" style="width:100%;min-height:60px;resize:vertical;margin-top:6px;font-family:inherit">${note.note}</textarea>
+        <div style="display:flex;gap:6px;margin-top:6px">
+            <button onclick="saveRehearsalNoteEdit('${songTitle}',${index})" class="btn btn-primary" style="font-size:0.8em;padding:4px 10px">💾 Save</button>
+            <button onclick="renderRehearsalNotesWithStorage('${songTitle}')" class="btn btn-ghost" style="font-size:0.8em;padding:4px 10px">Cancel</button>
+        </div>
+    `;
+}
+
+async function saveRehearsalNoteEdit(songTitle, index) {
+    const textarea = document.getElementById(`rn_edit_${index}`);
+    if (!textarea) return;
+    const notes = await loadRehearsalNotes(songTitle);
+    notes[index].note = textarea.value.trim();
+    await saveRehearsalNotes(songTitle, notes);
+    await renderRehearsalNotesWithStorage(songTitle);
+    showToast('✅ Note updated');
+}
+
+async function deleteRehearsalNoteInline(songTitle, index, btn) {
+    if (btn && btn.dataset.confirming) {
+        const notes = await loadRehearsalNotes(songTitle);
+        notes.splice(index, 1);
+        await saveRehearsalNotes(songTitle, notes);
+        await renderRehearsalNotesWithStorage(songTitle);
+        showToast('🗑️ Note removed');
+    } else if (btn) {
+        btn.dataset.confirming = '1';
+        btn.textContent = 'Sure?';
+        btn.style.background = '#ef4444';
+        btn.style.color = 'white';
+        setTimeout(() => { if (btn) { btn.dataset.confirming = ''; btn.textContent = '🗑️'; btn.style.background = 'rgba(239,68,68,0.15)'; btn.style.color = '#ef4444'; }}, 3000);
+    }
+}
+
 async function renderRehearsalNotesWithStorage(songTitle) {
     const container = document.getElementById('rehearsalNotesContainer');
     const bandData = bandKnowledgeBase[songTitle];
@@ -3139,15 +3186,23 @@ async function renderRehearsalNotesWithStorage(songTitle) {
                 const priorityColor = priorityColors[note.priority] || '#667eea';
                 const priorityEmoji = priorityEmojis[note.priority] || '-';
                 
+                const storedIndex = storedNotes.indexOf(note);
+                const canEdit = storedIndex !== -1;
                 return `
                     <div class="rehearsal-note-card ${note.priority === 'high' ? 'high' : ''}">
-                        <div class="note-header">
-                            <span><strong>${memberName}</strong> - ${note.date}</span>
-                            <span style="color: ${priorityColor}; font-weight: 600;">
-                                ${priorityEmoji} ${note.priority.toUpperCase()} PRIORITY
-                            </span>
+                        <div class="note-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                            <div>
+                                <span><strong>${memberName}</strong> - ${note.date?.substring(0,10)||''}</span>
+                                <span style="color: ${priorityColor}; font-weight: 600; margin-left:8px">
+                                    ${priorityEmoji} ${(note.priority||'').toUpperCase()} PRIORITY
+                                </span>
+                            </div>
+                            ${canEdit ? `<div style="display:flex;gap:4px;flex-shrink:0">
+                                <button onclick="editRehearsalNote('${songTitle}',${storedIndex})" style="background:rgba(102,126,234,0.15);color:#818cf8;border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:11px">✏️</button>
+                                <button onclick="deleteRehearsalNoteInline('${songTitle}',${storedIndex},this)" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:11px">🗑️</button>
+                            </div>` : ''}
                         </div>
-                        <div class="note-content">${note.note}</div>
+                        <div class="note-content" id="rn_content_${storedIndex}">${note.note}</div>
                     </div>
                 `;
             }).join('')}
@@ -5437,7 +5492,33 @@ async function updateHasHarmonies(hasHarmonies) {
     console.log(`Has harmonies: ${hasHarmonies} - saved to Google Drive!`);
 }
 
+
+function toggleSingersDropdown() {
+    const dd = document.getElementById('singersDropdown');
+    if (!dd) return;
+    dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+    setTimeout(() => {
+        const close = (e) => {
+            if (!document.getElementById('singersDropdownBtn')?.contains(e.target) &&
+                !document.getElementById('singersDropdown')?.contains(e.target)) {
+                dd.style.display = 'none';
+                document.removeEventListener('click', close);
+            }
+        };
+        document.addEventListener('click', close);
+    }, 0);
+}
+
+function updateSingersLabel() {
+    const checked = [...document.querySelectorAll('.harmony-member-cb:checked')].map(cb =>
+        cb.value.charAt(0).toUpperCase() + cb.value.slice(1)
+    );
+    const label = document.getElementById('singersLabel');
+    if (label) label.textContent = checked.length ? checked.join(', ') : 'Select singers...';
+}
+
 async function updateHarmonyMembers() {
+    updateSingersLabel();
     if (!selectedSong || !selectedSong.title) return;
     const checkboxes = document.querySelectorAll('.harmony-member-cb:checked');
     const members = Array.from(checkboxes).map(cb => cb.value);
