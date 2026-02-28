@@ -4058,18 +4058,34 @@ async function importABCFromPhoto(sectionIndex) {
         if (status) status.textContent = '📷 Reading sheet music...';
         
         try {
-            // Convert to base64
+            if (status) status.textContent = '📷 Compressing image...';
+            
+            // Compress image using canvas — max 1600px, JPEG 85%
             const base64 = await new Promise((res, rej) => {
-                const r = new FileReader();
-                r.onload = () => res(r.result.split(',')[1]);
-                r.onerror = rej;
-                r.readAsDataURL(file);
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    const MAX = 1600;
+                    let w = img.width, h = img.height;
+                    if (w > MAX || h > MAX) {
+                        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                        else { w = Math.round(w * MAX / h); h = MAX; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    URL.revokeObjectURL(url);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    res(dataUrl.split(',')[1]);
+                };
+                img.onerror = rej;
+                img.src = url;
             });
             
             if (status) status.textContent = '🤖 Analyzing with AI...';
             
-            const mediaType = (file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg');
-            console.log('📷 Photo import: file type =', file.type, '→ media_type =', mediaType, 'base64 length =', base64.length);
+            const mediaType = 'image/jpeg';
+            console.log('📷 Photo import: compressed base64 length =', base64.length);
             
             const response = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/', {
                 method: 'POST',
