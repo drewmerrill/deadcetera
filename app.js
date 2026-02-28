@@ -11095,6 +11095,36 @@ function showToast(message, duration = 2500) {
     setTimeout(() => toast.remove(), duration);
 }
 
+// ── VERSION CHECKER ──────────────────────────────────────────────────────────
+let _loadedVersion = null;
+
+async function checkForAppUpdate() {
+    try {
+        const res = await fetch('/deadcetera/version.json?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!_loadedVersion) { _loadedVersion = data.version; return; }
+        if (data.version !== _loadedVersion) showUpdateBanner();
+    } catch(e) {}
+}
+
+function showUpdateBanner() {
+    if (document.getElementById('dc-update-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'dc-update-banner';
+    banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px 20px;border-radius:12px;font-size:0.9em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;gap:12px;max-width:320px;width:calc(100% - 40px)';
+    banner.innerHTML = `
+        <span>🎸 New version available!</span>
+        <button onclick="window.location.reload(true)" style="background:white;color:#667eea;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em;white-space:nowrap;flex-shrink:0">Reload</button>
+        <button onclick="document.getElementById('dc-update-banner')?.remove()" style="background:transparent;border:none;color:rgba(255,255,255,0.7);cursor:pointer;font-size:1.1em;padding:0;flex-shrink:0">✕</button>
+    `;
+    document.body.appendChild(banner);
+}
+
+setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 5 * 60 * 1000); }, 30000);
+
+
+
 // ── Stub page renderer (replaced by Phase 2) ─────────────────────────────────
 
 
