@@ -4068,11 +4068,11 @@ async function importABCFromPhoto(sectionIndex) {
             
             if (status) status.textContent = '🤖 Analyzing with AI...';
             
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
+            const response = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    model: 'claude-opus-4-6',
+                    model: 'claude-opus-4-5',
                     max_tokens: 2000,
                     messages: [{
                         role: 'user',
@@ -4211,11 +4211,11 @@ async function convertMusicXmlToABC(xmlText, sectionIndex) {
     document.getElementById('museScoreModal')?.remove();
     
     try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
+                model: 'claude-haiku-4-5',
                 max_tokens: 2000,
                 messages: [{
                     role: 'user',
@@ -11731,7 +11731,7 @@ Focus on the actual known harmony arrangements for this song. If you don't know 
 
     try {
         // Route through corsproxy.io to avoid CORS block on Anthropic API
-        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://api.anthropic.com/v1/messages');
+        const proxyUrl = 'https://deadcetera-proxy.drewmerrill.workers.dev/';
         const response = await fetch(proxyUrl, {
             method: 'POST',
             headers: {
@@ -11740,7 +11740,7 @@ Focus on the actual known harmony arrangements for this song. If you don't know 
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
+                model: 'claude-haiku-4-5',
                 max_tokens: 1000,
                 messages: [{ role: 'user', content: prompt }]
             })
