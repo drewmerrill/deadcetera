@@ -8,7 +8,7 @@ Setup (one time):
     export GITHUB_TOKEN=your_token_here
     # Or add to ~/.zshrc to make permanent
 """
-import sys, os, json, base64
+import sys, os, json, base64, datetime as dt
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 
@@ -68,11 +68,23 @@ def push_file(filepath, commit_msg, token):
         print(f"❌ {result.get('message', 'unknown error')}")
         return False
 
+def update_version():
+    version_str = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d-%H%M%S')
+    vdata = {"version": version_str, "deployed": dt.datetime.now(dt.timezone.utc).isoformat()}
+    vpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.json")
+    open(vpath, 'w').write(json.dumps(vdata, indent=2))
+    print(f"🔖 Version: {version_str}")
+    return vpath
+
 if __name__ == "__main__":
     token = get_token()
     args = sys.argv[1:]
     msg = args[0] if args else "Auto-update from Claude"
     files = args[1:] if len(args) > 1 else ["app.js", "app-dev.js"]
+
+    vpath = update_version()
+    if "version.json" not in files:
+        files = list(files) + ["version.json"]
 
     print(f"🚀 Pushing to {REPO} ({BRANCH})")
     print(f"📝 {msg}\n")
