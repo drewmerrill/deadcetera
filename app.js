@@ -833,7 +833,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     });
     
     if (filtered.length === 0) {
-        const statusNames = { 'this_week':'This Week', 'gig_ready':'Gig Ready', 'needs_polish':'Needs Polish', 'on_deck':'On Deck' };
+        const statusNames = { 'prospect':'Prospect', 'wip':'Work in Progress', 'gig_ready':'Gig Ready' };
         const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
         let msg;
         if (activeHarmonyFilter === 'harmonies') {
@@ -1293,6 +1293,7 @@ function showBandResources(songTitle) {
         renderSongStructure(songTitle),
         renderGigNotes(songTitle, bandData),
         renderCoverMe(songTitle),
+        renderSongInPlaylists(songTitle),
         populateSongMetadata(songTitle)
     ]).catch(error => {
         console.error('Error rendering sections:', error);
@@ -1846,6 +1847,36 @@ function renderRehearsalNotes(songTitle, bandData) {
 // ============================================================================
 // GIG NOTES
 // ============================================================================
+
+// ── SONG IN PLAYLISTS ─────────────────────────────────────────────────────────
+
+async function renderSongInPlaylists(songTitle) {
+    const container = document.getElementById('songPlaylistsContainer');
+    if (!container) return;
+    const playlists = await loadPlaylists();
+    const inPlaylists = playlists.filter(pl => 
+        Array.isArray(pl.songs) && pl.songs.some(s => (s.title || s) === songTitle)
+    );
+    if (!inPlaylists.length) {
+        container.innerHTML = '<p style="color:var(--text-dim,#64748b);font-size:0.85em;padding:4px 0">Not in any playlists yet</p>';
+        return;
+    }
+    const typeInfo = PLAYLIST_TYPES;
+    container.innerHTML = inPlaylists.map(pl => {
+        const t = typeInfo[pl.type] || typeInfo.custom;
+        return `<span onclick="openPlaylistFromSong('${pl.id}')" 
+            style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+                   background:${t.bg};border:1px solid ${t.border};border-radius:12px;
+                   color:${t.color};font-size:0.8em;font-weight:600;cursor:pointer;margin:2px">
+            ${t.label.split(' ')[0]} ${pl.name}
+        </span>`;
+    }).join('');
+}
+
+function openPlaylistFromSong(playlistId) {
+    navigateTo('playlists');
+    setTimeout(() => plOpenEditor(playlistId), 400);
+}
 
 // ── COVER ME ──────────────────────────────────────────────────────────────────
 
@@ -5447,10 +5478,9 @@ async function updateSongStatus(status) {
     if (!isUserSignedIn) showSignInNudge();
     
     const statusNames = {
-        '': 'Not Started',
-        'on_deck': 'On Deck',
-        'this_week': 'This Week',
-        'needs_polish': 'Needs Polish',
+        '': 'Not on Radar',
+        'prospect': 'Prospect',
+        'wip': 'Work in Progress',
         'gig_ready': 'Gig Ready'
     };
     
@@ -5515,10 +5545,9 @@ async function addStatusBadges() {
         
         if (status) {
             const badges = {
-                'this_week': { text: '🎯 THIS WEEK', color: '#fff', bg: '#dc2626' },
-                'gig_ready': { text: '✅ READY', color: '#fff', bg: '#059669' },
-                'needs_polish': { text: '⚠️ POLISH', color: '#fff', bg: '#d97706' },
-                'on_deck': { text: '📚 ON DECK', color: '#fff', bg: '#2563eb' }
+                'prospect': { text: '👀 PROSPECT', color: '#fff', bg: '#7c3aed' },
+                'wip': { text: '🔧 IN PROGRESS', color: '#fff', bg: '#d97706' },
+                'gig_ready': { text: '✅ READY', color: '#fff', bg: '#059669' }
             };
             
             const badge = badges[status];
@@ -10609,10 +10638,10 @@ console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const PLAYLIST_TYPES = {
-    northstar: { label: '⭐ North Star',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.3)'  },
-    pregig:    { label: '🎤 Pre-Gig Prep',  color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.3)' },
-    practice:  { label: '🎸 Practice',      color: '#34d399', bg: 'rgba(52,211,153,0.15)',  border: 'rgba(52,211,153,0.3)'  },
-    ondeck:    { label: '📋 On Deck',        color: '#60a5fa', bg: 'rgba(96,165,250,0.15)',  border: 'rgba(96,165,250,0.3)'  },
+    setlist:   { label: '🎤 Setlist',        color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.3)'  },
+    rehearsal: { label: '🎸 Rehearsal',      color: '#34d399', bg: 'rgba(52,211,153,0.15)',  border: 'rgba(52,211,153,0.3)'  },
+    northstar: { label: '⭐ North Star',    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.3)' },
+    practice:  { label: '🏋️ Practice',      color: '#60a5fa', bg: 'rgba(96,165,250,0.15)',  border: 'rgba(96,165,250,0.3)'  },
     custom:    { label: '🎵 Custom',         color: '#94a3b8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.3)' },
 };
 
