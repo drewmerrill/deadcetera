@@ -4068,6 +4068,9 @@ async function importABCFromPhoto(sectionIndex) {
             
             if (status) status.textContent = '🤖 Analyzing with AI...';
             
+            const mediaType = (file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg');
+            console.log('📷 Photo import: file type =', file.type, '→ media_type =', mediaType, 'base64 length =', base64.length);
+            
             const response = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -4079,7 +4082,7 @@ async function importABCFromPhoto(sectionIndex) {
                         content: [
                             {
                                 type: 'image',
-                                source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 }
+                                source: { type: 'base64', media_type: (file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg'), data: base64 }
                             },
                             {
                                 type: 'text',
