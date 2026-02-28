@@ -3,7 +3,7 @@
 
 // ── VERSION: bump this string on every deploy to force cache refresh ────────
 // This is automatically kept fresh — the app writes a ?v= timestamp to bust cache
-const CACHE_NAME = 'deadcetera-20260228-e';
+const CACHE_NAME = 'deadcetera-20260228-f';
 const BASE = self.registration.scope;
 
 const CACHE_URLS = [
@@ -72,19 +72,21 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // For app JS, HTML, CSS — network-first so updates are instant
+    // For app JS, HTML, CSS — always network-first with no-cache headers
+    // This bypasses iOS WKWebView's HTTP cache layer
     const isAppFile = ['.js', '.html', '.css', '.json'].some(ext => url.pathname.endsWith(ext));
     if (isAppFile && url.origin === self.location.origin) {
         event.respondWith(
-            fetch(event.request).then(response => {
+            fetch(new Request(event.request, {
+                cache: 'no-store',
+                headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+            })).then(response => {
                 if (response.ok) {
-                    // Update cache with fresh version
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return response;
             }).catch(() =>
-                // Offline fallback: serve from cache
                 caches.match(event.request).then(cached =>
                     cached || (event.request.mode === 'navigate'
                         ? caches.match(BASE + 'index.html')
