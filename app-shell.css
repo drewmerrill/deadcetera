@@ -231,6 +231,7 @@ a{color:var(--accent-light);}
 .rehearsal-note-card .note-header{color:var(--text-muted)!important;}
 .rehearsal-note-card .note-header strong{color:var(--text)!important;}
 .rehearsal-note-card p{color:var(--text-muted)!important;}
+.rehearsal-note-card .note-content{color:var(--text,#f1f5f9)!important;}
 .harmony-card{background:rgba(255,255,255,0.03)!important;border:1px solid var(--border)!important;border-radius:10px!important;padding:14px!important;margin-bottom:8px!important;}
 .harmony-lyric{color:var(--accent-light)!important;font-weight:600!important;}
 .part-row{color:var(--text-muted)!important;}
