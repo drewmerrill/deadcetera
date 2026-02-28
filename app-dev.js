@@ -924,6 +924,8 @@ function selectSong(songTitle) {
     const step5ref = document.getElementById('step5ref');
     if (step3ref) step3ref.classList.remove('hidden');
     if (step4ref) step4ref.classList.remove('hidden');
+    const step4cover = document.getElementById('step4cover');
+    if (step4cover) step4cover.classList.remove('hidden');
     if (step5ref) step5ref.classList.remove('hidden');
     
     // Hide old steps
@@ -1290,6 +1292,7 @@ function showBandResources(songTitle) {
         renderRehearsalNotesWithStorage(songTitle),
         renderSongStructure(songTitle),
         renderGigNotes(songTitle, bandData),
+        renderCoverMe(songTitle),
         populateSongMetadata(songTitle)
     ]).catch(error => {
         console.error('Error rendering sections:', error);
@@ -1844,6 +1847,77 @@ function renderRehearsalNotes(songTitle, bandData) {
 // GIG NOTES
 // ============================================================================
 
+// ── COVER ME ──────────────────────────────────────────────────────────────────
+
+async function renderCoverMe(songTitle) {
+    const container = document.getElementById('coverMeContainer');
+    if (!container) return;
+    const data = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
+    const covers = Array.isArray(data) ? data : (data.covers || []);
+    if (!covers.length) {
+        container.innerHTML = '<p style="color:var(--text-muted,#94a3b8);padding:8px 0">No cover versions added yet</p>';
+        return;
+    }
+    container.innerHTML = covers.map((c, i) => `
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+                <div style="flex:1">
+                    <div style="font-weight:600;color:var(--text,#f1f5f9)">${c.artist || 'Unknown Artist'}</div>
+                    ${c.url ? `<a href="${c.url}" target="_blank" style="color:var(--accent-light,#818cf8);font-size:0.85em;word-break:break-all">${c.url}</a>` : ''}
+                    ${c.notes ? `<div style="color:var(--text-muted,#94a3b8);font-size:0.82em;margin-top:4px">${c.notes}</div>` : ''}
+                </div>
+                <button onclick="deleteCoverMe(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1em;flex-shrink:0">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function showAddCoverMeForm() {
+    const container = document.getElementById('coverMeSection');
+    if (!container || document.getElementById('coverMeForm')) return;
+    const form = document.createElement('div');
+    form.id = 'coverMeForm';
+    form.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px;margin-bottom:12px';
+    form.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <input id="coverMeArtist" class="app-input" placeholder="Artist / Band name" autocomplete="off">
+            <input id="coverMeUrl" class="app-input" placeholder="YouTube / Spotify link (optional)" autocomplete="off">
+            <input id="coverMeNotes" class="app-input" placeholder="Notes (optional)" autocomplete="off">
+            <div style="display:flex;gap:8px">
+                <button onclick="saveCoverMe()" class="btn btn-primary">💾 Save</button>
+                <button onclick="document.getElementById('coverMeForm')?.remove()" class="btn btn-ghost">Cancel</button>
+            </div>
+        </div>
+    `;
+    container.prepend(form);
+    document.getElementById('coverMeArtist')?.focus();
+}
+
+async function saveCoverMe() {
+    const artist = document.getElementById('coverMeArtist')?.value?.trim();
+    if (!artist) { showToast('Enter an artist name'); return; }
+    const url = document.getElementById('coverMeUrl')?.value?.trim();
+    const notes = document.getElementById('coverMeNotes')?.value?.trim();
+    const songTitle = selectedSong?.title || selectedSong;
+    const existing = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
+    const covers = Array.isArray(existing) ? existing : (existing.covers || []);
+    covers.push({ artist, url, notes, addedBy: currentUserEmail, addedAt: new Date().toISOString() });
+    await saveBandDataToDrive(songTitle, 'cover_me', covers);
+    document.getElementById('coverMeForm')?.remove();
+    await renderCoverMe(songTitle);
+    showToast('✅ Cover version added!');
+}
+
+async function deleteCoverMe(index) {
+    if (!confirm('Remove this cover version?')) return;
+    const songTitle = selectedSong?.title || selectedSong;
+    const existing = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
+    const covers = Array.isArray(existing) ? existing : (existing.covers || []);
+    covers.splice(index, 1);
+    await saveBandDataToDrive(songTitle, 'cover_me', covers);
+    await renderCoverMe(songTitle);
+}
+
 async function renderGigNotes(songTitle, bandData) {
     const container = document.getElementById('gigNotesContainer');
     let notes = toArray(await loadGigNotes(songTitle) || []);
@@ -1861,13 +1935,13 @@ async function renderGigNotes(songTitle, bandData) {
         return;
     }
     
-    container.style.cssText = '';  // Clear any inherited styles
+    container.style.cssText = 'color:var(--text,#f1f5f9)';  // ensure text visible
     container.innerHTML = `
         <div style="background:rgba(255,255,255,0.02);border-radius:8px;padding:4px 0">
             <ul style="list-style:none;padding:0;margin:0">
                 ${notes.map((note, index) => `
                     <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                        <span id="gigNoteText_${index}" style="flex:1;color:var(--text,#f1f5f9)">${note}</span>
+                        <span id="gigNoteText_${index}" style="flex:1;color:var(--text,#f1f5f9);font-size:0.9em">${note}</span>
                         <div style="display:flex;gap:4px;flex-shrink:0">
                             <button onclick="editGigNote(${index})" style="background: rgba(102,126,234,0.15); color: var(--accent-light,#818cf8); border: 1px solid rgba(102,126,234,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">✏️</button>
                             <button onclick="deleteGigNote(${index})" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight:700;">✕</button>
@@ -1885,15 +1959,34 @@ async function renderGigNotes(songTitle, bandData) {
 async function addGigNote() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
-    
-    const note = prompt('Performance tip / gig note:');
-    if (!note || !note.trim()) return;
-    
+    const container = document.getElementById('gigNotesContainer');
+    if (!container) return;
+    // Show inline form instead of prompt (prompt blocked on iOS PWA)
+    const formId = 'gigNoteInlineForm';
+    if (document.getElementById(formId)) return; // already open
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'padding:10px 0;display:flex;gap:8px;flex-wrap:wrap';
+    form.innerHTML = `
+        <input id="gigNoteInput" class="app-input" placeholder="Add performance tip..." 
+            style="flex:1;min-width:200px" autocomplete="off">
+        <button onclick="saveGigNoteInline()" class="btn btn-primary" style="white-space:nowrap">💾 Save</button>
+        <button onclick="document.getElementById('gigNoteInlineForm')?.remove()" class="btn btn-ghost">Cancel</button>
+    `;
+    container.prepend(form);
+    document.getElementById('gigNoteInput')?.focus();
+}
+
+async function saveGigNoteInline() {
+    const input = document.getElementById('gigNoteInput');
+    const note = input?.value?.trim();
+    if (!note) return;
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
     let notes = await loadGigNotes(songTitle) || [];
-    notes.push(note.trim());
-    
+    notes.push(note);
     await saveGigNotes(songTitle, notes);
-    
+    document.getElementById('gigNoteInlineForm')?.remove();
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderGigNotes(songTitle, bandData);
 }
@@ -12060,8 +12153,8 @@ function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) 
         const isLead = part.part === 'lead' || aiSection?.leadSinger === part.singer;
         return `
             <div class="harmony-singer-chip" data-singer="${(part.singer||'').toLowerCase()}"
-                style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
-                       background:${colors.bg};border-radius:20px;margin:3px">
+                style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;
+                       background:${colors.bg};border-radius:20px;flex-shrink:0">
                 <span style="color:${colors.text};font-weight:600;font-size:0.85em">${colors.name}</span>
                 <span style="color:rgba(255,255,255,0.5);font-size:0.75em">${isLead ? 'Lead' : 'Harmony'}</span>
                 ${part.notes ? `<span style="color:rgba(255,255,255,0.7);font-size:0.75em">· ${part.notes}</span>` : ''}
@@ -12090,7 +12183,7 @@ function renderLearningSectionCard(songTitle, section, sectionIndex, aiSection) 
                 </button>
             </div>
 
-            <div style="margin-bottom:10px">${partsHTML}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${partsHTML}</div>
 
             ${interval ? `<div style="font-size:0.82em;color:#a5b4fc;margin-bottom:6px">🎵 Interval: ${interval}</div>` : ''}
             ${teachingNote ? `
