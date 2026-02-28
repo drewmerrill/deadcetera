@@ -231,13 +231,22 @@
                     <span style="font-weight:600;color:var(--text-muted,#94a3b8)">🎶 Harmonies</span>
                 </label>
             </div>
-            <div class="meta-item" id="harmonyMembersRow" style="display:none;flex-wrap:wrap;gap:4px;align-items:center">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:4px;font-size:0.85em">Singers:</span>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+            <div class="meta-item" id="harmonyMembersRow" style="display:none;flex-wrap:wrap;gap:6px;align-items:center;width:100%;flex:1 1 100%">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em;flex-shrink:0">Singers:</span>
+                <div style="position:relative;flex:1;min-width:140px">
+                    <button id="singersDropdownBtn" onclick="toggleSingersDropdown()" 
+                        style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text,#f1f5f9);font-size:0.85em;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center">
+                        <span id="singersLabel">Select singers...</span>
+                        <span>▾</span>
+                    </button>
+                    <div id="singersDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:8px;z-index:500;padding:6px;margin-top:4px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
