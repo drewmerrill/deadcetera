@@ -4265,9 +4265,9 @@ async function importABCFromPhoto(sectionIndex) {
                             },
                             {
                                 type: 'text',
-                                text: `Convert this sheet music to ABC notation. 
+                                text: `Convert this sheet music to ABC notation. CRITICAL: Do NOT wrap in markdown backticks or code blocks. Output raw ABC text only.
 Rules:
-- Output ONLY valid ABC notation, nothing else
+- Start your response with X:1 on the very first line, nothing before it
 - Include X:1, T:, M:, L:, K: headers
 - Include lyrics on w: lines if visible
 - Use standard ABC note syntax: C D E F G A B for notes, lowercase for octave above middle C
@@ -4285,7 +4285,8 @@ Sheet music image to convert:`
             
             if (!response.ok) throw new Error(`API error: ${response.status}`);
             const data = await response.json();
-            const abc = data.content[0]?.text?.trim();
+            let abc = data.content[0]?.text?.trim() || '';
+            abc = abc.replace(/^```abc\n?/i, '').replace(/^```\n?/, '').replace(/```$/m, '').trim();
             
             if (abc && abc.includes('X:')) {
                 const textarea = document.getElementById('abcEditorTextarea');
@@ -4556,7 +4557,11 @@ async function loadABCNotation(songTitle, sectionIndex) {
     // Try Google Drive first
     const key = `abc_section_${sectionIndex}`;
     const driveData = await loadBandDataFromDrive(songTitle, key);
-    if (driveData && driveData.abc) return driveData.abc;
+    if (driveData && driveData.abc) {
+        let abc = driveData.abc.trim();
+        abc = abc.replace(/^```abc\n?/i, '').replace(/^```\n?/m, '').replace(/```$/m, '').trim();
+        return abc;
+    }
     
     // Fall back to localStorage
     const localKey = `deadcetera_abc_${songTitle}_section${sectionIndex}`;
