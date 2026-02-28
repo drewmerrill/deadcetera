@@ -1971,7 +1971,7 @@ async function renderGigNotes(songTitle, bandData) {
         <div style="background:rgba(255,255,255,0.02);border-radius:8px;padding:4px 0">
             <ul style="list-style:none;padding:0;margin:0">
                 ${notes.map((note, index) => `
-                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); color: #f1f5f9;">
                         <span id="gigNoteText_${index}" style="flex:1;color:var(--text,#f1f5f9);font-size:0.9em">${note}</span>
                         <div style="display:flex;gap:4px;flex-shrink:0">
                             <button onclick="editGigNote(${index})" style="background: rgba(102,126,234,0.15); color: var(--accent-light,#818cf8); border: 1px solid rgba(102,126,234,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;">✏️</button>
