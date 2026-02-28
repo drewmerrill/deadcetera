@@ -6408,9 +6408,38 @@ function injectAdminButton() {
     btn.onmouseout = () => btn.style.transform = 'scale(1)';
     btn.onclick = showAdminPanel;
     document.body.appendChild(btn);
+
+    checkUnreadFeedback();
+}
+
+async function checkUnreadFeedback() {
+    try {
+        const feedback = await loadBandDataFromDrive('_band', 'feedback');
+        const items = Array.isArray(feedback) ? feedback : Object.values(feedback || {});
+        const lastRead = localStorage.getItem('deadcetera_feedback_last_read') || '0';
+        const unread = items.filter(f => f.date && f.date > lastRead).length;
+        updateFeedbackBadge(unread);
+    } catch(e) {}
+}
+
+function updateFeedbackBadge(count) {
+    const btn = document.getElementById('adminPanelBtn');
+    if (!btn) return;
+    const existing = document.getElementById('adminFeedbackBadge');
+    if (existing) existing.remove();
+    if (count <= 0) return;
+    const badge = document.createElement('div');
+    badge.id = 'adminFeedbackBadge';
+    badge.textContent = count > 9 ? '9+' : count;
+    badge.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#ef4444;color:white;border-radius:50%;width:20px;height:20px;font-size:0.7em;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none;border:2px solid #1a1a2e';
+    btn.style.position = 'relative';
+    btn.appendChild(badge);
 }
 
 async function showAdminPanel() {
+    // Mark feedback as read
+    localStorage.setItem('deadcetera_feedback_last_read', new Date().toISOString());
+    updateFeedbackBadge(0);
     // Remove existing panel if open
     const existing = document.getElementById('adminPanel');
     if (existing) { existing.remove(); return; }
@@ -6418,7 +6447,7 @@ async function showAdminPanel() {
     // Show loading state immediately
     const loadingPanel = document.createElement('div');
     loadingPanel.id = 'adminPanel';
-    loadingPanel.style.cssText = `position:fixed;top:0;right:0;width:420px;height:100vh;background:#1a1a2e;color:#e0e0e0;z-index:10000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;`;
+    loadingPanel.style.cssText = `position:fixed;top:0;right:0;width:min(420px,100vw);height:100vh;background:#1a1a2e;color:#e0e0e0;z-index:10000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;`;
     loadingPanel.innerHTML = `<div style="text-align:center"><div style="font-size:2em;margin-bottom:12px">⏳</div><div style="color:#667eea">Loading activity from Firebase...</div></div>`;
     document.body.appendChild(loadingPanel);
 
@@ -6436,7 +6465,7 @@ async function showAdminPanel() {
     const panel = document.createElement('div');
     panel.id = 'adminPanel';
     panel.style.cssText = `
-        position: fixed; top: 0; right: 0; width: 420px; height: 100vh;
+        position: fixed; top: 0; right: 0; width: min(420px, 100vw); height: 100vh;
         background: #1a1a2e; color: #e0e0e0; z-index: 10000;
         box-shadow: -4px 0 20px rgba(0,0,0,0.5); overflow-y: auto;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -6524,8 +6553,26 @@ async function showAdminPanel() {
         return `${days}d ago`;
     };
     
+    const feedbackData = await loadBandDataFromDrive('_band', 'feedback');
+    const feedbackItems = Array.isArray(feedbackData) ? feedbackData : Object.values(feedbackData || {});
+    const feedbackHTML = feedbackItems.length ? `
+        <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:12px;margin-bottom:16px">
+            <div style="font-weight:700;color:#fca5a5;margin-bottom:8px;font-size:0.9em">📬 Feedback & Bug Reports (${feedbackItems.length})</div>
+            ${feedbackItems.slice().reverse().map(f => `
+                <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.8em">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                        <span style="color:#fbbf24;font-weight:600">${f.type||'feedback'} · ${f.priority||'normal'}</span>
+                        <span style="color:#64748b">${f.user||'anon'} · ${f.date ? new Date(f.date).toLocaleDateString() : ''}</span>
+                    </div>
+                    <div style="color:#e2e8f0">${f.description||''}</div>
+                </div>
+            `).join('')}
+        </div>
+    ` : '';
+
     panel.innerHTML = `
         <div style="padding: 20px;">
+            ${feedbackHTML}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0; color: #667eea; font-size: 1.3em;">📊 Band Activity</h2>
                 <button onclick="document.getElementById('adminPanel').remove()" 
