@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-201636', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-203728', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -6115,7 +6115,17 @@ async function runFadrImport(songTitle) {
 
         setProgress('🗄️ Creating Fadr asset...', 40);
         const assetResp = await fetch(`${FADR_PROXY}/fadr/assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: filename, path: s3Path, extension: ext }) });
-        if (!assetResp.ok) throw new Error(`Fadr create asset failed: ${assetResp.status}`);
+        if (!assetResp.ok) {
+            let errDetail = '';
+            try { 
+                const errBody = await assetResp.text(); 
+                errDetail = errBody;
+                console.error('Fadr create asset error body:', errBody);
+                console.error('Fadr error header:', assetResp.headers.get('X-Fadr-Error'));
+            } catch(e) {}
+            const hint = assetResp.status === 401 ? ' (API key may be expired)' : assetResp.status === 500 ? ' (Fadr server error — may need new API key)' : '';
+            throw new Error(`Fadr create asset failed: ${assetResp.status}${hint}\n${errDetail.substring(0, 200)}`);
+        }
         const asset = await assetResp.json();
         const assetId = asset._id;
 
@@ -6313,23 +6323,25 @@ async function initFirebaseOnly() {
 }
 
 function loadGoogleDriveAPI() {
-    // Now loads Firebase SDK + Google Identity Services for sign-in
     return new Promise((resolve, reject) => {
         console.log('🔥 Loading Firebase + Google Identity...');
         
         const loadScript = (src) => new Promise((res, rej) => {
             const s = document.createElement('script');
-            s.src = src; s.onload = res; s.onerror = rej;
+            s.src = src;
+            s.onload = () => { console.log('✅ Script loaded:', src); res(); };
+            s.onerror = (e) => { console.error('❌ Script failed:', src, e); rej(new Error('Failed to load: ' + src)); };
             document.head.appendChild(s);
         });
 
         const loadGIS = new Promise((res, rej) => {
             if (window.google?.accounts?.oauth2) { res(); return; }
-            loadScript('https://accounts.google.com/gsi/client').then(res).catch(rej);
+            loadScript('https://accounts.google.com/gsi/client').then(res).catch(e => {
+                console.warn('GIS load failed, continuing without sign-in:', e);
+                res(); // Don't block on GIS failure — Firebase still works
+            });
         });
 
-        // CRITICAL: firebase-app-compat MUST fully execute before database/storage load
-        // Do NOT create DB/Storage script elements until after app-compat onload fires
         const firebaseAppReady = window.firebase?.apps !== undefined
             ? Promise.resolve()
             : loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
@@ -6344,7 +6356,10 @@ function loadGoogleDriveAPI() {
                 console.log('✅ Firebase + Google scripts loaded');
                 initFirebase().then(resolve).catch(reject);
             })
-            .catch(reject);
+            .catch(e => {
+                console.error('❌ Script loading failed:', e);
+                reject(e || new Error('Script loading failed'));
+            });
     });
 }
 
@@ -14713,7 +14728,8 @@ function pmEnsureOverlay() {
                     <button class="pm-tool-btn pm-mem-btn" data-level="3" onclick="pmSetMemoryLevel(3,this)">Hard</button>
                     <button class="pm-tool-btn pm-mem-btn" data-level="4" onclick="pmSetMemoryLevel(4,this)">🎯 Test</button>
                     <div style="flex:1"></div>
-                    <button class="pm-tool-btn" onclick="pmMemoryShuffle()" title="Randomize which words are hidden">🔀</button>
+                    <button class="pm-tool-btn" onclick="pmOpenPalaceWalk()" style="background:rgba(232,121,249,0.15);color:#e879f9" title="Visual walkthrough">🏰 Walk</button>
+                    <button class="pm-tool-btn" onclick="pmMemoryShuffle()" title="Randomize">🔀</button>
                 </div>
                 <div class="pm-chart-scroll" id="pmMemoryScroll">
                     <div class="pm-chart-text gig-chart-text" id="pmMemoryText"></div>
@@ -15285,7 +15301,7 @@ async function pmFetchGenius(songTitle) {
         const fetchRes = await fetch(FADR_PROXY + '/genius-fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: top.url, id: top.id })
+            body: JSON.stringify({ url: top.url, id: top.id, song: songTitle, artist })
         });
         const fetchData = await fetchRes.json();
         console.log('🔍 Genius description:', fetchData);
@@ -15299,7 +15315,37 @@ async function pmFetchGenius(songTitle) {
             pmLoadKnowTab(songTitle);
             showToast('✅ Imported from Genius: ' + top.title);
         } else {
-            showToast('⚠️ Found on Genius but no description. Check console.');
+            // Genius returned empty — use Claude to generate song meaning
+            showToast('📖 Genius empty — asking AI for song meaning...');
+            try {
+                const aiRes = await fetch(FADR_PROXY + '/claude', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: 'claude-sonnet-4-20250514',
+                        max_tokens: 1000,
+                        system: 'You are a music historian and songwriter analyst. Provide insightful, factual information about songs.',
+                        messages: [{ role: 'user', content: `Tell me about the song "${songTitle}" by ${artist || 'Grateful Dead'}. Cover: the meaning and story behind the lyrics, what inspired the songwriter, the emotional themes, how the song fits into the band's catalog, and any interesting facts about its history or notable performances. Be specific and insightful, not generic. Write 2-3 paragraphs.` }]
+                    })
+                });
+                const aiData = await aiRes.json();
+                const meaning = aiData.content?.[0]?.text || '';
+                if (meaning) {
+                    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+                    current.text = meaning;
+                    current.geniusUrl = top.url;
+                    current.source = 'AI-generated';
+                    await saveBandDataToDrive(songTitle, 'song_meaning', current);
+                    pmKnowLoaded[songTitle] = false;
+                    pmLoadKnowTab(songTitle);
+                    showToast('✅ Song meaning generated by AI');
+                } else {
+                    showToast('⚠️ Could not get song meaning');
+                }
+            } catch(aiErr) {
+                console.error('AI meaning fallback failed:', aiErr);
+                showToast('⚠️ Found on Genius but no description available');
+            }
         }
     } catch(e) {
         console.error('Genius fetch error:', e);
@@ -15445,6 +15491,138 @@ function pmMemoryShuffle() {
     pmMemorySeed = Math.floor(Math.random() * 1000) + 1;
     if (pmMemoryLevel > 0) pmApplyBrainTuner('pmMemoryText');
     showToast('🔀 Shuffled!');
+}
+
+// ── Palace Walk — Visual Scene Walkthrough ───────────────────────────────────
+let pmPalaceIndex = 0;
+let pmPalaceScenes = [];
+
+async function pmOpenPalaceWalk() {
+    const song = pmQueue[pmIndex];
+    if (!song) return;
+    
+    const meaning = await loadBandDataFromDrive(song.title, 'song_meaning');
+    pmPalaceScenes = meaning?.memoryPalaceScenes || [];
+    
+    if (!pmPalaceScenes.length) {
+        showToast('🏰 No scenes yet — tap 🤖 Generate on the Know tab first');
+        return;
+    }
+    
+    pmPalaceIndex = 0;
+    
+    const existing = document.getElementById('pmPalaceWalkOverlay');
+    if (existing) existing.remove();
+    
+    const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a78bfa','#e879f9','#06b6d4','#f97316'];
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'pmPalaceWalkOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100020;background:#050510;display:flex;flex-direction:column;overflow:hidden';
+    overlay.innerHTML = `
+        <div style="display:flex;align-items:center;padding:10px 16px;background:rgba(0,0,0,0.6);flex-shrink:0">
+            <button onclick="document.getElementById('pmPalaceWalkOverlay').remove()" style="background:none;border:none;color:#94a3b8;font-size:1.3em;cursor:pointer;margin-right:12px">✕</button>
+            <div style="flex:1">
+                <div style="color:#e879f9;font-weight:700;font-size:0.9em">🏰 Palace Walk — ${song.title}</div>
+                <div id="pmPalaceCounter" style="color:#64748b;font-size:0.75em">Scene 1 of ${pmPalaceScenes.length}</div>
+            </div>
+            <button onclick="pmPalaceAutoPlay()" id="pmPalaceAutoBtn" class="pm-tool-btn" style="background:rgba(232,121,249,0.2);color:#e879f9">▶ Auto</button>
+        </div>
+        <div id="pmPalaceScene" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;transition:opacity 0.5s ease">
+        </div>
+        <div style="display:flex;gap:12px;padding:16px;justify-content:center;flex-shrink:0;background:rgba(0,0,0,0.4)">
+            <button onclick="pmPalaceNav(-1)" style="background:rgba(255,255,255,0.06);border:none;color:#94a3b8;font-size:1.5em;width:60px;height:48px;border-radius:10px;cursor:pointer">‹</button>
+            <div id="pmPalaceDots" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center"></div>
+            <button onclick="pmPalaceNav(1)" style="background:rgba(255,255,255,0.06);border:none;color:#94a3b8;font-size:1.5em;width:60px;height:48px;border-radius:10px;cursor:pointer">›</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    // Keyboard navigation
+    overlay._keyHandler = e => {
+        if (e.key === 'ArrowRight' || e.key === ' ') { pmPalaceNav(1); e.preventDefault(); }
+        if (e.key === 'ArrowLeft') { pmPalaceNav(-1); e.preventDefault(); }
+        if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', overlay._keyHandler); }
+    };
+    document.addEventListener('keydown', overlay._keyHandler);
+    
+    // Swipe support
+    let touchStartX = 0;
+    overlay.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+    overlay.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        if (Math.abs(dx) > 60) pmPalaceNav(dx < 0 ? 1 : -1);
+    }, { passive: true });
+    
+    pmRenderPalaceScene();
+}
+
+function pmRenderPalaceScene() {
+    const scene = pmPalaceScenes[pmPalaceIndex];
+    if (!scene) return;
+    
+    const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a78bfa','#e879f9','#06b6d4','#f97316'];
+    const color = colors[pmPalaceIndex % colors.length];
+    const container = document.getElementById('pmPalaceScene');
+    
+    // Fade out then in
+    container.style.opacity = '0';
+    setTimeout(() => {
+        container.innerHTML = `
+            <div style="font-size:4em;margin-bottom:16px;filter:drop-shadow(0 0 20px ${color}80)">${scene.emoji || '🎵'}</div>
+            <div style="color:${color};font-weight:800;font-size:1.4em;margin-bottom:12px;letter-spacing:0.5px">${scene.section || 'Scene ' + (pmPalaceIndex + 1)}</div>
+            <div style="color:#94a3b8;font-size:0.9em;font-style:italic;margin-bottom:20px;max-width:400px;line-height:1.5">💡 "${scene.cue || scene.lyrics || ''}"</div>
+            <div style="background:linear-gradient(135deg,${color}15,${color}08);border:1px solid ${color}30;border-radius:16px;padding:24px;max-width:450px;margin:0 auto">
+                <div style="color:#e2e8f0;font-size:1.05em;line-height:1.7;text-align:left">
+                    🎬 ${scene.scene || ''}
+                </div>
+            </div>
+            <div style="margin-top:20px;color:#4b5563;font-size:0.75em">Swipe or tap arrows to navigate · Press Space for next</div>
+        `;
+        container.style.opacity = '1';
+    }, 250);
+    
+    // Update counter and dots
+    const counter = document.getElementById('pmPalaceCounter');
+    if (counter) counter.textContent = `Scene ${pmPalaceIndex + 1} of ${pmPalaceScenes.length}`;
+    
+    const dotsContainer = document.getElementById('pmPalaceDots');
+    if (dotsContainer) {
+        dotsContainer.innerHTML = pmPalaceScenes.map((_, i) => {
+            const c = colors[i % colors.length];
+            const isActive = i === pmPalaceIndex;
+            return `<div onclick="pmPalaceIndex=${i};pmRenderPalaceScene()" style="width:${isActive?'24px':'10px'};height:10px;border-radius:5px;background:${isActive ? c : c+'40'};cursor:pointer;transition:all 0.3s"></div>`;
+        }).join('');
+    }
+}
+
+function pmPalaceNav(delta) {
+    const newIdx = pmPalaceIndex + delta;
+    if (newIdx < 0 || newIdx >= pmPalaceScenes.length) return;
+    pmPalaceIndex = newIdx;
+    pmRenderPalaceScene();
+}
+
+let pmPalaceAutoTimer = null;
+function pmPalaceAutoPlay() {
+    const btn = document.getElementById('pmPalaceAutoBtn');
+    if (pmPalaceAutoTimer) {
+        clearInterval(pmPalaceAutoTimer);
+        pmPalaceAutoTimer = null;
+        if (btn) { btn.textContent = '▶ Auto'; btn.style.background = 'rgba(232,121,249,0.2)'; }
+        return;
+    }
+    if (btn) { btn.textContent = '⏸ Stop'; btn.style.background = 'rgba(239,68,68,0.2)'; }
+    pmPalaceAutoTimer = setInterval(() => {
+        if (pmPalaceIndex < pmPalaceScenes.length - 1) {
+            pmPalaceIndex++;
+            pmRenderPalaceScene();
+        } else {
+            clearInterval(pmPalaceAutoTimer);
+            pmPalaceAutoTimer = null;
+            if (btn) { btn.textContent = '▶ Auto'; btn.style.background = 'rgba(232,121,249,0.2)'; }
+        }
+    }, 8000); // 8 seconds per scene
 }
 
 // ── Harmony tab ──────────────────────────────────────────────────────────────
