@@ -334,30 +334,60 @@ async function handleGeniusSearch(request) {
 }
 
 async function handleGeniusFetch(request) {
-    const { url } = await request.json();
-    if (!url) return jsonResp({ error: 'No URL' }, 400);
+    const { url, id } = await request.json();
+    if (!url && !id) return jsonResp({ error: 'No URL or ID' }, 400);
+    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
     try {
-        const res = await fetch(url, { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
-        });
-        const html = await res.text();
-
         let description = '';
-        // Try JSON-LD description
-        const descMatch = html.match(/"description":\s*\{"plain":\s*"([^"]*?)"/);
-        if (descMatch) description = descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-        // Try meta description  
-        if (!description) {
-            const metaMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]*?)"/);
-            if (metaMatch) description = metaMatch[1];
+        
+        // Method 1: Use Genius song API endpoint (if we have ID)
+        if (id) {
+            try {
+                const apiRes = await fetch(`https://genius.com/api/songs/${id}`, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
+                if (apiRes.ok) {
+                    const apiData = await apiRes.json();
+                    const song = apiData?.response?.song;
+                    // The "about" description
+                    if (song?.description?.plain) description = song.description.plain;
+                    else if (song?.description?.html) description = song.description.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                }
+            } catch(e) { /* fall through to HTML scraping */ }
         }
-        // Try og:description
-        if (!description) {
-            const ogMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*?)"/);
-            if (ogMatch) description = ogMatch[1];
+
+        // Method 2: Scrape the HTML page for the preloaded state JSON
+        if (!description && url) {
+            const res = await fetch(url, { headers: { 'User-Agent': ua } });
+            const html = await res.text();
+
+            // Genius embeds song data in a <script> tag with window.__PRELOADED_STATE__
+            const preloadMatch = html.match(/window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\('(.+?)'\);/);
+            if (preloadMatch) {
+                try {
+                    // The content is JSON-encoded inside a JS string, so needs double-unescape
+                    const unescaped = preloadMatch[1].replace(/\\'/g, "'").replace(/\\\\"/g, '"').replace(/\\\\/g, '\\');
+                    const state = JSON.parse(unescaped);
+                    // Navigate to song description
+                    const songPage = state?.songPage || {};
+                    const song = songPage?.song || Object.values(state?.entities?.songs || {})[0];
+                    if (song?.description?.plain) description = song.description.plain;
+                    else if (song?.descriptionPreview) description = song.descriptionPreview;
+                } catch(e) { /* JSON parse of preloaded state failed, try other methods */ }
+            }
+            
+            // Method 3: Look for description in meta/JSON-LD  
+            if (!description) {
+                const descMatch = html.match(/"description":\s*\{"plain":\s*"([\s\S]*?)(?<!\\)"/);
+                if (descMatch) description = descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            }
+            // Method 4: og:description (often just lyrics, but better than nothing)
+            if (!description) {
+                const ogMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*?)"/);
+                if (ogMatch) description = ogMatch[1];
+            }
         }
-        return jsonResp({ description, url });
+        
+        return jsonResp({ description: description || '', url });
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
     }
@@ -368,9 +398,9 @@ async function handleArchiveSearch(request) {
     const { query, band } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
 
-    // Broader search across all live music collections
+    // Simple broad search - just search for audio items matching the query
     const searchQuery = encodeURIComponent(query);
-    const url = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+mediatype%3Aaudio+AND+collection%3A(etree+OR+GratefulDead+OR+JerryGarcia+OR+Phish+OR+WidespreadPanic+OR+GratefulDeadBand)&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=avg_rating+desc&rows=30&output=json`;
+    const url = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+mediatype%3Aaudio&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&fl[]=collection&sort[]=downloads+desc&rows=30&output=json`;
 
     try {
         const res = await fetch(url);
@@ -437,23 +467,49 @@ async function handleAudioTrim(request) {
     }
 }
 
-// ── YouTube search (via Invidious) ───────────────────────────────────────────
+// ── YouTube search ───────────────────────────────────────────────────────────
 async function handleYouTubeSearch(request) {
     const { query } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
 
+    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
     try {
-        // Use Invidious API for YouTube search (no API key needed)
-        const instances = ['https://vid.puffyan.us', 'https://inv.tux.pizza', 'https://invidious.fdn.fr'];
-        let results = [];
+        // Try Piped API instances (more reliable than Invidious)
+        const instances = ['https://pipedapi.kavin.rocks', 'https://api.piped.yt', 'https://piped-api.privacy.com.de'];
         for (const instance of instances) {
             try {
-                const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&sort_by=relevance`, {
-                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                const res = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=videos`, {
+                    headers: { 'User-Agent': ua }
                 });
-                if (res.ok) {
-                    const data = await res.json();
-                    results = data.slice(0, 10).map(v => ({
+                if (!res.ok) continue;
+                const data = await res.json();
+                const items = (data.items || data).filter(v => v.type === 'stream' || v.url || v.videoId);
+                if (items.length) {
+                    const results = items.slice(0, 10).map(v => ({
+                        title: v.title,
+                        videoId: v.url ? v.url.replace('/watch?v=', '') : v.videoId,
+                        author: v.uploaderName || v.author,
+                        lengthSeconds: v.duration || v.lengthSeconds,
+                        url: `https://www.youtube.com/watch?v=${v.url ? v.url.replace('/watch?v=', '') : v.videoId}`,
+                        thumbnail: v.thumbnail || ''
+                    }));
+                    return jsonResp({ results });
+                }
+            } catch(e) { continue; }
+        }
+
+        // Fallback: try Invidious instances
+        const invInstances = ['https://inv.tux.pizza', 'https://invidious.fdn.fr', 'https://vid.puffyan.us'];
+        for (const instance of invInstances) {
+            try {
+                const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
+                    headers: { 'User-Agent': ua }
+                });
+                if (!res.ok) continue;
+                const data = await res.json();
+                if (data.length) {
+                    const results = data.slice(0, 10).map(v => ({
                         title: v.title,
                         videoId: v.videoId,
                         author: v.author,
@@ -461,11 +517,12 @@ async function handleYouTubeSearch(request) {
                         url: `https://www.youtube.com/watch?v=${v.videoId}`,
                         thumbnail: v.videoThumbnails?.[0]?.url || ''
                     }));
-                    break;
+                    return jsonResp({ results });
                 }
             } catch(e) { continue; }
         }
-        return jsonResp({ results });
+
+        return jsonResp({ results: [], error: 'All search instances failed' });
     } catch(e) {
         return jsonResp({ error: e.message, results: [] });
     }
