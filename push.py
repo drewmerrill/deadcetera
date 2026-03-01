@@ -32,8 +32,14 @@ DEPLOY_FILES = [
     'help.js',
     'data.js',
     'rehearsal-mode.js',
+    'rehearsal-mode.css',
     'service-worker.js',
     'worker.js',
+    'styles.css',
+    'app-shell.css',
+    'manifest.json',
+    'sync.py',
+    'push.py',
     'version.json',
 ]
 
@@ -103,7 +109,8 @@ def stamp_version(version_str, repo_dir):
         else:
             text = stamp_line + text
         # Update BUILD: DEV placeholder in badge
-        text = re.sub(r"stamp\.textContent = 'BUILD: .*?'", f"stamp.textContent = 'BUILD: {version_str}'", text)
+        # Replace any BUILD: placeholder regardless of variable name (el, stamp, etc.)
+        text = re.sub(r"(?:el|stamp)\.textContent = 'BUILD: .*?'", f"el.textContent = 'BUILD: {version_str}'", text)
         open(fpath, 'w').write(text)
 
     # app-dev.js always mirrors app.js
@@ -116,12 +123,13 @@ def stamp_version(version_str, repo_dir):
     html_path = os.path.join(repo_dir, 'index.html')
     if os.path.exists(html_path):
         html = open(html_path).read()
-        # Update or insert <meta name="build-version"> in <head>
-        meta_tag = f'<meta name="build-version" content="{version_str}">'
+        # Update meta tag
         if '<meta name="build-version"' in html:
-            html = re.sub(r'<meta name="build-version"[^>]*>', meta_tag, html)
+            html = re.sub(r'<meta name="build-version"[^>]*>', f'<meta name="build-version" content="{version_str}">', html)
         else:
-            html = html.replace('<head>', f'<head>\n    {meta_tag}', 1)
+            html = html.replace('<head>', f'<head>\n    <meta name="build-version" content="{version_str}">', 1)
+        # Update hardcoded badge div (visible before JS loads, critical for mobile)
+        html = re.sub(r'(id="buildStamp"[^>]*>)[^<]*', r'\g<1>' + f'BUILD: {version_str}', html)
         open(html_path, 'w').write(html)
 
 def update_version():
@@ -141,6 +149,32 @@ def update_version():
     print(f"🔖 Version: {version_str}")
     return vpath, version_str
 
+def check_drift(repo_dir):
+    """Warn if local files look like they may have been overwritten."""
+    manifest_path = os.path.join(repo_dir, ".claude_manifest.json")
+    if not os.path.exists(manifest_path):
+        return  # No baseline yet
+    try:
+        manifest = json.load(open(manifest_path))
+        synced_files = manifest.get("files", {})
+        warnings = []
+        for fname, info in synced_files.items():
+            fpath = os.path.join(repo_dir, fname)
+            if not os.path.exists(fpath):
+                continue
+            current_lines = open(fpath).read().count('\n')
+            synced_lines = info.get("lines", 0)
+            # Warn if file shrank by more than 5% (likely overwritten with older version)
+            if synced_lines > 100 and current_lines < synced_lines * 0.95:
+                warnings.append(f"  ⚠️  {fname}: {current_lines} lines now vs {synced_lines} at last sync")
+        if warnings:
+            print("\n🚨 DRIFT DETECTED — some files may have been overwritten:")
+            for w in warnings:
+                print(w)
+            print("   Run sync.py first if this is unexpected.\n")
+    except Exception:
+        pass
+
 if __name__ == "__main__":
     token = get_token()
     args = sys.argv[1:]
@@ -158,6 +192,7 @@ if __name__ == "__main__":
     if "version.json" not in files:
         files = list(files) + ["version.json"]
 
+    check_drift(repo_dir)
     print(f"🚀 Pushing to {REPO} ({BRANCH})")
     print(f"📝 {msg}\n")
 
