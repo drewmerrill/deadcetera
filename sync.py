@@ -64,11 +64,16 @@ open(manifest_path, 'w').write(json.dumps({
 app = open(os.path.join(REPO, "app.js")).read()
 html = open(os.path.join(REPO, "index.html")).read()
 
+# Cover Me: search full function (button is near end of 2036-char function)
+cover_me_fn_start = app.find('async function renderCoverMe')
+cover_me_fn_end = app.find('\nasync function ', cover_me_fn_start + 50)
+cover_me_fn = app[cover_me_fn_start:cover_me_fn_end]
+
 features = {
-    "Build badge in index.html":        'id="buildStamp"' in html,
+    "Build shown in About tab":         "build-version" in app[app.find("about:"):app.find("about:")+2000],
     "SW registration in index.html":    "serviceWorker" in html,
     "rehearsal-mode.js loaded":         "rehearsal-mode.js" in html,
-    "Cover Me edit button":             "editCoverMe" in app[app.find('renderCoverMe'):app.find('renderCoverMe')+2100],
+    "Cover Me edit button":             "editCoverMe" in cover_me_fn,
     "Fadr auto-import":                 "importHarmoniesFromFadr" in app,
     "Equipment save/delete":            "saveEquip" in app and "deleteEquip" in app,
     "No iOS prompt() blockers":         (app.count("prompt('") + app.count('prompt("')) <= 3,
