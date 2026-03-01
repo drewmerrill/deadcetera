@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-160210', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-163310', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1526,7 +1526,7 @@ async function renderChart(songTitle) {
         container.innerHTML = `
             ${metaLine}
             <div id="chartPreview" style="background:rgba(0,0,0,0.3);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:16px;overflow-x:auto">
-                <pre id="chartPreviewText" style="font-family:'Courier New','Menlo','Monaco',monospace;font-size:14px;line-height:1.7;color:#e2e8f0;white-space:pre-wrap;word-break:break-word;margin:0">${renderChartWithHighlighting(chartText)}</pre>
+                <pre id="chartPreviewText" style="font-family:'Courier New','Menlo','Monaco',monospace;font-size:14px;line-height:1.7;color:#e2e8f0;white-space:pre;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0">${renderChartWithHighlighting(chartText)}</pre>
             </div>
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
                 <button class="btn btn-ghost btn-sm" onclick="editChart('${safeSong}')">✏️ Edit Chart</button>
