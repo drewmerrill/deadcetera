@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-190601', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-192348', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -15154,9 +15154,13 @@ async function pmLoadKnowTab(songTitle) {
         <div class="pm-card">
             <div class="pm-card-header">
                 <h4 style="color:#e879f9;margin:0;font-size:0.9em">🏰 Memory Palace</h4>
-                <button onclick="pmEditField('${safeSong}','memoryPalace','Memory palace scenes')" class="pm-tool-btn">✏️</button>
+                <div style="display:flex;gap:4px">
+                    <button onclick="pmShowMemoryPalaceInfo()" class="pm-tool-btn" title="What is Memory Palace?">ℹ️</button>
+                    <button onclick="pmAutoGenerateMemoryPalace('${safeSong}')" class="pm-tool-btn" style="background:rgba(232,121,249,0.15);color:#e879f9" title="AI-generate scenes from lyrics">🤖 Generate</button>
+                    <button onclick="pmEditField('${safeSong}','memoryPalace','Memory palace scenes')" class="pm-tool-btn">✏️</button>
+                </div>
             </div>
-            <div id="pmMemoryPalaceText" class="pm-card-body">${meaning?.memoryPalace || '<span class="pm-empty">Visual scene descriptions for each section to help memorize the song. Add imagery cues here — e.g. "Verse 1: Imagine standing at a crossroads at dawn, birds singing overhead..."</span>'}</div>
+            <div id="pmMemoryPalaceText" class="pm-card-body">${meaning?.memoryPalace ? meaning.memoryPalace.replace(/\n/g, '<br>') : '<span class="pm-empty">Tap 🤖 Generate to auto-create visual scenes from the lyrics.</span>'}</div>
         </div>
 
         <!-- SONG STRUCTURE (editable, syncs with main app) -->
@@ -15500,6 +15504,104 @@ function pmStartFadrImport(songTitle) {
             showToast('⚠️ Fadr import not available — use the Harmonies section on the song page');
         }
     }, 300);
+}
+
+// ── Memory Palace info & AI generation ────────────────────────────────────────
+function pmShowMemoryPalaceInfo() {
+    const modal = document.createElement('div');
+    modal.id = 'pmMPInfoModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+        <div style="background:#1e1e2e;border-radius:14px;padding:24px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto">
+            <h3 style="color:#e879f9;margin:0 0 16px 0;font-size:1.1em">🏰 What is the Memory Palace Technique?</h3>
+            <div style="color:#cbd5e1;font-size:0.88em;line-height:1.7">
+                <p style="margin:0 0 12px 0">The <strong>Memory Palace</strong> (or Method of Loci) is one of the oldest and most powerful memorization techniques in history, used by ancient Greek orators, memory champions, and now — musicians.</p>
+
+                <p style="margin:0 0 12px 0"><strong>How it works:</strong> You create vivid, visual scenes for each section of a song. Your brain remembers images and spatial locations far better than abstract words. By "walking through" your palace, the lyrics come back naturally.</p>
+
+                <div style="background:rgba(232,121,249,0.1);border-radius:8px;padding:12px;margin:12px 0">
+                    <strong style="color:#e879f9">Why it works for musicians:</strong>
+                    <ul style="margin:8px 0 0 0;padding-left:20px;color:#94a3b8">
+                        <li>Visual memory is 6x stronger than verbal memory</li>
+                        <li>Emotional/bizarre images are nearly impossible to forget</li>
+                        <li>Spatial ordering gives you the song structure for free</li>
+                        <li>You never "blank" mid-verse — just picture the scene</li>
+                    </ul>
+                </div>
+
+                <p style="margin:12px 0 12px 0"><strong>Example for "Bird Song":</strong></p>
+                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;font-size:0.92em;color:#94a3b8;font-style:italic">
+                    <strong>Verse 1:</strong> You're in a misty forest at dawn. A single bird lands on a branch directly in front of you and begins to sing — the most beautiful melody you've ever heard. You freeze, transfixed.<br><br>
+                    <strong>Chorus:</strong> The bird transforms into a woman made of light. She whispers "don't cry" and tears turn into rain that waters golden flowers at your feet.
+                </div>
+
+                <p style="margin:12px 0 0 0">Tap <strong style="color:#e879f9">🤖 Generate</strong> to let AI create scenes from your chart's lyrics automatically. Then edit them to make them personal — the more vivid and weird, the better they stick!</p>
+            </div>
+            <button onclick="document.getElementById('pmMPInfoModal').remove()" style="width:100%;padding:10px;background:#667eea;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-top:16px">Got it!</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function pmAutoGenerateMemoryPalace(songTitle) {
+    if (!pmOriginalChartText) { showToast('⚠️ No chart/lyrics available to generate from'); return; }
+    showToast('🤖 Generating Memory Palace scenes...', 3000);
+
+    // Extract lyrics from the chart text
+    const lines = pmOriginalChartText.split('\n');
+    const lyrics = lines.filter(l => {
+        const trimmed = l.trim();
+        if (!trimmed) return false;
+        if (/^\[/.test(trimmed)) return true; // section headers
+        if (isChordLine(trimmed)) return false;
+        if (/^[eEBGDA]\|/.test(trimmed)) return false; // tab
+        return true;
+    }).join('\n');
+
+    if (!lyrics.trim()) { showToast('⚠️ No lyrics found in chart'); return; }
+
+    try {
+        const res = await fetch(FADR_PROXY + '/claude', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1500,
+                messages: [{
+                    role: 'user',
+                    content: `You are creating a Memory Palace for a musician to memorize the song "${songTitle}". The Memory Palace technique uses vivid visual scenes placed in a mental "room" to anchor lyrics in spatial/visual memory.
+
+Given these lyrics, create a vivid 1-2 sentence scene description for each verse/section. Make the scenes:
+- Extremely visual and specific (colors, textures, sounds, smells)
+- Emotionally charged or bizarre (the weirder, the more memorable)
+- Connected to the actual lyrics (the scene should trigger recall of the words)
+- Sequential (each scene flows into the next like rooms in a building)
+
+Format each as: **[Section Name]:** Scene description
+
+Lyrics:
+${lyrics}
+
+Create the Memory Palace scenes now. Be creative and vivid.`
+                }]
+            })
+        });
+        const data = await res.json();
+        const sceneText = data.content?.[0]?.text || '';
+
+        if (sceneText) {
+            const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+            current.memoryPalace = sceneText;
+            await saveBandDataToDrive(songTitle, 'song_meaning', current);
+            pmKnowLoaded[songTitle] = false;
+            pmLoadKnowTab(songTitle);
+            showToast('🏰 Memory Palace generated!');
+        } else {
+            showToast('⚠️ AI generation returned empty — try again');
+        }
+    } catch(e) {
+        showToast('❌ Generation failed: ' + e.message);
+    }
 }
 
 // ── Record & Review tab ──────────────────────────────────────────────────────
