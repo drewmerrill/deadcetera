@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-163310', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-165309', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -2064,7 +2064,11 @@ function gigShow() {
     gigEnsureOverlay();
     const overlay = document.getElementById('gigOverlay');
     overlay.classList.add('gig-visible');
+    // Lock background scroll — critical for iOS
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.top = `-${window.scrollY}px`;
     gigRequestWakeLock();
     gigLoadSong();
 
@@ -2081,7 +2085,13 @@ function closeGigMode() {
     const overlay = document.getElementById('gigOverlay');
     if (!overlay) return;
     overlay.classList.remove('gig-visible');
+    // Restore background scroll
+    const scrollY = document.body.style.top;
     document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.top = '';
+    window.scrollTo(0, parseInt(scrollY || '0') * -1);
     gigStopScroll();
     gigReleaseWakeLock();
 }
