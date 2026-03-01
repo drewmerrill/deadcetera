@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-124146', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-125332', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── BUILD STAMP ───────────────────────────────────────────────────────────────
 // Visible in bottom-left corner on ALL devices including iPhone/iPad
@@ -4858,16 +4858,7 @@ Q:1/4=${Math.round(songBpm)}
 L:1/8
 K:${songKey}
 `;
-                combinedAbc += abcParts.length === 1 ? abcParts[0].abc.split('
-').filter(l => !l.match(/^[XTMQLK]:/)).join('
-') : abcParts.map((p,i) => `V:${i+1} name="${p.label}"`).join('
-') + '
-' + abcParts.map((p,i) => `[V:${i+1}]
-${p.abc.split('
-').filter(l => !l.match(/^[XTMQLK]:/)).join('
-')}`).join('
-');
-                await saveBandDataToDrive(songTitle, 'abc_section_0', { abc: combinedAbc });
+                combinedAbc += abcParts.length === 1 ? abcParts[0].abc.split('\n').filter(l => !l.match(/^[XTMQLK]:/)).join('\n') : abcParts.map((p,i) => `V:${i+1} name="${p.label}"`).join('\n') + '\n' + abcParts.map((p,i) => `[V:${i+1}]\n${p.abc.split('\n').filter(l => !l.match(/^[XTMQLK]:/)).join('\n')}`).join('\n');
                 await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.HAS_HARMONIES, { value: true });
                 const existingH = await loadBandDataFromDrive(songTitle, 'harmonies_data');
                 if (!existingH || !existingH.sections || toArray(existingH.sections).length === 0) {
