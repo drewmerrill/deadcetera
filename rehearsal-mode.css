@@ -521,32 +521,31 @@
 }
 
 /* ── Smart chord-lyric pair rendering ───────────────────────────────────── */
-/* Each chord+lyric segment is an inline element, so the line wraps naturally
+/* Each chord+lyric segment is an inline-block so the line wraps naturally
    while keeping every chord directly above its syllable. */
 
 .cl-line {
-    display: flex;
-    flex-wrap: wrap;
     margin-bottom: 2px;
+    line-height: 1.3;
 }
 
 .cl-pair {
-    display: inline-flex;
-    flex-direction: column;
+    display: inline-block;
     vertical-align: top;
-    white-space: pre;
+    white-space: nowrap;
 }
 
 .cl-chord {
+    display: block;
     color: #67e8f9;
     font-weight: 700;
-    font-size: 0.95em;
     line-height: 1.4;
     min-height: 1.4em;
 }
 
-.cl-pair > :last-child:not(.cl-chord) {
-    /* This is the implicit lyric text node — no special styling needed */
+.cl-lyric {
+    display: block;
+    line-height: 1.4;
 }
 
 .cl-blank {
@@ -584,9 +583,6 @@
     }
     .gig-body {
         padding: 10px;
-    }
-    .cl-chord {
-        font-size: 0.9em;
     }
 }
 
