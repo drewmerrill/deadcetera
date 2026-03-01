@@ -29,6 +29,12 @@ export default {
       return handleGeniusSearch(request);
     if (path === '/genius-fetch' && request.method === 'POST')
       return handleGeniusFetch(request);
+    if (path === '/archive-search' && request.method === 'POST')
+      return handleArchiveSearch(request);
+    if (path === '/archive-files' && request.method === 'POST')
+      return handleArchiveFiles(request);
+    if (path === '/audio-trim' && request.method === 'POST')
+      return handleAudioTrim(request);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -275,7 +281,7 @@ function midiToAbc(bytes) {
 // ── Genius Song Meaning Scraper ──────────────────────────────────────────────
 async function handleGeniusSearch(request) {
     const { song, artist } = await request.json();
-    if (!song) return new Response(JSON.stringify({ error: 'No song' }), { status: 400, headers: corsHeaders });
+    if (!song) return jsonResp({ error: 'No song' }, 400);
 
     const query = encodeURIComponent(`${song} ${artist || ''}`);
     const searchUrl = `https://genius.com/api/search/multi?per_page=5&q=${query}`;
@@ -294,35 +300,105 @@ async function handleGeniusSearch(request) {
                 thumbnail: h.result.song_art_image_thumbnail_url
             }))
             .slice(0, 5);
-        return new Response(JSON.stringify({ results: hits }), { headers: corsHeaders });
+        return jsonResp({ results: hits });
     } catch(e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
+        return jsonResp({ error: e.message }, 500);
     }
 }
 
 async function handleGeniusFetch(request) {
     const { url } = await request.json();
-    if (!url) return new Response(JSON.stringify({ error: 'No URL' }), { status: 400, headers: corsHeaders });
+    if (!url) return jsonResp({ error: 'No URL' }, 400);
 
     try {
         const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const html = await res.text();
 
-        // Extract song description/about from Genius page
         let description = '';
-
-        // Try to find the "About" section - Genius stores it in JSON-LD or data attributes
+        // Try JSON-LD description
         const descMatch = html.match(/"description":\s*\{"plain":\s*"([^"]*?)"/);
         if (descMatch) description = descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-
-        // Also try the meta description
+        // Fallback: meta description
         if (!description) {
             const metaMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]*?)"/);
             if (metaMatch) description = metaMatch[1];
         }
-
-        return new Response(JSON.stringify({ description }), { headers: corsHeaders });
+        return jsonResp({ description });
     } catch(e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
+        return jsonResp({ error: e.message }, 500);
+    }
+}
+
+// ── Archive.org Search ───────────────────────────────────────────────────────
+async function handleArchiveSearch(request) {
+    const { query, band } = await request.json();
+    if (!query) return jsonResp({ error: 'No query' }, 400);
+
+    // Search Archive.org for live recordings
+    const searchQuery = encodeURIComponent(`${query} ${band || 'grateful dead'}`);
+    const url = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+collection%3A(GratefulDead+OR+JerryGarciaBand+OR+Phish+OR+WidespreadPanic)&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=avg_rating+desc&rows=15&output=json`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const results = (data?.response?.docs || []).map(d => ({
+            identifier: d.identifier,
+            title: d.title,
+            date: d.date,
+            rating: d.avg_rating,
+            reviews: d.num_reviews,
+            source: d.source
+        }));
+        return jsonResp({ results });
+    } catch(e) {
+        return jsonResp({ error: e.message }, 500);
+    }
+}
+
+// ── Archive.org show file listing ────────────────────────────────────────────
+async function handleArchiveFiles(request) {
+    const { identifier } = await request.json();
+    if (!identifier) return jsonResp({ error: 'No identifier' }, 400);
+
+    try {
+        const res = await fetch(`https://archive.org/metadata/${identifier}`);
+        const data = await res.json();
+        const files = (data?.files || [])
+            .filter(f => /\.(mp3|flac|ogg)$/i.test(f.name))
+            .map(f => ({
+                name: f.name,
+                title: f.title || f.name,
+                size: f.size,
+                length: f.length,
+                track: f.track,
+                url: `https://archive.org/download/${identifier}/${encodeURIComponent(f.name)}`
+            }))
+            .sort((a, b) => (parseInt(a.track) || 99) - (parseInt(b.track) || 99));
+        return jsonResp({ files, title: data?.metadata?.title?.[0] || identifier, date: data?.metadata?.date?.[0] || '' });
+    } catch(e) {
+        return jsonResp({ error: e.message }, 500);
+    }
+}
+
+// ── Audio trimming (fetch range of audio) ────────────────────────────────────
+async function handleAudioTrim(request) {
+    const { url, startSec, endSec } = await request.json();
+    if (!url) return jsonResp({ error: 'No URL' }, 400);
+
+    // Fetch the full audio, then we'll send it to Fadr
+    // For now, just proxy the audio - the client will handle sending to Fadr
+    // The timestamps are used by the client to tell Fadr where to focus
+    try {
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) return jsonResp({ error: `Fetch failed: ${res.status}` }, 500);
+
+        const h = new Headers();
+        h.set('Access-Control-Allow-Origin', '*');
+        h.set('Content-Type', res.headers.get('Content-Type') || 'audio/mpeg');
+        h.set('X-Trim-Start', String(startSec || 0));
+        h.set('X-Trim-End', String(endSec || 0));
+        return new Response(res.body, { headers: h });
+    } catch(e) {
+        return jsonResp({ error: e.message }, 500);
     }
 }
