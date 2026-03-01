@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-165309', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-170935', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1574,6 +1574,102 @@ function renderChartWithHighlighting(text) {
     }).join('\n');
 }
 
+// Smart renderer: pairs chord lines with lyric lines so chords float above the correct syllable.
+// Falls back to plain highlighting for non-paired lines (section headers, standalone chords, tabs).
+function renderChartSmart(text) {
+    const lines = text.split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        // Empty line → spacing div
+        if (!trimmed) {
+            out.push('<div class="cl-blank"></div>');
+            i++;
+            continue;
+        }
+
+        // Section header: [Verse], [Chorus], etc.
+        if (/^\[.+\]$/.test(trimmed)) {
+            out.push(`<div class="chart-section-header">${escapeHtml(trimmed)}</div>`);
+            i++;
+            continue;
+        }
+
+        // Tab line (e|---, B|---, etc.) — render as-is in monospace
+        if (/^[eEBGDAdgba]\|/.test(trimmed) || /^[\-|0-9hpbr\/\\~x\s]+$/.test(trimmed) && trimmed.includes('-')) {
+            out.push(`<div class="cl-tab-line">${escapeHtml(line)}</div>`);
+            i++;
+            continue;
+        }
+
+        // Chord line followed by lyric line → pair them
+        if (isChordLine(trimmed)) {
+            const nextLine = (i + 1 < lines.length) ? lines[i + 1] : '';
+            const nextTrimmed = nextLine.trim();
+
+            // If next line is a lyric (not empty, not a chord line, not a section header)
+            if (nextTrimmed && !isChordLine(nextTrimmed) && !/^\[.+\]$/.test(nextTrimmed) && !/^[eEBGDAdgba]\|/.test(nextTrimmed)) {
+                out.push(buildChordLyricPair(line, nextLine));
+                i += 2;
+                continue;
+            }
+
+            // Standalone chord line (no lyric below, e.g. intro: "E7  D  E7  D  E7")
+            out.push(`<div class="cl-line"><span class="cl-pair"><span class="cl-chord">${escapeHtml(trimmed)}</span></span></div>`);
+            i++;
+            continue;
+        }
+
+        // Plain lyric line (no chords above)
+        out.push(`<div class="cl-lyric-only">${escapeHtml(line)}</div>`);
+        i++;
+    }
+    return out.join('\n');
+}
+
+function buildChordLyricPair(chordLine, lyricLine) {
+    // Walk through the chord line finding chord positions.
+    // Each chord starts at a character offset. The lyric text from that offset
+    // to the next chord belongs under that chord.
+    const chords = [];
+    const re = /(\S+)/g;
+    let m;
+    while ((m = re.exec(chordLine)) !== null) {
+        chords.push({ chord: m[1], pos: m.index });
+    }
+
+    if (chords.length === 0) {
+        return `<div class="cl-lyric-only">${escapeHtml(lyricLine)}</div>`;
+    }
+
+    let html = '<div class="cl-line">';
+
+    for (let c = 0; c < chords.length; c++) {
+        const start = chords[c].pos;
+        const end = (c + 1 < chords.length) ? chords[c + 1].pos : lyricLine.length;
+        let syllables = lyricLine.substring(start, end);
+        // If syllables is empty (chord line extends beyond lyric), use a space
+        if (!syllables && c === chords.length - 1) syllables = lyricLine.substring(start) || ' ';
+        if (!syllables) syllables = ' ';
+
+        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(chords[c].chord)}</span>${escapeHtml(syllables)}</span>`;
+    }
+
+    // Any lyric text BEFORE the first chord
+    if (chords[0].pos > 0) {
+        const prefix = lyricLine.substring(0, chords[0].pos);
+        if (prefix.trim()) {
+            html = '<div class="cl-line">' + `<span class="cl-pair"><span class="cl-chord"> </span>${escapeHtml(prefix)}</span>` + html.substring('<div class="cl-line">'.length);
+        }
+    }
+
+    html += '</div>';
+    return html;
+}
+
 function isChordLine(line) {
     // Common chord pattern: letter A-G, optional #/b, optional m/maj/min/dim/aug/sus/add/7/9/11/13
     const chordPattern = /^[A-G][#b]?(m|maj|min|dim|aug|sus[24]?|add[0-9]*|[0-9]{0,2})(\/[A-G][#b]?)?$/;
@@ -2031,7 +2127,7 @@ function gigEnsureOverlay() {
         <!-- CHART BODY -->
         <div class="gig-body" id="gigBody">
             <div class="gig-loading" id="gigLoading">Loading…</div>
-            <pre class="gig-chart-text" id="gigChartText"></pre>
+            <div class="gig-chart-text" id="gigChartText"></div>
             <div class="gig-no-chart hidden" id="gigNoChart">
                 <div style="font-size:2.5em;margin-bottom:12px">🎸</div>
                 <div style="font-size:1.1em;font-weight:600;color:#94a3b8;margin-bottom:8px">No chart for this song yet</div>
@@ -2155,7 +2251,7 @@ async function gigLoadSong() {
     document.getElementById('gigLoading').style.display = 'none';
 
     if (chartText && chartText.trim()) {
-        document.getElementById('gigChartText').innerHTML = renderChartWithHighlighting(chartText);
+        document.getElementById('gigChartText').innerHTML = renderChartSmart(chartText);
         document.getElementById('gigChartText').style.display = 'block';
         document.getElementById('gigNoChart').classList.add('hidden');
         gigAutoFitFont();
