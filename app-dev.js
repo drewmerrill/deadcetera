@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-174221', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-175637', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1639,43 +1639,45 @@ function buildChordLyricPair(chordLine, lyricLine) {
         return `<div class="cl-lyric-only">${escapeHtml(lyricLine)}</div>`;
     }
 
-    // Strategy: split the lyric at each chord position, but snap to word boundaries
-    // by extending forward (never backward) when a split lands mid-word.
-    // Then render each segment as a chord-above-lyric pair.
-
     // Build raw split positions from chord positions
     const splitPositions = chords.map(c => c.pos);
 
-    // Snap each split to a word boundary by extending forward to end of word
-    // (except the first split which always starts at 0)
-    const adjustedSplits = [0]; // first segment always starts at 0
+    // Snap each split to a word boundary by extending forward
+    const adjustedSplits = [0];
     for (let i = 1; i < splitPositions.length; i++) {
         let pos = splitPositions[i];
-        // If we land mid-word, extend forward to the end of this word, then to the next space
         if (pos < lyricLine.length && pos > 0 && lyricLine[pos] !== ' ' && lyricLine[pos - 1] !== ' ') {
-            // Find end of current word
             while (pos < lyricLine.length && lyricLine[pos] !== ' ') pos++;
         }
-        // Don't let it go past the end or overlap previous
         if (pos <= adjustedSplits[adjustedSplits.length - 1]) {
-            pos = adjustedSplits[adjustedSplits.length - 1]; // collapse
+            pos = adjustedSplits[adjustedSplits.length - 1];
         }
         adjustedSplits.push(pos);
     }
-    adjustedSplits.push(lyricLine.length); // sentinel end
+    adjustedSplits.push(lyricLine.length);
 
+    // Build segments, then shift trailing spaces to leading spaces of next segment
+    const segments = [];
+    for (let c = 0; c < chords.length; c++) {
+        let text = lyricLine.substring(adjustedSplits[c], adjustedSplits[c + 1]);
+        segments.push({ chord: chords[c].chord, text });
+    }
+
+    // For proper inline-block rendering: trailing spaces get collapsed,
+    // so move any trailing spaces to be leading spaces on the next segment.
+    // But KEEP at least one leading space where the original had spaces.
+    // Actually simpler: just use &nbsp; for the space between segments.
+    
     let html = '<div class="cl-line">';
 
-    for (let c = 0; c < chords.length; c++) {
-        const lyricStart = adjustedSplits[c];
-        const lyricEnd = adjustedSplits[c + 1];
-        let syllables = lyricLine.substring(lyricStart, lyricEnd);
-        if (!syllables) syllables = '\u00a0';
+    for (let c = 0; c < segments.length; c++) {
+        let text = segments[c].text;
+        if (!text) text = '\u00a0';
+        
+        // Replace the trailing space(s) with a non-breaking space so inline-block preserves them
+        text = text.replace(/ +$/, match => '\u00a0'.repeat(match.length));
 
-        // Use non-breaking spaces in chord name to maintain minimum width
-        const chordDisplay = escapeHtml(chords[c].chord);
-
-        html += `<span class="cl-pair"><span class="cl-chord">${chordDisplay}</span><span class="cl-lyric">${escapeHtml(syllables)}</span></span>`;
+        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(segments[c].chord)}</span><span class="cl-lyric">${escapeHtml(text)}</span></span>`;
     }
 
     html += '</div>';
@@ -12653,7 +12655,7 @@ function showUpdateBanner() {
     document.body.appendChild(banner);
 }
 
-setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 5 * 60 * 1000); }, 30000);
+setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 60 * 1000); }, 10000);
 
 
 
