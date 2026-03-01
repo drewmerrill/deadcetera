@@ -119,6 +119,17 @@ def stamp_version(version_str, repo_dir):
     if os.path.exists(app_path) and os.path.exists(dev_path):
         open(dev_path, 'w').write(open(app_path).read())
 
+    # ── Stamp service-worker.js CACHE_NAME ────────────────────────────────────
+    sw_path = os.path.join(repo_dir, 'service-worker.js')
+    if os.path.exists(sw_path):
+        sw_text = open(sw_path).read()
+        sw_text = re.sub(
+            r"const CACHE_NAME = '[^']*'",
+            f"const CACHE_NAME = 'deadcetera-{version_str}'",
+            sw_text
+        )
+        open(sw_path, 'w').write(sw_text)
+
     # ── Stamp index.html ──────────────────────────────────────────────────────
     html_path = os.path.join(repo_dir, 'index.html')
     if os.path.exists(html_path):
