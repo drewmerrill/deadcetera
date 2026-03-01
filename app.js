@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-180410', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-181901', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1528,6 +1528,7 @@ async function renderChart(songTitle) {
                 <button class="btn btn-ghost btn-sm" onclick="editChart('${safeSong}')">✏️ Edit Chart</button>
                 <button class="btn btn-ghost btn-sm" onclick="searchUGForChart('${safeSong}')" style="color:#f59e0b;border-color:rgba(245,158,11,0.3)">🔍 Search UG</button>
                 <button class="btn btn-ghost btn-sm" onclick="openGigMode('${safeSong}')" style="color:#10b981;border-color:rgba(16,185,129,0.3)">🎸 Gig Mode</button>
+                <button class="btn btn-ghost btn-sm" onclick="exportChartToUG('${safeSong}')" style="color:#a78bfa;border-color:rgba(167,139,250,0.3)" title="Copy chart & open UG submission">📤 Publish</button>
                 <button class="btn btn-ghost btn-sm" onclick="openRehearsalMode('${safeSong}')" style="color:#667eea;border-color:rgba(102,126,234,0.3)">🔄 Rehearsal Mode</button>
             </div>
         `;
@@ -1776,6 +1777,51 @@ async function importCribToChart(songTitle) {
 }
 
 console.log('🎸 Chart system loaded');
+
+// ── Export / Publish to Ultimate Guitar ──────────────────────────────────────
+async function exportChartToUG(songTitle) {
+    const chartData = await loadBandDataFromDrive(songTitle, 'chart');
+    if (!chartData?.text) { showToast('⚠️ No chart to export'); return; }
+
+    // Apply current transpose if any
+    let text = chartData.text;
+    const savedTranspose = await loadBandDataFromDrive(songTitle, 'transpose').catch(() => null);
+    if (savedTranspose && savedTranspose !== 0) {
+        text = transposeChartText(text, savedTranspose);
+    }
+
+    // Find the song's artist
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
+    const artist = songData?.band || songData?.artist || '';
+
+    // Copy to clipboard in UG format
+    const ugText = text;
+    try {
+        await navigator.clipboard.writeText(ugText);
+        showToast('📋 Chart copied to clipboard!');
+    } catch(e) {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = ugText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('📋 Chart copied!');
+    }
+
+    // Open UG submission page
+    const ugSubmitUrl = 'https://www.ultimate-guitar.com/contribution/submit/tabs';
+    const openIt = confirm(
+        `Chart copied to clipboard!\\n\\n` +
+        `Song: ${songTitle}\\nArtist: ${artist}\\n` +
+        `Key: ${chartData.key || 'not set'}${savedTranspose ? ' (transposed ' + savedTranspose + ')' : ''}\\n\\n` +
+        `Open Ultimate Guitar's submission page?\\nYou can paste your chart there.`
+    );
+    if (openIt) {
+        window.open(ugSubmitUrl, '_blank');
+    }
+}
 
 // ============================================================================
 // ULTIMATE GUITAR IMPORT — Search, pick, and bulk-import chord charts
@@ -2302,9 +2348,16 @@ async function gigLoadSong() {
         el.innerHTML = renderChartSmart(chartText);
         el.style.display = 'block';
         document.getElementById('gigNoChart').classList.add('hidden');
-        // Reset transpose
+        // Reset transpose — load saved value
         gigTransposeSteps = 0;
         gigOriginalKey = chartData?.key || '';
+        try {
+            const savedTranspose = await loadBandDataFromDrive(song.title, 'transpose');
+            if (savedTranspose && typeof savedTranspose === 'number' && savedTranspose !== 0) {
+                gigTransposeSteps = savedTranspose;
+                el.innerHTML = renderChartSmart(transposeChartText(chartText, gigTransposeSteps));
+            }
+        } catch(e) {}
         gigUpdateKeyDisplay();
         // Reset brain tuner
         brainTunerLevel = 0;
@@ -2401,8 +2454,8 @@ function gigStartScroll(speed) {
     const slider = document.getElementById('gigScrollSpeedSlider');
     if (btn) btn.textContent = '⏸ Scroll';
     if (slider) slider.style.display = 'inline-block';
-    // Speed: pixels per second
-    const pxPerSecond = [15, 30, 50, 80, 120][speed - 1] || 30;
+    // Speed: pixels per second — must be noticeable even at level 1
+    const pxPerSecond = [25, 45, 70, 110, 170][speed - 1] || 45;
     let lastTime = performance.now();
     
     function scrollStep(now) {
@@ -2453,6 +2506,13 @@ function gigTranspose(delta) {
         el.innerHTML = renderChartSmart(transposeChartText(el._originalText, gigTransposeSteps));
     }
     gigUpdateKeyDisplay();
+    // Re-apply brain tuner if active
+    if (brainTunerLevel > 0) applyBrainTuner();
+    // Save transpose to Firebase for this song
+    const song = gigQueue[gigIndex];
+    if (song) {
+        saveBandDataToDrive(song.title, 'transpose', gigTransposeSteps).catch(() => {});
+    }
 }
 
 function gigUpdateKeyDisplay() {
@@ -2581,7 +2641,7 @@ let brainTunerLevel = 0; // 0=full, 1=hide 25%, 2=hide 50%, 3=hide 75%, 4=chords
 function gigToggleBrainTuner() {
     brainTunerLevel = (brainTunerLevel + 1) % 5;
     const btn = document.getElementById('gigBrainBtn');
-    const labels = ['🧠 Full', '🧠 25%', '🧠 50%', '🧠 75%', '🧠 Chords'];
+    const labels = ['🧠 Full', '🧠 Easy', '🧠 Med', '🧠 Hard', '🧠 Chords'];
     if (btn) {
         btn.textContent = labels[brainTunerLevel];
         btn.style.background = brainTunerLevel > 0 ? 'rgba(251,191,36,0.2)' : '';
@@ -2592,14 +2652,14 @@ function gigToggleBrainTuner() {
 function applyBrainTuner() {
     const el = document.getElementById('gigChartText');
     if (!el) return;
-    // Get all lyric spans and mask a percentage of words
-    const lyricSpans = el.querySelectorAll('.cl-lyric');
+
+    // Work on cl-line divs (chord+lyric pairs) and standalone lyrics
+    const clLines = el.querySelectorAll('.cl-line');
     const lyricOnlys = el.querySelectorAll('.cl-lyric-only');
-    const allLyrics = [...lyricSpans, ...lyricOnlys];
 
     if (brainTunerLevel === 0) {
         // Restore all
-        allLyrics.forEach(span => {
+        el.querySelectorAll('.cl-lyric, .cl-lyric-only').forEach(span => {
             if (span._originalText !== undefined) {
                 span.textContent = span._originalText;
             }
@@ -2610,7 +2670,7 @@ function applyBrainTuner() {
 
     if (brainTunerLevel === 4) {
         // Chords only — hide all lyrics
-        allLyrics.forEach(span => {
+        el.querySelectorAll('.cl-lyric, .cl-lyric-only').forEach(span => {
             if (span._originalText === undefined) span._originalText = span.textContent;
             span.textContent = span._originalText.replace(/\S/g, '·');
             span.style.opacity = '0.3';
@@ -2618,21 +2678,60 @@ function applyBrainTuner() {
         return;
     }
 
-    // Partial masking: replace a percentage of words with dots
+    // Levels 1-3: progressive masking per LINE
+    // Level 1 (Easy): mask 25% of words
+    // Level 2 (Med): mask 50% of words
+    // Level 3 (Hard): mask 75% BUT keep first word(s) of each line visible
     const maskPct = [0, 0.25, 0.5, 0.75][brainTunerLevel];
-    // Use a seeded approach so the same words stay hidden on re-renders
-    allLyrics.forEach((span, idx) => {
+
+    // Process each cl-line as a unit
+    clLines.forEach((line, lineIdx) => {
+        const lyricSpans = line.querySelectorAll('.cl-lyric');
+        // Collect all words across spans in this line
+        let wordIndex = 0;
+        let isFirstWord = true;
+        lyricSpans.forEach((span) => {
+            if (span._originalText === undefined) span._originalText = span.textContent;
+            const text = span._originalText;
+            const parts = text.split(/(\s+)/);
+            const masked = parts.map((part) => {
+                if (/^\s+$/.test(part)) return part;
+                wordIndex++;
+                // At level 3 (75%): always show the first real word of the line
+                if (brainTunerLevel === 3 && isFirstWord && part.trim()) {
+                    isFirstWord = false;
+                    return part;
+                }
+                isFirstWord = false;
+                const hash = (lineIdx * 31 + wordIndex * 7) % 100;
+                if (hash < maskPct * 100) {
+                    return part.replace(/\S/g, '_');
+                }
+                return part;
+            });
+            span.textContent = masked.join('');
+            span.style.opacity = '1';
+        });
+    });
+
+    // Also handle standalone lyric-only lines
+    lyricOnlys.forEach((span, idx) => {
         if (span._originalText === undefined) span._originalText = span.textContent;
         const text = span._originalText;
-        const words = text.split(/(\s+)/);
-        const masked = words.map((word, wi) => {
-            if (/^\s+$/.test(word)) return word; // preserve whitespace
-            // Deterministic: mask based on position
-            const hash = (idx * 31 + wi * 7) % 100;
-            if (hash < maskPct * 100) {
-                return word.replace(/\S/g, '_');
+        const parts = text.split(/(\s+)/);
+        let wordIndex = 0;
+        let isFirst = true;
+        const masked = parts.map((part) => {
+            if (/^\s+$/.test(part)) return part;
+            wordIndex++;
+            if (brainTunerLevel === 3 && isFirst && part.trim()) {
+                isFirst = false;
+                return part;
             }
-            return word;
+            isFirst = false;
+            const hash = (idx * 31 + wordIndex * 7) % 100;
+            if (hash < maskPct * 100) return part.replace(/\S/g, '_');
+            return part;
         });
         span.textContent = masked.join('');
         span.style.opacity = '1';
