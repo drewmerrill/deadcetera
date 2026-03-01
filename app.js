@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-170935', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-172159', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1634,6 +1634,7 @@ function buildChordLyricPair(chordLine, lyricLine) {
     // Walk through the chord line finding chord positions.
     // Each chord starts at a character offset. The lyric text from that offset
     // to the next chord belongs under that chord.
+    // CRITICAL: we snap boundaries to word edges so words never split mid-character.
     const chords = [];
     const re = /(\S+)/g;
     let m;
@@ -1645,25 +1646,42 @@ function buildChordLyricPair(chordLine, lyricLine) {
         return `<div class="cl-lyric-only">${escapeHtml(lyricLine)}</div>`;
     }
 
+    // Build split points snapped to word boundaries in the lyric line
+    const splitPoints = [0]; // always start at 0
+    for (let c = 1; c < chords.length; c++) {
+        let pos = chords[c].pos;
+        // Snap to nearest word boundary: find the last space at or before this position
+        // If pos is mid-word, back up to the start of that word
+        if (pos < lyricLine.length && pos > 0 && lyricLine[pos] !== ' ' && lyricLine[pos - 1] !== ' ') {
+            // We're mid-word — find the start of this word
+            let wordStart = pos;
+            while (wordStart > splitPoints[splitPoints.length - 1] && lyricLine[wordStart - 1] !== ' ') {
+                wordStart--;
+            }
+            // Only snap back if it doesn't collapse into the previous split
+            if (wordStart > splitPoints[splitPoints.length - 1]) {
+                pos = wordStart;
+            }
+        }
+        splitPoints.push(pos);
+    }
+    splitPoints.push(lyricLine.length);
+
     let html = '<div class="cl-line">';
 
-    for (let c = 0; c < chords.length; c++) {
-        const start = chords[c].pos;
-        const end = (c + 1 < chords.length) ? chords[c + 1].pos : lyricLine.length;
-        let syllables = lyricLine.substring(start, end);
-        // If syllables is empty (chord line extends beyond lyric), use a space
-        if (!syllables && c === chords.length - 1) syllables = lyricLine.substring(start) || ' ';
-        if (!syllables) syllables = ' ';
-
-        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(chords[c].chord)}</span>${escapeHtml(syllables)}</span>`;
+    // Lyric text before the first chord
+    if (chords[0].pos > 0) {
+        const prefix = lyricLine.substring(0, splitPoints[1] > 0 ? Math.min(chords[0].pos, splitPoints[0]) : chords[0].pos);
+        // Actually splitPoints[0] is always 0, so prefix is handled by the first chord pair
     }
 
-    // Any lyric text BEFORE the first chord
-    if (chords[0].pos > 0) {
-        const prefix = lyricLine.substring(0, chords[0].pos);
-        if (prefix.trim()) {
-            html = '<div class="cl-line">' + `<span class="cl-pair"><span class="cl-chord"> </span>${escapeHtml(prefix)}</span>` + html.substring('<div class="cl-line">'.length);
-        }
+    for (let c = 0; c < chords.length; c++) {
+        const lyricStart = splitPoints[c];
+        const lyricEnd = splitPoints[c + 1];
+        let syllables = lyricLine.substring(lyricStart, lyricEnd);
+        if (!syllables) syllables = ' ';
+
+        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(chords[c].chord)}</span><span class="cl-lyric">${escapeHtml(syllables)}</span></span>`;
     }
 
     html += '</div>';
