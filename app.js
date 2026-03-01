@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-194330', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-200217', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -6108,7 +6108,8 @@ async function runFadrImport(songTitle) {
         const { url: presignedUrl, s3Path } = await uploadUrlResp.json();
 
         setProgress('📤 Uploading to Fadr...', 25);
-        const mimeType = ext === 'mp3' ? 'audio/mpeg' : ext === 'wav' ? 'audio/wav' : 'audio/mp4';
+        const mimeTypes = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', flac: 'audio/flac' };
+        const mimeType = mimeTypes[ext] || 'audio/mpeg';
         const putResp = await fetch(presignedUrl, { method: 'PUT', headers: { 'Content-Type': mimeType }, body: audioBuffer });
         if (!putResp.ok) throw new Error(`S3 upload failed: ${putResp.status}`);
 
@@ -15248,28 +15249,44 @@ async function pmFetchGenius(songTitle) {
     showToast('🔍 Searching Genius...');
     const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
     const artist = songData ? getFullBandName(songData.band) : '';
+    console.log('🔍 Genius search:', songTitle, artist);
 
     try {
-        const searchRes = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/genius-search', {
+        const searchRes = await fetch(FADR_PROXY + '/genius-search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ song: songTitle, artist })
         });
+        console.log('🔍 Genius search response:', searchRes.status);
+        if (!searchRes.ok) {
+            const errText = await searchRes.text();
+            console.error('Genius search failed:', errText);
+            showToast('❌ Genius search failed: ' + searchRes.status);
+            return;
+        }
         const searchData = await searchRes.json();
+        console.log('🔍 Genius results:', searchData);
+
+        if (searchData.error) {
+            showToast('⚠️ Genius: ' + searchData.error);
+            // Still might have results
+        }
 
         if (!searchData.results?.length) {
-            showToast('🤷 No Genius results found');
+            showToast('🤷 No Genius results for "' + songTitle + '"');
             return;
         }
 
-        // Fetch the top result
         const top = searchData.results[0];
-        const fetchRes = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/genius-fetch', {
+        showToast('📖 Found: ' + top.title + ' — fetching description...');
+        
+        const fetchRes = await fetch(FADR_PROXY + '/genius-fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: top.url })
         });
         const fetchData = await fetchRes.json();
+        console.log('🔍 Genius description:', fetchData);
 
         if (fetchData.description) {
             const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
@@ -15278,12 +15295,13 @@ async function pmFetchGenius(songTitle) {
             await saveBandDataToDrive(songTitle, 'song_meaning', current);
             pmKnowLoaded[songTitle] = false;
             pmLoadKnowTab(songTitle);
-            showToast(`✅ Imported from Genius: ${top.title} by ${top.artist}`);
+            showToast('✅ Imported from Genius: ' + top.title);
         } else {
-            showToast('⚠️ Found on Genius but no description available');
+            showToast('⚠️ Found on Genius but no description. Check console.');
         }
     } catch(e) {
-        showToast('❌ Genius fetch failed: ' + e.message);
+        console.error('Genius fetch error:', e);
+        showToast('❌ Genius failed: ' + e.message);
     }
 }
 
@@ -15497,31 +15515,36 @@ async function pmLoadHarmonyTab(songTitle) {
 function pmStartFadrImport(songTitle) {
     const safeSong = songTitle.replace(/'/g, "\\'");
     const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
+    const band = songData ? getFullBandName(songData.band) : 'Grateful Dead';
 
     const modal = document.createElement('div');
     modal.id = 'pmHarmonySourceModal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,0.9);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,0.9);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
     modal.innerHTML = `
-        <div style="background:#1a1a2e;border-radius:14px;padding:20px;width:100%;max-width:550px;margin-top:20px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                <h3 style="margin:0;color:white;font-size:1.05em">🎤 Import Harmonies — ${songTitle}</h3>
+        <div style="background:#1a1a2e;border-radius:14px;padding:16px;width:100%;max-width:550px;margin-top:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <h3 style="margin:0;color:white;font-size:1em">🎤 Import Harmonies — ${songTitle}</h3>
                 <button onclick="document.getElementById('pmHarmonySourceModal').remove()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1.3em">✕</button>
             </div>
-            <div style="display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap">
-                <button class="pm-src-tab active" data-src="archive" onclick="pmSrcTab('archive',this)">🏛️ Archive.org</button>
+            <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">
+                <button class="pm-src-tab active" data-src="archive" onclick="pmSrcTab('archive',this)">🏛️ Archive</button>
+                <button class="pm-src-tab" data-src="youtube" onclick="pmSrcTab('youtube',this)">📺 YouTube</button>
                 <button class="pm-src-tab" data-src="northstar" onclick="pmSrcTab('northstar',this)">⭐ North Star</button>
                 <button class="pm-src-tab" data-src="bestshot" onclick="pmSrcTab('bestshot',this)">🎯 Best Shot</button>
-                <button class="pm-src-tab" data-src="url" onclick="pmSrcTab('url',this)">🔗 Direct URL</button>
+                <button class="pm-src-tab" data-src="url" onclick="pmSrcTab('url',this)">🔗 URL</button>
             </div>
+
+            <!-- ARCHIVE.ORG -->
             <div class="pm-src-panel" id="pmSrcArchive">
-                <div style="display:flex;gap:6px;margin-bottom:12px">
-                    <input id="pmArchiveQuery" type="text" placeholder="Search Archive.org..." value="${songTitle}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit">
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                    <input id="pmArchiveQuery" type="text" placeholder="Search Archive.org..." value="${songTitle} ${band}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit" onkeydown="if(event.key==='Enter')pmSearchArchive()">
                     <button onclick="pmSearchArchive()" class="pm-tool-btn" style="padding:8px 14px;background:rgba(102,126,234,0.2);color:#818cf8">🔍</button>
                 </div>
-                <div id="pmArchiveResults" style="max-height:200px;overflow-y:auto;margin-bottom:12px"><div style="color:#64748b;font-size:0.82em;padding:8px">Search to find shows</div></div>
-                <div id="pmArchiveFiles" style="display:none;max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
-                <div id="pmTrimSection" style="display:none;background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:12px">
-                    <div style="color:#f59e0b;font-size:0.85em;font-weight:600;margin-bottom:8px">✂️ Trim (for full-show files)</div>
+                <div style="color:#64748b;font-size:0.72em;margin-bottom:8px">💡 Tip: Add year for better results (e.g. "Bird Song 1977"). MP3 files preferred — OGG may fail with Fadr.</div>
+                <div id="pmArchiveResults" style="max-height:180px;overflow-y:auto;margin-bottom:8px"></div>
+                <div id="pmArchiveFiles" style="display:none;max-height:200px;overflow-y:auto;margin-bottom:8px"></div>
+                <div id="pmTrimSection" style="display:none;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;margin-bottom:8px">
+                    <div style="color:#f59e0b;font-size:0.82em;font-weight:600;margin-bottom:6px">✂️ Trim timestamps (for full-show files)</div>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                         <label style="color:#94a3b8;font-size:0.82em">Start:</label>
                         <input id="pmTrimStart" type="text" placeholder="0:00" style="width:60px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e2e8f0;padding:4px 8px;font-size:13px;text-align:center;font-family:inherit">
@@ -15531,30 +15554,53 @@ function pmStartFadrImport(songTitle) {
                     </div>
                 </div>
             </div>
+
+            <!-- YOUTUBE -->
+            <div class="pm-src-panel hidden" id="pmSrcYoutube">
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                    <input id="pmYoutubeQuery" type="text" placeholder="Search YouTube..." value="${songTitle} ${band}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit" onkeydown="if(event.key==='Enter')pmSearchYouTube()">
+                    <button onclick="pmSearchYouTube()" class="pm-tool-btn" style="padding:8px 14px;background:rgba(239,68,68,0.2);color:#f87171">🔍</button>
+                </div>
+                <div style="color:#64748b;font-size:0.72em;margin-bottom:8px">⚠️ YouTube links require audio extraction. The URL will be passed to Fadr which handles conversion.</div>
+                <div id="pmYoutubeResults" style="max-height:250px;overflow-y:auto"></div>
+                <div style="margin-top:8px">
+                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:4px">Or paste a YouTube URL directly:</div>
+                    <input id="pmYoutubeUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit" oninput="if(this.value.trim()){pmSelectedAudioUrl=this.value.trim();document.getElementById('pmSelectedSource').style.display='block';document.getElementById('pmSelectedSourceText').textContent=this.value.trim();document.getElementById('pmFadrGoBtn').disabled=false}">
+                </div>
+            </div>
+
+            <!-- NORTH STAR -->
             <div class="pm-src-panel hidden" id="pmSrcNorthstar">
-                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:12px">
+                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:8px">
                     <div style="color:#fbbf24;font-size:0.88em;font-weight:600;margin-bottom:6px">⭐ North Star Version</div>
-                    <div style="color:#94a3b8;font-size:0.82em;line-height:1.5;margin-bottom:10px">The band-agreed definitive version — the one you're all learning toward.</div>
-                    <div id="pmNorthStarInfo" style="color:#cbd5e1;font-size:0.85em">Loading...</div>
+                    <div style="color:#94a3b8;font-size:0.82em;line-height:1.5;margin-bottom:8px">The band-agreed definitive version.</div>
+                    <div id="pmNorthStarInfo">Loading...</div>
                 </div>
             </div>
+
+            <!-- BEST SHOT -->
             <div class="pm-src-panel hidden" id="pmSrcBestshot">
-                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:12px">
+                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:8px">
                     <div style="color:#10b981;font-size:0.88em;font-weight:600;margin-bottom:6px">🎯 Best Shot Recording</div>
-                    <div style="color:#94a3b8;font-size:0.82em;line-height:1.5;margin-bottom:10px">Use the band's own best recording.</div>
-                    <div id="pmBestShotInfo" style="color:#cbd5e1;font-size:0.85em">Loading...</div>
+                    <div id="pmBestShotInfo">Loading...</div>
                 </div>
             </div>
+
+            <!-- DIRECT URL -->
             <div class="pm-src-panel hidden" id="pmSrcUrl">
-                <div style="margin-bottom:12px">
-                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px">Paste a direct link to an audio file:</div>
-                    <input id="pmDirectUrl" type="url" placeholder="https://archive.org/download/..." style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit" oninput="pmSelectDirectUrl()">
+                <div style="margin-bottom:8px">
+                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:4px">Paste any audio URL (MP3, FLAC, OGG, WAV):</div>
+                    <input id="pmDirectUrl" type="url" placeholder="https://..." style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit" oninput="pmSelectDirectUrl()">
+                    <div style="color:#64748b;font-size:0.72em;margin-top:4px">Archive.org, Spotify embed URLs, SoundCloud, or direct file links</div>
                 </div>
             </div>
-            <div id="pmSelectedSource" style="display:none;background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);border-radius:8px;padding:10px;margin-bottom:12px">
-                <div style="color:#818cf8;font-size:0.82em;font-weight:600">Selected:</div>
-                <div id="pmSelectedSourceText" style="color:#e2e8f0;font-size:0.85em;word-break:break-all"></div>
+
+            <!-- SELECTED -->
+            <div id="pmSelectedSource" style="display:none;background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);border-radius:8px;padding:10px;margin-bottom:10px">
+                <div style="color:#818cf8;font-size:0.78em;font-weight:600">Selected:</div>
+                <div id="pmSelectedSourceText" style="color:#e2e8f0;font-size:0.82em;word-break:break-all"></div>
             </div>
+
             <button id="pmFadrGoBtn" onclick="pmRunFadrImport('${safeSong}')" style="width:100%;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:10px;font-weight:700;font-size:0.95em;cursor:pointer" disabled>
                 🤖 Send to Fadr AI
             </button>
@@ -15586,11 +15632,11 @@ async function pmSearchArchive() {
             body: JSON.stringify({ query, band: '' })
         });
         const data = await res.json();
-        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results. Try different terms.</div>'; return; }
+        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results. Try adding a year or different terms.</div>'; return; }
         container.innerHTML = data.results.map(r => `
-            <div onclick="pmSelectShow('${r.identifier}')" style="padding:8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
-                <div style="color:#e2e8f0;font-size:0.85em;font-weight:600">${r.title || r.identifier}</div>
-                <div style="color:#64748b;font-size:0.75em">${r.date || ''} · ⭐ ${r.rating ? r.rating.toFixed(1) : 'N/A'} · ${r.reviews || 0} reviews</div>
+            <div onclick="pmSelectShow('${r.identifier}')" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
+                <div style="color:#e2e8f0;font-size:0.82em;font-weight:600">${r.title || r.identifier}</div>
+                <div style="color:#64748b;font-size:0.72em">${r.date ? r.date.split('T')[0] : ''} · ⭐ ${r.rating ? r.rating.toFixed(1) : '—'} · ${r.reviews || 0} reviews</div>
             </div>
         `).join('');
     } catch(e) { container.innerHTML = `<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ${e.message}</div>`; }
@@ -15612,12 +15658,44 @@ async function pmSelectShow(identifier) {
                 const isLong = f.length && parseFloat(f.length) > 1200;
                 const safeName = (f.title || f.name).replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const safeUrl = f.url.replace(/'/g, "\\'");
-                return `<div onclick="pmSelectTrack('${safeUrl}','${safeName}',${isLong})" style="padding:6px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
+                const fmt = f.format || f.name.split('.').pop().toUpperCase();
+                const isMp3 = fmt === 'MP3';
+                const fmtColor = isMp3 ? '#10b981' : '#f59e0b';
+                const dur = f.length ? Math.floor(parseFloat(f.length)/60)+':'+String(Math.floor(parseFloat(f.length)%60)).padStart(2,'0') : '';
+                return `<div onclick="pmSelectTrack('${safeUrl}','${safeName}',${isLong})" style="padding:5px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:6px" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
                     <span style="color:#10b981;font-size:0.8em">▶</span>
-                    <div style="flex:1;min-width:0"><div style="color:#e2e8f0;font-size:0.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.title || f.name}</div>
-                    <div style="color:#64748b;font-size:0.72em">${f.length ? Math.floor(parseFloat(f.length)/60)+':'+String(Math.floor(parseFloat(f.length)%60)).padStart(2,'0') : ''} · ${f.name.split('.').pop().toUpperCase()}</div></div></div>`;
+                    <div style="flex:1;min-width:0"><div style="color:#e2e8f0;font-size:0.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.title || f.name}</div>
+                    <div style="color:#64748b;font-size:0.7em">${dur}</div></div>
+                    <span style="background:${fmtColor}22;color:${fmtColor};font-size:0.65em;padding:2px 5px;border-radius:4px;font-weight:700">${fmt}</span>
+                    ${isLong ? '<span style="color:#f59e0b;font-size:0.65em">✂️</span>' : ''}
+                </div>`;
             }).join('');
     } catch(e) { fc.innerHTML = `<div style="color:#ef4444;padding:8px">Error: ${e.message}</div>`; }
+}
+
+async function pmSearchYouTube() {
+    const query = document.getElementById('pmYoutubeQuery')?.value?.trim();
+    if (!query) return;
+    const container = document.getElementById('pmYoutubeResults');
+    container.innerHTML = '<div style="color:#94a3b8;font-size:0.82em;padding:8px">🔍 Searching YouTube...</div>';
+    try {
+        const res = await fetch(FADR_PROXY + '/youtube-search', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        const data = await res.json();
+        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results found.</div>'; return; }
+        container.innerHTML = data.results.map(v => {
+            const dur = v.lengthSeconds ? Math.floor(v.lengthSeconds/60)+':'+String(v.lengthSeconds%60).padStart(2,'0') : '';
+            return `<div onclick="pmSelectedAudioUrl='${v.url}';document.getElementById('pmSelectedSource').style.display='block';document.getElementById('pmSelectedSourceText').textContent='YouTube: ${v.title.replace(/'/g,"\\'").replace(/"/g,'&quot;')}';document.getElementById('pmFadrGoBtn').disabled=false" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
+                <span style="color:#ef4444;font-size:1em">▶</span>
+                <div style="flex:1;min-width:0">
+                    <div style="color:#e2e8f0;font-size:0.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.title}</div>
+                    <div style="color:#64748b;font-size:0.7em">${v.author || ''} · ${dur}</div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) { container.innerHTML = `<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ${e.message}</div>`; }
 }
 
 function pmSelectTrack(url, title, isLong) {
