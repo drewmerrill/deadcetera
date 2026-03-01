@@ -25,6 +25,10 @@ export default {
       return handleUGSearch(request);
     if (path === '/ug-fetch' && request.method === 'POST')
       return handleUGFetch(request);
+    if (path === '/genius-search' && request.method === 'POST')
+      return handleGeniusSearch(request);
+    if (path === '/genius-fetch' && request.method === 'POST')
+      return handleGeniusFetch(request);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -266,4 +270,59 @@ function midiToAbc(bytes) {
     for (let i=0;i<voices.length;i++) { lines.push(`[V:${i+1}]`); lines.push(voices[i].notes.map(n=>noteToAbc(n,tpb)).join(' ')); }
   }
   return lines.join('\n');
+}
+
+// ── Genius Song Meaning Scraper ──────────────────────────────────────────────
+async function handleGeniusSearch(request) {
+    const { song, artist } = await request.json();
+    if (!song) return new Response(JSON.stringify({ error: 'No song' }), { status: 400, headers: corsHeaders });
+
+    const query = encodeURIComponent(`${song} ${artist || ''}`);
+    const searchUrl = `https://genius.com/api/search/multi?per_page=5&q=${query}`;
+
+    try {
+        const res = await fetch(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const data = await res.json();
+        const hits = (data?.response?.sections || [])
+            .flatMap(s => s.hits || [])
+            .filter(h => h.type === 'song')
+            .map(h => ({
+                title: h.result.title,
+                artist: h.result.primary_artist?.name,
+                url: h.result.url,
+                id: h.result.id,
+                thumbnail: h.result.song_art_image_thumbnail_url
+            }))
+            .slice(0, 5);
+        return new Response(JSON.stringify({ results: hits }), { headers: corsHeaders });
+    } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
+    }
+}
+
+async function handleGeniusFetch(request) {
+    const { url } = await request.json();
+    if (!url) return new Response(JSON.stringify({ error: 'No URL' }), { status: 400, headers: corsHeaders });
+
+    try {
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const html = await res.text();
+
+        // Extract song description/about from Genius page
+        let description = '';
+
+        // Try to find the "About" section - Genius stores it in JSON-LD or data attributes
+        const descMatch = html.match(/"description":\s*\{"plain":\s*"([^"]*?)"/);
+        if (descMatch) description = descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+
+        // Also try the meta description
+        if (!description) {
+            const metaMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]*?)"/);
+            if (metaMatch) description = metaMatch[1];
+        }
+
+        return new Response(JSON.stringify({ description }), { headers: corsHeaders });
+    } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
+    }
 }
