@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-200217', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-201636', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -6541,7 +6541,9 @@ async function handleGoogleDriveAuth() {
         // Sign in
         try {
             console.log('🔑 Requesting sign-in...');
-            tokenClient.requestAccessToken({ prompt: '' });
+            // Use 'consent' on mobile to ensure popup works ('' can be blocked on iOS)
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            tokenClient.requestAccessToken({ prompt: isMobile ? 'consent' : '' });
         } catch (error) {
             console.error('Sign-in failed:', error);
             alert('Sign-in failed.\n\nError: ' + error.message);
@@ -15283,7 +15285,7 @@ async function pmFetchGenius(songTitle) {
         const fetchRes = await fetch(FADR_PROXY + '/genius-fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: top.url })
+            body: JSON.stringify({ url: top.url, id: top.id })
         });
         const fetchData = await fetchRes.json();
         console.log('🔍 Genius description:', fetchData);
@@ -15782,13 +15784,14 @@ function pmRenderSceneCards(scenes) {
     const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a78bfa','#e879f9','#06b6d4','#f97316'];
     return scenes.map((s, i) => {
         const color = colors[i % colors.length];
+        const cueText = s.cue || s.lyrics || '';
         return `
         <div style="background:linear-gradient(135deg,${color}10,${color}05);border-left:3px solid ${color};border-radius:8px;padding:12px;margin-bottom:10px">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
                 <span style="font-size:1.3em">${s.emoji || '🎵'}</span>
                 <span style="color:${color};font-weight:700;font-size:0.88em">${s.section || 'Scene ' + (i + 1)}</span>
             </div>
-            <div style="color:#94a3b8;font-size:0.78em;font-style:italic;margin-bottom:6px;line-height:1.4">"${s.lyrics || ''}"</div>
+            ${cueText ? `<div style="color:#94a3b8;font-size:0.78em;font-style:italic;margin-bottom:6px;line-height:1.4">💡 "${cueText}"</div>` : ''}
             <div style="color:#e2e8f0;font-size:0.85em;line-height:1.5">🎬 ${s.scene || ''}</div>
         </div>`;
     }).join('');
@@ -15831,20 +15834,35 @@ function pmShowMemoryPalaceInfo() {
 }
 
 async function pmAutoGenerateMemoryPalace(songTitle) {
-    if (!pmOriginalChartText) { showToast('⚠️ No chart/lyrics available to generate from'); return; }
+    if (!pmOriginalChartText) { showToast('⚠️ No chart/lyrics available'); return; }
     showToast('🤖 Generating Memory Palace scenes...', 5000);
 
+    // Extract just first few words of each line as cues (not full lyrics = no copyright issue)
     const lines = pmOriginalChartText.split('\n');
-    const lyrics = lines.filter(l => {
-        const trimmed = l.trim();
-        if (!trimmed) return false;
-        if (/^\[/.test(trimmed)) return true;
-        if (isChordLine(trimmed)) return false;
-        if (/^[eEBGDA]\|/.test(trimmed)) return false;
-        return true;
-    }).join('\n');
+    const cues = [];
+    let currentSection = 'Intro';
+    const sectionLines = [];
 
-    if (!lyrics.trim()) { showToast('⚠️ No lyrics found in chart'); return; }
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (/^\[/.test(trimmed)) { 
+            if (sectionLines.length) cues.push({ section: currentSection, firstWords: sectionLines.slice() });
+            currentSection = trimmed.replace(/[\[\]]/g, '');
+            sectionLines.length = 0;
+            continue;
+        }
+        if (isChordLine(trimmed)) continue;
+        if (/^[eEBGDA]\|/.test(trimmed)) continue;
+        // Take first 3-4 words only as memory cues
+        const words = trimmed.split(/\s+/).slice(0, 4).join(' ');
+        if (words) sectionLines.push(words);
+    }
+    if (sectionLines.length) cues.push({ section: currentSection, firstWords: sectionLines.slice() });
+
+    if (!cues.length) { showToast('⚠️ No sections found'); return; }
+
+    const cueText = cues.map(c => `${c.section}: ${c.firstWords.map(w => '"' + w + '..."').join(', ')}`).join('\n');
 
     try {
         const res = await fetch(FADR_PROXY + '/claude', {
@@ -15853,57 +15871,56 @@ async function pmAutoGenerateMemoryPalace(songTitle) {
             body: JSON.stringify({
                 model: 'claude-sonnet-4-20250514',
                 max_tokens: 2000,
+                system: 'You are a memory technique expert helping musicians build Memory Palaces to memorize songs. You create vivid, bizarre visual scenes for each section. Always respond with ONLY a JSON array.',
                 messages: [{
                     role: 'user',
-                    content: `Create a Memory Palace for memorizing the song "${songTitle}". 
+                    content: `Create a Memory Palace for the song "${songTitle}". I will give you the first few words of each line as memory cues. For each section, create a vivid scene that is LITERAL to what the words describe — if a line starts with "all I heard was something like a bird", picture a literal bird. If it says "tell me all that you know", picture someone literally speaking.
 
-CRITICAL RULES:
-- Be LITERAL about the lyrics. If the lyrics say "bird song", picture an actual bird singing. If they say "rain", picture actual rain. If they say "tell me all that you know", picture someone literally telling/speaking.
-- Every key word and phrase from the lyrics should appear as a concrete visual element in the scene
-- The scenes should trigger recall of the EXACT words, not just the vibe
-- Use vivid sensory details: colors, sounds, textures, temperatures
-- Make each scene bizarre/exaggerated — bizarre sticks in memory
-- Number each scene and show which lyrics it covers
+Rules:
+- Create one scene per section
+- Each scene must be vivid, bizarre, exaggerated (bizarre = memorable)
+- Include specific sensory details: colors, sounds, textures, temperatures
+- The scene should help recall the opening words of each line in that section
+- In the "cue" field, put the opening words that this scene helps you remember
 
 Format as JSON array:
-[{"section":"Verse 1","lyrics":"the actual lyrics for this section","scene":"Vivid literal scene description","emoji":"single emoji that captures the scene"}]
+[{"section":"Verse 1","cue":"first words of lines...","scene":"Vivid scene description","emoji":"🎭"}]
 
-Lyrics:
-${lyrics}
+Here are the section cues:
+${cueText}
 
-Return ONLY the JSON array, no other text.`
+Return ONLY valid JSON array.`
                 }]
             })
         });
         const data = await res.json();
         let sceneText = data.content?.[0]?.text || '';
+        console.log('Memory Palace raw response:', sceneText);
         
-        // Parse the JSON
         sceneText = sceneText.replace(/```json|```/g, '').trim();
         let scenes = [];
         try { scenes = JSON.parse(sceneText); } catch(e) {
-            // Fallback: save as raw text
+            console.error('JSON parse failed:', e, sceneText);
             const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
             current.memoryPalace = sceneText;
             current.memoryPalaceScenes = null;
             await saveBandDataToDrive(songTitle, 'song_meaning', current);
             pmKnowLoaded[songTitle] = false;
             pmLoadKnowTab(songTitle);
-            showToast('🏰 Memory Palace generated (text format)');
+            showToast('🏰 Generated (text format — JSON parse failed)');
             return;
         }
 
-        // Save structured scenes
         const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
         current.memoryPalaceScenes = scenes;
-        current.memoryPalace = scenes.map(s => `${s.emoji || '🎵'} ${s.section}\n📝 "${s.lyrics}"\n🎬 ${s.scene}`).join('\n\n');
+        current.memoryPalace = scenes.map(s => `${s.emoji || '🎵'} ${s.section}\n💡 "${s.cue || s.lyrics || ''}"\n🎬 ${s.scene}`).join('\n\n');
         await saveBandDataToDrive(songTitle, 'song_meaning', current);
         pmKnowLoaded[songTitle] = false;
         pmLoadKnowTab(songTitle);
         showToast('🏰 Memory Palace generated!');
     } catch(e) {
         showToast('❌ Generation failed: ' + e.message);
-        console.error('Memory Palace generation error:', e);
+        console.error('Memory Palace error:', e);
     }
 }
 
