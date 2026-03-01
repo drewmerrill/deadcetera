@@ -4,14 +4,9 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-130457', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-131324', 'color:#667eea;font-weight:bold;font-size:14px');
 
-// ── BUILD STAMP ───────────────────────────────────────────────────────────────
-// Visible in bottom-left corner on ALL devices including iPhone/iPad
-function showBuildStamp() {
-    // Build version is already set in the HTML div by push.py at deploy time
-    // This function is a no-op — the badge is visible immediately from index.html
-}
+
 
 // Inject favicon to prevent 404 error
 (function() {
@@ -574,7 +569,6 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    showBuildStamp();
     // ── Auto-init Firebase DB on page load ──────────────────────────────────
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
@@ -10851,7 +10845,7 @@ function settingsTab(tab, btn) {
                 <div style="font-size:0.85em;color:var(--text-dim);margin-top:4px">Band HQ — Less admin. More jams. 🤘</div>
             </div>
             <div style="font-size:0.85em;line-height:2;color:var(--text-muted)">
-                ${[['Version','3.1.0'],['Build','2026.02.21'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+                ${[['Version','3.1.0'],['Build', document.querySelector('meta[name="build-version"]')?.content || 'unknown'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
             </div>
             <div style="margin-top:16px;text-align:center;font-size:0.78em;color:var(--text-dim);line-height:1.6">
                 © 2025–2026 Drew Merrill. All rights reserved.<br>
