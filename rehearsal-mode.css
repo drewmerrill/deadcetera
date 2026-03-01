@@ -338,7 +338,7 @@
     background: #000;
     flex-direction: column;
     overflow: hidden;
-    touch-action: none; /* prevent background scroll on iOS */
+    touch-action: pan-y; /* allow vertical scroll inside overlay */
     -webkit-overflow-scrolling: touch;
 }
 #gigOverlay.gig-visible {
