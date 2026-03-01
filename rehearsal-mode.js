@@ -10,7 +10,7 @@
 //             toArray, allSongs (global), practicePlanActiveDate (global)
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-180410', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-181901', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];   // [{title, band}, ...]
 let rmIndex   = 0;    // current position in queue
@@ -141,6 +141,11 @@ function rmShow() {
     rmEnsureOverlay();
     const overlay = document.getElementById('rmOverlay');
     overlay.classList.add('rm-visible');
+    // iOS scroll lock — same as gig mode
+    document.body.dataset.scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${window.scrollY}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
     rmEditing = false;
     rmLoadSong();
@@ -150,7 +155,13 @@ function closeRehearsalMode() {
     const overlay = document.getElementById('rmOverlay');
     if (!overlay) return;
     overlay.classList.remove('rm-visible');
+    // Restore scroll position
+    const scrollY = document.body.dataset.scrollY || '0';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, parseInt(scrollY));
     rmEditing = false;
 }
 
