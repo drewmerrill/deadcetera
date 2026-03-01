@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
-sync.py - Run at start of each Claude session
-Fetches live GitHub files to local repo + prints status snapshot
+sync.py - Run at the start of every Claude session
+Fetches ALL live GitHub files to local repo + prints status snapshot for Claude
+
 Usage: python3 sync.py
 """
-import os, json, base64
+import os, json, base64, re, datetime
 from urllib.request import urlopen, Request
 
 TOKEN = open(os.path.expanduser("~/.deadcetera_token")).read().strip()
 API = "https://api.github.com/repos/drewmerrill/deadcetera/contents"
 REPO = os.path.dirname(os.path.abspath(__file__))
-FILES = ["app.js", "app-dev.js", "index.html", "service-worker.js", "help.js", "push.py", "data.js"]
+
+# Every file that belongs in the repo
+FILES = [
+    "app.js", "app-dev.js", "index.html", "help.js", "data.js",
+    "rehearsal-mode.js", "rehearsal-mode.css", "service-worker.js",
+    "worker.js", "styles.css", "app-shell.css", "manifest.json",
+    "push.py", "sync.py", "version.json"
+]
 
 def gh_get(path):
     req = Request(f"{API}/{path}", headers={
@@ -18,38 +26,77 @@ def gh_get(path):
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"
     })
-    with urlopen(req) as r: return json.load(r)
+    with urlopen(req) as r:
+        return json.load(r)
 
-print("🔄 Syncing from GitHub...\n")
+print("🔄 Syncing ALL files from GitHub...\n")
 manifest = {}
+errors = []
+
 for f in FILES:
     try:
         info = gh_get(f)
         content = base64.b64decode(info["content"]).decode()
-        open(os.path.join(REPO, f), 'w').write(content)
-        manifest[f] = {"sha": info["sha"][:8], "lines": content.count('\n')}
-        print(f"  ✅ {f:<20} {content.count(chr(10))} lines  sha:{info['sha'][:8]}")
+        dest = os.path.join(REPO, f)
+        open(dest, 'w').write(content)
+        lines = content.count('\n')
+        manifest[f] = {"sha": info["sha"][:8], "lines": lines, "size": len(content)}
+        print(f"  ✅ {f:<30} {lines:>5} lines  sha:{info['sha'][:8]}")
     except Exception as e:
+        errors.append(f)
         print(f"  ❌ {f}: {e}")
 
-# Save manifest for Claude to read
-open(os.path.join(REPO, ".claude_manifest.json"), 'w').write(json.dumps(manifest, indent=2))
+# Read version
+version = "unknown"
+vpath = os.path.join(REPO, "version.json")
+if os.path.exists(vpath):
+    version = json.load(open(vpath)).get("version", "unknown")
 
-print("\n--- KEY FEATURES ---")
+# Save manifest for drift detection
+manifest_path = os.path.join(REPO, ".claude_manifest.json")
+open(manifest_path, 'w').write(json.dumps({
+    "synced_at": datetime.datetime.utcnow().isoformat() + "Z",
+    "version": version,
+    "files": manifest
+}, indent=2))
+
+# Feature checklist
 app = open(os.path.join(REPO, "app.js")).read()
-for label, term in [
-    ("renderCoverMe", "async function renderCoverMe"),
-    ("editCoverMe", "async function editCoverMe"),
-    ("importABCFromPhoto", "importABCFromPhoto"),
-    ("openABCEditorForSection", "openABCEditorForSection"),
-    ("lyric-block filter", "lyric-block"),
-    ("step4cover", "step4cover"),
-    ("Cloudflare proxy", "deadcetera-proxy.drewmerrill"),
-    ("saveGigNoteInline", "saveGigNoteInline"),
-]:
-    print(f"  {'✅' if term in app else '❌'} {label}")
+html = open(os.path.join(REPO, "index.html")).read()
 
-print(f"\n✅ Repo synced. Local files match GitHub.")
-print(f"📁 {REPO}")
-print(f"\nTo deploy after Claude makes changes:")
-print(f"  python3 push.py \"message\" app.js app-dev.js")
+features = {
+    "Build badge in index.html":        'id="buildStamp"' in html,
+    "SW registration in index.html":    "serviceWorker" in html,
+    "rehearsal-mode.js loaded":         "rehearsal-mode.js" in html,
+    "Cover Me edit button":             "editCoverMe" in app[app.find('renderCoverMe'):app.find('renderCoverMe')+2100],
+    "Fadr auto-import":                 "importHarmoniesFromFadr" in app,
+    "Equipment save/delete":            "saveEquip" in app and "deleteEquip" in app,
+    "No iOS prompt() blockers":         (app.count("prompt('") + app.count('prompt("')) <= 3,
+    "Song structure modal":             "songStructureModal" in app,
+    "Moises stems modal":               "moisesModal" in app,
+    "Update banner":                    "showUpdateBanner" in app,
+}
+
+print(f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 DEADCETERA SESSION SNAPSHOT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏷  Live build:   {version}
+📁 Repo:         {REPO}
+📄 Files synced: {len(manifest)}/{len(FILES)}{f' (❌ {len(errors)} failed: {", ".join(errors)})' if errors else ' ✅'}
+
+🔍 Feature checklist:""")
+
+all_ok = True
+for name, present in features.items():
+    print(f"  {'✅' if present else '❌'} {name}")
+    if not present: all_ok = False
+
+print(f"""
+{'⚠️  Some features missing — review before starting work' if not all_ok else '✅ All features verified'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  IMPORTANT: If you upload any repo files during this session,
+   run sync.py again so Claude's local copies stay in sync.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Deploy: python3 push.py "message"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
