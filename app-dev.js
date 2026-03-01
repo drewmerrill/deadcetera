@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-172936', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-173915', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -453,20 +453,16 @@ if ('serviceWorker' in navigator) {
 
                 // ── controllerchange fires when a new SW takes over ─────────
                 // This is the most reliable cross-platform reload trigger.
-                let refreshing = false;
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    if (!refreshing) {
-                        refreshing = true;
-                        console.log('[PWA] New SW controller — reloading for update');
-                        window.location.reload();
-                    }
+                    console.log('[PWA] New SW controller detected');
+                    showUpdateBanner();
                 });
 
                 // ── postMessage handler (Chrome/Android) ───────────────────
                 navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data?.type === 'SW_UPDATED') {
-                        console.log('[PWA] New version deployed:', event.data.version, '— reloading...');
-                        setTimeout(() => window.location.reload(), 500);
+                        console.log('[PWA] New version deployed:', event.data.version);
+                        showUpdateBanner();
                         return;
                     }
                     if (event.data?.type === 'NAVIGATE' && event.data.url) {
@@ -12657,12 +12653,12 @@ function showUpdateBanner() {
     if (document.getElementById('dc-update-banner')) return;
     const banner = document.createElement('div');
     banner.id = 'dc-update-banner';
-    banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px 20px;border-radius:12px;font-size:0.9em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;gap:12px;max-width:320px;width:calc(100% - 40px)';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:16px 20px;font-size:1em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;gap:12px;text-align:center;cursor:pointer';
     banner.innerHTML = `
         <span>🎸 New version available!</span>
-        <button onclick="window.location.reload(true)" style="background:white;color:#667eea;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em;white-space:nowrap;flex-shrink:0">Reload</button>
-        <button onclick="document.getElementById('dc-update-banner')?.remove()" style="background:transparent;border:none;color:rgba(255,255,255,0.7);cursor:pointer;font-size:1.1em;padding:0;flex-shrink:0">✕</button>
+        <button onclick="window.location.reload(true)" style="background:white;color:#667eea;border:none;border-radius:8px;padding:8px 20px;font-weight:700;cursor:pointer;font-size:0.95em;white-space:nowrap;flex-shrink:0">Tap to Reload</button>
     `;
+    banner.onclick = (e) => { if (e.target.tagName !== 'BUTTON') window.location.reload(true); };
     document.body.appendChild(banner);
 }
 
