@@ -10,7 +10,7 @@
 //             toArray, allSongs (global), practicePlanActiveDate (global)
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-131852', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-140004', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];   // [{title, band}, ...]
 let rmIndex   = 0;    // current position in queue
@@ -176,11 +176,18 @@ async function rmLoadSong() {
     document.getElementById('rmCribText').style.display = 'none';
     document.getElementById('rmNoCrib').classList.add('hidden');
 
-    // Load crib from Drive
+    // Load chart first (shared chart), fallback to crib, then gig_notes
     let crib = null;
     try {
-        crib = await loadBandDataFromDrive(song.title, 'rehearsal_crib');
+        const chartData = await loadBandDataFromDrive(song.title, 'chart');
+        if (chartData?.text?.trim()) crib = chartData.text;
     } catch(e) {}
+
+    if (!crib) {
+        try {
+            crib = await loadBandDataFromDrive(song.title, 'rehearsal_crib');
+        } catch(e) {}
+    }
 
     // Fallback: pull gig_notes and join them as plain text
     if (!crib) {
