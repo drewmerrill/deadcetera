@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-185510', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-190601', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -15117,90 +15117,283 @@ async function pmLoadKnowTab(songTitle) {
     if (pmKnowLoaded[songTitle]) return;
     const container = document.getElementById('pmKnowContent');
 
-    // Load existing song meaning from Drive
     let meaning = null;
     try { meaning = await loadBandDataFromDrive(songTitle, 'song_meaning'); } catch(e) {}
 
-    // Load song structure
     let structure = null;
     try { structure = await loadBandDataFromDrive(songTitle, 'song_structure'); } catch(e) {}
+    if (!structure) {
+        const bk = typeof bandKnowledgeBase !== 'undefined' ? bandKnowledgeBase[songTitle] : null;
+        if (bk) structure = { whoStarts: bk.songStructure?.whoStarts || [], howStarts: bk.songStructure?.howStarts || '', whoCuesEnding: bk.songStructure?.whoCuesEnding || '', howEnds: bk.songStructure?.howEnds || '' };
+    }
+    if (!structure) structure = {};
 
-    const songData = allSongs.find(s => s.title === songTitle);
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
     const band = songData ? getFullBandName(songData.band) : '';
+    const safeSong = songTitle.replace(/'/g, "\\'");
 
     container.innerHTML = `
-        <div style="margin-bottom:20px">
-            <h3 style="color:#e2e8f0;margin:0 0 8px 0;font-size:1em">📖 ${songTitle}</h3>
-            <div style="color:#94a3b8;font-size:0.85em;margin-bottom:12px">${band}</div>
+        <div style="margin-bottom:16px">
+            <h3 style="color:#e2e8f0;margin:0 0 4px 0;font-size:1em">📖 ${songTitle}</h3>
+            <div style="color:#94a3b8;font-size:0.82em">${band}</div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:16px">
-            <h4 style="color:#67e8f9;margin:0 0 8px 0;font-size:0.9em">🎵 Song Meaning & Story</h4>
-            <div id="pmMeaningText" style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
-                ${meaning?.text || '<span style="color:#64748b">No song meaning added yet.</span>'}
+        <!-- SONG MEANING -->
+        <div class="pm-card">
+            <div class="pm-card-header">
+                <h4 style="color:#67e8f9;margin:0;font-size:0.9em">🎵 Song Meaning & Story</h4>
+                <div style="display:flex;gap:4px">
+                    <button onclick="pmFetchGenius('${safeSong}')" class="pm-tool-btn" title="Auto-fetch from Genius">🔍 Genius</button>
+                    <button onclick="pmEditField('${safeSong}','text','Song meaning')" class="pm-tool-btn">✏️</button>
+                </div>
             </div>
-            <button onclick="pmEditMeaning('${songTitle.replace(/'/g, "\\'")}')" class="pm-tool-btn" style="margin-top:8px">✏️ Edit</button>
+            <div id="pmMeaningText" class="pm-card-body">${meaning?.text || '<span class="pm-empty">No song meaning added yet. Tap 🔍 Genius to auto-fetch.</span>'}</div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:16px">
-            <h4 style="color:#f59e0b;margin:0 0 8px 0;font-size:0.9em">🏗️ Song Structure</h4>
-            <div style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
-                ${structure?.sections ? structure.sections.map(s =>
-                    `<span style="display:inline-block;background:rgba(255,255,255,0.06);padding:3px 8px;border-radius:5px;margin:2px 4px 2px 0;font-size:0.9em">${s.label || s.name || s}</span>`
-                ).join('') : '<span style="color:#64748b">No structure mapped yet.</span>'}
+        <!-- MEMORY PALACE SCENES -->
+        <div class="pm-card">
+            <div class="pm-card-header">
+                <h4 style="color:#e879f9;margin:0;font-size:0.9em">🏰 Memory Palace</h4>
+                <button onclick="pmEditField('${safeSong}','memoryPalace','Memory palace scenes')" class="pm-tool-btn">✏️</button>
+            </div>
+            <div id="pmMemoryPalaceText" class="pm-card-body">${meaning?.memoryPalace || '<span class="pm-empty">Visual scene descriptions for each section to help memorize the song. Add imagery cues here — e.g. "Verse 1: Imagine standing at a crossroads at dawn, birds singing overhead..."</span>'}</div>
+        </div>
+
+        <!-- SONG STRUCTURE (editable, syncs with main app) -->
+        <div class="pm-card">
+            <div class="pm-card-header">
+                <h4 style="color:#f59e0b;margin:0;font-size:0.9em">🏗️ Song Structure</h4>
+                <button onclick="pmEditStructure('${safeSong}')" class="pm-tool-btn">✏️ Edit</button>
+            </div>
+            <div class="pm-card-body" id="pmStructureContent">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:10px">
+                        <div style="font-size:0.7em;font-weight:800;color:#34d399;margin-bottom:6px">▶ START</div>
+                        <div style="font-size:0.82em;color:#cbd5e1">${structure.whoStarts?.length ? structure.whoStarts.map(m => (typeof bandMembers !== 'undefined' && bandMembers[m]) ? bandMembers[m].name : m).join(', ') : '<span class="pm-empty">Who?</span>'}</div>
+                        <div style="font-size:0.82em;color:#94a3b8;margin-top:4px">${structure.howStarts || '<span class="pm-empty">How?</span>'}</div>
+                    </div>
+                    <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:10px">
+                        <div style="font-size:0.7em;font-weight:800;color:#f87171;margin-bottom:6px">⏹ END</div>
+                        <div style="font-size:0.82em;color:#cbd5e1">${structure.whoCuesEnding ? (Array.isArray(structure.whoCuesEnding) ? structure.whoCuesEnding : [structure.whoCuesEnding]).map(m => (typeof bandMembers !== 'undefined' && bandMembers[m]) ? bandMembers[m].name : m).join(', ') : '<span class="pm-empty">Who?</span>'}</div>
+                        <div style="font-size:0.82em;color:#94a3b8;margin-top:4px">${structure.howEnds || '<span class="pm-empty">How?</span>'}</div>
+                    </div>
+                </div>
+                ${structure.form ? `<div style="margin-top:8px;font-size:0.82em;color:#94a3b8"><strong>Form:</strong> ${structure.form}</div>` : ''}
             </div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:16px">
-            <h4 style="color:#a78bfa;margin:0 0 8px 0;font-size:0.9em">🎯 Band Notes & Interpretation</h4>
-            <div id="pmBandNotesText" style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
-                ${meaning?.bandNotes || '<span style="color:#64748b">How does the band approach this song? Add notes here.</span>'}
+        <!-- BAND NOTES -->
+        <div class="pm-card">
+            <div class="pm-card-header">
+                <h4 style="color:#a78bfa;margin:0;font-size:0.9em">🎯 Band Notes</h4>
+                <button onclick="pmEditField('${safeSong}','bandNotes','Band notes')" class="pm-tool-btn">✏️</button>
             </div>
-            <button onclick="pmEditBandNotes('${songTitle.replace(/'/g, "\\'")}')" class="pm-tool-btn" style="margin-top:8px">✏️ Edit</button>
+            <div id="pmBandNotesText" class="pm-card-body">${meaning?.bandNotes || '<span class="pm-empty">How does the band approach this song?</span>'}</div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px">
-            <h4 style="color:#10b981;margin:0 0 8px 0;font-size:0.9em">🎸 Performance Tips</h4>
-            <div style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
-                ${meaning?.tips || '<span style="color:#64748b">Any performance tips, cues, or reminders.</span>'}
+        <!-- PERFORMANCE TIPS -->
+        <div class="pm-card">
+            <div class="pm-card-header">
+                <h4 style="color:#10b981;margin:0;font-size:0.9em">🎸 Performance Tips</h4>
+                <button onclick="pmEditField('${safeSong}','tips','Performance tips')" class="pm-tool-btn">✏️</button>
             </div>
-            <button onclick="pmEditTips('${songTitle.replace(/'/g, "\\'")}')" class="pm-tool-btn" style="margin-top:8px">✏️ Edit</button>
+            <div class="pm-card-body">${meaning?.tips || '<span class="pm-empty">Cues, reminders, watch-outs.</span>'}</div>
         </div>
     `;
     pmKnowLoaded[songTitle] = true;
 }
 
-async function pmEditMeaning(songTitle) {
+// ── Generic field editor (avoids prompt() on iOS) ────────────────────────────
+async function pmEditField(songTitle, field, label) {
     const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
-    const text = prompt('Song meaning & story:', current.text || '');
-    if (text === null) return;
-    current.text = text;
+    // Build an inline editor
+    const container = document.getElementById('pmKnowContent');
+    const existingEditor = document.getElementById('pmFieldEditor');
+    if (existingEditor) existingEditor.remove();
+
+    const editor = document.createElement('div');
+    editor.id = 'pmFieldEditor';
+    editor.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px';
+    editor.innerHTML = `
+        <div style="background:#1e1e2e;border-radius:12px;padding:20px;width:100%;max-width:500px;max-height:80vh;overflow-y:auto">
+            <h3 style="color:#e2e8f0;margin:0 0 12px 0;font-size:1em">${label}</h3>
+            <textarea id="pmFieldTextarea" rows="8" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;font-size:14px;line-height:1.6;padding:12px;resize:vertical;box-sizing:border-box;font-family:inherit">${current[field] || ''}</textarea>
+            <div style="display:flex;gap:8px;margin-top:12px">
+                <button onclick="pmSaveField('${songTitle.replace(/'/g, "\\'")}','${field}')" style="flex:1;padding:10px;background:#667eea;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer">💾 Save</button>
+                <button onclick="document.getElementById('pmFieldEditor').remove()" style="flex:1;padding:10px;background:rgba(255,255,255,0.06);color:#94a3b8;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer">Cancel</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(editor);
+    document.getElementById('pmFieldTextarea').focus();
+}
+
+async function pmSaveField(songTitle, field) {
+    const text = document.getElementById('pmFieldTextarea')?.value?.trim() || '';
+    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+    current[field] = text;
     await saveBandDataToDrive(songTitle, 'song_meaning', current);
+    document.getElementById('pmFieldEditor')?.remove();
     pmKnowLoaded[songTitle] = false;
     pmLoadKnowTab(songTitle);
     showToast('✅ Saved!');
 }
 
-async function pmEditBandNotes(songTitle) {
-    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
-    const text = prompt('Band notes & interpretation:', current.bandNotes || '');
-    if (text === null) return;
-    current.bandNotes = text;
-    await saveBandDataToDrive(songTitle, 'song_meaning', current);
-    pmKnowLoaded[songTitle] = false;
-    pmLoadKnowTab(songTitle);
-    showToast('✅ Saved!');
+// ── Genius auto-fetch ────────────────────────────────────────────────────────
+async function pmFetchGenius(songTitle) {
+    showToast('🔍 Searching Genius...');
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
+    const artist = songData ? getFullBandName(songData.band) : '';
+
+    try {
+        const searchRes = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/genius-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ song: songTitle, artist })
+        });
+        const searchData = await searchRes.json();
+
+        if (!searchData.results?.length) {
+            showToast('🤷 No Genius results found');
+            return;
+        }
+
+        // Fetch the top result
+        const top = searchData.results[0];
+        const fetchRes = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/genius-fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: top.url })
+        });
+        const fetchData = await fetchRes.json();
+
+        if (fetchData.description) {
+            const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+            current.text = fetchData.description;
+            current.geniusUrl = top.url;
+            await saveBandDataToDrive(songTitle, 'song_meaning', current);
+            pmKnowLoaded[songTitle] = false;
+            pmLoadKnowTab(songTitle);
+            showToast(`✅ Imported from Genius: ${top.title} by ${top.artist}`);
+        } else {
+            showToast('⚠️ Found on Genius but no description available');
+        }
+    } catch(e) {
+        showToast('❌ Genius fetch failed: ' + e.message);
+    }
 }
 
-async function pmEditTips(songTitle) {
-    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
-    const text = prompt('Performance tips:', current.tips || '');
-    if (text === null) return;
-    current.tips = text;
-    await saveBandDataToDrive(songTitle, 'song_meaning', current);
+// ── Bulk import song meanings ────────────────────────────────────────────────
+async function pmBulkImportMeanings() {
+    if (!confirm('Bulk import song meanings from Genius for all songs without meanings?\n\nThis will take a while (~2 sec/song).')) return;
+    const songs = typeof allSongs !== 'undefined' ? allSongs : [];
+    let imported = 0, skipped = 0, failed = 0;
+
+    for (const song of songs) {
+        // Check if already has meaning
+        try {
+            const existing = await loadBandDataFromDrive(song.title, 'song_meaning');
+            if (existing?.text) { skipped++; continue; }
+        } catch(e) {}
+
+        try {
+            const artist = getFullBandName(song.band);
+            const searchRes = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/genius-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ song: song.title, artist })
+            });
+            const searchData = await searchRes.json();
+            if (searchData.results?.length) {
+                const fetchRes = await fetch('https://deadcetera-proxy.drewmerrill.workers.dev/genius-fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: searchData.results[0].url })
+                });
+                const fetchData = await fetchRes.json();
+                if (fetchData.description) {
+                    await saveBandDataToDrive(song.title, 'song_meaning', {
+                        text: fetchData.description,
+                        geniusUrl: searchData.results[0].url
+                    });
+                    imported++;
+                } else { failed++; }
+            } else { failed++; }
+        } catch(e) { failed++; }
+
+        // Rate limit
+        await new Promise(r => setTimeout(r, 2000));
+    }
+    showToast(`✅ Done! ${imported} imported, ${skipped} skipped, ${failed} not found`);
+}
+
+// ── Structure editing (syncs with main app) ──────────────────────────────────
+async function pmEditStructure(songTitle) {
+    const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
+    const members = typeof bandMembers !== 'undefined' ? Object.entries(bandMembers) : [];
+
+    const editor = document.createElement('div');
+    editor.id = 'pmFieldEditor';
+    editor.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px';
+    editor.innerHTML = `
+        <div style="background:#1e1e2e;border-radius:12px;padding:20px;width:100%;max-width:500px;max-height:80vh;overflow-y:auto">
+            <h3 style="color:#e2e8f0;margin:0 0 16px 0;font-size:1em">🏗️ Edit Song Structure</h3>
+
+            <label style="display:block;font-size:0.82em;color:#94a3b8;margin-bottom:4px;font-weight:600">Who starts?</label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+                ${members.map(([key, m]) => `
+                    <label style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.82em;color:#cbd5e1">
+                        <input type="checkbox" class="pmStructWho" value="${key}" ${(structure.whoStarts || []).includes(key) ? 'checked' : ''}> ${m.name}
+                    </label>
+                `).join('')}
+            </div>
+
+            <label style="display:block;font-size:0.82em;color:#94a3b8;margin-bottom:4px;font-weight:600">How does it start?</label>
+            <textarea id="pmStructHowStarts" rows="2" class="pm-struct-input">${structure.howStarts || ''}</textarea>
+
+            <label style="display:block;font-size:0.82em;color:#94a3b8;margin-bottom:4px;margin-top:12px;font-weight:600">Who cues the ending?</label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+                ${members.map(([key, m]) => `
+                    <label style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.82em;color:#cbd5e1">
+                        <input type="checkbox" class="pmStructCues" value="${key}" ${(Array.isArray(structure.whoCuesEnding) ? structure.whoCuesEnding : [structure.whoCuesEnding]).filter(Boolean).includes(key) ? 'checked' : ''}> ${m.name}
+                    </label>
+                `).join('')}
+            </div>
+
+            <label style="display:block;font-size:0.82em;color:#94a3b8;margin-bottom:4px;font-weight:600">How does it end?</label>
+            <textarea id="pmStructHowEnds" rows="2" class="pm-struct-input">${structure.howEnds || ''}</textarea>
+
+            <label style="display:block;font-size:0.82em;color:#94a3b8;margin-bottom:4px;margin-top:12px;font-weight:600">Song Form (e.g. AABA, Verse-Chorus-Verse)</label>
+            <input id="pmStructForm" type="text" class="pm-struct-input" value="${structure.form || ''}" placeholder="e.g. Intro → Verse → Chorus → Verse → Jam → Chorus → Outro">
+
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button onclick="pmSaveStructure('${songTitle.replace(/'/g, "\\'")}')" style="flex:1;padding:10px;background:#667eea;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer">💾 Save</button>
+                <button onclick="document.getElementById('pmFieldEditor').remove()" style="flex:1;padding:10px;background:rgba(255,255,255,0.06);color:#94a3b8;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer">Cancel</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(editor);
+}
+
+async function pmSaveStructure(songTitle) {
+    const whoStarts = [...document.querySelectorAll('.pmStructWho:checked')].map(c => c.value);
+    const howStarts = document.getElementById('pmStructHowStarts')?.value?.trim() || '';
+    const whoCuesEnding = [...document.querySelectorAll('.pmStructCues:checked')].map(c => c.value);
+    const howEnds = document.getElementById('pmStructHowEnds')?.value?.trim() || '';
+    const form = document.getElementById('pmStructForm')?.value?.trim() || '';
+
+    const structure = { whoStarts, howStarts, whoCuesEnding, howEnds, form };
+    await saveBandDataToDrive(songTitle, 'song_structure', structure);
+    document.getElementById('pmFieldEditor')?.remove();
+
+    // Refresh both Practice Mode and main app
     pmKnowLoaded[songTitle] = false;
     pmLoadKnowTab(songTitle);
-    showToast('✅ Saved!');
+    // Also refresh main page if visible
+    if (typeof renderSongStructure === 'function' && typeof selectedSong !== 'undefined') {
+        try { renderSongStructure(songTitle); } catch(e) {}
+    }
+    showToast('✅ Structure saved!');
 }
 
 // ── Memory Palace tab ────────────────────────────────────────────────────────
@@ -15235,16 +15428,27 @@ let pmHarmonyLoaded = {};
 async function pmLoadHarmonyTab(songTitle) {
     if (pmHarmonyLoaded[songTitle]) return;
     const container = document.getElementById('pmHarmonyContent');
+    const safeSong = songTitle.replace(/'/g, "\\'");
 
     // Load harmony data
     let parts = null;
     try { parts = await loadBandDataFromDrive(songTitle, 'harmony_parts'); } catch(e) {}
     if (!parts || Object.keys(parts).length === 0) {
         container.innerHTML = `
-            <div style="text-align:center;padding:40px 20px">
+            <div style="text-align:center;padding:30px 20px">
                 <div style="font-size:2em;margin-bottom:8px">🎤</div>
-                <div style="color:#94a3b8;margin-bottom:12px">No harmony parts imported yet.</div>
-                <div style="color:#64748b;font-size:0.85em">Import via the Harmonies section on the song page,<br>or use Fadr auto-import.</div>
+                <div style="color:#94a3b8;margin-bottom:16px">No harmony parts imported yet.</div>
+                <button onclick="pmStartFadrImport('${safeSong}')" class="pm-tool-btn" style="padding:10px 20px;font-size:0.9em;background:rgba(102,126,234,0.2);color:#818cf8">
+                    🤖 Import via Fadr AI
+                </button>
+                <div style="color:#64748b;font-size:0.78em;margin-top:12px;line-height:1.5">
+                    <strong>How Fadr import works:</strong><br>
+                    1. Find the song on Archive.org (live recordings)<br>
+                    2. Paste the Archive.org MP3 link<br>
+                    3. Fadr AI separates vocal stems automatically<br>
+                    4. MIDI is extracted and converted to ABC notation<br>
+                    5. Parts appear here for practice!
+                </div>
             </div>
         `;
         pmHarmonyLoaded[songTitle] = true;
@@ -15253,43 +15457,49 @@ async function pmLoadHarmonyTab(songTitle) {
 
     // Render each harmony part with ABC notation
     const colors = { 'Soprano': '#ef4444', 'Alto': '#f59e0b', 'Tenor': '#10b981', 'Bass': '#3b82f6', 'Melody': '#a78bfa' };
-    let html = '<div style="margin-bottom:12px">';
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="color:#e2e8f0;font-weight:600;font-size:0.95em">🎤 Harmony Parts</span>
+        <button onclick="pmStartFadrImport('${safeSong}')" class="pm-tool-btn">🤖 Re-import</button>
+    </div>`;
     for (const [partName, partData] of Object.entries(parts)) {
         const color = colors[partName] || '#94a3b8';
-        const abc = partData.abc || partData;
         html += `
             <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin-bottom:12px;border-left:3px solid ${color}">
                 <h4 style="color:${color};margin:0 0 8px 0;font-size:0.9em">${partName}</h4>
-                <div id="pmHarmonyABC_${partName}" style="background:white;border-radius:6px;padding:8px;margin-bottom:8px"></div>
-                <div id="pmHarmonyAudio_${partName}"></div>
+                <div id="pmHarmonyABC_${partName.replace(/\s/g, '_')}" style="background:white;border-radius:6px;padding:8px;margin-bottom:8px"></div>
+                <div id="pmHarmonyAudio_${partName.replace(/\s/g, '_')}"></div>
             </div>
         `;
     }
-    html += '</div>';
     container.innerHTML = html;
 
-    // Render ABC if ABCJS is loaded
-    if (typeof ABCJS !== 'undefined') {
+    // Render ABC
+    const renderParts = () => {
         for (const [partName, partData] of Object.entries(parts)) {
             const abc = typeof partData === 'string' ? partData : partData.abc;
-            if (abc) {
-                try {
-                    ABCJS.renderAbc(`pmHarmonyABC_${partName}`, abc, { responsive: 'resize', staffwidth: 300 });
-                } catch(e) { console.warn('ABC render failed for', partName, e); }
+            const containerId = `pmHarmonyABC_${partName.replace(/\s/g, '_')}`;
+            if (abc && document.getElementById(containerId)) {
+                try { ABCJS.renderAbc(containerId, abc, { responsive: 'resize', staffwidth: 300 }); } catch(e) {}
             }
         }
-    } else {
-        loadABCJS(() => {
-            for (const [partName, partData] of Object.entries(parts)) {
-                const abc = typeof partData === 'string' ? partData : partData.abc;
-                if (abc) {
-                    try { ABCJS.renderAbc(`pmHarmonyABC_${partName}`, abc, { responsive: 'resize', staffwidth: 300 }); } catch(e) {}
-                }
-            }
-        });
-    }
+    };
+    if (typeof ABCJS !== 'undefined') { renderParts(); }
+    else { loadABCJS(renderParts); }
 
     pmHarmonyLoaded[songTitle] = true;
+}
+
+// Bridge to existing Fadr import
+function pmStartFadrImport(songTitle) {
+    // Close practice mode temporarily and open the Fadr import modal
+    closePracticeMode();
+    setTimeout(() => {
+        if (typeof importHarmoniesFromFadr === 'function') {
+            importHarmoniesFromFadr(songTitle);
+        } else {
+            showToast('⚠️ Fadr import not available — use the Harmonies section on the song page');
+        }
+    }, 300);
 }
 
 // ── Record & Review tab ──────────────────────────────────────────────────────
