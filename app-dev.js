@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-192348', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-194330', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -15160,7 +15160,7 @@ async function pmLoadKnowTab(songTitle) {
                     <button onclick="pmEditField('${safeSong}','memoryPalace','Memory palace scenes')" class="pm-tool-btn">✏️</button>
                 </div>
             </div>
-            <div id="pmMemoryPalaceText" class="pm-card-body">${meaning?.memoryPalace ? meaning.memoryPalace.replace(/\n/g, '<br>') : '<span class="pm-empty">Tap 🤖 Generate to auto-create visual scenes from the lyrics.</span>'}</div>
+            <div id="pmMemoryPalaceText" class="pm-card-body">${meaning?.memoryPalaceScenes ? pmRenderSceneCards(meaning.memoryPalaceScenes) : (meaning?.memoryPalace ? meaning.memoryPalace.replace(/\n/g, '<br>') : '<span class="pm-empty">Tap 🤖 Generate to auto-create visual scenes from the lyrics.</span>')}</div>
         </div>
 
         <!-- SONG STRUCTURE (editable, syncs with main app) -->
@@ -15495,18 +15495,227 @@ async function pmLoadHarmonyTab(songTitle) {
 
 // Bridge to existing Fadr import
 function pmStartFadrImport(songTitle) {
-    // Close practice mode temporarily and open the Fadr import modal
+    const safeSong = songTitle.replace(/'/g, "\\'");
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
+
+    const modal = document.createElement('div');
+    modal.id = 'pmHarmonySourceModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,0.9);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+    modal.innerHTML = `
+        <div style="background:#1a1a2e;border-radius:14px;padding:20px;width:100%;max-width:550px;margin-top:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0;color:white;font-size:1.05em">🎤 Import Harmonies — ${songTitle}</h3>
+                <button onclick="document.getElementById('pmHarmonySourceModal').remove()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            <div style="display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap">
+                <button class="pm-src-tab active" data-src="archive" onclick="pmSrcTab('archive',this)">🏛️ Archive.org</button>
+                <button class="pm-src-tab" data-src="northstar" onclick="pmSrcTab('northstar',this)">⭐ North Star</button>
+                <button class="pm-src-tab" data-src="bestshot" onclick="pmSrcTab('bestshot',this)">🎯 Best Shot</button>
+                <button class="pm-src-tab" data-src="url" onclick="pmSrcTab('url',this)">🔗 Direct URL</button>
+            </div>
+            <div class="pm-src-panel" id="pmSrcArchive">
+                <div style="display:flex;gap:6px;margin-bottom:12px">
+                    <input id="pmArchiveQuery" type="text" placeholder="Search Archive.org..." value="${songTitle}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit">
+                    <button onclick="pmSearchArchive()" class="pm-tool-btn" style="padding:8px 14px;background:rgba(102,126,234,0.2);color:#818cf8">🔍</button>
+                </div>
+                <div id="pmArchiveResults" style="max-height:200px;overflow-y:auto;margin-bottom:12px"><div style="color:#64748b;font-size:0.82em;padding:8px">Search to find shows</div></div>
+                <div id="pmArchiveFiles" style="display:none;max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
+                <div id="pmTrimSection" style="display:none;background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:12px">
+                    <div style="color:#f59e0b;font-size:0.85em;font-weight:600;margin-bottom:8px">✂️ Trim (for full-show files)</div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <label style="color:#94a3b8;font-size:0.82em">Start:</label>
+                        <input id="pmTrimStart" type="text" placeholder="0:00" style="width:60px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e2e8f0;padding:4px 8px;font-size:13px;text-align:center;font-family:inherit">
+                        <label style="color:#94a3b8;font-size:0.82em">End:</label>
+                        <input id="pmTrimEnd" type="text" placeholder="5:00" style="width:60px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#e2e8f0;padding:4px 8px;font-size:13px;text-align:center;font-family:inherit">
+                        <span style="color:#64748b;font-size:0.75em">(mm:ss)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="pm-src-panel hidden" id="pmSrcNorthstar">
+                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:12px">
+                    <div style="color:#fbbf24;font-size:0.88em;font-weight:600;margin-bottom:6px">⭐ North Star Version</div>
+                    <div style="color:#94a3b8;font-size:0.82em;line-height:1.5;margin-bottom:10px">The band-agreed definitive version — the one you're all learning toward.</div>
+                    <div id="pmNorthStarInfo" style="color:#cbd5e1;font-size:0.85em">Loading...</div>
+                </div>
+            </div>
+            <div class="pm-src-panel hidden" id="pmSrcBestshot">
+                <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-bottom:12px">
+                    <div style="color:#10b981;font-size:0.88em;font-weight:600;margin-bottom:6px">🎯 Best Shot Recording</div>
+                    <div style="color:#94a3b8;font-size:0.82em;line-height:1.5;margin-bottom:10px">Use the band's own best recording.</div>
+                    <div id="pmBestShotInfo" style="color:#cbd5e1;font-size:0.85em">Loading...</div>
+                </div>
+            </div>
+            <div class="pm-src-panel hidden" id="pmSrcUrl">
+                <div style="margin-bottom:12px">
+                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px">Paste a direct link to an audio file:</div>
+                    <input id="pmDirectUrl" type="url" placeholder="https://archive.org/download/..." style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit" oninput="pmSelectDirectUrl()">
+                </div>
+            </div>
+            <div id="pmSelectedSource" style="display:none;background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);border-radius:8px;padding:10px;margin-bottom:12px">
+                <div style="color:#818cf8;font-size:0.82em;font-weight:600">Selected:</div>
+                <div id="pmSelectedSourceText" style="color:#e2e8f0;font-size:0.85em;word-break:break-all"></div>
+            </div>
+            <button id="pmFadrGoBtn" onclick="pmRunFadrImport('${safeSong}')" style="width:100%;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:10px;font-weight:700;font-size:0.95em;cursor:pointer" disabled>
+                🤖 Send to Fadr AI
+            </button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    pmLoadNorthStar(songTitle);
+    pmLoadBestShot(songTitle);
+}
+
+let pmSelectedAudioUrl = '';
+
+function pmSrcTab(tab, btn) {
+    document.querySelectorAll('.pm-src-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.pm-src-panel').forEach(p => p.classList.add('hidden'));
+    const panel = document.getElementById(`pmSrc${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
+    if (panel) panel.classList.remove('hidden');
+}
+
+async function pmSearchArchive() {
+    const query = document.getElementById('pmArchiveQuery')?.value?.trim();
+    if (!query) return;
+    const container = document.getElementById('pmArchiveResults');
+    container.innerHTML = '<div style="color:#94a3b8;font-size:0.82em;padding:8px">🔍 Searching Archive.org...</div>';
+    try {
+        const res = await fetch(FADR_PROXY + '/archive-search', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, band: '' })
+        });
+        const data = await res.json();
+        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results. Try different terms.</div>'; return; }
+        container.innerHTML = data.results.map(r => `
+            <div onclick="pmSelectShow('${r.identifier}')" style="padding:8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
+                <div style="color:#e2e8f0;font-size:0.85em;font-weight:600">${r.title || r.identifier}</div>
+                <div style="color:#64748b;font-size:0.75em">${r.date || ''} · ⭐ ${r.rating ? r.rating.toFixed(1) : 'N/A'} · ${r.reviews || 0} reviews</div>
+            </div>
+        `).join('');
+    } catch(e) { container.innerHTML = `<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ${e.message}</div>`; }
+}
+
+async function pmSelectShow(identifier) {
+    const fc = document.getElementById('pmArchiveFiles');
+    fc.style.display = 'block';
+    fc.innerHTML = '<div style="color:#94a3b8;font-size:0.82em;padding:8px">Loading tracklist...</div>';
+    try {
+        const res = await fetch(FADR_PROXY + '/archive-files', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier })
+        });
+        const data = await res.json();
+        if (!data.files?.length) { fc.innerHTML = '<div style="color:#64748b;padding:8px">No audio files found.</div>'; return; }
+        fc.innerHTML = `<div style="color:#f59e0b;font-size:0.82em;font-weight:600;margin-bottom:6px">${data.title || identifier}</div>` +
+            data.files.map(f => {
+                const isLong = f.length && parseFloat(f.length) > 1200;
+                const safeName = (f.title || f.name).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeUrl = f.url.replace(/'/g, "\\'");
+                return `<div onclick="pmSelectTrack('${safeUrl}','${safeName}',${isLong})" style="padding:6px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
+                    <span style="color:#10b981;font-size:0.8em">▶</span>
+                    <div style="flex:1;min-width:0"><div style="color:#e2e8f0;font-size:0.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.title || f.name}</div>
+                    <div style="color:#64748b;font-size:0.72em">${f.length ? Math.floor(parseFloat(f.length)/60)+':'+String(Math.floor(parseFloat(f.length)%60)).padStart(2,'0') : ''} · ${f.name.split('.').pop().toUpperCase()}</div></div></div>`;
+            }).join('');
+    } catch(e) { fc.innerHTML = `<div style="color:#ef4444;padding:8px">Error: ${e.message}</div>`; }
+}
+
+function pmSelectTrack(url, title, isLong) {
+    pmSelectedAudioUrl = url;
+    document.getElementById('pmSelectedSource').style.display = 'block';
+    document.getElementById('pmSelectedSourceText').textContent = title;
+    document.getElementById('pmFadrGoBtn').disabled = false;
+    const trim = document.getElementById('pmTrimSection');
+    if (trim) trim.style.display = isLong ? 'block' : 'none';
+}
+
+function pmSelectDirectUrl() {
+    const url = document.getElementById('pmDirectUrl')?.value?.trim();
+    if (!url) return;
+    pmSelectedAudioUrl = url;
+    document.getElementById('pmSelectedSource').style.display = 'block';
+    document.getElementById('pmSelectedSourceText').textContent = url;
+    document.getElementById('pmFadrGoBtn').disabled = false;
+}
+
+async function pmLoadNorthStar(songTitle) {
+    const c = document.getElementById('pmNorthStarInfo');
+    if (!c) return;
+    try {
+        const versions = await loadBandDataFromDrive(songTitle, 'spotify_versions');
+        if (versions?.length) {
+            const best = versions.reduce((a, b) => (Object.values(b.votes||{}).filter(Boolean).length > Object.values(a.votes||{}).filter(Boolean).length) ? b : a);
+            c.innerHTML = `<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px">${best.label||best.title||'Version'}</div>
+                <div style="font-size:0.82em;color:#94a3b8;margin-bottom:8px">${Object.values(best.votes||{}).filter(Boolean).length} votes</div>
+                ${best.url ? `<button onclick="pmSelectedAudioUrl='${best.url.replace(/'/g,"\\'")}';document.getElementById('pmSelectedSource').style.display='block';document.getElementById('pmSelectedSourceText').textContent='North Star version';document.getElementById('pmFadrGoBtn').disabled=false" class="pm-tool-btn" style="background:rgba(251,191,36,0.2);color:#fbbf24">⭐ Use This</button>` : '<div style="color:#64748b;font-size:0.82em">No URL available</div>'}`;
+        } else { c.innerHTML = '<div style="color:#64748b;font-size:0.82em">No reference versions yet.</div>'; }
+    } catch(e) { c.innerHTML = '<div style="color:#64748b;font-size:0.82em">Could not load.</div>'; }
+}
+
+async function pmLoadBestShot(songTitle) {
+    const c = document.getElementById('pmBestShotInfo');
+    if (!c) return;
+    try {
+        const tracks = toArray(await loadBandDataFromDrive(songTitle, 'practice_tracks') || []);
+        const recs = toArray(await loadBandDataFromDrive(songTitle, 'practice_recordings') || []);
+        const all = [...tracks, ...recs];
+        if (all.length) {
+            c.innerHTML = all.map((r,i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:4px">
+                <div style="flex:1;font-size:0.82em;color:#e2e8f0">${r.label||r.name||'Recording '+(i+1)}</div>
+                ${r.url ? `<button onclick="pmSelectedAudioUrl='${r.url.replace(/'/g,"\\'")}';document.getElementById('pmSelectedSource').style.display='block';document.getElementById('pmSelectedSourceText').textContent='${(r.label||r.name||'').replace(/'/g,"\\'")}';document.getElementById('pmFadrGoBtn').disabled=false" class="pm-tool-btn">Use</button>` : ''}
+            </div>`).join('');
+        } else { c.innerHTML = '<div style="color:#64748b;font-size:0.82em">No recordings yet.</div>'; }
+    } catch(e) { c.innerHTML = '<div style="color:#64748b;font-size:0.82em">Could not load.</div>'; }
+}
+
+function parseTimestamp(ts) {
+    if (!ts) return 0;
+    const parts = ts.split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return parseFloat(ts) || 0;
+}
+
+async function pmRunFadrImport(songTitle) {
+    if (!pmSelectedAudioUrl) { showToast('⚠️ Select a source first'); return; }
+    const startSec = parseTimestamp(document.getElementById('pmTrimStart')?.value || '');
+    const endSec = parseTimestamp(document.getElementById('pmTrimEnd')?.value || '');
+    document.getElementById('pmHarmonySourceModal')?.remove();
     closePracticeMode();
+    let audioUrl = pmSelectedAudioUrl;
+    if (startSec > 0 || endSec > 0) {
+        showToast(`✂️ Trimming ${document.getElementById('pmTrimStart')?.value||'0:00'} → ${document.getElementById('pmTrimEnd')?.value||'end'}`, 2000);
+        window._pmTrimInfo = { url: audioUrl, startSec, endSec };
+    }
     setTimeout(() => {
         if (typeof importHarmoniesFromFadr === 'function') {
             importHarmoniesFromFadr(songTitle);
-        } else {
-            showToast('⚠️ Fadr import not available — use the Harmonies section on the song page');
+            setTimeout(() => {
+                const input = document.getElementById('fadrArchiveUrl');
+                if (input) { input.value = audioUrl; input.dispatchEvent(new Event('input')); }
+            }, 500);
         }
     }, 300);
 }
 
 // ── Memory Palace info & AI generation ────────────────────────────────────────
+function pmRenderSceneCards(scenes) {
+    if (!scenes || !scenes.length) return '<span class="pm-empty">No scenes generated yet.</span>';
+    const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a78bfa','#e879f9','#06b6d4','#f97316'];
+    return scenes.map((s, i) => {
+        const color = colors[i % colors.length];
+        return `
+        <div style="background:linear-gradient(135deg,${color}10,${color}05);border-left:3px solid ${color};border-radius:8px;padding:12px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                <span style="font-size:1.3em">${s.emoji || '🎵'}</span>
+                <span style="color:${color};font-weight:700;font-size:0.88em">${s.section || 'Scene ' + (i + 1)}</span>
+            </div>
+            <div style="color:#94a3b8;font-size:0.78em;font-style:italic;margin-bottom:6px;line-height:1.4">"${s.lyrics || ''}"</div>
+            <div style="color:#e2e8f0;font-size:0.85em;line-height:1.5">🎬 ${s.scene || ''}</div>
+        </div>`;
+    }).join('');
+}
+
 function pmShowMemoryPalaceInfo() {
     const modal = document.createElement('div');
     modal.id = 'pmMPInfoModal';
@@ -15545,16 +15754,15 @@ function pmShowMemoryPalaceInfo() {
 
 async function pmAutoGenerateMemoryPalace(songTitle) {
     if (!pmOriginalChartText) { showToast('⚠️ No chart/lyrics available to generate from'); return; }
-    showToast('🤖 Generating Memory Palace scenes...', 3000);
+    showToast('🤖 Generating Memory Palace scenes...', 5000);
 
-    // Extract lyrics from the chart text
     const lines = pmOriginalChartText.split('\n');
     const lyrics = lines.filter(l => {
         const trimmed = l.trim();
         if (!trimmed) return false;
-        if (/^\[/.test(trimmed)) return true; // section headers
+        if (/^\[/.test(trimmed)) return true;
         if (isChordLine(trimmed)) return false;
-        if (/^[eEBGDA]\|/.test(trimmed)) return false; // tab
+        if (/^[eEBGDA]\|/.test(trimmed)) return false;
         return true;
     }).join('\n');
 
@@ -15566,41 +15774,58 @@ async function pmAutoGenerateMemoryPalace(songTitle) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: 'claude-sonnet-4-20250514',
-                max_tokens: 1500,
+                max_tokens: 2000,
                 messages: [{
                     role: 'user',
-                    content: `You are creating a Memory Palace for a musician to memorize the song "${songTitle}". The Memory Palace technique uses vivid visual scenes placed in a mental "room" to anchor lyrics in spatial/visual memory.
+                    content: `Create a Memory Palace for memorizing the song "${songTitle}". 
 
-Given these lyrics, create a vivid 1-2 sentence scene description for each verse/section. Make the scenes:
-- Extremely visual and specific (colors, textures, sounds, smells)
-- Emotionally charged or bizarre (the weirder, the more memorable)
-- Connected to the actual lyrics (the scene should trigger recall of the words)
-- Sequential (each scene flows into the next like rooms in a building)
+CRITICAL RULES:
+- Be LITERAL about the lyrics. If the lyrics say "bird song", picture an actual bird singing. If they say "rain", picture actual rain. If they say "tell me all that you know", picture someone literally telling/speaking.
+- Every key word and phrase from the lyrics should appear as a concrete visual element in the scene
+- The scenes should trigger recall of the EXACT words, not just the vibe
+- Use vivid sensory details: colors, sounds, textures, temperatures
+- Make each scene bizarre/exaggerated — bizarre sticks in memory
+- Number each scene and show which lyrics it covers
 
-Format each as: **[Section Name]:** Scene description
+Format as JSON array:
+[{"section":"Verse 1","lyrics":"the actual lyrics for this section","scene":"Vivid literal scene description","emoji":"single emoji that captures the scene"}]
 
 Lyrics:
 ${lyrics}
 
-Create the Memory Palace scenes now. Be creative and vivid.`
+Return ONLY the JSON array, no other text.`
                 }]
             })
         });
         const data = await res.json();
-        const sceneText = data.content?.[0]?.text || '';
-
-        if (sceneText) {
+        let sceneText = data.content?.[0]?.text || '';
+        
+        // Parse the JSON
+        sceneText = sceneText.replace(/```json|```/g, '').trim();
+        let scenes = [];
+        try { scenes = JSON.parse(sceneText); } catch(e) {
+            // Fallback: save as raw text
             const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
             current.memoryPalace = sceneText;
+            current.memoryPalaceScenes = null;
             await saveBandDataToDrive(songTitle, 'song_meaning', current);
             pmKnowLoaded[songTitle] = false;
             pmLoadKnowTab(songTitle);
-            showToast('🏰 Memory Palace generated!');
-        } else {
-            showToast('⚠️ AI generation returned empty — try again');
+            showToast('🏰 Memory Palace generated (text format)');
+            return;
         }
+
+        // Save structured scenes
+        const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+        current.memoryPalaceScenes = scenes;
+        current.memoryPalace = scenes.map(s => `${s.emoji || '🎵'} ${s.section}\n📝 "${s.lyrics}"\n🎬 ${s.scene}`).join('\n\n');
+        await saveBandDataToDrive(songTitle, 'song_meaning', current);
+        pmKnowLoaded[songTitle] = false;
+        pmLoadKnowTab(songTitle);
+        showToast('🏰 Memory Palace generated!');
     } catch(e) {
         showToast('❌ Generation failed: ' + e.message);
+        console.error('Memory Palace generation error:', e);
     }
 }
 
