@@ -662,3 +662,179 @@
     border-color: rgba(16,185,129,0.4);
     color: #6ee7b7;
 }
+
+/* ============================================================================
+   PRACTICE MODE
+   ============================================================================ */
+
+.pm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: #0a0a0a;
+    flex-direction: column;
+    overflow: hidden;
+    touch-action: pan-y;
+}
+.pm-overlay.pm-visible {
+    display: flex;
+}
+
+.pm-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.9);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-shrink: 0;
+    gap: 10px;
+}
+.pm-close {
+    background: rgba(255,255,255,0.06);
+    border: none;
+    color: #94a3b8;
+    font-size: 1.2em;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.pm-title-block { flex: 1; min-width: 0; }
+.pm-song-title {
+    font-size: 1.05em;
+    font-weight: 700;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pm-song-meta { font-size: 0.78em; color: #94a3b8; }
+.pm-nav-block { display: flex; align-items: center; gap: 6px; }
+.pm-nav-btn {
+    background: rgba(255,255,255,0.06);
+    border: none;
+    color: #94a3b8;
+    font-size: 1.4em;
+    width: 36px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.pm-position { color: #64748b; font-size: 0.78em; min-width: 30px; text-align: center; }
+
+/* Tabs */
+.pm-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 4px 8px;
+    background: rgba(0,0,0,0.8);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    flex-shrink: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.pm-tab {
+    background: none;
+    border: none;
+    color: #64748b;
+    padding: 6px 12px;
+    font-size: 0.78em;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 7px;
+    white-space: nowrap;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+.pm-tab:hover { color: #cbd5e1; background: rgba(255,255,255,0.06); }
+.pm-tab.active { color: #fff; background: #667eea; }
+
+/* Body / panels */
+.pm-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+.pm-panel {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.pm-panel.hidden { display: none; }
+
+/* Toolbar */
+.pm-toolbar {
+    display: flex;
+    gap: 5px;
+    padding: 5px 10px;
+    background: rgba(0,0,0,0.6);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    flex-shrink: 0;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.pm-metronome-bar {
+    display: flex;
+    gap: 5px;
+    padding: 5px 10px;
+    background: rgba(0,0,0,0.4);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    flex-shrink: 0;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.pm-tool-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #94a3b8;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+}
+.pm-tool-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+.pm-tool-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255,255,255,0.08);
+    margin: 0 2px;
+}
+.pm-key-display {
+    color: #67e8f9;
+    font-weight: 700;
+    min-width: 28px;
+    text-align: center;
+    font-size: 0.82em;
+}
+.pm-mem-btn.active {
+    background: rgba(102,126,234,0.3);
+    color: white;
+}
+
+/* Chart scroll area */
+.pm-chart-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+.pm-chart-text {
+    font-size: 16px;
+}
+
+/* Phone optimizations */
+@media (max-width: 767px) {
+    .pm-chart-text { font-size: 14px; }
+    .pm-tab { padding: 5px 8px; font-size: 0.72em; }
+    .pm-toolbar { padding: 4px 8px; }
+    .pm-metronome-bar { padding: 4px 8px; }
+}
