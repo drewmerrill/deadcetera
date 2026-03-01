@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-203728', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-210344', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -452,17 +452,19 @@ if ('serviceWorker' in navigator) {
                 setInterval(() => reg.update(), 5 * 60 * 1000);
 
                 // ── controllerchange fires when a new SW takes over ─────────
-                // This is the most reliable cross-platform reload trigger.
+                let updateBannerShown = false;
+                const showUpdateOnce = () => { if (!updateBannerShown) { updateBannerShown = true; showUpdateBanner(); } };
+
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
                     console.log('[PWA] New SW controller detected');
-                    showUpdateBanner();
+                    showUpdateOnce();
                 });
 
                 // ── postMessage handler (Chrome/Android) ───────────────────
                 navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data?.type === 'SW_UPDATED') {
                         console.log('[PWA] New version deployed:', event.data.version);
-                        showUpdateBanner();
+                        showUpdateOnce();
                         return;
                     }
                     if (event.data?.type === 'NAVIGATE' && event.data.url) {
@@ -13015,8 +13017,11 @@ async function checkForAppUpdate() {
     } catch(e) {}
 }
 
+let _updateBannerShownGlobal = false;
 function showUpdateBanner() {
+    if (_updateBannerShownGlobal) return;
     if (document.getElementById('dc-update-banner')) return;
+    _updateBannerShownGlobal = true;
     const banner = document.createElement('div');
     banner.id = 'dc-update-banner';
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:16px 20px;font-size:1em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;gap:12px;text-align:center;cursor:pointer';
@@ -15562,38 +15567,70 @@ function pmRenderPalaceScene() {
     if (!scene) return;
     
     const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#a78bfa','#e879f9','#06b6d4','#f97316'];
+    const bgGrads = [
+        'radial-gradient(ellipse at 30% 20%, #1a0000 0%, #050510 70%)',
+        'radial-gradient(ellipse at 70% 30%, #1a1500 0%, #050510 70%)',
+        'radial-gradient(ellipse at 50% 40%, #001a0a 0%, #050510 70%)',
+        'radial-gradient(ellipse at 40% 60%, #00081a 0%, #050510 70%)',
+        'radial-gradient(ellipse at 60% 20%, #10001a 0%, #050510 70%)',
+        'radial-gradient(ellipse at 30% 50%, #1a0018 0%, #050510 70%)',
+        'radial-gradient(ellipse at 50% 30%, #001a1a 0%, #050510 70%)',
+        'radial-gradient(ellipse at 40% 40%, #1a0800 0%, #050510 70%)'
+    ];
     const color = colors[pmPalaceIndex % colors.length];
+    const bgGrad = bgGrads[pmPalaceIndex % bgGrads.length];
     const container = document.getElementById('pmPalaceScene');
+    const overlay = document.getElementById('pmPalaceWalkOverlay');
+    if (overlay) overlay.style.background = bgGrad;
     
-    // Fade out then in
+    const extraEmojis = pmExtractSceneEmojis(scene.scene || '');
+    const emojiRow = extraEmojis.length > 0 
+        ? '<div style="display:flex;gap:12px;justify-content:center;margin-bottom:12px;flex-wrap:wrap">' + extraEmojis.slice(0, 5).map((e, i) => '<span style="font-size:' + (2.5 - i * 0.3) + 'em;opacity:' + (1 - i * 0.15) + '">' + e + '</span>').join('') + '</div>'
+        : '';
+    
     container.style.opacity = '0';
     setTimeout(() => {
-        container.innerHTML = `
-            <div style="font-size:4em;margin-bottom:16px;filter:drop-shadow(0 0 20px ${color}80)">${scene.emoji || '🎵'}</div>
-            <div style="color:${color};font-weight:800;font-size:1.4em;margin-bottom:12px;letter-spacing:0.5px">${scene.section || 'Scene ' + (pmPalaceIndex + 1)}</div>
-            <div style="color:#94a3b8;font-size:0.9em;font-style:italic;margin-bottom:20px;max-width:400px;line-height:1.5">💡 "${scene.cue || scene.lyrics || ''}"</div>
-            <div style="background:linear-gradient(135deg,${color}15,${color}08);border:1px solid ${color}30;border-radius:16px;padding:24px;max-width:450px;margin:0 auto">
-                <div style="color:#e2e8f0;font-size:1.05em;line-height:1.7;text-align:left">
-                    🎬 ${scene.scene || ''}
-                </div>
-            </div>
-            <div style="margin-top:20px;color:#4b5563;font-size:0.75em">Swipe or tap arrows to navigate · Press Space for next</div>
-        `;
+        container.innerHTML = '<div style="font-size:5em;margin-bottom:8px;filter:drop-shadow(0 0 30px ' + color + '80)">' + (scene.emoji || '🎵') + '</div>' +
+            emojiRow +
+            '<div style="color:' + color + ';font-weight:800;font-size:1.5em;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;text-shadow:0 0 20px ' + color + '40">' + (scene.section || 'Scene ' + (pmPalaceIndex + 1)) + '</div>' +
+            '<div style="color:' + color + '99;font-size:0.95em;font-style:italic;margin-bottom:16px;max-width:400px;line-height:1.5;border-bottom:1px solid ' + color + '30;padding-bottom:12px">💡 "' + (scene.cue || scene.lyrics || '') + '"</div>' +
+            '<div style="background:linear-gradient(135deg,' + color + '12,' + color + '05);border:1px solid ' + color + '25;border-radius:20px;padding:28px;max-width:450px;margin:0 auto">' +
+            '<div style="color:#e2e8f0;font-size:1.1em;line-height:1.8;text-align:left;font-weight:300">' + (scene.scene || '') + '</div></div>';
         container.style.opacity = '1';
-    }, 250);
+    }, 200);
     
-    // Update counter and dots
     const counter = document.getElementById('pmPalaceCounter');
-    if (counter) counter.textContent = `Scene ${pmPalaceIndex + 1} of ${pmPalaceScenes.length}`;
+    if (counter) counter.textContent = 'Room ' + (pmPalaceIndex + 1) + ' of ' + pmPalaceScenes.length;
     
-    const dotsContainer = document.getElementById('pmPalaceDots');
-    if (dotsContainer) {
-        dotsContainer.innerHTML = pmPalaceScenes.map((_, i) => {
+    const dotsEl = document.getElementById('pmPalaceDots');
+    if (dotsEl) {
+        dotsEl.innerHTML = pmPalaceScenes.map((_, i) => {
             const c = colors[i % colors.length];
-            const isActive = i === pmPalaceIndex;
-            return `<div onclick="pmPalaceIndex=${i};pmRenderPalaceScene()" style="width:${isActive?'24px':'10px'};height:10px;border-radius:5px;background:${isActive ? c : c+'40'};cursor:pointer;transition:all 0.3s"></div>`;
+            const act = i === pmPalaceIndex;
+            return '<div onclick="pmPalaceIndex=' + i + ';pmRenderPalaceScene()" style="width:' + (act ? '28px' : '10px') + ';height:10px;border-radius:5px;background:' + (act ? c : c + '30') + ';cursor:pointer;transition:all 0.3s;box-shadow:' + (act ? '0 0 8px '+c : 'none') + '"></div>';
         }).join('');
     }
+}
+
+function pmExtractSceneEmojis(text) {
+    const map = {
+        bird:'🐦', sing:'🎤', song:'🎵', sun:'☀️', moon:'🌙', star:'⭐', rain:'🌧️',
+        fire:'🔥', water:'💧', tree:'🌳', flower:'🌸', mountain:'🏔️', river:'🏞️',
+        ocean:'🌊', wind:'💨', cloud:'☁️', snow:'❄️', thunder:'⚡', heart:'❤️',
+        tears:'😢', laugh:'😄', dance:'💃', music:'🎶', drum:'🥁', guitar:'🎸',
+        road:'🛤️', door:'🚪', house:'🏠', castle:'🏰', night:'🌃', morning:'🌅',
+        golden:'✨', diamond:'💎', rose:'🌹', hand:'🤚', eye:'👁️', voice:'🗣️',
+        fly:'🦅', butterfly:'🦋', wolf:'🐺', light:'💡', dark:'🌑', ghost:'👻',
+        blood:'🩸', crown:'👑', book:'📖', key:'🔑', mirror:'🪞', ice:'🧊',
+        crystal:'🔮', electric:'⚡', honey:'🍯', forest:'🌲', branch:'🌿', woman:'👩',
+        man:'👨', child:'👶', stone:'🪨', glass:'🥂', candle:'🕯️', bell:'🔔'
+    };
+    const found = [];
+    const lower = text.toLowerCase();
+    for (const [word, emoji] of Object.entries(map)) {
+        if (lower.includes(word) && !found.includes(emoji)) found.push(emoji);
+    }
+    return found;
 }
 
 function pmPalaceNav(delta) {
