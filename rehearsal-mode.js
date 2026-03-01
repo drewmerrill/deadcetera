@@ -10,7 +10,7 @@
 //             toArray, allSongs (global), practicePlanActiveDate (global)
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-170935', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-172159', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];   // [{title, band}, ...]
 let rmIndex   = 0;    // current position in queue
