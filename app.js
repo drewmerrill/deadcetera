@@ -4,7 +4,15 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-123307', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-124146', 'color:#667eea;font-weight:bold;font-size:14px');
+
+// ── BUILD STAMP ───────────────────────────────────────────────────────────────
+// Visible in bottom-left corner on ALL devices including iPhone/iPad
+function showBuildStamp() {
+    // Build version is already set in the HTML div by push.py at deploy time
+    // This function is a no-op — the badge is visible immediately from index.html
+}
+
 // Inject favicon to prevent 404 error
 (function() {
     if (!document.querySelector('link[rel="icon"]')) {
@@ -566,6 +574,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    showBuildStamp();
     // ── Auto-init Firebase DB on page load ──────────────────────────────────
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
@@ -1755,44 +1764,84 @@ async function addMoisesStems() {
 async function editMoisesStems() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
-    
+    if (document.getElementById('moisesModal')) return;
     const stems = await loadMoisesStems(songTitle) || {};
-    
-    const folderUrl = prompt('Google Drive folder URL (where all stems are):', stems.folderUrl || '');
-    if (folderUrl === null) return; // Canceled
-    
-    const sourceVersion = prompt('Source version (optional, e.g., "11/3/1985 Richmond"):', stems.sourceVersion || '');
-    
-    // Individual stem URLs
-    const bass = prompt('Bass track URL (optional):', stems.stems?.bass || '');
-    const drums = prompt('Drums track URL (optional):', stems.stems?.drums || '');
-    const guitar = prompt('Guitar track URL (optional):', stems.stems?.guitar || '');
-    const keys = prompt('Keys track URL (optional):', stems.stems?.keys || '');
-    const vocals = prompt('Vocals track URL (optional):', stems.stems?.vocals || '');
-    const other = prompt('Other/Mix track URL (optional):', stems.stems?.other || '');
-    
-    const notes = prompt('Notes (optional):', stems.notes || '');
-    
+    const fields = [
+        { id: 'msBass',    label: 'Bass track URL',       val: stems.stems?.bass || '' },
+        { id: 'msDrums',   label: 'Drums track URL',      val: stems.stems?.drums || '' },
+        { id: 'msGuitar',  label: 'Guitar track URL',     val: stems.stems?.guitar || '' },
+        { id: 'msKeys',    label: 'Keys track URL',       val: stems.stems?.keys || '' },
+        { id: 'msVocals',  label: 'Vocals track URL',     val: stems.stems?.vocals || '' },
+        { id: 'msOther',   label: 'Other/Mix track URL',  val: stems.stems?.other || '' },
+    ];
+    const modal = document.createElement('div');
+    modal.id = 'moisesModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+    modal.innerHTML = `
+        <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:540px;width:100%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h3 style="margin:0;color:white">🎛️ Moises Stems</h3>
+                <button onclick="document.getElementById('moisesModal').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Google Drive folder URL</label>
+                    <input id="msFolderUrl" class="app-input" placeholder="https://drive.google.com/drive/folders/..."
+                        value="${stems.folderUrl || ''}" autocomplete="off">
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Source version</label>
+                    <input id="msSourceVersion" class="app-input" placeholder='e.g. "11/3/1985 Richmond"'
+                        value="${stems.sourceVersion || ''}" autocomplete="off">
+                </div>
+                <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;margin-top:4px">
+                    <p style="color:#9ca3af;font-size:0.8em;margin:0 0 10px">Individual stem URLs (from Moises):</p>
+                    ${fields.map(f => `
+                        <div style="margin-bottom:10px">
+                            <label style="display:block;font-size:0.78em;color:#6b7280;margin-bottom:4px">${f.label}</label>
+                            <input id="${f.id}" class="app-input" placeholder="https://..." value="${f.val}" autocomplete="off">
+                        </div>
+                    `).join('')}
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Notes</label>
+                    <textarea id="msNotes" class="app-input" placeholder="Any notes about this version..."
+                        style="min-height:70px;resize:vertical;font-family:inherit">${stems.notes || ''}</textarea>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:20px">
+                <button onclick="saveMoisesStems()" class="btn btn-primary" style="flex:1">💾 Save Stems</button>
+                <button onclick="document.getElementById('moisesModal').remove()" class="btn btn-ghost">Cancel</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('msFolderUrl')?.focus();
+}
+
+async function saveMoisesStems() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
     const newStems = {
-        folderUrl: folderUrl.trim(),
-        sourceVersion: sourceVersion.trim(),
+        folderUrl:     document.getElementById('msFolderUrl')?.value?.trim() || '',
+        sourceVersion: document.getElementById('msSourceVersion')?.value?.trim() || '',
         stems: {
-            bass: bass.trim(),
-            drums: drums.trim(),
-            guitar: guitar.trim(),
-            keys: keys.trim(),
-            vocals: vocals.trim(),
-            other: other.trim()
+            bass:   document.getElementById('msBass')?.value?.trim() || '',
+            drums:  document.getElementById('msDrums')?.value?.trim() || '',
+            guitar: document.getElementById('msGuitar')?.value?.trim() || '',
+            keys:   document.getElementById('msKeys')?.value?.trim() || '',
+            vocals: document.getElementById('msVocals')?.value?.trim() || '',
+            other:  document.getElementById('msOther')?.value?.trim() || '',
         },
-        notes: notes.trim(),
-        uploadedBy: currentUserEmail,
-        dateAdded: new Date().toLocaleDateString()
+        notes:     document.getElementById('msNotes')?.value?.trim() || '',
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUserEmail
     };
-    
-    await saveMoisesStems(songTitle, newStems);
-    
-    const bandData = bandKnowledgeBase[songTitle] || {};
-    await renderMoisesStems(songTitle, bandData);
+    await saveMoisesData(songTitle, newStems);
+    document.getElementById('moisesModal')?.remove();
+    showToast('✅ Stems saved');
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData && typeof renderMoisesStems === 'function') renderMoisesStems(songTitle, bandData);
 }
 
 async function saveMoisesStems(songTitle, stems) {
@@ -1893,17 +1942,20 @@ async function renderCoverMe(songTitle) {
     container.innerHTML = covers.map((c, i) => `
         <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;margin-bottom:8px">
             <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
-                <div style="flex:1">
+                <div style="flex:1;min-width:0">
                     <div style="font-weight:600;color:var(--text,#f1f5f9)">${c.artist || 'Unknown Artist'}</div>
-                    ${c.url ? `<a href="${c.url}" target="_blank" style="color:var(--accent-light,#818cf8);font-size:0.85em;word-break:break-all">${c.url}</a>` : ''}
-                    ${c.notes ? `<div style="color:var(--text-muted,#94a3b8);font-size:0.82em;margin-top:4px">${c.notes}</div>` : ''}
+                    ${c.url ? `<a href="${c.url}" target="_blank" style="color:var(--accent-light,#818cf8);font-size:0.82em;word-break:break-all;display:block;margin-top:2px">${c.url}</a>` : ''}
+                    ${(c.description || c.notes) ? `<div style="color:#fbbf24;font-size:0.82em;margin-top:6px;line-height:1.5;background:rgba(251,191,36,0.08);border-left:3px solid #fbbf24;padding:4px 8px;border-radius:0 4px 4px 0">💡 ${c.description || c.notes}</div>` : ''}
+                    <div style="color:var(--text-dim,#64748b);font-size:0.72em;margin-top:5px">Added by ${c.addedBy?.split('@')[0] || 'band'}</div>
                 </div>
-                <button onclick="deleteCoverMe(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1em;flex-shrink:0">🗑️</button>
+                <div style="display:flex;gap:4px;flex-shrink:0">
+                    <button onclick="editCoverMe(${i})" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:1.1em;padding:4px" title="Edit">✏️</button>
+                    <button onclick="deleteCoverMe(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1em;padding:4px" title="Delete">🗑️</button>
+                </div>
             </div>
         </div>
     `).join('');
 }
-
 async function showAddCoverMeForm() {
     const container = document.getElementById('coverMeSection');
     if (!container || document.getElementById('coverMeForm')) return;
@@ -1914,7 +1966,7 @@ async function showAddCoverMeForm() {
         <div style="display:flex;flex-direction:column;gap:8px">
             <input id="coverMeArtist" class="app-input" placeholder="Artist / Band name *" autocomplete="off">
             <input id="coverMeUrl" class="app-input" placeholder="YouTube / Spotify / Archive link (optional)" autocomplete="off">
-            <textarea id="coverMeDescription" class="app-input" placeholder="What makes this version interesting? (optional)"
+            <textarea id="coverMeDescription" class="app-input" placeholder="Why it matters — e.g. 'listen to the bass in the outro' (optional)"
                 style="min-height:70px;resize:vertical;font-family:inherit"></textarea>
             <div style="display:flex;gap:8px">
                 <button onclick="saveCoverMe()" class="btn btn-primary">💾 Save</button>
@@ -1958,7 +2010,7 @@ async function editCoverMe(index) {
         <div style="display:flex;flex-direction:column;gap:8px">
             <input id="coverMeArtist" class="app-input" placeholder="Artist / Band name *" value="${c.artist||''}" autocomplete="off">
             <input id="coverMeUrl" class="app-input" placeholder="Link (optional)" value="${c.url||''}" autocomplete="off">
-            <textarea id="coverMeDescription" class="app-input" placeholder="Description (optional)"
+            <textarea id="coverMeDescription" class="app-input" placeholder="Why it matters — e.g. 'listen to the bass in the outro' (optional)"
                 style="min-height:70px;resize:vertical;font-family:inherit">${c.description||c.notes||''}</textarea>
             <div style="display:flex;gap:8px">
                 <button onclick="saveCoverMe(${index})" class="btn btn-primary">💾 Save</button>
@@ -2910,14 +2962,48 @@ async function toggleRefVote(versionIndex, voterEmail) {
 async function editVersionNotes(versionIndex) {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
+    const formId = `versionNotesForm_${versionIndex}`;
+    if (document.getElementById(formId)) return;
     let versions = await loadRefVersions(songTitle) || [];
     if (!versions[versionIndex]) return;
-    const newNotes = prompt('Edit notes for this version:', versions[versionIndex].notes || '');
-    if (newNotes === null) return;
+    const current = versions[versionIndex].notes || '';
+    // Find the version card's notes area to inject inline
+    const cards = document.querySelectorAll('.ref-version-card, [data-version-index]');
+    let targetEl = null;
+    cards.forEach(c => { if (c.dataset.versionIndex == versionIndex) targetEl = c; });
+    // Fallback: append after the edit button
+    const editBtn = document.querySelector(`[onclick*="editVersionNotes(${versionIndex})"]`);
+    const insertTarget = targetEl || editBtn?.closest('.app-card, .list-item, div') || document.getElementById('refVersionsContainer');
+    if (!insertTarget) return;
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'padding:10px 0;display:flex;flex-direction:column;gap:8px';
+    form.innerHTML = `
+        <textarea id="versionNotesInput_${versionIndex}" class="app-input"
+            placeholder="Notes about this version..."
+            style="min-height:80px;resize:vertical;font-family:inherit">${current}</textarea>
+        <div style="display:flex;gap:8px">
+            <button onclick="saveVersionNotes(${versionIndex})" class="btn btn-primary">💾 Save</button>
+            <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost">Cancel</button>
+        </div>
+    `;
+    insertTarget.appendChild(form);
+    document.getElementById(`versionNotesInput_${versionIndex}`)?.focus();
+}
+
+async function saveVersionNotes(versionIndex) {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const newNotes = document.getElementById(`versionNotesInput_${versionIndex}`)?.value?.trim();
+    if (newNotes === undefined) return;
+    let versions = await loadRefVersions(songTitle) || [];
+    if (!versions[versionIndex]) return;
     versions[versionIndex].notes = newNotes;
     await saveRefVersions(songTitle, versions);
+    document.getElementById(`versionNotesForm_${versionIndex}`)?.remove();
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderRefVersions(songTitle, bandData);
+    showToast('✅ Notes saved');
 }
 
 async function deleteRefVersion(versionIndex) {
@@ -3388,22 +3474,43 @@ async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
 // COLLABORATIVE EDIT (DELETE/RENAME BY ANYONE)
 // ============================================================================
 
-function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
+async function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
+    const formId = `renameSnippetForm_${sectionIndex}_${snippetIndex}`;
+    if (document.getElementById(formId)) return;
     const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
     const snippets = JSON.parse(localStorage.getItem(key) || '[]');
     const snippet = snippets[snippetIndex];
-    
-    const newName = prompt('Rename this audio snippet:', snippet.name);
-    if (newName && newName.trim()) {
-        snippet.name = newName.trim();
-        localStorage.setItem(key, JSON.stringify(snippets));
-        saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
-        
-        const bandData = bandKnowledgeBase[songTitle];
-        if (bandData) {
-            renderHarmoniesEnhanced(songTitle, bandData);
-        }
-    }
+    if (!snippet) return;
+    const renameBtn = document.querySelector(`[onclick*="renameHarmonySnippet"][onclick*="${sectionIndex}"][onclick*="${snippetIndex}"]`);
+    const insertTarget = renameBtn?.closest('.snippet-row, .list-item, div[style]') || renameBtn?.parentElement;
+    if (!insertTarget) return;
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0';
+    form.innerHTML = `
+        <input id="snippetNameInput_${sectionIndex}_${snippetIndex}" class="app-input"
+            value="${snippet.name || ''}" placeholder="Snippet name"
+            style="flex:1" autocomplete="off">
+        <button onclick="saveSnippetRename('${songTitle}',${sectionIndex},${snippetIndex})" class="btn btn-primary btn-sm">Save</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+    `;
+    insertTarget.after(form);
+    document.getElementById(`snippetNameInput_${sectionIndex}_${snippetIndex}`)?.select();
+}
+
+async function saveSnippetRename(songTitle, sectionIndex, snippetIndex) {
+    const newName = document.getElementById(`snippetNameInput_${sectionIndex}_${snippetIndex}`)?.value?.trim();
+    if (!newName) return;
+    const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
+    const snippets = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!snippets[snippetIndex]) return;
+    snippets[snippetIndex].name = newName;
+    localStorage.setItem(key, JSON.stringify(snippets));
+    saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
+    document.getElementById(`renameSnippetForm_${sectionIndex}_${snippetIndex}`)?.remove();
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
+    showToast('✅ Renamed');
 }
 
 function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
@@ -3458,11 +3565,17 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
         container.innerHTML = `
             <div style="padding: 20px; text-align: center;">
                 <p style="color: #9ca3af; font-style: italic; margin-bottom: 15px;">No harmony parts documented yet.</p>
-                <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
-                    class="chart-btn chart-btn-primary" style="background: #667eea;">
-                    🎤 Add Harmony Section
-                </button>
-                <p style="color: #9ca3af; font-size: 0.85em; margin-top: 10px;">This will also mark the song as having harmonies.</p>
+                <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:12px">
+                    <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
+                        class="chart-btn chart-btn-primary" style="background: #667eea;">
+                        🎤 Add Harmony Section
+                    </button>
+                    <button onclick="importHarmoniesFromFadr('${safeSongTitle}')"
+                        style="background:#059669;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:600">
+                        🎵 Auto-Import Harmonies
+                    </button>
+                </div>
+                <p style="color: #9ca3af; font-size: 0.85em;">Auto-import uses Fadr AI to extract vocal parts from an Archive.org recording.</p>
             </div>
         `;
         return;
@@ -3898,6 +4011,10 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                     <button onclick="importABCFromAudio(${sectionIndex})"
                         style="background:#065f46;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
                         🎵 Import from Audio
+                    </button>
+                    <button onclick="importHarmoniesFromFadr('${title.replace(/'/g, "\\\'")}' )"
+                        style="background:#059669;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        🤖 Fadr Auto-Import
                     </button>
                     <span id="abcImportStatus" style="color:#6b7280;font-size:0.82em;align-self:center"></span>
                 </div>
@@ -4609,6 +4726,168 @@ function convertBasicPitchToABC(noteData, title) {
     return abc + '\n% Review and clean up this auto-generated notation\n';
 }
 
+
+// ============================================================================
+// FADR HARMONY AUTO-IMPORT
+// ============================================================================
+
+const FADR_PROXY = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+
+async function importHarmoniesFromFadr(songTitle) {
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    const archiveLink = (bandData.links || []).find(l => l && l.url && l.url.includes('archive.org'));
+    const defaultUrl = archiveLink?.url || '';
+    const modal = document.createElement('div');
+    modal.id = 'fadrImportModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+    modal.innerHTML = `
+        <div style="background:#0f1a0f;border:1px solid rgba(5,150,105,0.4);border-radius:16px;padding:24px;max-width:580px;width:100%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0;color:white">🎵 Auto-Import Harmonies via Fadr</h3>
+                <button onclick="document.getElementById('fadrImportModal').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            <div style="background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:8px;padding:14px;margin-bottom:16px;font-size:0.85em;color:#6ee7b7;line-height:1.7">
+                <strong style="color:white">How this works:</strong><br>
+                1. Paste an Archive.org MP3 direct link<br>
+                2. Fadr AI separates vocal stems<br>
+                3. Each stem converts to MIDI → ABC notation<br>
+                4. ABC is saved to each harmony section automatically<br>
+                <span style="color:#9ca3af;font-size:0.9em">⏱ Takes 30–90 seconds</span>
+            </div>
+            <div style="margin-bottom:16px">
+                <label style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:6px">Archive.org direct MP3 URL:</label>
+                <input id="fadrArchiveUrl" type="url" placeholder="https://archive.org/download/identifier/song.mp3"
+                    value="${defaultUrl}"
+                    style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 12px;color:white;font-size:0.9em;outline:none">
+                <p style="color:#6b7280;font-size:0.78em;margin-top:6px">💡 On Archive.org, right-click an MP3 row → Copy Link Address</p>
+            </div>
+            <button onclick="runFadrImport('${songTitle.replace(/'/g, "\'")}')"
+                style="width:100%;background:#059669;color:white;border:none;padding:12px;border-radius:8px;cursor:pointer;font-size:0.95em;font-weight:700;margin-bottom:12px">
+                🚀 Start Auto-Import
+            </button>
+            <div id="fadrProgress" style="display:none;background:rgba(0,0,0,0.3);border-radius:8px;padding:16px">
+                <div id="fadrProgressText" style="color:#6ee7b7;font-size:0.9em;margin-bottom:10px">Initializing...</div>
+                <div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;overflow:hidden">
+                    <div id="fadrProgressBar" style="background:#059669;height:100%;width:0%;transition:width 0.5s ease"></div>
+                </div>
+                <div id="fadrProgressDetail" style="color:#6b7280;font-size:0.78em;margin-top:8px"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function runFadrImport(songTitle) {
+    const audioUrl = document.getElementById('fadrArchiveUrl')?.value?.trim();
+    if (!audioUrl || !audioUrl.includes('archive.org')) { alert('Please enter a valid Archive.org MP3 URL'); return; }
+    const progressEl = document.getElementById('fadrProgress');
+    const progressText = document.getElementById('fadrProgressText');
+    const progressBar = document.getElementById('fadrProgressBar');
+    const progressDetail = document.getElementById('fadrProgressDetail');
+    const setProgress = (msg, pct, detail = '') => {
+        if (progressEl) progressEl.style.display = 'block';
+        if (progressText) progressText.textContent = msg;
+        if (progressBar) progressBar.style.width = pct + '%';
+        if (progressDetail) progressDetail.textContent = detail;
+    };
+    const startBtn = document.querySelector('#fadrImportModal button[onclick*="runFadrImport"]');
+    if (startBtn) { startBtn.disabled = true; startBtn.textContent = '⏳ Processing...'; }
+    try {
+        setProgress('📥 Fetching audio from Archive.org...', 5, audioUrl);
+        const archiveResp = await fetch(`${FADR_PROXY}/archive-fetch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audioUrl }) });
+        if (!archiveResp.ok) { const err = await archiveResp.json().catch(() => ({})); throw new Error(`Archive fetch failed: ${err.error || archiveResp.status}`); }
+        const audioBuffer = await archiveResp.arrayBuffer();
+        setProgress('✅ Audio downloaded', 15, `${(audioBuffer.byteLength/1024/1024).toFixed(1)} MB`);
+
+        setProgress('📤 Getting Fadr upload URL...', 20);
+        const filename = audioUrl.split('/').pop() || 'song.mp3';
+        const ext = filename.split('.').pop().toLowerCase() || 'mp3';
+        const uploadUrlResp = await fetch(`${FADR_PROXY}/fadr/assets/upload2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: filename, extension: ext }) });
+        if (!uploadUrlResp.ok) throw new Error(`Fadr upload URL failed: ${uploadUrlResp.status}`);
+        const { url: presignedUrl, s3Path } = await uploadUrlResp.json();
+
+        setProgress('📤 Uploading to Fadr...', 25);
+        const mimeType = ext === 'mp3' ? 'audio/mpeg' : ext === 'wav' ? 'audio/wav' : 'audio/mp4';
+        const putResp = await fetch(presignedUrl, { method: 'PUT', headers: { 'Content-Type': mimeType }, body: audioBuffer });
+        if (!putResp.ok) throw new Error(`S3 upload failed: ${putResp.status}`);
+
+        setProgress('🗄️ Creating Fadr asset...', 40);
+        const assetResp = await fetch(`${FADR_PROXY}/fadr/assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: filename, path: s3Path, extension: ext }) });
+        if (!assetResp.ok) throw new Error(`Fadr create asset failed: ${assetResp.status}`);
+        const asset = await assetResp.json();
+        const assetId = asset._id;
+
+        setProgress('🤖 Starting stem separation...', 50, 'AI is separating vocal parts...');
+        const taskResp = await fetch(`${FADR_PROXY}/fadr/assets/stems`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _id: assetId }) });
+        if (!taskResp.ok) throw new Error(`Fadr stem task failed: ${taskResp.status}`);
+
+        for (let attempt = 0; attempt < 60; attempt++) {
+            await new Promise(r => setTimeout(r, 5000));
+            const pollResp = await fetch(`${FADR_PROXY}/fadr/assets/${assetId}`);
+            if (!pollResp.ok) continue;
+            const assetData = await pollResp.json();
+            setProgress(`⏳ Processing... (${attempt*5}s)`, 55 + Math.min(attempt*0.7, 20), `Status: ${assetData.status || 'processing'}`);
+            if (assetData.status === 'done' || (assetData.stems && assetData.stems.length > 0)) {
+                const midiAssets = assetData.midi || [];
+                const vocalMidi = midiAssets.filter(m => m.name && m.name.toLowerCase().includes('vocal'));
+                const midiIds = vocalMidi.length > 0 ? vocalMidi.map(m => m._id) : midiAssets.slice(0,2).map(m => m._id);
+                if (!midiIds.length) throw new Error('No MIDI files in Fadr output');
+                const abcParts = [];
+                for (let i = 0; i < midiIds.length; i++) {
+                    setProgress(`🎼 Converting part ${i+1}/${midiIds.length}...`, 80 + i*5);
+                    const dlResp = await fetch(`${FADR_PROXY}/fadr/assets/${midiIds[i]}/download`);
+                    if (!dlResp.ok) continue;
+                    const { url: dlUrl } = await dlResp.json();
+                    const midiResp = await fetch(dlUrl);
+                    if (!midiResp.ok) continue;
+                    const midiBuffer = await midiResp.arrayBuffer();
+                    const abcResp = await fetch(`${FADR_PROXY}/midi2abc`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: midiBuffer });
+                    if (!abcResp.ok) continue;
+                    const { abc } = await abcResp.json();
+                    abcParts.push({ label: i === 0 ? 'Lead Vocals' : `Harmony ${i}`, abc });
+                }
+                if (!abcParts.length) throw new Error('MIDI→ABC conversion failed');
+                const songKey = assetData.key || 'C';
+                const songBpm = assetData.tempo || assetData.bpm || 120;
+                await saveBandDataToDrive(songTitle, 'song_bpm', { bpm: Math.round(songBpm) });
+                await saveBandDataToDrive(songTitle, 'song_key', { key: songKey });
+                let combinedAbc = `X:1
+T:${songTitle} (Fadr)
+M:4/4
+Q:1/4=${Math.round(songBpm)}
+L:1/8
+K:${songKey}
+`;
+                combinedAbc += abcParts.length === 1 ? abcParts[0].abc.split('
+').filter(l => !l.match(/^[XTMQLK]:/)).join('
+') : abcParts.map((p,i) => `V:${i+1} name="${p.label}"`).join('
+') + '
+' + abcParts.map((p,i) => `[V:${i+1}]
+${p.abc.split('
+').filter(l => !l.match(/^[XTMQLK]:/)).join('
+')}`).join('
+');
+                await saveBandDataToDrive(songTitle, 'abc_section_0', { abc: combinedAbc });
+                await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.HAS_HARMONIES, { value: true });
+                const existingH = await loadBandDataFromDrive(songTitle, 'harmonies_data');
+                if (!existingH || !existingH.sections || toArray(existingH.sections).length === 0) {
+                    await saveBandDataToDrive(songTitle, 'harmonies_data', { sections: [{ name: 'Full Song', lyric: `Auto-imported via Fadr • Key: ${songKey} • ${Math.round(songBpm)} BPM`, parts: abcParts.map((p,i) => ({ singer: ['Drew','Chris','Brian'][i] || 'Drew', part: i === 0 ? 'lead' : 'harmony', notes: p.label })), practiceNotes: [`Detected key: ${songKey} • BPM: ${Math.round(songBpm)}`, `Auto-imported from Fadr on ${new Date().toLocaleDateString()}`] }] });
+                }
+                setProgress('🎉 Import complete!', 100, `${abcParts.length} vocal part(s) • Key: ${songKey} • ${Math.round(songBpm)} BPM`);
+                if (progressText) { progressText.style.color = '#34d399'; progressText.innerHTML = `🎉 <strong>Import complete!</strong> ${abcParts.length} vocal part(s) imported.`; }
+                if (startBtn) { startBtn.textContent = '✅ Done — Close & View'; startBtn.disabled = false; startBtn.style.background = '#047857'; startBtn.onclick = () => { document.getElementById('fadrImportModal')?.remove(); renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle] || {}); }; }
+                return;
+            }
+            if (assetData.status === 'failed') throw new Error('Fadr stem separation failed');
+        }
+        throw new Error('Fadr timed out after 5 minutes');
+    } catch(err) {
+        console.error('Fadr import error:', err);
+        if (progressText) { progressText.style.color = '#ef4444'; progressText.textContent = `❌ Import failed: ${err.message}`; }
+        if (startBtn) { startBtn.disabled = false; startBtn.textContent = '🔄 Try Again'; }
+    }
+}
+
 async function loadABCNotation(songTitle, sectionIndex) {
     // Try Google Drive first
     const key = `abc_section_${sectionIndex}`;
@@ -5037,40 +5316,68 @@ async function savePartNotes(songTitle, sectionIndex, singer, notes) {
 }
 
 async function addPartNote(songTitle, sectionIndex, singer) {
-    const note = prompt(`Add practice note for ${singer}:`);
-    if (!note || note.trim() === '') return;
-    
+    const formId = `addPartNoteForm_${sectionIndex}_${singer}`;
+    if (document.getElementById(formId)) return;
+    const addBtn = document.querySelector(`[onclick*="addPartNote"][onclick*="${sectionIndex}"][onclick*="${singer}"]`);
+    if (!addBtn) return;
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap';
+    form.innerHTML = `
+        <input id="partNoteInput_${sectionIndex}_${singer}" class="app-input"
+            placeholder="Practice note for ${singer}..."
+            style="flex:1;min-width:180px" autocomplete="off">
+        <button onclick="savePartNote('${songTitle}',${sectionIndex},'${singer}')" class="btn btn-primary btn-sm">Save</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+    `;
+    addBtn.after(form);
+    document.getElementById(`partNoteInput_${sectionIndex}_${singer}`)?.focus();
+}
+
+async function savePartNote(songTitle, sectionIndex, singer) {
+    const note = document.getElementById(`partNoteInput_${sectionIndex}_${singer}`)?.value?.trim();
+    if (!note) return;
     const notes = await loadPartNotes(songTitle, sectionIndex, singer);
-    notes.push(note.trim());
+    notes.push(note);
     await savePartNotes(songTitle, sectionIndex, singer, notes);
-    
-    // Refresh display
+    document.getElementById(`addPartNoteForm_${sectionIndex}_${singer}`)?.remove();
     const bandData = bandKnowledgeBase[songTitle];
-    if (bandData) {
-        renderHarmoniesEnhanced(songTitle, bandData);
-    }
+    if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
 async function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
+    const formId = `editPartNoteForm_${sectionIndex}_${singer}_${noteIndex}`;
+    if (document.getElementById(formId)) return;
     const notes = await loadPartNotes(songTitle, sectionIndex, singer);
-    const currentNote = notes[noteIndex];
-    const newNote = prompt('Edit note:', currentNote);
-    
-    if (newNote === null) return; // Cancelled
-    if (newNote.trim() === '') {
-        // Delete if empty
-        deletePartNote(songTitle, sectionIndex, singer, noteIndex);
-        return;
-    }
-    
-    notes[noteIndex] = newNote.trim();
+    const currentNote = notes[noteIndex] || '';
+    const editBtn = document.querySelector(`[onclick*="editPartNote"][onclick*="${sectionIndex}"][onclick*="${singer}"][onclick*="${noteIndex}"]`);
+    const noteEl = editBtn?.closest('[data-note-index], .note-item, div') || editBtn?.parentElement;
+    if (!noteEl) return;
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap';
+    form.innerHTML = `
+        <input id="editPartNoteInput_${sectionIndex}_${singer}_${noteIndex}" class="app-input"
+            value="${currentNote.replace(/"/g, '&quot;')}" 
+            style="flex:1;min-width:180px" autocomplete="off">
+        <button onclick="saveEditedPartNote('${songTitle}',${sectionIndex},'${singer}',${noteIndex})" class="btn btn-primary btn-sm">Save</button>
+        <button onclick="deletePartNote('${songTitle}',${sectionIndex},'${singer}',${noteIndex})" class="btn btn-sm" style="background:#ef4444;color:white;border:none;border-radius:6px;padding:5px 8px;cursor:pointer">Delete</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+    `;
+    noteEl.after(form);
+    document.getElementById(`editPartNoteInput_${sectionIndex}_${singer}_${noteIndex}`)?.select();
+}
+
+async function saveEditedPartNote(songTitle, sectionIndex, singer, noteIndex) {
+    const newNote = document.getElementById(`editPartNoteInput_${sectionIndex}_${singer}_${noteIndex}`)?.value?.trim();
+    if (newNote === undefined) return;
+    if (!newNote) { await deletePartNote(songTitle, sectionIndex, singer, noteIndex); return; }
+    const notes = await loadPartNotes(songTitle, sectionIndex, singer);
+    notes[noteIndex] = newNote;
     await savePartNotes(songTitle, sectionIndex, singer, notes);
-    
-    // Refresh display
+    document.getElementById(`editPartNoteForm_${sectionIndex}_${singer}_${noteIndex}`)?.remove();
     const bandData = bandKnowledgeBase[songTitle];
-    if (bandData) {
-        renderHarmoniesEnhanced(songTitle, bandData);
-    }
+    if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
 async function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
@@ -6281,45 +6588,84 @@ async function renderSongStructure(songTitle) {
 async function editSongStructure() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
-    
+    if (document.getElementById('songStructureModal')) return;
     const structure = await loadBandDataFromDrive(songTitle, 'song_structure') || {};
-    
-    const whoStarts = prompt('Who starts the song? (comma-separated names, e.g., Jay, Drew):', 
-        structure.whoStarts ? structure.whoStarts.map(email => bandMembers[email]?.name).join(', ') : '');
-    if (whoStarts === null) return; // Canceled
-    
-    const howStarts = prompt('How does it start? (e.g., Count off, Cold start, Guitar intro):', structure.howStarts || '');
-    if (howStarts === null) return;
-    
-    const whoCuesEnding = prompt('Who cues the ending? (name):', 
-        structure.whoCuesEnding ? bandMembers[structure.whoCuesEnding]?.name : '');
-    if (whoCuesEnding === null) return;
-    
-    const howEnds = prompt('How does it end? (e.g., Big finish, Fade out, Abrupt stop):', structure.howEnds || '');
-    if (howEnds === null) return;
-    
-    // Convert names back to emails
-    const whoStartsEmails = whoStarts.split(',').map(name => {
-        const trimmed = name.trim();
-        const entry = Object.entries(bandMembers).find(([email, member]) => 
-            member.name.toLowerCase() === trimmed.toLowerCase()
-        );
-        return entry ? entry[0] : null;
+    const memberOptions = Object.entries(bandMembers)
+        .map(([k, m]) => `<option value="${k}">${m.name}</option>`).join('');
+    const whoStartsCurrent = (structure.whoStarts || [])
+        .map(e => bandMembers[e]?.name || e).join(', ');
+    const modal = document.createElement('div');
+    modal.id = 'songStructureModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+    modal.innerHTML = `
+        <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <h3 style="margin:0;color:white">🎸 Song Structure</h3>
+                <button onclick="document.getElementById('songStructureModal').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px">
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Who starts the song?</label>
+                    <input id="ssWhoStarts" class="app-input" placeholder="e.g. Jay, Drew"
+                        value="${whoStartsCurrent}" autocomplete="off">
+                    <p style="color:#6b7280;font-size:0.75em;margin-top:4px">Comma-separated names</p>
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">How does it start?</label>
+                    <input id="ssHowStarts" class="app-input" placeholder="e.g. Count off, Cold start, Guitar intro"
+                        value="${structure.howStarts || ''}" autocomplete="off">
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Who cues the ending?</label>
+                    <select id="ssWhoCues" class="app-select">
+                        <option value="">— Nobody specific —</option>
+                        ${memberOptions}
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">How does it end?</label>
+                    <input id="ssHowEnds" class="app-input" placeholder="e.g. Big finish, Fade out, Abrupt stop"
+                        value="${structure.howEnds || ''}" autocomplete="off">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:20px">
+                <button onclick="saveSongStructure()" class="btn btn-primary" style="flex:1">💾 Save Structure</button>
+                <button onclick="document.getElementById('songStructureModal').remove()" class="btn btn-ghost">Cancel</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    // Pre-select who cues ending
+    if (structure.whoCuesEnding) {
+        const sel = document.getElementById('ssWhoCues');
+        if (sel) sel.value = structure.whoCuesEnding;
+    }
+    document.getElementById('ssWhoStarts')?.focus();
+}
+
+async function saveSongStructure() {
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    const whoStartsRaw = document.getElementById('ssWhoStarts')?.value?.trim() || '';
+    // Convert comma-separated names back to email keys
+    const whoStarts = whoStartsRaw.split(',').map(n => {
+        const name = n.trim().toLowerCase();
+        return Object.keys(bandMembers).find(k => bandMembers[k]?.name?.toLowerCase() === name) || n.trim();
     }).filter(Boolean);
-    
-    const whoCuesEndingEmail = Object.entries(bandMembers).find(([email, member]) => 
-        member.name.toLowerCase() === whoCuesEnding.trim().toLowerCase()
-    )?.[0];
-    
-    const newStructure = {
-        whoStarts: whoStartsEmails,
-        howStarts: howStarts.trim(),
-        whoCuesEnding: whoCuesEndingEmail || '',
-        howEnds: howEnds.trim()
+    const structure = {
+        whoStarts,
+        howStarts: document.getElementById('ssHowStarts')?.value?.trim() || '',
+        whoCuesEnding: document.getElementById('ssWhoCues')?.value || '',
+        howEnds: document.getElementById('ssHowEnds')?.value?.trim() || '',
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUserEmail
     };
-    
-    await saveBandDataToDrive(songTitle, 'song_structure', newStructure);
-    await renderSongStructure(songTitle);
+    await saveBandDataToDrive(songTitle, 'song_structure', structure);
+    document.getElementById('songStructureModal')?.remove();
+    showToast('✅ Song structure saved');
+    // Refresh the song detail view if open
+    const bandData = bandKnowledgeBase[songTitle];
+    if (bandData && typeof renderSongStructure === 'function') renderSongStructure(songTitle, bandData);
 }
 
 function showSongStructureForm() {
@@ -9783,12 +10129,37 @@ async function loadSocialIdeas() {
 }
 
 async function socialAddIdea() {
-    const text = prompt('Content idea:');
+    const formId = 'socialIdeaForm';
+    if (document.getElementById(formId)) {
+        document.getElementById('socialIdeaInput')?.focus();
+        return;
+    }
+    const container = document.getElementById('socialIdeasContainer') || 
+                      document.querySelector('[onclick*="socialAddIdea"]')?.closest('.app-card');
+    if (!container) return;
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'display:flex;gap:8px;align-items:center;padding:10px 0;flex-wrap:wrap';
+    form.innerHTML = `
+        <input id="socialIdeaInput" class="app-input" placeholder="Content idea..."
+            style="flex:1;min-width:200px" autocomplete="off">
+        <button onclick="saveSocialIdea()" class="btn btn-primary">💾 Save</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost">Cancel</button>
+    `;
+    const addBtn = document.querySelector('[onclick*="socialAddIdea"]');
+    if (addBtn) addBtn.after(form); else container.prepend(form);
+    document.getElementById('socialIdeaInput')?.focus();
+}
+
+async function saveSocialIdea() {
+    const text = document.getElementById('socialIdeaInput')?.value?.trim();
     if (!text) return;
     const ideas = toArray(await loadBandDataFromDrive('_band', 'social_ideas') || []);
-    ideas.push({text, addedAt: new Date().toISOString()});
+    ideas.push({ text, addedAt: new Date().toISOString(), addedBy: currentUserEmail });
     await saveBandDataToDrive('_band', 'social_ideas', ideas);
+    document.getElementById('socialIdeaForm')?.remove();
     loadSocialIdeas();
+    showToast('✅ Idea saved');
 }
 
 async function socialDeleteIdea(idx) {
@@ -10559,11 +10930,36 @@ function removeMember(key) {
     settingsTab('band');
 }
 
-function editMember(key) {
+async function editMember(key) {
     const m = bandMembers[key];
     if (!m) return;
-    const newRole = prompt('Role for ' + m.name + ':', m.role);
-    if (newRole !== null) { m.role = newRole; settingsTab('band'); }
+    const formId = `editMemberForm_${key}`;
+    if (document.getElementById(formId)) return;
+    const editBtn = document.querySelector(`[onclick*="editMember('${key}')"]`) ||
+                    document.querySelector(`[onclick*='editMember("${key}")']`);
+    if (!editBtn) return;
+    const form = document.createElement('div');
+    form.id = formId;
+    form.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 0;flex-wrap:wrap';
+    form.innerHTML = `
+        <span style="color:var(--text-muted);font-size:0.85em;min-width:60px">Role:</span>
+        <input id="memberRoleInput_${key}" class="app-input" value="${m.role || ''}"
+            placeholder="e.g. Lead Guitar, Vocals..."
+            style="flex:1;min-width:150px" autocomplete="off">
+        <button onclick="saveMemberRole('${key}')" class="btn btn-primary btn-sm">Save</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+    `;
+    editBtn.after(form);
+    document.getElementById(`memberRoleInput_${key}`)?.focus();
+}
+
+async function saveMemberRole(key) {
+    const newRole = document.getElementById(`memberRoleInput_${key}`)?.value?.trim();
+    if (newRole === undefined) return;
+    bandMembers[key].role = newRole;
+    document.getElementById(`editMemberForm_${key}`)?.remove();
+    showToast('✅ Role updated');
+    settingsTab('band');
 }
 
 function exportAllData() {
@@ -10590,9 +10986,71 @@ async function submitFeedback() {
 
 // ---- EQUIPMENT (#28) ----
 function renderEquipmentPage(el){el.innerHTML=`<div class="page-header"><h1>🎛️ Equipment</h1><p>Band gear inventory</p></div><button class="btn btn-primary" onclick="addEquipment()" style="margin-bottom:12px">+ Add Gear</button><div id="equipList"></div>`;loadEquipment();}
-async function loadEquipment(){const d=toArray(await loadBandDataFromDrive('_band','equipment')||[]);const el=document.getElementById('equipList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet.</div>';return;}const g={};d.forEach(i=>{const o=i.owner||'shared';if(!g[o])g[o]=[];g[o].push(i);});el.innerHTML=Object.entries(g).map(([o,items])=>`<div class="app-card"><h3>${bandMembers[o]?.name||'Shared/Band'}</h3>${items.map(i=>`<div class="list-item" style="padding:8px 10px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${i.name||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${[i.category,i.brand,i.model].filter(Boolean).join(' · ')}</div></div>${i.manualUrl?'<a href="'+i.manualUrl+'" target="_blank" class="btn btn-sm btn-ghost">📄</a>':''}</div>`).join('')}</div>`).join('');}
+async function loadEquipment() {
+    const d = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
+    const el = document.getElementById('equipList');
+    if (!el) return;
+    if (!d.length) {
+        el.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No equipment yet. Click "+ Add Gear" to start.</div>';
+        return;
+    }
+    const g = {};
+    d.forEach((item, i) => {
+        const o = item.owner || 'shared';
+        if (!g[o]) g[o] = [];
+        g[o].push({ ...item, _idx: i });
+    });
+    el.innerHTML = Object.entries(g).map(([o, items]) => `
+        <div class="app-card">
+            <h3>${bandMembers[o]?.name || 'Shared / Band'}</h3>
+            ${items.map(i => `
+                <div class="list-item" style="padding:8px 10px">
+                    <div style="flex:1">
+                        <div style="font-weight:600;font-size:0.9em">${i.name || ''}</div>
+                        <div style="font-size:0.78em;color:var(--text-muted)">${[i.brand, i.model, i.category].filter(Boolean).join(' · ')}</div>
+                        ${i.notes ? `<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px">${i.notes}</div>` : ''}
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        ${i.manualUrl ? `<a href="${i.manualUrl}" target="_blank" class="btn btn-sm btn-ghost">📄</a>` : ''}
+                        <button onclick="deleteEquip(${i._idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1em;padding:4px" title="Delete">🗑️</button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `).join('');
+}
 function addEquipment(){const el=document.getElementById('equipList');el.innerHTML=`<div class="app-card"><h3>Add Gear</h3><div class="form-grid">${[['Name','eqN',''],['Category','eqC','select:amp,guitar,pedal,mic,cable,pa,drum,keys,other'],['Brand','eqB',''],['Model','eqM',''],['Owner','eqO','members'],['Serial #','eqS',''],['Manual URL','eqU',''],['Value ($)','eqV','number']].map(([l,id,t])=>{if(t==='members')return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'">'+m.name+'</option>').join('')+'</select></div>';if(t.startsWith('select:'))return'<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(v=>'<option value="'+v+'">'+v+'</option>').join('')+'</select></div>';return'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'"></div>';}).join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="eqNotes"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveEquip()">💾 Save</button><button class="btn btn-ghost" onclick="loadEquipment()">Cancel</button></div></div>`+el.innerHTML;}
 async function saveEquip(){const eq={name:document.getElementById('eqN')?.value,category:document.getElementById('eqC')?.value,brand:document.getElementById('eqB')?.value,model:document.getElementById('eqM')?.value,owner:document.getElementById('eqO')?.value,serial:document.getElementById('eqS')?.value,manualUrl:document.getElementById('eqU')?.value,value:document.getElementById('eqV')?.value,notes:document.getElementById('eqNotes')?.value};if(!eq.name){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','equipment')||[]);ex.push(eq);await saveBandDataToDrive('_band','equipment',ex);alert('✅ Saved!');loadEquipment();}
+
+async function saveEquip() {
+    const item = {
+        name: document.getElementById('eqN')?.value?.trim() || '',
+        category: document.getElementById('eqC')?.value || 'other',
+        brand: document.getElementById('eqB')?.value?.trim() || '',
+        model: document.getElementById('eqM')?.value?.trim() || '',
+        owner: document.getElementById('eqO')?.value || '',
+        serial: document.getElementById('eqS')?.value?.trim() || '',
+        manualUrl: document.getElementById('eqU')?.value?.trim() || '',
+        value: document.getElementById('eqV')?.value || '',
+        notes: document.getElementById('eqNotes')?.value?.trim() || '',
+        addedAt: new Date().toISOString(),
+        addedBy: currentUserEmail
+    };
+    if (!item.name) { showToast('Enter a name for this gear'); return; }
+    const existing = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
+    existing.push(item);
+    await saveBandDataToDrive('_band', 'equipment', existing);
+    showToast('✅ Gear saved!');
+    await loadEquipment();
+}
+
+async function deleteEquip(index) {
+    const existing = toArray(await loadBandDataFromDrive('_band', 'equipment') || []);
+    existing.splice(index, 1);
+    await saveBandDataToDrive('_band', 'equipment', existing);
+    showToast('🗑️ Gear removed');
+    await loadEquipment();
+}
 
 // ---- CONTACTS (#27) ----
 function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
