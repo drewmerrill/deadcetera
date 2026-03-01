@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-210344', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-213504', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -6116,7 +6116,8 @@ async function runFadrImport(songTitle) {
         if (!putResp.ok) throw new Error(`S3 upload failed: ${putResp.status}`);
 
         setProgress('🗄️ Creating Fadr asset...', 40);
-        const assetResp = await fetch(`${FADR_PROXY}/fadr/assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: filename, path: s3Path, extension: ext }) });
+        const group = filename + '-group';
+        const assetResp = await fetch(`${FADR_PROXY}/fadr/assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: filename, s3Path: s3Path, extension: ext, group: group }) });
         if (!assetResp.ok) {
             let errDetail = '';
             try { 
@@ -6129,11 +6130,15 @@ async function runFadrImport(songTitle) {
             throw new Error(`Fadr create asset failed: ${assetResp.status}${hint}\n${errDetail.substring(0, 200)}`);
         }
         const asset = await assetResp.json();
-        const assetId = asset._id;
+        const assetId = asset.asset?._id || asset._id;
+        console.log('Fadr asset created:', JSON.stringify(asset).substring(0, 200));
 
         setProgress('🤖 Starting stem separation...', 50, 'AI is separating vocal parts...');
-        const taskResp = await fetch(`${FADR_PROXY}/fadr/assets/stems`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _id: assetId }) });
-        if (!taskResp.ok) throw new Error(`Fadr stem task failed: ${taskResp.status}`);
+        const taskResp = await fetch(`${FADR_PROXY}/fadr/assets/analyze/stem`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _id: assetId }) });
+        if (!taskResp.ok) {
+            let taskErr = ''; try { taskErr = await taskResp.text(); } catch(e) {}
+            throw new Error(`Fadr stem task failed: ${taskResp.status} — ${taskErr.substring(0, 200)}`);
+        }
 
         for (let attempt = 0; attempt < 60; attempt++) {
             await new Promise(r => setTimeout(r, 5000));
@@ -6142,10 +6147,13 @@ async function runFadrImport(songTitle) {
             const assetData = await pollResp.json();
             setProgress(`⏳ Processing... (${attempt*5}s)`, 55 + Math.min(attempt*0.7, 20), `Status: ${assetData.status || 'processing'}`);
             if (assetData.status === 'done' || (assetData.stems && assetData.stems.length > 0)) {
-                const midiAssets = assetData.midi || [];
-                const vocalMidi = midiAssets.filter(m => m.name && m.name.toLowerCase().includes('vocal'));
-                const midiIds = vocalMidi.length > 0 ? vocalMidi.map(m => m._id) : midiAssets.slice(0,2).map(m => m._id);
-                if (!midiIds.length) throw new Error('No MIDI files in Fadr output');
+                // Per Fadr docs: midi is an array of string IDs
+                const midiIds = assetData.midi || [];
+                if (!midiIds.length) {
+                    // If no midi yet but stems exist, wait a bit more for MIDI conversion
+                    if (assetData.stems?.length && attempt < 55) continue;
+                    throw new Error('No MIDI files in Fadr output. Stems: ' + (assetData.stems?.length || 0));
+                }
                 const abcParts = [];
                 for (let i = 0; i < midiIds.length; i++) {
                     setProgress(`🎼 Converting part ${i+1}/${midiIds.length}...`, 80 + i*5);
@@ -15746,6 +15754,7 @@ function pmStartFadrImport(songTitle) {
             <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">
                 <button class="pm-src-tab active" data-src="archive" onclick="pmSrcTab('archive',this)">🏛️ Archive</button>
                 <button class="pm-src-tab" data-src="youtube" onclick="pmSrcTab('youtube',this)">📺 YouTube</button>
+                <button class="pm-src-tab" data-src="spotify" onclick="pmSrcTab('spotify',this)">🎵 Spotify</button>
                 <button class="pm-src-tab" data-src="northstar" onclick="pmSrcTab('northstar',this)">⭐ North Star</button>
                 <button class="pm-src-tab" data-src="bestshot" onclick="pmSrcTab('bestshot',this)">🎯 Best Shot</button>
                 <button class="pm-src-tab" data-src="url" onclick="pmSrcTab('url',this)">🔗 URL</button>
@@ -15778,11 +15787,31 @@ function pmStartFadrImport(songTitle) {
                     <input id="pmYoutubeQuery" type="text" placeholder="Search YouTube..." value="${songTitle} ${band}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit" onkeydown="if(event.key==='Enter')pmSearchYouTube()">
                     <button onclick="pmSearchYouTube()" class="pm-tool-btn" style="padding:8px 14px;background:rgba(239,68,68,0.2);color:#f87171">🔍</button>
                 </div>
-                <div style="color:#64748b;font-size:0.72em;margin-bottom:8px">⚠️ YouTube links require audio extraction. The URL will be passed to Fadr which handles conversion.</div>
-                <div id="pmYoutubeResults" style="max-height:250px;overflow-y:auto"></div>
-                <div style="margin-top:8px">
-                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:4px">Or paste a YouTube URL directly:</div>
-                    <input id="pmYoutubeUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit" oninput="if(this.value.trim()){pmSelectedAudioUrl=this.value.trim();document.getElementById('pmSelectedSource').style.display='block';document.getElementById('pmSelectedSourceText').textContent=this.value.trim();document.getElementById('pmFadrGoBtn').disabled=false}">
+                <div id="pmYoutubeResults" style="max-height:220px;overflow-y:auto"></div>
+                <div style="margin-top:8px;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px">
+                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px">Or paste a YouTube URL:</div>
+                    <div style="display:flex;gap:6px">
+                        <input id="pmYoutubeUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit">
+                        <button onclick="pmExtractYouTubeAudio()" class="pm-tool-btn" style="padding:8px 12px;background:rgba(239,68,68,0.2);color:#f87171;white-space:nowrap">🎵 Extract</button>
+                    </div>
+                    <div id="pmYtExtractStatus" style="color:#64748b;font-size:0.72em;margin-top:4px">Extracts audio from YouTube and sends to Fadr AI</div>
+                </div>
+            </div>
+
+            <!-- SPOTIFY -->
+            <div class="pm-src-panel hidden" id="pmSrcSpotify">
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                    <input id="pmSpotifyQuery" type="text" placeholder="Search Spotify..." value="${songTitle} ${band}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit" onkeydown="if(event.key==='Enter')pmSearchSpotify()">
+                    <button onclick="pmSearchSpotify()" class="pm-tool-btn" style="padding:8px 14px;background:rgba(30,215,96,0.2);color:#1ED760">🔍</button>
+                </div>
+                <div id="pmSpotifyResults" style="max-height:220px;overflow-y:auto"></div>
+                <div style="margin-top:8px;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px">
+                    <div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px">Or paste a Spotify URL:</div>
+                    <div style="display:flex;gap:6px">
+                        <input id="pmSpotifyUrl" type="url" placeholder="https://open.spotify.com/track/..." style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;box-sizing:border-box;font-family:inherit">
+                        <button onclick="pmExtractSpotifyAudio()" class="pm-tool-btn" style="padding:8px 12px;background:rgba(30,215,96,0.2);color:#1ED760;white-space:nowrap">🎵 Extract</button>
+                    </div>
+                    <div id="pmSpotifyExtractStatus" style="color:#64748b;font-size:0.72em;margin-top:4px">Extracts audio from Spotify and sends to Fadr AI</div>
                 </div>
             </div>
 
@@ -15849,11 +15878,11 @@ async function pmSearchArchive() {
             body: JSON.stringify({ query, band: '' })
         });
         const data = await res.json();
-        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results. Try adding a year or different terms.</div>'; return; }
-        container.innerHTML = data.results.map(r => `
+        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results found. Try different terms or check spelling.</div>'; return; }
+        container.innerHTML = (data.total ? '<div style="color:#64748b;font-size:0.7em;padding:4px 8px">' + data.total + ' shows found</div>' : '') + data.results.map(r => `
             <div onclick="pmSelectShow('${r.identifier}')" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
                 <div style="color:#e2e8f0;font-size:0.82em;font-weight:600">${r.title || r.identifier}</div>
-                <div style="color:#64748b;font-size:0.72em">${r.date ? r.date.split('T')[0] : ''} · ⭐ ${r.rating ? r.rating.toFixed(1) : '—'} · ${r.reviews || 0} reviews</div>
+                <div style="color:#64748b;font-size:0.72em">${r.date ? r.date.split('T')[0] : ''} · ⭐ ${r.rating ? r.rating.toFixed(1) : '—'} · ${r.downloads ? r.downloads.toLocaleString() + ' downloads' : r.reviews ? r.reviews + ' reviews' : ''}</div>
             </div>
         `).join('');
     } catch(e) { container.innerHTML = `<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ${e.message}</div>`; }
@@ -15901,18 +15930,88 @@ async function pmSearchYouTube() {
             body: JSON.stringify({ query })
         });
         const data = await res.json();
-        if (!data.results?.length) { container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results found.</div>'; return; }
+        if (data.debug) console.log('YouTube debug:', data.debug);
+        if (!data.results?.length) {
+            container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results found.' + (data.error ? ' (' + data.error + ')' : '') + ' Try pasting a URL directly below.</div>';
+            return;
+        }
         container.innerHTML = data.results.map(v => {
-            const dur = v.lengthSeconds ? Math.floor(v.lengthSeconds/60)+':'+String(v.lengthSeconds%60).padStart(2,'0') : '';
-            return `<div onclick="pmSelectedAudioUrl='${v.url}';document.getElementById('pmSelectedSource').style.display='block';document.getElementById('pmSelectedSourceText').textContent='YouTube: ${v.title.replace(/'/g,"\\'").replace(/"/g,'&quot;')}';document.getElementById('pmFadrGoBtn').disabled=false" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
-                <span style="color:#ef4444;font-size:1em">▶</span>
-                <div style="flex:1;min-width:0">
-                    <div style="color:#e2e8f0;font-size:0.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.title}</div>
-                    <div style="color:#64748b;font-size:0.7em">${v.author || ''} · ${dur}</div>
-                </div>
-            </div>`;
+            const dur = v.duration || (v.lengthSeconds ? Math.floor(v.lengthSeconds/60)+':'+String(v.lengthSeconds%60).padStart(2,'0') : '');
+            const safeTitle = (v.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            return '<div onclick="pmSelectYouTubeResult(\'' + v.url + '\',\'' + safeTitle + '\')" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
+                '<span style="color:#ef4444;font-size:1em">▶</span>' +
+                '<div style="flex:1;min-width:0">' +
+                '<div style="color:#e2e8f0;font-size:0.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + v.title + '</div>' +
+                '<div style="color:#64748b;font-size:0.7em">' + (v.author||'') + ' · ' + dur + '</div>' +
+                '</div></div>';
         }).join('');
-    } catch(e) { container.innerHTML = `<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ${e.message}</div>`; }
+    } catch(e) { container.innerHTML = '<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ' + e.message + '</div>'; }
+}
+
+function pmSelectYouTubeResult(url, title) {
+    document.getElementById('pmYoutubeUrl').value = url;
+    const st = document.getElementById('pmYtExtractStatus');
+    if (st) st.innerHTML = '<span style="color:#818cf8">Selected: ' + title + '</span> — tap 🎵 Extract to get audio';
+}
+
+async function pmExtractYouTubeAudio() {
+    const url = document.getElementById('pmYoutubeUrl')?.value?.trim();
+    if (!url) { showToast('⚠️ Paste a YouTube URL first'); return; }
+    const status = document.getElementById('pmYtExtractStatus');
+    if (status) status.innerHTML = '<span style="color:#f59e0b">⏳ Extracting audio... this may take a moment</span>';
+    try {
+        const res = await fetch(FADR_PROXY + '/youtube-audio', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (data.audioUrl) {
+            pmSelectedAudioUrl = data.audioUrl;
+            document.getElementById('pmSelectedSource').style.display = 'block';
+            document.getElementById('pmSelectedSourceText').textContent = 'YouTube audio: ' + url;
+            document.getElementById('pmFadrGoBtn').disabled = false;
+            if (status) status.innerHTML = '<span style="color:#10b981">✅ Audio extracted! Tap "Send to Fadr AI" below.</span>';
+        } else {
+            if (status) status.innerHTML = '<span style="color:#ef4444">❌ ' + (data.error || 'Extraction failed') + '. Try downloading manually and using the 🔗 URL tab.</span>';
+        }
+    } catch(e) {
+        if (status) status.innerHTML = '<span style="color:#ef4444">❌ Error: ' + e.message + '</span>';
+    }
+}
+
+async function pmSearchSpotify() {
+    const query = document.getElementById('pmSpotifyQuery')?.value?.trim();
+    if (!query) return;
+    const container = document.getElementById('pmSpotifyResults');
+    container.innerHTML = '<div style="padding:8px;color:#94a3b8;font-size:0.82em">' +
+        '<p>Find your track on Spotify and paste the URL below.</p>' +
+        '<a href="https://open.spotify.com/search/' + encodeURIComponent(query) + '" target="_blank" style="color:#1ED760;text-decoration:underline">🔗 Open Spotify Search for "' + query + '"</a></div>';
+}
+
+async function pmExtractSpotifyAudio() {
+    const url = document.getElementById('pmSpotifyUrl')?.value?.trim();
+    if (!url) { showToast('⚠️ Paste a Spotify URL first'); return; }
+    if (!url.includes('spotify.com')) { showToast('⚠️ Must be a Spotify URL'); return; }
+    const status = document.getElementById('pmSpotifyExtractStatus');
+    if (status) status.innerHTML = '<span style="color:#f59e0b">⏳ Extracting audio from Spotify...</span>';
+    try {
+        const res = await fetch(FADR_PROXY + '/youtube-audio', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (data.audioUrl) {
+            pmSelectedAudioUrl = data.audioUrl;
+            document.getElementById('pmSelectedSource').style.display = 'block';
+            document.getElementById('pmSelectedSourceText').textContent = 'Spotify: ' + url;
+            document.getElementById('pmFadrGoBtn').disabled = false;
+            if (status) status.innerHTML = '<span style="color:#10b981">✅ Audio extracted! Tap "Send to Fadr AI".</span>';
+        } else {
+            if (status) status.innerHTML = '<span style="color:#ef4444">❌ ' + (data.error || 'Failed') + '. Try finding this track on YouTube instead.</span>';
+        }
+    } catch(e) {
+        if (status) status.innerHTML = '<span style="color:#ef4444">❌ Error: ' + e.message + '</span>';
+    }
 }
 
 function pmSelectTrack(url, title, isLong) {
