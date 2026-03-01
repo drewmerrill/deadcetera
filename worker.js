@@ -1,10 +1,12 @@
-// DeadCetera Cloudflare Worker v2
+// DeadCetera Cloudflare Worker v3
 // Routes:
 //   POST /           → Anthropic Claude API proxy (legacy)
 //   POST /claude     → Anthropic Claude API proxy
 //   ANY  /fadr/*     → Fadr API proxy (key injected server-side)
 //   POST /midi2abc   → MIDI binary → ABC notation converter
 //   POST /archive-fetch → Fetch Archive.org audio and return as binary
+//   POST /ug-search  → Search Ultimate Guitar for chords
+//   POST /ug-fetch   → Fetch a specific UG tab by URL
 
 export default {
   async fetch(request, env, ctx) {
@@ -19,6 +21,10 @@ export default {
       return handleMidi2Abc(request);
     if (path === '/archive-fetch' && request.method === 'POST')
       return handleArchiveFetch(request);
+    if (path === '/ug-search' && request.method === 'POST')
+      return handleUGSearch(request);
+    if (path === '/ug-fetch' && request.method === 'POST')
+      return handleUGFetch(request);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -64,6 +70,126 @@ async function handleArchiveFetch(request) {
     return cors(new Response(data, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'audio/mpeg' } }));
   } catch (e) { return jsonResp({ error: e.message }, 500); }
 }
+
+// ── Ultimate Guitar Search ──────────────────────────────────────────────────
+async function handleUGSearch(request) {
+  try {
+    const { song, artist } = await request.json();
+    if (!song) return jsonResp({ error: 'song is required' }, 400);
+
+    const query = `${song} ${artist || ''}`.trim();
+    // UG search URL — type[]=Chords filters to chord charts only
+    const searchUrl = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${encodeURIComponent(query)}&type[]=Chords`;
+
+    const res = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }
+    });
+
+    if (!res.ok) return jsonResp({ error: `UG search returned ${res.status}` }, 502);
+    const html = await res.text();
+
+    // Extract the js-store data-content JSON
+    const results = parseUGSearchResults(html);
+    return jsonResp({ results, query });
+  } catch (e) {
+    return jsonResp({ error: e.message }, 500);
+  }
+}
+
+function parseUGSearchResults(html) {
+  // UG embeds search data in <div class="js-store" data-content="...">
+  const storeMatch = html.match(/class="js-store"\s+data-content="([^"]*)"/);
+  if (!storeMatch) return [];
+
+  try {
+    const decoded = storeMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#039;/g, "'");
+    const data = JSON.parse(decoded);
+    const results = data?.store?.page?.data?.results || [];
+
+    return results
+      .filter(r => r.type === 'Chords' && r.tab_url)
+      .map(r => ({
+        title: r.song_name || '',
+        artist: r.artist_name || '',
+        url: r.tab_url,
+        rating: r.rating || 0,
+        votes: r.votes || 0,
+        version: r.version || 1,
+        capo: r.capo || 0,
+        tonality: r.tonality_name || '',
+      }))
+      .sort((a, b) => (b.rating * Math.log(b.votes + 1)) - (a.rating * Math.log(a.votes + 1)))
+      .slice(0, 10);
+  } catch (e) {
+    return [];
+  }
+}
+
+// ── Ultimate Guitar Fetch (single tab) ──────────────────────────────────────
+async function handleUGFetch(request) {
+  try {
+    const { url } = await request.json();
+    if (!url || !url.includes('ultimate-guitar.com')) return jsonResp({ error: 'Must be a UG URL' }, 400);
+
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }
+    });
+
+    if (!res.ok) return jsonResp({ error: `UG fetch returned ${res.status}` }, 502);
+    const html = await res.text();
+
+    const tab = parseUGTabPage(html);
+    if (!tab) return jsonResp({ error: 'Could not parse tab content' }, 404);
+    return jsonResp(tab);
+  } catch (e) {
+    return jsonResp({ error: e.message }, 500);
+  }
+}
+
+function parseUGTabPage(html) {
+  const storeMatch = html.match(/class="js-store"\s+data-content="([^"]*)"/);
+  if (!storeMatch) return null;
+
+  try {
+    const decoded = storeMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#039;/g, "'");
+    const data = JSON.parse(decoded);
+
+    const tabView = data?.store?.page?.data?.tab_view;
+    const tabInfo = data?.store?.page?.data?.tab;
+    if (!tabView) return null;
+
+    // wiki_tab.content is the chord chart with [ch]...[/ch] tags around chords
+    let content = tabView?.wiki_tab?.content || '';
+
+    // Strip [ch]...[/ch] tags to get plain text (chords stay, just no tags)
+    content = content.replace(/\[ch\]/g, '').replace(/\[\/ch\]/g, '');
+    // Strip [tab]...[/tab] tags
+    content = content.replace(/\[tab\]/g, '').replace(/\[\/tab\]/g, '');
+
+    return {
+      title: tabInfo?.song_name || '',
+      artist: tabInfo?.artist_name || '',
+      content: content,
+      capo: tabInfo?.capo || 0,
+      tonality: tabInfo?.tonality_name || '',
+      rating: tabInfo?.rating || 0,
+      votes: tabInfo?.votes || 0,
+      url: tabInfo?.tab_url || '',
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ── MIDI → ABC ──────────────────────────────────────────────────────────────
 async function handleMidi2Abc(request) {
   try {
     const buf = await request.arrayBuffer();
