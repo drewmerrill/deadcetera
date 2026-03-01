@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-175637', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-180410', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -2125,7 +2125,7 @@ function gigEnsureOverlay() {
             </div>
         </div>
 
-        <!-- CONTROLS BAR -->
+        <!-- CONTROLS BAR -->\n is replaced below -->
         <div class="gig-controls" id="gigControls">
             <button class="gig-ctrl-btn" onclick="gigAdjustFont(-1)">A−</button>
             <button class="gig-ctrl-btn" onclick="gigAdjustFont(1)">A+</button>
@@ -2134,8 +2134,39 @@ function gigEnsureOverlay() {
             <input type="range" id="gigScrollSpeedSlider" min="1" max="5" value="2"
                 oninput="gigSetScrollSpeed(this.value)" class="gig-speed-slider"
                 style="display:none;width:80px">
+            <div class="gig-ctrl-divider"></div>
+            <button class="gig-ctrl-btn" onclick="gigTranspose(-1)">♭</button>
+            <span class="gig-key-display" id="gigKeyDisplay" style="color:#67e8f9;font-weight:700;min-width:32px;text-align:center;font-size:0.85em">—</span>
+            <button class="gig-ctrl-btn" onclick="gigTranspose(1)">♯</button>
+            <div class="gig-ctrl-divider"></div>
+            <button class="gig-ctrl-btn" id="gigBpmBtn" onclick="gigOpenBpmPanel()" title="BPM / Count-off">🥁</button>
+            <button class="gig-ctrl-btn" id="gigBrainBtn" onclick="gigToggleBrainTuner()" title="Brain Tuner - memorize lyrics">🧠 Full</button>
             <div style="flex:1"></div>
             <button class="gig-ctrl-btn" id="gigControlsToggle" onclick="gigToggleControlsVisibility()">🙈 Hide</button>
+        </div>
+
+        <!-- BPM / COUNT-OFF PANEL (hidden by default) -->
+        <div id="gigBpmPanel" style="display:none;position:absolute;top:90px;left:50%;transform:translateX(-50%);background:rgba(30,30,30,0.97);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:16px;z-index:100002;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.6)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <span style="font-weight:700;color:#e2e8f0;font-size:0.95em">🥁 BPM & Count-off</span>
+                <button onclick="gigCloseBpmPanel()" style="background:none;border:none;color:#94a3b8;font-size:1.2em;cursor:pointer">✕</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                <button class="gig-ctrl-btn" onclick="gigAdjustBpm(-5)">−5</button>
+                <button class="gig-ctrl-btn" onclick="gigAdjustBpm(-1)">−</button>
+                <span id="gigBpmDisplay" style="color:#fbbf24;font-weight:800;font-size:1.5em;min-width:50px;text-align:center">120</span>
+                <button class="gig-ctrl-btn" onclick="gigAdjustBpm(1)">+</button>
+                <button class="gig-ctrl-btn" onclick="gigAdjustBpm(5)">+5</button>
+                <span style="color:#94a3b8;font-size:0.8em">BPM</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="color:#94a3b8;font-size:0.82em;min-width:60px">Count-off:</span>
+                <button class="gig-ctrl-btn" id="gigCountBtn4" onclick="gigSetCountBeats(4)" style="background:rgba(102,126,234,0.3)">4</button>
+                <button class="gig-ctrl-btn" id="gigCountBtn3" onclick="gigSetCountBeats(3)">3</button>
+                <button class="gig-ctrl-btn" id="gigCountBtn2" onclick="gigSetCountBeats(2)">2</button>
+                <button class="gig-ctrl-btn" id="gigCountBtn1" onclick="gigSetCountBeats(1)">1</button>
+            </div>
+            <button onclick="gigCountOff()" style="width:100%;padding:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px;font-weight:700;font-size:1em;cursor:pointer;margin-top:4px">🎵 Count Off!</button>
         </div>
 
         <!-- CHART BODY -->
@@ -2229,8 +2260,9 @@ async function gigLoadSong() {
 
     // Load chart, fallback to rehearsal_crib, fallback to gig_notes
     let chartText = null;
+    let chartData = null;
     try {
-        const chartData = await loadBandDataFromDrive(song.title, 'chart');
+        chartData = await loadBandDataFromDrive(song.title, 'chart');
         if (chartData?.text?.trim()) {
             chartText = chartData.text;
             // Show key/capo in meta
@@ -2265,9 +2297,21 @@ async function gigLoadSong() {
     document.getElementById('gigLoading').style.display = 'none';
 
     if (chartText && chartText.trim()) {
-        document.getElementById('gigChartText').innerHTML = renderChartSmart(chartText);
-        document.getElementById('gigChartText').style.display = 'block';
+        const el = document.getElementById('gigChartText');
+        el._originalText = chartText;
+        el.innerHTML = renderChartSmart(chartText);
+        el.style.display = 'block';
         document.getElementById('gigNoChart').classList.add('hidden');
+        // Reset transpose
+        gigTransposeSteps = 0;
+        gigOriginalKey = chartData?.key || '';
+        gigUpdateKeyDisplay();
+        // Reset brain tuner
+        brainTunerLevel = 0;
+        const brainBtn = document.getElementById('gigBrainBtn');
+        if (brainBtn) { brainBtn.textContent = '🧠 Full'; brainBtn.style.background = ''; }
+        // Load BPM if available
+        if (chartData?.bpm) { gigBpm = parseInt(chartData.bpm) || 120; const d = document.getElementById('gigBpmDisplay'); if (d) d.textContent = gigBpm; }
         gigAutoFitFont();
         // Scroll to top
         document.getElementById('gigBody').scrollTop = 0;
@@ -2357,19 +2401,28 @@ function gigStartScroll(speed) {
     const slider = document.getElementById('gigScrollSpeedSlider');
     if (btn) btn.textContent = '⏸ Scroll';
     if (slider) slider.style.display = 'inline-block';
-    // Speed: pixels per frame at ~60fps
-    const pxPerFrame = [0.3, 0.5, 0.8, 1.2, 2.0][speed - 1] || 0.5;
-    gigScrollTimer = setInterval(() => {
-        if (body) body.scrollTop += pxPerFrame;
-        // Stop at bottom
-        if (body.scrollTop + body.clientHeight >= body.scrollHeight - 5) {
-            gigStopScroll();
+    // Speed: pixels per second
+    const pxPerSecond = [15, 30, 50, 80, 120][speed - 1] || 30;
+    let lastTime = performance.now();
+    
+    function scrollStep(now) {
+        if (!gigScrollTimer) return;
+        const dt = (now - lastTime) / 1000;
+        lastTime = now;
+        if (body) {
+            body.scrollTop += pxPerSecond * dt;
+            if (body.scrollTop + body.clientHeight >= body.scrollHeight - 5) {
+                gigStopScroll();
+                return;
+            }
         }
-    }, 16);
+        gigScrollTimer = requestAnimationFrame(scrollStep);
+    }
+    gigScrollTimer = requestAnimationFrame(scrollStep);
 }
 
 function gigStopScroll() {
-    if (gigScrollTimer) clearInterval(gigScrollTimer);
+    if (gigScrollTimer) cancelAnimationFrame(gigScrollTimer);
     gigScrollTimer = null;
     const btn = document.getElementById('gigScrollBtn');
     const slider = document.getElementById('gigScrollSpeedSlider');
@@ -2382,6 +2435,208 @@ function gigSetScrollSpeed(speed) {
         gigStopScroll();
         gigStartScroll(parseInt(speed));
     }
+}
+
+// ── Transpose ────────────────────────────────────────────────────────────────
+let gigTransposeSteps = 0;
+const NOTES_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NOTES_FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+
+function gigTranspose(delta) {
+    gigTransposeSteps += delta;
+    // Re-render the chart with transposed chords
+    const el = document.getElementById('gigChartText');
+    if (!el || !el._originalText) return;
+    if (gigTransposeSteps === 0) {
+        el.innerHTML = renderChartSmart(el._originalText);
+    } else {
+        el.innerHTML = renderChartSmart(transposeChartText(el._originalText, gigTransposeSteps));
+    }
+    gigUpdateKeyDisplay();
+}
+
+function gigUpdateKeyDisplay() {
+    const display = document.getElementById('gigKeyDisplay');
+    if (!display) return;
+    if (gigTransposeSteps === 0) {
+        display.textContent = gigOriginalKey || '—';
+        display.style.color = '#67e8f9';
+    } else {
+        const label = gigOriginalKey ? transposeNote(gigOriginalKey, gigTransposeSteps) : `${gigTransposeSteps > 0 ? '+' : ''}${gigTransposeSteps}`;
+        display.textContent = label;
+        display.style.color = '#fbbf24';
+    }
+}
+
+let gigOriginalKey = '';
+
+function transposeChartText(text, steps) {
+    return text.split('\n').map(line => {
+        if (isChordLine(line.trim())) {
+            return line.replace(/([A-G][#b]?)(m|maj|min|dim|aug|sus[24]?|add[0-9]*|[0-9]{0,2})?(\/([A-G][#b]?))?/g,
+                (match, root, mod, slashPart, bassNote) => {
+                    let result = transposeNote(root, steps) + (mod || '');
+                    if (bassNote) result += '/' + transposeNote(bassNote, steps);
+                    return result;
+                });
+        }
+        return line;
+    }).join('\n');
+}
+
+function transposeNote(note, steps) {
+    const root = note[0].toUpperCase();
+    const accidental = note.length > 1 ? note[1] : '';
+    let idx = NOTES_SHARP.indexOf(root);
+    if (idx < 0) return note;
+    if (accidental === '#') idx = (idx + 1) % 12;
+    else if (accidental === 'b') idx = (idx + 11) % 12;
+    idx = ((idx + steps) % 12 + 12) % 12;
+    // Use sharps for sharp keys, flats for flat keys
+    return (steps > 0 ? NOTES_SHARP : NOTES_FLAT)[idx];
+}
+
+// ── BPM & Count-off ─────────────────────────────────────────────────────────
+let gigBpm = 120;
+let gigCountBeats = 4;
+let gigCountActive = false;
+
+function gigOpenBpmPanel() {
+    const panel = document.getElementById('gigBpmPanel');
+    if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function gigCloseBpmPanel() {
+    const panel = document.getElementById('gigBpmPanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function gigAdjustBpm(delta) {
+    gigBpm = Math.min(300, Math.max(30, gigBpm + delta));
+    const display = document.getElementById('gigBpmDisplay');
+    if (display) display.textContent = gigBpm;
+}
+
+function gigSetCountBeats(beats) {
+    gigCountBeats = beats;
+    [1,2,3,4].forEach(n => {
+        const btn = document.getElementById(`gigCountBtn${n}`);
+        if (btn) btn.style.background = n === beats ? 'rgba(102,126,234,0.3)' : '';
+    });
+}
+
+function gigCountOff() {
+    if (gigCountActive) return;
+    gigCountActive = true;
+    const interval = 60000 / gigBpm;
+
+    // Create AudioContext for click sounds
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    let beat = 0;
+    const display = document.getElementById('gigBpmDisplay');
+    const originalText = display ? display.textContent : '';
+
+    function tick() {
+        beat++;
+        // Visual flash
+        if (display) {
+            display.textContent = beat;
+            display.style.color = beat === 1 ? '#ef4444' : '#fbbf24';
+        }
+
+        // Audio click
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = beat === 1 ? 1000 : 800;
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.1);
+
+        if (beat >= gigCountBeats) {
+            // Done — restore display
+            setTimeout(() => {
+                if (display) {
+                    display.textContent = gigBpm;
+                    display.style.color = '#fbbf24';
+                }
+                gigCountActive = false;
+                ctx.close();
+            }, interval * 0.8);
+        } else {
+            setTimeout(tick, interval);
+        }
+    }
+
+    tick();
+}
+
+// ── Brain Tuner (Practice Mode) ──────────────────────────────────────────────
+// Progressive lyrics masking: helps memorize lyrics by gradually hiding words
+let brainTunerLevel = 0; // 0=full, 1=hide 25%, 2=hide 50%, 3=hide 75%, 4=chords only
+
+function gigToggleBrainTuner() {
+    brainTunerLevel = (brainTunerLevel + 1) % 5;
+    const btn = document.getElementById('gigBrainBtn');
+    const labels = ['🧠 Full', '🧠 25%', '🧠 50%', '🧠 75%', '🧠 Chords'];
+    if (btn) {
+        btn.textContent = labels[brainTunerLevel];
+        btn.style.background = brainTunerLevel > 0 ? 'rgba(251,191,36,0.2)' : '';
+    }
+    applyBrainTuner();
+}
+
+function applyBrainTuner() {
+    const el = document.getElementById('gigChartText');
+    if (!el) return;
+    // Get all lyric spans and mask a percentage of words
+    const lyricSpans = el.querySelectorAll('.cl-lyric');
+    const lyricOnlys = el.querySelectorAll('.cl-lyric-only');
+    const allLyrics = [...lyricSpans, ...lyricOnlys];
+
+    if (brainTunerLevel === 0) {
+        // Restore all
+        allLyrics.forEach(span => {
+            if (span._originalText !== undefined) {
+                span.textContent = span._originalText;
+            }
+            span.style.opacity = '1';
+        });
+        return;
+    }
+
+    if (brainTunerLevel === 4) {
+        // Chords only — hide all lyrics
+        allLyrics.forEach(span => {
+            if (span._originalText === undefined) span._originalText = span.textContent;
+            span.textContent = span._originalText.replace(/\S/g, '·');
+            span.style.opacity = '0.3';
+        });
+        return;
+    }
+
+    // Partial masking: replace a percentage of words with dots
+    const maskPct = [0, 0.25, 0.5, 0.75][brainTunerLevel];
+    // Use a seeded approach so the same words stay hidden on re-renders
+    allLyrics.forEach((span, idx) => {
+        if (span._originalText === undefined) span._originalText = span.textContent;
+        const text = span._originalText;
+        const words = text.split(/(\s+)/);
+        const masked = words.map((word, wi) => {
+            if (/^\s+$/.test(word)) return word; // preserve whitespace
+            // Deterministic: mask based on position
+            const hash = (idx * 31 + wi * 7) % 100;
+            if (hash < maskPct * 100) {
+                return word.replace(/\S/g, '_');
+            }
+            return word;
+        });
+        span.textContent = masked.join('');
+        span.style.opacity = '1';
+    });
 }
 
 // ── Controls visibility ─────────────────────────────────────────────────────
