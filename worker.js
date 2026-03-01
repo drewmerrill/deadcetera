@@ -67,9 +67,15 @@ async function handleFadr(request, env, path) {
   try {
     const ct = request.headers.get('Content-Type') || 'application/json';
     const body = request.method !== 'GET' ? await request.arrayBuffer() : undefined;
+    if (!env.FADR_API_KEY) return jsonResp({ error: 'FADR_API_KEY not configured in Cloudflare Worker environment' }, 500);
     const res = await fetch(fadrUrl, { method: request.method, headers: { 'Authorization': `Bearer ${env.FADR_API_KEY}`, 'Content-Type': ct }, body });
     const data = await res.arrayBuffer();
-    return cors(new Response(data, { status: res.status, headers: { 'Content-Type': res.headers.get('Content-Type') || 'application/json' } }));
+    // If error, try to include the response body for debugging
+    const respHeaders = { 'Content-Type': res.headers.get('Content-Type') || 'application/json' };
+    if (!res.ok) {
+      try { respHeaders['X-Fadr-Error'] = new TextDecoder().decode(data).substring(0, 500); } catch(e) {}
+    }
+    return cors(new Response(data, { status: res.status, headers: respHeaders }));
   } catch (e) { return jsonResp({ error: e.message }, 500); }
 }
 async function handleArchiveFetch(request) {
@@ -334,86 +340,126 @@ async function handleGeniusSearch(request) {
 }
 
 async function handleGeniusFetch(request) {
-    const { url, id } = await request.json();
-    if (!url && !id) return jsonResp({ error: 'No URL or ID' }, 400);
+    const { url, id, song, artist } = await request.json();
     const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    let description = '';
 
     try {
-        let description = '';
-        
-        // Method 1: Use Genius song API endpoint (if we have ID)
+        // Method 1: Genius song API (gets the "About" section)
         if (id) {
             try {
                 const apiRes = await fetch(`https://genius.com/api/songs/${id}`, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
                 if (apiRes.ok) {
                     const apiData = await apiRes.json();
-                    const song = apiData?.response?.song;
-                    // The "about" description
-                    if (song?.description?.plain) description = song.description.plain;
-                    else if (song?.description?.html) description = song.description.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const s = apiData?.response?.song;
+                    if (s?.description?.plain && s.description.plain !== '?') description = s.description.plain;
+                    else if (s?.description?.html) {
+                        const cleaned = s.description.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                        if (cleaned && cleaned !== '?') description = cleaned;
+                    }
                 }
-            } catch(e) { /* fall through to HTML scraping */ }
+            } catch(e) {}
         }
 
-        // Method 2: Scrape the HTML page for the preloaded state JSON
+        // Method 2: Scrape Genius page for the "About" annotation block
         if (!description && url) {
-            const res = await fetch(url, { headers: { 'User-Agent': ua } });
-            const html = await res.text();
+            try {
+                const res = await fetch(url, { headers: { 'User-Agent': ua } });
+                const html = await res.text();
+                // Look for song_about rich text in the page's embedded data
+                const aboutMatch = html.match(/"description":\{"html":"((?:[^"\\]|\\.)*)"/);
+                if (aboutMatch) {
+                    const decoded = aboutMatch[1].replace(/\\u[\dA-Fa-f]{4}/g, m => String.fromCharCode(parseInt(m.slice(2), 16))).replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                    const cleaned = decoded.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (cleaned && cleaned !== '?' && cleaned.length > 20) description = cleaned;
+                }
+            } catch(e) {}
+        }
 
-            // Genius embeds song data in a <script> tag with window.__PRELOADED_STATE__
-            const preloadMatch = html.match(/window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\('(.+?)'\);/);
-            if (preloadMatch) {
-                try {
-                    // The content is JSON-encoded inside a JS string, so needs double-unescape
-                    const unescaped = preloadMatch[1].replace(/\\'/g, "'").replace(/\\\\"/g, '"').replace(/\\\\/g, '\\');
-                    const state = JSON.parse(unescaped);
-                    // Navigate to song description
-                    const songPage = state?.songPage || {};
-                    const song = songPage?.song || Object.values(state?.entities?.songs || {})[0];
-                    if (song?.description?.plain) description = song.description.plain;
-                    else if (song?.descriptionPreview) description = song.descriptionPreview;
-                } catch(e) { /* JSON parse of preloaded state failed, try other methods */ }
-            }
-            
-            // Method 3: Look for description in meta/JSON-LD  
-            if (!description) {
-                const descMatch = html.match(/"description":\s*\{"plain":\s*"([\s\S]*?)(?<!\\)"/);
-                if (descMatch) description = descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-            }
-            // Method 4: og:description (often just lyrics, but better than nothing)
-            if (!description) {
-                const ogMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*?)"/);
-                if (ogMatch) description = ogMatch[1];
-            }
+        // Method 3: Try Songfacts (specifically for song meanings)
+        if (!description && (song || url)) {
+            try {
+                const songName = song || url.split('/').pop().replace(/-lyrics$/, '').replace(/-/g, ' ');
+                const sfRes = await fetch(`https://www.songfacts.com/facts/${encodeURIComponent((artist || 'grateful-dead').toLowerCase().replace(/\s+/g, '-'))}/${encodeURIComponent(songName.toLowerCase().replace(/\s+/g, '-'))}`, { headers: { 'User-Agent': ua } });
+                if (sfRes.ok) {
+                    const sfHtml = await sfRes.text();
+                    // Extract the factoid content
+                    const factMatch = sfHtml.match(/class="factoid-content[^"]*"[^>]*>([\s\S]*?)<\/div>/);
+                    if (factMatch) {
+                        const cleaned = factMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                        if (cleaned.length > 30) description = cleaned;
+                    }
+                    // Also try the main content area
+                    if (!description) {
+                        const mainMatch = sfHtml.match(/class="facts-content"[^>]*>([\s\S]*?)<\/section>/);
+                        if (mainMatch) {
+                            const cleaned = mainMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                            if (cleaned.length > 30) description = cleaned.substring(0, 2000);
+                        }
+                    }
+                }
+            } catch(e) {}
         }
         
-        return jsonResp({ description: description || '', url });
+        return jsonResp({ description: description || '', url, source: description ? 'found' : 'empty' });
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
     }
 }
 
-// ── Archive.org Search (broadened) ───────────────────────────────────────────
+// ── Archive.org Search (collection-aware) ────────────────────────────────────
 async function handleArchiveSearch(request) {
     const { query, band } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
 
-    // Simple broad search - just search for audio items matching the query
     const searchQuery = encodeURIComponent(query);
-    const url = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+mediatype%3Aaudio&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&fl[]=collection&sort[]=downloads+desc&rows=30&output=json`;
+    
+    // Map band names to Archive.org collection identifiers
+    const collectionMap = {
+        'grateful dead': 'GratefulDead',
+        'jerry garcia': 'JerryGarcia',
+        'jerry garcia band': 'JerryGarcia',
+        'phish': 'Phish',
+        'widespread panic': 'WidespreadPanic'
+    };
+    
+    // Try to detect band from query text
+    let collection = '';
+    const queryLower = query.toLowerCase();
+    for (const [name, col] of Object.entries(collectionMap)) {
+        if (queryLower.includes(name)) { collection = col; break; }
+    }
+    // Default to GratefulDead if no band detected
+    if (!collection) collection = 'GratefulDead';
+    
+    // Search within the specific collection first
+    const collectionFilter = `collection%3A${collection}`;
+    const url1 = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+${collectionFilter}&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=downloads+desc&rows=25&output=json`;
 
     try {
-        const res = await fetch(url);
+        const res = await fetch(url1);
         const data = await res.json();
-        const results = (data?.response?.docs || []).map(d => ({
+        let results = (data?.response?.docs || []);
+        
+        // If few results, also search etree collection
+        if (results.length < 5) {
+            const url2 = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+collection%3Aetree&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=downloads+desc&rows=15&output=json`;
+            const res2 = await fetch(url2);
+            const data2 = await res2.json();
+            const seen = new Set(results.map(r => r.identifier));
+            for (const doc of (data2?.response?.docs || [])) {
+                if (!seen.has(doc.identifier)) results.push(doc);
+            }
+        }
+        
+        return jsonResp({ results: results.map(d => ({
             identifier: d.identifier,
             title: d.title,
             date: d.date,
             rating: d.avg_rating,
             reviews: d.num_reviews,
             source: d.source
-        }));
-        return jsonResp({ results });
+        }))});
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
     }
