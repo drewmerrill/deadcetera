@@ -128,8 +128,7 @@ def stamp_version(version_str, repo_dir):
             html = re.sub(r'<meta name="build-version"[^>]*>', f'<meta name="build-version" content="{version_str}">', html)
         else:
             html = html.replace('<head>', f'<head>\n    <meta name="build-version" content="{version_str}">', 1)
-        # Update hardcoded badge div (visible before JS loads, critical for mobile)
-        html = re.sub(r'(id="buildStamp"[^>]*>)[^<]*', r'\g<1>' + f'BUILD: {version_str}', html)
+        # (build badge removed — build shown in About tab instead)
         open(html_path, 'w').write(html)
 
 def update_version():
