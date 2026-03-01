@@ -338,6 +338,8 @@
     background: #000;
     flex-direction: column;
     overflow: hidden;
+    touch-action: none; /* prevent background scroll on iOS */
+    -webkit-overflow-scrolling: touch;
 }
 #gigOverlay.gig-visible {
     display: flex;
@@ -492,10 +494,13 @@
 .gig-body {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px;
     position: relative;
     -webkit-overflow-scrolling: touch;
     scroll-behavior: auto;
+    touch-action: pan-y; /* allow vertical scroll, prevent horizontal gesture conflicts */
+    overscroll-behavior: contain; /* don't scroll background when hitting top/bottom */
 }
 
 .gig-loading {
@@ -527,6 +532,20 @@
     color: #f59e0b;
     font-weight: 800;
     font-size: 1.05em;
+}
+
+/* Phone optimizations — smaller text, allow wrap since horizontal scroll is awkward */
+@media (max-width: 767px) {
+    .gig-chart-text {
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        padding-right: 8px;
+    }
+    .gig-body {
+        padding: 10px;
+    }
 }
 
 /* Tablet optimizations */
