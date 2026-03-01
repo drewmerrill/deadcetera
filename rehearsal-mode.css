@@ -525,14 +525,13 @@
    while keeping every chord directly above its syllable. */
 
 .cl-line {
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     line-height: 1.3;
 }
 
 .cl-pair {
     display: inline-block;
     vertical-align: top;
-    white-space: nowrap;
 }
 
 .cl-chord {
@@ -541,11 +540,13 @@
     font-weight: 700;
     line-height: 1.4;
     min-height: 1.4em;
+    white-space: nowrap;
 }
 
 .cl-lyric {
     display: block;
     line-height: 1.4;
+    white-space: pre-wrap;
 }
 
 .cl-blank {
