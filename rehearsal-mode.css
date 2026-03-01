@@ -891,3 +891,19 @@
 .pm-src-tab:hover { background: rgba(255,255,255,0.1); color: white; }
 .pm-src-tab.active { background: rgba(102,126,234,0.3); color: white; border-color: rgba(102,126,234,0.5); }
 .pm-src-panel.hidden { display: none; }
+
+/* Palace Walk animations */
+@keyframes pmPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+@keyframes pmFloat {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-8px); }
+}
+#pmPalaceScene {
+    transition: opacity 0.4s ease;
+}
+#pmPalaceWalkOverlay {
+    transition: background 0.8s ease;
+}
