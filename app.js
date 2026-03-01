@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-125332', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-130457', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── BUILD STAMP ───────────────────────────────────────────────────────────────
 // Visible in bottom-left corner on ALL devices including iPhone/iPad
