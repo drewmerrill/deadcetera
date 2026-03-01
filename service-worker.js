@@ -3,7 +3,7 @@
 
 // ── VERSION: bump this string on every deploy to force cache refresh ────────
 // This is automatically kept fresh — the app writes a ?v= timestamp to bust cache
-const CACHE_NAME = 'deadcetera-20260301-172159';
+const CACHE_NAME = 'deadcetera-20260301-172936';
 const BASE = self.registration.scope;
 
 const CACHE_URLS = [
