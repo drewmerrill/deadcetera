@@ -3,7 +3,7 @@
 // Full visual help with overview, feature walkthroughs, and tips
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-180410', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-181901', 'color:#667eea;font-weight:bold;font-size:14px');
 function renderHelpPage(el) {
     el.innerHTML = `
     <div style="max-width:860px;margin:0 auto;padding:0 0 60px 0">
