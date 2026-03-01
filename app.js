@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-131852', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-140004', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1290,6 +1290,7 @@ function showBandResources(songTitle) {
     Promise.all([
         renderRefVersions(songTitle, bandData),
         renderPersonalTabs(songTitle),
+        renderChart(songTitle),
         renderMoisesStems(songTitle, bandData),
         renderPracticeTracks(songTitle, bandData),
         renderHarmoniesEnhanced(songTitle, bandData),
@@ -1501,6 +1502,536 @@ async function loadPersonalTabs(songTitle) {
 }
 
 console.log('📑 Personal tabs system loaded');
+
+// ============================================================================
+// THE CHART — Shared chord chart (replaces Ultimate Guitar)
+// ============================================================================
+
+async function renderChart(songTitle) {
+    const container = document.getElementById('chartContainer');
+    if (!container) return;
+
+    container.innerHTML = '<p style="padding:10px;color:var(--text-dim)">Loading chart…</p>';
+
+    const chartData = await loadBandDataFromDrive(songTitle, 'chart');
+    const chartText = chartData?.text || '';
+    const safeSong = songTitle.replace(/'/g, "\\'");
+
+    if (chartText.trim()) {
+        const meta = [];
+        if (chartData.key) meta.push(`🔑 ${chartData.key}`);
+        if (chartData.capo) meta.push(`Capo ${chartData.capo}`);
+        const metaLine = meta.length ? `<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">${meta.join('  ·  ')}</div>` : '';
+
+        container.innerHTML = `
+            ${metaLine}
+            <div id="chartPreview" style="background:rgba(0,0,0,0.3);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;padding:16px;overflow-x:auto">
+                <pre id="chartPreviewText" style="font-family:'Courier New','Menlo','Monaco',monospace;font-size:14px;line-height:1.7;color:#e2e8f0;white-space:pre-wrap;word-break:break-word;margin:0">${renderChartWithHighlighting(chartText)}</pre>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" onclick="editChart('${safeSong}')">✏️ Edit Chart</button>
+                <button class="btn btn-ghost btn-sm" onclick="openGigMode('${safeSong}')" style="color:#10b981;border-color:rgba(16,185,129,0.3)">🎸 Gig Mode</button>
+                <button class="btn btn-ghost btn-sm" onclick="openRehearsalMode('${safeSong}')" style="color:#667eea;border-color:rgba(102,126,234,0.3)">🔄 Rehearsal Mode</button>
+            </div>
+        `;
+    } else {
+        // Check if there's a rehearsal_crib we can suggest importing
+        const crib = await loadBandDataFromDrive(songTitle, 'rehearsal_crib');
+        const importBtn = crib ? `<button class="btn btn-ghost btn-sm" onclick="importCribToChart('${safeSong}')" style="margin-top:8px">📥 Import from Rehearsal Crib</button>` : '';
+
+        container.innerHTML = `
+            <div style="text-align:center;padding:24px 16px;color:var(--text-dim)">
+                <div style="font-size:2em;margin-bottom:8px">🎸</div>
+                <div style="font-size:0.95em;font-weight:600;color:var(--text-muted);margin-bottom:6px">No chord chart yet</div>
+                <div style="font-size:0.82em;margin-bottom:14px">Paste from Ultimate Guitar or type your own</div>
+                <button class="btn btn-primary" onclick="editChart('${safeSong}')">✏️ Add Chart</button>
+                ${importBtn}
+            </div>
+        `;
+    }
+}
+
+function renderChartWithHighlighting(text) {
+    // Highlight chord lines vs lyric lines
+    // A chord line is one where most "words" look like chords (A-G with optional modifiers)
+    return text.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return '';
+        // Section headers: [Verse], [Chorus], etc.
+        if (/^\[.+\]$/.test(trimmed)) {
+            return `<span class="chart-section-header">${escapeHtml(trimmed)}</span>`;
+        }
+        // Chord line detection: most tokens match chord pattern
+        if (isChordLine(trimmed)) {
+            return `<span class="chart-chord-line">${escapeHtml(line)}</span>`;
+        }
+        // Regular lyric line
+        return escapeHtml(line);
+    }).join('\n');
+}
+
+function isChordLine(line) {
+    // Common chord pattern: letter A-G, optional #/b, optional m/maj/min/dim/aug/sus/add/7/9/11/13
+    const chordPattern = /^[A-G][#b]?(m|maj|min|dim|aug|sus[24]?|add[0-9]*|[0-9]{0,2})(\/[A-G][#b]?)?$/;
+    const tokens = line.trim().split(/\s+/).filter(t => t.length > 0);
+    if (tokens.length === 0) return false;
+    // Consider it a chord line if >60% of tokens look like chords and there's at least one
+    const chordCount = tokens.filter(t => chordPattern.test(t) || t === '|' || t === '||' || t === '/' || t === '-').length;
+    return chordCount / tokens.length >= 0.6 && chordCount >= 1;
+}
+
+function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function editChart(songTitle) {
+    const container = document.getElementById('chartContainer');
+    if (!container) return;
+
+    const chartData = await loadBandDataFromDrive(songTitle, 'chart') || {};
+    const chartText = chartData?.text || '';
+    const safeSong = songTitle.replace(/'/g, "\\'");
+
+    container.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:0.82em;color:var(--text-dim);line-height:1.4">
+                Paste chord chart from Ultimate Guitar or type your own.<br>
+                Use <code>[Verse]</code>, <code>[Chorus]</code>, etc. for section headers.<br>
+                Chords go on lines above lyrics — just like Ultimate Guitar.
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <div style="flex:1;min-width:120px">
+                    <label style="display:block;font-size:0.78em;color:var(--text-dim);margin-bottom:3px;font-weight:600">Key</label>
+                    <input type="text" id="chartKeyInput" value="${chartData.key || ''}" placeholder="e.g. G, Am" class="app-input" style="font-size:0.85em">
+                </div>
+                <div style="flex:1;min-width:120px">
+                    <label style="display:block;font-size:0.78em;color:var(--text-dim);margin-bottom:3px;font-weight:600">Capo</label>
+                    <input type="number" id="chartCapoInput" value="${chartData.capo || 0}" min="0" max="12" class="app-input" style="font-size:0.85em">
+                </div>
+            </div>
+            <textarea id="chartEditTextarea" rows="20"
+                style="width:100%;background:rgba(0,0,0,0.3);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:8px;color:#e2e8f0;font-family:'Courier New','Menlo','Monaco',monospace;font-size:14px;line-height:1.6;padding:12px;resize:vertical;box-sizing:border-box;min-height:300px"
+                placeholder="[Intro]&#10;G  C  D  G&#10;&#10;[Verse 1]&#10;G            C          D&#10;Truckin', got my chips cashed in&#10;G            C          D&#10;Keep truckin', like the do-dah man">${chartText}</textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary" onclick="saveChart('${safeSong}')">💾 Save Chart</button>
+                <button class="btn btn-ghost" onclick="renderChart('${safeSong}')">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('chartEditTextarea').focus();
+}
+
+async function saveChart(songTitle) {
+    const text = document.getElementById('chartEditTextarea')?.value || '';
+    const key = document.getElementById('chartKeyInput')?.value?.trim() || '';
+    const capo = parseInt(document.getElementById('chartCapoInput')?.value) || 0;
+    const member = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'unknown';
+
+    const chartData = {
+        text: text,
+        key: key,
+        capo: capo,
+        updatedBy: member,
+        updatedAt: new Date().toISOString()
+    };
+
+    try {
+        await saveBandDataToDrive(songTitle, 'chart', chartData);
+        showToast('✅ Chart saved!');
+        await renderChart(songTitle);
+    } catch(e) {
+        showToast('❌ Save failed — are you signed in?');
+    }
+}
+
+async function importCribToChart(songTitle) {
+    const crib = await loadBandDataFromDrive(songTitle, 'rehearsal_crib');
+    if (!crib) { showToast('No crib data found'); return; }
+    const member = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'unknown';
+    const chartData = {
+        text: typeof crib === 'string' ? crib : JSON.stringify(crib),
+        key: '',
+        capo: 0,
+        updatedBy: member,
+        updatedAt: new Date().toISOString()
+    };
+    await saveBandDataToDrive(songTitle, 'chart', chartData);
+    showToast('✅ Imported crib notes as chart!');
+    await renderChart(songTitle);
+}
+
+console.log('🎸 Chart system loaded');
+
+// ============================================================================
+// GIG MODE — Full-screen, iPad-optimized, stage-ready chord chart view
+// ============================================================================
+
+let gigQueue = [];     // [{title, band}, ...]
+let gigIndex = 0;      // current position in queue
+let gigScrollTimer = null;
+let gigScrollSpeed = 0;  // 0 = off, 1-5 = speed levels
+let gigWakeLock = null;
+
+function openGigMode(songTitle) {
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : [])
+        .find(s => s.title === songTitle);
+    gigQueue = [{ title: songTitle, band: songData?.band || '' }];
+    gigIndex = 0;
+    gigShow();
+}
+
+async function openGigModeFromSetlist(setlistId) {
+    showToast('Loading setlist…', 1200);
+    const setlists = await loadBandDataFromDrive('_band', 'setlists') || {};
+    const setlist = setlists[setlistId];
+    if (!setlist || !setlist.songs || setlist.songs.length === 0) {
+        showToast('⚠️ No songs in this setlist');
+        return;
+    }
+    gigQueue = toArray(setlist.songs).map(s => ({
+        title: typeof s === 'string' ? s : s.title,
+        band: typeof s === 'string' ? '' : (s.band || '')
+    }));
+    gigIndex = 0;
+    gigShow();
+}
+
+function gigEnsureOverlay() {
+    if (document.getElementById('gigOverlay')) return;
+
+    const el = document.createElement('div');
+    el.id = 'gigOverlay';
+    el.innerHTML = `
+        <!-- HEADER -->
+        <div class="gig-header">
+            <button class="gig-close" onclick="closeGigMode()" title="Close (Esc)">✕</button>
+            <div class="gig-title-block">
+                <div class="gig-song-title" id="gigSongTitle">Song</div>
+                <div class="gig-song-meta" id="gigSongMeta"></div>
+            </div>
+            <div class="gig-nav-block">
+                <button class="gig-nav-btn" id="gigPrevBtn" onclick="gigNavigate(-1)">‹</button>
+                <span class="gig-position" id="gigPosition"></span>
+                <button class="gig-nav-btn" id="gigNextBtn" onclick="gigNavigate(1)">›</button>
+            </div>
+        </div>
+
+        <!-- CONTROLS BAR -->
+        <div class="gig-controls" id="gigControls">
+            <button class="gig-ctrl-btn" onclick="gigAdjustFont(-1)">A−</button>
+            <button class="gig-ctrl-btn" onclick="gigAdjustFont(1)">A+</button>
+            <div class="gig-ctrl-divider"></div>
+            <button class="gig-ctrl-btn" id="gigScrollBtn" onclick="gigToggleScroll()">▶ Scroll</button>
+            <input type="range" id="gigScrollSpeedSlider" min="1" max="5" value="2"
+                oninput="gigSetScrollSpeed(this.value)" class="gig-speed-slider"
+                style="display:none;width:80px">
+            <div style="flex:1"></div>
+            <button class="gig-ctrl-btn" id="gigControlsToggle" onclick="gigToggleControlsVisibility()">🙈 Hide</button>
+        </div>
+
+        <!-- CHART BODY -->
+        <div class="gig-body" id="gigBody">
+            <div class="gig-loading" id="gigLoading">Loading…</div>
+            <pre class="gig-chart-text" id="gigChartText"></pre>
+            <div class="gig-no-chart hidden" id="gigNoChart">
+                <div style="font-size:2.5em;margin-bottom:12px">🎸</div>
+                <div style="font-size:1.1em;font-weight:600;color:#94a3b8;margin-bottom:8px">No chart for this song yet</div>
+                <div style="font-size:0.85em;color:#64748b">Add one from the song detail → The Chart section</div>
+            </div>
+        </div>
+
+        <!-- SETLIST BAR (bottom, tap to show song list) -->
+        <div class="gig-setlist-bar hidden" id="gigSetlistBar">
+            <div class="gig-setlist-pills" id="gigSetlistPills"></div>
+        </div>
+    `;
+    document.body.appendChild(el);
+
+    // Keyboard nav
+    document.addEventListener('keydown', gigKeyHandler);
+
+    // Swipe support
+    let gigStartX = 0;
+    el.addEventListener('touchstart', e => {
+        gigStartX = e.touches[0].clientX;
+    }, { passive: true });
+    el.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - gigStartX;
+        if (Math.abs(dx) > 80) gigNavigate(dx < 0 ? 1 : -1);
+    }, { passive: true });
+}
+
+function gigShow() {
+    gigEnsureOverlay();
+    const overlay = document.getElementById('gigOverlay');
+    overlay.classList.add('gig-visible');
+    document.body.style.overflow = 'hidden';
+    gigRequestWakeLock();
+    gigLoadSong();
+
+    // Show setlist bar if queue > 1
+    if (gigQueue.length > 1) {
+        document.getElementById('gigSetlistBar').classList.remove('hidden');
+        gigRenderSetlistPills();
+    } else {
+        document.getElementById('gigSetlistBar').classList.add('hidden');
+    }
+}
+
+function closeGigMode() {
+    const overlay = document.getElementById('gigOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('gig-visible');
+    document.body.style.overflow = '';
+    gigStopScroll();
+    gigReleaseWakeLock();
+}
+
+async function gigLoadSong() {
+    const song = gigQueue[gigIndex];
+    if (!song) return;
+
+    // Header
+    document.getElementById('gigSongTitle').textContent = song.title;
+    document.getElementById('gigPosition').textContent =
+        gigQueue.length > 1 ? `${gigIndex + 1} / ${gigQueue.length}` : '';
+    document.getElementById('gigPrevBtn').style.opacity = gigIndex > 0 ? '1' : '0.25';
+    document.getElementById('gigNextBtn').style.opacity = gigIndex < gigQueue.length - 1 ? '1' : '0.25';
+
+    // Meta
+    document.getElementById('gigSongMeta').textContent = '';
+    gigLoadMeta(song.title);
+
+    // Reset
+    document.getElementById('gigLoading').style.display = 'block';
+    document.getElementById('gigChartText').style.display = 'none';
+    document.getElementById('gigNoChart').classList.add('hidden');
+    gigStopScroll();
+
+    // Load chart, fallback to rehearsal_crib, fallback to gig_notes
+    let chartText = null;
+    try {
+        const chartData = await loadBandDataFromDrive(song.title, 'chart');
+        if (chartData?.text?.trim()) {
+            chartText = chartData.text;
+            // Show key/capo in meta
+            const meta = [];
+            if (chartData.key) meta.push(`🔑 ${chartData.key}`);
+            if (chartData.capo) meta.push(`Capo ${chartData.capo}`);
+            const existing = document.getElementById('gigSongMeta').textContent;
+            if (meta.length && existing) {
+                document.getElementById('gigSongMeta').textContent = existing + '  ·  ' + meta.join('  ·  ');
+            } else if (meta.length) {
+                document.getElementById('gigSongMeta').textContent = meta.join('  ·  ');
+            }
+        }
+    } catch(e) {}
+
+    // Fallback: rehearsal_crib
+    if (!chartText) {
+        try {
+            const crib = await loadBandDataFromDrive(song.title, 'rehearsal_crib');
+            if (crib && typeof crib === 'string' && crib.trim()) chartText = crib;
+        } catch(e) {}
+    }
+
+    // Fallback: gig_notes joined
+    if (!chartText) {
+        try {
+            const gigNotes = toArray(await loadBandDataFromDrive(song.title, 'gig_notes') || []);
+            if (gigNotes.length > 0) chartText = gigNotes.join('\n');
+        } catch(e) {}
+    }
+
+    document.getElementById('gigLoading').style.display = 'none';
+
+    if (chartText && chartText.trim()) {
+        document.getElementById('gigChartText').innerHTML = renderChartWithHighlighting(chartText);
+        document.getElementById('gigChartText').style.display = 'block';
+        document.getElementById('gigNoChart').classList.add('hidden');
+        gigAutoFitFont();
+        // Scroll to top
+        document.getElementById('gigBody').scrollTop = 0;
+    } else {
+        document.getElementById('gigChartText').style.display = 'none';
+        document.getElementById('gigNoChart').classList.remove('hidden');
+    }
+
+    // Update setlist pills
+    if (gigQueue.length > 1) gigRenderSetlistPills();
+}
+
+async function gigLoadMeta(songTitle) {
+    try {
+        const meta = await loadBandDataFromDrive(songTitle, 'song_meta') || {};
+        const parts = [];
+        if (meta.key) parts.push(`🔑 ${meta.key}`);
+        if (meta.bpm) parts.push(`🥁 ${meta.bpm} BPM`);
+        if (meta.leadSinger) parts.push(`🎤 ${meta.leadSinger.charAt(0).toUpperCase() + meta.leadSinger.slice(1)}`);
+        document.getElementById('gigSongMeta').textContent = parts.join('  ·  ');
+    } catch(e) {}
+}
+
+function gigNavigate(dir) {
+    const newIdx = gigIndex + dir;
+    if (newIdx < 0 || newIdx >= gigQueue.length) return;
+    gigIndex = newIdx;
+    gigLoadSong();
+}
+
+function gigKeyHandler(e) {
+    const overlay = document.getElementById('gigOverlay');
+    if (!overlay?.classList.contains('gig-visible')) return;
+    if (e.key === 'Escape')     { closeGigMode(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { gigNavigate(1);  e.preventDefault(); }
+    if (e.key === 'ArrowLeft')  { gigNavigate(-1); e.preventDefault(); }
+    if (e.key === ' ')          { gigToggleScroll(); e.preventDefault(); }
+}
+
+// ── Font sizing ──────────────────────────────────────────────────────────────
+let gigFontSize = 18;
+
+function gigAdjustFont(delta) {
+    gigFontSize = Math.min(36, Math.max(10, gigFontSize + delta * 2));
+    document.getElementById('gigChartText').style.fontSize = gigFontSize + 'px';
+}
+
+function gigAutoFitFont() {
+    const isTablet = window.innerWidth >= 768;
+    if (!isTablet) {
+        gigFontSize = 18;
+        document.getElementById('gigChartText').style.fontSize = gigFontSize + 'px';
+        return;
+    }
+    // iPad: binary-search font size that fits without scrolling
+    const body = document.getElementById('gigBody');
+    const pre = document.getElementById('gigChartText');
+    const availH = body.clientHeight - 32;
+    let lo = 12, hi = 32, best = 16;
+    for (let i = 0; i < 8; i++) {
+        const mid = Math.floor((lo + hi) / 2);
+        pre.style.fontSize = mid + 'px';
+        if (pre.scrollHeight <= availH) { best = mid; lo = mid + 1; }
+        else { hi = mid - 1; }
+    }
+    gigFontSize = best;
+    pre.style.fontSize = gigFontSize + 'px';
+}
+
+// ── Auto-scroll ──────────────────────────────────────────────────────────────
+function gigToggleScroll() {
+    if (gigScrollTimer) {
+        gigStopScroll();
+    } else {
+        const speed = parseInt(document.getElementById('gigScrollSpeedSlider')?.value || '2');
+        gigStartScroll(speed);
+    }
+}
+
+function gigStartScroll(speed) {
+    gigScrollSpeed = speed;
+    const body = document.getElementById('gigBody');
+    const btn = document.getElementById('gigScrollBtn');
+    const slider = document.getElementById('gigScrollSpeedSlider');
+    if (btn) btn.textContent = '⏸ Scroll';
+    if (slider) slider.style.display = 'inline-block';
+    // Speed: pixels per frame at ~60fps
+    const pxPerFrame = [0.3, 0.5, 0.8, 1.2, 2.0][speed - 1] || 0.5;
+    gigScrollTimer = setInterval(() => {
+        if (body) body.scrollTop += pxPerFrame;
+        // Stop at bottom
+        if (body.scrollTop + body.clientHeight >= body.scrollHeight - 5) {
+            gigStopScroll();
+        }
+    }, 16);
+}
+
+function gigStopScroll() {
+    if (gigScrollTimer) clearInterval(gigScrollTimer);
+    gigScrollTimer = null;
+    const btn = document.getElementById('gigScrollBtn');
+    const slider = document.getElementById('gigScrollSpeedSlider');
+    if (btn) btn.textContent = '▶ Scroll';
+    if (slider) slider.style.display = 'none';
+}
+
+function gigSetScrollSpeed(speed) {
+    if (gigScrollTimer) {
+        gigStopScroll();
+        gigStartScroll(parseInt(speed));
+    }
+}
+
+// ── Controls visibility ─────────────────────────────────────────────────────
+function gigToggleControlsVisibility() {
+    const controls = document.getElementById('gigControls');
+    const btn = document.getElementById('gigControlsToggle');
+    if (controls.classList.contains('gig-controls-hidden')) {
+        controls.classList.remove('gig-controls-hidden');
+        if (btn) btn.textContent = '🙈 Hide';
+    } else {
+        controls.classList.add('gig-controls-hidden');
+        if (btn) btn.textContent = '👁 Show';
+    }
+}
+
+// ── Setlist pills ────────────────────────────────────────────────────────────
+function gigRenderSetlistPills() {
+    const container = document.getElementById('gigSetlistPills');
+    if (!container) return;
+    container.innerHTML = gigQueue.map((song, i) => `
+        <button class="gig-setlist-pill ${i === gigIndex ? 'active' : ''}"
+            onclick="gigIndex=${i};gigLoadSong()">${i + 1}. ${song.title}</button>
+    `).join('');
+    // Scroll active pill into view
+    setTimeout(() => {
+        const active = container.querySelector('.gig-setlist-pill.active');
+        if (active) active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }, 50);
+}
+
+// ── Wake Lock (keep screen on) ──────────────────────────────────────────────
+async function gigRequestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            gigWakeLock = await navigator.wakeLock.request('screen');
+            console.log('🔒 Wake lock acquired');
+        }
+    } catch(e) {
+        console.log('Wake lock not available:', e.message);
+    }
+}
+
+function gigReleaseWakeLock() {
+    if (gigWakeLock) {
+        gigWakeLock.release().then(() => {
+            console.log('🔓 Wake lock released');
+            gigWakeLock = null;
+        }).catch(() => {});
+    }
+}
+
+async function openGigModeFromSetlistIndex(setlistIndex) {
+    showToast('Loading setlist…', 1200);
+    const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const sl = allSetlists[setlistIndex];
+    if (!sl) { showToast('⚠️ Setlist not found'); return; }
+    const songs = [];
+    (sl.sets || []).forEach(set => {
+        (set.songs || []).forEach(item => {
+            const title = typeof item === 'string' ? item : item.title;
+            const band = typeof item === 'string' ? '' : (item.band || '');
+            if (title) songs.push({ title, band });
+        });
+    });
+    if (songs.length === 0) { showToast('⚠️ No songs in this setlist'); return; }
+    gigQueue = songs;
+    gigIndex = 0;
+    gigShow();
+}
+
+console.log('🎸 Gig Mode loaded');
 
 // ============================================================================
 // MOISES STEMS
@@ -8283,6 +8814,7 @@ async function loadSetlists() {
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="openGigModeFromSetlistIndex(${i})" title="Gig Mode" style="color:#10b981">🎸</button>
                 <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${i})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
                 <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
