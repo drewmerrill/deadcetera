@@ -37,6 +37,10 @@ export default {
       return handleAudioTrim(request);
     if (path === '/youtube-search' && request.method === 'POST')
       return handleYouTubeSearch(request);
+    if (path === '/youtube-audio' && request.method === 'POST')
+      return handleYouTubeAudio(request);
+    if (path === '/fadr-diag' && request.method === 'GET')
+      return handleFadrDiag(request, env);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -63,22 +67,65 @@ async function handleClaude(request, env) {
   } catch (e) { return jsonResp({ error: e.message }, 500); }
 }
 async function handleFadr(request, env, path) {
-  const fadrUrl = `https://api.fadr.com${path.replace('/fadr', '')}`;  
+  const fadrPath = path.replace('/fadr', '');
+  const fadrUrl = 'https://api.fadr.com' + fadrPath;
+  const apiKey = env.FADR_API_KEY;
+  
+  if (!apiKey) return jsonResp({ error: 'FADR_API_KEY not set in env' }, 500);
+  
   try {
     const ct = request.headers.get('Content-Type') || 'application/json';
     const body = request.method !== 'GET' ? await request.arrayBuffer() : undefined;
-    const rawKey = String(env.FADR_API_KEY || '');
-    const apiKey = rawKey.replace(/[^a-zA-Z0-9._\-]/g, '').trim();
-    if (!apiKey || apiKey.length < 10) return jsonResp({ error: 'FADR_API_KEY missing or invalid. rawLen='+rawKey.length+' cleanLen='+apiKey.length }, 500);
-    const h = new Headers();
-    h.set('Content-Type', ct);
-    h.set('Authorization', 'Bearer ' + apiKey);
-    const res = await fetch(fadrUrl, { method: request.method, headers: h, body });
+    
+    // Create a new Request object instead of passing headers as plain object
+    const fadrReq = new Request(fadrUrl, {
+      method: request.method,
+      body: body,
+      headers: {
+        'Content-Type': ct
+      }
+    });
+    // Set Authorization header separately on the Request
+    const keyStr = '' + apiKey;
+    fadrReq.headers.set('Authorization', 'Bearer ' + keyStr);
+    
+    const res = await fetch(fadrReq);
+    
     const data = await res.arrayBuffer();
-    const rh = { 'Content-Type': res.headers.get('Content-Type') || 'application/json' };
-    if (!res.ok) { try { rh['X-Fadr-Error'] = new TextDecoder().decode(data).substring(0, 500); } catch(e) {} }
-    return cors(new Response(data, { status: res.status, headers: rh }));
-  } catch (e) { return jsonResp({ error: e.message + ' | path='+path }, 500); }
+    const rh = new Headers({ 'Content-Type': res.headers.get('Content-Type') || 'application/json' });
+    rh.set('Access-Control-Allow-Origin', '*');
+    if (!res.ok) {
+      try { rh.set('X-Fadr-Error', new TextDecoder().decode(data).substring(0, 200)); } catch(e) {}
+    }
+    return new Response(data, { status: res.status, headers: rh });
+  } catch (e) {
+    // Last resort: try the request without the Authorization header to test connectivity
+    try {
+      const testRes = await fetch(fadrUrl, { method: 'GET' });
+      return jsonResp({ 
+        error: e.message,
+        hint: 'Auth header failed. Fadr connectivity OK (got ' + testRes.status + '). Key length=' + String(apiKey).length,
+        path: path
+      }, 500);
+    } catch(e2) {
+      return jsonResp({ error: e.message, connectError: e2.message, path: path }, 500);
+    }
+  }
+}
+async function handleFadrDiag(request, env) {
+  const rawKey = String(env.FADR_API_KEY || '');
+  const cleaned = rawKey.replace(/[\x00-\x1F\x7F]/g, '').trim();
+  return jsonResp({
+    rawLength: rawKey.length,
+    cleanLength: cleaned.length,
+    first4: cleaned.substring(0, 4),
+    last4: cleaned.substring(cleaned.length - 4),
+    hasNewline: rawKey.includes('\n'),
+    hasReturn: rawKey.includes('\r'),
+    hasSpace: rawKey.includes(' '),
+    charCodes: [...rawKey].slice(0, 10).map(c => c.charCodeAt(0)),
+    keyType: typeof env.FADR_API_KEY
+  });
 }
 async function handleArchiveFetch(request) {
   try {
@@ -414,67 +461,110 @@ async function handleArchiveSearch(request) {
     const { query, band } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
 
-    const collectionMap = {
-        'grateful dead': 'GratefulDead',
-        'jerry garcia': 'JerryGarcia', 
-        'jerry garcia band': 'JerryGarcia',
-        'phish': 'Phish',
-        'widespread panic': 'WidespreadPanic'
+    const bandCollections = {
+        'grateful dead':    ['GratefulDead'],
+        'the grateful dead':['GratefulDead'],
+        'dead':             ['GratefulDead'],
+        'gd':               ['GratefulDead'],
+        'jerry garcia':     ['JerryGarcia', 'JerryGarciaBand'],
+        'jgb':              ['JerryGarcia', 'JerryGarciaBand'],
+        'jerry garcia band':['JerryGarcia', 'JerryGarciaBand'],
+        'phish':            ['Phish'],
+        'widespread panic': ['WidespreadPanic'],
+        'wsp':              ['WidespreadPanic'],
+        'allman brothers':  ['AllmanBrothersBand'],
+        'allman brothers band': ['AllmanBrothersBand'],
+        'abb':              ['AllmanBrothersBand']
     };
-    
-    let collection = '';
-    let songQuery = query;
-    const queryLower = query.toLowerCase();
-    for (const [name, col] of Object.entries(collectionMap)) {
+
+    let collections = ['GratefulDead'];
+    let songQuery = query.trim();
+    const queryLower = query.toLowerCase().trim();
+
+    const bandNames = Object.keys(bandCollections).sort((a, b) => b.length - a.length);
+    for (const name of bandNames) {
         if (queryLower.includes(name)) {
-            collection = col;
+            collections = bandCollections[name];
             songQuery = query.replace(new RegExp(name, 'gi'), '').trim();
             break;
         }
     }
-    if (!collection && band) {
-        for (const [name, col] of Object.entries(collectionMap)) {
-            if (band.toLowerCase().includes(name)) { collection = col; break; }
-        }
-    }
-    if (!collection) collection = 'GratefulDead';
     if (!songQuery) songQuery = query;
-    
-    const encoded = encodeURIComponent(songQuery);
-    
+
+    // Build collection filter
+    const collPart = collections.length === 1
+        ? 'collection:' + collections[0]
+        : 'collection:(' + collections.join('+OR+') + ')';
+
+    // Encode ONLY the song name for the query value
+    const songEncoded = encodeURIComponent('"' + songQuery + '"');
+
+    // Strategy 1: description search (setlist contains song name)
+    const url1 = 'https://archive.org/advancedsearch.php?q=' + collPart + '+AND+description:' + songEncoded +
+        '&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=downloads&fl[]=source' +
+        '&sort[]=avg_rating+desc&sort[]=downloads+desc&rows=30&output=json';
+
     try {
-        // Use full-text search which searches track names within shows
-        const url = `https://archive.org/advancedsearch.php?q=collection%3A${collection}+AND+format%3A(VBR+MP3+OR+Ogg+Vorbis+OR+Flac)+AND+(title%3A${encoded}+OR+${encoded})&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=avg_rating+desc&sort[]=downloads+desc&rows=30&output=json`;
-        
-        const res = await fetch(url);
-        const data = await res.json();
-        let results = (data?.response?.docs || []);
-        
-        // If still few results, try broader search
-        if (results.length < 3) {
-            const url2 = `https://archive.org/advancedsearch.php?q=${encoded}+AND+collection%3A${collection}&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&sort[]=downloads+desc&rows=20&output=json`;
-            const res2 = await fetch(url2);
-            const data2 = await res2.json();
-            const seen = new Set(results.map(r => r.identifier));
-            for (const doc of (data2?.response?.docs || [])) {
-                if (!seen.has(doc.identifier)) results.push(doc);
+        let results = [];
+        try {
+            const res1 = await fetch(url1);
+            if (res1.ok) {
+                const data1 = await res1.json();
+                results = data1?.response?.docs || [];
             }
+        } catch(e) {}
+
+        // Strategy 2: title/fulltext search as fallback
+        if (results.length < 10) {
+            const url2 = 'https://archive.org/advancedsearch.php?q=' + collPart + '+AND+' + songEncoded +
+                '&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=downloads&fl[]=source' +
+                '&sort[]=downloads+desc&rows=20&output=json';
+            try {
+                const res2 = await fetch(url2);
+                if (res2.ok) {
+                    const data2 = await res2.json();
+                    const seen = new Set(results.map(r => r.identifier));
+                    for (const doc of (data2?.response?.docs || [])) {
+                        if (!seen.has(doc.identifier)) results.push(doc);
+                    }
+                }
+            } catch(e) {}
         }
-        
-        return jsonResp({ results: results.map(d => ({
-            identifier: d.identifier,
-            title: d.title,
-            date: d.date,
-            rating: d.avg_rating,
-            reviews: d.num_reviews,
-            source: d.source
-        }))});
+
+        // Strategy 3: Also try without quotes for partial matches
+        if (results.length < 5) {
+            const songWords = songQuery.split(/\s+/).map(w => encodeURIComponent(w)).join('+');
+            const url3 = 'https://archive.org/advancedsearch.php?q=' + collPart + '+AND+' + songWords +
+                '&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=downloads' +
+                '&sort[]=downloads+desc&rows=15&output=json';
+            try {
+                const res3 = await fetch(url3);
+                if (res3.ok) {
+                    const data3 = await res3.json();
+                    const seen = new Set(results.map(r => r.identifier));
+                    for (const doc of (data3?.response?.docs || [])) {
+                        if (!seen.has(doc.identifier)) results.push(doc);
+                    }
+                }
+            } catch(e) {}
+        }
+
+        return jsonResp({
+            results: results.map(d => ({
+                identifier: d.identifier,
+                title: d.title,
+                date: d.date,
+                rating: d.avg_rating,
+                reviews: d.num_reviews,
+                downloads: d.downloads,
+                source: d.source
+            })),
+            total: results.length
+        });
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
     }
 }
-
-// ── Archive.org show file listing ────────────────────────────────────────────
 async function handleArchiveFiles(request) {
     const { identifier } = await request.json();
     if (!identifier) return jsonResp({ error: 'No identifier' }, 400);
@@ -526,50 +616,171 @@ async function handleAudioTrim(request) {
 async function handleYouTubeSearch(request) {
     const { query } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
-    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
     try {
-        // Scrape YouTube search results page directly
-        const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-        const res = await fetch(ytUrl, { headers: { 'User-Agent': ua, 'Accept-Language': 'en-US,en;q=0.9' } });
-        if (!res.ok) return jsonResp({ results: [], error: 'YouTube returned ' + res.status });
-        const html = await res.text();
-        
-        // YouTube embeds search data in ytInitialData
-        const dataMatch = html.match(/var ytInitialData = ({.+?});<\/script>/);
-        if (!dataMatch) return jsonResp({ results: [], error: 'Could not parse YouTube page' });
-        
-        try {
-            const ytData = JSON.parse(dataMatch[1]);
-            const contents = ytData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
-            
-            const results = contents
-                .filter(c => c.videoRenderer)
-                .slice(0, 10)
-                .map(c => {
-                    const v = c.videoRenderer;
-                    return {
-                        title: v.title?.runs?.[0]?.text || '',
-                        videoId: v.videoId,
-                        author: v.ownerText?.runs?.[0]?.text || '',
-                        lengthSeconds: parseDuration(v.lengthText?.simpleText || ''),
-                        url: 'https://www.youtube.com/watch?v=' + v.videoId,
-                        thumbnail: v.thumbnail?.thumbnails?.[0]?.url || ''
-                    };
-                });
-            return jsonResp({ results });
-        } catch(e) {
-            return jsonResp({ results: [], error: 'JSON parse failed: ' + e.message });
+        // YouTube search - must set cookie consent to bypass GDPR page
+        const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query) + '&sp=EgIQAQ%253D%253D';
+        const res = await fetch(ytUrl, {
+            headers: {
+                'User-Agent': ua,
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Cookie': 'CONSENT=PENDING+999; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjMxMDE2LjA3X3AxGgJlbiACGgYIgJnPqgY'
+            }
+        });
+
+        if (!res.ok) {
+            return jsonResp({ results: [], error: 'YouTube HTTP ' + res.status });
         }
+
+        const html = await res.text();
+
+        // Try multiple regex patterns for ytInitialData
+        let jsonStr = null;
+        const patterns = [
+            /var\s+ytInitialData\s*=\s*({.+?})\s*;\s*<\/script/s,
+            /ytInitialData\s*=\s*({.+?})\s*;\s*<\/script/s,
+            /window\["ytInitialData"\]\s*=\s*({.+?})\s*;/s,
+            /ytInitialData\s*=\s*'({.+?})'/s
+        ];
+
+        for (const pat of patterns) {
+            const m = html.match(pat);
+            if (m) { jsonStr = m[1]; break; }
+        }
+
+        if (!jsonStr) {
+            // Debug: check what we got back
+            const hasConsent = html.includes('consent') || html.includes('CONSENT');
+            const hasResults = html.includes('videoRenderer');
+            const htmlSnippet = html.substring(0, 300);
+            return jsonResp({
+                results: [],
+                error: 'Could not find ytInitialData',
+                debug: { htmlLength: html.length, hasConsent, hasResults, snippet: htmlSnippet }
+            });
+        }
+
+        const ytData = JSON.parse(jsonStr);
+
+        // Navigate the YouTube data structure
+        const sections = ytData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+        let items = [];
+        for (const section of sections) {
+            const sectionItems = section?.itemSectionRenderer?.contents || [];
+            items = items.concat(sectionItems);
+        }
+
+        const results = items
+            .filter(c => c.videoRenderer)
+            .slice(0, 12)
+            .map(c => {
+                const v = c.videoRenderer;
+                const durText = v.lengthText?.simpleText || '';
+                let secs = 0;
+                const parts = durText.split(':').map(Number);
+                if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+                if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+                return {
+                    title: v.title?.runs?.[0]?.text || '',
+                    videoId: v.videoId,
+                    author: v.ownerText?.runs?.[0]?.text || v.longBylineText?.runs?.[0]?.text || '',
+                    lengthSeconds: secs,
+                    duration: durText,
+                    url: 'https://www.youtube.com/watch?v=' + v.videoId
+                };
+            });
+
+        return jsonResp({ results });
     } catch(e) {
         return jsonResp({ error: e.message, results: [] });
     }
 }
 
-function parseDuration(str) {
-    if (!str) return 0;
-    const parts = str.split(':').map(Number);
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    return 0;
+// ── YouTube/Spotify Audio Extraction ─────────────────────────────────────────
+async function handleYouTubeAudio(request) {
+    const { url } = await request.json();
+    if (!url) return jsonResp({ error: 'No URL provided' }, 400);
+    
+    // Validate it's a YouTube or Spotify URL
+    const isYT = /youtube\.com|youtu\.be/i.test(url);
+    const isSpotify = /open\.spotify\.com/i.test(url);
+    if (!isYT && !isSpotify) return jsonResp({ error: 'URL must be YouTube or Spotify' }, 400);
+
+    // Try multiple extraction services
+    const services = [
+        { name: 'cobalt', fn: () => extractCobalt(url) },
+        { name: 'cobalt-alt', fn: () => extractCobaltAlt(url) }
+    ];
+
+    for (const svc of services) {
+        try {
+            const result = await svc.fn();
+            if (result?.audioUrl) {
+                return jsonResp({ audioUrl: result.audioUrl, service: svc.name });
+            }
+        } catch(e) { continue; }
+    }
+
+    return jsonResp({ error: 'All extraction services failed. Try downloading the audio manually and using Direct URL.' }, 502);
+}
+
+async function extractCobalt(url) {
+    // cobalt.tools API - popular open-source media extraction
+    const apis = [
+        'https://api.cobalt.tools',
+        'https://cobalt-api.kwiatekmiki.com'
+    ];
+    for (const api of apis) {
+        try {
+            const res = await fetch(api + '/api/json', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    vCodec: 'h264',
+                    vQuality: '360',
+                    aFormat: 'mp3',
+                    isAudioOnly: true,
+                    isNoTTWatermark: true
+                })
+            });
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (data.url) return { audioUrl: data.url };
+            if (data.audio) return { audioUrl: data.audio };
+        } catch(e) { continue; }
+    }
+    return null;
+}
+
+async function extractCobaltAlt(url) {
+    // Alternative cobalt API format (v7+)
+    const apis = [
+        'https://api.cobalt.tools'
+    ];
+    for (const api of apis) {
+        try {
+            const res = await fetch(api, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    audioFormat: 'mp3',
+                    downloadMode: 'audio'
+                })
+            });
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (data.url) return { audioUrl: data.url };
+        } catch(e) { continue; }
+    }
+    return null;
 }
