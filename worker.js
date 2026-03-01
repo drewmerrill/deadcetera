@@ -63,20 +63,22 @@ async function handleClaude(request, env) {
   } catch (e) { return jsonResp({ error: e.message }, 500); }
 }
 async function handleFadr(request, env, path) {
-  const fadrUrl = `https://api.fadr.com${path.replace('/fadr', '')}`;
+  const fadrUrl = `https://api.fadr.com${path.replace('/fadr', '')}`;  
   try {
     const ct = request.headers.get('Content-Type') || 'application/json';
     const body = request.method !== 'GET' ? await request.arrayBuffer() : undefined;
-    if (!env.FADR_API_KEY) return jsonResp({ error: 'FADR_API_KEY not configured in Cloudflare Worker environment' }, 500);
-    const res = await fetch(fadrUrl, { method: request.method, headers: { 'Authorization': `Bearer ${env.FADR_API_KEY}`, 'Content-Type': ct }, body });
+    const rawKey = String(env.FADR_API_KEY || '');
+    const apiKey = rawKey.replace(/[^a-zA-Z0-9._\-]/g, '').trim();
+    if (!apiKey || apiKey.length < 10) return jsonResp({ error: 'FADR_API_KEY missing or invalid. rawLen='+rawKey.length+' cleanLen='+apiKey.length }, 500);
+    const h = new Headers();
+    h.set('Content-Type', ct);
+    h.set('Authorization', 'Bearer ' + apiKey);
+    const res = await fetch(fadrUrl, { method: request.method, headers: h, body });
     const data = await res.arrayBuffer();
-    // If error, try to include the response body for debugging
-    const respHeaders = { 'Content-Type': res.headers.get('Content-Type') || 'application/json' };
-    if (!res.ok) {
-      try { respHeaders['X-Fadr-Error'] = new TextDecoder().decode(data).substring(0, 500); } catch(e) {}
-    }
-    return cors(new Response(data, { status: res.status, headers: respHeaders }));
-  } catch (e) { return jsonResp({ error: e.message }, 500); }
+    const rh = { 'Content-Type': res.headers.get('Content-Type') || 'application/json' };
+    if (!res.ok) { try { rh['X-Fadr-Error'] = new TextDecoder().decode(data).substring(0, 500); } catch(e) {} }
+    return cors(new Response(data, { status: res.status, headers: rh }));
+  } catch (e) { return jsonResp({ error: e.message + ' | path='+path }, 500); }
 }
 async function handleArchiveFetch(request) {
   try {
@@ -412,38 +414,45 @@ async function handleArchiveSearch(request) {
     const { query, band } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
 
-    const searchQuery = encodeURIComponent(query);
-    
-    // Map band names to Archive.org collection identifiers
     const collectionMap = {
         'grateful dead': 'GratefulDead',
-        'jerry garcia': 'JerryGarcia',
+        'jerry garcia': 'JerryGarcia', 
         'jerry garcia band': 'JerryGarcia',
         'phish': 'Phish',
         'widespread panic': 'WidespreadPanic'
     };
     
-    // Try to detect band from query text
     let collection = '';
+    let songQuery = query;
     const queryLower = query.toLowerCase();
     for (const [name, col] of Object.entries(collectionMap)) {
-        if (queryLower.includes(name)) { collection = col; break; }
+        if (queryLower.includes(name)) {
+            collection = col;
+            songQuery = query.replace(new RegExp(name, 'gi'), '').trim();
+            break;
+        }
     }
-    // Default to GratefulDead if no band detected
+    if (!collection && band) {
+        for (const [name, col] of Object.entries(collectionMap)) {
+            if (band.toLowerCase().includes(name)) { collection = col; break; }
+        }
+    }
     if (!collection) collection = 'GratefulDead';
+    if (!songQuery) songQuery = query;
     
-    // Search within the specific collection first
-    const collectionFilter = `collection%3A${collection}`;
-    const url1 = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+${collectionFilter}&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=downloads+desc&rows=25&output=json`;
-
+    const encoded = encodeURIComponent(songQuery);
+    
     try {
-        const res = await fetch(url1);
+        // Use full-text search which searches track names within shows
+        const url = `https://archive.org/advancedsearch.php?q=collection%3A${collection}+AND+format%3A(VBR+MP3+OR+Ogg+Vorbis+OR+Flac)+AND+(title%3A${encoded}+OR+${encoded})&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=avg_rating+desc&sort[]=downloads+desc&rows=30&output=json`;
+        
+        const res = await fetch(url);
         const data = await res.json();
         let results = (data?.response?.docs || []);
         
-        // If few results, also search etree collection
-        if (results.length < 5) {
-            const url2 = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+collection%3Aetree&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=downloads+desc&rows=15&output=json`;
+        // If still few results, try broader search
+        if (results.length < 3) {
+            const url2 = `https://archive.org/advancedsearch.php?q=${encoded}+AND+collection%3A${collection}&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&sort[]=downloads+desc&rows=20&output=json`;
             const res2 = await fetch(url2);
             const data2 = await res2.json();
             const seen = new Set(results.map(r => r.identifier));
@@ -517,59 +526,50 @@ async function handleAudioTrim(request) {
 async function handleYouTubeSearch(request) {
     const { query } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
-
     const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
     try {
-        // Try Piped API instances (more reliable than Invidious)
-        const instances = ['https://pipedapi.kavin.rocks', 'https://api.piped.yt', 'https://piped-api.privacy.com.de'];
-        for (const instance of instances) {
-            try {
-                const res = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=videos`, {
-                    headers: { 'User-Agent': ua }
-                });
-                if (!res.ok) continue;
-                const data = await res.json();
-                const items = (data.items || data).filter(v => v.type === 'stream' || v.url || v.videoId);
-                if (items.length) {
-                    const results = items.slice(0, 10).map(v => ({
-                        title: v.title,
-                        videoId: v.url ? v.url.replace('/watch?v=', '') : v.videoId,
-                        author: v.uploaderName || v.author,
-                        lengthSeconds: v.duration || v.lengthSeconds,
-                        url: `https://www.youtube.com/watch?v=${v.url ? v.url.replace('/watch?v=', '') : v.videoId}`,
-                        thumbnail: v.thumbnail || ''
-                    }));
-                    return jsonResp({ results });
-                }
-            } catch(e) { continue; }
-        }
-
-        // Fallback: try Invidious instances
-        const invInstances = ['https://inv.tux.pizza', 'https://invidious.fdn.fr', 'https://vid.puffyan.us'];
-        for (const instance of invInstances) {
-            try {
-                const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
-                    headers: { 'User-Agent': ua }
-                });
-                if (!res.ok) continue;
-                const data = await res.json();
-                if (data.length) {
-                    const results = data.slice(0, 10).map(v => ({
-                        title: v.title,
+        // Scrape YouTube search results page directly
+        const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+        const res = await fetch(ytUrl, { headers: { 'User-Agent': ua, 'Accept-Language': 'en-US,en;q=0.9' } });
+        if (!res.ok) return jsonResp({ results: [], error: 'YouTube returned ' + res.status });
+        const html = await res.text();
+        
+        // YouTube embeds search data in ytInitialData
+        const dataMatch = html.match(/var ytInitialData = ({.+?});<\/script>/);
+        if (!dataMatch) return jsonResp({ results: [], error: 'Could not parse YouTube page' });
+        
+        try {
+            const ytData = JSON.parse(dataMatch[1]);
+            const contents = ytData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+            
+            const results = contents
+                .filter(c => c.videoRenderer)
+                .slice(0, 10)
+                .map(c => {
+                    const v = c.videoRenderer;
+                    return {
+                        title: v.title?.runs?.[0]?.text || '',
                         videoId: v.videoId,
-                        author: v.author,
-                        lengthSeconds: v.lengthSeconds,
-                        url: `https://www.youtube.com/watch?v=${v.videoId}`,
-                        thumbnail: v.videoThumbnails?.[0]?.url || ''
-                    }));
-                    return jsonResp({ results });
-                }
-            } catch(e) { continue; }
+                        author: v.ownerText?.runs?.[0]?.text || '',
+                        lengthSeconds: parseDuration(v.lengthText?.simpleText || ''),
+                        url: 'https://www.youtube.com/watch?v=' + v.videoId,
+                        thumbnail: v.thumbnail?.thumbnails?.[0]?.url || ''
+                    };
+                });
+            return jsonResp({ results });
+        } catch(e) {
+            return jsonResp({ results: [], error: 'JSON parse failed: ' + e.message });
         }
-
-        return jsonResp({ results: [], error: 'All search instances failed' });
     } catch(e) {
         return jsonResp({ error: e.message, results: [] });
     }
+}
+
+function parseDuration(str) {
+    if (!str) return 0;
+    const parts = str.split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
 }
