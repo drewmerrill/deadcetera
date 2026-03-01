@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-181901', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-185510', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1528,6 +1528,7 @@ async function renderChart(songTitle) {
                 <button class="btn btn-ghost btn-sm" onclick="editChart('${safeSong}')">✏️ Edit Chart</button>
                 <button class="btn btn-ghost btn-sm" onclick="searchUGForChart('${safeSong}')" style="color:#f59e0b;border-color:rgba(245,158,11,0.3)">🔍 Search UG</button>
                 <button class="btn btn-ghost btn-sm" onclick="openGigMode('${safeSong}')" style="color:#10b981;border-color:rgba(16,185,129,0.3)">🎸 Gig Mode</button>
+                <button class="btn btn-ghost btn-sm" onclick="openPracticeMode('${safeSong}')" style="color:#a78bfa;border-color:rgba(167,139,250,0.3)">🎯 Practice</button>
                 <button class="btn btn-ghost btn-sm" onclick="exportChartToUG('${safeSong}')" style="color:#a78bfa;border-color:rgba(167,139,250,0.3)" title="Copy chart & open UG submission">📤 Publish</button>
                 <button class="btn btn-ghost btn-sm" onclick="openRehearsalMode('${safeSong}')" style="color:#667eea;border-color:rgba(102,126,234,0.3)">🔄 Rehearsal Mode</button>
             </div>
@@ -14584,3 +14585,830 @@ async function savePracticeNote(songTitle, singer) {
 }
 
 console.log('🎤 Harmony AI Studio v1 loaded');
+
+// ============================================================================
+// PRACTICE MODE — Individual Woodshedding Overlay
+// ============================================================================
+// Full-screen overlay with tabbed panels for focused individual practice.
+// Entry: openPracticeMode(songTitle) from song detail or setlist
+// Reuses: chart system, transpose, brain tuner, ABCJS, audio recording
+// ============================================================================
+
+let pmQueue = [];
+let pmIndex = 0;
+let pmActiveTab = 'chart';
+let pmMetronomeTimer = null;
+let pmMetronomeBpm = 120;
+let pmMetronomeCtx = null;
+let pmLoopSection = null; // null = no loop, or {start, end} line indices
+let pmRecorder = null;
+let pmRecordedChunks = [];
+let pmRecordings = []; // saved recordings for this song
+
+function openPracticeMode(songTitle) {
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
+    pmQueue = [{ title: songTitle, band: songData?.band || '' }];
+    pmIndex = 0;
+    pmShow();
+}
+
+async function openPracticeModeFromSetlist(setlistId) {
+    const setlist = await loadBandDataFromDrive('_setlists', setlistId);
+    if (!setlist?.songs?.length) { showToast('⚠️ Empty setlist'); return; }
+    pmQueue = setlist.songs.map(s => typeof s === 'string' ? { title: s, band: '' } : { title: s.title, band: s.band || '' });
+    pmIndex = 0;
+    pmShow();
+}
+
+function pmEnsureOverlay() {
+    if (document.getElementById('pmOverlay')) return;
+    const el = document.createElement('div');
+    el.id = 'pmOverlay';
+    el.className = 'pm-overlay';
+    el.innerHTML = `
+        <!-- HEADER -->
+        <div class="pm-header">
+            <button class="pm-close" onclick="closePracticeMode()">✕</button>
+            <div class="pm-title-block">
+                <div class="pm-song-title" id="pmSongTitle">Song</div>
+                <div class="pm-song-meta" id="pmSongMeta"></div>
+            </div>
+            <div class="pm-nav-block">
+                <button class="pm-nav-btn" onclick="pmNavigate(-1)" id="pmPrevBtn">‹</button>
+                <span class="pm-position" id="pmPosition"></span>
+                <button class="pm-nav-btn" onclick="pmNavigate(1)" id="pmNextBtn">›</button>
+            </div>
+        </div>
+
+        <!-- TABS -->
+        <div class="pm-tabs" id="pmTabs">
+            <button class="pm-tab active" data-tab="chart" onclick="pmSwitchTab('chart',this)">🎵 Chart</button>
+            <button class="pm-tab" data-tab="know" onclick="pmSwitchTab('know',this)">📖 Know</button>
+            <button class="pm-tab" data-tab="memory" onclick="pmSwitchTab('memory',this)">🧠 Memory</button>
+            <button class="pm-tab" data-tab="harmony" onclick="pmSwitchTab('harmony',this)">🎤 Harmony</button>
+            <button class="pm-tab" data-tab="record" onclick="pmSwitchTab('record',this)">🎙️ Record</button>
+        </div>
+
+        <!-- TAB CONTENT -->
+        <div class="pm-body" id="pmBody">
+
+            <!-- TAB: CHART + PLAY -->
+            <div class="pm-panel" id="pmPanelChart">
+                <div class="pm-toolbar">
+                    <button class="pm-tool-btn" onclick="pmTranspose(-1)">♭</button>
+                    <span class="pm-key-display" id="pmKeyDisplay">—</span>
+                    <button class="pm-tool-btn" onclick="pmTranspose(1)">♯</button>
+                    <div class="pm-tool-divider"></div>
+                    <button class="pm-tool-btn" onclick="pmAdjustFont(-1)">A−</button>
+                    <button class="pm-tool-btn" onclick="pmAdjustFont(1)">A+</button>
+                    <div class="pm-tool-divider"></div>
+                    <button class="pm-tool-btn" id="pmScrollBtn" onclick="pmToggleScroll()">▶ Scroll</button>
+                    <input type="range" id="pmScrollSpeedSlider" min="1" max="5" value="2"
+                        oninput="pmSetScrollSpeed(this.value)" style="display:none;width:60px">
+                    <div class="pm-tool-divider"></div>
+                    <button class="pm-tool-btn" id="pmBrainBtn" onclick="pmToggleBrainTuner()">🧠 Full</button>
+                </div>
+
+                <!-- Metronome bar -->
+                <div class="pm-metronome-bar">
+                    <button class="pm-tool-btn" onclick="pmAdjustMetronomeBpm(-5)">−5</button>
+                    <button class="pm-tool-btn" onclick="pmAdjustMetronomeBpm(-1)">−</button>
+                    <span id="pmBpmDisplay" style="color:#fbbf24;font-weight:700;min-width:40px;text-align:center">120</span>
+                    <button class="pm-tool-btn" onclick="pmAdjustMetronomeBpm(1)">+</button>
+                    <button class="pm-tool-btn" onclick="pmAdjustMetronomeBpm(5)">+5</button>
+                    <span style="color:#94a3b8;font-size:0.75em">BPM</span>
+                    <div class="pm-tool-divider"></div>
+                    <button class="pm-tool-btn" id="pmMetronomeBtn" onclick="pmToggleMetronome()">🥁 Start</button>
+                    <button class="pm-tool-btn" onclick="pmCountOff()">🎵 Count</button>
+                </div>
+
+                <div class="pm-chart-scroll" id="pmChartScroll">
+                    <div class="pm-chart-text gig-chart-text" id="pmChartText"></div>
+                    <div class="pm-no-chart hidden" id="pmNoChart">
+                        <div style="font-size:2em;margin-bottom:8px">🎸</div>
+                        <div style="color:#94a3b8">No chart yet — import from Ultimate Guitar on the song page</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: KNOW THE SONG -->
+            <div class="pm-panel hidden" id="pmPanelKnow">
+                <div class="pm-chart-scroll" id="pmKnowScroll">
+                    <div id="pmKnowContent" style="padding:4px">
+                        <div style="text-align:center;color:#94a3b8;padding:40px 20px">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: MEMORY PALACE -->
+            <div class="pm-panel hidden" id="pmPanelMemory">
+                <div class="pm-toolbar">
+                    <span style="color:#94a3b8;font-size:0.82em">Level:</span>
+                    <button class="pm-tool-btn pm-mem-btn active" data-level="0" onclick="pmSetMemoryLevel(0,this)">Full</button>
+                    <button class="pm-tool-btn pm-mem-btn" data-level="1" onclick="pmSetMemoryLevel(1,this)">Easy</button>
+                    <button class="pm-tool-btn pm-mem-btn" data-level="2" onclick="pmSetMemoryLevel(2,this)">Med</button>
+                    <button class="pm-tool-btn pm-mem-btn" data-level="3" onclick="pmSetMemoryLevel(3,this)">Hard</button>
+                    <button class="pm-tool-btn pm-mem-btn" data-level="4" onclick="pmSetMemoryLevel(4,this)">🎯 Test</button>
+                    <div style="flex:1"></div>
+                    <button class="pm-tool-btn" onclick="pmMemoryShuffle()" title="Randomize which words are hidden">🔀</button>
+                </div>
+                <div class="pm-chart-scroll" id="pmMemoryScroll">
+                    <div class="pm-chart-text gig-chart-text" id="pmMemoryText"></div>
+                </div>
+            </div>
+
+            <!-- TAB: HARMONY -->
+            <div class="pm-panel hidden" id="pmPanelHarmony">
+                <div class="pm-chart-scroll" id="pmHarmonyScroll">
+                    <div id="pmHarmonyContent" style="padding:4px">
+                        <div style="text-align:center;color:#94a3b8;padding:40px 20px">Loading harmonies...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: RECORD & REVIEW -->
+            <div class="pm-panel hidden" id="pmPanelRecord">
+                <div class="pm-chart-scroll" id="pmRecordScroll">
+                    <div style="padding:4px">
+                        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+                            <button class="pm-tool-btn" id="pmRecordBtn" onclick="pmToggleRecord()" style="padding:8px 16px;font-size:0.9em">⏺ Record</button>
+                            <button class="pm-tool-btn" id="pmPlayLastBtn" onclick="pmPlayLastRecording()" style="padding:8px 16px;font-size:0.9em" disabled>▶ Play Last</button>
+                            <button class="pm-tool-btn" onclick="pmSaveRecording()" style="padding:8px 16px;font-size:0.9em" id="pmSaveRecBtn" disabled>💾 Save</button>
+                        </div>
+                        <div id="pmRecordingStatus" style="color:#94a3b8;font-size:0.85em;margin-bottom:16px"></div>
+                        <div id="pmRecordingWaveform" style="height:60px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:16px;display:none"></div>
+                        <h3 style="color:#e2e8f0;font-size:0.95em;margin:0 0 12px 0">📁 Saved Recordings</h3>
+                        <div id="pmRecordingsList"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    `;
+    document.body.appendChild(el);
+    document.addEventListener('keydown', pmKeyHandler);
+}
+
+function pmShow() {
+    pmEnsureOverlay();
+    document.getElementById('pmOverlay').classList.add('pm-visible');
+    document.body.dataset.scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${window.scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    pmActiveTab = 'chart';
+    pmLoadSong();
+}
+
+function closePracticeMode() {
+    const overlay = document.getElementById('pmOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('pm-visible');
+    const scrollY = document.body.dataset.scrollY || '0';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    document.body.style.overflow = '';
+    window.scrollTo(0, parseInt(scrollY));
+    pmStopMetronome();
+    pmStopScroll();
+    pmStopRecord();
+}
+
+function pmNavigate(delta) {
+    const newIdx = pmIndex + delta;
+    if (newIdx < 0 || newIdx >= pmQueue.length) return;
+    pmIndex = newIdx;
+    pmLoadSong();
+}
+
+function pmSwitchTab(tab, btn) {
+    pmActiveTab = tab;
+    document.querySelectorAll('#pmTabs .pm-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.querySelectorAll('.pm-panel').forEach(p => p.classList.add('hidden'));
+    const panel = document.getElementById(`pmPanel${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
+    if (panel) panel.classList.remove('hidden');
+
+    // Lazy-load tab content
+    const song = pmQueue[pmIndex];
+    if (!song) return;
+    if (tab === 'know') pmLoadKnowTab(song.title);
+    if (tab === 'harmony') pmLoadHarmonyTab(song.title);
+    if (tab === 'memory') pmLoadMemoryTab(song.title);
+    if (tab === 'record') pmLoadRecordTab(song.title);
+}
+
+function pmKeyHandler(e) {
+    const overlay = document.getElementById('pmOverlay');
+    if (!overlay?.classList.contains('pm-visible')) return;
+    if (e.key === 'Escape') { closePracticeMode(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { pmNavigate(1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { pmNavigate(-1); e.preventDefault(); }
+    if (e.key === ' ' && pmActiveTab === 'chart') { pmToggleScroll(); e.preventDefault(); }
+    if (e.key === 'm') { pmToggleMetronome(); e.preventDefault(); }
+}
+
+// ── Load song into Practice Mode ─────────────────────────────────────────────
+let pmTransposeSteps = 0;
+let pmOriginalKey = '';
+let pmOriginalChartText = '';
+let pmFontSize = 16;
+let pmBrainLevel = 0;
+let pmMemoryLevel = 0;
+let pmMemorySeed = 1;
+
+async function pmLoadSong() {
+    const song = pmQueue[pmIndex];
+    if (!song) return;
+
+    // Header
+    document.getElementById('pmSongTitle').textContent = song.title;
+    document.getElementById('pmPosition').textContent =
+        pmQueue.length > 1 ? `${pmIndex + 1} / ${pmQueue.length}` : '';
+    document.getElementById('pmPrevBtn').style.opacity = pmIndex > 0 ? '1' : '0.25';
+    document.getElementById('pmNextBtn').style.opacity = pmIndex < pmQueue.length - 1 ? '1' : '0.25';
+
+    // Reset state
+    pmStopMetronome();
+    pmStopScroll();
+    pmBrainLevel = 0;
+    const brainBtn = document.getElementById('pmBrainBtn');
+    if (brainBtn) { brainBtn.textContent = '🧠 Full'; brainBtn.style.background = ''; }
+
+    // Load chart
+    let chartText = '';
+    let chartData = null;
+    try {
+        chartData = await loadBandDataFromDrive(song.title, 'chart');
+        if (chartData?.text?.trim()) chartText = chartData.text;
+    } catch(e) {}
+    if (!chartText) {
+        try {
+            const crib = await loadBandDataFromDrive(song.title, 'rehearsal_crib');
+            if (crib && typeof crib === 'string') chartText = crib;
+        } catch(e) {}
+    }
+
+    pmOriginalChartText = chartText;
+    pmOriginalKey = chartData?.key || '';
+
+    // Load saved transpose
+    pmTransposeSteps = 0;
+    try {
+        const saved = await loadBandDataFromDrive(song.title, 'transpose');
+        if (saved && typeof saved === 'number') pmTransposeSteps = saved;
+    } catch(e) {}
+
+    // Load BPM
+    if (chartData?.bpm) pmMetronomeBpm = parseInt(chartData.bpm) || 120;
+    const bpmD = document.getElementById('pmBpmDisplay');
+    if (bpmD) bpmD.textContent = pmMetronomeBpm;
+
+    // Render chart
+    const el = document.getElementById('pmChartText');
+    if (chartText.trim()) {
+        const displayText = pmTransposeSteps !== 0 ? transposeChartText(chartText, pmTransposeSteps) : chartText;
+        el.innerHTML = renderChartSmart(displayText);
+        el._originalText = chartText;
+        el.style.display = 'block';
+        document.getElementById('pmNoChart').classList.add('hidden');
+    } else {
+        el.style.display = 'none';
+        document.getElementById('pmNoChart').classList.remove('hidden');
+    }
+
+    pmUpdateKeyDisplay();
+    document.getElementById('pmChartScroll').scrollTop = 0;
+
+    // Meta
+    const meta = [];
+    if (chartData?.key) meta.push(`🔑 ${pmTransposeSteps ? transposeNote(chartData.key, pmTransposeSteps) : chartData.key}`);
+    if (chartData?.capo) meta.push(`Capo ${chartData.capo}`);
+    document.getElementById('pmSongMeta').textContent = meta.join('  ·  ');
+
+    // Reset tab to chart
+    pmSwitchTab('chart', document.querySelector('#pmTabs .pm-tab[data-tab="chart"]'));
+
+    // Load recordings list
+    pmRecordings = [];
+    try {
+        pmRecordings = toArray(await loadBandDataFromDrive(song.title, 'practice_recordings') || []);
+    } catch(e) {}
+}
+
+// ── Chart tab tools ──────────────────────────────────────────────────────────
+function pmTranspose(delta) {
+    pmTransposeSteps += delta;
+    const el = document.getElementById('pmChartText');
+    if (!el || !pmOriginalChartText) return;
+    const displayText = pmTransposeSteps !== 0 ? transposeChartText(pmOriginalChartText, pmTransposeSteps) : pmOriginalChartText;
+    el.innerHTML = renderChartSmart(displayText);
+    el._originalText = pmOriginalChartText;
+    pmUpdateKeyDisplay();
+    if (pmBrainLevel > 0) pmApplyBrainTuner('pmChartText');
+    // Save
+    const song = pmQueue[pmIndex];
+    if (song) saveBandDataToDrive(song.title, 'transpose', pmTransposeSteps).catch(() => {});
+}
+
+function pmUpdateKeyDisplay() {
+    const display = document.getElementById('pmKeyDisplay');
+    if (!display) return;
+    if (pmTransposeSteps === 0) {
+        display.textContent = pmOriginalKey || '—';
+        display.style.color = '#67e8f9';
+    } else {
+        display.textContent = pmOriginalKey ? transposeNote(pmOriginalKey, pmTransposeSteps) : `${pmTransposeSteps > 0 ? '+' : ''}${pmTransposeSteps}`;
+        display.style.color = '#fbbf24';
+    }
+}
+
+function pmAdjustFont(delta) {
+    pmFontSize = Math.min(36, Math.max(10, pmFontSize + delta * 2));
+    const el = document.getElementById('pmChartText');
+    if (el) el.style.fontSize = pmFontSize + 'px';
+    const el2 = document.getElementById('pmMemoryText');
+    if (el2) el2.style.fontSize = pmFontSize + 'px';
+}
+
+// ── Brain Tuner (Practice Mode) ──────────────────────────────────────────────
+function pmToggleBrainTuner() {
+    pmBrainLevel = (pmBrainLevel + 1) % 5;
+    const btn = document.getElementById('pmBrainBtn');
+    const labels = ['🧠 Full', '🧠 Easy', '🧠 Med', '🧠 Hard', '🧠 Chords'];
+    if (btn) {
+        btn.textContent = labels[pmBrainLevel];
+        btn.style.background = pmBrainLevel > 0 ? 'rgba(251,191,36,0.2)' : '';
+    }
+    pmApplyBrainTuner('pmChartText');
+}
+
+function pmApplyBrainTuner(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    // Reuse the gig mode brain tuner logic
+    const clLines = el.querySelectorAll('.cl-line');
+    const lyricOnlys = el.querySelectorAll('.cl-lyric-only');
+    const level = containerId === 'pmMemoryText' ? pmMemoryLevel : pmBrainLevel;
+    const seed = containerId === 'pmMemoryText' ? pmMemorySeed : 1;
+
+    if (level === 0) {
+        el.querySelectorAll('.cl-lyric, .cl-lyric-only').forEach(span => {
+            if (span._originalText !== undefined) span.textContent = span._originalText;
+            span.style.opacity = '1';
+        });
+        return;
+    }
+    if (level === 4) {
+        el.querySelectorAll('.cl-lyric, .cl-lyric-only').forEach(span => {
+            if (span._originalText === undefined) span._originalText = span.textContent;
+            span.textContent = span._originalText.replace(/\S/g, '·');
+            span.style.opacity = '0.3';
+        });
+        return;
+    }
+
+    const maskPct = [0, 0.25, 0.5, 0.75][level];
+    clLines.forEach((line, lineIdx) => {
+        const lyricSpans = line.querySelectorAll('.cl-lyric');
+        let wordIndex = 0;
+        let isFirstWord = true;
+        lyricSpans.forEach(span => {
+            if (span._originalText === undefined) span._originalText = span.textContent;
+            const parts = span._originalText.split(/(\s+)/);
+            const masked = parts.map(part => {
+                if (/^\s+$/.test(part)) return part;
+                wordIndex++;
+                if (level === 3 && isFirstWord && part.trim()) { isFirstWord = false; return part; }
+                isFirstWord = false;
+                const hash = ((lineIdx * seed) * 31 + wordIndex * 7) % 100;
+                return hash < maskPct * 100 ? part.replace(/\S/g, '_') : part;
+            });
+            span.textContent = masked.join('');
+            span.style.opacity = '1';
+        });
+    });
+    lyricOnlys.forEach((span, idx) => {
+        if (span._originalText === undefined) span._originalText = span.textContent;
+        const parts = span._originalText.split(/(\s+)/);
+        let wordIndex = 0;
+        let isFirst = true;
+        const masked = parts.map(part => {
+            if (/^\s+$/.test(part)) return part;
+            wordIndex++;
+            if (level === 3 && isFirst && part.trim()) { isFirst = false; return part; }
+            isFirst = false;
+            const hash = ((idx * seed) * 31 + wordIndex * 7) % 100;
+            return hash < maskPct * 100 ? part.replace(/\S/g, '_') : part;
+        });
+        span.textContent = masked.join('');
+        span.style.opacity = '1';
+    });
+}
+
+// ── Auto-scroll (Practice Mode) ──────────────────────────────────────────────
+let pmScrollTimer = null;
+function pmToggleScroll() {
+    if (pmScrollTimer) { pmStopScroll(); } else {
+        const speed = parseInt(document.getElementById('pmScrollSpeedSlider')?.value || '2');
+        pmStartScroll(speed);
+    }
+}
+function pmStartScroll(speed) {
+    const body = document.getElementById('pmChartScroll');
+    const btn = document.getElementById('pmScrollBtn');
+    const slider = document.getElementById('pmScrollSpeedSlider');
+    if (btn) btn.textContent = '⏸ Scroll';
+    if (slider) slider.style.display = 'inline-block';
+    const pxPerSecond = [25, 45, 70, 110, 170][speed - 1] || 45;
+    let lastTime = performance.now();
+    function step(now) {
+        if (!pmScrollTimer) return;
+        const dt = (now - lastTime) / 1000;
+        lastTime = now;
+        if (body) {
+            body.scrollTop += pxPerSecond * dt;
+            if (body.scrollTop + body.clientHeight >= body.scrollHeight - 5) { pmStopScroll(); return; }
+        }
+        pmScrollTimer = requestAnimationFrame(step);
+    }
+    pmScrollTimer = requestAnimationFrame(step);
+}
+function pmStopScroll() {
+    if (pmScrollTimer) cancelAnimationFrame(pmScrollTimer);
+    pmScrollTimer = null;
+    const btn = document.getElementById('pmScrollBtn');
+    const slider = document.getElementById('pmScrollSpeedSlider');
+    if (btn) btn.textContent = '▶ Scroll';
+    if (slider) slider.style.display = 'none';
+}
+function pmSetScrollSpeed(speed) {
+    if (pmScrollTimer) { pmStopScroll(); pmStartScroll(parseInt(speed)); }
+}
+
+// ── Metronome ────────────────────────────────────────────────────────────────
+function pmAdjustMetronomeBpm(delta) {
+    pmMetronomeBpm = Math.min(300, Math.max(30, pmMetronomeBpm + delta));
+    const d = document.getElementById('pmBpmDisplay');
+    if (d) d.textContent = pmMetronomeBpm;
+    // If running, restart with new BPM
+    if (pmMetronomeTimer) { pmStopMetronome(); pmStartMetronome(); }
+}
+
+function pmToggleMetronome() {
+    if (pmMetronomeTimer) { pmStopMetronome(); } else { pmStartMetronome(); }
+}
+
+function pmStartMetronome() {
+    if (!pmMetronomeCtx) pmMetronomeCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const btn = document.getElementById('pmMetronomeBtn');
+    if (btn) { btn.textContent = '🥁 Stop'; btn.style.background = 'rgba(239,68,68,0.2)'; }
+    let beat = 0;
+    function tick() {
+        beat = (beat % 4) + 1;
+        const osc = pmMetronomeCtx.createOscillator();
+        const gain = pmMetronomeCtx.createGain();
+        osc.connect(gain); gain.connect(pmMetronomeCtx.destination);
+        osc.frequency.value = beat === 1 ? 1000 : 800;
+        gain.gain.setValueAtTime(0.3, pmMetronomeCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, pmMetronomeCtx.currentTime + 0.08);
+        osc.start(pmMetronomeCtx.currentTime);
+        osc.stop(pmMetronomeCtx.currentTime + 0.08);
+    }
+    tick();
+    pmMetronomeTimer = setInterval(tick, 60000 / pmMetronomeBpm);
+}
+
+function pmStopMetronome() {
+    if (pmMetronomeTimer) clearInterval(pmMetronomeTimer);
+    pmMetronomeTimer = null;
+    const btn = document.getElementById('pmMetronomeBtn');
+    if (btn) { btn.textContent = '🥁 Start'; btn.style.background = ''; }
+}
+
+function pmCountOff() {
+    if (!pmMetronomeCtx) pmMetronomeCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let beat = 0;
+    const interval = 60000 / pmMetronomeBpm;
+    const display = document.getElementById('pmBpmDisplay');
+    function tick() {
+        beat++;
+        if (display) { display.textContent = beat; display.style.color = beat === 1 ? '#ef4444' : '#fbbf24'; }
+        const osc = pmMetronomeCtx.createOscillator();
+        const gain = pmMetronomeCtx.createGain();
+        osc.connect(gain); gain.connect(pmMetronomeCtx.destination);
+        osc.frequency.value = beat === 1 ? 1000 : 800;
+        gain.gain.setValueAtTime(0.5, pmMetronomeCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, pmMetronomeCtx.currentTime + 0.1);
+        osc.start(pmMetronomeCtx.currentTime);
+        osc.stop(pmMetronomeCtx.currentTime + 0.1);
+        if (beat >= 4) {
+            setTimeout(() => { if (display) { display.textContent = pmMetronomeBpm; display.style.color = '#fbbf24'; } }, interval * 0.8);
+        } else { setTimeout(tick, interval); }
+    }
+    tick();
+}
+
+// ── Know the Song tab ────────────────────────────────────────────────────────
+let pmKnowLoaded = {};
+async function pmLoadKnowTab(songTitle) {
+    if (pmKnowLoaded[songTitle]) return;
+    const container = document.getElementById('pmKnowContent');
+
+    // Load existing song meaning from Drive
+    let meaning = null;
+    try { meaning = await loadBandDataFromDrive(songTitle, 'song_meaning'); } catch(e) {}
+
+    // Load song structure
+    let structure = null;
+    try { structure = await loadBandDataFromDrive(songTitle, 'song_structure'); } catch(e) {}
+
+    const songData = allSongs.find(s => s.title === songTitle);
+    const band = songData ? getFullBandName(songData.band) : '';
+
+    container.innerHTML = `
+        <div style="margin-bottom:20px">
+            <h3 style="color:#e2e8f0;margin:0 0 8px 0;font-size:1em">📖 ${songTitle}</h3>
+            <div style="color:#94a3b8;font-size:0.85em;margin-bottom:12px">${band}</div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:16px">
+            <h4 style="color:#67e8f9;margin:0 0 8px 0;font-size:0.9em">🎵 Song Meaning & Story</h4>
+            <div id="pmMeaningText" style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
+                ${meaning?.text || '<span style="color:#64748b">No song meaning added yet.</span>'}
+            </div>
+            <button onclick="pmEditMeaning('${songTitle.replace(/'/g, "\\'")}')" class="pm-tool-btn" style="margin-top:8px">✏️ Edit</button>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:16px">
+            <h4 style="color:#f59e0b;margin:0 0 8px 0;font-size:0.9em">🏗️ Song Structure</h4>
+            <div style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
+                ${structure?.sections ? structure.sections.map(s =>
+                    `<span style="display:inline-block;background:rgba(255,255,255,0.06);padding:3px 8px;border-radius:5px;margin:2px 4px 2px 0;font-size:0.9em">${s.label || s.name || s}</span>`
+                ).join('') : '<span style="color:#64748b">No structure mapped yet.</span>'}
+            </div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:16px">
+            <h4 style="color:#a78bfa;margin:0 0 8px 0;font-size:0.9em">🎯 Band Notes & Interpretation</h4>
+            <div id="pmBandNotesText" style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
+                ${meaning?.bandNotes || '<span style="color:#64748b">How does the band approach this song? Add notes here.</span>'}
+            </div>
+            <button onclick="pmEditBandNotes('${songTitle.replace(/'/g, "\\'")}')" class="pm-tool-btn" style="margin-top:8px">✏️ Edit</button>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px">
+            <h4 style="color:#10b981;margin:0 0 8px 0;font-size:0.9em">🎸 Performance Tips</h4>
+            <div style="color:#cbd5e1;font-size:0.88em;line-height:1.6">
+                ${meaning?.tips || '<span style="color:#64748b">Any performance tips, cues, or reminders.</span>'}
+            </div>
+            <button onclick="pmEditTips('${songTitle.replace(/'/g, "\\'")}')" class="pm-tool-btn" style="margin-top:8px">✏️ Edit</button>
+        </div>
+    `;
+    pmKnowLoaded[songTitle] = true;
+}
+
+async function pmEditMeaning(songTitle) {
+    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+    const text = prompt('Song meaning & story:', current.text || '');
+    if (text === null) return;
+    current.text = text;
+    await saveBandDataToDrive(songTitle, 'song_meaning', current);
+    pmKnowLoaded[songTitle] = false;
+    pmLoadKnowTab(songTitle);
+    showToast('✅ Saved!');
+}
+
+async function pmEditBandNotes(songTitle) {
+    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+    const text = prompt('Band notes & interpretation:', current.bandNotes || '');
+    if (text === null) return;
+    current.bandNotes = text;
+    await saveBandDataToDrive(songTitle, 'song_meaning', current);
+    pmKnowLoaded[songTitle] = false;
+    pmLoadKnowTab(songTitle);
+    showToast('✅ Saved!');
+}
+
+async function pmEditTips(songTitle) {
+    const current = await loadBandDataFromDrive(songTitle, 'song_meaning') || {};
+    const text = prompt('Performance tips:', current.tips || '');
+    if (text === null) return;
+    current.tips = text;
+    await saveBandDataToDrive(songTitle, 'song_meaning', current);
+    pmKnowLoaded[songTitle] = false;
+    pmLoadKnowTab(songTitle);
+    showToast('✅ Saved!');
+}
+
+// ── Memory Palace tab ────────────────────────────────────────────────────────
+function pmLoadMemoryTab(songTitle) {
+    const el = document.getElementById('pmMemoryText');
+    if (!pmOriginalChartText) {
+        el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px">No chart available for memory practice</div>';
+        return;
+    }
+    const displayText = pmTransposeSteps !== 0 ? transposeChartText(pmOriginalChartText, pmTransposeSteps) : pmOriginalChartText;
+    el.innerHTML = renderChartSmart(displayText);
+    el._originalText = pmOriginalChartText;
+    // Apply current memory level
+    if (pmMemoryLevel > 0) pmApplyBrainTuner('pmMemoryText');
+}
+
+function pmSetMemoryLevel(level, btn) {
+    pmMemoryLevel = level;
+    document.querySelectorAll('.pm-mem-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    pmApplyBrainTuner('pmMemoryText');
+}
+
+function pmMemoryShuffle() {
+    pmMemorySeed = Math.floor(Math.random() * 1000) + 1;
+    if (pmMemoryLevel > 0) pmApplyBrainTuner('pmMemoryText');
+    showToast('🔀 Shuffled!');
+}
+
+// ── Harmony tab ──────────────────────────────────────────────────────────────
+let pmHarmonyLoaded = {};
+async function pmLoadHarmonyTab(songTitle) {
+    if (pmHarmonyLoaded[songTitle]) return;
+    const container = document.getElementById('pmHarmonyContent');
+
+    // Load harmony data
+    let parts = null;
+    try { parts = await loadBandDataFromDrive(songTitle, 'harmony_parts'); } catch(e) {}
+    if (!parts || Object.keys(parts).length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:40px 20px">
+                <div style="font-size:2em;margin-bottom:8px">🎤</div>
+                <div style="color:#94a3b8;margin-bottom:12px">No harmony parts imported yet.</div>
+                <div style="color:#64748b;font-size:0.85em">Import via the Harmonies section on the song page,<br>or use Fadr auto-import.</div>
+            </div>
+        `;
+        pmHarmonyLoaded[songTitle] = true;
+        return;
+    }
+
+    // Render each harmony part with ABC notation
+    const colors = { 'Soprano': '#ef4444', 'Alto': '#f59e0b', 'Tenor': '#10b981', 'Bass': '#3b82f6', 'Melody': '#a78bfa' };
+    let html = '<div style="margin-bottom:12px">';
+    for (const [partName, partData] of Object.entries(parts)) {
+        const color = colors[partName] || '#94a3b8';
+        const abc = partData.abc || partData;
+        html += `
+            <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin-bottom:12px;border-left:3px solid ${color}">
+                <h4 style="color:${color};margin:0 0 8px 0;font-size:0.9em">${partName}</h4>
+                <div id="pmHarmonyABC_${partName}" style="background:white;border-radius:6px;padding:8px;margin-bottom:8px"></div>
+                <div id="pmHarmonyAudio_${partName}"></div>
+            </div>
+        `;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Render ABC if ABCJS is loaded
+    if (typeof ABCJS !== 'undefined') {
+        for (const [partName, partData] of Object.entries(parts)) {
+            const abc = typeof partData === 'string' ? partData : partData.abc;
+            if (abc) {
+                try {
+                    ABCJS.renderAbc(`pmHarmonyABC_${partName}`, abc, { responsive: 'resize', staffwidth: 300 });
+                } catch(e) { console.warn('ABC render failed for', partName, e); }
+            }
+        }
+    } else {
+        loadABCJS(() => {
+            for (const [partName, partData] of Object.entries(parts)) {
+                const abc = typeof partData === 'string' ? partData : partData.abc;
+                if (abc) {
+                    try { ABCJS.renderAbc(`pmHarmonyABC_${partName}`, abc, { responsive: 'resize', staffwidth: 300 }); } catch(e) {}
+                }
+            }
+        });
+    }
+
+    pmHarmonyLoaded[songTitle] = true;
+}
+
+// ── Record & Review tab ──────────────────────────────────────────────────────
+function pmLoadRecordTab(songTitle) {
+    const list = document.getElementById('pmRecordingsList');
+    if (!list) return;
+    if (pmRecordings.length === 0) {
+        list.innerHTML = '<div style="color:#64748b;font-size:0.85em;padding:8px">No saved recordings yet. Hit ⏺ Record to practice!</div>';
+        return;
+    }
+    list.innerHTML = pmRecordings.map((rec, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:6px">
+            <button onclick="pmPlaySavedRecording(${i})" class="pm-tool-btn" style="padding:4px 8px">▶</button>
+            <div style="flex:1">
+                <div style="color:#e2e8f0;font-size:0.85em">${rec.label || 'Recording ' + (i + 1)}</div>
+                <div style="color:#64748b;font-size:0.75em">${rec.date ? new Date(rec.date).toLocaleDateString() : ''} · ${rec.duration ? Math.round(rec.duration) + 's' : ''}</div>
+            </div>
+            <button onclick="pmDeleteRecording(${i})" class="pm-tool-btn" style="padding:4px 8px;color:#ef4444">✕</button>
+        </div>
+    `).join('');
+}
+
+let pmLastRecordingBlob = null;
+let pmRecordStartTime = 0;
+
+async function pmToggleRecord() {
+    if (pmRecorder && pmRecorder.state === 'recording') {
+        pmStopRecord();
+    } else {
+        pmStartRecord();
+    }
+}
+
+async function pmStartRecord() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        pmRecordedChunks = [];
+        pmRecorder = new MediaRecorder(stream);
+        pmRecorder.ondataavailable = e => { if (e.data.size > 0) pmRecordedChunks.push(e.data); };
+        pmRecorder.onstop = () => {
+            pmLastRecordingBlob = new Blob(pmRecordedChunks, { type: 'audio/webm' });
+            const duration = (Date.now() - pmRecordStartTime) / 1000;
+            document.getElementById('pmRecordingStatus').textContent = `✅ Recorded ${Math.round(duration)}s — play back or save`;
+            document.getElementById('pmPlayLastBtn').disabled = false;
+            document.getElementById('pmSaveRecBtn').disabled = false;
+            stream.getTracks().forEach(t => t.stop());
+        };
+        pmRecorder.start();
+        pmRecordStartTime = Date.now();
+        const btn = document.getElementById('pmRecordBtn');
+        if (btn) { btn.textContent = '⏹ Stop'; btn.style.background = 'rgba(239,68,68,0.3)'; }
+        document.getElementById('pmRecordingStatus').textContent = '🔴 Recording...';
+        document.getElementById('pmRecordingWaveform').style.display = 'block';
+    } catch(e) {
+        showToast('⚠️ Microphone access denied');
+    }
+}
+
+function pmStopRecord() {
+    if (pmRecorder && pmRecorder.state === 'recording') {
+        pmRecorder.stop();
+    }
+    const btn = document.getElementById('pmRecordBtn');
+    if (btn) { btn.textContent = '⏺ Record'; btn.style.background = ''; }
+    const wf = document.getElementById('pmRecordingWaveform');
+    if (wf) wf.style.display = 'none';
+}
+
+function pmPlayLastRecording() {
+    if (!pmLastRecordingBlob) return;
+    const url = URL.createObjectURL(pmLastRecordingBlob);
+    const audio = new Audio(url);
+    audio.play();
+    document.getElementById('pmRecordingStatus').textContent = '▶ Playing...';
+    audio.onended = () => {
+        document.getElementById('pmRecordingStatus').textContent = '✅ Playback complete';
+        URL.revokeObjectURL(url);
+    };
+}
+
+async function pmSaveRecording() {
+    if (!pmLastRecordingBlob) return;
+    const song = pmQueue[pmIndex];
+    if (!song) return;
+    const label = prompt('Label this recording (optional):', '') || `Recording ${pmRecordings.length + 1}`;
+    // Convert blob to base64 for storage
+    const reader = new FileReader();
+    reader.onload = async () => {
+        const rec = {
+            label,
+            date: new Date().toISOString(),
+            duration: (Date.now() - pmRecordStartTime) / 1000,
+            audioData: reader.result,
+            member: (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'unknown'
+        };
+        pmRecordings.push(rec);
+        await saveBandDataToDrive(song.title, 'practice_recordings', pmRecordings);
+        pmLoadRecordTab(song.title);
+        showToast('💾 Recording saved!');
+        document.getElementById('pmSaveRecBtn').disabled = true;
+    };
+    reader.readAsDataURL(pmLastRecordingBlob);
+}
+
+function pmPlaySavedRecording(index) {
+    const rec = pmRecordings[index];
+    if (!rec?.audioData) return;
+    const audio = new Audio(rec.audioData);
+    audio.play();
+    showToast('▶ Playing...');
+}
+
+async function pmDeleteRecording(index) {
+    if (!confirm('Delete this recording?')) return;
+    const song = pmQueue[pmIndex];
+    pmRecordings.splice(index, 1);
+    await saveBandDataToDrive(song.title, 'practice_recordings', pmRecordings);
+    pmLoadRecordTab(song.title);
+    showToast('🗑 Deleted');
+}
+
+console.log('🎸 Practice Mode loaded');
