@@ -514,13 +514,56 @@
 .gig-chart-text {
     font-family: 'Courier New', 'Menlo', 'Monaco', monospace;
     font-size: 18px;
-    line-height: 1.75;
+    line-height: 1.4;
     color: #e2e8f0;
-    white-space: pre;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
     margin: 0;
     padding: 0;
+}
+
+/* ── Smart chord-lyric pair rendering ───────────────────────────────────── */
+/* Each chord+lyric segment is an inline element, so the line wraps naturally
+   while keeping every chord directly above its syllable. */
+
+.cl-line {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+}
+
+.cl-pair {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: top;
+    white-space: pre;
+}
+
+.cl-chord {
+    color: #67e8f9;
+    font-weight: 700;
+    font-size: 0.95em;
+    line-height: 1.4;
+    min-height: 1.4em;
+}
+
+.cl-pair > :last-child:not(.cl-chord) {
+    /* This is the implicit lyric text node — no special styling needed */
+}
+
+.cl-blank {
+    height: 0.8em;
+}
+
+.cl-lyric-only {
+    white-space: pre-wrap;
+    margin-bottom: 2px;
+}
+
+.cl-tab-line {
+    white-space: pre;
+    overflow-x: auto;
+    color: #94a3b8;
+    font-size: 0.85em;
+    line-height: 1.3;
 }
 
 /* Chord highlighting in both rehearsal & gig mode */
@@ -534,17 +577,16 @@
     font-size: 1.05em;
 }
 
-/* Phone optimizations — smaller text, allow wrap since horizontal scroll is awkward */
+/* Phone optimizations */
 @media (max-width: 767px) {
     .gig-chart-text {
-        font-size: 13px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-        word-break: break-word;
-        padding-right: 8px;
+        font-size: 14px;
     }
     .gig-body {
         padding: 10px;
+    }
+    .cl-chord {
+        font-size: 0.9em;
     }
 }
 
