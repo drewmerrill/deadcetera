@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-173915', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-174221', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1639,53 +1639,44 @@ function buildChordLyricPair(chordLine, lyricLine) {
         return `<div class="cl-lyric-only">${escapeHtml(lyricLine)}</div>`;
     }
 
-    // For each chord, grab the lyric slice from this chord's position to the next chord's position.
-    // Use the raw character positions — don't snap. Instead, we'll group the slices into
-    // inline-block spans with nowrap, and ensure we don't break mid-word by including
-    // trailing partial words in the current span rather than starting the next span mid-word.
-    const segments = [];
-    for (let c = 0; c < chords.length; c++) {
-        const start = chords[c].pos;
-        const rawEnd = (c + 1 < chords.length) ? chords[c + 1].pos : lyricLine.length;
-        segments.push({ chord: chords[c].chord, start, rawEnd });
+    // Strategy: split the lyric at each chord position, but snap to word boundaries
+    // by extending forward (never backward) when a split lands mid-word.
+    // Then render each segment as a chord-above-lyric pair.
+
+    // Build raw split positions from chord positions
+    const splitPositions = chords.map(c => c.pos);
+
+    // Snap each split to a word boundary by extending forward to end of word
+    // (except the first split which always starts at 0)
+    const adjustedSplits = [0]; // first segment always starts at 0
+    for (let i = 1; i < splitPositions.length; i++) {
+        let pos = splitPositions[i];
+        // If we land mid-word, extend forward to the end of this word, then to the next space
+        if (pos < lyricLine.length && pos > 0 && lyricLine[pos] !== ' ' && lyricLine[pos - 1] !== ' ') {
+            // Find end of current word
+            while (pos < lyricLine.length && lyricLine[pos] !== ' ') pos++;
+        }
+        // Don't let it go past the end or overlap previous
+        if (pos <= adjustedSplits[adjustedSplits.length - 1]) {
+            pos = adjustedSplits[adjustedSplits.length - 1]; // collapse
+        }
+        adjustedSplits.push(pos);
     }
+    adjustedSplits.push(lyricLine.length); // sentinel end
 
     let html = '<div class="cl-line">';
 
-    // Handle any lyric text before the first chord
-    if (segments[0].start > 0) {
-        const prefix = lyricLine.substring(0, segments[0].start);
-        if (prefix.trim()) {
-            html += `<span class="cl-pair"><span class="cl-chord">\u00a0</span><span class="cl-lyric">${escapeHtml(prefix)}</span></span>`;
-        }
+    for (let c = 0; c < chords.length; c++) {
+        const lyricStart = adjustedSplits[c];
+        const lyricEnd = adjustedSplits[c + 1];
+        let syllables = lyricLine.substring(lyricStart, lyricEnd);
+        if (!syllables) syllables = '\u00a0';
+
+        // Use non-breaking spaces in chord name to maintain minimum width
+        const chordDisplay = escapeHtml(chords[c].chord);
+
+        html += `<span class="cl-pair"><span class="cl-chord">${chordDisplay}</span><span class="cl-lyric">${escapeHtml(syllables)}</span></span>`;
     }
-
-    for (let c = 0; c < segments.length; c++) {
-        const seg = segments[c];
-        let end = seg.rawEnd;
-
-        // If the cut point lands mid-word, extend this segment to include the rest of the word
-        if (end < lyricLine.length && lyricLine[end] !== ' ' && end > 0 && lyricLine[end - 1] !== ' ') {
-            // Find end of current word
-            while (end < lyricLine.length && lyricLine[end] !== ' ') {
-                end++;
-            }
-        }
-
-        // For the NEXT segment, adjust its start to skip what we consumed
-        if (c + 1 < segments.length) {
-            segments[c + 1].start = end;
-        }
-
-        let syllables = lyricLine.substring(seg.start, end);
-        if (!syllables) syllables = '\u00a0'; // non-breaking space if empty
-
-        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(seg.chord)}</span><span class="cl-lyric">${escapeHtml(syllables)}</span></span>`;
-    }
-
-    // Any remaining lyric text after the last chord's raw end
-    const lastEnd = segments[segments.length - 1].rawEnd;
-    // Already handled by extending the last segment in the loop above
 
     html += '</div>';
     return html;
