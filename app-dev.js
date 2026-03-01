@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-172159', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-172936', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1631,10 +1631,7 @@ function renderChartSmart(text) {
 }
 
 function buildChordLyricPair(chordLine, lyricLine) {
-    // Walk through the chord line finding chord positions.
-    // Each chord starts at a character offset. The lyric text from that offset
-    // to the next chord belongs under that chord.
-    // CRITICAL: we snap boundaries to word edges so words never split mid-character.
+    // Find chord positions in the chord line
     const chords = [];
     const re = /(\S+)/g;
     let m;
@@ -1646,43 +1643,53 @@ function buildChordLyricPair(chordLine, lyricLine) {
         return `<div class="cl-lyric-only">${escapeHtml(lyricLine)}</div>`;
     }
 
-    // Build split points snapped to word boundaries in the lyric line
-    const splitPoints = [0]; // always start at 0
-    for (let c = 1; c < chords.length; c++) {
-        let pos = chords[c].pos;
-        // Snap to nearest word boundary: find the last space at or before this position
-        // If pos is mid-word, back up to the start of that word
-        if (pos < lyricLine.length && pos > 0 && lyricLine[pos] !== ' ' && lyricLine[pos - 1] !== ' ') {
-            // We're mid-word — find the start of this word
-            let wordStart = pos;
-            while (wordStart > splitPoints[splitPoints.length - 1] && lyricLine[wordStart - 1] !== ' ') {
-                wordStart--;
-            }
-            // Only snap back if it doesn't collapse into the previous split
-            if (wordStart > splitPoints[splitPoints.length - 1]) {
-                pos = wordStart;
-            }
-        }
-        splitPoints.push(pos);
+    // For each chord, grab the lyric slice from this chord's position to the next chord's position.
+    // Use the raw character positions — don't snap. Instead, we'll group the slices into
+    // inline-block spans with nowrap, and ensure we don't break mid-word by including
+    // trailing partial words in the current span rather than starting the next span mid-word.
+    const segments = [];
+    for (let c = 0; c < chords.length; c++) {
+        const start = chords[c].pos;
+        const rawEnd = (c + 1 < chords.length) ? chords[c + 1].pos : lyricLine.length;
+        segments.push({ chord: chords[c].chord, start, rawEnd });
     }
-    splitPoints.push(lyricLine.length);
 
     let html = '<div class="cl-line">';
 
-    // Lyric text before the first chord
-    if (chords[0].pos > 0) {
-        const prefix = lyricLine.substring(0, splitPoints[1] > 0 ? Math.min(chords[0].pos, splitPoints[0]) : chords[0].pos);
-        // Actually splitPoints[0] is always 0, so prefix is handled by the first chord pair
+    // Handle any lyric text before the first chord
+    if (segments[0].start > 0) {
+        const prefix = lyricLine.substring(0, segments[0].start);
+        if (prefix.trim()) {
+            html += `<span class="cl-pair"><span class="cl-chord">\u00a0</span><span class="cl-lyric">${escapeHtml(prefix)}</span></span>`;
+        }
     }
 
-    for (let c = 0; c < chords.length; c++) {
-        const lyricStart = splitPoints[c];
-        const lyricEnd = splitPoints[c + 1];
-        let syllables = lyricLine.substring(lyricStart, lyricEnd);
-        if (!syllables) syllables = ' ';
+    for (let c = 0; c < segments.length; c++) {
+        const seg = segments[c];
+        let end = seg.rawEnd;
 
-        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(chords[c].chord)}</span><span class="cl-lyric">${escapeHtml(syllables)}</span></span>`;
+        // If the cut point lands mid-word, extend this segment to include the rest of the word
+        if (end < lyricLine.length && lyricLine[end] !== ' ' && end > 0 && lyricLine[end - 1] !== ' ') {
+            // Find end of current word
+            while (end < lyricLine.length && lyricLine[end] !== ' ') {
+                end++;
+            }
+        }
+
+        // For the NEXT segment, adjust its start to skip what we consumed
+        if (c + 1 < segments.length) {
+            segments[c + 1].start = end;
+        }
+
+        let syllables = lyricLine.substring(seg.start, end);
+        if (!syllables) syllables = '\u00a0'; // non-breaking space if empty
+
+        html += `<span class="cl-pair"><span class="cl-chord">${escapeHtml(seg.chord)}</span><span class="cl-lyric">${escapeHtml(syllables)}</span></span>`;
     }
+
+    // Any remaining lyric text after the last chord's raw end
+    const lastEnd = segments[segments.length - 1].rawEnd;
+    // Already handled by extending the last segment in the loop above
 
     html += '</div>';
     return html;
@@ -2316,14 +2323,17 @@ let gigFontSize = 18;
 
 function gigAdjustFont(delta) {
     gigFontSize = Math.min(36, Math.max(10, gigFontSize + delta * 2));
-    document.getElementById('gigChartText').style.fontSize = gigFontSize + 'px';
+    const el = document.getElementById('gigChartText');
+    if (el) el.style.fontSize = gigFontSize + 'px';
 }
 
 function gigAutoFitFont() {
     const isTablet = window.innerWidth >= 768;
+    const el = document.getElementById('gigChartText');
+    if (!el) return;
     if (!isTablet) {
-        gigFontSize = 18;
-        document.getElementById('gigChartText').style.fontSize = gigFontSize + 'px';
+        gigFontSize = 14;
+        el.style.fontSize = gigFontSize + 'px';
         return;
     }
     // iPad: binary-search font size that fits without scrolling
