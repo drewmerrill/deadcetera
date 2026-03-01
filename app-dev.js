@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-140004', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-142148', 'color:#667eea;font-weight:bold;font-size:14px');
 
 
 
@@ -1530,6 +1530,7 @@ async function renderChart(songTitle) {
             </div>
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
                 <button class="btn btn-ghost btn-sm" onclick="editChart('${safeSong}')">✏️ Edit Chart</button>
+                <button class="btn btn-ghost btn-sm" onclick="searchUGForChart('${safeSong}')" style="color:#f59e0b;border-color:rgba(245,158,11,0.3)">🔍 Search UG</button>
                 <button class="btn btn-ghost btn-sm" onclick="openGigMode('${safeSong}')" style="color:#10b981;border-color:rgba(16,185,129,0.3)">🎸 Gig Mode</button>
                 <button class="btn btn-ghost btn-sm" onclick="openRehearsalMode('${safeSong}')" style="color:#667eea;border-color:rgba(102,126,234,0.3)">🔄 Rehearsal Mode</button>
             </div>
@@ -1543,8 +1544,11 @@ async function renderChart(songTitle) {
             <div style="text-align:center;padding:24px 16px;color:var(--text-dim)">
                 <div style="font-size:2em;margin-bottom:8px">🎸</div>
                 <div style="font-size:0.95em;font-weight:600;color:var(--text-muted);margin-bottom:6px">No chord chart yet</div>
-                <div style="font-size:0.82em;margin-bottom:14px">Paste from Ultimate Guitar or type your own</div>
-                <button class="btn btn-primary" onclick="editChart('${safeSong}')">✏️ Add Chart</button>
+                <div style="font-size:0.82em;margin-bottom:14px">Paste from Ultimate Guitar or auto-import</div>
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="searchUGForChart('${safeSong}')">🔍 Search Ultimate Guitar</button>
+                    <button class="btn btn-ghost" onclick="editChart('${safeSong}')">✏️ Paste Manually</button>
+                </div>
                 ${importBtn}
             </div>
         `;
@@ -1662,6 +1666,300 @@ async function importCribToChart(songTitle) {
 }
 
 console.log('🎸 Chart system loaded');
+
+// ============================================================================
+// ULTIMATE GUITAR IMPORT — Search, pick, and bulk-import chord charts
+// ============================================================================
+
+const UG_PROXY = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+
+async function searchUGForChart(songTitle) {
+    const container = document.getElementById('chartContainer');
+    if (!container) return;
+    const safeSong = songTitle.replace(/'/g, "\\'");
+
+    // Find band name
+    const songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(s => s.title === songTitle);
+    const artist = songData ? getFullBandName(songData.band) : '';
+
+    container.innerHTML = `
+        <div style="padding:16px;text-align:center">
+            <div style="font-size:1.1em;margin-bottom:12px">🔍 Searching Ultimate Guitar…</div>
+            <div style="color:var(--text-dim);font-size:0.82em">${songTitle} — ${artist}</div>
+        </div>
+    `;
+
+    try {
+        const resp = await fetch(`${UG_PROXY}/ug-search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ song: songTitle, artist })
+        });
+        const data = await resp.json();
+        const results = data.results || [];
+
+        if (results.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center;padding:20px;color:var(--text-dim)">
+                    <div style="font-size:1.5em;margin-bottom:8px">🤷</div>
+                    <div style="margin-bottom:8px">No chord charts found on Ultimate Guitar for "${songTitle}"</div>
+                    <button class="btn btn-ghost btn-sm" onclick="editChart('${safeSong}')">✏️ Add Chart Manually</button>
+                    <button class="btn btn-ghost btn-sm" onclick="renderChart('${safeSong}')" style="margin-left:6px">← Back</button>
+                </div>
+            `;
+            return;
+        }
+
+        const resultsHTML = results.map((r, i) => {
+            const stars = '⭐'.repeat(Math.round(r.rating));
+            const safeUrl = r.url.replace(/'/g, "\\'");
+            return `
+                <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-weight:600;color:var(--text);font-size:0.9em">${r.title} <span style="color:var(--text-dim);font-weight:400">by ${r.artist}</span></div>
+                        <div style="font-size:0.78em;color:var(--text-muted);margin-top:3px">
+                            ${stars} (${r.votes} votes) · v${r.version}
+                            ${r.tonality ? ` · Key: ${r.tonality}` : ''}
+                            ${r.capo ? ` · Capo ${r.capo}` : ''}
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="importUGTab('${safeSong}', '${safeUrl}', ${i})">Import</button>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+                <strong style="color:var(--accent-light);font-size:0.9em">🔍 ${results.length} results from Ultimate Guitar</strong>
+                <button class="btn btn-ghost btn-sm" onclick="renderChart('${safeSong}')">← Back</button>
+            </div>
+            ${resultsHTML}
+        `;
+    } catch(e) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:20px;color:var(--red)">
+                <div style="margin-bottom:8px">❌ Search failed: ${e.message}</div>
+                <button class="btn btn-ghost btn-sm" onclick="renderChart('${safeSong}')">← Back</button>
+            </div>
+        `;
+    }
+}
+
+async function importUGTab(songTitle, tabUrl, resultIndex) {
+    // Find the button and show loading state
+    const buttons = document.querySelectorAll('#chartContainer .btn-primary');
+    const btn = buttons[resultIndex];
+    if (btn) { btn.textContent = '⏳…'; btn.disabled = true; }
+
+    try {
+        const resp = await fetch(`${UG_PROXY}/ug-fetch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: tabUrl })
+        });
+        const tab = await resp.json();
+
+        if (tab.error || !tab.content) {
+            showToast('❌ Could not fetch tab content');
+            if (btn) { btn.textContent = 'Import'; btn.disabled = false; }
+            return;
+        }
+
+        const member = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'unknown';
+        const chartData = {
+            text: tab.content,
+            key: tab.tonality || '',
+            capo: tab.capo || 0,
+            updatedBy: member,
+            updatedAt: new Date().toISOString(),
+            source: 'ultimate-guitar',
+            sourceUrl: tabUrl,
+            sourceRating: tab.rating,
+            sourceVotes: tab.votes
+        };
+
+        await saveBandDataToDrive(songTitle, 'chart', chartData);
+        showToast(`✅ Chart imported for "${songTitle}"!`);
+        await renderChart(songTitle);
+    } catch(e) {
+        showToast('❌ Import failed: ' + e.message);
+        if (btn) { btn.textContent = 'Import'; btn.disabled = false; }
+    }
+}
+
+// ── Bulk Import ──────────────────────────────────────────────────────────────
+// Admin tool: auto-import charts for all songs from UG
+
+async function bulkImportUGCharts() {
+    const songs = typeof allSongs !== 'undefined' ? allSongs : [];
+    if (songs.length === 0) { showToast('No songs loaded'); return; }
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.id = 'ugBulkModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    modal.innerHTML = `
+        <div style="background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h3 style="margin:0;color:white">🎸 Bulk Import from Ultimate Guitar</h3>
+                <button onclick="cancelBulkImport()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
+            </div>
+            <div style="font-size:0.85em;color:var(--text-muted);margin-bottom:16px;line-height:1.5">
+                This will search UG for each song and auto-import the highest-rated "Chords" version.
+                Songs that already have a chart will be skipped unless you check "Overwrite existing".
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer">
+                <input type="checkbox" id="ugBulkOverwrite" style="accent-color:var(--accent)">
+                <span style="color:var(--text);font-size:0.88em">Overwrite existing charts</span>
+            </label>
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+                <button id="ugBulkStartBtn" class="btn btn-primary" onclick="runBulkImport()" style="flex:1">
+                    🚀 Import All ${songs.length} Songs
+                </button>
+                <button class="btn btn-ghost" onclick="cancelBulkImport()">Cancel</button>
+            </div>
+            <div id="ugBulkProgress" style="display:none">
+                <div style="display:flex;justify-content:space-between;font-size:0.82em;color:var(--text-muted);margin-bottom:6px">
+                    <span id="ugBulkStatus">Starting…</span>
+                    <span id="ugBulkCount">0 / ${songs.length}</span>
+                </div>
+                <div style="background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;height:8px;margin-bottom:10px">
+                    <div id="ugBulkBar" style="height:100%;background:#10b981;width:0%;transition:width 0.3s"></div>
+                </div>
+                <div id="ugBulkLog" style="background:rgba(0,0,0,0.3);border-radius:8px;padding:10px;max-height:300px;overflow-y:auto;font-family:monospace;font-size:0.75em;color:var(--text-dim);line-height:1.6"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+let ugBulkCancelled = false;
+
+function cancelBulkImport() {
+    ugBulkCancelled = true;
+    const modal = document.getElementById('ugBulkModal');
+    if (modal) modal.remove();
+}
+
+async function runBulkImport() {
+    const songs = typeof allSongs !== 'undefined' ? allSongs : [];
+    const overwrite = document.getElementById('ugBulkOverwrite')?.checked || false;
+    ugBulkCancelled = false;
+
+    const startBtn = document.getElementById('ugBulkStartBtn');
+    if (startBtn) { startBtn.disabled = true; startBtn.textContent = '⏳ Running…'; }
+
+    const progress = document.getElementById('ugBulkProgress');
+    const status = document.getElementById('ugBulkStatus');
+    const count = document.getElementById('ugBulkCount');
+    const bar = document.getElementById('ugBulkBar');
+    const log = document.getElementById('ugBulkLog');
+    if (progress) progress.style.display = 'block';
+
+    let imported = 0, skipped = 0, failed = 0, noResults = 0;
+
+    for (let i = 0; i < songs.length; i++) {
+        if (ugBulkCancelled) break;
+
+        const song = songs[i];
+        const artist = getFullBandName(song.band);
+        const pct = Math.round(((i + 1) / songs.length) * 100);
+
+        if (status) status.textContent = `${song.title}…`;
+        if (count) count.textContent = `${i + 1} / ${songs.length}`;
+        if (bar) bar.style.width = pct + '%';
+
+        // Check if chart already exists
+        if (!overwrite) {
+            try {
+                const existing = await loadBandDataFromDrive(song.title, 'chart');
+                if (existing?.text?.trim()) {
+                    skipped++;
+                    if (log) log.innerHTML += `<div style="color:#64748b">⏭ ${song.title} — already has chart</div>`;
+                    log.scrollTop = log.scrollHeight;
+                    continue;
+                }
+            } catch(e) {}
+        }
+
+        // Search UG
+        try {
+            const resp = await fetch(`${UG_PROXY}/ug-search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ song: song.title, artist })
+            });
+            const data = await resp.json();
+            const results = data.results || [];
+
+            if (results.length === 0) {
+                noResults++;
+                if (log) log.innerHTML += `<div style="color:#f59e0b">🤷 ${song.title} — no results on UG</div>`;
+                log.scrollTop = log.scrollHeight;
+                // Small delay even on miss
+                await new Promise(r => setTimeout(r, 800));
+                continue;
+            }
+
+            // Pick the best result (already sorted by rating*log(votes))
+            const best = results[0];
+
+            // Fetch the tab content
+            const tabResp = await fetch(`${UG_PROXY}/ug-fetch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: best.url })
+            });
+            const tab = await tabResp.json();
+
+            if (!tab.content) {
+                failed++;
+                if (log) log.innerHTML += `<div style="color:#ef4444">❌ ${song.title} — fetch failed</div>`;
+                log.scrollTop = log.scrollHeight;
+                await new Promise(r => setTimeout(r, 800));
+                continue;
+            }
+
+            // Save to Firebase
+            const member = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'drew';
+            await saveBandDataToDrive(song.title, 'chart', {
+                text: tab.content,
+                key: tab.tonality || '',
+                capo: tab.capo || 0,
+                updatedBy: member,
+                updatedAt: new Date().toISOString(),
+                source: 'ultimate-guitar',
+                sourceUrl: best.url,
+                sourceRating: tab.rating,
+                sourceVotes: tab.votes
+            });
+
+            imported++;
+            if (log) log.innerHTML += `<div style="color:#10b981">✅ ${song.title} — ⭐${best.rating.toFixed(1)} (${best.votes} votes)</div>`;
+            log.scrollTop = log.scrollHeight;
+
+        } catch(e) {
+            failed++;
+            if (log) log.innerHTML += `<div style="color:#ef4444">❌ ${song.title} — ${e.message}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Rate limit: ~2 seconds between songs (2 requests per song)
+        await new Promise(r => setTimeout(r, 2000));
+    }
+
+    // Done
+    if (status) status.textContent = ugBulkCancelled ? 'Cancelled' : 'Done!';
+    if (bar) bar.style.width = '100%';
+    if (bar) bar.style.background = ugBulkCancelled ? '#f59e0b' : '#10b981';
+    if (log) log.innerHTML += `<div style="color:white;font-weight:700;margin-top:8px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px">
+        ✅ Imported: ${imported} · ⏭ Skipped: ${skipped} · 🤷 No results: ${noResults} · ❌ Failed: ${failed}
+    </div>`;
+    log.scrollTop = log.scrollHeight;
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = '✅ Done — Close'; startBtn.onclick = () => cancelBulkImport(); }
+}
+
+console.log('🔍 UG Import system loaded');
 
 // ============================================================================
 // GIG MODE — Full-screen, iPad-optimized, stage-ready chord chart view
@@ -11350,6 +11648,10 @@ function settingsTab(tab, btn) {
                 <div>🌐 Hosting: GitHub Pages</div>
                 <div style="margin-top:6px">📊 Songs in database: <b style="color:var(--text)">${(typeof allSongs!=='undefined'?allSongs:[]).length}</b></div>
             </div>
+        </div>
+        <div class="app-card"><h3>🎸 Chord Chart Import</h3>
+            <p style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">Bulk import chord charts from Ultimate Guitar for all songs. Picks the highest-rated "Chords" version automatically.</p>
+            <button class="btn btn-primary" onclick="bulkImportUGCharts()">🚀 Bulk Import from Ultimate Guitar</button>
         </div>
         <div class="app-card"><h3>🔄 Sync Status</h3>
             <div id="syncStatus" style="font-size:0.85em;color:var(--text-muted)">Checking...</div>
