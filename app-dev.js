@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🎸 DeadCetera BUILD: 20260301-002814', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🎸 DeadCetera BUILD: 20260301-003433', 'color:#667eea;font-weight:bold;font-size:14px');
 // Inject favicon to prevent 404 error
 (function() {
     if (!document.querySelector('link[rel="icon"]')) {
