@@ -35,6 +35,8 @@ export default {
       return handleArchiveFiles(request);
     if (path === '/audio-trim' && request.method === 'POST')
       return handleAudioTrim(request);
+    if (path === '/youtube-search' && request.method === 'POST')
+      return handleYouTubeSearch(request);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -284,10 +286,35 @@ async function handleGeniusSearch(request) {
     if (!song) return jsonResp({ error: 'No song' }, 400);
 
     const query = encodeURIComponent(`${song} ${artist || ''}`);
-    const searchUrl = `https://genius.com/api/search/multi?per_page=5&q=${query}`;
-
+    
+    // Try Genius search API first
     try {
-        const res = await fetch(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const searchUrl = `https://genius.com/api/search/multi?per_page=5&q=${query}`;
+        const res = await fetch(searchUrl, { 
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json'
+            } 
+        });
+        if (!res.ok) {
+            // Fallback: try the simpler search endpoint
+            const fallbackUrl = `https://genius.com/api/search?q=${query}`;
+            const fbRes = await fetch(fallbackUrl, { 
+                headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }
+            });
+            if (!fbRes.ok) return jsonResp({ error: `Genius API returned ${res.status}`, results: [] });
+            const fbData = await fbRes.json();
+            const hits = (fbData?.response?.hits || [])
+                .filter(h => h.type === 'song')
+                .map(h => ({
+                    title: h.result.title,
+                    artist: h.result.primary_artist?.name,
+                    url: h.result.url,
+                    id: h.result.id
+                }))
+                .slice(0, 5);
+            return jsonResp({ results: hits });
+        }
         const data = await res.json();
         const hits = (data?.response?.sections || [])
             .flatMap(s => s.hits || [])
@@ -302,7 +329,7 @@ async function handleGeniusSearch(request) {
             .slice(0, 5);
         return jsonResp({ results: hits });
     } catch(e) {
-        return jsonResp({ error: e.message }, 500);
+        return jsonResp({ error: e.message, results: [] }, 200);
     }
 }
 
@@ -311,32 +338,39 @@ async function handleGeniusFetch(request) {
     if (!url) return jsonResp({ error: 'No URL' }, 400);
 
     try {
-        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const res = await fetch(url, { 
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+        });
         const html = await res.text();
 
         let description = '';
         // Try JSON-LD description
         const descMatch = html.match(/"description":\s*\{"plain":\s*"([^"]*?)"/);
         if (descMatch) description = descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-        // Fallback: meta description
+        // Try meta description  
         if (!description) {
             const metaMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]*?)"/);
             if (metaMatch) description = metaMatch[1];
         }
-        return jsonResp({ description });
+        // Try og:description
+        if (!description) {
+            const ogMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*?)"/);
+            if (ogMatch) description = ogMatch[1];
+        }
+        return jsonResp({ description, url });
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
     }
 }
 
-// ── Archive.org Search ───────────────────────────────────────────────────────
+// ── Archive.org Search (broadened) ───────────────────────────────────────────
 async function handleArchiveSearch(request) {
     const { query, band } = await request.json();
     if (!query) return jsonResp({ error: 'No query' }, 400);
 
-    // Search Archive.org for live recordings
-    const searchQuery = encodeURIComponent(`${query} ${band || 'grateful dead'}`);
-    const url = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+collection%3A(GratefulDead+OR+JerryGarciaBand+OR+Phish+OR+WidespreadPanic)&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=avg_rating+desc&rows=15&output=json`;
+    // Broader search across all live music collections
+    const searchQuery = encodeURIComponent(query);
+    const url = `https://archive.org/advancedsearch.php?q=${searchQuery}+AND+mediatype%3Aaudio+AND+collection%3A(etree+OR+GratefulDead+OR+JerryGarcia+OR+Phish+OR+WidespreadPanic+OR+GratefulDeadBand)&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=source&sort[]=avg_rating+desc&rows=30&output=json`;
 
     try {
         const res = await fetch(url);
@@ -364,41 +398,75 @@ async function handleArchiveFiles(request) {
         const res = await fetch(`https://archive.org/metadata/${identifier}`);
         const data = await res.json();
         const files = (data?.files || [])
-            .filter(f => /\.(mp3|flac|ogg)$/i.test(f.name))
+            .filter(f => /\.(mp3|flac|ogg|wav)$/i.test(f.name))
             .map(f => ({
                 name: f.name,
-                title: f.title || f.name,
+                title: f.title || f.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' '),
                 size: f.size,
                 length: f.length,
                 track: f.track,
+                format: f.name.split('.').pop().toUpperCase(),
                 url: `https://archive.org/download/${identifier}/${encodeURIComponent(f.name)}`
             }))
-            .sort((a, b) => (parseInt(a.track) || 99) - (parseInt(b.track) || 99));
+            // Sort: MP3 first, then by track number
+            .sort((a, b) => {
+                const aMP3 = a.format === 'MP3' ? 0 : 1;
+                const bMP3 = b.format === 'MP3' ? 0 : 1;
+                if (aMP3 !== bMP3) return aMP3 - bMP3;
+                return (parseInt(a.track) || 99) - (parseInt(b.track) || 99);
+            });
         return jsonResp({ files, title: data?.metadata?.title?.[0] || identifier, date: data?.metadata?.date?.[0] || '' });
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
     }
 }
 
-// ── Audio trimming (fetch range of audio) ────────────────────────────────────
+// ── Audio trimming proxy ─────────────────────────────────────────────────────
 async function handleAudioTrim(request) {
     const { url, startSec, endSec } = await request.json();
     if (!url) return jsonResp({ error: 'No URL' }, 400);
-
-    // Fetch the full audio, then we'll send it to Fadr
-    // For now, just proxy the audio - the client will handle sending to Fadr
-    // The timestamps are used by the client to tell Fadr where to focus
     try {
         const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!res.ok) return jsonResp({ error: `Fetch failed: ${res.status}` }, 500);
-
         const h = new Headers();
         h.set('Access-Control-Allow-Origin', '*');
         h.set('Content-Type', res.headers.get('Content-Type') || 'audio/mpeg');
-        h.set('X-Trim-Start', String(startSec || 0));
-        h.set('X-Trim-End', String(endSec || 0));
         return new Response(res.body, { headers: h });
     } catch(e) {
         return jsonResp({ error: e.message }, 500);
+    }
+}
+
+// ── YouTube search (via Invidious) ───────────────────────────────────────────
+async function handleYouTubeSearch(request) {
+    const { query } = await request.json();
+    if (!query) return jsonResp({ error: 'No query' }, 400);
+
+    try {
+        // Use Invidious API for YouTube search (no API key needed)
+        const instances = ['https://vid.puffyan.us', 'https://inv.tux.pizza', 'https://invidious.fdn.fr'];
+        let results = [];
+        for (const instance of instances) {
+            try {
+                const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&sort_by=relevance`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    results = data.slice(0, 10).map(v => ({
+                        title: v.title,
+                        videoId: v.videoId,
+                        author: v.author,
+                        lengthSeconds: v.lengthSeconds,
+                        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+                        thumbnail: v.videoThumbnails?.[0]?.url || ''
+                    }));
+                    break;
+                }
+            } catch(e) { continue; }
+        }
+        return jsonResp({ results });
+    } catch(e) {
+        return jsonResp({ error: e.message, results: [] });
     }
 }
