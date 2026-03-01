@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260301-125332">
+    <meta name="build-version" content="20260301-130457">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deadcetera — Band HQ</title>
@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="app-shell.css">
 </head>
 <body>
+<div id="buildStamp" style="position:fixed;bottom:4px;left:4px;z-index:99999;background:rgba(102,126,234,0.2);color:#818cf8;font-size:10px;font-family:monospace;padding:2px 7px;border-radius:4px;pointer-events:none;user-select:none">BUILD: 20260301-130457</div>
     <!-- TOP BAR -->
     <div class="topbar">
         <div class="topbar-left">
@@ -572,6 +573,36 @@
 
     <script src="data.js"></script>
     <script src="app.js"></script>
+    <script src="rehearsal-mode.js"></script>
     <script src="help.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => {
+                        console.log('[SW] Registered:', reg.scope);
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => console.log('[SW] Registration failed:', err));
+                navigator.serviceWorker.addEventListener('message', event => {
+                    if (event.data?.type === 'SW_UPDATED') {
+                        // showUpdateBanner is defined in app.js — call it if ready, else retry
+                        if (typeof showUpdateBanner === 'function') {
+                            showUpdateBanner();
+                        } else {
+                            setTimeout(() => { if (typeof showUpdateBanner === 'function') showUpdateBanner(); }, 2000);
+                        }
+                    }
+                });
+            });
+        }
+    </script>
 </body>
 </html>
