@@ -511,8 +511,9 @@
     font-size: 18px;
     line-height: 1.75;
     color: #e2e8f0;
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: pre;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     margin: 0;
     padding: 0;
 }
@@ -548,9 +549,8 @@
 /* Landscape iPad */
 @media (min-width: 768px) and (orientation: landscape) {
     .gig-chart-text {
-        columns: 2;
-        column-gap: 40px;
-        column-rule: 1px solid rgba(255,255,255,0.06);
+        max-width: 95vw;
+        margin: 0 auto;
     }
 }
 
