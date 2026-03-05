@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-192537', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-193056', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-192537';
+var BUILD_VERSION = '20260305-193056';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -57,7 +57,7 @@ var _loadedVersion = BUILD_VERSION;
         /* Col 2: Icon badges — fixed slots, always same height */
         .song-badges { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; width:28px; overflow:hidden; }
         .harmony-slot, .northstar-slot { display:flex; align-items:center; justify-content:center; width:20px; height:16px; flex-shrink:0; }
-        .harmony-badge { font-size:0.6em; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.2); padding:2px 3px; border-radius:4px; border:1px solid rgba(129,140,248,0.3); color:#a5b4fc; letter-spacing:0; width:12px; height:12px; }
+        .harmony-badge { font-size:9px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.2); padding:1px 2px; border-radius:4px; border:1px solid rgba(129,140,248,0.3); width:16px; height:14px; overflow:hidden; flex-shrink:0; }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
         /* Col 3: Chain strip */
         .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; }
@@ -6441,8 +6441,8 @@ async function addHarmonyBadges() {
         const harmonySlot = badgesContainer.querySelector('.harmony-slot');
         if (harmonySlot) {
             harmonySlot.innerHTML = harmonyBadgeCache[songTitle]
-                ? '<span class="harmony-badge" title="Has vocal harmonies">H</span>'
-                : '<span class="harmony-badge" style="visibility:hidden">H</span>';
+                ? '<span class="harmony-badge" title="Has vocal harmonies">🎤</span>'
+                : '<span class="harmony-badge" style="visibility:hidden">🎤</span>';
         }
     });
 }
