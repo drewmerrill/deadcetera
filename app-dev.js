@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-193056', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-194756', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-193056';
+var BUILD_VERSION = '20260305-194756';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -54,9 +54,9 @@ var _loadedVersion = BUILD_VERSION;
         .song-item.selected .song-badge { opacity:1 !important; }
         .song-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f1f5f9 !important; font-weight:500; font-size:0.9em; line-height:1.3; }
         .song-status-cell { width:68px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-        /* Col 2: Icon badges — fixed slots, always same height */
-        .song-badges { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; width:28px; overflow:hidden; }
-        .harmony-slot, .northstar-slot { display:flex; align-items:center; justify-content:center; width:20px; height:16px; flex-shrink:0; }
+        /* Col 2: Icon badges — row layout so single badge stays vertically centered */
+        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:2px; width:28px; overflow:hidden; }
+        .harmony-slot, .northstar-slot { display:flex; align-items:center; justify-content:center; width:13px; flex-shrink:0; }
         .harmony-badge { font-size:9px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.2); padding:1px 2px; border-radius:4px; border:1px solid rgba(129,140,248,0.3); width:16px; height:14px; overflow:hidden; flex-shrink:0; }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
         /* Col 3: Chain strip */
@@ -894,6 +894,19 @@ function setupSearchAndFilters() {
             renderSongs(currentFilter, searchInput.value);
         });
     });
+    // Inject heatmap toggle button
+    if (!document.getElementById('heatmapToggleBtn')) {
+        const btn = document.createElement('button');
+        btn.id = 'heatmapToggleBtn';
+        btn.title = 'Show readiness heatmap';
+        btn.textContent = '🌡️ Heatmap';
+        btn.style.cssText = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:4px 9px;border-radius:20px;cursor:pointer;font-size:0.72em;font-weight:700;white-space:nowrap;transition:all 0.15s;flex-shrink:0;margin-left:4px';
+        btn.onclick = function() { if(typeof toggleHeatmapMode==='function') toggleHeatmapMode(); };
+        const harmoniesEl = document.getElementById('harmoniesOnlyFilter');
+        const target = harmoniesEl ? (harmoniesEl.closest('label')?.parentElement || harmoniesEl.parentElement) : null;
+        if (target && target.parentElement) target.parentElement.appendChild(btn);
+        else if (searchInput?.parentElement?.parentElement) searchInput.parentElement.parentElement.appendChild(btn);
+    }
 }
 
 // ============================================================================
@@ -8499,11 +8512,12 @@ async function loadSetlists() {
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="launchGigMode(${i})" title="Go Live" style="color:#22c55e">🎤</button>
                 <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${i})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
                 <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
-        ${(sl.sets||[]).map(s => `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map(sg => typeof sg==='string'?sg:sg.title).join(' → ')}</div>`).join('')}
+        ${(sl.sets||[]).map(s => { const SA={'stop':'  ','flow':' → ','segue':' ~ ','cutoff':' | '}; return `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map((sg,i,arr)=>{ const t=typeof sg==='string'?sg:sg.title; const a=i<arr.length-1?(SA[(typeof sg==='object'&&sg.segue)||'stop']||'  '):''; return t+a; }).join('')}</div>`; }).join('')}
     </div>`).join('');
 }
 
@@ -8645,7 +8659,7 @@ function slSearchSong(input, setIdx) {
 }
 function slAddSongToSet(setIdx, title) {
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
-    window._slSets[setIdx].songs.push({title: title, transition: false});
+    window._slSets[setIdx].songs.push({title: title, segue: 'stop'});
     slRenderSetSongs(setIdx);
     document.getElementById('slAddSong' + setIdx).value = '';
     document.getElementById('slSongResults' + setIdx).innerHTML = '';
@@ -8655,24 +8669,59 @@ function slRenderSetSongs(setIdx) {
     const el = document.getElementById('slSet' + setIdx + 'Songs');
     if (!el) return;
     const items = window._slSets[setIdx]?.songs || [];
+    const allSongsList = (typeof allSongs !== 'undefined' ? allSongs : songs || []);
     el.innerHTML = items.map((item, i) => {
         const s = typeof item === 'string' ? item : item.title;
-        const trans = typeof item === 'object' && item.transition;
-        const histTip = getSongHistoryTooltip(s);
-        return `<div class="list-item" style="padding:6px 10px;font-size:0.85em;gap:6px" title="${histTip.replace(/"/g,'&quot;')}">
-            <span style="color:var(--text-dim);min-width:20px;font-weight:600">${i + 1}.</span>
-            <span style="flex:1;font-weight:500">${s}${trans ? ' <span style="color:var(--accent-light);font-weight:700">→</span>' : ''}</span>
-            <button class="btn btn-sm ${trans?'btn-primary':'btn-ghost'}" onclick="slToggleTransition(${setIdx},${i})" title="${trans?'Song transitions into next':'Click to mark as transition'}" style="padding:2px 8px;font-size:0.75em">${trans?'→':'⏹'}</button>
-            <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px">✕</button>
+        const segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
+        const songData = allSongsList.find(sd => sd.title === s);
+        const keyStr = songData?.key ? `<span style="font-size:0.7em;color:#818cf8;background:rgba(129,140,248,0.12);padding:1px 5px;border-radius:4px;border:1px solid rgba(129,140,248,0.2)">${songData.key}</span>` : '';
+        const bpmStr = songData?.bpm ? `<span style="font-size:0.7em;color:#94a3b8">\u26a1${songData.bpm}</span>` : '';
+        const segueColor = { stop:'#64748b', flow:'#818cf8', segue:'#34d399', cutoff:'#f87171' }[segue] || '#64748b';
+        const histTip = typeof getSongHistoryTooltip === 'function' ? getSongHistoryTooltip(s) : '';
+        return `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
+            style="padding:6px 10px;font-size:0.85em;gap:6px;align-items:center;cursor:default" title="${histTip.replace(/"/g,'&quot;')}">
+            <span style="color:#475569;cursor:grab;font-size:1em;flex-shrink:0" title="Drag to reorder">\u2807</span>
+            <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0">${i + 1}.</span>
+            <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
+            ${keyStr}${bpmStr}
+            <select onchange="slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:5px;padding:2px 4px;font-size:0.78em;font-weight:700;cursor:pointer;flex-shrink:0">
+                <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
+                <option value="flow" ${segue==='flow'?'selected':''}>\u2192 Flow</option>
+                <option value="segue" ${segue==='segue'?'selected':''}>~ Segue</option>
+                <option value="cutoff" ${segue==='cutoff'?'selected':''}>| Cut</option>
+            </select>
+            <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px;flex-shrink:0">\u2715</button>
         </div>`;
     }).join('');
+    el.querySelectorAll('.sl-song-row').forEach(row => {
+        row.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', row.dataset.idx); row.style.opacity='0.4'; });
+        row.addEventListener('dragend', e => { row.style.opacity='1'; });
+        row.addEventListener('dragover', e => { e.preventDefault(); row.style.background='rgba(102,126,234,0.12)'; });
+        row.addEventListener('dragleave', e => { row.style.background=''; });
+        row.addEventListener('drop', e => {
+            e.preventDefault(); row.style.background='';
+            const from=parseInt(e.dataTransfer.getData('text/plain')), to=parseInt(row.dataset.idx);
+            if(from===to)return;
+            const songs=window._slSets[setIdx].songs;
+            const [moved]=songs.splice(from,1); songs.splice(to,0,moved);
+            slRenderSetSongs(setIdx);
+        });
+    });
+}
+
+function slSetSegue(setIdx, songIdx, segueType) {
+    const items = window._slSets[setIdx]?.songs;
+    if (!items || items[songIdx] === undefined) return;
+    if (typeof items[songIdx] === 'string') items[songIdx] = { title: items[songIdx], segue: segueType };
+    else items[songIdx].segue = segueType;
 }
 
 function slToggleTransition(setIdx, songIdx) {
     const items = window._slSets[setIdx]?.songs;
     if (!items || !items[songIdx]) return;
-    if (typeof items[songIdx] === 'string') items[songIdx] = { title: items[songIdx], transition: true };
-    else items[songIdx].transition = !items[songIdx].transition;
+    if (typeof items[songIdx] === 'string') items[songIdx] = { title: items[songIdx], segue: 'flow' };
+    else items[songIdx].segue = items[songIdx].segue === 'flow' ? 'stop' : 'flow';
     slRenderSetSongs(setIdx);
 }
 
@@ -10418,6 +10467,7 @@ async function loadGigs() {
             <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
                 <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
                 <button class="btn btn-sm btn-ghost" onclick="editGig(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="loadGigPayouts(${i})" title="Payout" style="color:#22c55e">💰</button>
                 <button class="btn btn-sm btn-ghost" onclick="deleteGig(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
@@ -16581,3 +16631,316 @@ function rhFormatDate(dateStr) {
 }
 
 console.log('Rehearsal Planner loaded');
+
+
+// ============================================================================
+// LIVE GIG MODE — Full-screen setlist player
+// ============================================================================
+var _gigMode = {
+    setlist: null,
+    flatList: [],
+    currentIdx: 0,
+    playedSet: null
+};
+
+function openGigMode(setlistObj) {
+    var gm = _gigMode;
+    gm.setlist = setlistObj;
+    gm.flatList = [];
+    gm.playedSet = new Set();
+    gm.currentIdx = 0;
+    (setlistObj.sets || []).forEach(function(set, si) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : sg.title;
+            var segue = typeof sg === 'object' ? (sg.segue || 'stop') : 'stop';
+            gm.flatList.push({ title: title, setName: set.name || ('Set '+(si+1)), segue: segue });
+        });
+    });
+    ensureGigModeOverlay();
+    gmRender();
+    var overlay = document.getElementById('gigModeOverlay');
+    if (overlay) { overlay.classList.add('gm-visible'); }
+    document.body.style.overflow = 'hidden';
+}
+
+function closeGigMode() {
+    var overlay = document.getElementById('gigModeOverlay');
+    if (overlay) overlay.classList.remove('gm-visible');
+    document.body.style.overflow = '';
+}
+
+function gmRender() {
+    var gm = _gigMode;
+    var overlay = document.getElementById('gigModeOverlay');
+    if (!overlay) return;
+    var cur = gm.flatList[gm.currentIdx] || null;
+    var next = gm.flatList[gm.currentIdx + 1] || null;
+    var total = gm.flatList.length;
+
+    var songEl = document.getElementById('gmSongTitle');
+    var setEl = document.getElementById('gmSetLabel');
+    var nextEl = document.getElementById('gmNextSong');
+    var progEl = document.getElementById('gmProgress');
+    var progBar = document.getElementById('gmProgressBar');
+
+    if (songEl) songEl.textContent = cur ? cur.title : 'Done!';
+    if (setEl) setEl.textContent = cur ? cur.setName : '';
+    if (nextEl) {
+        if (next) {
+            var segueLabel = { stop:'then', flow:'\u2192 flows into', segue:'~ segues to', cutoff:'| cuts to' }[cur ? cur.segue : 'stop'] || 'then';
+            nextEl.innerHTML = '<span style="color:#64748b;font-size:0.75em">' + segueLabel + '</span><br><span style="font-size:0.95em;color:#94a3b8">' + next.title + '</span>';
+        } else {
+            nextEl.textContent = cur ? 'Last song' : '';
+        }
+    }
+    if (progEl) progEl.textContent = (gm.currentIdx + 1) + ' / ' + total + ' \u2022 ' + gm.playedSet.size + ' played';
+    if (progBar) progBar.style.width = (total > 0 ? (gm.currentIdx / total * 100) : 0) + '%';
+
+    var listEl = document.getElementById('gmSongList');
+    if (listEl) {
+        var html = '';
+        var lastSet = '';
+        gm.flatList.forEach(function(item, idx) {
+            if (item.setName !== lastSet) {
+                html += '<div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;padding:8px 12px 4px;border-top:1px solid rgba(255,255,255,0.06)">' + item.setName + '</div>';
+                lastSet = item.setName;
+            }
+            var isPlayed = gm.playedSet.has(idx);
+            var isCurrent = idx === gm.currentIdx;
+            var segArr = { stop:'', flow:' \u2192', segue:' ~', cutoff:' |' }[item.segue] || '';
+            html += '<div onclick="gmJumpTo(' + idx + ')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;'
+                + (isCurrent ? 'background:rgba(102,126,234,0.18);border-left:3px solid #667eea;' : 'border-left:3px solid transparent;')
+                + (isPlayed && !isCurrent ? 'opacity:0.4;' : '')
+                + '">'
+                + '<span style="font-size:0.7em;color:#64748b;min-width:20px;text-align:right">' + (idx+1) + '</span>'
+                + '<span style="flex:1;font-size:' + (isCurrent?'0.95em':'0.88em') + ';font-weight:' + (isCurrent?'700':'400') + ';color:' + (isCurrent?'#f1f5f9':'#94a3b8') + ';' + (isPlayed&&!isCurrent?'text-decoration:line-through;':'') + '">' + item.title + '</span>'
+                + (segArr ? '<span style="font-size:0.72em;color:#818cf8">' + segArr + '</span>' : '')
+                + (isPlayed ? '<span style="color:#22c55e;font-size:0.8em">\u2713</span>' : '')
+                + '</div>';
+        });
+        listEl.innerHTML = html;
+        var curEl = listEl.querySelectorAll('[onclick]')[gm.currentIdx];
+        if (curEl) curEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    var playedBtn = document.getElementById('gmMarkPlayed');
+    if (playedBtn && cur) {
+        var already = gm.playedSet.has(gm.currentIdx);
+        playedBtn.textContent = already ? '\u21a9 Unmark' : '\u2713 Mark Played';
+        playedBtn.style.background = already ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#22c55e,#16a34a)';
+    }
+}
+
+function gmMarkPlayed() {
+    var gm = _gigMode;
+    var idx = gm.currentIdx;
+    if (gm.playedSet.has(idx)) {
+        gm.playedSet.delete(idx);
+    } else {
+        gm.playedSet.add(idx);
+        if (idx < gm.flatList.length - 1) gm.currentIdx++;
+    }
+    gmRender();
+}
+
+function gmNext() { if (_gigMode.currentIdx < _gigMode.flatList.length - 1) { _gigMode.currentIdx++; gmRender(); } }
+function gmPrev() { if (_gigMode.currentIdx > 0) { _gigMode.currentIdx--; gmRender(); } }
+function gmJumpTo(idx) { _gigMode.currentIdx = idx; gmRender(); }
+
+function ensureGigModeOverlay() {
+    if (document.getElementById('gigModeOverlay')) return;
+    var style = document.createElement('style');
+    style.textContent = '#gigModeOverlay{display:none;position:fixed;inset:0;z-index:3000;background:#060d1a;flex-direction:column;overflow:hidden}#gigModeOverlay.gm-visible{display:flex!important}@media(max-width:500px){#gmSongList{display:none}}';
+    document.head.appendChild(style);
+    var div = document.createElement('div');
+    div.id = 'gigModeOverlay';
+    div.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(135deg,#0f172a,#060d1a);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">'
+        + '<button onclick="closeGigMode()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:#94a3b8;width:36px;height:36px;border-radius:8px;font-size:1em;cursor:pointer">\u2715</button>'
+        + '<div style="flex:1"><div style="font-size:0.8em;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.08em">\uD83C\uDFA4 Live Gig Mode</div><div id="gmSetLabel" style="font-size:0.72em;color:#64748b"></div></div>'
+        + '<div id="gmProgress" style="font-size:0.72em;color:#64748b;text-align:right"></div>'
+        + '</div>'
+        + '<div style="height:3px;background:rgba(255,255,255,0.06);flex-shrink:0"><div id="gmProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#667eea,#22c55e);transition:width 0.3s"></div></div>'
+        + '<div style="display:flex;flex:1;overflow:hidden;min-height:0">'
+        + '<div style="display:flex;flex-direction:column;flex:1;min-width:0">'
+        + '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px">'
+        + '<div id="gmSongTitle" style="font-size:clamp(2em,8vw,3.5em);font-weight:900;color:#f1f5f9;text-align:center;line-height:1.15;margin-bottom:20px;text-shadow:0 2px 20px rgba(102,126,234,0.3)">\u2014</div>'
+        + '<div id="gmNextSong" style="font-size:1em;color:#64748b;text-align:center;min-height:2.8em;line-height:1.4"></div>'
+        + '</div>'
+        + '<div style="padding:16px;display:flex;gap:8px;flex-shrink:0;border-top:1px solid rgba(255,255,255,0.06)">'
+        + '<button onclick="gmPrev()" style="flex:1;padding:14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#94a3b8;font-size:1.2em;cursor:pointer">\u25c4</button>'
+        + '<button id="gmMarkPlayed" onclick="gmMarkPlayed()" style="flex:3;padding:14px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:10px;color:white;font-size:1em;font-weight:800;cursor:pointer">\u2713 Mark Played</button>'
+        + '<button onclick="gmNext()" style="flex:1;padding:14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#94a3b8;font-size:1.2em;cursor:pointer">\u25ba</button>'
+        + '</div></div>'
+        + '<div id="gmSongList" style="width:220px;flex-shrink:0;border-left:1px solid rgba(255,255,255,0.06);overflow-y:auto;background:#080f1e"></div>'
+        + '</div>';
+    document.body.appendChild(div);
+}
+
+async function launchGigMode(setlistIdx) {
+    ensureGigModeOverlay();
+    var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var sl = data[setlistIdx];
+    if (!sl) { showToast('Setlist not found'); return; }
+    openGigMode(sl);
+}
+
+console.log('\uD83C\uDFA4 Live Gig Mode loaded');
+
+// ============================================================================
+// GIG PAYOUTS & EXPENSES
+// ============================================================================
+
+async function loadGigPayouts(gigIdx) {
+    var data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var gig = data[gigIdx];
+    if (!gig) return;
+    var container = document.getElementById('gigsList');
+    if (!container) return;
+    var expenses = gig.expenses || [];
+    var guarantee = parseFloat(gig.guarantee) || 0;
+    var totalExp = expenses.reduce(function(a,e){ return a+(parseFloat(e.amount)||0); }, 0);
+    var net = guarantee - totalExp;
+    var memberCount = Object.keys(bandMembers||{}).length || 5;
+    var perMember = net > 0 ? net / memberCount : 0;
+
+    var memberRows = Object.entries(bandMembers||{}).map(function(kv) {
+        var key=kv[0], m=kv[1];
+        var custom=(gig.memberSplit||{})[key];
+        var amt = custom !== undefined ? custom : perMember;
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+            + '<span style="min-width:22px">'+(m.emoji||'\uD83C\uDFB8')+'</span>'
+            + '<span style="flex:1;font-size:0.85em;color:#e2e8f0;font-weight:500">'+m.name+'</span>'
+            + '<span style="font-size:0.85em;font-weight:700;color:#22c55e">$'+amt.toFixed(2)+'</span>'
+            + '</div>';
+    }).join('');
+
+    container.innerHTML = '<div class="app-card">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+        + '<h3 style="flex:1;margin:0">\uD83D\uDCB0 Payout \u2014 '+(gig.venue||'Gig')+'</h3>'
+        + '<button class="btn btn-sm btn-ghost" onclick="loadGigs()">\u2715 Close</button></div>'
+        + '<div class="form-row" style="margin-bottom:10px"><label class="form-label">Guarantee / Door ($)</label>'
+        + '<input class="app-input" id="gpGuarantee" type="number" min="0" step="0.01" value="'+guarantee+'" placeholder="0.00"></div>'
+        + '<div style="margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        + '<label class="form-label" style="margin:0">Expenses</label>'
+        + '<button class="btn btn-sm btn-ghost" onclick="gpAddExpense('+gigIdx+')">+ Add</button></div>'
+        + '<div id="gpExpenseList">'+gpRenderExpenses(expenses, gigIdx)+'</div></div>'
+        + '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;margin-bottom:12px">'
+        + '<div style="display:flex;justify-content:space-between;font-size:0.85em;margin-bottom:4px"><span style="color:#94a3b8">Guarantee</span><span style="color:#f1f5f9;font-weight:600">$'+guarantee.toFixed(2)+'</span></div>'
+        + '<div style="display:flex;justify-content:space-between;font-size:0.85em;margin-bottom:4px"><span style="color:#94a3b8">Expenses</span><span style="color:#f87171;font-weight:600">-$'+totalExp.toFixed(2)+'</span></div>'
+        + '<div style="display:flex;justify-content:space-between;font-size:0.95em;font-weight:700;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;margin-top:4px"><span style="color:#f1f5f9">Net</span><span style="color:#22c55e">$'+net.toFixed(2)+'</span></div></div>'
+        + '<div style="margin-bottom:14px"><div style="font-size:0.72em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px">Per-Member Split ('+memberCount+' members)</div>'
+        + memberRows+'</div>'
+        + '<div style="display:flex;gap:8px"><button class="btn btn-success" onclick="gpSave('+gigIdx+')">&#x1F4BE; Save</button>'
+        + '<button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>'
+        + '</div>';
+}
+
+function gpRenderExpenses(expenses, gigIdx) {
+    if (!expenses.length) return '<div style="color:#64748b;font-size:0.82em;padding:8px 0">No expenses yet</div>';
+    return expenses.map(function(e, i) {
+        return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+            + '<input class="app-input" style="flex:2;font-size:0.82em;padding:5px 8px" placeholder="Description" value="'+(e.desc||'').replace(/"/g,'&quot;')+'" id="gpExpDesc_'+i+'">'
+            + '<input class="app-input" style="flex:1;font-size:0.82em;padding:5px 8px" type="number" min="0" step="0.01" placeholder="$0" value="'+(e.amount||'')+'" id="gpExpAmt_'+i+'">'
+            + '<button class="btn btn-sm btn-ghost" onclick="gpRemoveExpense('+gigIdx+','+i+')" style="color:#f87171;flex-shrink:0">\u2715</button>'
+            + '</div>';
+    }).join('');
+}
+
+function gpReadExpensesFromDOM(existing) {
+    return existing.map(function(_, i) {
+        return {
+            desc: document.getElementById('gpExpDesc_'+i)?.value || '',
+            amount: parseFloat(document.getElementById('gpExpAmt_'+i)?.value) || 0
+        };
+    });
+}
+
+async function gpAddExpense(gigIdx) {
+    var data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    if (!data[gigIdx]) return;
+    data[gigIdx].guarantee = parseFloat(document.getElementById('gpGuarantee')?.value) || 0;
+    data[gigIdx].expenses = gpReadExpensesFromDOM(data[gigIdx].expenses || []);
+    data[gigIdx].expenses.push({ desc: '', amount: 0 });
+    await saveBandDataToDrive('_band', 'gigs', data);
+    loadGigPayouts(gigIdx);
+}
+
+async function gpRemoveExpense(gigIdx, idx) {
+    var data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    if (!data[gigIdx]) return;
+    data[gigIdx].guarantee = parseFloat(document.getElementById('gpGuarantee')?.value) || 0;
+    data[gigIdx].expenses = gpReadExpensesFromDOM(data[gigIdx].expenses || []);
+    data[gigIdx].expenses.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'gigs', data);
+    loadGigPayouts(gigIdx);
+}
+
+async function gpSave(gigIdx) {
+    var data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    if (!data[gigIdx]) return;
+    data[gigIdx].guarantee = parseFloat(document.getElementById('gpGuarantee')?.value) || 0;
+    data[gigIdx].expenses = gpReadExpensesFromDOM(data[gigIdx].expenses || []);
+    var totalExp = data[gigIdx].expenses.reduce(function(a,e){ return a+(parseFloat(e.amount)||0); }, 0);
+    var net = data[gigIdx].guarantee - totalExp;
+    var memberCount = Object.keys(bandMembers||{}).length || 5;
+    var perMember = net > 0 ? net/memberCount : 0;
+    data[gigIdx].netPayout = net;
+    data[gigIdx].memberSplit = {};
+    Object.keys(bandMembers||{}).forEach(function(k){ data[gigIdx].memberSplit[k] = perMember; });
+    await saveBandDataToDrive('_band', 'gigs', data);
+    showToast('\uD83D\uDCB0 Payout saved!');
+    loadGigs();
+}
+
+console.log('\uD83D\uDCB0 Gig Payouts loaded');
+
+// ============================================================================
+// READINESS HEATMAP — Song list overlay
+// ============================================================================
+var _heatmapMode = false;
+
+function toggleHeatmapMode() {
+    _heatmapMode = !_heatmapMode;
+    var btn = document.getElementById('heatmapToggleBtn');
+    if (btn) {
+        btn.style.background = _heatmapMode ? 'rgba(102,126,234,0.25)' : 'rgba(255,255,255,0.06)';
+        btn.style.color = _heatmapMode ? '#818cf8' : '#94a3b8';
+        btn.style.borderColor = _heatmapMode ? 'rgba(102,126,234,0.4)' : 'rgba(255,255,255,0.1)';
+    }
+    if (_heatmapMode && !readinessCacheLoaded) {
+        preloadReadinessCache().then(function() { renderHeatmapOverlay(); });
+    } else {
+        renderHeatmapOverlay();
+    }
+}
+
+function renderHeatmapOverlay() {
+    document.querySelectorAll('.song-heatmap-bar').forEach(function(el) { el.remove(); });
+    if (!_heatmapMode) return;
+    document.querySelectorAll('.song-item').forEach(function(item) {
+        var title = item.dataset.title || '';
+        if (!title) return;
+        var scores = readinessCache[title] || {};
+        var vals = BAND_MEMBERS_ORDERED.map(function(m) { return scores[m.key] || 0; });
+        var set = vals.filter(function(v) { return v > 0; });
+        if (!set.length) return;
+        var avg = set.reduce(function(a,b){ return a+b; }, 0) / set.length;
+        var hue = Math.round((avg-1)/4*120);
+        var stripe = document.createElement('div');
+        stripe.style.cssText = 'position:absolute;left:0;top:0;bottom:0;width:3px;background:hsl('+hue+',65%,45%);border-radius:8px 0 0 8px;pointer-events:none;z-index:1';
+        var dots = document.createElement('div');
+        dots.className = 'song-heatmap-bar';
+        dots.style.cssText = 'position:absolute;right:3px;top:50%;transform:translateY(-50%);display:flex;gap:2px;align-items:center;pointer-events:none;z-index:2';
+        dots.innerHTML = BAND_MEMBERS_ORDERED.map(function(m) {
+            var s = scores[m.key] || 0;
+            var c = s ? readinessColor(s) : 'rgba(255,255,255,0.1)';
+            return '<span title="'+m.name+': '+(s?s+'/5':'not set')+'" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+'"></span>';
+        }).join('');
+        item.style.position = 'relative';
+        item.appendChild(stripe);
+        item.appendChild(dots);
+    });
+}
+
+console.log('\uD83C\uDF21\uFE0F Readiness Heatmap loaded');
