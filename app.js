@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-175355', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-180815', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-175355';
+var BUILD_VERSION = '20260305-180815';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -56,8 +56,8 @@ var _loadedVersion = BUILD_VERSION;
         .song-status-cell { width:68px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
         /* Col 2: Icon badges — fixed slots, always same height */
         .song-badges { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; width:28px; overflow:hidden; }
-        .harmony-slot, .northstar-slot { display:flex; align-items:center; justify-content:center; width:20px; height:13px; flex-shrink:0; }
-        .harmony-badge { font-size:0.72em; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.2); padding:1px 3px; border-radius:4px; border:1px solid rgba(129,140,248,0.3); }
+        .harmony-slot, .northstar-slot { display:flex; align-items:center; justify-content:center; width:20px; height:16px; flex-shrink:0; }
+        .harmony-badge { font-size:0.72em; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.2); padding:2px 3px; border-radius:4px; border:1px solid rgba(129,140,248,0.3); }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
         /* Col 3: Chain strip */
         .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; }
