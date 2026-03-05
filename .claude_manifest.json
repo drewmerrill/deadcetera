@@ -1,24 +1,24 @@
 {
-  "synced_at": "2026-03-05T16:20:36.335129Z",
-  "version": "20260305-135336",
+  "synced_at": "2026-03-05T19:35:09.270600Z",
+  "version": "20260305-193056",
   "files": {
     "app.js": {
-      "sha": "c4826c7a",
-      "lines": 16040,
-      "size": 883899
+      "sha": "f474b727",
+      "lines": 16583,
+      "size": 916295
     },
     "app-dev.js": {
-      "sha": "c4826c7a",
-      "lines": 16040,
-      "size": 883899
+      "sha": "f474b727",
+      "lines": 16583,
+      "size": 916295
     },
     "index.html": {
-      "sha": "1ce25f9a",
-      "lines": 655,
-      "size": 42653
+      "sha": "52319d6f",
+      "lines": 657,
+      "size": 42862
     },
     "help.js": {
-      "sha": "b6427417",
+      "sha": "d99a3144",
       "lines": 394,
       "size": 50290
     },
@@ -28,7 +28,7 @@
       "size": 63204
     },
     "rehearsal-mode.js": {
-      "sha": "678a70b1",
+      "sha": "092db5e4",
       "lines": 1202,
       "size": 92776
     },
@@ -48,7 +48,7 @@
       "size": 10410
     },
     "service-worker.js": {
-      "sha": "e5230c3c",
+      "sha": "9c8bca7b",
       "lines": 155,
       "size": 6041
     },
@@ -73,9 +73,9 @@
       "size": 1604
     },
     "push.py": {
-      "sha": "9de246cb",
-      "lines": 223,
-      "size": 8398
+      "sha": "39443c81",
+      "lines": 287,
+      "size": 9905
     },
     "sync.py": {
       "sha": "cfbd464b",
@@ -83,7 +83,7 @@
       "size": 4147
     },
     "version.json": {
-      "sha": "ba93437b",
+      "sha": "2bddc2e9",
       "lines": 3,
       "size": 79
     }
