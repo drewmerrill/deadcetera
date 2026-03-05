@@ -1,0 +1,617 @@
+// GrooveLinx Cloudflare Worker v4 — Multi-Source Harmony + Jam Charts
+// Routes:
+//   POST /claude          → Anthropic Claude API proxy
+//   ANY  /fadr/*          → Fadr API proxy (key injected server-side)
+//   POST /midi2abc        → MIDI binary → ABC notation converter
+//   POST /archive-fetch   → Fetch Archive.org audio as binary
+//   POST /archive-search  → Search Archive.org by setlist/description
+//   POST /archive-files   → List files for a specific show
+//   POST /youtube-search  → Search YouTube for videos
+//   POST /youtube-audio   → Extract audio from YouTube/Spotify URLs
+//   POST /genius-search   → Search Genius.com for songs
+//   POST /genius-fetch    → Fetch song meaning from Genius
+//   POST /generate-image  → Flux Schnell AI image generation
+//   POST /relisten-search → Search Relisten API for shows by song
+//   POST /phishnet-jamchart → Fetch Phish.net jam chart for a song
+//   POST /phishin-search  → Search Phish.in for tracks by song
+//   POST /spotify-search  → Search Spotify for tracks (client credentials)
+//   POST /odesli-links    → Get cross-platform links via Odesli/Songlink
+//   GET  /fadr-diag       → Fadr API key diagnostics
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    if (request.method === 'OPTIONS') return cors(new Response(null));
+    if ((path === '/' || path === '/claude') && request.method === 'POST')
+      return handleClaude(request, env);
+    if (path.startsWith('/fadr/'))
+      return handleFadr(request, env, path);
+    if (path === '/midi2abc' && request.method === 'POST')
+      return handleMidi2Abc(request);
+    if (path === '/archive-fetch' && request.method === 'POST')
+      return handleArchiveFetch(request);
+    if (path === '/archive-search' && request.method === 'POST')
+      return handleArchiveSearch(request);
+    if (path === '/archive-files' && request.method === 'POST')
+      return handleArchiveFiles(request);
+    if (path === '/genius-search' && request.method === 'POST')
+      return handleGeniusSearch(request);
+    if (path === '/genius-fetch' && request.method === 'POST')
+      return handleGeniusFetch(request);
+    if (path === '/youtube-search' && request.method === 'POST')
+      return handleYouTubeSearch(request);
+    if (path === '/youtube-audio' && request.method === 'POST')
+      return handleYouTubeAudio(request);
+    if (path === '/generate-image' && request.method === 'POST')
+      return handleGenerateImage(request, env);
+    if (path === '/relisten-search' && request.method === 'POST')
+      return handleRelistenSearch(request);
+    if (path === '/phishnet-jamchart' && request.method === 'POST')
+      return handlePhishNetJamChart(request, env);
+    if (path === '/phishin-search' && request.method === 'POST')
+      return handlePhishInSearch(request);
+    if (path === '/spotify-search' && request.method === 'POST')
+      return handleSpotifySearch(request, env);
+    if (path === '/odesli-links' && request.method === 'POST')
+      return handleOdesliLinks(request);
+    if (path === '/fadr-diag' && request.method === 'GET')
+      return handleFadrDiag(request, env);
+    return new Response('Not found', { status: 404 });
+  }
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function cors(response) {
+  const h = new Headers(response.headers);
+  h.set('Access-Control-Allow-Origin', '*');
+  h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  h.set('Access-Control-Max-Age', '86400');
+  return new Response(response.body, { status: response.status, headers: h });
+}
+function jsonResp(data, status = 200) {
+  return cors(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }));
+}
+
+// ── Claude API Proxy ────────────────────────────────────────────────────────
+async function handleClaude(request, env) {
+  try {
+    const body = await request.text();
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body
+    });
+    return cors(new Response(await res.text(), { status: res.status, headers: { 'Content-Type': 'application/json' } }));
+  } catch (e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── Fadr API Proxy ──────────────────────────────────────────────────────────
+async function handleFadr(request, env, path) {
+  const fadrPath = path.replace('/fadr', '');
+  const fadrUrl = 'https://api.fadr.com' + fadrPath;
+  try {
+    const ct = request.headers.get('Content-Type') || 'application/json';
+    const body = request.method !== 'GET' ? await request.arrayBuffer() : undefined;
+    const fadrReq = new Request(fadrUrl, { method: request.method, body, headers: { 'Content-Type': ct } });
+    const keyStr = '' + (env.FADR_API_KEY || '');
+    fadrReq.headers.set('Authorization', 'Bearer ' + keyStr.replace(/[\x00-\x1F\x7F]/g, '').trim());
+    const res = await fetch(fadrReq);
+    const data = await res.arrayBuffer();
+    const respHeaders = { 'Content-Type': res.headers.get('Content-Type') || 'application/json' };
+    if (!res.ok) respHeaders['X-Fadr-Error'] = 'status-' + res.status;
+    return cors(new Response(data, { status: res.status, headers: respHeaders }));
+  } catch (e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── Fadr Diagnostics ────────────────────────────────────────────────────────
+async function handleFadrDiag(request, env) {
+  const rawKey = String(env.FADR_API_KEY || '');
+  const cleaned = rawKey.replace(/[\x00-\x1F\x7F]/g, '').trim();
+  return jsonResp({ rawLength: rawKey.length, cleanLength: cleaned.length,
+    first4: cleaned.substring(0, 4), last4: cleaned.substring(cleaned.length - 4),
+    hasNewline: rawKey.includes('\n'), hasReturn: rawKey.includes('\r'),
+    charCodes: [...rawKey].slice(0, 10).map(c => c.charCodeAt(0)) });
+}
+
+// ── Archive.org Fetch (audio binary) ────────────────────────────────────────
+async function handleArchiveFetch(request) {
+  try {
+    const { audioUrl } = await request.json();
+    if (!audioUrl || !audioUrl.includes('archive.org')) return jsonResp({ error: 'Must be an archive.org URL' }, 400);
+    const res = await fetch(audioUrl, { headers: { 'User-Agent': 'GrooveLinx/1.0' } });
+    if (!res.ok) return jsonResp({ error: 'Fetch failed: ' + res.status }, 502);
+    // Stream the response through instead of buffering entire file
+    return cors(new Response(res.body, {
+      status: 200,
+      headers: {
+        'Content-Type': res.headers.get('Content-Type') || 'audio/mpeg',
+        'Content-Length': res.headers.get('Content-Length') || '',
+      }
+    }));
+  } catch (e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Archive.org Search v2 — structured queries + source type detection
+// ══════════════════════════════════════════════════════════════════════════════
+function parseSourceType(srcStr) {
+  const s = (srcStr || '').toLowerCase();
+  if (/\bsbd\b|soundboard|betty/i.test(s)) return 'SBD';
+  if (/\bmatrix\b|\bmtx\b/i.test(s)) return 'Matrix';
+  if (/\baud\b|audience|\bfob\b|schoeps|nakamichi/i.test(s)) return 'AUD';
+  if (/\bfm\b|radio|broadcast/i.test(s)) return 'SBD';
+  return 'Unknown';
+}
+
+async function handleArchiveSearch(request) {
+  const { query, sort, rows } = await request.json();
+  if (!query) return jsonResp({ error: 'No query' }, 400);
+
+  const isStructured = /collection:|creator:|description:/.test(query);
+  const maxRows = rows || 30;
+  const sortParam = sort || 'downloads+desc';
+  const base = '&fl[]=identifier&fl[]=title&fl[]=date&fl[]=avg_rating&fl[]=num_reviews&fl[]=downloads&fl[]=source&output=json';
+
+  try {
+    let results = [];
+
+    if (isStructured) {
+      // Frontend sent well-formed query — use directly
+      const url1 = 'https://archive.org/advancedsearch.php?q=' + encodeURIComponent(query) + base + '&sort[]=' + sortParam + '&rows=' + maxRows;
+      try { const r = await fetch(url1); if (r.ok) { const d = await r.json(); results = d?.response?.docs || []; } } catch(e) {}
+
+      // Fallback if description search found < 5
+      if (results.length < 5 && query.includes('description:')) {
+        const songMatch = query.match(/description:"([^"]+)"/);
+        const collMatch = query.match(/(collection:\S+|\(collection:\S+\s+OR\s+creator:"[^"]+"\)|creator:"[^"]+")/);
+        if (songMatch && collMatch) {
+          const url2 = 'https://archive.org/advancedsearch.php?q=' + encodeURIComponent(collMatch[1] + ' AND "' + songMatch[1] + '"') + base + '&sort[]=downloads+desc&rows=20';
+          try { const r = await fetch(url2); if (r.ok) { const d = await r.json();
+            const seen = new Set(results.map(x => x.identifier));
+            for (const doc of (d?.response?.docs || [])) { if (!seen.has(doc.identifier)) results.push(doc); }
+          }} catch(e) {}
+        }
+      }
+    } else {
+      // Legacy unstructured — detect band
+      const bandMap = {
+        'grateful dead': 'GratefulDead', 'the grateful dead': 'GratefulDead', 'dead': 'GratefulDead', 'gd': 'GratefulDead',
+        'jerry garcia': 'JerryGarcia', 'jgb': 'JerryGarcia', 'jerry garcia band': 'JerryGarcia',
+        'phish': 'Phish', 'widespread panic': 'WidespreadPanic', 'wsp': 'WidespreadPanic',
+        'allman brothers': 'AllmanBrothersBand', 'allman brothers band': 'AllmanBrothersBand', 'abb': 'AllmanBrothersBand',
+        'dave matthews': 'DaveMatthewsBand', 'dave matthews band': 'DaveMatthewsBand', 'dmb': 'DaveMatthewsBand',
+        'goose': 'GooseBand', 'string cheese': 'StringCheeseIncident', 'sci': 'StringCheeseIncident',
+        'moe.': 'moeperiod', 'moe': 'moeperiod', "umphrey's mcgee": 'UmphreysMcGee', 'umphreys': 'UmphreysMcGee',
+        'tedeschi trucks': 'TedeschiTrucksBand'
+      };
+      let collection = 'GratefulDead', songQuery = query.trim();
+      const qLow = query.toLowerCase().trim();
+      for (const name of Object.keys(bandMap).sort((a,b) => b.length - a.length)) {
+        if (qLow.includes(name)) { collection = bandMap[name]; songQuery = query.replace(new RegExp(name, 'gi'), '').trim(); break; }
+      }
+      if (!songQuery) songQuery = query;
+
+      let collPart = 'collection:' + collection;
+      if (collection === 'Phish') collPart = '(collection:Phish OR creator:"Phish")';
+      else if (collection === 'DaveMatthewsBand') collPart = 'creator:"Dave Matthews Band"';
+
+      const songEnc = encodeURIComponent('"' + songQuery + '"');
+      const url1 = 'https://archive.org/advancedsearch.php?q=' + encodeURIComponent(collPart) + '+AND+description:' + songEnc + base + '&sort[]=' + sortParam + '&rows=' + maxRows;
+      try { const r = await fetch(url1); if (r.ok) { const d = await r.json(); results = d?.response?.docs || []; } } catch(e) {}
+
+      if (results.length < 5) {
+        const url2 = 'https://archive.org/advancedsearch.php?q=' + encodeURIComponent(collPart) + '+AND+' + songEnc + base + '&sort[]=downloads+desc&rows=20';
+        try { const r = await fetch(url2); if (r.ok) { const d = await r.json();
+          const seen = new Set(results.map(x => x.identifier));
+          for (const doc of (d?.response?.docs || [])) { if (!seen.has(doc.identifier)) results.push(doc); }
+        }} catch(e) {}
+      }
+    }
+
+    return jsonResp({
+      results: results.map(d => ({
+        identifier: d.identifier, title: d.title, date: d.date,
+        rating: d.avg_rating, reviews: d.num_reviews, downloads: d.downloads,
+        source: d.source, sourceType: parseSourceType(d.source)
+      })),
+      total: results.length
+    });
+  } catch(e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── Archive.org File Listing ────────────────────────────────────────────────
+async function handleArchiveFiles(request) {
+  const { identifier } = await request.json();
+  if (!identifier) return jsonResp({ error: 'No identifier' }, 400);
+  try {
+    const res = await fetch('https://archive.org/metadata/' + identifier);
+    if (!res.ok) return jsonResp({ error: 'Metadata failed' }, 502);
+    const meta = await res.json();
+    const audioFormats = ['VBR MP3', 'MP3', 'Ogg Vorbis', 'Flac', '128Kbps MP3', '64Kbps MP3'];
+    const files = (meta.files || [])
+      .filter(f => audioFormats.some(af => (f.format || '').includes(af)) || /\.(mp3|ogg|flac)$/i.test(f.name))
+      .map(f => ({
+        name: f.name, format: f.format, size: f.size, length: f.length, title: f.title,
+        url: 'https://archive.org/download/' + identifier + '/' + encodeURIComponent(f.name)
+      }));
+    const srcFields = [meta.metadata?.source, meta.metadata?.lineage, meta.metadata?.taper].filter(Boolean).join(' ');
+    return jsonResp({ files, title: meta.metadata?.title, date: meta.metadata?.date, sourceType: parseSourceType(srcFields), source: meta.metadata?.source || '' });
+  } catch(e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Relisten API — find shows by song, with tape counts + SBD flags
+// ══════════════════════════════════════════════════════════════════════════════
+async function handleRelistenSearch(request) {
+  const { songTitle, bandSlug } = await request.json();
+  if (!songTitle) return jsonResp({ error: 'No songTitle' }, 400);
+
+  const slugMap = {
+    'GD': 'grateful-dead', 'Grateful Dead': 'grateful-dead',
+    'JGB': 'jerry-garcia-band', 'Jerry Garcia Band': 'jerry-garcia-band',
+    'Phish': 'phish', 'WSP': 'widespread-panic', 'Widespread Panic': 'widespread-panic',
+    'ABB': 'allman-brothers-band', 'Allman Brothers': 'allman-brothers-band',
+    'DMB': 'dave-matthews-band', 'Dave Matthews Band': 'dave-matthews-band',
+    'Goose': 'goose', 'SCI': 'string-cheese-incident', 'moe.': 'moe'
+  };
+  const slug = slugMap[bandSlug] || bandSlug || 'grateful-dead';
+  const ua = 'GrooveLinx/1.0 (band practice app)';
+
+  try {
+    // Primary API only — alecgorge.com has SSL cert issues
+    const apiBase = 'https://api.relisten.net';
+    const songsUrl = apiBase + '/api/v3/artists/' + slug + '/songs';
+    let songsRes;
+    try {
+      songsRes = await fetch(songsUrl, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
+    } catch(e) {
+      return jsonResp({ results: [], error: 'Relisten API connection failed: ' + e.message, debug: { url: songsUrl } });
+    }
+    if (!songsRes.ok) return jsonResp({ results: [], error: 'Relisten API returned ' + songsRes.status, debug: { url: songsUrl } });
+
+    const songsRaw = await songsRes.json();
+    // API may return array directly or nested under a key
+    const songsData = Array.isArray(songsRaw) ? songsRaw : (songsRaw.data || songsRaw.songs || []);
+    if (!songsData.length) return jsonResp({ results: [], error: 'Relisten returned empty song list for ' + slug, debug: { responseKeys: Object.keys(songsRaw), type: typeof songsRaw } });
+
+    const cleanTitle = songTitle.replace(/\s*\(.*?\)\s*/g, '').trim().toLowerCase();
+    let matchedSong = null;
+    // Try exact match first, then includes
+    for (const s of songsData) {
+      const sName = (s.name || s.slug || '').toLowerCase();
+      if (sName === cleanTitle) { matchedSong = s; break; }
+    }
+    if (!matchedSong) {
+      for (const s of songsData) {
+        const sName = (s.name || s.slug || '').toLowerCase();
+        if (sName.includes(cleanTitle) || cleanTitle.includes(sName)) { matchedSong = s; break; }
+      }
+    }
+    if (!matchedSong) return jsonResp({ results: [], matched: false, songTitle, debug: { cleanTitle, totalSongs: songsData.length, sampleNames: songsData.slice(0, 5).map(s => s.name || s.slug) } });
+
+    const showsRes = await fetch(apiBase + '/api/v3/artists/' + slug + '/songs/' + matchedSong.slug, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
+    if (!showsRes.ok) return jsonResp({ results: [], error: 'Relisten shows error: ' + showsRes.status });
+    const showsData = await showsRes.json();
+
+    const showsList = showsData.shows || showsData.data || [];
+    const shows = showsList.map(sh => ({
+      date: sh.display_date || sh.date, venue: sh.venue?.name || '',
+      city: sh.venue?.city || '', state: sh.venue?.state || '',
+      tapeCount: sh.source_count || 0, duration: sh.duration || 0,
+      avgRating: sh.avg_rating || 0,
+      relistenUrl: 'https://relisten.net/' + slug + '/' + (sh.display_date || '').replace(/-/g, '/'),
+      hasSbd: sh.has_soundboard_source || false
+    }));
+    shows.sort((a, b) => b.tapeCount - a.tapeCount);
+
+    return jsonResp({ results: shows.slice(0, 30), songName: matchedSong.name, timesPlayed: showsList.length, bandSlug: slug });
+  } catch(e) { return jsonResp({ error: e.message, results: [] }, 500); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phish.net Jam Charts — curated "best version" data (Phish only)
+// ══════════════════════════════════════════════════════════════════════════════
+async function handlePhishNetJamChart(request, env) {
+  const { songTitle } = await request.json();
+  if (!songTitle) return jsonResp({ error: 'No songTitle' }, 400);
+
+  const apiKey = env.PHISHNET_API_KEY || '7E83A77012D1BE8A5CB2';
+  try {
+    const cleanTitle = songTitle.replace(/\s*\(.*?\)\s*/g, '').trim();
+    const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    // Try setlists endpoint to find all shows with this song + jamchart flags
+    const slUrl = 'https://api.phish.net/v5/setlists/slug/' + encodeURIComponent(slug) + '.json?apikey=' + apiKey + '&order_by=showdate&direction=desc';
+    const slRes = await fetch(slUrl, { headers: { 'User-Agent': 'GrooveLinx/1.0' } });
+    if (!slRes.ok) {
+      // Try with song name directly
+      const slUrl2 = 'https://api.phish.net/v5/setlists/song/' + encodeURIComponent(cleanTitle) + '.json?apikey=' + apiKey + '&order_by=showdate&direction=desc';
+      const slRes2 = await fetch(slUrl2, { headers: { 'User-Agent': 'GrooveLinx/1.0' } });
+      if (!slRes2.ok) return jsonResp({ results: [], error: 'Phish.net lookup failed: ' + slRes.status });
+      const slData2 = await slRes2.json();
+      const entries2 = (slData2.data || []).filter(e => e.isjamchart === '1').map(e => ({
+        showdate: e.showdate, venue: e.venue, city: e.city, state: e.state,
+        isjamchart: true, jamchart_description: e.jamchart_description || '',
+        tracktime: e.tracktime, permalink: e.permalink
+      }));
+      return jsonResp({ results: entries2.slice(0, 25), source: 'setlists', totalPlayed: slData2.data?.length || 0 });
+    }
+
+    const slData = await slRes.json();
+    const allEntries = slData.data || [];
+    const jamcharts = allEntries.filter(e => e.isjamchart === '1').map(e => ({
+      showdate: e.showdate, venue: e.venue, city: e.city, state: e.state,
+      isjamchart: true, jamchart_description: e.jamchart_description || '',
+      tracktime: e.tracktime, permalink: e.permalink
+    }));
+
+    return jsonResp({ results: jamcharts.slice(0, 25), source: 'setlists', songSlug: slug, totalPlayed: allEntries.length });
+  } catch(e) { return jsonResp({ error: e.message, results: [] }, 500); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phish.in — audience recordings with per-track likes (Phish only)
+// ══════════════════════════════════════════════════════════════════════════════
+async function handlePhishInSearch(request) {
+  const { songTitle } = await request.json();
+  if (!songTitle) return jsonResp({ error: 'No songTitle' }, 400);
+  const cleanTitle = songTitle.replace(/\s*\(.*?\)\s*/g, '').trim();
+  const ua = 'GrooveLinx/1.0';
+  try {
+    const searchUrl = 'https://phish.in/api/v2/songs?term=' + encodeURIComponent(cleanTitle);
+    const searchRes = await fetch(searchUrl, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
+    if (!searchRes.ok) return jsonResp({ results: [], error: 'Phish.in error: ' + searchRes.status });
+    const searchData = await searchRes.json();
+    const songs = searchData.data || searchData || [];
+
+    const matchedSong = songs.find(s => {
+      const sTitle = (s.title || s.name || '').toLowerCase();
+      return sTitle === cleanTitle.toLowerCase() || sTitle.includes(cleanTitle.toLowerCase());
+    });
+    if (!matchedSong) return jsonResp({ results: [], matched: false });
+
+    const songSlug = matchedSong.slug || matchedSong.id;
+    const tracksUrl = 'https://phish.in/api/v2/songs/' + songSlug + '?include=tracks';
+    const tracksRes = await fetch(tracksUrl, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
+    if (!tracksRes.ok) return jsonResp({ results: [], error: 'Phish.in tracks error' });
+    const tracksData = await tracksRes.json();
+
+    const tracks = (tracksData.data?.tracks || tracksData.tracks || []).map(t => ({
+      date: t.show_date, duration: t.duration, likes: t.likes_count || 0,
+      tags: (t.tags || []).map(tag => tag.name || tag),
+      isJamchart: (t.tags || []).some(tag => (tag.name || tag || '').toLowerCase().includes('jamchart')),
+      mp3Url: t.mp3_url || t.mp3, venue: t.venue_name || '', showId: t.show_id
+    }));
+    tracks.sort((a, b) => b.likes - a.likes);
+
+    return jsonResp({ results: tracks.slice(0, 30), songTitle: matchedSong.title || matchedSong.name, timesPlayed: tracks.length });
+  } catch(e) { return jsonResp({ error: e.message, results: [] }, 500); }
+}
+
+// ── Genius Search ───────────────────────────────────────────────────────────
+async function handleGeniusSearch(request) {
+  const { query } = await request.json();
+  if (!query) return jsonResp({ error: 'No query' }, 400);
+  try {
+    const res = await fetch('https://genius.com/api/search/multi?q=' + encodeURIComponent(query), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' } });
+    const data = await res.json();
+    const songs = [];
+    for (const section of (data?.response?.sections || [])) {
+      for (const hit of (section.hits || [])) {
+        if (hit.type === 'song' && hit.result) songs.push({ id: hit.result.id, title: hit.result.title, artist: hit.result.primary_artist?.name, url: hit.result.url });
+      }
+    }
+    return jsonResp({ results: songs.slice(0, 5) });
+  } catch(e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── Genius Song Meaning Fetch ───────────────────────────────────────────────
+async function handleGeniusFetch(request) {
+  const { songId, url } = await request.json();
+  if (!songId && !url) return jsonResp({ error: 'Need songId or url' }, 400);
+  const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
+  try {
+    let description = '';
+    if (songId) { try { const r = await fetch('https://genius.com/api/songs/' + songId, { headers: { 'User-Agent': ua } }); if (r.ok) { const d = await r.json(); description = d?.response?.song?.description?.plain || ''; } } catch(e) {} }
+    if (!description && url) { try { const r = await fetch(url, { headers: { 'User-Agent': ua } }); if (r.ok) { const html = await r.text(); const m = html.match(/"description"\s*:\s*\{"html"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (m) { const decoded = m[1].replace(/\\n/g,' ').replace(/\\"/g,'"').replace(/<[^>]+>/g,'').trim(); if (decoded.length > 20) description = decoded; } } } catch(e) {} }
+    return jsonResp({ description: description || '', source: description ? 'found' : 'empty' });
+  } catch(e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── YouTube Search ──────────────────────────────────────────────────────────
+async function handleYouTubeSearch(request) {
+  const { query } = await request.json();
+  if (!query) return jsonResp({ error: 'No query' }, 400);
+  const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  try {
+    const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
+    const res = await fetch(ytUrl, { headers: { 'User-Agent': ua, 'Accept-Language': 'en-US,en;q=0.9', 'Accept': 'text/html',
+      'Cookie': 'CONSENT=PENDING+999; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjMxMDE2LjA3X3AxGgJlbiACGgYIgJnPqgY' } });
+    if (!res.ok) return jsonResp({ results: [], error: 'YouTube HTTP ' + res.status });
+    const html = await res.text();
+    let jsonStr = null;
+    for (const pat of [/var\s+ytInitialData\s*=\s*({.+?})\s*;\s*<\/script/s, /ytInitialData\s*=\s*({.+?})\s*;\s*<\/script/s]) { const m = html.match(pat); if (m) { jsonStr = m[1]; break; } }
+    if (!jsonStr) return jsonResp({ results: [], error: 'parse_failed' });
+    const ytData = JSON.parse(jsonStr);
+    const sections = ytData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    let items = []; for (const s of sections) items = items.concat(s?.itemSectionRenderer?.contents || []);
+    const results = items.filter(c => c.videoRenderer).slice(0, 12).map(c => {
+      const v = c.videoRenderer; const durText = v.lengthText?.simpleText || '';
+      let secs = 0; const parts = durText.split(':').map(Number);
+      if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+      if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+      return { title: v.title?.runs?.[0]?.text || '', videoId: v.videoId, author: v.ownerText?.runs?.[0]?.text || '', lengthSeconds: secs, duration: durText, url: 'https://www.youtube.com/watch?v=' + v.videoId };
+    });
+    return jsonResp({ results });
+  } catch(e) { return jsonResp({ error: e.message, results: [] }); }
+}
+
+// ── YouTube/Spotify Audio Extraction ────────────────────────────────────────
+async function handleYouTubeAudio(request) {
+  const { url } = await request.json();
+  if (!url) return jsonResp({ error: 'No URL' }, 400);
+  if (!/youtube\.com|youtu\.be|open\.spotify\.com/i.test(url)) return jsonResp({ error: 'URL must be YouTube or Spotify' }, 400);
+  for (const apiBase of ['https://api.cobalt.tools']) {
+    try { const r = await fetch(apiBase, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ url, audioFormat: 'mp3', downloadMode: 'audio' }) }); if (r.ok) { const d = await r.json(); if (d.url) return jsonResp({ audioUrl: d.url, service: 'cobalt' }); } } catch(e) {}
+    try { const r = await fetch(apiBase + '/api/json', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ url, aFormat: 'mp3', isAudioOnly: true }) }); if (r.ok) { const d = await r.json(); if (d.url || d.audio) return jsonResp({ audioUrl: d.url || d.audio, service: 'cobalt-legacy' }); } } catch(e) {}
+  }
+  return jsonResp({ error: 'Audio extraction failed. Try downloading manually and using Direct URL.' }, 502);
+}
+
+// ── Flux Schnell AI Image Generation ────────────────────────────────────────
+async function handleGenerateImage(request, env) {
+  if (!env.AI) return jsonResp({ error: 'AI binding not configured.' }, 500);
+  try {
+    const { prompt, steps } = await request.json();
+    if (!prompt) return jsonResp({ error: 'No prompt' }, 400);
+    const response = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt, steps: steps || 6 });
+    if (response && response.image) return jsonResp({ image: response.image });
+    return jsonResp({ error: 'No image returned from Flux' }, 500);
+  } catch(e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── MIDI → ABC Converter ────────────────────────────────────────────────────
+async function handleMidi2Abc(request) {
+  try { const buf = await request.arrayBuffer(); return jsonResp({ abc: midiToAbc(new Uint8Array(buf)) }); }
+  catch (e) { return jsonResp({ error: e.message }, 500); }
+}
+const NOTE_NAMES = ['C','^C','D','^D','E','F','^F','G','^G','A','^A','B'];
+function midiPitchToAbc(pitch) { const oct = Math.floor(pitch / 12) - 1, name = NOTE_NAMES[pitch % 12]; if (oct <= 3) return name + ','.repeat(Math.max(0, 3 - oct)); if (oct === 4) return name; if (oct === 5) return name.toLowerCase(); return name.toLowerCase() + "'".repeat(oct - 5); }
+function ticksToDur(ticks, tpb) { const r = ticks / (tpb / 2); return [[0.25,'/4'],[0.5,'/2'],[1,''],[1.5,'3/2'],[2,'2'],[3,'3'],[4,'4'],[6,'6'],[8,'8']].reduce((b,d) => Math.abs(r-d[0]) < Math.abs(r-b[0]) ? d : b)[1]; }
+function noteToAbc(n, tpb) { return n.isRest ? 'z'+ticksToDur(n.dur,tpb) : midiPitchToAbc(n.pitch)+ticksToDur(n.dur,tpb); }
+function extractNotes(events, tpb) {
+  const ons = new Map(), notes = []; let tick = 0;
+  for (const e of events) { tick += e.delta; if (e.type === 'on' && e.vel > 0) ons.set(e.pitch, tick); else if (e.type === 'off' || (e.type === 'on' && e.vel === 0)) { if (ons.has(e.pitch)) { notes.push({ pitch: e.pitch, start: ons.get(e.pitch), dur: tick - ons.get(e.pitch) }); ons.delete(e.pitch); } } }
+  notes.sort((a,b) => a.start - b.start);
+  const result = []; let cursor = 0;
+  for (const n of notes) { if (n.start > cursor) result.push({ isRest:true, dur: n.start - cursor }); result.push({ pitch: n.pitch, dur: n.dur, isRest: false }); cursor = n.start + n.dur; }
+  return result;
+}
+function parseMidi(bytes) {
+  let p = 0; const r = n => { const s=p; p+=n; return bytes.slice(s,p); }; const u32 = () => { const b=r(4); return (b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3]; }; const u16 = () => { const b=r(2); return (b[0]<<8)|b[1]; }; const vl = () => { let v=0,b; do { b=bytes[p++]; v=(v<<7)|(b&0x7f); } while(b&0x80); return v; };
+  if (String.fromCharCode(...r(4)) !== 'MThd') return null;
+  u32(); const fmt=u16(), nTrk=u16(), tpb=u16(); let bpm=120, timeSig={num:4,den:4}; const tracks=[];
+  for (let t=0; t<nTrk; t++) { const tag=String.fromCharCode(...r(4)), len=u32(); if (tag !== 'MTrk') { p+=len; continue; } const end=p+len, evts=[]; let rs=0;
+    while (p<end) { const delta=vl(); let sb=bytes[p]; if (sb&0x80) { rs=sb; p++; } else { sb=rs; } const type=(sb>>4)&0xf;
+      if (sb===0xff) { const mt=bytes[p++],ml=vl(),md=r(ml); if(mt===0x51&&ml===3) bpm=60000000/((md[0]<<16)|(md[1]<<8)|md[2]); if(mt===0x58&&ml===4) timeSig={num:md[0],den:Math.pow(2,md[1])}; }
+      else if (sb===0xf0||sb===0xf7) { p+=vl(); } else if (type===9) { const pitch=bytes[p++],vel=bytes[p++]; evts.push({delta,type:'on',pitch,vel}); }
+      else if (type===8) { const pitch=bytes[p++]; p++; evts.push({delta,type:'off',pitch}); } else if (type>=8&&type<=14) { p+=(type===12||type===13)?1:2; } }
+    p=end; tracks.push(evts); }
+  return {fmt,tpb,bpm,timeSig,tracks};
+}
+function midiToAbc(bytes) {
+  const midi=parseMidi(bytes); if (!midi) throw new Error('Invalid MIDI');
+  const {tpb,bpm,timeSig,tracks}=midi;
+  const voices=tracks.map((t,i)=>({name:'V'+(i+1),notes:extractNotes(t,tpb)})).filter(v=>v.notes.length>0);
+  if (!voices.length) return 'X:1\nT:Imported Harmony\nM:'+timeSig.num+'/'+timeSig.den+'\nQ:1/4='+Math.round(bpm)+'\nL:1/8\nK:C\nz4 |]';
+  const lines=['X:1','T:Imported Harmony','M:'+timeSig.num+'/'+timeSig.den,'Q:1/4='+Math.round(bpm),'L:1/8','K:C'];
+  if (voices.length===1) { lines.push(voices[0].notes.map(n=>noteToAbc(n,tpb)).join(' ')); }
+  else { const roles=['Lead','Harmony 1','Harmony 2','Bass']; for (let i=0;i<voices.length;i++) lines.push('V:'+(i+1)+' name="'+(roles[i]||'Part '+(i+1))+'"'); for (let i=0;i<voices.length;i++) { lines.push('[V:'+(i+1)+']'); lines.push(voices[i].notes.map(n=>noteToAbc(n,tpb)).join(' ')); } }
+  return lines.join('\n');
+}
+
+// ── Spotify Search (Client Credentials) ──────────────────────────────────────
+// Uses Spotify Web API — requires SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET as Cloudflare secrets
+let _spotifyToken = null;
+let _spotifyTokenExpiry = 0;
+
+async function getSpotifyToken(env) {
+  if (_spotifyToken && Date.now() < _spotifyTokenExpiry) return _spotifyToken;
+  const cid = env.SPOTIFY_CLIENT_ID;
+  const secret = env.SPOTIFY_CLIENT_SECRET;
+  if (!cid || !secret) throw new Error('Spotify credentials not configured');
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + btoa(cid + ':' + secret)
+    },
+    body: 'grant_type=client_credentials'
+  });
+  if (!res.ok) throw new Error('Spotify auth failed: ' + res.status);
+  const data = await res.json();
+  _spotifyToken = data.access_token;
+  _spotifyTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+  return _spotifyToken;
+}
+
+async function handleSpotifySearch(request, env) {
+  try {
+    const { query, type, limit, debug } = await request.json();
+    if (!query) return jsonResp({ error: 'No query' }, 400);
+    const token = await getSpotifyToken(env);
+    const searchType = type || 'track';
+    const searchLimit = Math.min(limit || 10, 10);
+    const url = 'https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) +
+      '&type=' + searchType + '&limit=' + searchLimit + '&market=US';
+    let res = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    // If 401, token may be stale — clear and retry once
+    if (res.status === 401) {
+      _spotifyToken = null; _spotifyTokenExpiry = 0;
+      const newToken = await getSpotifyToken(env);
+      res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + newToken } });
+    }
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => 'no body');
+      return jsonResp({ error: 'Spotify API ' + res.status, detail: errBody.substring(0, 500), url: url.replace(token, 'TOKEN'), results: [] });
+    }
+    const data = await res.json();
+    // Normalize track results
+    const tracks = (data.tracks?.items || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      artist: (t.artists || []).map(a => a.name).join(', '),
+      album: t.album?.name || '',
+      albumArt: t.album?.images?.[0]?.url || '',
+      albumArtSmall: (t.album?.images || []).find(i => i.width <= 64)?.url || t.album?.images?.[t.album.images.length - 1]?.url || '',
+      duration: t.duration_ms,
+      durationStr: Math.floor(t.duration_ms / 60000) + ':' + String(Math.floor((t.duration_ms % 60000) / 1000)).padStart(2, '0'),
+      url: t.external_urls?.spotify || '',
+      previewUrl: t.preview_url || '',
+      popularity: t.popularity || 0,
+      explicit: t.explicit || false,
+      releaseDate: t.album?.release_date || '',
+      isrc: t.external_ids?.isrc || ''
+    }));
+    return jsonResp({ results: tracks });
+  } catch(e) { return jsonResp({ error: e.message, results: [] }, 500); }
+}
+
+// ── Odesli / Songlink — Cross-platform links ────────────────────────────────
+// Free API, no key needed. Returns links for Spotify, Apple Music, Tidal, etc.
+async function handleOdesliLinks(request) {
+  try {
+    const { url } = await request.json();
+    if (!url) return jsonResp({ error: 'No URL' }, 400);
+    const apiUrl = 'https://api.song.link/v1-alpha.1/links?url=' + encodeURIComponent(url) + '&userCountry=US';
+    const res = await fetch(apiUrl, { headers: { 'User-Agent': 'GrooveLinx/1.0' } });
+    if (!res.ok) return jsonResp({ error: 'Odesli API ' + res.status, links: {} }, res.status);
+    const data = await res.json();
+    // Extract platform links
+    var links = {};
+    var platforms = ['spotify', 'appleMusic', 'youtube', 'youtubeMusic', 'tidal', 'amazonMusic', 'deezer', 'soundcloud', 'pandora'];
+    platforms.forEach(function(p) {
+      if (data.linksByPlatform?.[p]) {
+        links[p] = {
+          url: data.linksByPlatform[p].url,
+          entityUniqueId: data.linksByPlatform[p].entityUniqueId
+        };
+      }
+    });
+    // Get title/artist from first available entity
+    var title = '', artist = '', thumbnail = '';
+    var entities = data.entitiesByUniqueId || {};
+    var firstEntity = Object.values(entities)[0];
+    if (firstEntity) {
+      title = firstEntity.title || '';
+      artist = firstEntity.artistName || '';
+      thumbnail = firstEntity.thumbnailUrl || '';
+    }
+    return jsonResp({ links, title, artist, thumbnail, pageUrl: data.pageUrl || '' });
+  } catch(e) { return jsonResp({ error: e.message, links: {} }, 500); }
+}

@@ -1,9 +1,9 @@
-// Deadcetera Service Worker
+// GrooveLinx Service Worker
 // Auto-updates: new deploys activate within ~60 seconds on all devices
 
 // ── VERSION: bump this string on every deploy to force cache refresh ────────
 // This is automatically kept fresh — the app writes a ?v= timestamp to bust cache
-const CACHE_NAME = 'deadcetera-20260226-helpfix';
+const CACHE_NAME = 'groovelinx-20260305-172524';
 const BASE = self.registration.scope;
 
 const CACHE_URLS = [
@@ -14,7 +14,14 @@ const CACHE_URLS = [
     BASE + 'app.js',
     BASE + 'data.js',
     BASE + 'help.js',
+    BASE + 'version-hub.js',
+    BASE + 'version-hub.css',
     BASE + 'manifest.json',
+    BASE + 'logo.png',
+    BASE + 'logo-large.png',
+    BASE + 'hero-logo.png',
+    BASE + 'hero-logo-sm.png',
+    BASE + 'badge-logo.png',
     BASE + 'icon-192.png',
     BASE + 'icon-512.png',
 ];
@@ -22,8 +29,7 @@ const CACHE_URLS = [
 // ── Install ─────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
     console.log('[SW] Installing', CACHE_NAME);
-    // skipWaiting: activate IMMEDIATELY, don't wait for old tabs to close
-    self.skipWaiting();
+    // Do NOT skipWaiting here — let the new SW wait until user clicks "Reload"
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache =>
             Promise.allSettled(CACHE_URLS.map(url => cache.add(url).catch(() => {})))
@@ -31,29 +37,18 @@ self.addEventListener('install', event => {
     );
 });
 
-// ── Activate: claim all tabs immediately, delete old caches ─────────────────
+// ── Activate: delete old caches only. Do NOT claim clients yet ──────────────
+// The new SW waits until user clicks "Reload" which sends SKIP_WAITING.
+// After skipWaiting(), the new SW activates and claims clients on the reload.
 self.addEventListener('activate', event => {
     console.log('[SW] Activating', CACHE_NAME);
     event.waitUntil(
-        Promise.all([
-            // Delete ALL old caches
-            caches.keys().then(keys =>
-                Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => {
-                    console.log('[SW] Deleting old cache:', k);
-                    return caches.delete(k);
-                }))
-            ),
-            // Take control of ALL open tabs immediately (no reload needed next visit)
-            self.clients.claim()
-        ]).then(() => {
-            // Tell all open tabs to reload so they get the new version
-            self.clients.matchAll({ type: 'window' }).then(clients => {
-                clients.forEach(client => {
-                    console.log('[SW] Telling tab to reload for update');
-                    client.postMessage({ type: 'SW_UPDATED', version: CACHE_NAME });
-                });
-            });
-        })
+        caches.keys().then(keys =>
+            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => {
+                console.log('[SW] Deleting old cache:', k);
+                return caches.delete(k);
+            }))
+        ).then(() => self.clients.claim())
     );
 });
 
@@ -72,19 +67,21 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // For app JS, HTML, CSS — network-first so updates are instant
+    // For app JS, HTML, CSS — always network-first with no-cache headers
+    // This bypasses iOS WKWebView's HTTP cache layer
     const isAppFile = ['.js', '.html', '.css', '.json'].some(ext => url.pathname.endsWith(ext));
     if (isAppFile && url.origin === self.location.origin) {
         event.respondWith(
-            fetch(event.request).then(response => {
+            fetch(new Request(event.request, {
+                cache: 'no-store',
+                headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+            })).then(response => {
                 if (response.ok) {
-                    // Update cache with fresh version
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return response;
             }).catch(() =>
-                // Offline fallback: serve from cache
                 caches.match(event.request).then(cached =>
                     cached || (event.request.mode === 'navigate'
                         ? caches.match(BASE + 'index.html')
@@ -112,12 +109,12 @@ self.addEventListener('fetch', event => {
 
 // ── Push Notifications ───────────────────────────────────────────────────────
 self.addEventListener('push', event => {
-    let data = { title: 'Deadcetera', body: 'New update from the band!', tag: 'general' };
+    let data = { title: 'GrooveLinx', body: 'New update from the band!', tag: 'general' };
     try { if (event.data) data = { ...data, ...event.data.json() }; }
     catch(e) { if (event.data) data.body = event.data.text(); }
 
     event.waitUntil(
-        self.registration.showNotification(`🎸 ${data.title}`, {
+        self.registration.showNotification(`🔗 ${data.title}`, {
             body: data.body,
             icon: BASE + 'icon-192.png',
             badge: BASE + 'icon-192.png',

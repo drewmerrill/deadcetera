@@ -1,0 +1,91 @@
+{
+  "synced_at": "2026-03-05T16:20:36.335129Z",
+  "version": "20260305-135336",
+  "files": {
+    "app.js": {
+      "sha": "c4826c7a",
+      "lines": 16040,
+      "size": 883899
+    },
+    "app-dev.js": {
+      "sha": "c4826c7a",
+      "lines": 16040,
+      "size": 883899
+    },
+    "index.html": {
+      "sha": "1ce25f9a",
+      "lines": 655,
+      "size": 42653
+    },
+    "help.js": {
+      "sha": "b6427417",
+      "lines": 394,
+      "size": 50290
+    },
+    "data.js": {
+      "sha": "6ef7baad",
+      "lines": 1674,
+      "size": 63204
+    },
+    "rehearsal-mode.js": {
+      "sha": "678a70b1",
+      "lines": 1202,
+      "size": 92776
+    },
+    "rehearsal-mode.css": {
+      "sha": "641a163b",
+      "lines": 96,
+      "size": 7528
+    },
+    "version-hub.js": {
+      "sha": "bac8c757",
+      "lines": 783,
+      "size": 41470
+    },
+    "version-hub.css": {
+      "sha": "763ae27a",
+      "lines": 145,
+      "size": 10410
+    },
+    "service-worker.js": {
+      "sha": "e5230c3c",
+      "lines": 155,
+      "size": 6041
+    },
+    "worker.js": {
+      "sha": "09bbcc34",
+      "lines": 617,
+      "size": 36245
+    },
+    "styles.css": {
+      "sha": "ff4c426c",
+      "lines": 1337,
+      "size": 23539
+    },
+    "app-shell.css": {
+      "sha": "28380212",
+      "lines": 905,
+      "size": 43755
+    },
+    "manifest.json": {
+      "sha": "08ac35c9",
+      "lines": 62,
+      "size": 1604
+    },
+    "push.py": {
+      "sha": "9de246cb",
+      "lines": 223,
+      "size": 8398
+    },
+    "sync.py": {
+      "sha": "cfbd464b",
+      "lines": 108,
+      "size": 4147
+    },
+    "version.json": {
+      "sha": "ba93437b",
+      "lines": 3,
+      "size": 79
+    }
+  }
+}

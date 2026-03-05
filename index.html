@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="build-version" content="20260305-172524">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeadCetera — Band HQ</title>
+    <title>GrooveLinx — Where Bands Lock In</title>
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
@@ -11,7 +12,7 @@
     <!-- iOS / Safari PWA support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="DeadCetera">
+    <meta name="apple-mobile-web-app-title" content="GrooveLinx">
     <link rel="apple-touch-icon" href="icon-180.png">
     <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
 
@@ -26,6 +27,8 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="app-shell.css">
+    <link rel="stylesheet" href="rehearsal-mode.css">
+    <link rel="stylesheet" href="version-hub.css">
 </head>
 <body>
     <!-- TOP BAR -->
@@ -34,7 +37,7 @@
             <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <span class="topbar-brand" onclick="showPage('songs')" style="cursor:pointer">DeadCetera</span>
+            <span class="topbar-brand" onclick="showPage('songs')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
         </div>
         <div class="topbar-right">
             <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()">🔗 Connect</button>
@@ -45,10 +48,11 @@
     <!-- SLIDE-OUT MENU -->
     <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
     <nav class="slide-menu" id="slideMenu">
-        <div class="menu-brand">🎸 DeadCetera</div>
+        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
         <div class="menu-section">
             <div class="menu-section-title">Music</div>
             <button class="menu-item active" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Song Library</button>
+            <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">🎯</span> Rehearsals</button>
             <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
             <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
             <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">📅</span> Practice Plan</button>
@@ -71,6 +75,7 @@
         <div class="menu-divider"></div>
         <div class="menu-section">
             <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
+            <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
             <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
             <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
             <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
@@ -85,24 +90,22 @@
         <div id="page-songs" class="app-page">
     <div class="container">
         <header>
-            <!-- Logo placeholder - replace logo.png with your actual logo -->
-            <img src="logo.png" alt="DeadCetera" class="logo" onerror="this.style.display='none'">
-            <h1>🎸 DeadCetera</h1>
-            <p class="subtitle">One app to jam, plan, and manage — so you can focus on the music.</p>
+            <!-- GrooveLinx Hero -->
+            <img src="hero-logo.png" alt="GrooveLinx" class="logo" style="max-width:260px;max-height:260px;border-radius:16px;box-shadow:0 8px 40px rgba(102,126,234,0.3)">
+            <h1 style="margin-top:12px;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent">GrooveLinx</h1>
+            <p class="subtitle">Where bands lock in. Less admin. More jams.</p>
             
             <!-- Sign In -->
             <div id="signInPrompt" style="text-align:center;margin-top:12px;">
                 <div style="position:relative;display:inline-block;">
                     <button id="googleDriveAuthBtn2" onclick="handleGoogleDriveAuth()" 
-                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;"
-                        onmouseenter="document.getElementById('signInTooltip').style.display='block'"
-                        onmouseleave="document.getElementById('signInTooltip').style.display='none'">
+                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;">
                         👤 Sign In
                     </button>
                     <button onclick="const t=document.getElementById('signInTooltip');t.style.display=t.style.display==='block'?'none':'block';event.stopPropagation();"
                         style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:var(--text-muted);padding:8px 10px;border-radius:8px;font-size:0.82em;cursor:pointer;margin-left:6px;"
                         title="Why sign in?">❓</button>
-                    <div id="signInTooltip" style="display:none;position:absolute;top:100%;left:0;margin-top:8px;background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:14px;width:300px;max-width:90vw;z-index:100;text-align:left;font-size:0.82em;line-height:1.5;color:var(--text-muted,#94a3b8);box-shadow:0 8px 30px rgba(0,0,0,0.4);">
+                    <div id="signInTooltip" style="display:none;position:absolute;bottom:120%;right:0;margin-bottom:8px;background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:14px;width:280px;max-width:80vw;z-index:100;text-align:left;font-size:0.82em;line-height:1.5;color:var(--text-muted,#94a3b8);box-shadow:0 8px 30px rgba(0,0,0,0.4);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
                             <span style="font-weight:700;color:white">Why sign in?</span>
                             <button onclick="document.getElementById('signInTooltip').style.display='none';event.stopPropagation();" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em;padding:0 0 0 8px">✕</button>
@@ -150,10 +153,9 @@
                 </select>
                 <select id="statusFilter" class="app-select" onchange="filterByStatus(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
                     <option value="all">📊 All Statuses</option>
-                    <option value="this_week">🎯 This Week</option>
+                    <option value="prospect">👀 Prospect</option>
+                    <option value="wip">🔧 Work in Progress</option>
                     <option value="gig_ready">✅ Gig Ready</option>
-                    <option value="needs_polish">⚠️ Needs Polish</option>
-                    <option value="on_deck">📚 On Deck</option>
                 </select>
                 <span title="🎯 This Week = songs you're actively rehearsing this week&#10;✅ Gig Ready = polished and ready to play live&#10;⚠️ Needs Polish = know it but needs work&#10;📚 On Deck = learning, not yet rehearsed" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
                 <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85em;font-weight:600;color:var(--text-muted,#94a3b8);padding:7px 10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.04);min-width:140px" title="Show only songs that have documented vocal harmony parts for the band to practice together">
@@ -198,10 +200,9 @@
             <div class="meta-item">
                 <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎯 Status:</span>
                 <select id="songStatusSelect" onchange="updateSongStatus(this.value)" class="app-select" style="width:auto;min-width:120px;padding:5px 8px;font-size:0.85em;font-weight:600">
-                    <option value="">Not Started</option>
-                    <option value="on_deck">📚 On Deck</option>
-                    <option value="this_week">🎯 This Week</option>
-                    <option value="needs_polish">⚠️ Needs Polish</option>
+                    <option value="">— Not on Radar —</option>
+                    <option value="prospect">👀 Prospect</option>
+                    <option value="wip">🔧 Work in Progress</option>
                     <option value="gig_ready">✅ Gig Ready</option>
                 </select>
             </div>
@@ -235,22 +236,44 @@
                     <span style="font-weight:600;color:var(--text-muted,#94a3b8)">🎶 Harmonies</span>
                 </label>
             </div>
-            <div class="meta-item" id="harmonyMembersRow" style="display:none;flex-wrap:wrap;gap:4px;align-items:center">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:4px;font-size:0.85em">Singers:</span>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
-                <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:0.85em;color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+            <div class="meta-item" id="harmonyMembersRow" style="display:none;flex-wrap:wrap;gap:6px;align-items:center;width:100%;flex:1 1 100%">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em;flex-shrink:0">Singers:</span>
+                <div style="position:relative;flex:1;min-width:140px">
+                    <button id="singersDropdownBtn" onclick="toggleSingersDropdown()" 
+                        style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text,#f1f5f9);font-size:0.85em;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center">
+                        <span id="singersLabel">Select singers...</span>
+                        <span>▾</span>
+                    </button>
+                    <div id="singersDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:8px;z-index:500;padding:6px;margin-top:4px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
     
-    <!-- Song Structure form (hidden, opens as modal) -->
-    <div id="songStructureSection" style="display:none">
+    <!-- Song Structure form (hidden, opens as modal) -->\n    <div id="songStructureSection" style="display:none">
         <div id="songStructureContainer"></div>
         <div id="songStructureFormContainer"></div>
     </div>
+
+    <!-- Band Lock-In Readiness -->
+    <div id="readinessContainer"></div>
+
+</div>
+
+<!-- Find a Version Hub launcher -->
+<div class="step-card hidden" id="stepVersionHub" style="background:linear-gradient(135deg,rgba(102,126,234,0.08),rgba(118,75,162,0.08));border:1px solid rgba(102,126,234,0.2)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#667eea,#764ba2)">🔍</div>
+        <h2 style="margin:0">Find a Version</h2>
+    </div>
+    <p class="subtitle">Search Archive.org, YouTube, Relisten, Spotify &amp; more — listen inline, then send to North Star, Cover Me, Fadr, or Practice Mode</p>
+    <button onclick="launchVersionHub()" class="btn btn-primary" style="width:100%;padding:12px;font-size:0.95em;margin-top:8px;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Find a Version</button>
 </div>
 
 <!-- Step 3: North Star (Reference Version) -->
@@ -266,7 +289,7 @@
             <h3>⭐ Reference Version (Band Voted)</h3>
             <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
                 Vote on which version to learn — any link works (Spotify, YouTube, Archive.org, etc.)
-                <button onclick="searchRefVersion()" title="Search for this song and paste any URL here" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Find on Spotify / YouTube</button>
+                <button onclick="launchVersionHubForNorthStar()" title="Search all sources and add a reference version" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Find a Version</button>
             </p>
         </div>
         <div id="spotifyVersionsContainer"></div>
@@ -274,24 +297,20 @@
     </div>
 </div>
 
-<!-- Step 4: Cover Me -->
-<div class="step-card hidden" id="step4coverme">
+<!-- Step 3b: Best Shot vs North Star -->
+<div class="step-card hidden" id="step3bestshot">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">4</div>
-        <h2 style="margin:0">Cover Me</h2>
+        <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#f59e0b,#ef4444)">🏆</div>
+        <h2 style="margin:0">Best Shot vs North Star</h2>
     </div>
-    <p class="subtitle">How other bands play this song — inspiration for your own take</p>
-    <div class="resource-section" id="coverMeSection">
-        <div id="coverMeContainer"></div>
-        <div id="coverMeFormContainer"></div>
-        <button class="secondary-btn" onclick="showCoverMeForm()" style="margin-top:12px">+ Add Cover Version</button>
-    </div>
+    <p class="subtitle">Compare your band's best take to the reference — rate each section and track your progress</p>
+    <div id="bestShotVsNorthStar"></div>
 </div>
 
-<!-- Step 5: Stage Cheat Sheets -->
+<!-- Step 4: Stage Cheat Sheets -->
 <div class="step-card hidden" id="step4ref">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">5</div>
+        <div class="step-number" style="flex-shrink:0">4</div>
         <h2 style="margin:0">Stage Crib Notes</h2>
     </div>
     <p class="subtitle">Each member's go-to reference — tabs, chord charts, or lyrics for stage/iPad
@@ -303,13 +322,38 @@
     </div>
 </div>
 
-<!-- Step 6: Practice Workshop -->
+<!-- Step 4b: Cover Me -->
+<div class="step-card hidden" id="step4cover">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0;font-size:0.8em">4b</div>
+        <h2 style="margin:0">Cover Me 🎤</h2>
+    </div>
+    <p class="subtitle">Other bands' takes — covers, tribute versions, different arrangements worth learning from</p>
+    <div class="resource-section" id="coverMeSection">
+        <div id="coverMeContainer"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="secondary-btn" onclick="showAddCoverMeForm()" style="flex:1">+ Add Cover Version</button>
+            <button class="secondary-btn" onclick="launchVersionHubForCoverMe()" style="flex:0 0 auto;color:var(--accent-light,#818cf8)">🔍 Find</button>
+        </div>
+    </div>
+</div>
+
+<!-- Step 5: Practice Workshop -->
 <div class="step-card hidden" id="step5ref">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">6</div>
+        <div class="step-number" style="flex-shrink:0">5</div>
         <h2 style="margin:0">The Woodshed</h2>
     </div>
     <p class="subtitle">Practice tools, stems, harmony parts & band notes</p>
+    
+    <!-- CHORD CHART (The Band's Chart) -->
+    <div class="resource-section" id="chartSection">
+        <div class="section-header">
+            <h3>🎸 The Chart</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">One shared chord chart — replaces Ultimate Guitar</p>
+        </div>
+        <div id="chartContainer"></div>
+    </div>
     
     <!-- MOISES STEMS -->
     <div class="resource-section" id="moisesSection">
@@ -377,6 +421,15 @@
         <div id="practiceTracksContainer"></div>
     </div>
     
+    <!-- WOODSHED CHECKLISTS -->
+    <div class="resource-section" id="woodshedChecklistSection">
+        <div class="section-header">
+            <h3>✅ Woodshed Checklists</h3>
+            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Solo prep · Rehearsal readiness · Gig-night rig</p>
+        </div>
+        <div id="woodshedChecklistContainer"></div>
+    </div>
+
     <!-- HARMONIES -->
     <div class="resource-section" id="harmoniesSection">
         <div class="section-header">
@@ -384,6 +437,12 @@
             <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Who sings what, when</p>
         </div>
         <div id="harmoniesContainer"></div>
+    </div>
+
+    <!-- SONG IN PLAYLISTS -->
+    <div class="resource-section" id="songPlaylistsSection" style="margin-top:8px">
+        <div style="font-size:0.8em;color:var(--text-muted,#94a3b8);font-weight:600;margin-bottom:6px">📋 In Playlists:</div>
+        <div id="songPlaylistsContainer"></div>
     </div>
     
     <!-- REHEARSAL NOTES -->
@@ -538,6 +597,7 @@
 
         <!-- Dynamic pages rendered by JS -->
         <div id="page-setlists" class="app-page hidden"></div>
+        <div id="page-rehearsal" class="app-page hidden"></div>
         <div id="page-playlists" class="app-page hidden"></div>
         <div id="page-practice" class="app-page hidden"></div>
         <div id="page-calendar" class="app-page hidden"></div>
@@ -555,12 +615,43 @@
     </div>
 
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
-        <p style="margin-bottom:4px">DeadCetera — Band HQ · Less admin. More jams. 🤘</p>
+        <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
     <script src="data.js"></script>
     <script src="app.js"></script>
+    <script src="rehearsal-mode.js"></script>
+    <script src="version-hub.js"></script>
     <script src="help.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => {
+                        console.log('[SW] Registered:', reg.scope);
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => console.log('[SW] Registration failed:', err));
+                navigator.serviceWorker.addEventListener('message', event => {
+                    if (event.data?.type === 'SW_UPDATED') {
+                        // showUpdateBanner is defined in app.js — call it if ready, else retry
+                        if (typeof showUpdateBanner === 'function') {
+                            showUpdateBanner();
+                        } else {
+                            setTimeout(() => { if (typeof showUpdateBanner === 'function') showUpdateBanner(); }, 2000);
+                        }
+                    }
+                });
+            });
+        }
+    </script>
 </body>
 </html>

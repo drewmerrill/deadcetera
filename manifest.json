@@ -1,7 +1,7 @@
 {
-  "name": "Deadcetera — Band HQ",
-  "short_name": "Deadcetera",
-  "description": "Band management app for Deadcetera — songs, setlists, rehearsals, harmonies",
+  "name": "GrooveLinx — Where Bands Lock In",
+  "short_name": "GrooveLinx",
+  "description": "Where bands lock in — songs, setlists, rehearsals, harmonies, and more",
   "start_url": "/deadcetera/",
   "scope": "/deadcetera/",
   "display": "standalone",
