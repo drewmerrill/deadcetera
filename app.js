@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-201207', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-203235', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-201207';
+var BUILD_VERSION = '20260305-203235';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -8833,19 +8833,32 @@ async function deleteGig(idx) {
 }
 
 async function editGig(idx) {
-    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-    const g = data[idx];
+    const gigData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const g = gigData[idx];
     if (!g) return;
+    const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const venueOpts = venues.map(v => `<option value="${v.name||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${v.name||''}${v.address?' \u2014 '+v.address:''}</option>`).join('');
     const el = document.getElementById('gigsList');
     el.innerHTML = `<div class="app-card">
-        <h3>Edit Gig</h3>
+        <h3>🎤 Edit Gig</h3>
         <div class="form-grid">
-            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="gigVenue" value="${(g.venue||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row" style="grid-column:1/-1">
+                <label class="form-label">Venue</label>
+                <select class="app-select" id="gigVenueSelect" onchange="gigVenueSelected(this)" style="margin-bottom:6px">
+                    <option value="">-- Select a venue --</option>
+                    ${venueOpts}
+                    <option value="__new__">➕ Add new venue…</option>
+                </select>
+                <input class="app-input" id="gigVenue" value="${(g.venue||'').replace(/"/g,'&quot;')}" placeholder="Venue name">
+            </div>
             <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date" value="${g.date||''}"></div>
-            <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="gigTime" value="${(g.time||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Pay / Guarantee</label><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Arrival Time</label><input class="app-input" id="gigArrival" type="time" value="${g.arrivalTime||''}"></div>
+            <div class="form-row"><label class="form-label">Soundcheck Time</label><input class="app-input" id="gigSoundcheck" type="time" value="${g.soundcheckTime||''}"></div>
+            <div class="form-row"><label class="form-label">Start Time</label><input class="app-input" id="gigStartTime" type="time" value="${g.startTime||''}"></div>
+            <div class="form-row"><label class="form-label">End Time</label><input class="app-input" id="gigEndTime" type="time" value="${g.endTime||''}"></div>
             <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" value="${(g.soundPerson||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Contact</label><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
         <div style="display:flex;gap:8px">
@@ -8856,19 +8869,22 @@ async function editGig(idx) {
 }
 
 async function saveGigEdit(idx) {
-    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-    data[idx] = {
-        ...data[idx],
-        venue: document.getElementById('gigVenue')?.value,
-        date: document.getElementById('gigDate')?.value,
-        time: document.getElementById('gigTime')?.value,
-        pay: document.getElementById('gigPay')?.value,
-        soundPerson: document.getElementById('gigSound')?.value,
-        contact: document.getElementById('gigContact')?.value,
-        notes: document.getElementById('gigNotes')?.value,
+    const gigData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    gigData[idx] = {
+        ...gigData[idx],
+        venue:         document.getElementById('gigVenue')?.value?.trim(),
+        date:          document.getElementById('gigDate')?.value,
+        pay:           document.getElementById('gigPay')?.value,
+        arrivalTime:   document.getElementById('gigArrival')?.value,
+        soundcheckTime:document.getElementById('gigSoundcheck')?.value,
+        startTime:     document.getElementById('gigStartTime')?.value,
+        endTime:       document.getElementById('gigEndTime')?.value,
+        soundPerson:   document.getElementById('gigSound')?.value,
+        contact:       document.getElementById('gigContact')?.value,
+        notes:         document.getElementById('gigNotes')?.value,
         updated: new Date().toISOString()
     };
-    await saveBandDataToDrive('_band', 'gigs', data);
+    await saveBandDataToDrive('_band', 'gigs', gigData);
     showToast('✅ Gig updated!');
     loadGigs();
 }
@@ -10459,9 +10475,12 @@ async function loadGigs() {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="flex:1">
                 <h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
-                <div style="font-size:0.82em;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap">
+                <div style="font-size:0.82em;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
                     <span>📅 ${g.date || 'TBD'}</span>
-                    ${g.time?`<span>⏰ ${g.time}</span>`:''}
+                    ${g.arrivalTime?`<span title="Arrival">🚗 ${g.arrivalTime}</span>`:''}
+                    ${g.soundcheckTime?`<span title="Soundcheck">🎛️ ${g.soundcheckTime}</span>`:''}
+                    ${g.startTime?`<span title="Start">⏰ ${g.startTime}</span>`:''}
+                    ${g.endTime?`<span title="End">⏹️ ${g.endTime}</span>`:''}
                     ${g.pay?`<span>💰 ${g.pay}</span>`:''}
                     ${g.soundPerson?`<span>🔊 ${g.soundPerson}</span>`:''}
                 </div>
@@ -10478,28 +10497,63 @@ async function loadGigs() {
     </div>`).join('');
 }
 
-function addGig() {
+async function addGig() {
     const el = document.getElementById('gigsList');
+    const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const venueOpts = venues.map(v => `<option value="${v.name||''}">${v.name||''}${v.address?' \u2014 '+v.address:''}</option>`).join('');
     el.innerHTML = `<div class="app-card">
-        <h3>Add New Gig</h3>
+        <h3>🎤 Add New Gig</h3>
         <div class="form-grid">
-            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="gigVenue" placeholder="Venue name"></div>
+            <div class="form-row" style="grid-column:1/-1">
+                <label class="form-label">Venue</label>
+                <select class="app-select" id="gigVenueSelect" onchange="gigVenueSelected(this)" style="margin-bottom:6px">
+                    <option value="">-- Select a venue --</option>
+                    ${venueOpts}
+                    <option value="__new__">➕ Add new venue…</option>
+                </select>
+                <input class="app-input" id="gigVenue" placeholder="Venue name (or type a new one)">
+            </div>
             <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date"></div>
-            <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="gigTime" placeholder="e.g. 9 PM"></div>
-            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
+            <div class="form-row"><label class="form-label">Pay / Guarantee</label><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
+            <div class="form-row"><label class="form-label">Arrival Time</label><input class="app-input" id="gigArrival" type="time"></div>
+            <div class="form-row"><label class="form-label">Soundcheck Time</label><input class="app-input" id="gigSoundcheck" type="time"></div>
+            <div class="form-row"><label class="form-label">Start Time</label><input class="app-input" id="gigStartTime" type="time"></div>
+            <div class="form-row"><label class="form-label">End Time</label><input class="app-input" id="gigEndTime" type="time"></div>
             <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" placeholder="Who's doing sound?"></div>
-            <div class="form-row"><label class="form-label">Contact</label><input class="app-input" id="gigContact" placeholder="Venue contact name"></div>
+            <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="gigContact" placeholder="Booking contact name"></div>
         </div>
-        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Load-in time, parking, set length, etc."></textarea></div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Parking, load-in door, set length, gear needed…"></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveGig()">💾 Save</button><button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>
     </div>` + el.innerHTML;
 }
 
+function gigVenueSelected(sel) {
+    var val = sel.value;
+    var input = document.getElementById('gigVenue');
+    if (!input) return;
+    if (val === '__new__') {
+        input.value = '';
+        input.focus();
+        sel.value = '';
+    } else if (val) {
+        input.value = val;
+    }
+}
+
 async function saveGig() {
-    const gig = { venue: document.getElementById('gigVenue')?.value, date: document.getElementById('gigDate')?.value,
-        time: document.getElementById('gigTime')?.value, pay: document.getElementById('gigPay')?.value,
-        soundPerson: document.getElementById('gigSound')?.value, contact: document.getElementById('gigContact')?.value,
-        notes: document.getElementById('gigNotes')?.value, created: new Date().toISOString() };
+    const gig = {
+        venue:      document.getElementById('gigVenue')?.value?.trim(),
+        date:       document.getElementById('gigDate')?.value,
+        pay:        document.getElementById('gigPay')?.value,
+        arrivalTime:   document.getElementById('gigArrival')?.value,
+        soundcheckTime:document.getElementById('gigSoundcheck')?.value,
+        startTime:  document.getElementById('gigStartTime')?.value,
+        endTime:    document.getElementById('gigEndTime')?.value,
+        soundPerson:document.getElementById('gigSound')?.value,
+        contact:    document.getElementById('gigContact')?.value,
+        notes:      document.getElementById('gigNotes')?.value,
+        created: new Date().toISOString()
+    };
     if (!gig.venue) { alert('Venue required'); return; }
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);
@@ -17258,13 +17312,39 @@ function _stonerLoadRecent() {
     }).join('');
 }
 
+function _stonerExitToPage(page) {
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    showPage(page);
+}
+
+function stonerExitToGigs() { _stonerExitToPage('gigs'); }
+
+function stonerGoHome() {
+    var content = document.getElementById('stonerContent');
+    if (!content) return;
+    content.innerHTML = '<div id="stonerHome"></div>';
+    _stonerRenderHome();
+}
+
 async function stonerOpenSetlists() {
     var content = document.getElementById('stonerContent');
     if (!content) return;
-    content.innerHTML = '<div style="padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">'
-        + '<button onclick="_stonerRenderHome();document.getElementById(\'stonerContent\').innerHTML=\'<div id=\\\"stonerHome\\\"></div>\';_stonerRenderHome();" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:0.85em">\u2190 Back</button>'
-        + '<span style="font-weight:700;color:#f1f5f9">\uD83D\uDCCB Setlists</span></div>'
-        + '<div id="stonerSetlistList" style="flex:1;overflow-y:auto;padding:12px 16px"><div style="color:#64748b;font-size:0.85em">Loading...</div></div>';
+    var header = document.createElement('div');
+    header.style.cssText = 'padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0';
+    header.innerHTML = '<button onclick="stonerGoHome()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:600">\u2190 Home</button>'
+        + '<span style="font-weight:700;color:#f1f5f9">\uD83D\uDCCB Setlists</span>';
+    var listDiv = document.createElement('div');
+    listDiv.id = 'stonerSetlistList';
+    listDiv.style.cssText = 'flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px';
+    listDiv.innerHTML = '<div style="color:#64748b;font-size:0.85em;padding:20px;text-align:center">Loading...</div>';
+    content.innerHTML = '';
+    content.appendChild(header);
+    content.appendChild(listDiv);
+
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
     var list = document.getElementById('stonerSetlistList');
@@ -17272,14 +17352,14 @@ async function stonerOpenSetlists() {
     if (!data.length) { list.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">No setlists yet</div>'; return; }
     list.innerHTML = data.map(function(sl, i) {
         var totalSongs = (sl.sets||[]).reduce(function(a,s){ return a+(s.songs||[]).length; }, 0);
-        return '<div onclick="stonerLaunchSetlist(' + i + ')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer">'
+        return '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-bottom:10px">'
             + '<div style="font-weight:700;font-size:0.95em;color:#f1f5f9;margin-bottom:4px">' + (sl.name||'Untitled') + '</div>'
-            + '<div style="font-size:0.78em;color:#64748b;display:flex;gap:10px">'
+            + '<div style="font-size:0.78em;color:#64748b;display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">'
             + (sl.date ? '<span>\uD83D\uDCC5 ' + sl.date + '</span>' : '')
             + (sl.venue ? '<span>\uD83C\uDFDB\uFE0F ' + sl.venue + '</span>' : '')
             + '<span>\uD83C\uDFB5 ' + totalSongs + ' songs</span>'
             + '</div>'
-            + '<div style="margin-top:8px"><button style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:7px 18px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer">\uD83C\uDFA4 Go Live</button></div>'
+            + '<button onclick="stonerLaunchSetlist(' + i + ')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:8px 20px;border-radius:8px;font-size:0.85em;font-weight:700;cursor:pointer">\uD83C\uDFA4 Go Live</button>'
             + '</div>';
     }).join('');
 }
@@ -17294,12 +17374,45 @@ async function stonerLaunchSetlist(idx) {
 }
 
 function stonerOpenGigs() {
-    _stonerExit();
-    _stonerMode = false;
-    localStorage.setItem('deadcetera_stoner_mode', '0');
-    var btn = document.getElementById('stonerBtn');
-    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
-    showPage('gigs');
+    var content = document.getElementById('stonerContent');
+    if (!content) return;
+    var header = document.createElement('div');
+    header.style.cssText = 'padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0';
+    header.innerHTML = '<button onclick="stonerGoHome()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:600">\u2190 Home</button>'
+        + '<span style="font-weight:700;color:#f1f5f9">\uD83C\uDFA4 Gigs</span>'
+        + '<button onclick="stonerExitToGigs()" style="margin-left:auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.75em">Full View \u2192</button>';
+    var bodyDiv = document.createElement('div');
+    bodyDiv.style.cssText = 'flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px';
+    bodyDiv.innerHTML = '<div style="color:#64748b;font-size:0.85em;padding:20px;text-align:center">Loading gigs...</div>';
+    content.innerHTML = '';
+    content.appendChild(header);
+    content.appendChild(bodyDiv);
+    // Load gigs async
+    loadBandDataFromDrive('_band','gigs').then(function(raw2) {
+        var gigs = toArray(raw2||[]).sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+        if (!gigs.length) { bodyDiv.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">No gigs yet</div>'; return; }
+        var upcoming = gigs.filter(function(g){ return g.date >= new Date().toISOString().slice(0,10); });
+        var past = gigs.filter(function(g){ return g.date < new Date().toISOString().slice(0,10); });
+        function gigCard(g) {
+            return '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-bottom:8px">'
+                + '<div style="font-weight:700;color:#f1f5f9">' + (g.venue||'Unknown Venue') + '</div>'
+                + '<div style="font-size:0.8em;color:#64748b;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'
+                + (g.date?'<span>\uD83D\uDCC5 '+g.date+'</span>':'')
+                + (g.startTime?'<span>\uD83D\uDD50 '+g.startTime+'</span>':'')
+                + (g.pay?'<span>\uD83D\uDCB0 '+g.pay+'</span>':'')
+                + '</div></div>';
+        }
+        var html = '';
+        if (upcoming.length) {
+            html += '<div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px">Upcoming</div>';
+            html += upcoming.map(gigCard).join('');
+        }
+        if (past.length) {
+            html += '<div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;margin:16px 0 8px">Past</div>';
+            html += past.slice(0,5).map(gigCard).join('');
+        }
+        bodyDiv.innerHTML = html;
+    });
 }
 
 function stonerOpenTuner() {
