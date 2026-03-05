@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-203235', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-204312', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-203235';
+var BUILD_VERSION = '20260305-204312';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -871,6 +871,9 @@ function renderSongs(filter = 'all', searchTerm = '') {
         preloadAllStatuses();
         if (statusCacheLoaded) addStatusBadges();
         if (readinessCacheLoaded) addReadinessChains();
+        if (_heatmapMode) renderHeatmapOverlay();
+        if (window._sectionRatingsCache) addSectionStatusDots();
+        else preloadSectionRatingsCache();
     });
 }
 
@@ -6129,7 +6132,30 @@ async function filterByStatus(status) {
 
 // Legacy - kept for backward compat but renderSongs now handles filtering at data level
 
-async function addStatusBadges() {
+async function addSectionStatusDots() {
+    // Add a small section-health dot to each song row based on cached section ratings
+    document.querySelectorAll('.song-item').forEach(function(item) {
+        var title = item.dataset.title || '';
+        if (!title) return;
+        if (item.querySelector('.section-dot')) return; // already added
+        var statusCell = item.querySelector('.song-status-cell');
+        if (!statusCell) return;
+        var ratings = window._sectionRatingsCache && window._sectionRatingsCache[title];
+        if (!ratings) return;
+        var vals = Object.values(ratings).map(Number).filter(function(v) { return v > 0; });
+        if (!vals.length) return;
+        var avg = vals.reduce(function(a,b){return a+b;},0)/vals.length;
+        var redCount = vals.filter(function(v){return v<=1;}).length;
+        var color = redCount > 0 ? '#ef4444' : avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : '#f87171';
+        var dot = document.createElement('span');
+        dot.className = 'section-dot';
+        dot.title = 'Sections: avg ' + avg.toFixed(1) + '/5' + (redCount?' (' + redCount + ' red)':'');
+        dot.style.cssText = 'display:inline-block;width:6px;height:6px;border-radius:50%;background:'+color+';margin-left:3px;flex-shrink:0;vertical-align:middle';
+        statusCell.appendChild(dot);
+    });
+}
+
+function addStatusBadges() {
     if (!statusCacheLoaded) {
         console.log('⏳ Status cache not loaded yet, skipping badges');
         return;
@@ -6267,6 +6293,26 @@ const MASTER_STATUS_FILE = '_master_song_statuses.json';
 const MASTER_HARMONIES_FILE = '_master_harmonies.json';
 const MASTER_NORTH_STAR_FILE = '_master_north_stars.json';
 const MASTER_ACTIVITY_LOG = '_master_activity_log.json';
+
+async function preloadSectionRatingsCache() {
+    if (window._sectionRatingsCache) return;
+    window._sectionRatingsCache = {};
+    // Load from the master readiness file which has section data baked in
+    // Actually load lightweight: just check if section_ratings exists per visible song
+    var visible = Array.from(document.querySelectorAll('.song-item')).map(function(el) {
+        return el.dataset.title || '';
+    }).filter(Boolean).slice(0, 30); // limit to 30 visible songs
+    if (!visible.length) return;
+    await Promise.all(visible.map(async function(title) {
+        try {
+            var snap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(title) + '/section_ratings')).once('value');
+            if (snap.val()) {
+                window._sectionRatingsCache[title] = snap.val();
+            }
+        } catch(e) {}
+    }));
+    addSectionStatusDots();
+}
 
 async function preloadAllStatuses() {
     if (statusPreloadRunning) return;
@@ -8712,6 +8758,37 @@ function slRenderSetSongs(setIdx) {
     });
 }
 
+async function slEnrichKeyBpm() {
+    // Fetch key+BPM for any song in the current sets that's missing them
+    if (!window._slSets) return;
+    var allTitles = [];
+    window._slSets.forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : item.title;
+            if (t) allTitles.push(t);
+        });
+    });
+    var allSongsList = (typeof allSongs !== 'undefined' ? allSongs : []);
+    var toFetch = allTitles.filter(function(t) {
+        var sd = allSongsList.find(function(s) { return s.title === t; });
+        return !sd || (!sd.key && !sd.bpm);
+    });
+    if (!toFetch.length) return;
+    await Promise.all(toFetch.map(async function(title) {
+        try {
+            var keyData = await loadBandDataFromDrive(title, 'song_key');
+            var bpmData = await loadBandDataFromDrive(title, 'song_bpm');
+            var sd = allSongsList.find(function(s) { return s.title === title; });
+            if (sd) {
+                if (keyData && keyData.key) sd.key = keyData.key;
+                if (bpmData && bpmData.bpm) sd.bpm = bpmData.bpm;
+            }
+        } catch(e) {}
+    }));
+    // Re-render all sets now that we have key/bpm
+    window._slSets.forEach(function(_, si) { slRenderSetSongs(si); });
+}
+
 function slSetSegue(setIdx, songIdx, segueType) {
     const items = window._slSets[setIdx]?.songs;
     if (!items || items[songIdx] === undefined) return;
@@ -8796,6 +8873,7 @@ async function editSetlist(idx) {
     
     // Render existing songs in each set
     window._slSets.forEach((set, si) => slRenderSetSongs(si));
+    slEnrichKeyBpm();
 }
 
 async function slSaveSetlistEdit(idx) {
@@ -9571,30 +9649,50 @@ function calDayClick(y, m, d) {
     calAddEvent(ds);
 }
 
-function calAddEvent(date, editIdx, existing) {
+async function calAddEvent(date, editIdx, existing) {
     const area = document.getElementById('calEventFormArea');
     if (!area) return;
     const isEdit = editIdx !== undefined;
     const ev = existing || {};
-    area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'✏️ Edit Event':'➕ Add Event'}</h3>
+    // Load setlists for gig-type dropdown
+    const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    setlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    const setlistOpts = setlists.map(sl =>
+        `<option value="${(sl.name||'').replace(/"/g,'&quot;')}" ${(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
+    ).join('');
+    const showSetlist = ev.type === 'gig';
+    area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
     <div class="form-grid">
         <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}"></div>
-        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType">
-            <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>🎸 Rehearsal</option>
-            <option value="gig" ${ev.type==='gig'?'selected':''}>🎤 Gig</option>
-            <option value="meeting" ${ev.type==='meeting'?'selected':''}>👥 Meeting</option>
-            <option value="other" ${ev.type==='other'?'selected':''}>📌 Other</option>
+        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType" onchange="calTypeChanged(this)">
+            <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>&#127928; Rehearsal</option>
+            <option value="gig" ${ev.type==='gig'?'selected':''}>&#127908; Gig</option>
+            <option value="meeting" ${ev.type==='meeting'?'selected':''}>&#128101; Meeting</option>
+            <option value="other" ${ev.type==='other'?'selected':''}>&#128204; Other</option>
         </select></div>
         <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's" value="${ev.title||''}"></div>
         <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}"></div>
+        <div class="form-row calGigOnly" id="calSetlistRow" style="${showSetlist?'':'display:none'}">
+            <label class="form-label">\uD83D\uDCCB Linked Setlist</label>
+            <select class="app-select" id="calLinkedSetlist">
+                <option value="">-- None --</option>
+                ${setlistOpts}
+            </select>
+        </div>
     </div>
     <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="calNotes" placeholder="Optional notes" style="height:60px">${ev.notes||''}</textarea></div>
     <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="btn btn-success" onclick="calSaveEvent(${isEdit?editIdx:'undefined'})">${isEdit?'💾 Update':'💾 Save Event'}</button>
+        <button class="btn btn-success" onclick="calSaveEvent(${isEdit?editIdx:'undefined'})">${isEdit?'\uD83D\uDCBE Update':'\uD83D\uDCBE Save Event'}</button>
         <button class="btn btn-ghost" onclick="document.getElementById('calEventFormArea').innerHTML=''">Cancel</button>
     </div>`;
     area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+function calTypeChanged(sel) {
+    var row = document.getElementById('calSetlistRow');
+    if (row) row.style.display = sel.value === 'gig' ? '' : 'none';
+}
+
 
 async function calEditEvent(idx) {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -9622,6 +9720,7 @@ async function calSaveEvent(editIdx) {
         title: document.getElementById('calTitle')?.value,
         time: document.getElementById('calTime')?.value,
         notes: document.getElementById('calNotes')?.value,
+        linkedSetlist: document.getElementById('calLinkedSetlist')?.value || null,
     };
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
     let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -10466,6 +10565,13 @@ function renderGigsPage(el) {
     loadGigs();
 }
 
+async function gigLaunchLinkedSetlist(setlistName) {
+    var allSl = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var idx = allSl.findIndex(function(sl) { return (sl.name||'') === setlistName; });
+    if (idx < 0) { showToast('Setlist not found'); return; }
+    await launchGigMode(idx);
+}
+
 async function loadGigs() {
     const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const el = document.getElementById('gigsList');
@@ -10493,13 +10599,18 @@ async function loadGigs() {
             </div>
         </div>
         ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
-        ${g.setlistName ? `<div style="margin-top:4px;font-size:0.78em"><span style="color:var(--accent-light)">📋 ${g.setlistName}</span></div>` : ''}
+        ${g.linkedSetlist ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist}</span>
+            <button onclick="gigLaunchLinkedSetlist('${g.linkedSetlist.replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
+        </div>` : ''}
     </div>`).join('');
 }
 
 async function addGig() {
     const el = document.getElementById('gigsList');
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    window._cachedSetlists.sort((a,b) => (b.date||''). localeCompare(a.date||''));
     const venueOpts = venues.map(v => `<option value="${v.name||''}">${v.name||''}${v.address?' \u2014 '+v.address:''}</option>`).join('');
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Add New Gig</h3>
@@ -10521,6 +10632,13 @@ async function addGig() {
             <div class="form-row"><label class="form-label">End Time</label><input class="app-input" id="gigEndTime" type="time"></div>
             <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" placeholder="Who's doing sound?"></div>
             <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="gigContact" placeholder="Booking contact name"></div>
+        </div>
+        </div>
+        <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
+            <select class="app-select" id="gigLinkedSetlist">
+                <option value="">-- None --</option>
+                ${(window._cachedSetlists||[]).map(sl => `<option value="${(sl.name||'').replace(/"/g,'&quot;')}">${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
+            </select>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Parking, load-in door, set length, gear needed…"></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveGig()">💾 Save</button><button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>
@@ -10552,6 +10670,7 @@ async function saveGig() {
         soundPerson:document.getElementById('gigSound')?.value,
         contact:    document.getElementById('gigContact')?.value,
         notes:      document.getElementById('gigNotes')?.value,
+        linkedSetlist: document.getElementById('gigLinkedSetlist')?.value || null,
         created: new Date().toISOString()
     };
     if (!gig.venue) { alert('Venue required'); return; }
@@ -16536,13 +16655,28 @@ async function rhGenerateSuggestions(eventId) {
     function renderBucket(label, emoji, items, color) {
         if (!items.length) return '';
         var out = '<div style="margin-bottom:14px">';
-        out += '<div style="font-size:0.72em;font-weight:700;color:' + color + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">' + emoji + ' ' + label + '</div>';
+        out += '<div style="font-size:0.72em;font-weight:700;color:' + color + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">' + emoji + ' ' + label + '</div>';
         items.forEach(function(s) {
-            var rLabel = s.avgReadiness > 0 ? ' · avg ' + s.avgReadiness.toFixed(1) + '/5' : ' · unrated';
-            var wipTag = s.isWip ? ' <span style="font-size:0.65em;background:rgba(245,158,11,0.15);color:#f59e0b;border-radius:4px;padding:1px 5px;border:1px solid rgba(245,158,11,0.3)">WIP</span>' : '';
-            out += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
-            out += '<input type="checkbox" id="rhSug_' + btoa(s.title).replace(/[^a-zA-Z0-9]/g,'').slice(0,12) + '" checked style="accent-color:#667eea;width:14px;height:14px;flex-shrink:0" onclick="event.stopPropagation()">';
-            out += '<label style="flex:1;font-size:0.85em;color:var(--text);cursor:pointer" for="rhSug_' + btoa(s.title).replace(/[^a-zA-Z0-9]/g,'').slice(0,12) + '">' + s.title + wipTag + '<span style="font-size:0.72em;color:var(--text-dim)">' + rLabel + '</span></label>';
+            var wipTag = s.isWip ? ' <span style="font-size:0.62em;background:rgba(245,158,11,0.15);color:#f59e0b;border-radius:4px;padding:1px 5px;border:1px solid rgba(245,158,11,0.3)">WIP</span>' : '';
+            var cbId = 'rhSug_' + btoa(unescape(encodeURIComponent(s.title))).replace(/[^a-zA-Z0-9]/g,'').slice(0,12);
+            out += '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
+            out += '<input type="checkbox" id="' + cbId + '" checked style="accent-color:#667eea;width:14px;height:14px;flex-shrink:0;margin-top:3px" onclick="event.stopPropagation()">';
+            out += '<div style="flex:1;min-width:0">';
+            out += '<label style="font-size:0.85em;color:var(--text);cursor:pointer;display:block" for="' + cbId + '">' + s.title + wipTag + '</label>';
+            // Mini readiness bar per member
+            if (s.avgReadiness > 0) {
+                out += '<div style="display:flex;gap:2px;margin-top:4px;align-items:center">';
+                BAND_MEMBERS_ORDERED.forEach(function(m) {
+                    var sc = (readinessCache[s.title] || {})[m.key] || 0;
+                    var c = sc ? readinessColor(sc) : 'rgba(255,255,255,0.08)';
+                    out += '<span title="' + m.name + ': ' + (sc?sc+'/5':'?') + '" style="display:inline-block;width:18px;height:4px;border-radius:2px;background:' + c + '"></span>';
+                });
+                out += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:4px">avg ' + s.avgReadiness.toFixed(1) + '</span>';
+                out += '</div>';
+            } else {
+                out += '<span style="font-size:0.7em;color:#475569">No readiness data</span>';
+            }
+            out += '</div>';
             out += '</div>';
         });
         out += '</div>';
