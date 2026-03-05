@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-194756', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-201207', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-194756';
+var BUILD_VERSION = '20260305-201207';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -8496,13 +8496,15 @@ function renderSetlistsPage(el) {
 }
 
 async function loadSetlists() {
-    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    // Sort newest first; track original indices for edit/delete operations
+    const data = rawData.map((sl, origIdx) => ({ ...sl, _origIdx: origIdx })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const container = document.getElementById('setlistsList');
     if (!container) return;
     if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
     container.innerHTML = data.map((sl, i) => `<div class="app-card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="flex:1;cursor:pointer" onclick="editSetlist(${i})">
+            <div style="flex:1;cursor:pointer" onclick="editSetlist(${sl._origIdx})">
                 <h3 style="margin-bottom:4px">${sl.name||'Untitled'}</h3>
                 <div style="display:flex;gap:12px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">
                     <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
@@ -8511,10 +8513,10 @@ async function loadSetlists() {
                 </div>
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
-                <button class="btn btn-sm btn-ghost" onclick="editSetlist(${i})" title="Edit">✏️</button>
-                <button class="btn btn-sm btn-ghost" onclick="launchGigMode(${i})" title="Go Live" style="color:#22c55e">🎤</button>
-                <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${i})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
-                <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+                <button class="btn btn-sm btn-ghost" onclick="editSetlist(${sl._origIdx})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="launchGigMode(${sl._origIdx})" title="Go Live" style="color:#22c55e">🎤</button>
+                <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${sl._origIdx})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${sl._origIdx})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
         ${(sl.sets||[]).map(s => { const SA={'stop':'  ','flow':' → ','segue':' ~ ','cutoff':' | '}; return `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map((sg,i,arr)=>{ const t=typeof sg==='string'?sg:sg.title; const a=i<arr.length-1?(SA[(typeof sg==='object'&&sg.segue)||'stop']||'  '):''; return t+a; }).join('')}</div>`; }).join('')}
@@ -16634,155 +16636,288 @@ console.log('Rehearsal Planner loaded');
 
 
 // ============================================================================
-// LIVE GIG MODE — Full-screen setlist player
+// LIVE GIG MODE — Setlist-driven chart reader (reuses Practice Mode engine)
 // ============================================================================
-var _gigMode = {
-    setlist: null,
-    flatList: [],
-    currentIdx: 0,
-    playedSet: null
-};
 
-function openGigMode(setlistObj) {
-    var gm = _gigMode;
-    gm.setlist = setlistObj;
-    gm.flatList = [];
-    gm.playedSet = new Set();
-    gm.currentIdx = 0;
-    (setlistObj.sets || []).forEach(function(set, si) {
-        (set.songs || []).forEach(function(sg) {
-            var title = typeof sg === 'string' ? sg : sg.title;
-            var segue = typeof sg === 'object' ? (sg.segue || 'stop') : 'stop';
-            gm.flatList.push({ title: title, setName: set.name || ('Set '+(si+1)), segue: segue });
-        });
-    });
-    ensureGigModeOverlay();
-    gmRender();
-    var overlay = document.getElementById('gigModeOverlay');
-    if (overlay) { overlay.classList.add('gm-visible'); }
-    document.body.style.overflow = 'hidden';
-}
+var _gmSetlist = null;       // full setlist object
+var _gmFlatList = [];        // [{title, setName, segue}]
+var _gmPlayedSet = null;     // Set of played indices
+var _gmOverlayBuilt = false;
 
-function closeGigMode() {
-    var overlay = document.getElementById('gigModeOverlay');
-    if (overlay) overlay.classList.remove('gm-visible');
-    document.body.style.overflow = '';
-}
-
-function gmRender() {
-    var gm = _gigMode;
-    var overlay = document.getElementById('gigModeOverlay');
-    if (!overlay) return;
-    var cur = gm.flatList[gm.currentIdx] || null;
-    var next = gm.flatList[gm.currentIdx + 1] || null;
-    var total = gm.flatList.length;
-
-    var songEl = document.getElementById('gmSongTitle');
-    var setEl = document.getElementById('gmSetLabel');
-    var nextEl = document.getElementById('gmNextSong');
-    var progEl = document.getElementById('gmProgress');
-    var progBar = document.getElementById('gmProgressBar');
-
-    if (songEl) songEl.textContent = cur ? cur.title : 'Done!';
-    if (setEl) setEl.textContent = cur ? cur.setName : '';
-    if (nextEl) {
-        if (next) {
-            var segueLabel = { stop:'then', flow:'\u2192 flows into', segue:'~ segues to', cutoff:'| cuts to' }[cur ? cur.segue : 'stop'] || 'then';
-            nextEl.innerHTML = '<span style="color:#64748b;font-size:0.75em">' + segueLabel + '</span><br><span style="font-size:0.95em;color:#94a3b8">' + next.title + '</span>';
-        } else {
-            nextEl.textContent = cur ? 'Last song' : '';
-        }
-    }
-    if (progEl) progEl.textContent = (gm.currentIdx + 1) + ' / ' + total + ' \u2022 ' + gm.playedSet.size + ' played';
-    if (progBar) progBar.style.width = (total > 0 ? (gm.currentIdx / total * 100) : 0) + '%';
-
-    var listEl = document.getElementById('gmSongList');
-    if (listEl) {
-        var html = '';
-        var lastSet = '';
-        gm.flatList.forEach(function(item, idx) {
-            if (item.setName !== lastSet) {
-                html += '<div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;padding:8px 12px 4px;border-top:1px solid rgba(255,255,255,0.06)">' + item.setName + '</div>';
-                lastSet = item.setName;
-            }
-            var isPlayed = gm.playedSet.has(idx);
-            var isCurrent = idx === gm.currentIdx;
-            var segArr = { stop:'', flow:' \u2192', segue:' ~', cutoff:' |' }[item.segue] || '';
-            html += '<div onclick="gmJumpTo(' + idx + ')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;'
-                + (isCurrent ? 'background:rgba(102,126,234,0.18);border-left:3px solid #667eea;' : 'border-left:3px solid transparent;')
-                + (isPlayed && !isCurrent ? 'opacity:0.4;' : '')
-                + '">'
-                + '<span style="font-size:0.7em;color:#64748b;min-width:20px;text-align:right">' + (idx+1) + '</span>'
-                + '<span style="flex:1;font-size:' + (isCurrent?'0.95em':'0.88em') + ';font-weight:' + (isCurrent?'700':'400') + ';color:' + (isCurrent?'#f1f5f9':'#94a3b8') + ';' + (isPlayed&&!isCurrent?'text-decoration:line-through;':'') + '">' + item.title + '</span>'
-                + (segArr ? '<span style="font-size:0.72em;color:#818cf8">' + segArr + '</span>' : '')
-                + (isPlayed ? '<span style="color:#22c55e;font-size:0.8em">\u2713</span>' : '')
-                + '</div>';
-        });
-        listEl.innerHTML = html;
-        var curEl = listEl.querySelectorAll('[onclick]')[gm.currentIdx];
-        if (curEl) curEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-
-    var playedBtn = document.getElementById('gmMarkPlayed');
-    if (playedBtn && cur) {
-        var already = gm.playedSet.has(gm.currentIdx);
-        playedBtn.textContent = already ? '\u21a9 Unmark' : '\u2713 Mark Played';
-        playedBtn.style.background = already ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#22c55e,#16a34a)';
-    }
-}
-
-function gmMarkPlayed() {
-    var gm = _gigMode;
-    var idx = gm.currentIdx;
-    if (gm.playedSet.has(idx)) {
-        gm.playedSet.delete(idx);
-    } else {
-        gm.playedSet.add(idx);
-        if (idx < gm.flatList.length - 1) gm.currentIdx++;
-    }
-    gmRender();
-}
-
-function gmNext() { if (_gigMode.currentIdx < _gigMode.flatList.length - 1) { _gigMode.currentIdx++; gmRender(); } }
-function gmPrev() { if (_gigMode.currentIdx > 0) { _gigMode.currentIdx--; gmRender(); } }
-function gmJumpTo(idx) { _gigMode.currentIdx = idx; gmRender(); }
-
-function ensureGigModeOverlay() {
-    if (document.getElementById('gigModeOverlay')) return;
-    var style = document.createElement('style');
-    style.textContent = '#gigModeOverlay{display:none;position:fixed;inset:0;z-index:3000;background:#060d1a;flex-direction:column;overflow:hidden}#gigModeOverlay.gm-visible{display:flex!important}@media(max-width:500px){#gmSongList{display:none}}';
-    document.head.appendChild(style);
-    var div = document.createElement('div');
-    div.id = 'gigModeOverlay';
-    div.innerHTML =
-        '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(135deg,#0f172a,#060d1a);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">'
-        + '<button onclick="closeGigMode()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:#94a3b8;width:36px;height:36px;border-radius:8px;font-size:1em;cursor:pointer">\u2715</button>'
-        + '<div style="flex:1"><div style="font-size:0.8em;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.08em">\uD83C\uDFA4 Live Gig Mode</div><div id="gmSetLabel" style="font-size:0.72em;color:#64748b"></div></div>'
-        + '<div id="gmProgress" style="font-size:0.72em;color:#64748b;text-align:right"></div>'
-        + '</div>'
-        + '<div style="height:3px;background:rgba(255,255,255,0.06);flex-shrink:0"><div id="gmProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#667eea,#22c55e);transition:width 0.3s"></div></div>'
-        + '<div style="display:flex;flex:1;overflow:hidden;min-height:0">'
-        + '<div style="display:flex;flex-direction:column;flex:1;min-width:0">'
-        + '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px">'
-        + '<div id="gmSongTitle" style="font-size:clamp(2em,8vw,3.5em);font-weight:900;color:#f1f5f9;text-align:center;line-height:1.15;margin-bottom:20px;text-shadow:0 2px 20px rgba(102,126,234,0.3)">\u2014</div>'
-        + '<div id="gmNextSong" style="font-size:1em;color:#64748b;text-align:center;min-height:2.8em;line-height:1.4"></div>'
-        + '</div>'
-        + '<div style="padding:16px;display:flex;gap:8px;flex-shrink:0;border-top:1px solid rgba(255,255,255,0.06)">'
-        + '<button onclick="gmPrev()" style="flex:1;padding:14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#94a3b8;font-size:1.2em;cursor:pointer">\u25c4</button>'
-        + '<button id="gmMarkPlayed" onclick="gmMarkPlayed()" style="flex:3;padding:14px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:10px;color:white;font-size:1em;font-weight:800;cursor:pointer">\u2713 Mark Played</button>'
-        + '<button onclick="gmNext()" style="flex:1;padding:14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#94a3b8;font-size:1.2em;cursor:pointer">\u25ba</button>'
-        + '</div></div>'
-        + '<div id="gmSongList" style="width:220px;flex-shrink:0;border-left:1px solid rgba(255,255,255,0.06);overflow-y:auto;background:#080f1e"></div>'
-        + '</div>';
-    document.body.appendChild(div);
-}
-
+// ── Launch from setlist card ─────────────────────────────────────────────────
 async function launchGigMode(setlistIdx) {
-    ensureGigModeOverlay();
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var sl = data[setlistIdx];
     if (!sl) { showToast('Setlist not found'); return; }
     openGigMode(sl);
+}
+
+function openGigMode(setlistObj) {
+    _gmSetlist = setlistObj;
+    _gmFlatList = [];
+    _gmPlayedSet = new Set();
+    (setlistObj.sets || []).forEach(function(set, si) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : sg.title;
+            var segue = typeof sg === 'object' ? (sg.segue || 'stop') : 'stop';
+            _gmFlatList.push({ title: title, setName: set.name || ('Set '+(si+1)), segue: segue });
+        });
+    });
+    if (!_gmFlatList.length) { showToast('No songs in setlist'); return; }
+
+    // Load into Practice Mode's rmQueue
+    rmQueue = _gmFlatList.map(function(item) {
+        var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === item.title; });
+        return { title: item.title, band: songData ? (songData.band || '') : '' };
+    });
+    rmIndex = 0;
+
+    _gmEnsureOverlay();
+    _gmRenderNav();
+    _gmShow();
+    rmLoadChart();
+}
+
+function closeGigMode() {
+    var ov = document.getElementById('gmOverlay');
+    if (ov) ov.classList.remove('gm-visible');
+    var scrollY = document.body.dataset.scrollY || '0';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    document.body.style.overflow = '';
+    window.scrollTo(0, parseInt(scrollY));
+    if (typeof rmStopCountOff === 'function') rmStopCountOff();
+    if (typeof rmScrollTimer !== 'undefined' && rmScrollTimer) { clearInterval(rmScrollTimer); rmScrollTimer = null; }
+}
+
+function _gmShow() {
+    var ov = document.getElementById('gmOverlay');
+    if (!ov) return;
+    ov.classList.add('gm-visible');
+    document.body.dataset.scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = '-' + window.scrollY + 'px';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function gmNavigate(dir) {
+    var n = rmIndex + dir;
+    if (n < 0 || n >= _gmFlatList.length) return;
+    rmIndex = n;
+    _gmRenderNav();
+    // Reuse rmLoadChart — it reads from rmQueue[rmIndex]
+    if (typeof rmLoadChart === 'function') rmLoadChart();
+    // Reload other tabs if open
+    if (typeof rmCurrentTab !== 'undefined' && rmCurrentTab !== 'chart') {
+        if (rmCurrentTab === 'know' && typeof rmLoadKnow === 'function') rmLoadKnow();
+        if (rmCurrentTab === 'memory' && typeof rmLoadMemory === 'function') rmLoadMemory();
+        if (rmCurrentTab === 'harmony' && typeof rmLoadHarmony === 'function') rmLoadHarmony();
+    }
+}
+
+function gmMarkPlayed() {
+    var idx = rmIndex;
+    if (_gmPlayedSet.has(idx)) {
+        _gmPlayedSet.delete(idx);
+    } else {
+        _gmPlayedSet.add(idx);
+    }
+    _gmRenderNav();
+    _gmRefreshDrawerIfOpen();
+}
+
+function _gmRenderNav() {
+    var bar = document.getElementById('gmNavBar');
+    if (!bar) return;
+    var prev = _gmFlatList[rmIndex - 1] || null;
+    var cur  = _gmFlatList[rmIndex] || null;
+    var next = _gmFlatList[rmIndex + 1] || null;
+    var total = _gmFlatList.length;
+    var played = _gmPlayedSet ? _gmPlayedSet.size : 0;
+    var isPlayed = _gmPlayedSet && _gmPlayedSet.has(rmIndex);
+
+    var segueIcon = { stop:'', flow:' \u2192', segue:' ~', cutoff:' |' };
+    var prevHTML = prev
+        ? '<button onclick="gmNavigate(-1)" style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:5px 8px;cursor:pointer;text-align:left;overflow:hidden">'
+          + '<div style="font-size:0.6em;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">PREV</div>'
+          + '<div style="font-size:0.78em;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + prev.title + '</div></button>'
+        : '<div style="flex:1"></div>';
+
+    var curHTML = '<div style="flex:2;min-width:0;text-align:center;padding:0 6px">'
+        + '<div style="font-size:0.6em;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.06em">'
+        + (rmIndex+1) + ' / ' + total + ' \u2022 ' + played + ' played</div>'
+        + '<div style="font-size:0.85em;font-weight:800;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (isPlayed?'text-decoration:line-through;color:#475569':'') + '">' + (cur ? cur.title : '') + '</div>'
+        + '<div style="margin-top:3px">'
+        + '<button onclick="gmMarkPlayed()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid;cursor:pointer;font-weight:700;'
+        + (isPlayed ? 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:#64748b' : 'background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.3);color:#22c55e')
+        + '">' + (isPlayed ? '\u21a9 Unmark' : '\u2713 Played') + '</button>'
+        + ' <button onclick="gmToggleDrawer()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#94a3b8;cursor:pointer;font-weight:700">\u25b2 Setlist</button>'
+        + '</div></div>';
+
+    var nextHTML = next
+        ? '<button onclick="gmNavigate(1)" style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:5px 8px;cursor:pointer;text-align:right;overflow:hidden">'
+          + '<div style="font-size:0.6em;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">NEXT' + (segueIcon[cur?cur.segue:'stop']||'') + '</div>'
+          + '<div style="font-size:0.78em;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + next.title + '</div></button>'
+        : '<div style="flex:1"></div>';
+
+    bar.innerHTML = prevHTML + curHTML + nextHTML;
+
+    // Also sync the rmOverlay song title / position
+    var rmTitle = document.getElementById('rmSongTitle');
+    if (rmTitle && cur) rmTitle.textContent = cur.title;
+    var rmPos = document.getElementById('rmPosition');
+    if (rmPos) rmPos.textContent = (rmIndex+1) + ' / ' + total;
+}
+
+// ── Setlist drawer ────────────────────────────────────────────────────────────
+var _gmDrawerOpen = false;
+function gmToggleDrawer() {
+    _gmDrawerOpen = !_gmDrawerOpen;
+    var drawer = document.getElementById('gmDrawer');
+    var backdrop = document.getElementById('gmDrawerBackdrop');
+    if (!drawer) return;
+    if (_gmDrawerOpen) {
+        _gmRenderDrawer();
+        drawer.style.transform = 'translateY(0)';
+        backdrop.style.display = 'block';
+    } else {
+        drawer.style.transform = 'translateY(100%)';
+        backdrop.style.display = 'none';
+    }
+}
+function gmCloseDrawer() { _gmDrawerOpen = false; gmToggleDrawer(); }
+function _gmRefreshDrawerIfOpen() { if (_gmDrawerOpen) _gmRenderDrawer(); }
+
+function _gmRenderDrawer() {
+    var list = document.getElementById('gmDrawerList');
+    if (!list) return;
+    var html = '';
+    var lastSet = '';
+    _gmFlatList.forEach(function(item, idx) {
+        if (item.setName !== lastSet) {
+            html += '<div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;padding:10px 16px 4px">'
+                + item.setName + '</div>';
+            lastSet = item.setName;
+        }
+        var isCur = idx === rmIndex;
+        var isPlayed = _gmPlayedSet && _gmPlayedSet.has(idx);
+        var segArr = { stop:'', flow:' \u2192', segue:' ~', cutoff:' |' }[item.segue] || '';
+        html += '<div onclick="gmJumpTo(' + idx + ')" style="display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;'
+            + (isCur ? 'background:rgba(102,126,234,0.15);border-left:3px solid #667eea;' : 'border-left:3px solid transparent;')
+            + '">'
+            + '<span style="font-size:0.72em;color:#64748b;min-width:22px;text-align:right">' + (idx+1) + '</span>'
+            + '<span style="flex:1;font-size:0.92em;font-weight:' + (isCur?'700':'400') + ';color:' + (isCur?'#f1f5f9':isPlayed?'#475569':'#94a3b8') + ';' + (isPlayed&&!isCur?'text-decoration:line-through':'') + '">'
+            + item.title + '</span>'
+            + (segArr ? '<span style="font-size:0.72em;color:#818cf8">' + segArr + '</span>' : '')
+            + (isPlayed ? '<span style="color:#22c55e;font-size:0.85em">\u2713</span>' : '')
+            + '</div>';
+    });
+    list.innerHTML = html;
+    // Scroll current song into view
+    var els = list.querySelectorAll('[onclick]');
+    if (els[rmIndex]) els[rmIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function gmJumpTo(idx) {
+    rmIndex = idx;
+    _gmRenderNav();
+    if (typeof rmLoadChart === 'function') rmLoadChart();
+    gmCloseDrawer();
+}
+
+// ── Overlay build ─────────────────────────────────────────────────────────────
+function _gmEnsureOverlay() {
+    if (document.getElementById('gmOverlay')) return;
+
+    var style = document.createElement('style');
+    style.textContent = [
+        '#gmOverlay{display:none;position:fixed;inset:0;z-index:3000;background:#0a0f1e;flex-direction:column;overflow:hidden}',
+        '#gmOverlay.gm-visible{display:flex!important}',
+        '#gmNavBar{display:flex;align-items:stretch;gap:6px;padding:6px 10px;background:linear-gradient(135deg,#0f172a,#060d1a);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;min-height:54px}',
+        '#gmDrawer{position:fixed;bottom:0;left:0;right:0;z-index:3100;background:#111827;border-radius:16px 16px 0 0;border-top:1px solid rgba(102,126,234,0.25);max-height:65vh;transform:translateY(100%);transition:transform 0.28s cubic-bezier(.32,.72,0,1);overflow-y:auto}',
+        '#gmDrawerBackdrop{display:none;position:fixed;inset:0;z-index:3050;background:rgba(0,0,0,0.5)}',
+        // Reuse rmOverlay styles but inside gmOverlay — remap panels
+        '#gmOverlay .rm-header{display:none}', // hide rm header, we have gmNavBar
+        '#gmOverlay #rmTabBar{flex-shrink:0}',
+        '#gmOverlay #rmBody{flex:1;overflow:hidden}',
+        '#gmOverlay .rm-footer{flex-shrink:0}',
+        '#gmOverlay .rm-panel.active{display:block}'
+    ].join('\n');
+    document.head.appendChild(style);
+
+    var ov = document.createElement('div');
+    ov.id = 'gmOverlay';
+
+    // Close button + title bar (tiny)
+    var topBar = document.createElement('div');
+    topBar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 0;flex-shrink:0';
+    topBar.innerHTML = '<button onclick="closeGigMode()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;width:28px;height:28px;border-radius:6px;font-size:0.85em;cursor:pointer;flex-shrink:0">\u2715</button>'
+        + '<span style="font-size:0.68em;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.08em">\uD83C\uDFA4 Live Gig Mode \u2014 ' + (_gmSetlist ? _gmSetlist.name || '' : '') + '</span>';
+    ov.appendChild(topBar);
+
+    // Nav bar (prev / current+played+drawer / next)
+    var navBar = document.createElement('div');
+    navBar.id = 'gmNavBar';
+    ov.appendChild(navBar);
+
+    // Hijack the rmOverlay DOM — move it inside gmOverlay
+    // We use rmEnsureOverlay() to build the standard overlay, then reparent its innards
+    if (typeof rmEnsureOverlay === 'function') rmEnsureOverlay();
+    var rmOv = document.getElementById('rmOverlay');
+    if (rmOv) {
+        // Extract rmTabBar, rmBody, rm-footer and append to gmOverlay
+        var tabBar = document.getElementById('rmTabBar');
+        var body   = document.getElementById('rmBody');
+        var footer = rmOv.querySelector('.rm-footer');
+        var sheets = rmOv.querySelectorAll('.rm-sheet');
+        var monkey = document.getElementById('rmMonkeyBtn');
+        if (tabBar)  ov.appendChild(tabBar);
+        if (body)    ov.appendChild(body);
+        if (footer)  ov.appendChild(footer);
+        sheets.forEach(function(s) { ov.appendChild(s); });
+        if (monkey)  ov.appendChild(monkey);
+        // Remove the now-empty rmOverlay shell (we'll rebuild from scratch next time practice mode opens)
+        rmOv.remove();
+        // Mark rmOverlay as gone so rmEnsureOverlay rebuilds it when practice mode is opened normally
+        window._rmOverlayReparented = true;
+    }
+
+    // Setlist drawer + backdrop
+    var backdrop = document.createElement('div');
+    backdrop.id = 'gmDrawerBackdrop';
+    backdrop.onclick = gmCloseDrawer;
+    document.body.appendChild(backdrop);
+
+    var drawer = document.createElement('div');
+    drawer.id = 'gmDrawer';
+    drawer.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px;border-bottom:1px solid rgba(255,255,255,0.06)">'
+        + '<span style="font-size:0.85em;font-weight:700;color:#f1f5f9">\uD83C\uDFB5 Setlist</span>'
+        + '<button onclick="gmCloseDrawer()" style="background:none;border:none;color:#64748b;font-size:1em;cursor:pointer">\u2715</button></div>'
+        + '<div id="gmDrawerList"></div>';
+    document.body.appendChild(drawer);
+
+    document.body.appendChild(ov);
+    _gmOverlayBuilt = true;
+
+    // Keyboard nav
+    document.addEventListener('keydown', function(e) {
+        var ov2 = document.getElementById('gmOverlay');
+        if (!ov2 || !ov2.classList.contains('gm-visible')) return;
+        if (e.key === 'Escape') { if (_gmDrawerOpen) gmCloseDrawer(); else closeGigMode(); e.preventDefault(); }
+        if (e.key === 'ArrowRight' && !rmEditing) { gmNavigate(1); e.preventDefault(); }
+        if (e.key === 'ArrowLeft'  && !rmEditing) { gmNavigate(-1); e.preventDefault(); }
+    });
+
+    // Touch swipe on gig overlay
+    var swipeStartX = 0;
+    ov.addEventListener('touchstart', function(e) { swipeStartX = e.touches[0].clientX; }, { passive: true });
+    ov.addEventListener('touchend', function(e) {
+        var dx = e.changedTouches[0].clientX - swipeStartX;
+        if (Math.abs(dx) > 60 && !rmEditing) gmNavigate(dx < 0 ? 1 : -1);
+    }, { passive: true });
 }
 
 console.log('\uD83C\uDFA4 Live Gig Mode loaded');
@@ -16944,3 +17079,277 @@ function renderHeatmapOverlay() {
 }
 
 console.log('\uD83C\uDF21\uFE0F Readiness Heatmap loaded');
+
+
+// ============================================================================
+// STONER MODE — Simplified "I just wanna play" interface
+// ============================================================================
+var _stonerMode = false;
+
+function toggleStonerMode() {
+    _stonerMode = !_stonerMode;
+    localStorage.setItem('deadcetera_stoner_mode', _stonerMode ? '1' : '0');
+    if (_stonerMode) {
+        _stonerEnter();
+    } else {
+        _stonerExit();
+    }
+}
+
+function _stonerEnter() {
+    _stonerEnsureOverlay();
+    var ov = document.getElementById('stonerOverlay');
+    if (ov) ov.classList.add('stoner-visible');
+    document.body.style.overflow = 'hidden';
+    _stonerRender();
+    // Update topbar button
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '😵 Exit'; btn.style.background = 'rgba(139,92,246,0.3)'; btn.style.color = '#c084fc'; btn.style.borderColor = 'rgba(139,92,246,0.5)'; }
+}
+
+function _stonerExit() {
+    var ov = document.getElementById('stonerOverlay');
+    if (ov) ov.classList.remove('stoner-visible');
+    document.body.style.overflow = '';
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+}
+
+function _stonerEnsureOverlay() {
+    if (document.getElementById('stonerOverlay')) return;
+
+    var style = document.createElement('style');
+    style.textContent = [
+        '#stonerOverlay{display:none;position:fixed;inset:0;z-index:2500;background:linear-gradient(160deg,#0a0a1a 0%,#0d1117 40%,#0a0f0a 100%);flex-direction:column;overflow:hidden}',
+        '#stonerOverlay.stoner-visible{display:flex!important}',
+        '.stoner-big-btn{width:100%;padding:20px;border-radius:16px;font-size:1.1em;font-weight:800;cursor:pointer;border:1px solid;transition:all 0.18s;letter-spacing:0.02em;display:flex;align-items:center;justify-content:center;gap:12px;min-height:64px}',
+        '.stoner-big-btn:active{transform:scale(0.97)}',
+        '.stoner-song-row{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;display:flex;align-items:center;gap:10px;transition:background 0.1s}',
+        '.stoner-song-row:hover,.stoner-song-row:active{background:rgba(255,255,255,0.06)}',
+        '.stoner-search{width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:12px;color:#f1f5f9;padding:14px 16px;font-size:1.1em;font-family:inherit;outline:none;box-sizing:border-box}',
+        '.stoner-search:focus{border-color:rgba(139,92,246,0.5);background:rgba(255,255,255,0.09)}',
+        '.stoner-search::placeholder{color:#475569}'
+    ].join('\n');
+    document.head.appendChild(style);
+
+    var ov = document.createElement('div');
+    ov.id = 'stonerOverlay';
+
+    // Header
+    ov.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;background:rgba(0,0,0,0.3)">'
+        + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.4em">\uD83C\uDF3F</span><span style="font-weight:800;font-size:1.05em;color:#c084fc">Stoner Mode</span></div>'
+        + '<button onclick="toggleStonerMode()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700">Exit</button>'
+        + '</div>'
+        + '<div id="stonerContent" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>';
+
+    document.body.appendChild(ov);
+}
+
+function _stonerRender() {
+    var content = document.getElementById('stonerContent');
+    if (!content) return;
+
+    content.innerHTML = '<div id="stonerHome"></div>';
+    _stonerRenderHome();
+}
+
+function _stonerRenderHome() {
+    var home = document.getElementById('stonerHome');
+    if (!home) return;
+
+    home.innerHTML = [
+        // Big search
+        '<div style="padding:20px 16px 12px">',
+        '  <div style="font-size:0.72em;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;text-align:center">What are we playing?</div>',
+        '  <input class="stoner-search" id="stonerSearchInput" placeholder="\uD83D\uDD0D Type a song..." oninput="stonerSearch(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">',
+        '  <div id="stonerSearchResults" style="margin-top:6px;border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)"></div>',
+        '</div>',
+        // Big action buttons
+        '<div style="padding:0 16px;display:flex;flex-direction:column;gap:10px;margin-bottom:20px">',
+        '  <button class="stoner-big-btn" onclick="stonerOpenSetlists()" style="background:rgba(102,126,234,0.12);border-color:rgba(102,126,234,0.3);color:#818cf8">',
+        '    <span style="font-size:1.4em">\uD83D\uDCCB</span> Setlists',
+        '  </button>',
+        '  <button class="stoner-big-btn" onclick="stonerOpenGigs()" style="background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.25);color:#22c55e">',
+        '    <span style="font-size:1.4em">\uD83C\uDFA4</span> Gigs',
+        '  </button>',
+        '  <button class="stoner-big-btn" onclick="stonerOpenTuner()" style="background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.25);color:#fbbf24">',
+        '    <span style="font-size:1.4em">\uD83C\uDFB8</span> Tuner',
+        '  </button>',
+        '  <button class="stoner-big-btn" onclick="stonerOpenMetronome()" style="background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);color:#f87171">',
+        '    <span style="font-size:1.4em">\uD83E\uDD41</span> Metronome',
+        '  </button>',
+        '</div>',
+        // Recent songs
+        '<div style="padding:0 16px"><div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px">Recent Songs</div>',
+        '<div id="stonerRecentSongs"></div></div>'
+    ].join('');
+
+    // Load recent songs from activity log
+    _stonerLoadRecent();
+}
+
+function stonerSearch(q) {
+    var results = document.getElementById('stonerSearchResults');
+    if (!results) return;
+    if (!q || q.length < 2) { results.innerHTML = ''; return; }
+    var matches = (typeof allSongs !== 'undefined' ? allSongs : [])
+        .filter(function(s) { return s.title.toLowerCase().includes(q.toLowerCase()); })
+        .slice(0, 8);
+    if (!matches.length) { results.innerHTML = '<div style="padding:12px 16px;color:#64748b;font-size:0.9em">No songs found</div>'; return; }
+    results.innerHTML = matches.map(function(s) {
+        var bandColor = { GD:'#f87171', JGB:'#60a5fa', WSP:'#fbbf24', PHISH:'#34d399' }[s.band] || '#94a3b8';
+        return '<div class="stoner-song-row" onclick="stonerLaunchSong(\'' + s.title.replace(/'/g,"\\'") + '\')">'
+            + '<span style="font-size:0.72em;font-weight:700;color:' + bandColor + ';background:' + bandColor + '18;padding:2px 7px;border-radius:10px;flex-shrink:0">' + (s.band||'?') + '</span>'
+            + '<span style="flex:1;font-size:0.95em;font-weight:600;color:#f1f5f9">' + s.title + '</span>'
+            + '<span style="font-size:1em;color:#64748b">\u276F</span>'
+            + '</div>';
+    }).join('');
+}
+
+function stonerLaunchSong(title) {
+    // Close overlay, select song, open practice mode on Chart tab
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    // Use Practice Mode
+    if (typeof openRehearsalMode === 'function') {
+        openRehearsalMode(title);
+    } else if (typeof selectSong === 'function') {
+        showPage('songs');
+        selectSong(title);
+    }
+}
+
+function _stonerLoadRecent() {
+    var container = document.getElementById('stonerRecentSongs');
+    if (!container) return;
+    // Get recent from activity log cache or localStorage
+    var recent = [];
+    try {
+        var logged = JSON.parse(localStorage.getItem('deadcetera_recent_songs') || '[]');
+        recent = logged.slice(0, 6);
+    } catch(e) {}
+    // Fallback: try activityLog global
+    if (!recent.length && typeof window._activityLog !== 'undefined') {
+        var seen = new Set();
+        window._activityLog.forEach(function(entry) {
+            if (entry.songTitle && !seen.has(entry.songTitle)) {
+                seen.add(entry.songTitle);
+                recent.push(entry.songTitle);
+            }
+        });
+        recent = recent.slice(0, 6);
+    }
+    if (!recent.length) {
+        container.innerHTML = '<div style="color:#475569;font-size:0.85em;padding:8px 0">Play some songs and they\'ll show up here</div>';
+        return;
+    }
+    container.innerHTML = recent.map(function(title) {
+        var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === title; });
+        var band = songData ? songData.band : '';
+        var bandColor = { GD:'#f87171', JGB:'#60a5fa', WSP:'#fbbf24', PHISH:'#34d399' }[band] || '#94a3b8';
+        return '<div class="stoner-song-row" style="border-radius:10px;margin-bottom:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)" onclick="stonerLaunchSong(\'' + title.replace(/'/g,"\\'") + '\')">'
+            + (band ? '<span style="font-size:0.7em;font-weight:700;color:' + bandColor + ';flex-shrink:0">' + band + '</span>' : '')
+            + '<span style="flex:1;font-size:0.95em;color:#e2e8f0">' + title + '</span>'
+            + '<span style="color:#64748b;font-size:0.9em">\uD83D\uDCCB</span>'
+            + '</div>';
+    }).join('');
+}
+
+async function stonerOpenSetlists() {
+    var content = document.getElementById('stonerContent');
+    if (!content) return;
+    content.innerHTML = '<div style="padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">'
+        + '<button onclick="_stonerRenderHome();document.getElementById(\'stonerContent\').innerHTML=\'<div id=\\\"stonerHome\\\"></div>\';_stonerRenderHome();" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:0.85em">\u2190 Back</button>'
+        + '<span style="font-weight:700;color:#f1f5f9">\uD83D\uDCCB Setlists</span></div>'
+        + '<div id="stonerSetlistList" style="flex:1;overflow-y:auto;padding:12px 16px"><div style="color:#64748b;font-size:0.85em">Loading...</div></div>';
+    var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    data.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    var list = document.getElementById('stonerSetlistList');
+    if (!list) return;
+    if (!data.length) { list.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center">No setlists yet</div>'; return; }
+    list.innerHTML = data.map(function(sl, i) {
+        var totalSongs = (sl.sets||[]).reduce(function(a,s){ return a+(s.songs||[]).length; }, 0);
+        return '<div onclick="stonerLaunchSetlist(' + i + ')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer">'
+            + '<div style="font-weight:700;font-size:0.95em;color:#f1f5f9;margin-bottom:4px">' + (sl.name||'Untitled') + '</div>'
+            + '<div style="font-size:0.78em;color:#64748b;display:flex;gap:10px">'
+            + (sl.date ? '<span>\uD83D\uDCC5 ' + sl.date + '</span>' : '')
+            + (sl.venue ? '<span>\uD83C\uDFDB\uFE0F ' + sl.venue + '</span>' : '')
+            + '<span>\uD83C\uDFB5 ' + totalSongs + ' songs</span>'
+            + '</div>'
+            + '<div style="margin-top:8px"><button style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:7px 18px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer">\uD83C\uDFA4 Go Live</button></div>'
+            + '</div>';
+    }).join('');
+}
+
+async function stonerLaunchSetlist(idx) {
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    await launchGigMode(idx);
+}
+
+function stonerOpenGigs() {
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    showPage('gigs');
+}
+
+function stonerOpenTuner() {
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    showPage('tuner');
+}
+
+function stonerOpenMetronome() {
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    showPage('metronome');
+}
+
+// ── Inject Stoner Mode button into topbar on load ─────────────────────────────
+(function() {
+    function injectStonerBtn() {
+        if (document.getElementById('stonerBtn')) return;
+        var topbarRight = document.querySelector('.topbar-right');
+        if (!topbarRight) return;
+        var btn = document.createElement('button');
+        btn.id = 'stonerBtn';
+        btn.className = 'topbar-btn';
+        btn.title = 'Stoner Mode — simplified UI for when you just wanna play';
+        btn.textContent = '\uD83C\uDF3F Mode';
+        btn.onclick = toggleStonerMode;
+        // Insert before the last button (settings gear)
+        var gear = topbarRight.querySelector('[title*="Settings"],[onclick*="admin"],[onclick*="settings"]');
+        if (gear) {
+            topbarRight.insertBefore(btn, gear);
+        } else {
+            topbarRight.appendChild(btn);
+        }
+        // Restore stoner mode state if it was on
+        if (localStorage.getItem('deadcetera_stoner_mode') === '1') {
+            _stonerMode = true;
+            _stonerEnter();
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(injectStonerBtn, 500); });
+    } else {
+        setTimeout(injectStonerBtn, 500);
+    }
+})();
+
+console.log('\uD83C\uDF3F Stoner Mode loaded');
