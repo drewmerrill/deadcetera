@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-204312', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-212324', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-204312';
+var BUILD_VERSION = '20260305-212324';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -9552,8 +9552,12 @@ async function loadCalendarEvents() {
             const isRehearsal = e.type === 'rehearsal';
             return `<div class="list-item" style="padding:10px 12px;gap:10px">
                 <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
-                <span style="flex:1;font-weight:600">${typeIcon} ${e.title||'Untitled'}</span>
-                ${e.time?`<span style="font-size:0.75em;color:var(--text-muted)">${e.time}</span>`:''}
+                <div style="flex:1;min-width:0">
+                    <div style="font-weight:600">${typeIcon} ${e.title||'Untitled'}</div>
+                    ${e.venue?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px">📍 ${e.venue}</div>`:''}
+                    ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light)">📋 ${e.linkedSetlist}</div>`:''}
+                </div>
+                ${e.time?`<span style="font-size:0.75em;color:var(--text-muted);flex-shrink:0">${e.time}</span>`:''}
                 <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap">
                     ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('practice')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
                     <button onclick="calEditEvent(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
@@ -9654,13 +9658,18 @@ async function calAddEvent(date, editIdx, existing) {
     if (!area) return;
     const isEdit = editIdx !== undefined;
     const ev = existing || {};
-    // Load setlists for gig-type dropdown
+    // Load setlists + venues for gig-type dropdowns
     const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     setlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     const setlistOpts = setlists.map(sl =>
         `<option value="${(sl.name||'').replace(/"/g,'&quot;')}" ${(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
     ).join('');
+    const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const venueOptsCal = venues.map(v =>
+        `<option value="${(v.name||'').replace(/"/g,'&quot;')}" ${(ev.venue||'')===(v.name||'')?'selected':''}>${v.name||'Unnamed'}${v.address?' — '+v.address:''}</option>`
+    ).join('');
     const showSetlist = ev.type === 'gig';
+    const showVenue   = ev.type === 'gig';
     area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
     <div class="form-grid">
         <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}"></div>
@@ -9670,6 +9679,15 @@ async function calAddEvent(date, editIdx, existing) {
             <option value="meeting" ${ev.type==='meeting'?'selected':''}>&#128101; Meeting</option>
             <option value="other" ${ev.type==='other'?'selected':''}>&#128204; Other</option>
         </select></div>
+        <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
+            <label class="form-label">🏛️ Venue</label>
+            <select class="app-select" id="calVenue" onchange="calVenueSelected(this)" style="margin-bottom:6px">
+                <option value="">-- Select a venue --</option>
+                ${venueOptsCal}
+                <option value="__other__">➕ Other / New venue…</option>
+            </select>
+            <input class="app-input" id="calVenueCustom" placeholder="Or type venue name" value="${ev.venueCustom||''}" style="${(ev.venue&&!venues.find(v=>v.name===ev.venue))||ev.venueCustom?'':'display:none'}">
+        </div>
         <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's" value="${ev.title||''}"></div>
         <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}"></div>
         <div class="form-row calGigOnly" id="calSetlistRow" style="${showSetlist?'':'display:none'}">
@@ -9689,8 +9707,23 @@ async function calAddEvent(date, editIdx, existing) {
 }
 
 function calTypeChanged(sel) {
-    var row = document.getElementById('calSetlistRow');
-    if (row) row.style.display = sel.value === 'gig' ? '' : 'none';
+    var slRow = document.getElementById('calSetlistRow');
+    var vRow  = document.getElementById('calVenueRow');
+    var isGig = sel.value === 'gig';
+    if (slRow) slRow.style.display = isGig ? '' : 'none';
+    if (vRow)  vRow.style.display  = isGig ? '' : 'none';
+}
+
+function calVenueSelected(sel) {
+    var custom = document.getElementById('calVenueCustom');
+    if (!custom) return;
+    if (sel.value === '__other__') {
+        custom.style.display = '';
+        custom.focus();
+        sel.value = '';
+    } else {
+        custom.style.display = 'none';
+    }
 }
 
 
@@ -9721,6 +9754,9 @@ async function calSaveEvent(editIdx) {
         time: document.getElementById('calTime')?.value,
         notes: document.getElementById('calNotes')?.value,
         linkedSetlist: document.getElementById('calLinkedSetlist')?.value || null,
+        venue: (document.getElementById('calVenue')?.value && document.getElementById('calVenue')?.value !== '__other__')
+            ? document.getElementById('calVenue')?.value
+            : (document.getElementById('calVenueCustom')?.value || null),
     };
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
     let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -10841,14 +10877,152 @@ function renderVenuesPage(el) {
     loadVenues();
 }
 
+// ============================================================================
+// VENUE DIRECTIONS + LEAVE TIME CALC
+// ============================================================================
+var _venuesCache = [];
+var DRIVE_BUFFER_MINS = 15; // buffer on top of drive time
+
+async function venueGetDirections(venueIdx) {
+    // Load venues if not cached
+    if (!_venuesCache.length) {
+        _venuesCache = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    }
+    var venue = _venuesCache[venueIdx];
+    if (!venue) return;
+    var container = document.getElementById('vDirections_' + venueIdx);
+    if (!container) return;
+
+    container.innerHTML = '<div style="padding:10px;background:rgba(102,126,234,0.07);border:1px solid rgba(102,126,234,0.15);border-radius:10px">'
+        + '<div style="font-size:0.85em;font-weight:700;color:#818cf8;margin-bottom:8px">🚗 Get Directions to ' + (venue.name||'Venue') + '</div>'
+        + '<div id="vDirStatus_' + venueIdx + '" style="font-size:0.82em;color:#64748b">Loading…</div>'
+        + '<div id="vDirResult_' + venueIdx + '" style="margin-top:8px"></div>'
+        + '</div>';
+
+    // Try geolocation first
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            function(pos) { _venueCalcRoute(venueIdx, venue, pos.coords.latitude + ',' + pos.coords.longitude, true); },
+            function(err) { _venuePromptAddress(venueIdx, venue); }
+        );
+    } else {
+        _venuePromptAddress(venueIdx, venue);
+    }
+}
+
+function _venuePromptAddress(venueIdx, venue) {
+    var statusEl = document.getElementById('vDirStatus_' + venueIdx);
+    var resultEl = document.getElementById('vDirResult_' + venueIdx);
+    if (statusEl) statusEl.textContent = 'Enter your starting address:';
+    if (resultEl) resultEl.innerHTML = '<div style="display:flex;gap:6px;margin-top:4px">'
+        + '<input class="app-input" id="vDirFrom_' + venueIdx + '" placeholder="Your starting address…" style="flex:1;margin:0;font-size:0.85em">'
+        + '<button onclick="_venueCalcRouteFromInput(' + venueIdx + ')" class="btn btn-sm btn-primary">Go</button>'
+        + '</div>';
+}
+
+async function _venueCalcRouteFromInput(venueIdx) {
+    if (!_venuesCache.length) {
+        _venuesCache = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    }
+    var venue = _venuesCache[venueIdx];
+    var input = document.getElementById('vDirFrom_' + venueIdx);
+    if (!input || !input.value.trim()) return;
+    _venueCalcRoute(venueIdx, venue, input.value.trim(), false);
+}
+
+function _venueCalcRoute(venueIdx, venue, origin, fromGPS) {
+    var statusEl = document.getElementById('vDirStatus_' + venueIdx);
+    var resultEl = document.getElementById('vDirResult_' + venueIdx);
+    if (statusEl) statusEl.textContent = 'Calculating route…';
+
+    if (!window.google || !window.google.maps) {
+        if (resultEl) resultEl.innerHTML = '<a href="https://maps.google.com/maps?daddr=' + encodeURIComponent(venue.address||venue.name) + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
+        if (statusEl) statusEl.textContent = 'Google Maps not loaded — tap to open:';
+        return;
+    }
+
+    var dest = (venue.lat && venue.lng)
+        ? { lat: parseFloat(venue.lat), lng: parseFloat(venue.lng) }
+        : venue.address || venue.name;
+
+    var svc = new google.maps.DistanceMatrixService();
+    svc.getDistanceMatrix({
+        origins: [origin],
+        destinations: [dest],
+        travelMode: google.maps.TravelMode.DRIVING,
+        drivingOptions: { departureTime: new Date(), trafficModel: 'bestguess' }
+    }, function(res, status) {
+        if (status !== 'OK' || !res.rows[0] || !res.rows[0].elements[0] || res.rows[0].elements[0].status !== 'OK') {
+            if (resultEl) resultEl.innerHTML = '<a href="https://maps.google.com/maps?daddr=' + encodeURIComponent(venue.address||venue.name) + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
+            if (statusEl) statusEl.textContent = 'Could not calculate route. Try Google Maps:';
+            return;
+        }
+        var el = res.rows[0].elements[0];
+        var driveMins = Math.ceil(el.duration_in_traffic ? el.duration_in_traffic.value / 60 : el.duration.value / 60);
+        var distText  = el.distance.text;
+        var totalMins = driveMins + DRIVE_BUFFER_MINS;
+
+        // Try to find nearest upcoming gig at this venue for arrival time
+        var arrivalNote = '';
+        if (statusEl) statusEl.textContent = '';
+
+        var html = '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:10px 12px;font-size:0.85em">';
+        html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">';
+        html += '<span>🚗 <strong>' + driveMins + ' min</strong> drive (' + distText + ')</span>';
+        html += '<span style="color:#f59e0b">⏱ +' + DRIVE_BUFFER_MINS + ' min buffer</span>';
+        html += '</div>';
+
+        // Leave time calculator
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+        html += '<span style="color:#94a3b8;font-size:0.9em">Arrive at:</span>';
+        html += '<input type="time" id="vArriveTime_' + venueIdx + '" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#f1f5f9;padding:4px 8px;font-size:0.85em;font-family:inherit" onchange="_venueUpdateLeaveTime(' + venueIdx + ',' + totalMins + ')">';
+        html += '</div>';
+        html += '<div id="vLeaveTime_' + venueIdx + '" style="font-size:0.95em;font-weight:700;color:#22c55e;min-height:20px"></div>';
+        html += '</div>';
+
+        // Open in Maps link
+        var mapsUrl = 'https://maps.google.com/maps?saddr=' + encodeURIComponent(fromGPS ? 'My+Location' : origin) + '&daddr=' + encodeURIComponent(venue.address||venue.name);
+        html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">';
+        html += '<a href="' + mapsUrl + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Maps</a>';
+        if (!fromGPS) {
+            html += '<button onclick="_venuePromptAddress(' + venueIdx + ')" class="btn btn-sm btn-ghost">🔄 Different address</button>';
+        } else {
+            html += '<button onclick="_venuePromptAddress(' + venueIdx + ')" class="btn btn-sm btn-ghost">📍 Type address instead</button>';
+        }
+        html += '</div>';
+
+        if (resultEl) resultEl.innerHTML = html;
+    });
+}
+
+function _venueUpdateLeaveTime(venueIdx, totalMins) {
+    var arrInput = document.getElementById('vArriveTime_' + venueIdx);
+    var leaveEl  = document.getElementById('vLeaveTime_' + venueIdx);
+    if (!arrInput || !leaveEl || !arrInput.value) return;
+    var parts = arrInput.value.split(':');
+    var h = parseInt(parts[0]), m = parseInt(parts[1]);
+    var arrMins = h * 60 + m;
+    var leaveMins = arrMins - totalMins;
+    if (leaveMins < 0) leaveMins += 1440;
+    var lh = Math.floor(leaveMins / 60) % 24;
+    var lm = leaveMins % 60;
+    var ampm = lh >= 12 ? 'PM' : 'AM';
+    var lh12 = lh % 12 || 12;
+    var lmStr = lm < 10 ? '0' + lm : lm;
+    leaveEl.innerHTML = '🚪 Leave by: <span style="font-size:1.1em">' + lh12 + ':' + lmStr + ' ' + ampm + '</span>';
+}
+
 async function loadVenues() {
     const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     const el = document.getElementById('venuesList');
     if (!el || data.length === 0) return;
     el.innerHTML = data.map((v, i) => `<div class="app-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <h3 style="margin-bottom:6px">${v.name || 'Unnamed'}</h3>
-            ${v.website?`<a href="${v.website}" target="_blank" class="btn btn-sm btn-ghost" title="Website">🌐</a>`:''}
+            <div style="display:flex;gap:4px;flex-shrink:0">
+                ${v.website?`<a href="${v.website}" target="_blank" class="btn btn-sm btn-ghost" title="Website">🌐</a>`:''}
+                ${v.address?`<button class="btn btn-sm btn-ghost" onclick="venueGetDirections(${i})" title="Get Directions">🚗 Directions</button>`:''}
+            </div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:0.82em;color:var(--text-muted)">
             ${v.address?`<span>📍 ${v.address}</span>`:''}
@@ -10866,16 +11040,18 @@ async function loadVenues() {
         </div>
         ${v.notes?`<div style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">${v.notes}</div>`:''}
         ${v.pay?`<div style="margin-top:4px;font-size:0.82em;color:var(--green)">💰 ${v.pay}</div>`:''}
+        <div id="vDirections_${i}" style="margin-top:10px"></div>
     </div>`).join('');
 }
 
 function addVenue() {
     const el = document.getElementById('venuesList');
-    el.innerHTML = `<div class="app-card">
-        <h3>Add Venue</h3>
-        <div style="margin-bottom:12px;padding:10px;background:rgba(102,126,234,0.06);border-radius:8px;display:flex;gap:8px;align-items:center">
-            <input class="app-input" id="vSearchGoogle" placeholder="Search Google for venue info..." style="flex:1;margin:0">
-            <button class="btn btn-sm btn-primary" onclick="searchVenueGoogle()">🔍 Search</button>
+    el.innerHTML = `<div class="app-card" id="addVenueCard">
+        <h3>🏛️ Add Venue</h3>
+        <div style="margin-bottom:14px;padding:12px;background:rgba(102,126,234,0.07);border:1px solid rgba(102,126,234,0.2);border-radius:10px">
+            <label class="form-label" style="margin-bottom:6px;display:block">🔍 Search Google Places (autofills everything)</label>
+            <input class="app-input" id="vPlacesSearch" placeholder="Start typing a venue name or address…" autocomplete="off" style="width:100%;box-sizing:border-box">
+            <div style="font-size:0.72em;color:#64748b;margin-top:4px">Powered by Google Places — tap a suggestion to autofill the form below</div>
         </div>
         <div class="form-grid">
             <div class="form-row"><label class="form-label">Venue Name</label><input class="app-input" id="vName"></div>
@@ -10897,6 +11073,44 @@ function addVenue() {
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes" placeholder="Load-in, parking, stage size, PA info..."></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveVenue()">💾 Save</button><button class="btn btn-ghost" onclick="loadVenues()">Cancel</button></div>
     </div>` + el.innerHTML;
+    // Init Places Autocomplete after render
+    requestAnimationFrame(function() { vInitPlacesAutocomplete(); });
+}
+
+function vInitPlacesAutocomplete() {
+    var input = document.getElementById('vPlacesSearch');
+    if (!input) return;
+    if (!window.google || !window.google.maps || !window.google.maps.places) {
+        input.placeholder = 'Google Maps not loaded — fill fields manually';
+        return;
+    }
+    var ac = new google.maps.places.Autocomplete(input, {
+        types: ['establishment'],
+        fields: ['name','formatted_address','formatted_phone_number','website','geometry']
+    });
+    ac.addListener('place_changed', function() {
+        var place = ac.getPlace();
+        if (!place) return;
+        var setVal = function(id, val) {
+            var el = document.getElementById(id);
+            if (el && val) el.value = val;
+        };
+        setVal('vName',    place.name || '');
+        setVal('vAddress', place.formatted_address || '');
+        setVal('vPhone',   place.formatted_phone_number || '');
+        setVal('vWebsite', place.website || '');
+        // Store placeId for later directions use
+        if (place.geometry && place.geometry.location) {
+            var inp = document.getElementById('vName');
+            if (inp) {
+                inp.dataset.lat = place.geometry.location.lat();
+                inp.dataset.lng = place.geometry.location.lng();
+            }
+        }
+        // Scroll to form
+        var card = document.getElementById('addVenueCard');
+        if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+    });
 }
 
 function searchVenueGoogle() {
@@ -10911,11 +11125,17 @@ async function saveVenue() {
         const id = 'v' + f, el = document.getElementById(id);
         v[f.charAt(0).toLowerCase() + f.slice(1)] = el?.value || '';
     });
+    // Save lat/lng if autofilled from Places
+    const vNameEl = document.getElementById('vName');
+    if (vNameEl && vNameEl.dataset.lat) {
+        v.lat = parseFloat(vNameEl.dataset.lat);
+        v.lng = parseFloat(vNameEl.dataset.lng);
+    }
     if (!v.name) { alert('Venue name required'); return; }
     const existing = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     existing.push(v);
     await saveBandDataToDrive('_band', 'venues', existing);
-    alert('✅ Venue saved!');
+    showToast('✅ Venue saved!');
     loadVenues();
 }
 
