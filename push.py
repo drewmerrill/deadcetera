@@ -38,6 +38,7 @@ DEPLOY_FILES = [
     'version-hub.css',
     'service-worker.js',
     'worker.js',
+    'pocket-meter.js',
     'styles.css',
     'app-shell.css',
     'manifest.json',
