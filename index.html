@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260306-213226">
+    <meta name="build-version" content="20260306-213749">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx — Where Bands Lock In</title>
@@ -297,8 +297,8 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#667eea,#764ba2)">🔍</div>
         <h2 style="margin:0">Find a Version</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('listen',this)" title="About Find a Version">ⓘ</span>
     </div>
-    <p class="subtitle">Search Archive.org, YouTube, Relisten, Spotify &amp; more — listen inline, then send to North Star, Cover Me, Fadr, or Practice Mode</p>
     <button onclick="launchVersionHub()" class="btn btn-primary" style="width:100%;padding:12px;font-size:0.95em;margin-top:8px;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Find a Version</button>
 </div>
 
@@ -312,11 +312,10 @@
     
     <div class="resource-section" id="refVersionSection">
         <div class="section-header">
-            <h3>⭐ Reference Version (Band Voted)</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">
-                Vote on which version to learn — any link works (Spotify, YouTube, Archive.org, etc.)
-                <button onclick="launchVersionHubForNorthStar()" title="Search all sources and add a reference version" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.9em;padding:0;margin-left:12px">🔍 Find a Version</button>
-            </p>
+            <h3>⭐ Reference Version (Band Voted) <span class="gl-help-icon" onclick="glShowHelp('northstar',this)" title="About reference versions">ⓘ</span></h3>
+            <div style="margin-top:4px">
+                <button onclick="launchVersionHubForNorthStar()" title="Search all sources and add a reference version" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.85em;padding:0">🔍 Find a Version</button>
+            </div>
         </div>
         <div id="spotifyVersionsContainer"></div>
         <button class="secondary-btn" id="addRefVersionBtn" style="margin-top:12px">+ Suggest Reference Version</button>
@@ -351,8 +350,8 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0;font-size:0.8em">4b</div>
         <h2 style="margin:0">Cover Me 🎤</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('listen',this)" title="About Cover Me">ⓘ</span>
     </div>
-    <p class="subtitle">Other bands' takes — covers, tribute versions, different arrangements worth learning from</p>
     <div class="resource-section" id="coverMeSection">
         <div id="coverMeContainer"></div>
         <div style="display:flex;gap:8px;margin-top:12px">

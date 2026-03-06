@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260306-213226', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260306-213749', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260306-213226';
+var BUILD_VERSION = '20260306-213749';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -435,13 +435,15 @@ function glShowHelp(key, el) {
     if (!info) return;
     const d = document.createElement('div');
     d.id = 'glHelpPopup';
-    d.style.cssText = 'position:fixed;z-index:9999;max-width:280px;background:#1e2235;border:1px solid rgba(99,102,241,0.35);border-radius:10px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);font-size:0.82em;line-height:1.5;color:#e2e8f0';
-    d.innerHTML = `<div style="font-weight:700;color:#818cf8;margin-bottom:6px">${info.title}</div><div style="color:#94a3b8">${info.text}</div>`;
-    // Position near the icon
-    const rect = el ? el.getBoundingClientRect() : { left: window.innerWidth/2, bottom: 60 };
-    const top = rect.bottom + 8 + window.scrollY;
-    let left = rect.left + window.scrollX - 100;
-    left = Math.max(8, Math.min(left, window.innerWidth - 296));
+    d.style.cssText = 'position:absolute;z-index:9999;max-width:280px;width:280px;background:#1e2235;border:1px solid rgba(99,102,241,0.35);border-radius:10px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);font-size:0.82em;line-height:1.5;color:#e2e8f0';
+    d.innerHTML = `<div style="font-weight:700;color:#818cf8;margin-bottom:6px">${info.title}</div><div style="color:#94a3b8">${info.text}</div><div style="margin-top:8px;font-size:0.85em;opacity:0.4;text-align:right">tap anywhere to dismiss</div>`;
+    // Use absolute positioning relative to document, accounting for scroll
+    const rect = el ? el.getBoundingClientRect() : null;
+    const scrollY = window.scrollY || document.documentElement.scrollTop;
+    const scrollX = window.scrollX || document.documentElement.scrollLeft;
+    let top = rect ? rect.bottom + scrollY + 8 : scrollY + 100;
+    let left = rect ? rect.left + scrollX - 120 : scrollX + 20;
+    left = Math.max(8, Math.min(left, (window.innerWidth || 360) - 296));
     d.style.top = top + 'px';
     d.style.left = left + 'px';
     document.body.appendChild(d);
