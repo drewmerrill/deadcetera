@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260306-213749', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260306-232103', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260306-213749';
+var BUILD_VERSION = '20260306-232103';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -897,187 +897,19 @@ async function songQuickFillSave(title) {
     renderSongs();
 }
 
-function renderSongs(filter = 'all', searchTerm = '') {
-    const dropdown = document.getElementById('songDropdown');
-    
-    // Pre-filter by status and harmony if active (do it at data level, not DOM level)
-    let filtered = allSongs.filter(song => {
-        const knownBands = ['GD','JGB','WSP','PHISH','ABB','GOOSE','DMB'];
-        const bandUpper = (song.band || '').toUpperCase();  // null-safe
-        const matchesFilter = filter === 'all'
-            ? true
-            : filter.toUpperCase() === 'OTHER'
-                ? !knownBands.includes(bandUpper)
-                : bandUpper === filter.toUpperCase();
-        const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
-        if (!matchesFilter || !matchesSearch) return false;
-        // Status filter at data level
-        if (activeStatusFilter && statusCacheLoaded) {
-            const songStatus = getStatusFromCache(song.title);
-            if (songStatus !== activeStatusFilter) return false;
-        }
-        // Harmony filter at data level
-        if (activeHarmonyFilter === 'harmonies') {
-            if (!harmonyBadgeCache[song.title] && !harmonyCache[song.title]) return false;
-        }
-        // North Star filter at data level
-        if (activeNorthStarFilter) {
-            if (!northStarCache[song.title]) return false;
-        }
-        return true;
-    });
-    
-    if (filtered.length === 0) {
-        const statusNames = { 'prospect':'Prospect', 'wip':'Work in Progress', 'gig_ready':'Gig Ready' };
-        const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
-        let msg;
-        if (activeHarmonyFilter === 'harmonies') {
-            msg = `<div style="font-size:2em;margin-bottom:12px">🎵</div><div style="font-size:1.1em;font-weight:600;color:#1e293b;margin-bottom:8px">No harmony songs marked yet</div><div style="margin-bottom:16px;font-size:0.9em;color:#64748b">Click any song and check "Has Harmonies"!</div><button onclick="document.getElementById('harmoniesOnlyFilter').checked=false;filterSongsSync('all')" class="btn btn-primary" style="padding:10px 24px">Show All Songs</button>`;
-        } else if (activeStatusFilter) {
-            msg = `<div style="font-size:2em;margin-bottom:12px">🎸</div><div style="font-size:1.1em;font-weight:600;color:#1e293b;margin-bottom:8px">No songs marked "${statusLabel}"</div><div style="margin-bottom:16px;font-size:0.9em;color:#64748b">Click any song and set its status!</div><button onclick="document.getElementById('statusFilter').value='all';filterByStatus('all')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>`;
-        } else {
-            msg = `<div style="font-size:2em;margin-bottom:12px">🔍</div><div style="font-size:1.1em;font-weight:600;color:#1e293b;margin-bottom:6px">No songs found</div><div style="font-size:0.9em;color:#64748b">Try a different search or filter</div>`;
-        }
-        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;display:block !important;grid-template-columns:none !important">' + msg + '</div>';
-        return;
-    }
-    
-    dropdown.innerHTML = filtered.map(song => `
-        <div class="song-item${song.isCustom?' custom-song':''}" data-title="${song.title.replace(/"/g, '&quot;')}" ${song.isCustom?'data-custom="true"':''} onclick="selectSong('${song.title.replace(/'/g, "\\'")}')">
-            <span class="song-name">${song.title}</span>
-            <span class="song-badges"><span class="harmony-slot"></span><span class="northstar-slot"></span></span>
-            <span class="song-chain-strip" data-song="${song.title.replace(/"/g, '&quot;')}"></span>
-            <span class="song-status-cell"></span>
-            <span class="song-badge ${(song.band||'other').toLowerCase()}">${song.band}</span>
-        </div>
-    `).join('');
-    
-    // Add badges after rendering (no setTimeout race condition)
-    requestAnimationFrame(() => {
-        addHarmonyBadges();
-        addNorthStarBadges();
-        // Quick-fill pencil for songs missing key/bpm
-        filtered.forEach(function(song) {
-            if (!song.key && !song.bpm) {
-                var item = document.querySelector('.song-item[data-title="' + song.title.replace(/"/g,'&quot;') + '"] .northstar-slot');
-                if (item && !item.nextSibling?.classList?.contains('qf-btn')) {
-                    var btn = document.createElement('span');
-                    btn.className = 'qf-btn';
-                    btn.title = 'Quick-fill key/BPM';
-                    btn.textContent = '✏️';
-                    btn.style.cssText = 'font-size:0.7em;opacity:0.4;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px solid rgba(255,255,255,0.08);transition:opacity 0.15s';
-                    btn.onmouseenter = function(){this.style.opacity='1';};
-                    btn.onmouseleave = function(){this.style.opacity='0.4';};
-                    var t = song.title;
-                    btn.onclick = function(e){e.stopPropagation();songQuickFill(t,e);};
-                    item.after(btn);
-                }
-            }
-        });
-        preloadAllStatuses();
-        if (statusCacheLoaded) addStatusBadges();
-        if (readinessCacheLoaded) addReadinessChains();
-        if (_heatmapMode) renderHeatmapOverlay();
-        if (window._sectionRatingsCache) addSectionStatusDots();
-        else preloadSectionRatingsCache();
-    });
-}
+// renderSongs() → js/features/songs.js
 
 // ============================================================================
 // SEARCH AND FILTERS
 // ============================================================================
 
-function setupSearchAndFilters() {
-    const searchInput = document.getElementById('songSearch');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    
-    searchInput.addEventListener('input', (e) => {
-        renderSongs(currentFilter, e.target.value);
-    });
-    
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentFilter = btn.dataset.filter;
-            renderSongs(currentFilter, searchInput.value);
-        });
-    });
-    // Inject heatmap toggle button
-    if (!document.getElementById('heatmapToggleBtn')) {
-        const btn = document.createElement('button');
-        btn.id = 'heatmapToggleBtn';
-        btn.title = 'Show readiness heatmap';
-        btn.textContent = '🌡️ Heatmap';
-        btn.style.cssText = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:4px 9px;border-radius:20px;cursor:pointer;font-size:0.72em;font-weight:700;white-space:nowrap;transition:all 0.15s;flex-shrink:0;margin-left:4px';
-        btn.onclick = function() { if(typeof toggleHeatmapMode==='function') toggleHeatmapMode(); };
-        const harmoniesEl = document.getElementById('harmoniesOnlyFilter');
-        const target = harmoniesEl ? (harmoniesEl.closest('label')?.parentElement || harmoniesEl.parentElement) : null;
-        if (target && target.parentElement) target.parentElement.appendChild(btn);
-        else if (searchInput?.parentElement?.parentElement) searchInput.parentElement.parentElement.appendChild(btn);
-    }
-}
+// setupSearchAndFilters() → js/features/songs.js
 
 // ============================================================================
 // SONG SELECTION
 // ============================================================================
 
-function selectSong(songTitle) {
-    // Store as object with title property for consistency
-    selectedSong = {
-        title: songTitle,
-        band: allSongs.find(s => s.title === songTitle)?.band || 'GD'
-    };
-    
-    // Get band info from allSongs
-    const songData = allSongs.find(s => s.title === songTitle);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    // Highlight selected song
-    document.querySelectorAll('.song-item').forEach(item => {
-        item.classList.remove('selected');
-    });
-    const clickedItem = event?.target?.closest('.song-item');
-    if (clickedItem) {
-        clickedItem.classList.add('selected');
-        // Add a brief glow effect
-        clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
-        setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
-    }
-    
-    // Show Step 2: Song Blueprint
-    showBandResources(songTitle);
-    
-    // Show steps 3-5 (new sections)
-    const stepVersionHub = document.getElementById('stepVersionHub');
-    const step3ref = document.getElementById('step3ref');
-    const step3bestshot = document.getElementById('step3bestshot');
-    const step4ref = document.getElementById('step4ref');
-    const step5ref = document.getElementById('step5ref');
-    if (stepVersionHub) stepVersionHub.classList.remove('hidden');
-    if (step3ref) step3ref.classList.remove('hidden');
-    if (step3bestshot) step3bestshot.classList.remove('hidden');
-    if (step4ref) step4ref.classList.remove('hidden');
-    const step4cover = document.getElementById('step4cover');
-    if (step4cover) step4cover.classList.remove('hidden');
-    if (step5ref) step5ref.classList.remove('hidden');
-    renderBestShotVsNorthStar(songTitle);
-    
-    // Hide old steps
-    const step3 = document.getElementById('step3');
-    const step4 = document.getElementById('step4');
-    const step5 = document.getElementById('step5');
-    if (step3) step3.classList.add('hidden');
-    if (step4) step4.classList.add('hidden');
-    if (step5) step5.classList.add('hidden');
-    document.getElementById('resetContainer')?.classList.add('hidden');
-    
-    // Scroll to step 2 after a short delay (gives user time to see selection)
-    setTimeout(() => {
-        document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 500);
-}
+// selectSong() → js/features/songs.js
 
 
 // ============================================================================
@@ -2397,44 +2229,7 @@ async function deletePracticeTrack(songTitle, index) {
 }
 
 // Extract YouTube video ID from any YouTube URL format
-function extractYouTubeId(url) {
-    if (!url) return null;
-    url = url.trim();
-    
-    // Handle youtube.com/watch?v=
-    const match1 = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (match1) return match1[1];
-    
-    // Handle youtu.be/VIDEO_ID
-    const match2 = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-    if (match2) return match2[1];
-    
-    // Handle youtube.com/shorts/VIDEO_ID
-    const match3 = url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
-    if (match3) return match3[1];
-    
-    // Handle youtube.com/embed/VIDEO_ID
-    const match4 = url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
-    if (match4) return match4[1];
-    
-    // Handle youtube.com/v/VIDEO_ID
-    const match5 = url.match(/youtube\.com\/v\/([a-zA-Z0-9_-]{11})/);
-    if (match5) return match5[1];
-    
-    // Handle mobile m.youtube.com
-    const match6 = url.match(/m\.youtube\.com.*[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (match6) return match6[1];
-    
-    // Handle music.youtube.com
-    const match7 = url.match(/music\.youtube\.com.*[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (match7) return match7[1];
-    
-    // Last resort - look for 11-char alphanumeric string after common patterns
-    const match8 = url.match(/(?:\/|%2F)([a-zA-Z0-9_-]{11})(?:[?&]|$)/);
-    if (match8 && url.includes('youtube')) return match8[1];
-    
-    return null;
-}
+// extractYouTubeId() → js/core/utils.js
 
 // Auto-fetch video title and thumbnail from URL
 async function fetchVideoMetadata(url) {
@@ -2810,10 +2605,7 @@ async function fetchRefTrackInfo(trackUrl) {
     }
 }
 
-function extractSpotifyTrackId(url) {
-    const match = url.match(/track\/([a-zA-Z0-9]+)/);
-    return match ? match[1] : null;
-}
+// extractSpotifyTrackId() → js/core/utils.js
 
 // Update reference version rendering to fetch metadata
 async function renderRefVersions(songTitle, bandData) {
@@ -3637,14 +3429,7 @@ async function uploadHarmonyAudio(sectionIndex) {
     }
 }
 
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-}
+// fileToBase64() → js/core/utils.js
 
 async function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
     // Load from Google Drive first
@@ -4943,7 +4728,7 @@ function convertBasicPitchToABC(noteData, title) {
 // FADR HARMONY AUTO-IMPORT
 // ============================================================================
 
-const FADR_PROXY = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+// FADR_PROXY → js/core/worker-api.js
 
 async function importHarmoniesFromFadr(songTitle) {
     const bandData = bandKnowledgeBase[songTitle] || {};
@@ -5155,106 +4940,19 @@ function generateSheetMusic(sectionIndex, section) {
 // Replaces Google Drive for reliable cross-browser data sharing
 // ============================================================================
 
-const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo",
-    authDomain: "deadcetera-35424.firebaseapp.com",
-    databaseURL: "https://deadcetera-35424-default-rtdb.firebaseio.com",
-    projectId: "deadcetera-35424",
-    storageBucket: "deadcetera-35424.firebasestorage.app",
-    messagingSenderId: "218400123401",
-    appId: "1:218400123401:web:7f64ad84231dcaba6966d8"
-};
+// FIREBASE_CONFIG, GOOGLE_DRIVE_CONFIG → js/core/firebase-service.js
 
-// Keep Google config for sign-in identity only (email/profile, no Drive access needed)
-const GOOGLE_DRIVE_CONFIG = {
-    apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
-    clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    scope: 'email profile'
-};
-
-let isGoogleDriveInitialized = false; // Keep name for compatibility - means "backend ready"
-let isUserSignedIn = false;
-let accessToken = null;
-let tokenClient = null;
-let currentUserEmail = localStorage.getItem('deadcetera_google_email') || null;
-let currentUserName = localStorage.getItem('deadcetera_google_name') || '';
-let currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
-// ^ Pre-populated from last session so Profile shows email before auth re-fires
-
-// Firebase references (set during init)
-let firebaseDB = null;
-let firebaseStorage = null;
+// isGoogleDriveInitialized, isUserSignedIn, accessToken, tokenClient,
+// currentUserEmail, currentUserName, currentUserPicture,
+// firebaseDB, firebaseStorage → js/core/firebase-service.js
 
 // ── Multi-band data isolation ───────────────────────────────────────────────
 // All Firebase paths are prefixed with /bands/{slug}/ so each band's data is isolated.
 // Default: 'deadcetera' (the original band). Future: band switcher sets this.
-var currentBandSlug = localStorage.getItem('deadcetera_current_band') || 'deadcetera';
-
-function bandPath(subpath) {
-    return 'bands/' + currentBandSlug + '/' + subpath;
-}
-
+// currentBandSlug, bandPath() → js/core/firebase-service.js
 // ── One-time migration: copy flat /songs and /master to /bands/deadcetera/ ──
 // Runs once per device. Safe to re-run (checks for existing data first).
-async function migrateToMultiBand() {
-    if (!firebaseDB) return;
-    var migrationKey = 'deadcetera_migrated_to_multiband';
-    if (localStorage.getItem(migrationKey) === 'done') return;
-
-    try {
-        // Check if migration already happened (data exists at new path)
-        var testSnap = await firebaseDB.ref('bands/deadcetera/master').once('value');
-        if (testSnap.val()) {
-            console.log('Multi-band migration already complete (data exists at new path)');
-            localStorage.setItem(migrationKey, 'done');
-            return;
-        }
-
-        // Check if old flat data exists
-        var oldSongsSnap = await firebaseDB.ref('songs').once('value');
-        var oldMasterSnap = await firebaseDB.ref('master').once('value');
-        var oldPartiesSnap = await firebaseDB.ref('listening_parties').once('value');
-
-        var oldSongs = oldSongsSnap.val();
-        var oldMaster = oldMasterSnap.val();
-        var oldParties = oldPartiesSnap.val();
-
-        if (!oldSongs && !oldMaster) {
-            console.log('No legacy data to migrate');
-            localStorage.setItem(migrationKey, 'done');
-            return;
-        }
-
-        console.log('Migrating data to /bands/deadcetera/ ...');
-        var updates = {};
-        if (oldSongs) updates['bands/deadcetera/songs'] = oldSongs;
-        if (oldMaster) updates['bands/deadcetera/master'] = oldMaster;
-        if (oldParties) updates['bands/deadcetera/listening_parties'] = oldParties;
-
-        // Write band metadata
-        updates['bands/deadcetera/meta'] = {
-            name: 'Deadcetera',
-            slug: 'deadcetera',
-            createdAt: Date.now(),
-            catalog: ['GD', 'JGB', 'Phish', 'WSP', 'ABB'],
-            members: {
-                drew: { name: 'Drew', role: 'Rhythm Guitar', email: 'drewmerrill1029@gmail.com', joined: Date.now() },
-                chris: { name: 'Chris', role: 'Bass', email: 'cmjalbert@gmail.com', joined: Date.now() },
-                brian: { name: 'Brian', role: 'Lead Guitar', email: 'brian@hrestoration.com', joined: Date.now() },
-                pierce: { name: 'Pierce', role: 'Keyboard', email: 'pierce.d.hale@gmail.com', joined: Date.now() },
-                jay: { name: 'Jay', role: 'Drums', email: 'jnault@fegholdings.com', joined: Date.now() }
-            }
-        };
-
-        await firebaseDB.ref().update(updates);
-        console.log('Multi-band migration complete!');
-        localStorage.setItem(migrationKey, 'done');
-        showToast('Data migrated to multi-band format');
-    } catch (err) {
-        console.error('Migration error:', err);
-        // Don't mark done so it retries next load
-    }
-}
+// migrateToMultiBand() → js/core/firebase-service.js
 
 // ============================================================================
 // FIREBASE INITIALIZATION
@@ -5305,170 +5003,13 @@ function showSignInNudge() {
 // Called automatically on page load so firebaseDB is ready immediately.
 // loadGoogleDriveAPI() (full init including Google Identity) is called on 
 // first "Connect" click and handles sign-in + email attribution.
-async function initFirebaseOnly() {
-    if (firebaseDB) return; // Already initialized
-    
-    const loadScript = (src) => new Promise((res, rej) => {
-        // Check if already loaded
-        if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-        const s = document.createElement('script');
-        s.src = src; s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-    });
+// initFirebaseOnly() → js/core/firebase-service.js
 
-    // Load Firebase app compat then database compat
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js');
-    
-    if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
-    }
-    firebaseDB = firebase.database();
-    
-    // Also try storage
-    try {
-        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js');
-        if (firebase.storage) firebaseStorage = firebase.storage();
-    } catch(e) { /* storage optional */ }
+// loadGoogleDriveAPI() → js/core/firebase-service.js
 
-    console.log('🔥 Firebase DB ready (auto-init)');
-    
-    // Run one-time data migration to multi-band structure
-    migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
-}
+// updateSignInStatus() → js/core/firebase-service.js
 
-function loadGoogleDriveAPI() {
-    // Now loads Firebase SDK + Google Identity Services for sign-in
-    return new Promise((resolve, reject) => {
-        console.log('🔥 Loading Firebase + Google Identity...');
-        
-        const loadScript = (src) => new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = src; s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
-
-        const loadGIS = new Promise((res, rej) => {
-            if (window.google?.accounts?.oauth2) { res(); return; }
-            loadScript('https://accounts.google.com/gsi/client').then(res).catch(rej);
-        });
-
-        // CRITICAL: firebase-app-compat MUST fully execute before database/storage load
-        // Do NOT create DB/Storage script elements until after app-compat onload fires
-        const firebaseAppReady = window.firebase?.apps !== undefined
-            ? Promise.resolve()
-            : loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-
-        firebaseAppReady
-            .then(() => Promise.all([
-                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js'),
-                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js'),
-                loadGIS
-            ]))
-            .then(() => {
-                console.log('✅ Firebase + Google scripts loaded');
-                initFirebase().then(resolve).catch(reject);
-            })
-            .catch(reject);
-    });
-}
-
-async function initFirebase() {
-    try {
-        console.log('⚙️ Initializing Firebase...');
-        
-        // Initialize Firebase app if not already done (may have been done by initFirebaseOnly)
-        if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-        }
-        
-        // Re-use existing firebaseDB if already set by initFirebaseOnly
-        if (!firebaseDB) {
-            firebaseDB = firebase.database();
-        }
-        
-        // Firebase Storage is optional - we primarily use RTDB for audio (base64)
-        try {
-            if (firebase.storage && !firebaseStorage) {
-                firebaseStorage = firebase.storage();
-            }
-        } catch(e) {
-            console.log('⚠️ Firebase Storage not available (not critical - using RTDB for audio)');
-        }
-        
-        console.log('✅ Firebase initialized');
-        
-        // Initialize Google Identity Services for sign-in (identity only, no Drive)
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: GOOGLE_DRIVE_CONFIG.clientId,
-            scope: GOOGLE_DRIVE_CONFIG.scope,
-            callback: async (response) => {
-                if (response.error) {
-                    console.error('Token error:', response);
-                    updateSignInStatus(false);
-                    return;
-                }
-                accessToken = response.access_token;
-                updateSignInStatus(true);
-                console.log('✅ User signed in');
-                
-                // Get user email from Google
-                await getCurrentUserEmail();
-                
-                // No shared folder init needed - Firebase is always ready!
-                console.log('🔥 Firebase ready - no folder sharing needed!');
-            }
-        });
-        
-        isGoogleDriveInitialized = true;
-        console.log('✅ Backend initialized (Firebase + Google Identity)');
-        
-        // Run one-time data migration to multi-band structure
-        migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Firebase initialization failed:', error);
-        throw error;
-    }
-}
-
-function updateSignInStatus(signedIn) {
-    isUserSignedIn = signedIn;
-    updateDriveAuthButton();
-}
-
-async function getCurrentUserEmail() {
-    try {
-        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: 'Bearer ' + accessToken }
-        });
-        const userInfo = await response.json();
-        currentUserEmail = userInfo.email;
-        currentUserName = userInfo.name || userInfo.given_name || '';
-        currentUserPicture = userInfo.picture || '';
-        localStorage.setItem('deadcetera_google_name', currentUserName);
-        localStorage.setItem('deadcetera_google_picture', currentUserPicture);
-        console.log('👤 Signed in as:', currentUserEmail);
-        // Persist email to localStorage so Profile page can show it immediately on reload
-        localStorage.setItem('deadcetera_google_email', currentUserEmail);
-        // Sign-in is critical — save immediately, don't wait for debounce
-        logActivity('sign_in').then(() => {
-            if (activityLogCache) {
-                saveMasterFile(MASTER_ACTIVITY_LOG, activityLogCache).catch(() => {});
-                activityLogDirty = false;
-            }
-        });
-        injectAdminButton();
-        // Re-update button now that we have the email
-        updateDriveAuthButton();
-        // Migrate any localStorage-only data to Firebase (recovers data saved before Firebase was ready)
-        recoverLocalStorageToFirebase();
-    } catch (error) {
-        console.error('Could not get user email:', error);
-        currentUserEmail = 'unknown';
-    }
-}
+// getCurrentUserEmail() → js/core/firebase-service.js
 
 // Scan localStorage for any DeadCetera data saved before Firebase was initialized.
 // Pushes to Firebase so it's shared with the band. Runs silently on each sign-in.
@@ -5635,77 +5176,24 @@ function avatarClearCustom() {
 // AUTHENTICATION
 // ============================================================================
 
-async function handleGoogleDriveAuth(silent) {
-    if (!isGoogleDriveInitialized) {
-        try {
-            console.log('🔥 Loading Firebase...');
-            await loadGoogleDriveAPI();
-        } catch (error) {
-            console.error('Failed to load Firebase:', error);
-            if (!silent) alert('Failed to initialize.\n\nError: ' + error.message);
-            return;
-        }
-    }
-    
-    if (isUserSignedIn) {
-        if (silent) return; // Don't sign out in silent mode
-        // Sign out
-        google.accounts.oauth2.revoke(accessToken, () => {
-            console.log('👋 User signed out');
-            accessToken = null;
-            currentUserEmail = null;
-            localStorage.removeItem('deadcetera_google_email');
-            updateSignInStatus(false);
-        });
-    } else {
-        // Sign in
-        try {
-            console.log('🔑 Requesting sign-in...' + (silent ? ' (auto-reconnect)' : ''));
-            tokenClient.requestAccessToken({ prompt: silent ? 'none' : '' });
-        } catch (error) {
-            console.error('Sign-in failed:', error);
-            if (!silent) alert('Sign-in failed.\n\nError: ' + error.message);
-        }
-    }
-}
+// handleGoogleDriveAuth() → js/core/firebase-service.js
 
 // ============================================================================
 // FIREBASE PATH HELPERS
 // ============================================================================
 
-function sanitizeFirebasePath(str) {
-    // Firebase paths cannot contain . # $ [ ] /
-    return str.replace(/[.#$\[\]\/]/g, '_');
-}
+// sanitizeFirebasePath() → js/core/utils.js
 
 // Firebase converts arrays to objects with numeric keys - this normalizes them back
-function toArray(val) {
-    if (!val) return [];
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'object') return Object.values(val);
-    return [];
-}
+// toArray() → js/core/utils.js
 
-function songPath(songTitle, dataType) {
-    return bandPath(`songs/${sanitizeFirebasePath(songTitle)}/${sanitizeFirebasePath(dataType)}`);
-}
+// songPath() → js/core/firebase-service.js
 
-function masterPath(fileName) {
-    // Remove file extension for cleaner paths
-    const name = fileName.replace('.json', '');
-    return bandPath(`master/${sanitizeFirebasePath(name)}`);
-}
+// masterPath() → js/core/firebase-service.js
 
 // ============================================================================
 // UPLOAD AUDIO TO FIREBASE STORAGE
-async function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-}
+// blobToBase64() → js/core/utils.js
 
 console.log('🔥 Firebase integration loaded');
 
@@ -6798,104 +6286,23 @@ const BAND_DATA_TYPES = {
 // SAVE TO FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
-async function saveBandDataToDrive(songTitle, dataType, data) {
-    // Always save to localStorage as backup
-    const localKey = `deadcetera_${dataType}_${songTitle}`;
-    localStorage.setItem(localKey, JSON.stringify(data));
-    
-    if (!firebaseDB) {
-        console.warn('⚠️ Firebase not ready — saved to localStorage only (not shared with band)');
-        showSignInNudge();
-        return false;
-    }
-    
-    try {
-        const path = songPath(songTitle, dataType);
-        await firebaseDB.ref(path).set(data);
-        return true;
-    } catch (error) {
-        console.error('❌ Failed to save to Firebase:', error);
-        // Show error toast so user knows their save didn't reach the band
-        showToast('⚠️ Could not sync to band — check your connection');
-        return false;
-    }
-}
+// saveBandDataToDrive() → js/core/firebase-service.js
 
 // ============================================================================
 // LOAD FROM FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
-async function loadBandDataFromDrive(songTitle, dataType) {
-    if (firebaseDB) {
-        try {
-            const path = songPath(songTitle, dataType);
-            const snapshot = await firebaseDB.ref(path).once('value');
-            const data = snapshot.val();
-            
-            if (data !== null) {
-                console.log(`✅ Loaded ${dataType} from Firebase`);
-                return data;
-            } else {
-                console.log(`No Firebase data for ${dataType}`);
-            }
-        } catch (error) {
-            console.log(`⚠️ Firebase error for ${dataType}:`, error.message);
-        }
-    }
-    
-    // Fallback to localStorage
-    return loadFromLocalStorageFallback(songTitle, dataType);
-}
+// loadBandDataFromDrive() → js/core/firebase-service.js
 
-function loadFromLocalStorageFallback(songTitle, dataType) {
-    const key = `deadcetera_${dataType}_${songTitle}`;
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-}
+// loadFromLocalStorageFallback() → js/core/firebase-service.js
 
 // ============================================================================
 // MASTER FILES (aggregated data like all statuses, all harmonies)
 // ============================================================================
 
-async function loadMasterFile(fileName) {
-    if (firebaseDB) {
-        try {
-            const path = masterPath(fileName);
-            const snapshot = await firebaseDB.ref(path).once('value');
-            const data = snapshot.val();
-            if (data !== null) return data;
-        } catch (error) {
-            console.log(`Could not load master file from Firebase: ${fileName}`);
-        }
-    }
-    
-    // Try localStorage
-    const key = `deadcetera_${fileName}`;
-    const localData = localStorage.getItem(key);
-    return localData ? JSON.parse(localData) : null;
-}
+// loadMasterFile() → js/core/firebase-service.js
 
-async function saveMasterFile(fileName, data) {
-    // Always save to localStorage as backup (with original keys)
-    const key = `deadcetera_${fileName}`;
-    localStorage.setItem(key, JSON.stringify(data));
-    
-    if (!firebaseDB) return false;
-    
-    try {
-        // Sanitize all object keys for Firebase (no . # $ / [ ])
-        const sanitized = (typeof data === 'object' && data !== null && !Array.isArray(data))
-            ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k.replace(/[.#$\[\]\/]/g, '_'), v]))
-            : data;
-        const path = masterPath(fileName);
-        await firebaseDB.ref(path).set(sanitized);
-        console.log(`Saved master file: ${fileName}`);
-        return true;
-    } catch (error) {
-        console.error('Error saving master file:', error);
-        return false;
-    }
-}
+// saveMasterFile() → js/core/firebase-service.js
 
 // ============================================================================
 // PRACTICE TRACKS / REHEARSAL NOTES / SPOTIFY URLS / PART NOTES
@@ -8687,47 +8094,13 @@ console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
 // ============================================================================
 // NAV SHELL: Menu Toggle, Page Navigation
 // ============================================================================
-let currentPage = 'songs';
+// currentPage → js/ui/navigation.js
 
-function toggleMenu() {
-    const menu = document.getElementById('slideMenu');
-    const overlay = document.getElementById('menuOverlay');
-    const isOpen = menu.classList.contains('open');
-    menu.classList.toggle('open', !isOpen);
-    overlay.classList.toggle('open', !isOpen);
-}
+// toggleMenu() → js/ui/navigation.js
 
-function showPage(page) {
-    document.getElementById('slideMenu')?.classList.remove('open');
-    document.getElementById('menuOverlay')?.classList.remove('open');
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    const el = document.getElementById('page-' + page);
-    if (el) { el.classList.remove('hidden'); el.classList.add('fade-in'); }
-    document.querySelectorAll('.menu-item').forEach(m => { m.classList.toggle('active', m.dataset.page === page); });
-    currentPage = page;
-    if (el && page !== 'songs') {
-        const renderer = pageRenderers[page];
-        if (renderer) renderer(el);
-    }
-}
+// showPage() → js/ui/navigation.js
 
-const pageRenderers = {
-    setlists: renderSetlistsPage,
-    playlists: renderPlaylistsPage,
-    practice: renderPracticePage,
-    rehearsal: renderRehearsalPage,
-    calendar: renderCalendarPage,
-    gigs: renderGigsPage,
-    venues: renderVenuesPage,
-    finances: renderFinancesPage,
-    tuner: renderTunerPage,
-    metronome: renderMetronomePage,
-    bestshot: renderBestShotPage,
-    admin: renderSettingsPage,
-    social: renderSocialPage,
-    notifications: renderNotificationsPage,
-    help: (el) => (typeof renderHelpPage === 'function' ? renderHelpPage(el) : (el.innerHTML = '<p>Help loading...</p>'))
-};
+// pageRenderers → js/ui/navigation.js
 
 // ============================================================================
 // SETLIST BUILDER
@@ -9746,14 +9119,7 @@ async function loadCalendarEventsRaw() {
     } catch(e) { return []; }
 }
 
-function formatPracticeDate(dateStr) {
-    if (!dateStr) return '?';
-    const d = new Date(dateStr + 'T12:00:00');
-    const opts = { month: 'short', day: 'numeric' };
-    const day = d.toLocaleDateString('en-US', opts);
-    const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
-    return `${dow} ${day}`;
-}
+// formatPracticeDate() → js/core/utils.js
 
 async function renderPracticePlanForDate(dateStr, statusMap) {
     const body = document.getElementById('practicePlanBody');
@@ -11080,7 +10446,7 @@ async function notifGetAllPhones() {
 // Flow: buildPack → save to Firebase → worker serves /pack/:id → SMS link
 // ══════════════════════════════════════════════════════════════════════════
 
-var WORKER_URL = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+// WORKER_URL → js/core/worker-api.js
 var FIREBASE_DB_URL = 'https://deadcetera-35424-default-rtdb.firebaseio.com';
 
 // ── Unique pack ID generator ──────────────────────────────────────────────
@@ -15762,25 +15128,7 @@ function onPartyEnded() {
 // ── Toast helper (reusable) ───────────────────────────────────────────────────
 // Creates a brief notification at the bottom of the screen.
 
-function showToast(message, duration = 2500) {
-    const existing = document.getElementById('dc-toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.id = 'dc-toast';
-    toast.style.cssText = `
-        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-        background: #1e293b; border: 1px solid rgba(102,126,234,0.4);
-        color: #f1f5f9; padding: 10px 20px; border-radius: 20px;
-        font-size: 0.88em; font-weight: 600; z-index: 9999;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-        animation: slideUpBanner 0.25s ease-out;
-        white-space: nowrap; max-width: 90vw; text-align: center;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), duration);
-}
+// showToast() → js/core/utils.js
 
 // ── VERSION CHECKER ──────────────────────────────────────────────────────────
 
@@ -18105,7 +17453,7 @@ async function wsToggleItem(s,idx,k){if(!firebaseDB)return;var path=bandPath('so
 async function wsAddItem(s,k){var input=document.getElementById('wsNewItem_'+k);if(!input)return;var text=input.value.trim();if(!text||!firebaseDB)return;var path=bandPath('songs/'+sanitizeFirebasePath(s)+'/woodshed/'+k);try{var snap=await firebaseDB.ref(path).once('value');var data=snap.val()||{};var cl=data.checklist||[];cl.push({id:'custom_'+Date.now(),text:text,done:false,phase:'solo'});await firebaseDB.ref(path+'/checklist').set(cl);input.value='';renderWoodshedChecklist(s);showToast('Item added');}catch(e){showToast('Could not save');}}
 async function wsSaveRig(s,k){var el=document.getElementById('wsRig_'+k);if(!el||!firebaseDB)return;try{await firebaseDB.ref(bandPath('songs/'+sanitizeFirebasePath(s)+'/woodshed/'+k+'/rig')).set(el.value);showToast('Rig saved');}catch(e){}}
 async function wsSaveBandSpace(s,k){var el=document.getElementById('wsBandSpace_'+k);if(!el||!firebaseDB)return;try{await firebaseDB.ref(bandPath('songs/'+sanitizeFirebasePath(s)+'/woodshed/'+k+'/bandSpace')).set(el.value);showToast('Band space notes saved');}catch(e){}}
-function wsEsc(str){if(!str)return '';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+// wsEsc() → js/core/utils.js
 console.log('Woodshed Checklists loaded');
 
 
