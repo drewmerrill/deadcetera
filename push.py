@@ -49,6 +49,12 @@ DEPLOY_FILES = [
     'sync.py',
     'push.py',
     'version.json',
+    # Wave-1 modules
+    'js/core/utils.js',
+    'js/core/firebase-service.js',
+    'js/core/worker-api.js',
+    'js/ui/navigation.js',
+    'js/features/songs.js',
 ]
 
 def get_token():
@@ -112,16 +118,17 @@ def batch_push(files, commit_msg, token, repo_dir):
     tree_items = []
     ok_count = 0
     for filepath in files:
-        filename = os.path.basename(filepath)
+        # Preserve subdirectory structure (e.g. js/core/utils.js, not just utils.js)
+        rel_path = os.path.relpath(filepath, repo_dir).replace(os.sep, '/')
         if not os.path.exists(filepath):
             continue
-        print(f"📤 {filename}...", end=" ", flush=True)
+        print(f"📤 {rel_path}...", end=" ", flush=True)
         try:
             with open(filepath, "rb") as f:
                 content_bytes = f.read()
             blob_sha = create_blob(content_bytes, token)
             tree_items.append({
-                "path": filename,
+                "path": rel_path,
                 "mode": "100644",
                 "type": "blob",
                 "sha": blob_sha
