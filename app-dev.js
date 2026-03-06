@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260306-205203', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260306-212033', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260306-205203';
+var BUILD_VERSION = '20260306-212033';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -410,6 +410,44 @@ function getPlayButtonStyle(version) {
     if (p === 'soundcloud' || url.includes('soundcloud')) return 'background:#ff7700!important;color:#ffffff!important;';
     if (p === 'tidal' || url.includes('tidal')) return 'background:#000000!important;color:#ffffff!important;';
     return 'background:#667eea!important;color:#ffffff!important;';
+}
+
+// ============================================================================
+// SECTION HELP TOOLTIPS (ⓘ icons on song detail section headers)
+// Usage in HTML: <span class="gl-help-icon" onclick="glShowHelp('dna',this)">ⓘ</span>
+// ============================================================================
+
+const GL_SECTION_HELP = {
+    dna:        { title: '🧬 Song DNA', text: 'Everything your band needs at a glance — chord charts, keys, BPM, harmonies, structure, and reference versions. This is the source of truth for the song.' },
+    northstar:  { title: '⭐ North Star', text: 'The definitive reference version the band is working toward. Vote for your favorite recording — the most-voted version becomes the North Star.' },
+    crib:       { title: '📝 Stage Crib Notes', text: 'Personal performance reminders visible only to you during a gig or rehearsal. Add notes for your instrument, intros, solos, or anything you want to remember on stage.' },
+    woodshed:   { title: '🪵 The Woodshed', text: 'Your personal practice checklist for this song. Track what you\'ve worked on solo, in rehearsal, and gig-ready. Bandmates can see each other\'s progress.' },
+    pocket:     { title: '🎯 The Pocket', text: 'Live BPM monitor using your microphone. Shows whether the band is rushing, dragging, or locked in. Tap tempo to broadcast the target BPM to all members.' },
+    bestshot:   { title: '🏆 Best Shot', text: 'Record and compare takes against the North Star version. Rate sections, track improvement over time, and identify what needs more woodshedding.' },
+    listen:     { title: '🎧 Listen & Find Versions', text: 'Search Archive.org, Relisten, Phish.in, YouTube, and Spotify for live versions of this song. Send any version directly to the band.' },
+    rehearsal:  { title: '📋 Rehearsal Notes', text: 'Shared notes from rehearsals — what worked, what needs work, and action items for next time.' },
+    readiness:  { title: '📊 Readiness', text: 'How ready is this song? Each member rates their own readiness. The heatmap shows the band\'s collective preparation level.' },
+};
+
+function glShowHelp(key, el) {
+    document.getElementById('glHelpPopup')?.remove();
+    const info = GL_SECTION_HELP[key];
+    if (!info) return;
+    const d = document.createElement('div');
+    d.id = 'glHelpPopup';
+    d.style.cssText = 'position:fixed;z-index:9999;max-width:280px;background:#1e2235;border:1px solid rgba(99,102,241,0.35);border-radius:10px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);font-size:0.82em;line-height:1.5;color:#e2e8f0';
+    d.innerHTML = `<div style="font-weight:700;color:#818cf8;margin-bottom:6px">${info.title}</div><div style="color:#94a3b8">${info.text}</div>`;
+    // Position near the icon
+    const rect = el ? el.getBoundingClientRect() : { left: window.innerWidth/2, bottom: 60 };
+    const top = rect.bottom + 8 + window.scrollY;
+    let left = rect.left + window.scrollX - 100;
+    left = Math.max(8, Math.min(left, window.innerWidth - 296));
+    d.style.top = top + 'px';
+    d.style.left = left + 'px';
+    document.body.appendChild(d);
+    setTimeout(() => document.addEventListener('click', function f(e) {
+        if (!d.contains(e.target)) { d.remove(); document.removeEventListener('click', f); }
+    }), 100);
 }
 
 // ============================================================================
@@ -9470,6 +9508,18 @@ async function deleteSetlist(idx) {
     loadSetlists();
 }
 
+// Returns "Venue Name — City, ST" for dropdown display, falling back gracefully
+function venueShortLabel(v) {
+    const name = v.name || '';
+    const addr = v.address || '';
+    // Try to extract "City, ST" from address like "123 Main St, Atlanta, GA 30301" or "Atlanta, GA"
+    const m = addr.match(/,\s*([^,]+),\s*([A-Z]{2})\b/);
+    if (m) return `${name} — ${m[1].trim()}, ${m[2]}`;
+    // Fallback: just show address if short enough
+    if (addr && addr.length < 30) return `${name} — ${addr}`;
+    return name;
+}
+
 async function deleteGig(idx) {
     if (!confirm('Delete this gig? This cannot be undone.')) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
@@ -9485,7 +9535,7 @@ async function editGig(idx) {
     if (!g) return;
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${v.name||''}</option>`).join('');
+    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${venueShortLabel(v)}</option>`).join('');
     const el = document.getElementById('gigsList');
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Edit Gig</h3>
@@ -9540,6 +9590,8 @@ async function saveGigEdit(idx) {
         updated: new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'gigs', gigData);
+    // Sync updated gig to calendar
+    await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
     showToast('✅ Gig updated!');
     loadGigs();
 }
@@ -10244,7 +10296,7 @@ async function calAddEvent(date, editIdx, existing) {
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     const venueOptsCal = venues.map(v =>
-        `<option value="${(v.name||'').replace(/"/g,'&quot;')}" ${(ev.venue||'')===(v.name||'')?'selected':''}>${v.name||'Unnamed'}</option>`
+        `<option value="${(v.name||'').replace(/"/g,'&quot;')}" ${(ev.venue||'')===(v.name||'')?'selected':''}>${venueShortLabel(v)}</option>`
     ).join('');
     const showSetlist = ev.type === 'gig';
     const showVenue   = ev.type === 'gig';
@@ -12019,9 +12071,10 @@ async function loadGigs() {
             </div>
         </div>
         ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
-        ${g.linkedSetlist ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        ${g.linkedSetlist ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist}</span>
             <button onclick="gigLaunchLinkedSetlist('${g.linkedSetlist.replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
+            <button onclick="navigateTo('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
         </div>` : ''}
     </div>`).join('');
 }
@@ -12032,7 +12085,7 @@ async function addGig() {
     window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     window._cachedSetlists.sort((a,b) => (b.date||''). localeCompare(a.date||''));
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}">${v.name||''}</option>`).join('');
+    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}">${venueShortLabel(v)}</option>`).join('');
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Add New Gig</h3>
         <div class="form-grid">
@@ -12080,6 +12133,31 @@ function gigVenueSelected(sel) {
     }
 }
 
+// Sync a gig record to calendar_events — upsert by venue+date key
+async function _syncGigToCalendar(gig, createdKey) {
+    if (!gig || !gig.date || !gig.venue) return;
+    const calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    const matchKey = (gig.venue||'') + '|' + (gig.date||'');
+    const existIdx = calEvents.findIndex(e => e.type === 'gig' && ((e.venue||'')+'|'+(e.date||'')) === matchKey);
+    const calRecord = {
+        type: 'gig',
+        date: gig.date || '',
+        title: gig.venue || '',
+        time: gig.startTime || '',
+        venue: gig.venue || '',
+        notes: gig.notes || '',
+        linkedSetlist: gig.linkedSetlist || null,
+        updated: new Date().toISOString()
+    };
+    if (existIdx >= 0) {
+        calEvents[existIdx] = { ...calEvents[existIdx], ...calRecord };
+    } else {
+        calRecord.created = createdKey || gig.created || new Date().toISOString();
+        calEvents.push(calRecord);
+    }
+    await saveBandDataToDrive('_band', 'calendar_events', calEvents);
+}
+
 async function saveGig() {
     const gig = {
         venue:      document.getElementById('gigVenue')?.value?.trim(),
@@ -12099,6 +12177,8 @@ async function saveGig() {
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);
     await saveBandDataToDrive('_band', 'gigs', existing);
+    // Sync to calendar as a gig event
+    await _syncGigToCalendar(gig, null);
     showToast('✅ Gig saved!');
     loadGigs();
 }
@@ -12469,6 +12549,16 @@ async function editVenue(idx) {
 
 async function saveVenueEdit(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const vNameEl = document.getElementById('vName');
+    const latLng = {};
+    if (vNameEl && vNameEl.dataset.lat) {
+        latLng.lat = parseFloat(vNameEl.dataset.lat);
+        latLng.lng = parseFloat(vNameEl.dataset.lng);
+    } else if (data[idx] && data[idx].lat) {
+        // Preserve existing lat/lng if not re-searched
+        latLng.lat = data[idx].lat;
+        latLng.lng = data[idx].lng;
+    }
     data[idx] = { ...data[idx],
         name:        document.getElementById('vName')?.value?.trim(),
         address:     document.getElementById('vAddress')?.value?.trim(),
@@ -12485,6 +12575,7 @@ async function saveVenueEdit(idx) {
         parking:     document.getElementById('vParking')?.value,
         pay:         document.getElementById('vPay')?.value,
         notes:       document.getElementById('vNotes')?.value,
+        ...latLng,
         updated:     new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'venues', data);

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260306-205203">
+    <meta name="build-version" content="20260306-212033">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx — Where Bands Lock In</title>
@@ -30,6 +30,31 @@
     <link rel="stylesheet" href="rehearsal-mode.css">
     <link rel="stylesheet" href="version-hub.css">
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBDADFjoqqLvkmJgevpkIZxf-GTwc9RxI0&libraries=places&loading=async" defer></script>
+    <style>
+        /* ⓘ Section help tooltip icons */
+        .gl-help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(99,102,241,0.12);
+            color: rgba(129,140,248,0.6);
+            font-size: 0.65em;
+            cursor: pointer;
+            vertical-align: middle;
+            border: 1px solid rgba(99,102,241,0.2);
+            transition: all 0.15s;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        .gl-help-icon:hover {
+            background: rgba(99,102,241,0.25);
+            color: #818cf8;
+            border-color: rgba(99,102,241,0.5);
+        }
+    </style>
 </head>
 <body>
     <!-- TOP BAR -->
@@ -181,8 +206,8 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">2</div>
         <h2 style="margin:0" id="step2Title">Song DNA</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="What is Song DNA?">ⓘ</span>
     </div>
-    <p class="subtitle" id="bandResourcesSubtitle">Everything your band needs at a glance</p>
     
     <!-- SONG METADATA -->
     <div class="song-metadata" style="background:rgba(255,255,255,0.04);padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border,rgba(255,255,255,0.08))">
@@ -282,8 +307,8 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">3</div>
         <h2 style="margin:0">The North Star</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('northstar',this)" title="What is The North Star?">ⓘ</span>
     </div>
-    <p class="subtitle">The definitive version your band is learning — voted by the group</p>
     
     <div class="resource-section" id="refVersionSection">
         <div class="section-header">
@@ -303,8 +328,8 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#f59e0b,#ef4444)">🏆</div>
         <h2 style="margin:0">Best Shot vs North Star</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('bestshot',this)" title="What is Best Shot?">ⓘ</span>
     </div>
-    <p class="subtitle">Compare your band's best take to the reference — rate each section and track your progress</p>
     <div id="bestShotVsNorthStar"></div>
 </div>
 
@@ -313,10 +338,8 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">4</div>
         <h2 style="margin:0">Stage Crib Notes</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('crib',this)" title="What are Stage Crib Notes?">ⓘ</span>
     </div>
-    <p class="subtitle">Each member's go-to reference — tabs, chord charts, or lyrics for stage/iPad
-        <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.85em;padding:0;margin-left:8px">🔍 Ultimate Guitar</button>
-    </p>
     
     <div class="resource-section" id="personalTabsSection">
         <div id="personalTabsContainer"></div>
@@ -344,14 +367,14 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <div class="step-number" style="flex-shrink:0">5</div>
         <h2 style="margin:0">The Woodshed</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="What is The Woodshed?">ⓘ</span>
+        <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.8em;padding:0;margin-left:4px">🔍 UG</button>
     </div>
-    <p class="subtitle">Practice tools, stems, harmony parts & band notes</p>
     
     <!-- CHORD CHART (The Band's Chart) -->
     <div class="resource-section" id="chartSection">
         <div class="section-header">
-            <h3>🎸 The Chart</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">One shared chord chart — replaces Ultimate Guitar</p>
+            <h3>🎸 The Chart <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="About chord charts">ⓘ</span></h3>
         </div>
         <div id="chartContainer"></div>
     </div>
@@ -359,8 +382,7 @@
     <!-- MOISES STEMS -->
     <div class="resource-section" id="moisesSection">
         <div class="section-header">
-            <h3>🎚️ Moises Stems</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Isolate individual instruments for practice</p>
+            <h3>🎚️ Moises Stems <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About stems">ⓘ</span></h3>
         </div>
         <div id="moisesStemsContainer"></div>
     </div>
@@ -368,8 +390,7 @@
     <!-- PRACTICE TRACKS -->
     <div class="resource-section" id="practiceTracksSection">
         <div class="section-header">
-            <h3>🎸 Practice Tracks</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Add videos — auto-fetches title & thumbnail</p>
+            <h3>🎸 Practice Tracks <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About practice tracks">ⓘ</span></h3>
         </div>
         <div id="practiceTrackAddForm" style="background:rgba(255,255,255,0.03);padding:16px;border-radius:10px;margin-bottom:16px;border:1px solid var(--border,rgba(255,255,255,0.08))">
             <h4 style="margin:0 0 12px 0;color:var(--text,#f1f5f9);font-size:0.95em">Add Practice Track</h4>
@@ -425,8 +446,7 @@
     <!-- WOODSHED CHECKLISTS -->
     <div class="resource-section" id="woodshedChecklistSection">
         <div class="section-header">
-            <h3>✅ Woodshed Checklists</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Solo prep · Rehearsal readiness · Gig-night rig</p>
+            <h3>✅ Woodshed Checklists <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About Woodshed Checklists">ⓘ</span></h3>
         </div>
         <div id="woodshedChecklistContainer"></div>
     </div>
@@ -434,8 +454,7 @@
     <!-- HARMONIES -->
     <div class="resource-section" id="harmoniesSection">
         <div class="section-header">
-            <h3>🎤 Harmony Parts</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Who sings what, when</p>
+            <h3>🎤 Harmony Parts <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="About harmony parts">ⓘ</span></h3>
         </div>
         <div id="harmoniesContainer"></div>
     </div>
@@ -449,8 +468,7 @@
     <!-- REHEARSAL NOTES -->
     <div class="resource-section" id="rehearsalNotesSection">
         <div class="section-header">
-            <h3>📋 Rehearsal Notes</h3>
-            <p style="color:var(--text-muted,#94a3b8);font-size:0.85em">Band feedback and tips — anyone can add</p>
+            <h3>📋 Rehearsal Notes <span class="gl-help-icon" onclick="glShowHelp('rehearsal',this)" title="About Rehearsal Notes">ⓘ</span></h3>
         </div>
         <div id="rehearsalNoteFormContainer"></div>
         <div id="rehearsalNotesContainer"></div>
