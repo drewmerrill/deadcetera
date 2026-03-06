@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260306-212033', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260306-213226', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260306-212033';
+var BUILD_VERSION = '20260306-213226';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -1412,8 +1412,8 @@ function showBandResources(songTitle) {
     // Update title with song name
     const titleEl = document.getElementById('step2Title');
     if (titleEl) titleEl.innerHTML = 'Song DNA: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
-    document.getElementById('bandResourcesSubtitle').textContent = 
-        `Everything your band needs at a glance`;
+    const subtitleEl = document.getElementById('bandResourcesSubtitle');
+    if (subtitleEl) subtitleEl.textContent = `Everything your band needs at a glance`;
     
     // Get band data from data.js if available
     const bandData = bandKnowledgeBase[songTitle] || {};
