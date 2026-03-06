@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260305-212324', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260305-204312', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260305-212324';
+var BUILD_VERSION = '20260305-204312';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -562,6 +562,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Parachute: render gig pack if URL has ?gigpack=1#...
+    if (parachuteCheckUrlHash()) return;
     // ── Auto-init Firebase DB on page load ──────────────────────────────────
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
@@ -809,6 +811,52 @@ function setupInstrumentSelector() {
 // RENDER SONGS
 // ============================================================================
 
+function songQuickFill(title, e) {
+    e && e.stopPropagation();
+    var existing = document.getElementById('quickFillPopup');
+    if (existing) existing.remove();
+    var songData = allSongs.find(function(s){return s.title===title;}) || {};
+    var popup = document.createElement('div');
+    popup.id = 'quickFillPopup';
+    popup.style.cssText = 'position:fixed;bottom:70px;left:12px;right:12px;background:#1e293b;border:1px solid rgba(102,126,234,0.3);border-radius:14px;padding:14px;z-index:4000;box-shadow:0 8px 32px rgba(0,0,0,0.6)';
+    var st = title.replace(/'/g, "\\'");
+    popup.innerHTML = '<div style="font-size:0.8em;font-weight:700;color:#818cf8;margin-bottom:10px">🎵 Quick Fill: ' + title + '</div>';
+    popup.innerHTML += '<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1"><label style="font-size:0.72em;color:#64748b;display:block;margin-bottom:3px">Key</label><input id="qfKey" class="app-input" placeholder="e.g. G" value="' + (songData.key||'')+'" style="font-size:0.88em;padding:6px 10px"></div><div style="flex:1"><label style="font-size:0.72em;color:#64748b;display:block;margin-bottom:3px">BPM</label><input id="qfBpm" class="app-input" placeholder="e.g. 120" value="' + (songData.bpm||'')+'" type="number" style="font-size:0.88em;padding:6px 10px"></div></div>';
+    popup.innerHTML += '<div style="display:flex;gap:8px"><button onclick="songQuickFillSave()´+JSON.stringify(title)+´)" style="background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#a5b4fc;padding:7px 16px;border-radius:8px;font-size:0.85em;font-weight:700;cursor:pointer;flex:1">💾 Save</button><button onclick="qfCancel()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:7px 14px;border-radius:8px;font-size:0.85em;cursor:pointer">Cancel</button></div>';
+    // fix the onclick with proper title injection
+    popup.querySelector('button').onclick = function() { songQuickFillSave(title); };
+    document.body.appendChild(popup);
+    setTimeout(function(){document.getElementById('qfKey')?.focus();},80);
+    setTimeout(function(){
+        document.addEventListener('click', function h(ev) {
+            if (!popup.contains(ev.target)) { popup.remove(); document.removeEventListener('click',h); }
+        });
+    },150);
+}
+
+function qfCancel() { document.getElementById('quickFillPopup')?.remove(); }
+
+async function songQuickFillSave(title) {
+    var key = (document.getElementById('qfKey')?.value||''). trim();
+    var bpm = (document.getElementById('qfBpm')?.value||''). trim();
+    if (!key && !bpm) { showToast('Enter key or BPM'); return; }
+    var songIdx = allSongs.findIndex(function(s){return s.title===title;});
+    if (songIdx >= 0) {
+        if (key) allSongs[songIdx].key = key;
+        if (bpm) allSongs[songIdx].bpm = parseInt(bpm);
+    }
+    try {
+        var path = bandPath('assets/' + sanitizeFirebasePath(title));
+        var update = {};
+        if (key) update.key = key;
+        if (bpm) update.bpm = parseInt(bpm);
+        await firebaseDB.ref(path).update(update);
+        showToast('🎵 Saved!');
+    } catch(e) { showToast('Saved locally'); }
+    document.getElementById('quickFillPopup')?.remove();
+    renderSongs();
+}
+
 function renderSongs(filter = 'all', searchTerm = '') {
     const dropdown = document.getElementById('songDropdown');
     
@@ -868,6 +916,24 @@ function renderSongs(filter = 'all', searchTerm = '') {
     requestAnimationFrame(() => {
         addHarmonyBadges();
         addNorthStarBadges();
+        // Quick-fill pencil for songs missing key/bpm
+        filtered.forEach(function(song) {
+            if (!song.key && !song.bpm) {
+                var item = document.querySelector('.song-item[data-title="' + song.title.replace(/"/g,'&quot;') + '"] .northstar-slot');
+                if (item && !item.nextSibling?.classList?.contains('qf-btn')) {
+                    var btn = document.createElement('span');
+                    btn.className = 'qf-btn';
+                    btn.title = 'Quick-fill key/BPM';
+                    btn.textContent = '✏️';
+                    btn.style.cssText = 'font-size:0.7em;opacity:0.4;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px solid rgba(255,255,255,0.08);transition:opacity 0.15s';
+                    btn.onmouseenter = function(){this.style.opacity='1';};
+                    btn.onmouseleave = function(){this.style.opacity='0.4';};
+                    var t = song.title;
+                    btn.onclick = function(e){e.stopPropagation();songQuickFill(t,e);};
+                    item.after(btn);
+                }
+            }
+        });
         preloadAllStatuses();
         if (statusCacheLoaded) addStatusBadges();
         if (readinessCacheLoaded) addReadinessChains();
@@ -1329,7 +1395,8 @@ function showBandResources(songTitle) {
         renderSongInPlaylists(songTitle),
         populateSongMetadata(songTitle),
         renderReadinessSection(songTitle),
-        renderWoodshedChecklist(songTitle)
+        renderWoodshedChecklist(songTitle),
+        renderMomentsSection(songTitle)
     ]).catch(error => {
         console.error('Error rendering sections:', error);
     });
@@ -5070,6 +5137,8 @@ let isUserSignedIn = false;
 let accessToken = null;
 let tokenClient = null;
 let currentUserEmail = localStorage.getItem('deadcetera_google_email') || null;
+let currentUserName = localStorage.getItem('deadcetera_google_name') || '';
+let currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
 // ^ Pre-populated from last session so Profile shows email before auth re-fires
 
 // Firebase references (set during init)
@@ -5336,6 +5405,10 @@ async function getCurrentUserEmail() {
         });
         const userInfo = await response.json();
         currentUserEmail = userInfo.email;
+        currentUserName = userInfo.name || userInfo.given_name || '';
+        currentUserPicture = userInfo.picture || '';
+        localStorage.setItem('deadcetera_google_name', currentUserName);
+        localStorage.setItem('deadcetera_google_picture', currentUserPicture);
         console.log('👤 Signed in as:', currentUserEmail);
         // Persist email to localStorage so Profile page can show it immediately on reload
         localStorage.setItem('deadcetera_google_email', currentUserEmail);
@@ -5405,32 +5478,118 @@ async function recoverLocalStorageToFirebase() {
 function updateDriveAuthButton() {
     const button = document.getElementById('googleDriveAuthBtn');
     if (!button) return;
-    
+
     if (isUserSignedIn) {
-        button.innerHTML = '<img src="logo.png" alt="" class="conn-logo-pulse" style="width:20px;height:20px;border-radius:5px;display:inline-block;flex-shrink:0;vertical-align:middle"><span class="conn-label" style="font-size:0.82em;font-weight:700;letter-spacing:0.02em;line-height:1;vertical-align:middle">Connected</span>';
-        button.className = 'topbar-btn connected';
-        button.style.cssText = 'background:rgba(16,185,129,0.15)!important;color:#10b981!important;border:1.5px solid rgba(16,185,129,0.4)!important;font-weight:700!important;padding:5px 10px!important;border-radius:10px!important;white-space:nowrap!important;display:inline-flex!important;align-items:center!important;gap:6px!important;line-height:1!important;box-shadow:0 0 10px rgba(16,185,129,0.2)!important;';
-        // Update the hero Sign In button to show Sign Out
-        const heroBtn = document.getElementById('googleDriveAuthBtn2');
-        if (heroBtn) {
-            heroBtn.innerHTML = '👋 Sign Out';
-            heroBtn.style.background = '#64748b';
+        var name = currentUserName || currentUserEmail || '';
+        var parts = name.split(/[ @]/);
+        var initials = parts.length >= 2
+            ? (parts[0][0] + parts[1][0]).toUpperCase()
+            : name.slice(0, 2).toUpperCase() || '?';
+        var customPic = localStorage.getItem('deadcetera_avatar_custom') || '';
+        var picSrc = customPic || currentUserPicture || '';
+
+        if (picSrc) {
+            button.innerHTML = '<img src="' + picSrc + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;display:block">';
+        } else {
+            button.innerHTML = '<span style="display:flex;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:#fff">' + initials + '</span>';
         }
+        button.className = 'topbar-btn';
+        button.style.cssText = 'background:none!important;border:2px solid #22c55e!important;padding:2px!important;border-radius:50%!important;width:36px!important;height:36px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;flex-shrink:0!important;';
+        button.title = (currentUserName || currentUserEmail || 'Signed in') + ' — tap to manage';
+        button.onclick = showAvatarMenu;
+
+        const heroBtn = document.getElementById('googleDriveAuthBtn2');
+        if (heroBtn) { heroBtn.innerHTML = '👋 Sign Out'; heroBtn.style.background = '#64748b'; }
         const heroCaption = document.querySelector('#signInPrompt p');
         if (heroCaption) heroCaption.textContent = 'Signed in as ' + (currentUserEmail || '');
     } else {
-        button.textContent = '👤 Sign In';
+        button.innerHTML = '👤';
         button.className = 'topbar-btn';
-        button.style.cssText = 'background:#667eea;color:#fff;border-color:#667eea;';
+        button.style.cssText = 'background:#667eea!important;color:#fff!important;border:none!important;border-radius:50%!important;width:36px!important;height:36px!important;padding:0!important;font-size:1.1em!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex-shrink:0!important;';
+        button.title = 'Sign in to sync with your bandmates';
+        button.onclick = handleGoogleDriveAuth;
+
         const heroBtn = document.getElementById('googleDriveAuthBtn2');
-        if (heroBtn) {
-            heroBtn.innerHTML = '👤 Sign In';
-            heroBtn.style.background = 'var(--accent)';
-        }
+        if (heroBtn) { heroBtn.innerHTML = '👤 Sign In'; heroBtn.style.background = 'var(--accent)'; }
         const heroCaption = document.querySelector('#signInPrompt p');
         if (heroCaption) heroCaption.textContent = 'Sign in to sync with your bandmates';
     }
 }
+
+function showAvatarMenu() {
+    var existing = document.getElementById('avatarMenuPopup');
+    if (existing) { existing.remove(); return; }
+    var btn = document.getElementById('googleDriveAuthBtn');
+    var rect = btn ? btn.getBoundingClientRect() : { right: window.innerWidth - 8, bottom: 50 };
+    var name = currentUserName || '';
+    var email = currentUserEmail || '';
+    var customPic = localStorage.getItem('deadcetera_avatar_custom') || '';
+    var picSrc = customPic || currentUserPicture || '';
+    var parts = (name || email).split(/[ @]/);
+    var initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : (name||email).slice(0,2).toUpperCase() || '?';
+    var avatarHtml = picSrc
+        ? '<img src="' + picSrc + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2.5px solid #22c55e;flex-shrink:0">'
+        : '<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:1.1em;font-weight:800;color:#fff;border:2.5px solid #22c55e;flex-shrink:0">' + initials + '</div>';
+    var menu = document.createElement('div');
+    menu.id = 'avatarMenuPopup';
+    menu.style.cssText = 'position:fixed;top:' + (rect.bottom + 8) + 'px;right:' + (window.innerWidth - rect.right) + 'px;background:#1e293b;border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:16px;min-width:230px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.6)';
+    menu.innerHTML = ''
+        + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
+        +   avatarHtml
+        +   '<div style="min-width:0"><div style="font-weight:700;font-size:0.9em;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (name || 'Musician') + '</div>'
+        +   '<div style="font-size:0.72em;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + email + '</div>'
+        +   '<div style="font-size:0.68em;color:#22c55e;margin-top:2px;font-weight:600">● Connected</div></div>'
+        + '</div>'
+        + '<div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:10px;display:flex;flex-direction:column;gap:6px">'
+        + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85em;color:#94a3b8;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07)">'
+        +   '🖼️ Upload profile photo'
+        +   '<input type="file" accept="image/*" style="display:none" onchange="avatarUploadPhoto(this)">'
+        + '</label>'
+        + '<button onclick="avatarClearCustom()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);color:#64748b;padding:7px 10px;border-radius:8px;font-size:0.85em;cursor:pointer;text-align:left">🔄 Use Google photo instead</button>'
+        + '<button onclick="avatarSignOut()" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;padding:7px 10px;border-radius:8px;font-size:0.85em;cursor:pointer;text-align:left">🚪 Sign Out</button>'
+        + '</div>';
+    document.body.appendChild(menu);
+    setTimeout(function() {
+        document.addEventListener('click', function h(e) {
+            if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', h); }
+        });
+    }, 100);
+}
+
+function avatarUploadPhoto(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var size = Math.min(img.width, img.height, 128);
+            canvas.width = size; canvas.height = size;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, (img.width-size)/2, (img.height-size)/2, size, size, 0, 0, size, size);
+            localStorage.setItem('deadcetera_avatar_custom', canvas.toDataURL('image/jpeg', 0.85));
+            document.getElementById('avatarMenuPopup')?.remove();
+            updateDriveAuthButton();
+            showToast('👤 Avatar updated!');
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function avatarSignOut() {
+    document.getElementById('avatarMenuPopup')?.remove();
+    handleGoogleDriveAuth();
+}
+
+function avatarClearCustom() {
+    localStorage.removeItem('deadcetera_avatar_custom');
+    document.getElementById('avatarMenuPopup')?.remove();
+    updateDriveAuthButton();
+    showToast('Using Google photo');
+}
+
 
 // ============================================================================
 // AUTHENTICATION
@@ -8702,7 +8861,7 @@ function slSearchSong(input, setIdx) {
     const results = document.getElementById('slSongResults' + setIdx);
     if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
     const matches = (typeof allSongs !== "undefined" ? allSongs : songs || []).filter(s => s.title.toLowerCase().includes(q)).slice(0, 8);
-    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" onclick="slAddSongToSet(${setIdx},'${s.title.replace(/'/g,"\\'")}')">
+    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onclick="slAddSongToSet(${setIdx},this.dataset.title)">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
 }
 function slAddSongToSet(setIdx, title) {
@@ -8731,7 +8890,7 @@ function slRenderSetSongs(setIdx) {
             <span style="color:#475569;cursor:grab;font-size:1em;flex-shrink:0" title="Drag to reorder">\u2807</span>
             <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0">${i + 1}.</span>
             <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
-            ${keyStr}${bpmStr}
+            ${keyStr}${bpmStr}<span id="slvote_${sanitizeFirebasePath(title).replace(/[^a-zA-Z0-9]/g,'_')}" style="display:inline-flex;align-items:center;gap:2px;margin-left:4px;vertical-align:middle"></span>
             <select onchange="slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
                 style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:5px;padding:2px 4px;font-size:0.78em;font-weight:700;cursor:pointer;flex-shrink:0">
                 <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
@@ -8756,6 +8915,96 @@ function slRenderSetSongs(setIdx) {
             slRenderSetSongs(setIdx);
         });
     });
+}
+
+// Band Readiness Meter for setlist
+async function slRenderReadinessMeter() {
+    var container = document.getElementById('slReadinessMeter');
+    if (!container) return;
+    await preloadReadinessCache();
+    var allTitles = [];
+    (window._slSets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : item.title;
+            if (t) allTitles.push(t);
+        });
+    });
+    if (!allTitles.length) { container.innerHTML = ''; return; }
+    var songRows = allTitles.map(function(title) {
+        var scores = readinessCache[title] || {};
+        var vals = BAND_MEMBERS_ORDERED.map(function(m) { return scores[m.key] || 0; }).filter(Boolean);
+        var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0)/vals.length : 0;
+        return { title: title, avg: avg, color: avg ? readinessColor(Math.round(avg)) : '#334155', scores: scores };
+    });
+    var locked   = songRows.filter(function(s){return s.avg>=4;}).length;
+    var unrated  = songRows.filter(function(s){return s.avg===0;}).length;
+    var inProg   = songRows.length - locked - unrated;
+    var pct      = songRows.length ? Math.round(locked/songRows.length*100) : 0;
+    var mc       = pct>=80?'#22c55e':pct>=50?'#f59e0b':'#ef4444';
+    var html = '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;margin-bottom:16px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<span style="font-weight:700;font-size:0.9em">🎯 Band Readiness</span>';
+    html += '<span style="font-size:1.1em;font-weight:800;color:'+mc+'">'+pct+'%</span></div>';
+    html += '<div style="height:8px;background:rgba(255,255,255,0.07);border-radius:4px;overflow:hidden;margin-bottom:10px">';
+    html += '<div style="height:100%;width:'+pct+'%;background:'+mc+';border-radius:4px;transition:width 0.4s ease"></div></div>';
+    html += '<div style="display:flex;gap:14px;font-size:0.75em;margin-bottom:10px">';
+    html += '<span style="color:#22c55e">🔒 '+locked+' locked</span>';
+    html += '<span style="color:#f59e0b">🔧 '+inProg+' in progress</span>';
+    html += '<span style="color:#64748b">❓ '+unrated+' unrated</span></div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px">';
+    songRows.forEach(function(s) {
+        var pctS = s.avg ? Math.round(s.avg/5*100) : 0;
+        var dots = BAND_MEMBERS_ORDERED.map(function(m) {
+            var sc = s.scores[m.key]||0;
+            var c = sc ? readinessColor(sc) : 'rgba(255,255,255,0.1)';
+            return '<span title="'+m.name+': '+( sc||'?' )+'/5" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+c+'"></span>';
+        }).join('');
+        html += '<div style="display:flex;align-items:center;gap:6px">';
+        html += '<span style="font-size:0.72em;color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.title+'</span>';
+        html += '<div style="display:flex;gap:2px;flex-shrink:0">'+dots+'</div>';
+        html += '<div style="width:40px;height:4px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;flex-shrink:0">';
+        html += '<div style="height:100%;width:'+pctS+'%;background:'+s.color+';border-radius:2px"></div></div></div>';
+    });
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+// Song Voting for setlist
+async function slVoteSong(setlistIdx, songTitle, vote) {
+    var memberKey = getCurrentMemberReadinessKey();
+    if (!memberKey) { showToast('Sign in to vote'); return; }
+    var safe = sanitizeFirebasePath(songTitle);
+    var path = bandPath('setlist_votes/'+setlistIdx+'/'+safe+'/'+memberKey);
+    try {
+        var snap = await firebaseDB.ref(path).once('value');
+        if (snap.val() === vote) { await firebaseDB.ref(path).remove(); }
+        else { await firebaseDB.ref(path).set(vote); }
+        slRefreshVotesForSong(setlistIdx, songTitle);
+    } catch(e) { showToast('Could not save vote'); }
+}
+
+async function slRefreshVotesForSong(setlistIdx, songTitle) {
+    var safe = sanitizeFirebasePath(songTitle);
+    var myKey = getCurrentMemberReadinessKey();
+    try {
+        var snap = await firebaseDB.ref(bandPath('setlist_votes/'+setlistIdx+'/'+safe)).once('value');
+        var votes = snap.val() || {};
+        var ups = Object.values(votes).filter(function(v){return v===1;}).length;
+        var downs = Object.values(votes).filter(function(v){return v===-1;}).length;
+        var myVote = myKey?(votes[myKey]||0):0;
+        var safeId = safe.replace(/[^a-zA-Z0-9]/g,'_');
+        var el = document.getElementById('slvote_'+safeId);
+        if (el) el.innerHTML = _slVoteBtns(setlistIdx, songTitle, ups, downs, myVote);
+    } catch(e) {}
+}
+
+function _slVoteBtns(idx, title, ups, downs, myVote) {
+    var st = JSON.stringify(title);
+    var upOn = myVote===1;
+    var dnOn = myVote===-1;
+    var upS = upOn?'background:rgba(34,197,94,0.25);color:#86efac;border-color:rgba(34,197,94,0.5)':'background:rgba(255,255,255,0.04);color:#64748b;border-color:rgba(255,255,255,0.1)';
+    var dnS = dnOn?'background:rgba(239,68,68,0.2);color:#fca5a5;border-color:rgba(239,68,68,0.4)':'background:rgba(255,255,255,0.04);color:#64748b;border-color:rgba(255,255,255,0.1)';
+    return '<button onclick="event.stopPropagation();slVoteSong('+idx+','+st+',1)" style="border:1px solid;border-radius:5px;padding:1px 6px;font-size:0.7em;cursor:pointer;'+upS+'">👍'+(ups?ups:'')+'</button>'+           '<button onclick="event.stopPropagation();slVoteSong('+idx+','+st+',-1)" style="border:1px solid;border-radius:5px;padding:1px 6px;font-size:0.7em;cursor:pointer;margin-left:3px;'+dnS+'">👎'+(downs?downs:'')+'</button>';
 }
 
 async function slEnrichKeyBpm() {
@@ -8787,6 +9036,16 @@ async function slEnrichKeyBpm() {
     }));
     // Re-render all sets now that we have key/bpm
     window._slSets.forEach(function(_, si) { slRenderSetSongs(si); });
+    slRenderReadinessMeter();
+    var _vIdx = window._slEditIdx;
+    if (_vIdx !== undefined) {
+        (window._slSets||[]).forEach(function(set){
+            (set.songs||[]).forEach(function(item){
+                var t = typeof item==='string'?item:item.title;
+                if(t) slRefreshVotesForSong(_vIdx, t);
+            });
+        });
+    }
 }
 
 function slSetSegue(setIdx, songIdx, segueType) {
@@ -8841,6 +9100,7 @@ async function slSaveSetlist() {
 }
 
 async function editSetlist(idx) {
+    window._slEditIdx = idx;
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const sl = data[idx];
     if (!sl) { alert('Setlist not found'); return; }
@@ -8857,6 +9117,7 @@ async function editSetlist(idx) {
             <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" value="${(sl.venue||'').replace(/"/g,'&quot;')}"></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" value="${(sl.notes||'').replace(/"/g,'&quot;')}"></div>
         </div>
+        <div id="slReadinessMeter"></div>
         <div id="slSets">${window._slSets.map((set, si) => `
             <div class="app-card" style="background:rgba(255,255,255,0.02)">
                 <h3 style="color:var(--accent-light)">${set.name||'Set '+(si+1)}</h3>
@@ -8867,6 +9128,8 @@ async function editSetlist(idx) {
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
             <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
+            <button class="btn btn-ghost" onclick="slShareSetlist(${idx})" style="color:#94a3b8">📤 Share</button>
+            <button class="btn btn-ghost" onclick="carePackageSend('gig',${idx})" style="color:#fbbf24;font-size:0.82em">🪂 Pack</button>
             <button class="btn btn-success" onclick="slSaveSetlistEdit(${idx})" style="margin-left:auto">💾 Save Changes</button>
             <button class="btn btn-ghost" onclick="loadSetlists()">Cancel</button>
         </div></div>`;
@@ -8875,6 +9138,312 @@ async function editSetlist(idx) {
     window._slSets.forEach((set, si) => slRenderSetSongs(si));
     slEnrichKeyBpm();
 }
+
+function slShareSetlist(idx) {
+    var sl = (window._slSets !== undefined) ? null : null; // loaded below
+    // Load from Firebase and show share modal
+    loadBandDataFromDrive('_band', 'setlists').then(function(setlists) {
+        setlists = toArray(setlists||[]);
+        var sl = setlists[idx];
+        if (!sl) { showToast('Setlist not found'); return; }
+        _slShowShareModal(sl, idx);
+    });
+}
+
+function _slShowShareModal(sl, idx) {
+    var existing = document.getElementById('slShareModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'slShareModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.7);display:flex;align-items:flex-end;justify-content:center';
+    var name = sl.name || 'Untitled Setlist';
+    var date = sl.date || '';
+    // Build text version
+    var lines = [name + (date?' — '+date:''), ''];
+    (sl.sets||[]).forEach(function(set, si) {
+        lines.push((set.name||'Set '+(si+1)).toUpperCase());
+        (set.songs||[]).forEach(function(item, i) {
+            var t = typeof item==='string'?item:item.title;
+            var key = typeof item==='object'&&item.key?' ['+item.key+']':'';
+            var seg = typeof item==='object'&&item.segue&&item.segue!=='stop'?' →':'';
+            lines.push('  '+(i+1)+'. '+t+key+seg);
+        });
+        lines.push('');
+    });
+    lines.push('Generated by GrooveLinx');
+    var textContent = lines.join('\n');
+    modal.innerHTML = '<div style="background:#1e293b;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px;max-height:80vh;overflow-y:auto">';
+    modal.innerHTML += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
+    modal.innerHTML += '<div style="font-weight:800;font-size:1em">📤 Share Setlist</div>';
+    modal.innerHTML += '<button onclick="document.getElementById(\'slShareModal\').remove()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em">×</button></div>';
+    modal.innerHTML += '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;font-family:monospace;font-size:0.78em;color:#94a3b8;white-space:pre-wrap;max-height:200px;overflow-y:auto;margin-bottom:14px" id="slShareTextPreview">' + textContent.replace(/</g,'&lt;') + '</div>';
+    modal.innerHTML += '<div style="display:flex;flex-direction:column;gap:8px">';
+    modal.innerHTML += '<button onclick="slShareCopyText()" style="background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.35);color:#a5b4fc;padding:10px;border-radius:10px;font-size:0.88em;font-weight:700;cursor:pointer">📋 Copy as Text</button>';
+    modal.innerHTML += '<div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;margin-top:4px">';
+    modal.innerHTML += '<div style="font-size:0.7em;font-weight:700;color:#f59e0b;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px">🪂 Parachute — Emergency Backups</div>';
+    modal.innerHTML += '<button onclick="parachutePrint('+idx+')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;padding:10px;border-radius:10px;font-size:0.88em;font-weight:700;cursor:pointer;width:100%;text-align:left">🖨️ Print / PDF all charts (Kinkos ready)</button>';
+    modal.innerHTML += '<button onclick="parachuteEmail('+idx+')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:10px;border-radius:10px;font-size:0.88em;cursor:pointer;width:100%;text-align:left;margin-top:6px">📧 Email gig pack to myself</button>';
+    modal.innerHTML += '<button onclick="parachutePublicUrl('+idx+')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:10px;border-radius:10px;font-size:0.88em;cursor:pointer;width:100%;text-align:left;margin-top:6px">🔗 Copy public link (no login needed)</button>';
+    modal.innerHTML += '<button onclick="parachuteCacheOffline('+idx+')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:10px;border-radius:10px;font-size:0.88em;cursor:pointer;width:100%;text-align:left;margin-top:6px">💾 Cache offline (survives no WiFi)</button>';
+    var _op = localStorage.getItem('deadcetera_offline_gigpack');
+    if (_op) { try { var _opd = JSON.parse(_op); modal.innerHTML += '<button onclick="parachuteOpenOfflinePack()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:10px;border-radius:10px;font-size:0.88em;cursor:pointer;width:100%;text-align:left;margin-top:6px">📂 Open cached pack: \''+(_opd.name||'?')+"\' ("+new Date(_opd.cachedAt).toLocaleDateString()+')</button>'; } catch(e) {} }
+    modal.innerHTML += '</div></div></div>';
+    modal.innerHTML += '</div></div>';
+    // Store text for copy fn
+    modal.dataset.text = textContent;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+function slShareCopyText() {
+    var modal = document.getElementById('slShareModal');
+    var text = modal ? modal.dataset.text : '';
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function() {
+        showToast('📋 Copied to clipboard!');
+    }).catch(function() {
+        // Fallback
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy');
+        ta.remove();
+        showToast('📋 Copied!');
+    });
+}
+
+async function slSharePrint(idx) {
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var sl = setlists[idx];
+    if (!sl) return;
+    var name = sl.name || 'Setlist';
+    var date = sl.date || '';
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + name + '</title>';
+    html += '<style>body{font-family:Georgia,serif;max-width:600px;margin:40px auto;padding:0 20px;color:#111}h1{font-size:1.6em;margin-bottom:4px}';
+    html += '.meta{color:#666;font-size:0.85em;margin-bottom:24px}.set-header{font-size:0.75em;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#888;border-bottom:1px solid #ddd;padding-bottom:4px;margin:20px 0 10px}';
+    html += '.song{display:flex;align-items:baseline;gap:8px;padding:4px 0;border-bottom:1px solid #f0f0f0}.num{color:#999;min-width:24px;font-size:0.85em}.title{flex:1;font-size:1em}.chip{font-size:0.72em;color:#666;background:#f5f5f5;padding:1px 6px;border-radius:4px}';
+    html += '.footer{margin-top:32px;font-size:0.75em;color:#aaa;text-align:center}@media print{.footer{position:fixed;bottom:20px;width:100%}}</style></head><body>';
+    html += '<h1>' + name + '</h1>';
+    html += '<div class="meta">' + (date?date+' · ':'')+'GrooveLinx</div>';
+    (sl.sets||[]).forEach(function(set, si) {
+        html += '<div class="set-header">' + (set.name||'Set '+(si+1)) + '</div>';
+        (set.songs||[]).forEach(function(item, i) {
+            var t = typeof item==='string'?item:item.title;
+            var key = typeof item==='object'&&item.key?'<span class="chip">'+item.key+'</span>':'';
+            var bpm = typeof item==='object'&&item.bpm?'<span class="chip">⚡'+item.bpm+'</span>':'';
+            var seg = typeof item==='object'&&item.segue&&item.segue!=='stop'?'<span style="color:#999;margin-left:4px">→</span>':'';
+            html += '<div class="song"><span class="num">'+(i+1)+'.</span><span class="title">'+ t + seg +'</span>'+key+bpm+'</div>';
+        });
+    });
+    html += '<div class="footer">Generated by GrooveLinx — Where bands lock in.</div>';
+    html += '</body></html>';
+    var win = window.open('','_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(function(){win.print();},400);
+}
+
+// PARACHUTE SYSTEM
+// Offline PDF gig pack, email gig pack, public read-only URL, offline cache
+
+async function parachuteLoadSetlistData(sl) {
+    var songs = [];
+    (sl.sets||[]).forEach(function(set, si) {
+        (set.songs||[]).forEach(function(item) {
+            var t = typeof item==='string'?item:item.title;
+            if (t) songs.push({ title:t, setName:set.name||'Set '+(si+1), key:'', bpm:'', chart:'', segue:typeof item==='object'?item.segue:'stop' });
+        });
+    });
+    await Promise.all(songs.map(async function(s) {
+        var sd = allSongs.find(function(a){return a.title===s.title;});
+        s.key = sd&&sd.key?sd.key:'';
+        s.bpm = sd&&sd.bpm?String(sd.bpm):'';
+        try {
+            var cd = await loadBandDataFromDrive(s.title, 'chart');
+            if (cd && cd.text && cd.text.trim()) s.chart = cd.text.trim();
+        } catch(e) {}
+    }));
+    return songs;
+}
+
+function parachuteBuildHtml(sl, songs) {
+    var name = sl.name || 'Setlist';
+    var date = sl.date || '';
+    var h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+name+'</title>';
+    h += '<style>';
+    h += '*{box-sizing:border-box;margin:0;padding:0}';
+    h += 'body{font-family:Georgia,serif;font-size:13px;color:#111;background:#fff;padding:24px 32px}';
+    h += '.cover{text-align:center;padding:40px 0 32px;border-bottom:2px solid #333;margin-bottom:28px}';
+    h += '.cover h1{font-size:2.2em;font-weight:700;margin-bottom:6px}';
+    h += '.cover .meta{font-size:0.85em;color:#666;margin-top:4px}';
+    h += '.toc{margin-bottom:28px;border:1px solid #ddd;border-radius:4px;padding:16px}';
+    h += '.toc h3{font-size:0.8em;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:10px}';
+    h += '.toc-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;font-size:0.88em}';
+    h += '.song-page{page-break-before:always;padding-top:8px}';
+    h += '.song-page:first-of-type{page-break-before:auto}';
+    h += '.song-header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:12px}';
+    h += '.song-title{font-size:1.4em;font-weight:700}';
+    h += '.chip{background:#f0f0f0;padding:2px 8px;border-radius:4px;border:1px solid #ddd;font-size:0.78em;margin-left:6px}';
+    h += '.chart{font-family:Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;background:#fafafa;border:1px solid #e8e8e8;border-radius:4px;padding:12px 14px;margin-top:4px}';
+    h += '.no-chart{color:#999;font-style:italic;font-size:0.88em;padding:10px 0}';
+    h += '.footer{margin-top:32px;padding-top:12px;border-top:1px solid #ddd;font-size:0.72em;color:#aaa;text-align:center}';
+    h += '@media print{.song-page{page-break-before:always}.song-page:first-of-type{page-break-before:auto}body{padding:16px 20px}}';
+    h += '</style></head><body>';
+    h += '<div class="cover"><h1>'+name+'</h1>';
+    if (date) h += '<div class="meta">'+date+'</div>';
+    h += '<div class="meta" style="margin-top:8px;font-size:0.75em;color:#aaa">GrooveLinx Emergency Gig Pack \u2014 Printed '+new Date().toLocaleDateString()+'</div></div>';
+    // TOC
+    h += '<div class="toc"><h3>Setlist</h3>';
+    var num = 0, lastSet = '';
+    songs.forEach(function(s) {
+        if (s.setName !== lastSet) {
+            if (lastSet) h += '<div style="height:4px"></div>';
+            h += '<div style="font-size:0.7em;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin:6px 0 3px">'+s.setName+'</div>';
+            lastSet = s.setName;
+        }
+        num++;
+        var chips = (s.key?s.key:'')+(s.key&&s.bpm?' \u00b7 ':'')+( s.bpm?s.bpm+' bpm':'');
+        var seg = {flow:' \u2192',segue:' ~',cutoff:' |'}[s.segue]||'';
+        h += '<div class="toc-row"><span><b>'+num+'.</b> '+s.title+seg+'</span><span style="color:#888;font-size:0.85em">'+chips+'</span></div>';
+    });
+    h += '</div>';
+    // Per-song pages
+    songs.forEach(function(s) {
+        h += '<div class="song-page">';
+        h += '<div class="song-header"><span class="song-title">'+s.title+'</span><span>';
+        if (s.key) h += '<span class="chip">\ud83c\udfb5 '+s.key+'</span>';
+        if (s.bpm) h += '<span class="chip">\u26a1'+s.bpm+' BPM</span>';
+        h += '</span></div>';
+        if (s.chart) {
+            h += '<div class="chart">'+s.chart.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>';
+        } else {
+            h += '<div class="no-chart">No chord chart saved yet.</div>';
+        }
+        h += '</div>';
+    });
+    h += '<div class="footer">GrooveLinx Emergency Gig Pack \u2014 '+name+(date?' \u2014 '+date:'')+' \u2014 Printed '+new Date().toLocaleDateString()+'</div>';
+    h += '</body></html>';
+    return h;
+}
+
+async function parachutePrint(slIdx) {
+    document.getElementById('slShareModal')?.remove();
+    showToast('\ud83c\udfa2 Loading charts...');
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
+    var sl = setlists[slIdx];
+    if (!sl) { showToast('Setlist not found'); return; }
+    var songs = await parachuteLoadSetlistData(sl);
+    var html = parachuteBuildHtml(sl, songs);
+    var win = window.open('','_blank');
+    if (!win) { showToast('Pop-up blocked \u2014 allow pop-ups and try again'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(function(){win.print();}, 600);
+}
+
+async function parachuteEmail(slIdx) {
+    document.getElementById('slShareModal')?.remove();
+    showToast('\ud83c\udfa2 Building email pack...');
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
+    var sl = setlists[slIdx];
+    if (!sl) { showToast('Setlist not found'); return; }
+    var songs = await parachuteLoadSetlistData(sl);
+    var body = (sl.name||'Setlist')+(sl.date?' \u2014 '+sl.date:'')+'\n';
+    body += 'Emergency Gig Pack from GrooveLinx\n';
+    body += '='.repeat(40)+'\n\n';
+    var lastSet = '';
+    songs.forEach(function(s, i) {
+        if (s.setName !== lastSet) {
+            body += '\n\u2500\u2500 '+s.setName.toUpperCase()+' \u2500\u2500\n';
+            lastSet = s.setName;
+        }
+        body += '\n'+(i+1)+'. '+s.title;
+        if (s.key||s.bpm) body += ' ('+[s.key,s.bpm&&s.bpm+' BPM'].filter(Boolean).join(', ')+')';
+        body += '\n';
+        if (s.chart) body += s.chart+'\n';
+        else body += '(no chart saved)\n';
+    });
+    var subject = encodeURIComponent('GrooveLinx Gig Pack: '+(sl.name||'Setlist')+(sl.date?' \u2014 '+sl.date:''));
+    var to = encodeURIComponent(currentUserEmail||'');
+    var mailto = 'mailto:'+to+'?subject='+subject+'&body='+encodeURIComponent(body);
+    if (mailto.length > 8000) {
+        showToast('\ud83d\udce7 Pack too large for email \u2014 opening print view instead');
+        setTimeout(function(){parachutePrint(slIdx);}, 800);
+        return;
+    }
+    window.location.href = mailto;
+    showToast('\ud83d\udce7 Opening email...');
+}
+
+async function parachutePublicUrl(slIdx) {
+    showToast('\ud83d\udd17 Building public link...');
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
+    var sl = setlists[slIdx];
+    if (!sl) { showToast('Setlist not found'); return; }
+    var songs = await parachuteLoadSetlistData(sl);
+    var payload = JSON.stringify({
+        name: sl.name||'Setlist',
+        date: sl.date||'',
+        songs: songs.map(function(s){return {title:s.title,key:s.key,bpm:s.bpm,chart:s.chart,setName:s.setName,segue:s.segue};})
+    });
+    var b64 = btoa(unescape(encodeURIComponent(payload)));
+    if (b64.length > 200000) {
+        showToast('\u26a0\ufe0f Pack too large for URL \u2014 use Print or Email instead');
+        return;
+    }
+    var url = window.location.origin + window.location.pathname + '?gigpack=1#' + b64;
+    navigator.clipboard.writeText(url).then(function() {
+        showToast('\ud83d\udd17 Public link copied! Anyone can open in any browser.');
+    }).catch(function() {
+        prompt('Copy this link:', url);
+    });
+}
+
+function parachuteCheckUrlHash() {
+    if (window.location.search.indexOf('gigpack=1') < 0) return false;
+    var hash = window.location.hash;
+    if (!hash) return false;
+    try {
+        var payload = JSON.parse(decodeURIComponent(escape(atob(hash.slice(1)))));
+        if (!payload || !payload.songs) return false;
+        var html = parachuteBuildHtml({name:payload.name,date:payload.date}, payload.songs);
+        document.open(); document.write(html); document.close();
+        return true;
+    } catch(e) { return false; }
+}
+
+async function parachuteCacheOffline(slIdx) {
+    showToast('\ud83d\udcbe Loading charts for offline cache...');
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
+    var sl = setlists[slIdx];
+    if (!sl) { showToast('Setlist not found'); return; }
+    var songs = await parachuteLoadSetlistData(sl);
+    var pack = { name:sl.name, date:sl.date, songs:songs, cachedAt:new Date().toISOString() };
+    try {
+        localStorage.setItem('deadcetera_offline_gigpack', JSON.stringify(pack));
+        showToast('\ud83d\udcbe Gig pack cached for offline use! \ud83c\udf89');
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({type:'CACHE_GIG_PACK'});
+        }
+    } catch(e) {
+        showToast('Could not cache: '+e.message);
+    }
+}
+
+function parachuteOpenOfflinePack() {
+    var raw = localStorage.getItem('deadcetera_offline_gigpack');
+    if (!raw) { showToast('No offline gig pack cached yet'); return; }
+    try {
+        var pack = JSON.parse(raw);
+        var html = parachuteBuildHtml({name:pack.name,date:pack.date}, pack.songs);
+        var win = window.open('','_blank');
+        if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(function(){win.print();},400); }
+        else { document.open(); document.write(html); document.close(); }
+    } catch(e) { showToast('Could not open pack'); }
+}
+
 
 async function slSaveSetlistEdit(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
@@ -8915,7 +9484,8 @@ async function editGig(idx) {
     const g = gigData[idx];
     if (!g) return;
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
-    const venueOpts = venues.map(v => `<option value="${v.name||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${v.name||''}${v.address?' \u2014 '+v.address:''}</option>`).join('');
+    venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${v.name||''}</option>`).join('');
     const el = document.getElementById('gigsList');
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Edit Gig</h3>
@@ -8937,6 +9507,12 @@ async function editGig(idx) {
             <div class="form-row"><label class="form-label">End Time</label><input class="app-input" id="gigEndTime" type="time" value="${g.endTime||''}"></div>
             <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" value="${(g.soundPerson||'').replace(/"/g,'&quot;')}"></div>
             <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
+            <select class="app-select" id="gigLinkedSetlist">
+                <option value="">-- None --</option>
+                ${(window._cachedSetlists||[]).map(sl => `<option value="${(sl.name||'').replace(/"/g,'&quot;')}" ${(g.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
+            </select>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
         <div style="display:flex;gap:8px">
@@ -8960,6 +9536,7 @@ async function saveGigEdit(idx) {
         soundPerson:   document.getElementById('gigSound')?.value,
         contact:       document.getElementById('gigContact')?.value,
         notes:         document.getElementById('gigNotes')?.value,
+        linkedSetlist: document.getElementById('gigLinkedSetlist')?.value || '',
         updated: new Date().toISOString()
     };
     await saveBandDataToDrive('_band', 'gigs', gigData);
@@ -9665,8 +10242,9 @@ async function calAddEvent(date, editIdx, existing) {
         `<option value="${(sl.name||'').replace(/"/g,'&quot;')}" ${(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
     ).join('');
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     const venueOptsCal = venues.map(v =>
-        `<option value="${(v.name||'').replace(/"/g,'&quot;')}" ${(ev.venue||'')===(v.name||'')?'selected':''}>${v.name||'Unnamed'}${v.address?' — '+v.address:''}</option>`
+        `<option value="${(v.name||'').replace(/"/g,'&quot;')}" ${(ev.venue||'')===(v.name||'')?'selected':''}>${v.name||'Unnamed'}</option>`
     ).join('');
     const showSetlist = ev.type === 'gig';
     const showVenue   = ev.type === 'gig';
@@ -9774,6 +10352,27 @@ async function calSaveEvent(editIdx) {
         events.push(ev);
     }
     await saveBandDataToDrive('_band', 'calendar_events', events);
+    // If this is a gig event, also sync to the Gigs page
+    if (ev.type === 'gig') {
+        const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        const gigKey = (ev.venue||'') + '|' + (ev.date||'');
+        const existingIdx = existingGigs.findIndex(g => ((g.venue||'')+'|'+(g.date||'')) === gigKey);
+        const gigRecord = {
+            venue: ev.venue || ev.title || '',
+            date: ev.date || '',
+            startTime: ev.time || '',
+            notes: ev.notes || '',
+            linkedSetlist: ev.linkedSetlist || '',
+            updated: new Date().toISOString()
+        };
+        if (existingIdx >= 0) {
+            existingGigs[existingIdx] = { ...existingGigs[existingIdx], ...gigRecord };
+        } else {
+            gigRecord.created = new Date().toISOString();
+            existingGigs.push(gigRecord);
+        }
+        await saveBandDataToDrive('_band', 'gigs', existingGigs);
+    }
     document.getElementById('calEventFormArea').innerHTML = '';
     loadCalendarEvents();
 }
@@ -9797,6 +10396,247 @@ const NOTIF_EVENTS = {
     blocked_dates:    { label: 'Blocked Dates Updated',      icon: '🚫', desc: 'When someone updates their availability' },
     announcements:    { label: 'Band Announcements',         icon: '📢', desc: 'General announcements (always recommended)' },
 };
+
+// ══ CARE PACKAGE SYSTEM ══════════════════════════════════════════════════════
+// Builds a full pre-gig/rehearsal pack (setlist + charts + crib notes),
+// stores it in Firebase, returns a short URL served by the Cloudflare Worker.
+// Bandmates tap the link — standalone page, no login, no app required.
+
+var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+
+// Main entry: called from Notifications page
+async function carePackageSend(type, preselectedSlIdx) {
+    // type = 'rehearsal' | 'gig'
+    var modal = document.getElementById('carePackageModal');
+    if (modal) { modal.remove(); }
+
+    // Build picker modal
+    var m = document.createElement('div');
+    m.id = 'carePackageModal';
+    m.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.75);display:flex;align-items:flex-end;justify-content:center';
+
+    var typeLabel = type === 'gig' ? '🎤 Gig Pack' : '🎸 Rehearsal Pack';
+    var typeColor = type === 'gig' ? '#f59e0b' : '#818cf8';
+
+    m.innerHTML = `
+    <div style="background:#1e293b;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="font-weight:800;font-size:1em;color:${typeColor}">${typeLabel}</div>
+        <button onclick="document.getElementById('carePackageModal').remove()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;width:28px;height:28px;border-radius:50%;cursor:pointer">×</button>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:0.8em;color:#64748b;display:block;margin-bottom:6px">Select Setlist</label>
+        <select id="cpSetlistPicker" class="app-select" style="width:100%"><option value="">Loading...</option></select>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:0.8em;color:#64748b;display:block;margin-bottom:6px">Add a note (optional)</label>
+        <input id="cpNote" class="app-input" placeholder="e.g. Bring your A-game — Dark Star is in the set" style="width:100%;font-size:0.88em">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:0.8em;color:#64748b;display:block;margin-bottom:6px">Include crib notes for each member?</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88em">
+          <input type="checkbox" id="cpIncludeCribs" checked style="width:16px;height:16px">
+          Yes — each bandmate sees their own crib notes
+        </label>
+      </div>
+      <button onclick="carePackageBuild('${type}')" style="width:100%;background:linear-gradient(135deg,${typeColor},rgba(255,255,255,0.8));background:${type==='gig'?'rgba(245,158,11,0.2)':'rgba(129,140,248,0.2)'};border:1px solid ${type==='gig'?'rgba(245,158,11,0.4)':'rgba(129,140,248,0.4)'};color:${typeColor};padding:12px;border-radius:12px;font-size:0.9em;font-weight:700;cursor:pointer;margin-bottom:8px" id="cpBuildBtn">
+        📦 Build & Send Care Package
+      </button>
+      <p style="font-size:0.72em;color:#475569;text-align:center">Loads all charts from Firebase → stores pack → sends SMS with tap-to-open link</p>
+    </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', function(e) { if (e.target === m) m.remove(); });
+
+    // Populate setlist picker
+    try {
+        var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        var sel = document.getElementById('cpSetlistPicker');
+        if (setlists.length === 0) {
+            sel.innerHTML = '<option value="">No setlists yet — build one first</option>';
+        } else {
+            sel.innerHTML = setlists.map(function(sl, i) {
+                return '<option value="' + i + '">' + (sl.name || 'Setlist ' + (i+1)) + (sl.date ? ' — ' + sl.date : '') + '</option>';
+            }).join('');
+            // Pre-select if called from setlist editor
+            if (preselectedSlIdx !== undefined && sel.options[preselectedSlIdx]) {
+                sel.selectedIndex = preselectedSlIdx;
+            }
+        }
+    } catch(e) {
+        document.getElementById('cpSetlistPicker').innerHTML = '<option value="">Error loading setlists</option>';
+    }
+}
+
+async function carePackageBuild(type) {
+    var btn = document.getElementById('cpBuildBtn');
+    var slIdx = parseInt(document.getElementById('cpSetlistPicker')?.value);
+    var note = (document.getElementById('cpNote')?.value || '').trim();
+    var includeCribs = document.getElementById('cpIncludeCribs')?.checked;
+
+    if (isNaN(slIdx)) { showToast('Select a setlist first'); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading charts...'; }
+
+    try {
+        var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        var sl = setlists[slIdx];
+        if (!sl) { showToast('Setlist not found'); return; }
+
+        // Load songs + charts using existing parachute loader
+        var songs = await parachuteLoadSetlistData(sl);
+
+        // Optionally load crib notes per member per song
+        if (includeCribs) {
+            if (btn) btn.textContent = '⏳ Loading crib notes...';
+            await Promise.all(songs.map(async function(s) {
+                s.cribs = {};
+                try {
+                    var path = bandPath('songs/' + sanitizeFirebasePath(s.title) + '/personal_tabs');
+                    var snap = await firebaseDB.ref(path).once('value');
+                    var tabs = snap.val();
+                    if (tabs && Array.isArray(tabs)) {
+                        var emailToKey = {
+                            'drewmerrill1029@gmail.com':'drew','cmjalbert@gmail.com':'chris',
+                            'brian@hrestoration.com':'brian','pierce.d.hale@gmail.com':'pierce',
+                            'jnault@fegholdings.com':'jay'
+                        };
+                        tabs.forEach(function(tab) {
+                            var mKey = tab.memberKey || emailToKey[tab.addedBy] || null;
+                            if (mKey && tab.notes) s.cribs[mKey] = tab.notes;
+                        });
+                    }
+                } catch(e) {}
+            }));
+        }
+
+        // Build pack object
+        var packId = 'pack_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+        var expiresAt = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(); // 14 days
+        var pack = {
+            name: sl.name || 'Setlist',
+            date: sl.date || '',
+            type: type,
+            note: note,
+            songs: songs,
+            createdBy: currentUserEmail || 'band',
+            createdAt: new Date().toISOString(),
+            expiresAt: expiresAt
+        };
+
+        if (btn) btn.textContent = '⏳ Saving to Firebase...';
+
+        // Save to Firebase — two paths:
+        // 1. Band-scoped path (for band record-keeping)
+        var fbPath = bandPath('care_packages/' + packId);
+        await firebaseDB.ref(fbPath).set(pack);
+        // 2. Public top-level path — readable by Cloudflare Worker without auth
+        //    Firebase rules: /care_packages_public/{packId} .read: true
+        try { await firebaseDB.ref('care_packages_public/' + packId).set(pack); }
+        catch(epub) { console.warn('Public pack path failed (check Firebase rules):', epub.message); }
+
+        // Build the URL — worker serves GET /pack/:id
+        var packUrl = WORKER_BASE + '/pack/' + packId;
+
+        // Close builder modal
+        document.getElementById('carePackageModal')?.remove();
+
+        // Show send modal with URL + per-member links
+        carePackageShowSendModal(pack, packId, packUrl);
+
+    } catch(e) {
+        showToast('Error building pack: ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '📦 Build & Send Care Package'; }
+    }
+}
+
+function carePackageShowSendModal(pack, packId, packUrl) {
+    var m = document.createElement('div');
+    m.id = 'carePackageSendModal';
+    m.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.75);display:flex;align-items:flex-end;justify-content:center';
+
+    var typeLabel = pack.type === 'gig' ? '🎤 Gig Pack' : '🎸 Rehearsal Pack';
+    var typeColor = pack.type === 'gig' ? '#f59e0b' : '#818cf8';
+
+    // Per-member personal links (adds ?m=memberKey so they see their crib notes)
+    var memberKeys = ['drew','chris','brian','pierce','jay'];
+    var memberNames = {drew:'Drew',chris:'Chris',brian:'Brian',pierce:'Pierce',jay:'Jay'};
+    var memberLinks = memberKeys.map(function(k) {
+        return {key:k, name:memberNames[k], url: packUrl + '?m=' + k};
+    });
+
+    var memberLinkHtml = memberLinks.map(function(ml) {
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">' +
+            '<span style="font-size:0.85em;flex:1;color:#cbd5e1">' + ml.name + '</span>' +
+            '<button onclick="cpCopyLink(\'' + ml.url + '\')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#64748b;padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">📋</button>' +
+            '<button onclick="cpTextMember(\'' + ml.key + '\',\'' + packUrl + '\')" style="background:rgba(129,140,248,0.1);border:1px solid rgba(129,140,248,0.2);color:#a5b4fc;padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">💬 Text</button>' +
+            '</div>';
+    }).join('');
+
+    var expiryLabel = new Date(pack.expiresAt).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+
+    m.innerHTML = `
+    <div style="background:#1e293b;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-weight:800;color:#22c55e">✅ Pack Ready!</div>
+        <button onclick="document.getElementById('carePackageSendModal').remove()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;width:28px;height:28px;border-radius:50%;cursor:pointer">×</button>
+      </div>
+      <div style="font-size:0.8em;color:#64748b;margin-bottom:14px">${typeLabel} · Expires ${expiryLabel}</div>
+
+      <!-- Universal link -->
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:0.7em;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Universal Link (no login)</div>
+        <div style="font-size:0.72em;color:#818cf8;word-break:break-all;margin-bottom:8px">${packUrl}</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="cpCopyLink('${packUrl}')" style="flex:1;background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#a5b4fc;padding:7px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer">📋 Copy</button>
+          <button onclick="cpSMSAll('${packUrl}','${pack.name}','${pack.date||''}')" style="flex:1;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:7px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer">💬 Text Everyone</button>
+        </div>
+      </div>
+
+      <!-- Per-member links -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:16px">
+        <div style="font-size:0.7em;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Personal Links (includes their crib notes)</div>
+        ${memberLinkHtml}
+      </div>
+
+      <button onclick="document.getElementById('carePackageSendModal').remove()" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:10px;border-radius:12px;font-size:0.85em;cursor:pointer">Done</button>
+    </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', function(e) { if (e.target === m) m.remove(); });
+}
+
+function cpCopyLink(url) {
+    navigator.clipboard.writeText(url).then(function() {
+        showToast('📋 Link copied!');
+    }).catch(function() {
+        prompt('Copy this link:', url);
+    });
+}
+
+async function cpSMSAll(packUrl, slName, slDate) {
+    var phones = await notifGetAllPhones();
+    var label = slName + (slDate ? ' — ' + slDate : '');
+    var msg = '🎸 GrooveLinx Care Package: ' + label + '\n\nEverything you need — setlist, charts, your crib notes. No app login needed.\n\nTap to open: ' + packUrl;
+    if (phones.length === 0) {
+        notifShowSMSCopyModal(msg, 'No phone numbers saved yet — add them in the Band Contact Directory.');
+        return;
+    }
+    notifSendSMS(phones, msg);
+}
+
+async function cpTextMember(memberKey, basePackUrl) {
+    var contacts = await loadBandDataFromDrive('_band', 'band_contacts') || {};
+    var contact = contacts[memberKey];
+    var phone = contact && contact.phone;
+    var name = {drew:'Drew',chris:'Chris',brian:'Brian',pierce:'Pierce',jay:'Jay'}[memberKey] || memberKey;
+    var personalUrl = basePackUrl + '?m=' + memberKey;
+    var msg = 'Hey ' + name + '! 🎸 Here\'s your personalized GrooveLinx care package — setlist, charts, and your crib notes all in one tap:\n\n' + personalUrl;
+    if (!phone) {
+        notifShowSMSCopyModal(msg, name + '\'s phone number isn\'t saved yet. Message copied — paste it into your text app.');
+        return;
+    }
+    window.open('sms:' + phone + '?body=' + encodeURIComponent(msg));
+}
+
 
 async function renderNotificationsPage(el) {
     el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading...</div>';
@@ -9889,6 +10729,35 @@ async function renderNotificationsPage(el) {
             <button class="btn btn-primary" style="width:100%" onclick="notifSendPracticePlanPush()">🔔 Send Push Notification</button>
         </div>
         <p style="font-size:0.75em;color:var(--text-dim);margin-top:8px">SMS opens your Messages app pre-filled with the plan. Push sends an in-app alert.</p>
+    </div>
+
+
+    <!-- CARE PACKAGE -->
+    <div class="app-card" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(102,126,234,0.1),rgba(16,185,129,0.06));border-color:rgba(102,126,234,0.3)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <span style="font-size:2em">🪂</span>
+            <div>
+                <h3 style="margin:0;color:#a5b4fc">Send Care Package</h3>
+                <p style="color:var(--text-dim);font-size:0.8em;margin:3px 0 0">One tap → your bandmates get every chart, key, BPM &amp; their crib notes. No app. No login.</p>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+            <button onclick="carePackageSend('rehearsal')" style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#a5b4fc;padding:12px 8px;border-radius:12px;font-size:0.88em;font-weight:700;cursor:pointer;text-align:center">
+                <div style="font-size:1.4em;margin-bottom:4px">🎸</div>
+                <div>Rehearsal Pack</div>
+                <div style="font-size:0.72em;color:#64748b;margin-top:2px;font-weight:400">Charts + crib notes</div>
+            </button>
+            <button onclick="carePackageSend('gig')" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:12px 8px;border-radius:12px;font-size:0.88em;font-weight:700;cursor:pointer;text-align:center">
+                <div style="font-size:1.4em;margin-bottom:4px">🎤</div>
+                <div>Gig Pack</div>
+                <div style="font-size:0.72em;color:#64748b;margin-top:2px;font-weight:400">Full setlist + all charts</div>
+            </button>
+        </div>
+        <div style="font-size:0.72em;color:#475569;display:flex;gap:12px;flex-wrap:wrap">
+            <span>✓ Personalized per member</span>
+            <span>✓ No app required</span>
+            <span>✓ Expires in 14 days</span>
+        </div>
     </div>
 
     <!-- CUSTOM ANNOUNCEMENT -->
@@ -10150,6 +11019,354 @@ async function notifGetAllPhones() {
     Object.entries(contacts).forEach(([key, c]) => { if (!bandMembers[key] && c.phone) phones.push(c.phone); });
     return phones;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// CARE PACKAGE SYSTEM
+// Curated, server-rendered gig/rehearsal pack delivered via SMS.
+// Flow: buildPack → save to Firebase → worker serves /pack/:id → SMS link
+// ══════════════════════════════════════════════════════════════════════════
+
+var WORKER_URL = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+var FIREBASE_DB_URL = 'https://deadcetera-35424-default-rtdb.firebaseio.com';
+
+// ── Unique pack ID generator ──────────────────────────────────────────────
+function carePackageGenId() {
+    var chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // no 0/O/1/I confusion
+    var id = '';
+    for (var i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    return id;
+}
+
+// ── Load all data for a setlist (charts + key/bpm + crib notes per member) ─
+async function carePackageLoadSongs(sl) {
+    var songs = [];
+    (sl.sets || []).forEach(function(set, si) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : item.title;
+            if (t) songs.push({
+                title: t,
+                setName: set.name || 'Set ' + (si + 1),
+                key: '',
+                bpm: '',
+                chart: '',
+                cribs: {},
+                segue: typeof item === 'object' ? (item.segue || 'stop') : 'stop'
+            });
+        });
+    });
+
+    // Load key/bpm + chart + crib notes for each song in parallel
+    await Promise.all(songs.map(async function(s) {
+        // Key + BPM from allSongs cache
+        var sd = allSongs.find(function(a) { return a.title === s.title; });
+        s.key = sd && sd.key ? sd.key : '';
+        s.bpm = sd && sd.bpm ? String(sd.bpm) : '';
+
+        // Chord chart
+        try {
+            var cd = await loadBandDataFromDrive(s.title, 'chart');
+            if (cd && cd.text && cd.text.trim()) s.chart = cd.text.trim();
+        } catch (e) {}
+
+        // Crib notes: personal tabs text per member
+        try {
+            var tabs = await loadPersonalTabs(s.title) || [];
+            tabs.forEach(function(tab) {
+                var mk = tab.memberKey;
+                if (mk && tab.notes) {
+                    if (!s.cribs[mk]) s.cribs[mk] = '';
+                    s.cribs[mk] += (s.cribs[mk] ? '\n' : '') + (tab.label ? tab.label + ': ' : '') + tab.notes;
+                }
+            });
+        } catch (e) {}
+    }));
+
+    return songs;
+}
+
+// ── Save pack to Firebase ─────────────────────────────────────────────────
+async function carePackageSave(packData) {
+    var packId = carePackageGenId();
+    var path = bandPath('care_packages/' + packId);
+    await firebaseDB.ref(path).set(packData);
+
+    // Also write to public node (no bandPath prefix) so worker can read it
+    // Worker reads /bands/deadcetera/care_packages/:id
+    var publicPath = 'bands/deadcetera/care_packages/' + packId;
+    await firebaseDB.ref(publicPath).set(packData);
+
+    return packId;
+}
+
+// ── Main entry: show the care package send modal ──────────────────────────
+async function carePackageShowModal() {
+    var existing = document.getElementById('carePackageModal');
+    if (existing) existing.remove();
+
+    // Load setlists + calendar events for pickers
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var today = new Date().toISOString().split('T')[0];
+    var upcoming = events.filter(function(e) { return (e.type === 'rehearsal' || e.type === 'gig') && e.date >= today; })
+        .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+
+    var modal = document.createElement('div');
+    modal.id = 'carePackageModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:5100;background:rgba(0,0,0,0.75);display:flex;align-items:flex-end;justify-content:center';
+
+    var slOptions = setlists.map(function(sl, i) {
+        return '<option value="' + i + '">' + (sl.name || 'Untitled Setlist') + (sl.date ? ' — ' + sl.date : '') + '</option>';
+    }).join('');
+
+    var eventOptions = upcoming.length
+        ? upcoming.map(function(e) {
+            var icon = e.type === 'gig' ? '🎤' : '🎸';
+            return '<option value="' + e.date + '">' + icon + ' ' + (e.title || e.type) + ' — ' + e.date + '</option>';
+          }).join('')
+        : '<option value="">No upcoming events</option>';
+
+    modal.innerHTML = '<div style="background:#1e293b;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px;max-height:85vh;overflow-y:auto">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<div>' +
+        '<div style="font-weight:800;font-size:1.05em">🪂 Send Care Package</div>' +
+        '<div style="font-size:0.75em;color:#64748b;margin-top:2px">Delivers charts + crib notes to the whole band — no app needed</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'carePackageModal\').remove()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em;flex-shrink:0">×</button>' +
+        '</div>' +
+
+        '<div style="display:flex;flex-direction:column;gap:12px">' +
+
+        '<div>' +
+        '<label style="font-size:0.75em;color:#64748b;display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Type</label>' +
+        '<div style="display:flex;gap:8px">' +
+        '<button id="cpTypeRehearsal" onclick="cpSetType(\'rehearsal\')" style="flex:1;padding:8px;border-radius:8px;font-size:0.85em;font-weight:600;cursor:pointer;background:rgba(129,140,248,0.2);border:1px solid rgba(129,140,248,0.4);color:#a5b4fc">🎸 Rehearsal</button>' +
+        '<button id="cpTypeGig" onclick="cpSetType(\'gig\')" style="flex:1;padding:8px;border-radius:8px;font-size:0.85em;font-weight:600;cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#64748b">🎤 Gig</button>' +
+        '</div>' +
+        '</div>' +
+
+        '<div>' +
+        '<label style="font-size:0.75em;color:#64748b;display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Setlist</label>' +
+        '<select id="cpSetlistPicker" class="app-select" style="width:100%;font-size:0.88em">' +
+        (slOptions || '<option value="">No setlists yet</option>') +
+        '</select>' +
+        '</div>' +
+
+        '<div>' +
+        '<label style="font-size:0.75em;color:#64748b;display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Event (optional)</label>' +
+        '<select id="cpEventPicker" class="app-select" style="width:100%;font-size:0.88em">' +
+        '<option value="">None</option>' +
+        eventOptions +
+        '</select>' +
+        '</div>' +
+
+        '<div>' +
+        '<label style="font-size:0.75em;color:#64748b;display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Message to band (optional)</label>' +
+        '<textarea id="cpNote" class="app-textarea" rows="2" placeholder="e.g. Heads up — new set order, check the charts!" style="font-size:0.85em;resize:none"></textarea>' +
+        '</div>' +
+
+        '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:10px 12px;font-size:0.78em;color:#fbbf24">' +
+        '🪂 Each bandmate gets a personalized SMS with their crib notes highlighted. The link works in any browser — no app, no login.' +
+        '</div>' +
+
+        '<button id="cpSendBtn" onclick="carePackageBuild()" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;color:white;padding:13px;border-radius:12px;font-size:0.95em;font-weight:700;cursor:pointer;width:100%">🪂 Build &amp; Send Care Package</button>' +
+        '</div></div>';
+
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    window._cpType = 'rehearsal';
+}
+
+function cpSetType(type) {
+    window._cpType = type;
+    var rBtn = document.getElementById('cpTypeRehearsal');
+    var gBtn = document.getElementById('cpTypeGig');
+    if (type === 'rehearsal') {
+        rBtn.style.cssText += ';background:rgba(129,140,248,0.2);border:1px solid rgba(129,140,248,0.4);color:#a5b4fc';
+        gBtn.style.cssText += ';background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#64748b';
+    } else {
+        gBtn.style.cssText += ';background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35);color:#fbbf24';
+        rBtn.style.cssText += ';background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#64748b';
+    }
+}
+
+// ── Build the pack, save it, send SMS to each member ──────────────────────
+async function carePackageBuild() {
+    var btn = document.getElementById('cpSendBtn');
+    if (btn) { btn.textContent = '⏳ Loading charts...'; btn.disabled = true; }
+
+    try {
+        var slIdx = parseInt(document.getElementById('cpSetlistPicker')?.value || '0');
+        var eventDate = document.getElementById('cpEventPicker')?.value || '';
+        var note = (document.getElementById('cpNote')?.value || '').trim();
+        var type = window._cpType || 'rehearsal';
+
+        var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        var sl = setlists[slIdx];
+        if (!sl) { showToast('No setlist selected'); return; }
+
+        if (btn) btn.textContent = '⏳ Loading songs & charts...';
+        var songs = await carePackageLoadSongs(sl);
+
+        var expires = new Date();
+        expires.setDate(expires.getDate() + 14); // 14-day link
+
+        var packData = {
+            name: sl.name || 'Setlist',
+            date: sl.date || eventDate || '',
+            type: type,
+            note: note,
+            songs: songs,
+            createdBy: currentUserEmail || 'unknown',
+            createdAt: new Date().toISOString(),
+            expiresAt: expires.toISOString()
+        };
+
+        if (btn) btn.textContent = '⏳ Saving to Firebase...';
+        var packId = await carePackageSave(packData);
+        var baseUrl = WORKER_URL + '/pack/' + packId;
+
+        if (btn) btn.textContent = '⏳ Building SMS messages...';
+
+        // Send a personalized SMS to each band member
+        var contacts = await loadBandDataFromDrive('_band', 'band_contacts') || {};
+        var membersSent = 0;
+
+        // Collect all members with phones
+        var recipients = [];
+        Object.keys(bandMembers).forEach(function(mk) {
+            var contact = contacts[mk];
+            var member = bandMembers[mk];
+            if (contact && contact.phone) {
+                recipients.push({ key: mk, name: member.name || mk, phone: contact.phone });
+            }
+        });
+
+        // Also extra contacts
+        Object.entries(contacts).forEach(function(pair) {
+            var k = pair[0], c = pair[1];
+            if (!bandMembers[k] && c.phone) {
+                recipients.push({ key: k, name: c.name || k, phone: c.phone });
+            }
+        });
+
+        document.getElementById('carePackageModal')?.remove();
+
+        if (recipients.length === 0) {
+            // No phone numbers — show the link to copy manually
+            carePackageShowLinkModal(baseUrl, packData);
+            return;
+        }
+
+        // Show the delivery modal with per-member SMS openers
+        carePackageShowDeliveryModal(baseUrl, packData, recipients, packId);
+
+    } catch (e) {
+        showToast('Error building pack: ' + e.message);
+        if (btn) { btn.textContent = '🪂 Build & Send Care Package'; btn.disabled = false; }
+    }
+}
+
+// ── Delivery modal: per-member SMS buttons ────────────────────────────────
+function carePackageShowDeliveryModal(baseUrl, packData, recipients, packId) {
+    var existing = document.getElementById('cpDeliveryModal');
+    if (existing) existing.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'cpDeliveryModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:5200;background:rgba(0,0,0,0.8);display:flex;align-items:flex-end;justify-content:center';
+
+    var typeLabel = packData.type === 'gig' ? '🎤 Gig Pack' : '🎸 Rehearsal Pack';
+    var packName = packData.name + (packData.date ? ' — ' + packData.date : '');
+
+    var recipientBtns = recipients.map(function(r) {
+        var memberUrl = baseUrl + '?m=' + encodeURIComponent(r.key);
+        var msg = carePackageBuildSMS(r.name, packData, memberUrl);
+        var encodedMsg = encodeURIComponent(msg);
+        var smsHref = 'sms:' + r.phone + '?body=' + encodedMsg;
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px">' +
+            '<div>' +
+            '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0">' + r.name + '</div>' +
+            '<div style="font-size:0.7em;color:#475569">' + r.phone + '</div>' +
+            '</div>' +
+            '<a href="' + smsHref + '" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:#86efac;padding:6px 14px;border-radius:8px;font-size:0.82em;font-weight:700;text-decoration:none;flex-shrink:0">💬 Text</a>' +
+            '</div>';
+    }).join('');
+
+    // "Text everyone at once" button
+    var allPhones = recipients.map(function(r) { return r.phone; }).join(',');
+    var groupMsg = carePackageBuildSMS('everyone', packData, baseUrl);
+    var groupSms = 'sms:' + allPhones + '?body=' + encodeURIComponent(groupMsg);
+
+    modal.innerHTML = '<div style="background:#1e293b;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:20px;max-height:85vh;overflow-y:auto">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+        '<div style="font-weight:800;font-size:1em">✅ Care Package Ready</div>' +
+        '<button onclick="document.getElementById(\'cpDeliveryModal\').remove()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em">×</button>' +
+        '</div>' +
+        '<div style="font-size:0.78em;color:#64748b;margin-bottom:14px">' + typeLabel + ' — ' + packName + '</div>' +
+
+        '<div style="background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:0.78em">' +
+        '<div style="font-size:0.7em;color:#818cf8;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Pack Link</div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+        '<code style="color:#94a3b8;font-size:0.85em;flex:1;word-break:break-all">' + baseUrl + '</code>' +
+        '<button onclick="navigator.clipboard.writeText(\'' + baseUrl + '\').then(function(){showToast(\'Copied!\')})" style="background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);color:#a5b4fc;padding:4px 10px;border-radius:6px;font-size:0.75em;cursor:pointer;flex-shrink:0;white-space:nowrap">Copy</button>' +
+        '</div>' +
+        '</div>' +
+
+        '<div style="margin-bottom:12px">' +
+        '<a href="' + groupSms + '" style="display:block;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px;border-radius:12px;text-align:center;font-weight:700;font-size:0.9em;text-decoration:none;margin-bottom:8px">💬 Text Everyone at Once</a>' +
+        '<div style="font-size:0.72em;color:#475569;text-align:center">Opens group text with the care package link</div>' +
+        '</div>' +
+
+        '<div style="font-size:0.72em;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Or text individually (personalized with their crib notes):</div>' +
+
+        '<div style="display:flex;flex-direction:column;gap:6px">' + recipientBtns + '</div>' +
+
+        '<div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.72em;color:#475569">' +
+        '🔗 Link stays active for 14 days — works on any phone, no login needed.' +
+        '</div>' +
+        '</div>';
+
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+// ── Build the SMS message body ────────────────────────────────────────────
+function carePackageBuildSMS(recipientName, packData, packUrl) {
+    var typeEmoji = packData.type === 'gig' ? '🎤' : '🎸';
+    var greeting = recipientName === 'everyone' ? 'Hey band' : 'Hey ' + recipientName.split(' ')[0];
+    var eventLine = packData.date ? ' for ' + packData.date : '';
+    var noteLine = packData.note ? '\n\n' + packData.note : '';
+    var songCount = (packData.songs || []).length;
+
+    return greeting + ' —' + noteLine + '\n\n' +
+        typeEmoji + ' ' + (packData.type === 'gig' ? 'Gig' : 'Rehearsal') + ' care package' + eventLine + ' is ready:\n' +
+        packData.name + ' (' + songCount + ' songs)\n\n' +
+        'Tap to see charts, key/BPM, and your crib notes — no login needed:\n' +
+        packUrl + '\n\n' +
+        '— GrooveLinx 🎸';
+}
+
+// ── Fallback: no phones saved, just show the link ─────────────────────────
+function carePackageShowLinkModal(baseUrl, packData) {
+    showToast('Pack saved! No phone numbers found — copy the link below.');
+    var modal = document.createElement('div');
+    modal.id = 'cpLinkModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:5200;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = '<div style="background:#1e293b;border-radius:16px;padding:20px;max-width:400px;width:100%">' +
+        '<div style="font-weight:800;margin-bottom:8px">🪂 Care Package Ready</div>' +
+        '<div style="font-size:0.78em;color:#64748b;margin-bottom:12px">Share this link — works on any phone, no login needed:</div>' +
+        '<code style="display:block;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;font-size:0.78em;color:#a5b4fc;word-break:break-all;margin-bottom:12px">' + baseUrl + '</code>' +
+        '<div style="display:flex;gap:8px">' +
+        '<button onclick="navigator.clipboard.writeText(\'' + baseUrl + '\').then(function(){showToast(\'Copied!\')})" style="flex:1;background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#a5b4fc;padding:10px;border-radius:10px;font-size:0.88em;font-weight:700;cursor:pointer">📋 Copy Link</button>' +
+        '<button onclick="document.getElementById(\'cpLinkModal\').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:10px;border-radius:10px;font-size:0.88em;cursor:pointer">Close</button>' +
+        '</div>' +
+        '<div style="margin-top:12px;font-size:0.7em;color:#475569">Add phone numbers in Band Contact Directory to auto-text next time.</div>' +
+        '</div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
 
 async function notifSendSMSPracticePlan() {
     const dateStr = document.getElementById('notifRehearsalPicker')?.value;
@@ -10590,6 +11807,160 @@ async function socialIdeaToPost(idx) {
 // ============================================================================
 // GIGS
 // ============================================================================
+// ══ GIGS MAP ════════════════════════════════════════════════════════════════
+// Interactive map of all gig venues with filter, info cards, and directions
+
+var _gigsMap = null;
+var _gigsMapMarkers = [];
+var _gigsMapInfoWindows = [];
+var _gigsMapFilter = 'all'; // 'all' | 'upcoming' | 'past'
+
+async function renderGigsMap() {
+    var el = document.getElementById('gigsMapContainer');
+    if (!el) return;
+
+    var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+
+    // Build venue lookup by name
+    var venueLookup = {};
+    venues.forEach(function(v) { venueLookup[v.name] = v; });
+
+    // Attach lat/lng from venues to gigs
+    var gigsWithCoords = gigs.filter(function(g) {
+        var v = venueLookup[g.venue];
+        if (v && v.lat && v.lng) { g._lat = parseFloat(v.lat); g._lng = parseFloat(v.lng); return true; }
+        return false;
+    });
+
+    if (gigsWithCoords.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">No gigs with venue coordinates yet.<br>Add venues with locations on the Venues page first.</div>';
+        return;
+    }
+
+    el.innerHTML = '';
+    el.style.cssText = 'height:360px;border-radius:12px;overflow:hidden;position:relative';
+
+    if (!window.google || !window.google.maps) {
+        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Maps loading...</div>';
+        return;
+    }
+
+    // Create map centered on centroid of all gig coords
+    var avgLat = gigsWithCoords.reduce(function(s,g){return s+g._lat;},0)/gigsWithCoords.length;
+    var avgLng = gigsWithCoords.reduce(function(s,g){return s+g._lng;},0)/gigsWithCoords.length;
+
+    _gigsMap = new google.maps.Map(el, {
+        center: { lat: avgLat, lng: avgLng },
+        zoom: 11,
+        mapTypeId: 'roadmap',
+        styles: [
+            {elementType:'geometry',stylers:[{color:'#1a1f2e'}]},
+            {elementType:'labels.text.fill',stylers:[{color:'#8ec3b9'}]},
+            {elementType:'labels.text.stroke',stylers:[{color:'#1a1f2e'}]},
+            {featureType:'road',elementType:'geometry',stylers:[{color:'#2c3554'}]},
+            {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#1a1f2e'}]},
+            {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#9ca5b3'}]},
+            {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1626'}]},
+            {featureType:'poi',elementType:'geometry',stylers:[{color:'#263144'}]},
+        ],
+        disableDefaultUI: false,
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: true
+    });
+
+    _gigsMapMarkers = [];
+    _gigsMapInfoWindows = [];
+    var today = new Date().toISOString().split('T')[0];
+
+    gigsWithCoords.forEach(function(g, i) {
+        var isUpcoming = (g.date||'') >= today;
+        var color = isUpcoming ? '#22c55e' : '#818cf8';
+        var label = isUpcoming ? '🎤' : '🎸';
+
+        // Custom SVG pin
+        var pinSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
+            + '<path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 24 16 24s16-14 16-24C32 7.163 24.837 0 16 0z" fill="' + color + '"/>'
+            + '<circle cx="16" cy="16" r="7" fill="white" opacity="0.9"/>'
+            + '</svg>';
+
+        var marker = new google.maps.Marker({
+            position: { lat: g._lat, lng: g._lng },
+            map: _gigsMap,
+            title: (g.venue||'Venue') + ' — ' + (g.date||''),
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pinSvg),
+                scaledSize: new google.maps.Size(32, 40),
+                anchor: new google.maps.Point(16, 40)
+            },
+            optimized: false
+        });
+
+        // Build info window content
+        var v = venueLookup[g.venue] || {};
+        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent((v.address||g.venue||''));
+        var statusBadge = isUpcoming
+            ? '<span style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">Upcoming</span>'
+            : '<span style="background:rgba(129,140,248,0.2);color:#818cf8;border:1px solid rgba(129,140,248,0.3);border-radius:4px;padding:1px 6px;font-size:11px">Past</span>';
+
+        var infoContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:200px;max-width:260px;font-family:-apple-system,sans-serif">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            + '<strong style="font-size:0.95em;flex:1">' + (g.venue||'Venue') + '</strong>' + statusBadge
+            + '</div>'
+            + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:6px">📅 ' + (g.date||'TBD') + (g.startTime?' &nbsp;⏰ '+g.startTime:'') + '</div>'
+            + (g.pay ? '<div style="font-size:0.8em;color:#86efac;margin-bottom:4px">💰 ' + g.pay + '</div>' : '')
+            + (g.soundPerson ? '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:4px">🔊 ' + g.soundPerson + '</div>' : '')
+            + (g.notes ? '<div style="font-size:0.78em;color:#64748b;margin-bottom:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px;margin-top:4px">' + g.notes + '</div>' : '')
+            + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
+            + '</div>';
+
+        var infoWindow = new google.maps.InfoWindow({ content: infoContent });
+        _gigsMapInfoWindows.push(infoWindow);
+
+        marker.addListener('click', function() {
+            _gigsMapInfoWindows.forEach(function(iw) { iw.close(); });
+            infoWindow.open(_gigsMap, marker);
+        });
+
+        marker._gigDate = g.date || '';
+        marker._isUpcoming = isUpcoming;
+        _gigsMapMarkers.push(marker);
+    });
+
+    // Fit bounds
+    var bounds = new google.maps.LatLngBounds();
+    gigsWithCoords.forEach(function(g) { bounds.extend({ lat: g._lat, lng: g._lng }); });
+    _gigsMap.fitBounds(bounds);
+    if (gigsWithCoords.length === 1) _gigsMap.setZoom(13);
+
+    _gigsMapApplyFilter();
+}
+
+function _gigsMapApplyFilter() {
+    var f = _gigsMapFilter;
+    _gigsMapMarkers.forEach(function(m) {
+        var show = f === 'all' || (f === 'upcoming' && m._isUpcoming) || (f === 'past' && !m._isUpcoming);
+        m.setVisible(show);
+    });
+    // close any open info windows when filtering
+    _gigsMapInfoWindows.forEach(function(iw) { iw.close(); });
+}
+
+function gigsMapSetFilter(f, btn) {
+    _gigsMapFilter = f;
+    _gigsMapApplyFilter();
+    // Update button styles
+    ['gmfAll','gmfUpcoming','gmfPast'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.background = 'rgba(255,255,255,0.04)';
+        if (el) el.style.color = '#64748b';
+    });
+    if (btn) { btn.style.background = 'rgba(102,126,234,0.2)'; btn.style.color = '#a5b4fc'; }
+}
+
+
 function renderGigsPage(el) {
     el.innerHTML = `
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
@@ -10597,8 +11968,20 @@ function renderGigsPage(el) {
         <button class="btn btn-primary" onclick="addGig()">+ Add Gig</button>
         <button class="btn btn-ghost" onclick="seedGigData()" title="Import past gigs, setlists, and venues from master spreadsheet">📥 Import Spreadsheet Data</button>
     </div>
+    <div class="app-card" style="margin-bottom:16px;padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
+            <span style="font-weight:700;font-size:0.9em">🗺 Gig Map</span>
+            <div style="display:flex;gap:4px">
+                <button id="gmfAll" onclick="gigsMapSetFilter('all',this)" style="background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">All</button>
+                <button id="gmfUpcoming" onclick="gigsMapSetFilter('upcoming',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Upcoming</button>
+                <button id="gmfPast" onclick="gigsMapSetFilter('past',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Past</button>
+            </div>
+        </div>
+        <div id="gigsMapContainer" style="height:360px;background:rgba(0,0,0,0.3)"></div>
+    </div>
     <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
     loadGigs();
+    setTimeout(renderGigsMap, 300);
 }
 
 async function gigLaunchLinkedSetlist(setlistName) {
@@ -10609,10 +11992,10 @@ async function gigLaunchLinkedSetlist(setlistName) {
 }
 
 async function loadGigs() {
-    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const rawData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const el = document.getElementById('gigsList');
-    if (!el || data.length === 0) return;
-    data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (!el || rawData.length === 0) return;
+    const data = rawData.map((g, origIdx) => ({...g, _origIdx: origIdx})).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     el.innerHTML = data.map((g, i) => `<div class="app-card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="flex:1">
@@ -10629,9 +12012,10 @@ async function loadGigs() {
             </div>
             <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
                 <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
-                <button class="btn btn-sm btn-ghost" onclick="editGig(${i})" title="Edit">✏️</button>
-                <button class="btn btn-sm btn-ghost" onclick="loadGigPayouts(${i})" title="Payout" style="color:#22c55e">💰</button>
-                <button class="btn btn-sm btn-ghost" onclick="deleteGig(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+                <button class="btn btn-sm btn-ghost" onclick="editGig(${g._origIdx})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="loadGigPayouts(${g._origIdx})" title="Payout" style="color:#22c55e">💰</button>
+                <button class="btn btn-sm btn-ghost" onclick="carePackageSend('gig')" title="Send Care Package" style="color:#fbbf24">🪂</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteGig(${g._origIdx})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
         ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
@@ -10647,7 +12031,8 @@ async function addGig() {
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     window._cachedSetlists.sort((a,b) => (b.date||''). localeCompare(a.date||''));
-    const venueOpts = venues.map(v => `<option value="${v.name||''}">${v.name||''}${v.address?' \u2014 '+v.address:''}</option>`).join('');
+    venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}">${v.name||''}</option>`).join('');
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Add New Gig</h3>
         <div class="form-grid">
@@ -10686,9 +12071,10 @@ function gigVenueSelected(sel) {
     var input = document.getElementById('gigVenue');
     if (!input) return;
     if (val === '__new__') {
-        input.value = '';
-        input.focus();
         sel.value = '';
+        // Navigate to Venues page to add a new venue
+        showToast('💡 Adding venue — your gig progress is saved in the form. Come back after adding!');
+        setTimeout(function() { navigateTo('venues'); }, 1500);
     } else if (val) {
         input.value = val;
     }
@@ -10935,31 +12321,34 @@ function _venueCalcRoute(venueIdx, venue, origin, fromGPS) {
     var resultEl = document.getElementById('vDirResult_' + venueIdx);
     if (statusEl) statusEl.textContent = 'Calculating route…';
 
-    if (!window.google || !window.google.maps) {
-        if (resultEl) resultEl.innerHTML = '<a href="https://maps.google.com/maps?daddr=' + encodeURIComponent(venue.address||venue.name) + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
-        if (statusEl) statusEl.textContent = 'Google Maps not loaded — tap to open:';
+    var mapsUrl = 'https://maps.google.com/maps?saddr=' + encodeURIComponent(fromGPS ? 'My+Location' : origin) + '&daddr=' + encodeURIComponent(venue.address||venue.name);
+    var fallbackHtml = '<a href="' + mapsUrl + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
+
+    // Use DirectionsService (already loaded, key handled automatically, not deprecated)
+    if (!window.google || !window.google.maps || !window.google.maps.DirectionsService) {
+        if (resultEl) resultEl.innerHTML = fallbackHtml;
+        if (statusEl) statusEl.textContent = 'Tap to open in Google Maps:';
         return;
     }
-
     var dest = (venue.lat && venue.lng)
         ? { lat: parseFloat(venue.lat), lng: parseFloat(venue.lng) }
         : venue.address || venue.name;
 
-    var svc = new google.maps.DistanceMatrixService();
-    svc.getDistanceMatrix({
-        origins: [origin],
-        destinations: [dest],
+    var svc = new google.maps.DirectionsService();
+    svc.route({
+        origin: origin,
+        destination: dest,
         travelMode: google.maps.TravelMode.DRIVING,
         drivingOptions: { departureTime: new Date(), trafficModel: 'bestguess' }
-    }, function(res, status) {
-        if (status !== 'OK' || !res.rows[0] || !res.rows[0].elements[0] || res.rows[0].elements[0].status !== 'OK') {
-            if (resultEl) resultEl.innerHTML = '<a href="https://maps.google.com/maps?daddr=' + encodeURIComponent(venue.address||venue.name) + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
-            if (statusEl) statusEl.textContent = 'Could not calculate route. Try Google Maps:';
+    }, function(result, status) {
+        if (status !== 'OK' || !result.routes || !result.routes[0]) {
+            if (resultEl) resultEl.innerHTML = '<a href="' + mapsUrl + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
+            if (statusEl) statusEl.textContent = 'Could not calculate route — tap to open:';
             return;
         }
-        var el = res.rows[0].elements[0];
-        var driveMins = Math.ceil(el.duration_in_traffic ? el.duration_in_traffic.value / 60 : el.duration.value / 60);
-        var distText  = el.distance.text;
+        var leg = result.routes[0].legs[0];
+        var driveMins = Math.ceil((leg.duration_in_traffic ? leg.duration_in_traffic.value : leg.duration.value) / 60);
+        var distText = leg.distance.text;
         var totalMins = driveMins + DRIVE_BUFFER_MINS;
 
         // Try to find nearest upcoming gig at this venue for arrival time
@@ -11014,6 +12403,7 @@ function _venueUpdateLeaveTime(venueIdx, totalMins) {
 
 async function loadVenues() {
     const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    data.sort((a, b) => (a.name||'').localeCompare(b.name||''));
     const el = document.getElementById('venuesList');
     if (!el || data.length === 0) return;
     el.innerHTML = data.map((v, i) => `<div class="app-card">
@@ -11022,6 +12412,8 @@ async function loadVenues() {
             <div style="display:flex;gap:4px;flex-shrink:0">
                 ${v.website?`<a href="${v.website}" target="_blank" class="btn btn-sm btn-ghost" title="Website">🌐</a>`:''}
                 ${v.address?`<button class="btn btn-sm btn-ghost" onclick="venueGetDirections(${i})" title="Get Directions">🚗 Directions</button>`:''}
+                <button class="btn btn-sm btn-ghost" onclick="editVenue(${i})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="deleteVenue(${i})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:0.82em;color:var(--text-muted)">
@@ -11042,6 +12434,71 @@ async function loadVenues() {
         ${v.pay?`<div style="margin-top:4px;font-size:0.82em;color:var(--green)">💰 ${v.pay}</div>`:''}
         <div id="vDirections_${i}" style="margin-top:10px"></div>
     </div>`).join('');
+}
+
+async function editVenue(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const v = data[idx];
+    if (!v) return;
+    const el = document.getElementById('venuesList');
+    el.innerHTML = `<div class="app-card">
+        <h3>✏️ Edit Venue</h3>
+        <div class="form-grid">
+            <div class="form-row" style="grid-column:1/-1"><label class="form-label">Name</label><input class="app-input" id="vName" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row" style="grid-column:1/-1"><label class="form-label">Address</label><input class="app-input" id="vAddress" value="${(v.address||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Phone</label><input class="app-input" id="vPhone" value="${(v.phone||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="vEmail" value="${(v.email||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Website</label><input class="app-input" id="vWebsite" value="${(v.website||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Capacity</label><input class="app-input" id="vCapacity" value="${(v.capacity||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Stage</label><input class="app-input" id="vStage" value="${(v.stage||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">PA System</label><input class="app-input" id="vPA" value="${(v.pA||v.pa||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="vSoundPerson" value="${(v.soundPerson||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Sound Phone</label><input class="app-input" id="vSoundPhone" value="${(v.soundPhone||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="vContactName" value="${(v.contactName||v.contact||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Load-In</label><input class="app-input" id="vLoadIn" value="${(v.loadIn||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Parking</label><input class="app-input" id="vParking" value="${(v.parking||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="vPay" value="${(v.pay||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes">${v.notes||''}</textarea></div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success" onclick="saveVenueEdit(${idx})">💾 Save</button>
+            <button class="btn btn-ghost" onclick="loadVenues()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+async function saveVenueEdit(idx) {
+    const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    data[idx] = { ...data[idx],
+        name:        document.getElementById('vName')?.value?.trim(),
+        address:     document.getElementById('vAddress')?.value?.trim(),
+        phone:       document.getElementById('vPhone')?.value,
+        email:       document.getElementById('vEmail')?.value,
+        website:     document.getElementById('vWebsite')?.value,
+        capacity:    document.getElementById('vCapacity')?.value,
+        stage:       document.getElementById('vStage')?.value,
+        pA:          document.getElementById('vPA')?.value,
+        soundPerson: document.getElementById('vSoundPerson')?.value,
+        soundPhone:  document.getElementById('vSoundPhone')?.value,
+        contactName: document.getElementById('vContactName')?.value,
+        loadIn:      document.getElementById('vLoadIn')?.value,
+        parking:     document.getElementById('vParking')?.value,
+        pay:         document.getElementById('vPay')?.value,
+        notes:       document.getElementById('vNotes')?.value,
+        updated:     new Date().toISOString()
+    };
+    await saveBandDataToDrive('_band', 'venues', data);
+    showToast('✅ Venue updated!');
+    loadVenues();
+}
+
+async function deleteVenue(idx) {
+    if (!confirm('Delete this venue?')) return;
+    const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    data.splice(idx, 1);
+    await saveBandDataToDrive('_band', 'venues', data);
+    showToast('🗑️ Venue deleted');
+    loadVenues();
 }
 
 function addVenue() {
@@ -16358,6 +17815,66 @@ function addReadinessChains() {
 }
 
 // ── Render readiness panel in Song DNA ───────────────────────────────────────
+async function renderMomentsSection(songTitle) {
+    var container = document.getElementById('momentsContainer');
+    if (!container) {
+        // Self-inject container after woodshedChecklistContainer
+        var woodshed = document.getElementById('woodshedChecklistContainer');
+        if (!woodshed) return;
+        var section = document.createElement('div');
+        section.className = 'app-card';
+        section.style.cssText = 'margin-top:10px';
+        section.innerHTML = '<h3 style="font-size:0.9em;margin-bottom:10px">📸 Captured Moments</h3><div id="momentsContainer"></div>';
+        var _wParent = woodshed.closest('.app-card') || woodshed.parentElement;
+        if (_wParent && _wParent.parentElement) _wParent.parentElement.insertBefore(section, _wParent.nextSibling);
+        else if (_wParent) _wParent.appendChild(section);
+        container = document.getElementById('momentsContainer');
+        if (!container) return;
+    }
+    container.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">Loading moments...</div>';
+    var moments = [];
+    try {
+        var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/moments');
+        var snap = await firebaseDB.ref(path).once('value');
+        var raw = snap.val() || {};
+        moments = Object.values(raw).sort(function(a,b){return (b.ts||''). localeCompare(a.ts||')');});
+    } catch(e) {
+        // also check localStorage fallback
+        var local = JSON.parse(localStorage.getItem('deadcetera_moments_'+songTitle)||'[]');
+        moments = local.sort(function(a,b){return (b.ts||''). localeCompare(a.ts||')');});
+    }
+    if (!moments.length) {
+        container.innerHTML = '<div style="color:#475569;font-size:0.82em;padding:6px 0;font-style:italic">No moments captured yet. Use the 📸 button during rehearsal or gig mode.</div>';
+        return;
+    }
+    var html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    moments.forEach(function(m) {
+        var d = m.ts ? new Date(m.ts) : null;
+        var dateStr = d ? d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : '';
+        var modeIcon = m.mode==='rehearsal'?'🎸':'🎤';
+        html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px">';
+        html += '<div style="font-size:0.85em;color:#e2e8f0;line-height:1.4;margin-bottom:4px">' + m.text + '</div>';
+        html += '<div style="font-size:0.7em;color:#475569">' + modeIcon + ' ' + dateStr + (m.by?' · '+m.by:'') + '</div>';
+        html += '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function rdSparklineSvg(history) {
+    if (!history || history.length < 2) return '';
+    var pts = history.slice(-10);
+    var w = 60, h = 18;
+    var xs = pts.map(function(_,i){return Math.round(i/(pts.length-1)*w);});
+    var ys = pts.map(function(p){return Math.round(h-(((p.score||1)-1)/4)*h);});
+    var d = xs.map(function(x,i){return (i===0?'M':'L')+x+','+ys[i];}).join(' ');
+    var last = pts[pts.length-1].score||1;
+    var trend = pts.length>1?(pts[pts.length-1].score||1)-(pts[0].score||1):0;
+    var col = last>=4?'#22c55e':last>=3?'#eab308':'#ef4444';
+    var arrow = trend>0?'↗':trend<0?'↘':'↔';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;vertical-align:middle">'+           '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="overflow:visible">'+           '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.5" stroke-linecap="round"/>'+           '<circle cx="'+xs[xs.length-1]+'" cy="'+ys[ys.length-1]+'" r="2.5" fill="'+col+'"/></svg>'+           '<span style="font-size:0.8em;color:'+col+'">'+arrow+'</span></span>';
+}
+
 async function renderReadinessSection(songTitle) {
     var container = document.getElementById('readinessContainer');
     if (!container) return;
@@ -16413,6 +17930,7 @@ async function renderReadinessSection(songTitle) {
             + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
             +   '<span style="font-size:0.8em;color:#94a3b8;font-weight:600">' + (mInfo ? mInfo.emoji + ' ' + mInfo.name : 'Your') + ' readiness</span>'
             +   '<span id="readinessScoreLabel" style="font-size:0.8em;font-weight:700;color:' + (myScore ? readinessColor(myScore) : '#64748b') + '">' + (myScore ? myScore + '/5 — ' + readinessLabel(myScore) : 'Not set') + '</span>'
+            +   '<span id="readinessTrend" style="margin-left:8px"></span>'
             + '</div>'
             + '<input type="range" min="1" max="5" step="1" value="' + (myScore || 1) + '" '
             +   'style="width:100%;accent-color:' + readinessColor(myScore || 3) + ';cursor:pointer;height:6px" '
@@ -16429,7 +17947,16 @@ async function renderReadinessSection(songTitle) {
     container.innerHTML = html;
 }
 
-// ── Live preview as slider moves ─────────────────────────────────────────────
+// ── Live preview as slider moves ────────────────────────────────────────────�
+    // Load sparkline trend async
+    var _spMKey = getCurrentMemberReadinessKey();
+    if (_spMKey && firebaseDB) {
+        firebaseDB.ref(bandPath('songs/'+sanitizeFirebasePath(songTitle)+'/readiness_history/'+_spMKey)).limitToLast(10).once('value').then(function(snap) {
+            var hist = Object.values(snap.val()||{}).sort(function(a,b){return (a.ts||'').localeCompare(b.ts||'');});
+            var el = document.getElementById('readinessTrend');
+            if (el && hist.length>=2) el.innerHTML = rdSparklineSvg(hist);
+        }).catch(function(){});
+    }
 function previewReadiness(value, songTitle) {
     var v = parseInt(value);
     var c = readinessColor(v);
@@ -16463,6 +17990,7 @@ async function saveMyReadiness(songTitle, value) {
         showToast('🔗 Readiness saved: ' + v + '/5 — ' + readinessLabel(v));
         // Log activity
         logActivity('readiness_set', songTitle, { score: v, member: memberKey });
+        try { firebaseDB.ref(bandPath('songs/'+sanitizeFirebasePath(songTitle)+'/readiness_history/'+memberKey)).push({score:v,ts:new Date().toISOString()}); } catch(eh) {}
     } catch(e) {
         showToast('⚠️ Could not save readiness');
     }
@@ -16673,6 +18201,8 @@ async function rhOpenEvent(eventId) {
     html += '</div>';
 
     if (planSongs.length) {
+        html += '<div id="rhTimerWidget"></div>';
+        html += '<div id="rhScoreboard"></div>';
         html += '<div id="rhPlanList" style="margin-bottom:10px">';
         html += rhRenderPlanSongs(planSongs, ev.plan.focusSections || {});
         html += '</div>';
@@ -16700,6 +18230,141 @@ async function rhOpenEvent(eventId) {
     html += '<div id="rhSuggestionArea"></div>';
 
     container.innerHTML = html;
+    // Init timer and scoreboard
+    if (planSongs.length) rhTimerInit(planSongs);
+    rhRenderScoreboard(eventId);
+}
+
+// Rehearsal Timer
+var _rhTimer = { running:false, start:0, elapsed:0, songIdx:0, goalMins:10, tick:null, songs:[], log:[] };
+
+function rhTimerRender() {
+    var el = document.getElementById('rhTimerWidget');
+    if (!el) return;
+    var t = _rhTimer;
+    var totalMs = t.running ? (Date.now()-t.start+t.elapsed) : t.elapsed;
+    var totalSecs = Math.floor(totalMs/1000);
+    var mins = Math.floor(totalSecs/60), secs = totalSecs%60;
+    var goalMs = t.goalMins*60*1000;
+    var pct = Math.min(100, Math.round(totalMs/goalMs*100));
+    var over = totalMs > goalMs;
+    var bc = over ? '#ef4444' : pct>75 ? '#f59e0b' : '#22c55e';
+    var ts = (mins<10?'0':'')+mins+':'+(secs<10?'0':'')+secs;
+    var curSong = t.songs[t.songIdx] || '';
+    var h = '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;margin-bottom:12px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    h += '<span style="font-weight:700;font-size:0.9em">ⱱ Rehearsal Timer</span>';
+    h += '<span style="font-size:1.3em;font-weight:800;color:'+(over?'#ef4444':'#f1f5f9')+'">'+ts+'</span></div>';
+    h += '<div style="height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin-bottom:8px">';
+    h += '<div style="height:100%;width:'+pct+'%;background:'+bc+';border-radius:3px"></div></div>';
+    if (curSong) h += '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:8px">🎵 '+curSong+'</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    h += '<button onclick="rhTimerToggle()" style="background:'+(t.running?'rgba(239,68,68,0.15)':'rgba(34,197,94,0.15)')+';border:1px solid '+(t.running?'rgba(239,68,68,0.3)':'rgba(34,197,94,0.3)')+';color:'+(t.running?'#f87171':'#86efac')+';padding:5px 12px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer">'+(t.running?'⏸ Pause':'▶ Start')+'</button>';
+    h += '<button onclick="rhTimerNext()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:5px 12px;border-radius:8px;font-size:0.82em;cursor:pointer">⇥ Next Song</button>';
+    h += '<button onclick="rhTimerReset()" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);color:#64748b;padding:5px 12px;border-radius:8px;font-size:0.82em;cursor:pointer">⟳ Reset</button>';
+    h += '<label style="display:flex;align-items:center;gap:4px;font-size:0.78em;color:#64748b;margin-left:auto">Goal: <input type="number" min="1" max="60" value="'+t.goalMins+'" onchange="_rhTimerSetGoal(this.value)" style="width:38px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#94a3b8;padding:2px 4px;font-size:inherit;text-align:center"> min</label>';
+    h += '</div>';
+    if (t.log.length) {
+        h += '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">';
+        h += '<div style="font-size:0.7em;color:#64748b;font-weight:700;letter-spacing:0.05em;margin-bottom:6px">SONG LOG</div>';
+        h += t.log.map(function(e) {
+            var ok = e.mins <= t.goalMins;
+            return '<div style="display:flex;gap:8px;padding:3px 0;font-size:0.8em"><span style="flex:1;color:#94a3b8">'+e.title+'</span><span style="color:'+(ok?'#22c55e':'#f59e0b')+';font-weight:700">'+e.mins+':'+(e.secs<10?'0':'')+e.secs+'</span></div>';
+        }).join('');
+        h += '</div>';
+    }
+    h += '</div>';
+    el.innerHTML = h;
+}
+
+function rhTimerToggle() {
+    if (_rhTimer.running) {
+        clearInterval(_rhTimer.tick);
+        _rhTimer.elapsed += Date.now()-_rhTimer.start;
+        _rhTimer.running = false;
+    } else {
+        _rhTimer.start = Date.now();
+        _rhTimer.running = true;
+        _rhTimer.tick = setInterval(rhTimerRender, 500);
+    }
+    rhTimerRender();
+}
+
+function rhTimerNext() {
+    var t = _rhTimer;
+    var totalMs = t.running ? (Date.now()-t.start+t.elapsed) : t.elapsed;
+    var s = Math.floor(totalMs/1000);
+    if (t.songs[t.songIdx]) t.log.push({title:t.songs[t.songIdx],mins:Math.floor(s/60),secs:s%60});
+    t.elapsed = 0; t.start = Date.now();
+    t.songIdx = Math.min(t.songs.length-1, t.songIdx+1);
+    rhTimerRender();
+}
+
+function rhTimerReset() {
+    clearInterval(_rhTimer.tick);
+    _rhTimer = {running:false,start:0,elapsed:0,songIdx:0,goalMins:_rhTimer.goalMins,tick:null,songs:_rhTimer.songs,log:[]};
+    rhTimerRender();
+}
+
+function _rhTimerSetGoal(v) { _rhTimer.goalMins = Math.max(1,parseInt(v)||10); rhTimerRender(); }
+
+function rhTimerInit(songs) {
+    clearInterval(_rhTimer.tick);
+    _rhTimer = {running:false,start:0,elapsed:0,songIdx:0,goalMins:_rhTimer.goalMins||10,tick:null,songs:songs||[],log:[]};
+    rhTimerRender();
+}
+
+// Rehearsal Scoreboard
+async function rhRenderScoreboard(eventId) {
+    var container = document.getElementById('rhScoreboard');
+    if (!container) return;
+    var ev = null;
+    try {
+        var events = await rhGetAllEvents();
+        ev = events.find(function(e){return e.id===eventId;});
+    } catch(e) { return; }
+    if (!ev || !ev.plan || !toArray(ev.plan.songs||[]).length) {
+        container.innerHTML = '';
+        return;
+    }
+    var planSongs = toArray(ev.plan.songs||[]);
+    // Load section ratings for each song
+    var allWeakSections = [];
+    for (var i=0; i<planSongs.length; i++) {
+        var title = planSongs[i];
+        var path = bandPath('songs/'+sanitizeFirebasePath(title)+'/section_ratings');
+        try {
+            var snap = await firebaseDB.ref(path).once('value');
+            var sectionData = snap.val() || {};
+            Object.entries(sectionData).forEach(function(entry) {
+                var sectionName = entry[0], ratings = entry[1];
+                var vals = Object.values(ratings||{}).filter(function(v){return typeof v==='number';});
+                if (!vals.length) return;
+                var avg = vals.reduce(function(a,b){return a+b;},0)/vals.length;
+                if (avg < 3.5) allWeakSections.push({song:title, section:sectionName, avg:avg});
+            });
+        } catch(e) {}
+    }
+    allWeakSections.sort(function(a,b){return a.avg-b.avg;});
+    var top = allWeakSections.slice(0,5);
+    if (!top.length) {
+        container.innerHTML = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 14px;font-size:0.82em;color:#86efac;margin-bottom:12px">🏆 All sections looking solid! No major weak spots.</div>';
+        return;
+    }
+    var h = '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;margin-bottom:12px">';
+    h += '<div style="font-weight:700;font-size:0.88em;margin-bottom:10px">🏆 Sections to Tighten</div>';
+    top.forEach(function(item) {
+        var pct = Math.round(item.avg/5*100);
+        var c = item.avg<2?'#ef4444':item.avg<3?'#f97316':'#f59e0b';
+        h += '<div style="margin-bottom:8px">';
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">';
+        h += '<span style="font-size:0.8em;color:#94a3b8"><span style="color:#f1f5f9;font-weight:600">'+item.song+'</span> — '+item.section+'</span>';
+        h += '<span style="font-size:0.78em;font-weight:700;color:'+c+'">'+item.avg.toFixed(1)+'/5</span></div>';
+        h += '<div style="height:4px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">';
+        h += '<div style="height:100%;width:'+pct+'%;background:'+c+';border-radius:2px"></div></div></div>';
+    });
+    h += '</div>';
+    container.innerHTML = h;
 }
 
 function rhRenderPlanSongs(songs, focusSections) {
@@ -17086,9 +18751,22 @@ function openGigMode(setlistObj) {
     rmLoadChart();
 }
 
+function gmOpenPocket() {
+    var cur = _gmFlatList[rmIndex];
+    if (!cur) return;
+    var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === cur.title; });
+    var bpm = (songData && songData.bpm) ? parseInt(songData.bpm) : (typeof rmSongBpm !== 'undefined' ? rmSongBpm : 120);
+    if (typeof openGigPocketMeter === 'function') {
+        openGigPocketMeter(cur.title, bpm, null, typeof bandPath === 'function' ? bandPath() : null);
+    } else {
+        if (typeof showToast === 'function') showToast('\u26a0\ufe0f Pocket Meter not loaded yet');
+    }
+}
+
 function closeGigMode() {
     var ov = document.getElementById('gmOverlay');
     if (ov) ov.classList.remove('gm-visible');
+    if (typeof closeGigPocketMeter === 'function') closeGigPocketMeter();
     var scrollY = document.body.dataset.scrollY || '0';
     document.body.style.position = '';
     document.body.style.top = '';
@@ -17111,6 +18789,52 @@ function _gmShow() {
 }
 
 // ── Navigation ───────────────────────────────────────────────────────────────
+// Capture Moment
+function rmCaptureMoment() {
+    var songTitle = (typeof rmQueue !== 'undefined' && rmQueue[rmIndex]) ? rmQueue[rmIndex].title : '';
+    if (!songTitle) { showToast('No song loaded'); return; }
+    var existing = document.getElementById('rmCapturePopup');
+    if (existing) { existing.remove(); return; }
+    var popup = document.createElement('div');
+    popup.id = 'rmCapturePopup';
+    popup.style.cssText = 'position:fixed;bottom:80px;left:12px;right:12px;background:#1e293b;border:1px solid rgba(102,126,234,0.3);border-radius:14px;padding:14px;z-index:4000;box-shadow:0 8px 32px rgba(0,0,0,0.6)';
+    popup.innerHTML = '<div style="font-size:0.78em;font-weight:700;color:#818cf8;margin-bottom:8px">📸 Capture Moment — ' + songTitle + '</div>';
+    popup.innerHTML += '<textarea id="rmCaptureText" class="app-textarea" placeholder="What just happened? (e.g. “Hit the intro landing perfectly” or “Section C still shaky”)" style="height:70px;font-size:0.85em;margin-bottom:8px"></textarea>';
+    popup.innerHTML += '<div style="display:flex;gap:8px">';
+    popup.innerHTML += '<button onclick="rmCaptureSave()" style="background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#a5b4fc;padding:6px 14px;border-radius:8px;font-size:0.85em;font-weight:700;cursor:pointer;flex:1">💾 Save Note</button>';
+    popup.innerHTML += '<button onclick="rmCaptureCancel()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:6px 14px;border-radius:8px;font-size:0.85em;cursor:pointer">Cancel</button>';
+    popup.innerHTML += '</div>';
+    document.body.appendChild(popup);
+    var ta = document.getElementById('rmCaptureText');
+    if (ta) setTimeout(function(){ta.focus();}, 80);
+}
+
+function rmCaptureCancel() { document.getElementById('rmCapturePopup')?.remove(); }
+
+async function rmCaptureSave() {
+    var ta = document.getElementById('rmCaptureText');
+    var text = ta ? ta.value.trim() : '';
+    if (!text) { showToast('Write something first!'); return; }
+    var songTitle = (typeof rmQueue !== 'undefined' && rmQueue[rmIndex]) ? rmQueue[rmIndex].title : '';
+    if (!songTitle) { showToast('No song loaded'); return; }
+    var ts = new Date().toISOString();
+    var note = { text: text, ts: ts, by: currentUserEmail || 'me', mode: 'rehearsal' };
+    try {
+        var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/moments');
+        await firebaseDB.ref(path).push(note);
+        showToast('📸 Moment captured!');
+        document.getElementById('rmCapturePopup')?.remove();
+    } catch(e) {
+        // Fallback: save to localStorage
+        var key = 'deadcetera_moments_' + songTitle;
+        var arr = JSON.parse(localStorage.getItem(key)||'[]');
+        arr.push(note);
+        localStorage.setItem(key, JSON.stringify(arr));
+        showToast('📸 Saved locally');
+        document.getElementById('rmCapturePopup')?.remove();
+    }
+}
+
 function gmNavigate(dir) {
     var n = rmIndex + dir;
     if (n < 0 || n >= _gmFlatList.length) return;
@@ -17118,6 +18842,15 @@ function gmNavigate(dir) {
     _gmRenderNav();
     // Reuse rmLoadChart — it reads from rmQueue[rmIndex]
     if (typeof rmLoadChart === 'function') rmLoadChart();
+    // Update pocket meter target BPM for new song
+    var cur = _gmFlatList[rmIndex];
+    if (cur && typeof _gigPocketMeterInstance !== 'undefined' && _gigPocketMeterInstance) {
+        var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === cur.title; });
+        var bpm = (songData && songData.bpm) ? parseInt(songData.bpm) : 120;
+        _gigPocketMeterInstance.setTargetBPM(bpm);
+        var titleEl = document.getElementById('gigPocketSongTitle');
+        if (titleEl) titleEl.textContent = cur.title;
+    }
     // Reload other tabs if open
     if (typeof rmCurrentTab !== 'undefined' && rmCurrentTab !== 'chart') {
         if (rmCurrentTab === 'know' && typeof rmLoadKnow === 'function') rmLoadKnow();
@@ -17163,6 +18896,7 @@ function _gmRenderNav() {
         + (isPlayed ? 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:#64748b' : 'background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.3);color:#22c55e')
         + '">' + (isPlayed ? '\u21a9 Unmark' : '\u2713 Played') + '</button>'
         + ' <button onclick="gmToggleDrawer()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#94a3b8;cursor:pointer;font-weight:700">\u25b2 Setlist</button>'
+        + ' <button onclick="gmOpenPocket()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid rgba(0,170,85,0.35);background:rgba(0,255,136,0.08);color:#00cc66;cursor:pointer;font-weight:700">\uD83C\uDFAF Pocket</button>'
         + '</div></div>';
 
     var nextHTML = next
@@ -17178,6 +18912,8 @@ function _gmRenderNav() {
     if (rmTitle && cur) rmTitle.textContent = cur.title;
     var rmPos = document.getElementById('rmPosition');
     if (rmPos) rmPos.textContent = (rmIndex+1) + ' / ' + total;
+    // Update Now Playing bar
+    _gmUpdateNowPlaying(cur);
 }
 
 // ── Setlist drawer ────────────────────────────────────────────────────────────
@@ -17237,6 +18973,22 @@ function gmJumpTo(idx) {
 }
 
 // ── Overlay build ─────────────────────────────────────────────────────────────
+function _gmUpdateNowPlaying(cur) {
+    var bar = document.getElementById('gmNowPlayingBar');
+    if (!bar || !cur) return;
+    var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === cur.title; });
+    var key = songData && songData.key ? songData.key : '';
+    var bpm = songData && songData.bpm ? songData.bpm : '';
+    var chips = '';
+    if (key) chips += '<span style="background:rgba(102,126,234,0.25);color:#a5b4fc;border-radius:6px;padding:2px 8px;font-size:0.72em;font-weight:700">' + key + '</span>';
+    if (bpm) chips += '<span style="background:rgba(34,197,94,0.2);color:#86efac;border-radius:6px;padding:2px 8px;font-size:0.72em;font-weight:700">🥁 ' + bpm + ' BPM</span>';
+    bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;overflow:hidden">';
+    bar.innerHTML += '<span style="font-size:0.65em;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;flex-shrink:0">NOW</span>';
+    bar.innerHTML += '<span style="font-weight:700;font-size:0.88em;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' + cur.title + '</span>';
+    if (chips) bar.innerHTML += '<div style="display:flex;gap:4px;flex-shrink:0">' + chips + '</div>';
+    bar.innerHTML += '</div>';
+}
+
 function _gmEnsureOverlay() {
     if (document.getElementById('gmOverlay')) return;
 
@@ -17245,6 +18997,7 @@ function _gmEnsureOverlay() {
         '#gmOverlay{display:none;position:fixed;inset:0;z-index:3000;background:#0a0f1e;flex-direction:column;overflow:hidden}',
         '#gmOverlay.gm-visible{display:flex!important}',
         '#gmNavBar{display:flex;align-items:stretch;gap:6px;padding:6px 10px;background:linear-gradient(135deg,#0f172a,#060d1a);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;min-height:54px}',
+        '#gmNowPlayingBar{padding:4px 12px;background:rgba(102,126,234,0.08);border-bottom:1px solid rgba(102,126,234,0.15);flex-shrink:0;min-height:28px;display:flex;align-items:center}',
         '#gmDrawer{position:fixed;bottom:0;left:0;right:0;z-index:3100;background:#111827;border-radius:16px 16px 0 0;border-top:1px solid rgba(102,126,234,0.25);max-height:65vh;transform:translateY(100%);transition:transform 0.28s cubic-bezier(.32,.72,0,1);overflow-y:auto}',
         '#gmDrawerBackdrop{display:none;position:fixed;inset:0;z-index:3050;background:rgba(0,0,0,0.5)}',
         // Reuse rmOverlay styles but inside gmOverlay — remap panels
@@ -17271,6 +19024,11 @@ function _gmEnsureOverlay() {
     navBar.id = 'gmNavBar';
     ov.appendChild(navBar);
 
+    // Now Playing bar (song + key + BPM)
+    var nowBar = document.createElement('div');
+    nowBar.id = 'gmNowPlayingBar';
+    ov.appendChild(nowBar);
+
     // Hijack the rmOverlay DOM — move it inside gmOverlay
     // We use rmEnsureOverlay() to build the standard overlay, then reparent its innards
     if (typeof rmEnsureOverlay === 'function') rmEnsureOverlay();
@@ -17285,6 +19043,14 @@ function _gmEnsureOverlay() {
         if (tabBar)  ov.appendChild(tabBar);
         if (body)    ov.appendChild(body);
         if (footer)  ov.appendChild(footer);
+        // Capture Moment floating button
+        var capBtn = document.createElement('button');
+        capBtn.id = 'rmCaptureMomentBtn';
+        capBtn.innerHTML = '📸';
+        capBtn.title = 'Capture a moment';
+        capBtn.onclick = rmCaptureMoment;
+        capBtn.style.cssText = 'position:fixed;bottom:74px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(102,126,234,0.25);border:1.5px solid rgba(102,126,234,0.5);color:#a5b4fc;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
+        document.body.appendChild(capBtn);
         sheets.forEach(function(s) { ov.appendChild(s); });
         if (monkey)  ov.appendChild(monkey);
         // Remove the now-empty rmOverlay shell (we'll rebuild from scratch next time practice mode opens)
@@ -17574,17 +19340,11 @@ function _stonerRenderHome() {
         '</div>',
         // Big action buttons
         '<div style="padding:0 16px;display:flex;flex-direction:column;gap:10px;margin-bottom:20px">',
-        '  <button class="stoner-big-btn" onclick="stonerOpenSetlists()" style="background:rgba(102,126,234,0.12);border-color:rgba(102,126,234,0.3);color:#818cf8">',
-        '    <span style="font-size:1.4em">\uD83D\uDCCB</span> Setlists',
+        '  <button class="stoner-big-btn" onclick="stonerPickSetlist()" style="background:rgba(102,126,234,0.12);border-color:rgba(102,126,234,0.3);color:#818cf8">',
+        '    <span style="font-size:1.4em">\uD83D\uDCCB</span> <span id="stonerActiveSetlistLabel">Pick a Setlist</span>',
         '  </button>',
         '  <button class="stoner-big-btn" onclick="stonerOpenGigs()" style="background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.25);color:#22c55e">',
         '    <span style="font-size:1.4em">\uD83C\uDFA4</span> Gigs',
-        '  </button>',
-        '  <button class="stoner-big-btn" onclick="stonerOpenTuner()" style="background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.25);color:#fbbf24">',
-        '    <span style="font-size:1.4em">\uD83C\uDFB8</span> Tuner',
-        '  </button>',
-        '  <button class="stoner-big-btn" onclick="stonerOpenMetronome()" style="background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);color:#f87171">',
-        '    <span style="font-size:1.4em">\uD83E\uDD41</span> Metronome',
         '  </button>',
         '</div>',
         // Recent songs
@@ -17594,6 +19354,8 @@ function _stonerRenderHome() {
 
     // Load recent songs from activity log
     _stonerLoadRecent();
+    // Update active setlist label
+    _stonerUpdateSetlistLabel();
 }
 
 function stonerSearch(q) {
@@ -17766,6 +19528,70 @@ function stonerOpenGigs() {
             html += past.slice(0,5).map(gigCard).join('');
         }
         bodyDiv.innerHTML = html;
+    });
+}
+
+async function stonerPickSetlist() {
+    var container = document.getElementById('stonerContent');
+    if (!container) return;
+    container.innerHTML = '';
+    var el = document.createElement('div');
+    el.style.cssText = 'padding:20px 16px';
+
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:16px';
+    var backBtn = document.createElement('button');
+    backBtn.textContent = '\u2190 Back';
+    backBtn.className = 'btn btn-ghost btn-sm';
+    backBtn.onclick = stonerGoHome;
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:800;font-size:1.1em;color:#f1f5f9';
+    title.textContent = '\uD83D\uDCCB Pick a Setlist';
+    header.appendChild(backBtn);
+    header.appendChild(title);
+    el.appendChild(header);
+
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    setlists.sort(function(a,b) { return (b.updatedAt||b.date||'').localeCompare(a.updatedAt||a.date||''); });
+
+    if (!setlists.length) {
+        var empty = document.createElement('div');
+        empty.style.cssText = 'text-align:center;color:#64748b;padding:40px 0;font-size:0.9em';
+        empty.textContent = 'No setlists yet. Create one in the Setlists page.';
+        el.appendChild(empty);
+    } else {
+        setlists.forEach(function(sl, i) {
+            var btn = document.createElement('button');
+            btn.className = 'stoner-big-btn';
+            var songCount = (sl.sets||[]).reduce(function(a,s){return a+(s.songs||[]).length;},0);
+            btn.innerHTML = '<span style="font-size:1.3em">\uD83D\uDCCB</span>'
+                + '<span style="flex:1;text-align:left"><div style="font-weight:800">' + (sl.name||'Untitled') + '</div>'
+                + '<div style="font-size:0.72em;opacity:0.7;margin-top:2px">' + (sl.date?sl.date+' \u2022 ':'') + songCount + ' songs</div></span>';
+            btn.style.cssText = 'background:rgba(102,126,234,0.1);border-color:rgba(102,126,234,0.25);color:#c7d2fe;margin-bottom:8px;justify-content:flex-start;padding:14px 16px;gap:12px';
+            btn.onclick = function() {
+                localStorage.setItem('deadcetera_stoner_setlist', i);
+                _stonerUpdateSetlistLabel();
+                stonerGoHome();
+                showToast('\uD83D\uDCCB ' + (sl.name||'Setlist') + ' selected');
+            };
+            el.appendChild(btn);
+        });
+    }
+    container.appendChild(el);
+}
+
+function _stonerUpdateSetlistLabel() {
+    var label = document.getElementById('stonerActiveSetlistLabel');
+    if (!label) return;
+    var idx = localStorage.getItem('deadcetera_stoner_setlist');
+    if (idx === null) { label.textContent = 'Pick a Setlist'; return; }
+    // Load name async
+    loadBandDataFromDrive('_band', 'setlists').then(function(setlists) {
+        setlists = toArray(setlists || []);
+        setlists.sort(function(a,b) { return (b.updatedAt||b.date||'').localeCompare(a.updatedAt||a.date||''); });
+        var sl = setlists[parseInt(idx)];
+        if (sl) label.textContent = sl.name || 'Setlist';
+        else { label.textContent = 'Pick a Setlist'; localStorage.removeItem('deadcetera_stoner_setlist'); }
     });
 }
 
