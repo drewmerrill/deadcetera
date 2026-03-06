@@ -37,15 +37,37 @@ errors = []
 for f in FILES:
     try:
         info = gh_get(f)
-        content = base64.b64decode(info["content"]).decode()
+        raw = base64.b64decode(info["content"])
+        try:
+            content = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            # Binary file (png etc) — write as bytes, skip line count
+            dest = os.path.join(REPO, f)
+            open(dest, 'wb').write(raw)
+            manifest[f] = {"sha": info["sha"][:8], "lines": -1, "size": len(raw)}
+            print(f"  ✅ {f:<30} (binary)  sha:{info['sha'][:8]}")
+            continue
         dest = os.path.join(REPO, f)
-        open(dest, 'w').write(content)
+        open(dest, 'w', encoding='utf-8').write(content)
         lines = content.count('\n')
         manifest[f] = {"sha": info["sha"][:8], "lines": lines, "size": len(content)}
         print(f"  ✅ {f:<30} {lines:>5} lines  sha:{info['sha'][:8]}")
     except Exception as e:
         errors.append(f)
         print(f"  ❌ {f}: {e}")
+
+# app.js safety checks
+appjs_path = os.path.join(REPO, "app.js")
+appjs_lines = open(appjs_path).read().count('\n') if os.path.exists(appjs_path) else 0
+import subprocess
+git_status = subprocess.run(["git", "status", "--short", "app.js"], capture_output=True, text=True, cwd=REPO).stdout.strip()
+if git_status:
+    print(f"\n🚨 WARNING: app.js is MODIFIED but not committed!")
+    print(f"   The file on disk may not match what is deployed.")
+    print(f"   If unexpected, find the correct app.js from a previous chat upload.")
+if appjs_lines < 15000:
+    print(f"\n🚨 WARNING: app.js is only {appjs_lines} lines — looks wrong!")
+    print(f"   Expected ~19000+ lines. Do not work on this file until resolved.")
 
 # Read version
 version = "unknown"
@@ -60,19 +82,6 @@ open(manifest_path, 'w').write(json.dumps({
     "version": version,
     "files": manifest
 }, indent=2))
-
-# ── app.js safety check ──────────────────────────────────────────────────────
-import subprocess
-_git = subprocess.run(['git', 'status', 'app.js'], capture_output=True, text=True, cwd=REPO)
-if 'modified' in _git.stdout:
-    print('\n🚨 WARNING: app.js is MODIFIED but not committed!')
-    print('   The file on disk may not match what is deployed.')
-    print('   If unexpected, find the correct app.js from a previous chat upload.\n')
-_app_path = os.path.join(REPO, 'app.js')
-_app_lines = open(_app_path).read().count('\n') if os.path.exists(_app_path) else 0
-if _app_lines < 15000:
-    print(f'\n🚨 WARNING: app.js is only {_app_lines} lines — looks wrong!')
-    print('   Expected ~19000+ lines. Do not work on this file until resolved.\n')
 
 # Feature checklist
 app = open(os.path.join(REPO, "app.js")).read()
