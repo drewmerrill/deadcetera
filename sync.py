@@ -61,6 +61,19 @@ open(manifest_path, 'w').write(json.dumps({
     "files": manifest
 }, indent=2))
 
+# ── app.js safety check ──────────────────────────────────────────────────────
+import subprocess
+_git = subprocess.run(['git', 'status', 'app.js'], capture_output=True, text=True, cwd=REPO)
+if 'modified' in _git.stdout:
+    print('\n🚨 WARNING: app.js is MODIFIED but not committed!')
+    print('   The file on disk may not match what is deployed.')
+    print('   If unexpected, find the correct app.js from a previous chat upload.\n')
+_app_path = os.path.join(REPO, 'app.js')
+_app_lines = open(_app_path).read().count('\n') if os.path.exists(_app_path) else 0
+if _app_lines < 15000:
+    print(f'\n🚨 WARNING: app.js is only {_app_lines} lines — looks wrong!')
+    print('   Expected ~19000+ lines. Do not work on this file until resolved.\n')
+
 # Feature checklist
 app = open(os.path.join(REPO, "app.js")).read()
 html = open(os.path.join(REPO, "index.html")).read()
