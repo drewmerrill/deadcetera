@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-182924', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-190402', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
 let rmIndex   = 0;
@@ -135,6 +135,8 @@ function rmEnsureOverlay() {
                      <button class="rm-tb" onclick="rmAdjustFont(1)" title="Larger text">A+</button>
                      <button class="rm-tb" onclick="rmSearchUG()" title="Search Ultimate Guitar">🎸</button>
                      <button class="rm-tb" id="rmEditToggle" onclick="rmToggleEdit()" title="Edit chart">✏️</button>
+                     <span class="rm-tb-sep"></span>
+                     <button class="rm-tb" onclick="rmOpenPocketMeter()" title="Pocket Meter — tap tempo &amp; metronome">🥁</button>
                  </div>
                  <button class="rm-monkey-float" onclick="rmToggleToolbar()" id="rmMonkeyBtn" title="Hide/show toolbar">🙈</button>
                 <div id="rmChartLoading" class="rm-loading">Loading chart…</div>
@@ -420,6 +422,7 @@ let rmOriginalChart = '';
 let rmBrainActive = false;
 let rmBrainPct = 100;
 let rmCountOffTimer = null;
+let rmWakeLock = null;
 let rmSongBpm = 120;
 let rmSongKey = '';
 const RM_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -506,9 +509,17 @@ function rmStartCountOff() {
     }
     tick();
     rmCountOffTimer = setInterval(tick, interval);
+    // Prevent screen sleep while metronome is running
+    if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(function(lock) {
+            rmWakeLock = lock;
+        }).catch(function() {});
+    }
 }
 function rmStopCountOff() {
     clearInterval(rmCountOffTimer); rmCountOffTimer = null;
+    // Release screen wake lock
+    if (rmWakeLock) { rmWakeLock.release().catch(function(){}); rmWakeLock = null; }
     const btn = document.getElementById('rmCountOffBtn');
     const measBtn = document.getElementById('rmMetroMeasures');
     if (btn) { btn.textContent = 'Count Off'; btn.style.background = ''; btn.style.color = ''; }
@@ -1151,7 +1162,7 @@ async function rmLoadRecord() {
         el.innerHTML = `<div style="text-align:center;padding:30px"><div style="font-size:2em;margin-bottom:12px">🎙️</div>
             <div style="color:#e2e8f0;font-size:0.95em;margin-bottom:12px">No harmony sections yet for <strong>${song.title}</strong></div>
             <div style="color:#94a3b8;font-size:0.82em;margin-bottom:20px">Add harmony sections in the main song view first, then record here.</div>
-            <button onclick="closeRehearsalMode()" style="padding:10px 20px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600">Go to Song View</button></div>`;
+            <button onclick="closeRehearsalMode();setTimeout(function(){var el=document.getElementById("step4cover");if(el){el.classList.remove("hidden");el.scrollIntoView({behavior:"smooth",block:"start"});}},400)" style="padding:10px 20px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600">Go to Song View → Harmonies</button></div>`;
         return;
     }
     el.innerHTML = `<div style="margin-bottom:12px"><div style="color:#e2e8f0;font-weight:700;margin-bottom:8px">🎙️ Record Harmony Parts</div>
@@ -1208,7 +1219,17 @@ async function rmSaveNote(){const s=rmQueue[rmIndex],t=document.getElementById('
 function rmAddSongToQueue(){const p=document.getElementById('rmQueuePicker');p.innerHTML='<option value="">— Pick a song —</option>';const iq=new Set(rmQueue.map(s=>s.title));(typeof allSongs!=='undefined'?allSongs:[]).forEach(s=>{if(!iq.has(s.title)){const o=document.createElement('option');o.value=s.title;o.textContent=s.title+(s.band?' · '+s.band:'');p.appendChild(o);}});document.getElementById('rmQueueSheet').classList.remove('hidden');}
 function rmConfirmAddSong(){const t=document.getElementById('rmQueuePicker').value;if(!t)return;const sd=(typeof allSongs!=='undefined'?allSongs:[]).find(s=>s.title===t);rmQueue.splice(rmIndex+1,0,{title:t,band:sd?.band||''});rmCloseSheet('rmQueueSheet');showToast(`✅ "${t}" added — next up`);document.getElementById('rmPosition').textContent=rmQueue.length>1?`${rmIndex+1} / ${rmQueue.length}`:'';document.getElementById('rmNextBtn').style.opacity='1';}
 function rmOpenYouTube(){const s=rmQueue[rmIndex];window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+(s.band||'')+' live'),'_blank');}
-function rmOpenMoises(){window.open('https://moises.ai','_blank');}
+function rmOpenPocketMeter() {
+    var song = rmQueue[rmIndex] || {};
+    var bpm  = rmSongBpm || 120;
+    var key  = (typeof rmSongKey !== 'undefined' ? rmSongKey : '') || '';
+    if (typeof openGigPocketMeter === 'function') {
+        openGigPocketMeter(song.title || '', bpm, key);
+    } else {
+        showToast('Pocket Meter not loaded yet');
+    }
+}
+function rmOpenMoises(){window.open('https://studio.moises.ai/library/','_blank');}
 
 // ── Touch swipe ──────────────────────────────────────────────────────────────
 (function(){let sx=0;document.addEventListener('touchstart',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;sx=e.touches[0].clientX;},{passive:true});document.addEventListener('touchend',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>60)rmNavigate(dx<0?1:-1);},{passive:true});})();
