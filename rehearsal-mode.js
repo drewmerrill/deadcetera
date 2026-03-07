@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-102248', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-102803', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
 let rmIndex   = 0;
@@ -208,8 +208,21 @@ function rmSwitchTab(tab, btn) {
     const monkey = document.getElementById('rmMonkeyBtn');
     // In gig mode the monkey lives on document.body — always keep it visible there
     if (monkey) monkey.style.display = (tab === 'chart' || monkey.parentElement === document.body) ? 'block' : 'none';
-    const tools = document.getElementById('rmStickyBar');
-    // tools merged into sticky bar
+    // Lazy-load tab content on first switch — needed when entering via gig mode
+    // (openGigMode only calls rmLoadChart; other tabs load on demand)
+    if (tab === 'know') {
+        const el = document.getElementById('rmKnowContent');
+        if (el && el.querySelector('.rm-loading')) rmLoadKnow();
+    } else if (tab === 'memory') {
+        const el = document.getElementById('rmMemoryContent');
+        if (el && el.querySelector('.rm-loading')) rmLoadMemory();
+    } else if (tab === 'harmony') {
+        const el = document.getElementById('rmHarmonyContent');
+        if (el && el.querySelector('.rm-loading')) rmLoadHarmony();
+    } else if (tab === 'record') {
+        const el = document.getElementById('rmRecordContent');
+        if (el && el.querySelector('.rm-loading')) rmLoadRecord();
+    }
 }
 
 // ── Open / close ─────────────────────────────────────────────────────────────

@@ -918,7 +918,9 @@ function _gmEnsureOverlay() {
         '#gmOverlay #rmTabBar{flex-shrink:0}',
         '#gmOverlay #rmBody{flex:1;overflow:hidden}',
         '#gmOverlay .rm-footer{flex-shrink:0}',
-        '#gmOverlay .rm-panel.active{display:block}'
+        '#gmOverlay .rm-panel.active{display:block}',
+        // Monkey button reparented to body during gig mode — override its CSS class positioning
+        'body > .rm-monkey-float{position:fixed!important;bottom:130px!important;right:12px!important;z-index:3500!important;display:block!important}'
     ].join('\n');
     document.head.appendChild(style);
 
@@ -965,22 +967,12 @@ function _gmEnsureOverlay() {
         capBtn.style.cssText = 'position:fixed;bottom:74px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(102,126,234,0.25);border:1.5px solid rgba(102,126,234,0.5);color:#a5b4fc;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
         document.body.appendChild(capBtn);
         sheets.forEach(function(s) { ov.appendChild(s); });
-        // Monkey button — must go on body, not inside gmOverlay.
-        // position:fixed inside a fixed/flex container loses viewport anchoring.
+        // Monkey button — reparent to document.body so position:fixed works.
+        // Inside gmOverlay (position:fixed flex container) it loses viewport anchoring.
+        // The rm-monkey-float CSS class handles positioning — just move it to body.
         if (monkey) {
-            monkey.style.cssText = 'position:fixed;bottom:74px;left:14px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);color:#f1f5f9;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
             document.body.appendChild(monkey);
-        } else {
-            var mkBtn = document.createElement('button');
-            mkBtn.id = 'rmMonkeyBtn';
-            mkBtn.innerHTML = '\uD83D\uDC12';
-            mkBtn.title = 'Hide chart';
-            mkBtn.style.cssText = 'position:fixed;bottom:74px;left:14px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);color:#f1f5f9;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
-            mkBtn.onclick = function() {
-                var panel = document.querySelector('#gmOverlay .rm-panel.active, #gmOverlay #rmChartPanel');
-                if (panel) panel.style.visibility = panel.style.visibility === 'hidden' ? '' : 'hidden';
-            };
-            document.body.appendChild(mkBtn);
+            monkey.style.removeProperty('display');
         }
         // Remove the now-empty rmOverlay shell (we'll rebuild from scratch next time practice mode opens)
         rmOv.remove();
