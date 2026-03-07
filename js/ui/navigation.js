@@ -97,6 +97,7 @@ var pageRenderers = window.pageRenderers = {
     admin:         function(el) { if (typeof renderSettingsPage      === 'function') renderSettingsPage(el);      },
     social:        function(el) { if (typeof renderSocialPage        === 'function') renderSocialPage(el);        },
     notifications: function(el) { if (typeof renderNotificationsPage === 'function') renderNotificationsPage(el); },
+    pocketmeter:   function(el) { if (typeof renderPocketMeterPage   === 'function') renderPocketMeterPage(el);   },
     help:          function(el) {
         if      (typeof renderHelpPage === 'function') renderHelpPage(el);
         else el.innerHTML = '<p>Help loading…</p>';

@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-084047', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-084847', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-084047';
+var BUILD_VERSION = '20260307-084847';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -13663,21 +13663,36 @@ var _pmGigInstance = null;   // gig mode floating instance
 function renderPocketMeterPage(el) {
     el.innerHTML =
         '<div class="page-header"><h1>🎯 Pocket Meter</h1><p>Real-time BPM detection — stay locked in with the band</p></div>' +
-        '<div id="pmPageContainer" style="max-width:420px;margin:0 auto;padding:8px 0"></div>';
-    if (typeof PocketMeter !== 'function') {
-        el.querySelector('#pmPageContainer').innerHTML =
-            '<p style="color:var(--text-dim);text-align:center;padding:32px">Pocket Meter not available.</p>';
-        return;
+        '<div id="pmPageContainer" style="max-width:420px;margin:0 auto;padding:8px 0">' +
+        '<p style="color:var(--text-dim);text-align:center;padding:32px">Loading\u2026</p></div>';
+
+    // pocket-meter.js loads after app.js — retry until PocketMeter class is available
+    var attempts = 0;
+    function _mountPM() {
+        attempts++;
+        if (typeof PocketMeter !== 'function') {
+            if (attempts < 20) { setTimeout(_mountPM, 150); return; }
+            var c = el.querySelector('#pmPageContainer');
+            if (c) c.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:32px">Pocket Meter not available.</p>';
+            return;
+        }
+        if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
+        var container = el.querySelector('#pmPageContainer');
+        if (!container) return;
+        container.innerHTML = '';
+        var bpm = (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.bpm)
+            ? (parseInt(selectedSong.bpm, 10) || 120)
+            : 120;
+        _pmInstance = new PocketMeter(container, {
+            targetBPM: bpm,
+            songKey: (typeof selectedSong !== 'undefined' && selectedSong) ? (selectedSong.key || '') : '',
+            mode: 'rehearsal',
+            bandPath: typeof bandPath === 'function' ? bandPath() : null,
+            db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
+        });
+        _pmInstance.mount();
     }
-    if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
-    var container = el.querySelector('#pmPageContainer');
-    _pmInstance = new PocketMeter(container, {
-        targetBPM: 120,
-        mode: 'rehearsal',
-        bandPath: typeof bandPath === 'function' ? bandPath() : null,
-        db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
-    });
-    _pmInstance.mount();
+    _mountPM();
 }
 
 // Called from Gig Mode (gigs.js gmOpenPocket)
