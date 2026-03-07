@@ -451,3 +451,22 @@ async function plConfirmDelete(playlistId) {
     plLoadIndex();
 }
 
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.renderPlaylistsPage = renderPlaylistsPage;
+window.plLoadIndex = plLoadIndex;
+window.plFilterByType = plFilterByType;
+window.plRenderIndex = plRenderIndex;
+window.plPlay = plPlay;
+window.plPlayerRender = plPlayerRender;
+window.plPlayerResolveAndUpdate = plPlayerResolveAndUpdate;
+window.plPlayerUpdateOpenBtn = plPlayerUpdateOpenBtn;
+window.plPlayerOpenCurrent = plPlayerOpenCurrent;
+window.plPlayerClose = plPlayerClose;
+window.plPlayerJumpTo = plPlayerJumpTo;
+window.plPartyStart = plPartyStart;
+window.plPartyAdvance = plPartyAdvance;
+window.plPartyLeave = plPartyLeave;
+window.plPartyEnd = plPartyEnd;
+window.plPartyRenderStatus = plPartyRenderStatus;
+window.plConfirmDelete = plConfirmDelete;

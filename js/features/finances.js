@@ -110,3 +110,12 @@ async function saveTransaction() {
     alert('✅ Transaction saved!');
     loadFinances();
 }
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.renderFinancesPage = renderFinancesPage;
+window.loadFinances = loadFinances;
+window.setStartingBalance = setStartingBalance;
+window.saveStartingBalance = saveStartingBalance;
+window.deleteTransaction = deleteTransaction;
+window.addTransaction = addTransaction;
+window.saveTransaction = saveTransaction;

@@ -401,3 +401,16 @@ function stonerOpenMetronome() {
 })();
 
 console.log('\uD83C\uDF3F Stoner Mode loaded');
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.toggleStonerMode = toggleStonerMode;
+window.stonerSearch = stonerSearch;
+window.stonerLaunchSong = stonerLaunchSong;
+window.stonerExitToGigs = stonerExitToGigs;
+window.stonerGoHome = stonerGoHome;
+window.stonerOpenSetlists = stonerOpenSetlists;
+window.stonerLaunchSetlist = stonerLaunchSetlist;
+window.stonerOpenGigs = stonerOpenGigs;
+window.stonerPickSetlist = stonerPickSetlist;
+window.stonerOpenTuner = stonerOpenTuner;
+window.stonerOpenMetronome = stonerOpenMetronome;

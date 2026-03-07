@@ -795,3 +795,35 @@ async function deleteSetlist(idx) {
 // Returns "Venue Name — City, ST" for dropdown display, falling back gracefully
 // venueShortLabel(), deleteGig(), editGig(), saveGigEdit()
 // → js/features/gigs.js
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.renderSetlistsPage = renderSetlistsPage;
+window.loadSetlists = loadSetlists;
+window.exportSetlistToiPad = exportSetlistToiPad;
+window.createNewSetlist = createNewSetlist;
+window.slSearchSong = slSearchSong;
+window.slAddSongToSet = slAddSongToSet;
+window.slRenderSetSongs = slRenderSetSongs;
+window.slRenderReadinessMeter = slRenderReadinessMeter;
+window.slVoteSong = slVoteSong;
+window.slRefreshVotesForSong = slRefreshVotesForSong;
+window.slEnrichKeyBpm = slEnrichKeyBpm;
+window.slSetSegue = slSetSegue;
+window.slToggleTransition = slToggleTransition;
+window.slRemoveSong = slRemoveSong;
+window.slAddSet = slAddSet;
+window.slSaveSetlist = slSaveSetlist;
+window.editSetlist = editSetlist;
+window.slShareSetlist = slShareSetlist;
+window.slShareCopyText = slShareCopyText;
+window.slSharePrint = slSharePrint;
+window.parachuteLoadSetlistData = parachuteLoadSetlistData;
+window.parachuteBuildHtml = parachuteBuildHtml;
+window.parachutePrint = parachutePrint;
+window.parachuteEmail = parachuteEmail;
+window.parachutePublicUrl = parachutePublicUrl;
+window.parachuteCheckUrlHash = parachuteCheckUrlHash;
+window.parachuteCacheOffline = parachuteCacheOffline;
+window.parachuteOpenOfflinePack = parachuteOpenOfflinePack;
+window.slSaveSetlistEdit = slSaveSetlistEdit;
+window.deleteSetlist = deleteSetlist;

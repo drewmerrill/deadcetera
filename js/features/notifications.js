@@ -1106,3 +1106,43 @@ async function notifFromPracticePlan(dateStr) {
     }, 600);
 }
 
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.carePackageSend = carePackageSend;
+window.carePackageBuild = carePackageBuild;
+window.carePackageShowSendModal = carePackageShowSendModal;
+window.cpCopyLink = cpCopyLink;
+window.cpSMSAll = cpSMSAll;
+window.cpTextMember = cpTextMember;
+window.renderNotificationsPage = renderNotificationsPage;
+window.renderBandContactList = renderBandContactList;
+window.notifToggleEdit = notifToggleEdit;
+window.notifSaveMemberContact = notifSaveMemberContact;
+window.notifAddMember = notifAddMember;
+window.notifConfirmAddMember = notifConfirmAddMember;
+window.notifDeleteMember = notifDeleteMember;
+window.notifShareAppLink = notifShareAppLink;
+window.notifIsDesktop = notifIsDesktop;
+window.notifSendSMS = notifSendSMS;
+window.notifSMSAppLink = notifSMSAppLink;
+window.notifTextOne = notifTextOne;
+window.notifPopulateRehearsalPicker = notifPopulateRehearsalPicker;
+window.notifGetAllPhones = notifGetAllPhones;
+window.carePackageGenId = carePackageGenId;
+window.carePackageLoadSongs = carePackageLoadSongs;
+window.carePackageSave = carePackageSave;
+window.carePackageShowModal = carePackageShowModal;
+window.cpSetType = cpSetType;
+window.carePackageBuild = carePackageBuild;
+window.carePackageShowDeliveryModal = carePackageShowDeliveryModal;
+window.carePackageBuildSMS = carePackageBuildSMS;
+window.carePackageShowLinkModal = carePackageShowLinkModal;
+window.notifSendSMSPracticePlan = notifSendSMSPracticePlan;
+window.notifSendPracticePlanPush = notifSendPracticePlanPush;
+window.notifSendPush = notifSendPush;
+window.notifRequestPush = notifRequestPush;
+window.notifSendAnnouncementPush = notifSendAnnouncementPush;
+window.notifSendAnnouncementSMS = notifSendAnnouncementSMS;
+window.notifShowSMSCopyModal = notifShowSMSCopyModal;
+window.notifToast = notifToast;
+window.notifFromPracticePlan = notifFromPracticePlan;

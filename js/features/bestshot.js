@@ -1535,3 +1535,51 @@ async function loadBestShotOverview() {
 
 // ============================================================================
 // GUITAR TUNER
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.renderBestShotVsNorthStar = renderBestShotVsNorthStar;
+window.emailKey = emailKey;
+window.emailFromKey = emailFromKey;
+window.rateBestShotSection = rateBestShotSection;
+window.updateSectionRatingInline = updateSectionRatingInline;
+window.toggleSectionNotes = toggleSectionNotes;
+window.addSectionNote = addSectionNote;
+window.editSectionNote = editSectionNote;
+window.saveEditedSectionNote = saveEditedSectionNote;
+window.deleteSectionNote = deleteSectionNote;
+window.crownBestShot = crownBestShot;
+window.editBestShotTake = editBestShotTake;
+window.deleteBestShotTake = deleteBestShotTake;
+window.addBestShotTake = addBestShotTake;
+window.handleBestShotFile = handleBestShotFile;
+window.normalizeAudioUrl = normalizeAudioUrl;
+window.bestShotAudioHtml = bestShotAudioHtml;
+window.loadFirebaseAudio = loadFirebaseAudio;
+window.loadGdriveAudio = loadGdriveAudio;
+window.saveBestShotTake = saveBestShotTake;
+window.sendToPracticePlan = sendToPracticePlan;
+window.editScorecardSections = editScorecardSections;
+window.openRehearsalChopper = openRehearsalChopper;
+window.chopLoadFile = chopLoadFile;
+window.chopWireCanvasEvents = chopWireCanvasEvents;
+window.chopStartPlayheadTracker = chopStartPlayheadTracker;
+window.chopStopPlayheadTracker = chopStopPlayheadTracker;
+window.chopDrawWaveform = chopDrawWaveform;
+window.chopDetectSilence = chopDetectSilence;
+window.chopAddMarker = chopAddMarker;
+window.chopRemoveMarker = chopRemoveMarker;
+window.chopToggleExclude = chopToggleExclude;
+window.chopRenderSegments = chopRenderSegments;
+window.parseChopTime = parseChopTime;
+window.chopUpdateTime = chopUpdateTime;
+window.chopSelectBoundary = chopSelectBoundary;
+window.chopSetBoundary = chopSetBoundary;
+window.chopEditTime = chopEditTime;
+window.chopPreviewSegment = chopPreviewSegment;
+window.chopSaveAll = chopSaveAll;
+window.formatChopTime = formatChopTime;
+window.audioBufferToWav = audioBufferToWav;
+window.renderBestShotPage = renderBestShotPage;
+window.renderBestShotOverviewList = renderBestShotOverviewList;
+window.filterBestShotOverview = filterBestShotOverview;
+window.loadBestShotOverview = loadBestShotOverview;

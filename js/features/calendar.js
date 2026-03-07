@@ -438,3 +438,22 @@ const NOTIF_EVENTS = {
     blocked_dates:    { label: 'Blocked Dates Updated',      icon: '🚫', desc: 'When someone updates their availability' },
     announcements:    { label: 'Band Announcements',         icon: '📢', desc: 'General announcements (always recommended)' },
 };
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.calShowEvent = calShowEvent;
+window.renderCalendarPage = renderCalendarPage;
+window.renderCalendarInner = renderCalendarInner;
+window.calNavMonth = calNavMonth;
+window.loadCalendarEvents = loadCalendarEvents;
+window.calBlockDates = calBlockDates;
+window.saveBlockedDates = saveBlockedDates;
+window.calDeleteBlocked = calDeleteBlocked;
+window.calEditBlocked = calEditBlocked;
+window.saveBlockedDatesEdit = saveBlockedDatesEdit;
+window.calDayClick = calDayClick;
+window.calAddEvent = calAddEvent;
+window.calTypeChanged = calTypeChanged;
+window.calVenueSelected = calVenueSelected;
+window.calEditEvent = calEditEvent;
+window.calDeleteEvent = calDeleteEvent;
+window.calSaveEvent = calSaveEvent;

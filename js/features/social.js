@@ -322,3 +322,21 @@ async function socialIdeaToPost(idx) {
     }, 50);
 }
 
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.renderSocialPage = renderSocialPage;
+window.loadSocialProfiles = loadSocialProfiles;
+window.socialEditProfiles = socialEditProfiles;
+window.socialSaveProfiles = socialSaveProfiles;
+window.loadSocialPosts = loadSocialPosts;
+window.getSocialPosts = getSocialPosts;
+window.socialAddPost = socialAddPost;
+window.socialSavePost = socialSavePost;
+window.socialEditPost = socialEditPost;
+window.socialDeletePost = socialDeletePost;
+window.socialCopyPost = socialCopyPost;
+window.loadSocialIdeas = loadSocialIdeas;
+window.socialAddIdea = socialAddIdea;
+window.saveSocialIdea = saveSocialIdea;
+window.socialDeleteIdea = socialDeleteIdea;
+window.socialIdeaToPost = socialIdeaToPost;

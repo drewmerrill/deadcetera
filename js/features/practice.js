@@ -435,3 +435,20 @@ ${plan.notes || '  (none)'}`.trim();
     });
 }
 
+
+// ── Window exports (called from inline HTML onclick handlers) ──────────────
+window.renderPracticePage = renderPracticePage;
+window.loadSongStatusMap = loadSongStatusMap;
+window.loadCalendarEventsRaw = loadCalendarEventsRaw;
+window.formatPracticeDate = formatPracticeDate;
+window.renderPracticePlanForDate = renderPracticePlanForDate;
+window.practicePlanSelectDate = practicePlanSelectDate;
+window.ppAddGoal = ppAddGoal;
+window.ppRemoveGoal = ppRemoveGoal;
+window.ppAddSong = ppAddSong;
+window.ppRemoveSong = ppRemoveSong;
+window.practicePlanSave = practicePlanSave;
+window.practicePlanEditMeta = practicePlanEditMeta;
+window.practicePlanSaveMeta = practicePlanSaveMeta;
+window.practicePlanNew = practicePlanNew;
+window.practicePlanExport = practicePlanExport;
