@@ -57,6 +57,7 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
         var context = _computeHomeContext(bundle);
         container.innerHTML = _renderDashboard(bundle, context);
         _triggerDashboardEntrance();
+        _scheduleWeakSongsFill(bundle);
     } catch (err) {
         console.warn('[Home] Load error:', err);
         container.innerHTML = _renderErrorState();
@@ -74,6 +75,7 @@ window.refreshHomeDashboard = function refreshHomeDashboard() {
         var context = _computeHomeContext(_homeBundle);
         container.innerHTML = _renderDashboard(_homeBundle, context);
         _triggerDashboardEntrance();
+        _scheduleWeakSongsFill(_homeBundle);
     } else {
         window.renderHomeDashboard();
     }
@@ -366,6 +368,7 @@ function _renderDashboard(bundle, context) {
         '<div class="home-card-grid home-anim-cards">',
         cardsHTML,
         '</div>',
+        '<div id="home-weak-songs"></div>',
         activityHTML  ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" style="opacity:0"') : activityHTML,
         '</div>'
     ].join('');
@@ -1286,6 +1289,219 @@ function _triggerDashboardEntrance() {
         '.home-banner__dismiss { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 0.75em; padding: 4px; line-height: 1; }',
         '.home-banner__dismiss:hover { color: var(--text-muted); }',
 
+        /* ── Weak Songs widget ── */
+        '.home-weak { margin: 0 0 16px; padding: 12px 14px; background: var(--bg-card); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; }',
+        '.home-weak__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }',
+        '.home-weak__title-label { font-size: 0.78em; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }',
+        '.home-weak__count { font-size: 0.72em; color: var(--text-dim); }',
+        '.home-weak__list { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }',
+        '.home-weak__row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; transition: background 0.15s; }',
+        '.home-weak__row:hover { background: rgba(255,255,255,0.05); }',
+        '.home-weak__dot { font-size: 0.75em; flex-shrink: 0; }',
+        '.home-weak__title { flex: 1; font-size: 0.85em; font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+        '.home-weak__meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }',
+        '.home-weak__age { font-size: 0.7em; color: var(--text-dim); }',
+        '.home-weak__more { display: block; font-size: 0.72em; color: var(--text-dim); text-align: center; margin: -4px 0 8px; }',
+        '.home-weak__cta { width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 0.82em; font-weight: 700; cursor: pointer; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: #fca5a5; font-family: inherit; transition: all 0.15s; text-align: center; }',
+        '.home-weak__cta:hover { background: rgba(239,68,68,0.15); color: #fecaca; }',
+
     ].join('\n');
     document.head.appendChild(style);
 }());
+
+// ============================================================================
+// WEAK SONGS DETECTION
+// Surfaces songs needing practice based on band readiness + recency.
+// Renders async into #home-weak-songs after dashboard paint.
+// ============================================================================
+
+// Cache to avoid reloading activity log every render
+var _weakSongsCache    = null;
+var _weakSongsTime     = 0;
+var _WEAK_SONGS_TTL    = 120000; // 2 min
+
+var _RECENCY_DAYS      = 21;   // days without activity = stale
+var _READINESS_THRESH  = 3;    // band avg below this = weak
+var _WEAK_DISPLAY      = 3;    // songs to show in widget
+
+/**
+ * Score a song's weakness. Higher = more urgent to practice.
+ *   readiness gap: (threshold - bandAvg) * 2   — max ~6 for avg=0
+ *   recency penalty: 0–3 based on days since last activity
+ *   never-touched bonus: +2 if no activity ever logged
+ */
+function _weakScore(bandAvg, daysSinceActivity) {
+    var readinessGap = Math.max(0, _READINESS_THRESH - bandAvg) * 2;
+    var recencyPenalty = 0;
+    if (daysSinceActivity === null) {
+        recencyPenalty = 3; // never touched
+    } else if (daysSinceActivity > _RECENCY_DAYS) {
+        recencyPenalty = Math.min(3, Math.floor(daysSinceActivity / 7));
+    }
+    return readinessGap + recencyPenalty;
+}
+
+/**
+ * Build a map of { songTitle -> daysSinceLastActivity } from the activity log.
+ * Only counts actions that indicate actual practice engagement.
+ */
+function _buildRecencyMap(activityLog) {
+    var PRACTICE_ACTIONS = {
+        practice_track: true, readiness_set: true,
+        rehearsal_note: true, harmony_add: true,
+        harmony_edit: true,   harmony_recording: true,
+        song_structure: true, part_notes: true
+    };
+    var lastSeen = {}; // songTitle -> Date ms
+    var now = Date.now();
+    (Array.isArray(activityLog) ? activityLog : []).forEach(function(e) {
+        if (!e || !e.song || !e.time || !PRACTICE_ACTIONS[e.action]) return;
+        var t = new Date(e.time).getTime();
+        if (!isNaN(t) && (!lastSeen[e.song] || t > lastSeen[e.song])) {
+            lastSeen[e.song] = t;
+        }
+    });
+    var result = {};
+    Object.keys(lastSeen).forEach(function(title) {
+        result[title] = Math.floor((now - lastSeen[title]) / 86400000);
+    });
+    return result;
+}
+
+/**
+ * Compute the top N weakest songs from readinessCache + recency map.
+ * Returns array of { title, bandAvg, daysSince, score }.
+ */
+function _computeWeakSongs(readinessCache, recencyMap, limit) {
+    var rc = readinessCache || {};
+    var candidates = [];
+
+    Object.entries(rc).forEach(function(entry) {
+        var title   = entry[0];
+        var ratings = entry[1] || {};
+        var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
+        if (!keys.length) return; // no ratings at all — skip (avoids polluting with unrated songs)
+
+        var bandAvg = keys.reduce(function(sum, k) { return sum + ratings[k]; }, 0) / keys.length;
+        if (bandAvg >= _READINESS_THRESH) return; // already strong enough
+
+        var daysSince = (recencyMap && recencyMap[title] !== undefined) ? recencyMap[title] : null;
+        var score     = _weakScore(bandAvg, daysSince);
+        candidates.push({ title: title, bandAvg: bandAvg, daysSince: daysSince, score: score, raterCount: keys.length });
+    });
+
+    candidates.sort(function(a, b) { return b.score - a.score; });
+    return candidates.slice(0, limit || _WEAK_DISPLAY);
+}
+
+/**
+ * Navigate to Songs page and highlight weak songs via search.
+ * Shows first weak song name in search — user can clear to see all.
+ * If only one song, select it directly.
+ */
+window.homeGoWeakSongs = function homeGoWeakSongs(titles) {
+    if (!titles || !titles.length) { showPage('songs'); return; }
+    showPage('songs');
+    setTimeout(function() {
+        var searchEl = document.getElementById('songSearch');
+        if (!searchEl) return;
+        if (titles.length === 1) {
+            // Single song — select it directly
+            searchEl.value = titles[0];
+            if (typeof renderSongs === 'function') renderSongs(
+                (typeof currentFilter !== 'undefined' ? currentFilter : 'all'), titles[0]
+            );
+            // Auto-select after brief delay so row is rendered
+            setTimeout(function() {
+                if (typeof selectSong === 'function') selectSong(titles[0]);
+            }, 150);
+        } else {
+            // Multiple — clear search so all songs show, scroll list to top
+            searchEl.value = '';
+            if (typeof renderSongs === 'function') renderSongs('all', '');
+            searchEl.focus();
+            showToast('📋 ' + titles.length + ' weak songs — check readiness chains on each');
+        }
+    }, 200);
+};
+
+/**
+ * Async renderer — fills #home-weak-songs after dashboard paint.
+ */
+async function _fillWeakSongs(bundle) {
+    var el = document.getElementById('home-weak-songs');
+    if (!el) return;
+
+    // Load activity log (cached)
+    var activityLog = [];
+    try {
+        if (_weakSongsCache && (Date.now() - _weakSongsTime < _WEAK_SONGS_TTL)) {
+            activityLog = _weakSongsCache;
+        } else {
+            activityLog = await window.loadMasterFile('_master_activity_log.json') || [];
+            _weakSongsCache = activityLog;
+            _weakSongsTime  = Date.now();
+        }
+    } catch(e) { activityLog = []; }
+
+    var recencyMap = _buildRecencyMap(activityLog);
+    var weak       = _computeWeakSongs(bundle.readinessCache, recencyMap, _WEAK_DISPLAY);
+
+    if (!weak.length) return; // nothing to show — widget stays hidden
+
+    var titles    = weak.map(function(s) { return s.title; });
+    var titlesEsc = JSON.stringify(titles).replace(/'/g, "\\'");
+
+    var rows = weak.map(function(s) {
+        var avg    = s.bandAvg.toFixed(1);
+        var color  = s.bandAvg < 1.5 ? 'var(--red,#ef4444)' : 'var(--yellow,#f59e0b)';
+        var dot    = s.bandAvg < 1.5 ? '🔴' : '🟡';
+        var age    = s.daysSince === null ? 'Never practiced'
+                   : s.daysSince === 0   ? 'Today'
+                   : s.daysSince === 1   ? 'Yesterday'
+                   : s.daysSince + 'd ago';
+        return '<div class="home-weak__row" onclick="homeGoWeakSongs([\'' + s.title.replace(/'/g, "\\'") + '\'])" title="Practice this song">'
+            + '<span class="home-weak__dot">' + dot + '</span>'
+            + '<span class="home-weak__title">' + _escHtml(s.title) + '</span>'
+            + '<span class="home-weak__meta">'
+            +   '<span style="color:' + color + ';font-weight:700">' + avg + '/5</span>'
+            +   '<span class="home-weak__age">' + age + '</span>'
+            + '</span>'
+            + '</div>';
+    }).join('');
+
+    var totalWeak = Object.entries(bundle.readinessCache || {}).filter(function(entry) {
+        var ratings = entry[1] || {};
+        var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
+        if (!keys.length) return false;
+        var avg     = keys.reduce(function(sum, k) { return sum + ratings[k]; }, 0) / keys.length;
+        return avg < _READINESS_THRESH;
+    }).length;
+
+    var moreLabel = totalWeak > _WEAK_DISPLAY
+        ? '<span class="home-weak__more">+' + (totalWeak - _WEAK_DISPLAY) + ' more below threshold</span>'
+        : '';
+
+    el.innerHTML = [
+        '<div class="home-weak home-anim-feed">',
+        '  <div class="home-weak__header">',
+        '    <span class="home-weak__title-label">⚠️ Weak Songs</span>',
+        '    <span class="home-weak__count">' + totalWeak + ' below readiness threshold</span>',
+        '  </div>',
+        '  <div class="home-weak__list">' + rows + '</div>',
+        moreLabel,
+        '  <button class="home-weak__cta" onclick="homeGoWeakSongs(' + titlesEsc + ')">Practice Now →</button>',
+        '</div>'
+    ].join('');
+}
+
+/**
+ * Trigger weak songs fill after dashboard renders.
+ * Called from _renderDashboard via setTimeout.
+ */
+function _scheduleWeakSongsFill(bundle) {
+    setTimeout(function() { _fillWeakSongs(bundle); }, 220);
+}
+
+// Weak songs fill is hooked directly into renderHomeDashboard and refreshHomeDashboard above.
+
