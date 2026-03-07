@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-063249', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-063705', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-063249';
+var BUILD_VERSION = '20260307-063705';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -8889,7 +8889,7 @@ function slRenderSetSongs(setIdx) {
             <span style="color:#475569;cursor:grab;font-size:1em;flex-shrink:0" title="Drag to reorder">\u2807</span>
             <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0">${i + 1}.</span>
             <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
-            ${keyStr}${bpmStr}<span id="slvote_${sanitizeFirebasePath(title).replace(/[^a-zA-Z0-9]/g,'_')}" style="display:inline-flex;align-items:center;gap:2px;margin-left:4px;vertical-align:middle"></span>
+            ${keyStr}${bpmStr}<span id="slvote_${sanitizeFirebasePath(s).replace(/[^a-zA-Z0-9]/g,'_')}" style="display:inline-flex;align-items:center;gap:2px;margin-left:4px;vertical-align:middle"></span>
             <select onchange="slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
                 style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:5px;padding:2px 4px;font-size:0.78em;font-weight:700;cursor:pointer;flex-shrink:0">
                 <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
