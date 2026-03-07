@@ -36,7 +36,11 @@ FILES = [
     "js/features/playlists.js",
     "js/features/stoner-mode.js",
     "js/features/home-dashboard.js",
+    "js/features/home-dashboard-cc.js",
     "js/features/chart-import.js",
+    # Song Intelligence System
+    "js/features/song-detail.js",
+    "js/features/harmony-lab.js",
 
 ]
 
