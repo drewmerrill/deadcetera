@@ -1304,6 +1304,7 @@ function _triggerDashboardEntrance() {
         '.home-weak__more { display: block; font-size: 0.72em; color: var(--text-dim); text-align: center; margin: -4px 0 8px; }',
         '.home-weak__cta { width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 0.82em; font-weight: 700; cursor: pointer; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: #fca5a5; font-family: inherit; transition: all 0.15s; text-align: center; }',
         '.home-weak__cta:hover { background: rgba(239,68,68,0.15); color: #fecaca; }',
+        '.home-weak__gig-badge { display: inline-block; font-size: 0.6em; font-weight: 700; color: #a78bfa; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3); border-radius: 4px; padding: 0 5px; margin-left: 5px; vertical-align: middle; line-height: 1.6; }',
 
     ].join('\n');
     document.head.appendChild(style);
@@ -1330,7 +1331,7 @@ var _WEAK_DISPLAY      = 3;    // songs to show in widget
  *   recency penalty: 0–3 based on days since last activity
  *   never-touched bonus: +2 if no activity ever logged
  */
-function _weakScore(bandAvg, daysSinceActivity) {
+function _weakScore(bandAvg, daysSinceActivity, inGig) {
     var readinessGap = Math.max(0, _READINESS_THRESH - bandAvg) * 2;
     var recencyPenalty = 0;
     if (daysSinceActivity === null) {
@@ -1338,7 +1339,8 @@ function _weakScore(bandAvg, daysSinceActivity) {
     } else if (daysSinceActivity > _RECENCY_DAYS) {
         recencyPenalty = Math.min(3, Math.floor(daysSinceActivity / 7));
     }
-    return readinessGap + recencyPenalty;
+    var gigBoost = inGig ? 2 : 0;
+    return readinessGap + recencyPenalty + gigBoost;
 }
 
 /**
@@ -1372,8 +1374,9 @@ function _buildRecencyMap(activityLog) {
  * Compute the top N weakest songs from readinessCache + recency map.
  * Returns array of { title, bandAvg, daysSince, score }.
  */
-function _computeWeakSongs(readinessCache, recencyMap, limit) {
+function _computeWeakSongs(readinessCache, recencyMap, limit, gigTitles) {
     var rc = readinessCache || {};
+    var gigSet = gigTitles || new Set();
     var candidates = [];
 
     Object.entries(rc).forEach(function(entry) {
@@ -1386,8 +1389,9 @@ function _computeWeakSongs(readinessCache, recencyMap, limit) {
         if (bandAvg >= _READINESS_THRESH) return; // already strong enough
 
         var daysSince = (recencyMap && recencyMap[title] !== undefined) ? recencyMap[title] : null;
-        var score     = _weakScore(bandAvg, daysSince);
-        candidates.push({ title: title, bandAvg: bandAvg, daysSince: daysSince, score: score, raterCount: keys.length });
+        var inGig     = gigSet.has(title);
+        var score     = _weakScore(bandAvg, daysSince, inGig);
+        candidates.push({ title: title, bandAvg: bandAvg, daysSince: daysSince, score: score, inGig: inGig, raterCount: keys.length });
     });
 
     candidates.sort(function(a, b) { return b.score - a.score; });
@@ -1445,24 +1449,54 @@ async function _fillWeakSongs(bundle) {
     } catch(e) { activityLog = []; }
 
     var recencyMap = _buildRecencyMap(activityLog);
-    var weak       = _computeWeakSongs(bundle.readinessCache, recencyMap, _WEAK_DISPLAY);
+
+    // Extract song titles from next upcoming gig setlist for gig boost
+    var gigTitles = new Set();
+    try {
+        var upcomingGigs = bundle.gigs || [];
+        if (upcomingGigs.length) {
+            var nextGig = upcomingGigs[0]; // sorted asc by _loadUpcomingGigs
+            var setlistName = nextGig.linkedSetlist || nextGig.setlist || '';
+            if (setlistName && typeof window.loadBandDataFromDrive === 'function') {
+                if (!window._homeSetlistCache) {
+                    window._homeSetlistCache = await window.loadBandDataFromDrive('_band', 'setlists').catch(function(){ return []; });
+                }
+                var allSetlists = window._homeSetlistCache || [];
+                var sl = (Array.isArray(allSetlists) ? allSetlists : Object.values(allSetlists))
+                    .find(function(s) { return s && (s.name === setlistName || s.title === setlistName); });
+                if (sl) {
+                    var sets = sl.sets || sl.songs || [];
+                    (Array.isArray(sets) ? sets : Object.values(sets)).forEach(function(set) {
+                        var songs = Array.isArray(set) ? set : (set.songs || []);
+                        songs.forEach(function(song) {
+                            var t = typeof song === 'string' ? song : (song.title || song.song || '');
+                            if (t) gigTitles.add(t);
+                        });
+                    });
+                }
+            }
+        }
+    } catch(e) { /* non-fatal — gig boost just won't apply */ }
+
+    var weak = _computeWeakSongs(bundle.readinessCache, recencyMap, _WEAK_DISPLAY, gigTitles);
 
     if (!weak.length) return; // nothing to show — widget stays hidden
 
     var titles    = weak.map(function(s) { return s.title; });
     var titlesEsc = JSON.stringify(titles).replace(/'/g, "\\'");
+    var hasGigSongs = weak.some(function(s) { return s.inGig; });
 
     var rows = weak.map(function(s) {
         var avg    = s.bandAvg.toFixed(1);
-        var color  = s.bandAvg < 1.5 ? 'var(--red,#ef4444)' : 'var(--yellow,#f59e0b)';
-        var dot    = s.bandAvg < 1.5 ? '🔴' : '🟡';
+        var color  = s.bandAvg < 2.0 ? 'var(--red,#ef4444)' : 'var(--yellow,#f59e0b)';
+        var dot    = s.bandAvg < 2.0 ? '🔴' : '🟡';
         var age    = s.daysSince === null ? 'Never practiced'
                    : s.daysSince === 0   ? 'Today'
                    : s.daysSince === 1   ? 'Yesterday'
                    : s.daysSince + 'd ago';
         return '<div class="home-weak__row" onclick="homeGoWeakSongs([\'' + s.title.replace(/'/g, "\\'") + '\'])" title="Practice this song">'
             + '<span class="home-weak__dot">' + dot + '</span>'
-            + '<span class="home-weak__title">' + _escHtml(s.title) + '</span>'
+            + '<span class="home-weak__title">' + _escHtml(s.title) + (s.inGig ? '<span class="home-weak__gig-badge">🎤 Next Gig</span>' : '') + '</span>'
             + '<span class="home-weak__meta">'
             +   '<span style="color:' + color + ';font-weight:700">' + avg + '/5</span>'
             +   '<span class="home-weak__age">' + age + '</span>'
@@ -1485,7 +1519,7 @@ async function _fillWeakSongs(bundle) {
     el.innerHTML = [
         '<div class="home-weak home-anim-feed">',
         '  <div class="home-weak__header">',
-        '    <span class="home-weak__title-label">⚠️ Weak Songs</span>',
+        '    <span class="home-weak__title-label">' + (hasGigSongs ? '🎤 Needs Work Before Next Gig' : '⚠️ Needs Work') + '</span>',
         '    <span class="home-weak__count">' + totalWeak + ' below readiness threshold</span>',
         '  </div>',
         '  <div class="home-weak__list">' + rows + '</div>',
