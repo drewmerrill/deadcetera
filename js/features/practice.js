@@ -22,6 +22,7 @@
 var practicePlanActiveDate = null;   // which rehearsal's plan is open — global: written by calendar.js + notifications.js
 
 async function renderPracticePage(el) {
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'practice');
     el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading...</div>';
 
     // Load song statuses and calendar events in parallel

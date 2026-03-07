@@ -31,6 +31,7 @@ var rhCurrentEventId = null; // which event is open in detail view
 
 // ── Page entry point ──────────────────────────────────────────────────────────
 async function renderRehearsalPage(el) {
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     el.innerHTML =
         '<div class="page-header"><h1>🎯 Rehearsals</h1><p>Plan sessions, RSVP, and get smart song suggestions</p></div>' +
         '<div style="display:flex;gap:8px;margin-bottom:16px">' +

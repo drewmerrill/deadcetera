@@ -268,6 +268,7 @@ function gigsMapSetFilter(f, btn) {
 
 
 function renderGigsPage(el) {
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'gigs');
     el.innerHTML = `
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">

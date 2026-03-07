@@ -15,6 +15,7 @@
 // SETLIST BUILDER
 // ============================================================================
 function renderSetlistsPage(el) {
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
     el.innerHTML = `
     <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
