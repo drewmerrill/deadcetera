@@ -9,7 +9,7 @@ a{color:var(--accent-light);}
 .topbar-left{display:flex;align-items:center;gap:12px;}
 .hamburger{background:none;border:none;color:var(--text);cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;transition:background 0.15s;}
 .hamburger:hover{background:rgba(255,255,255,0.08);}
-.topbar-brand{font-size:1.15em;font-weight:800;letter-spacing:-0.5px;display:inline-flex;align-items:center;gap:6px;line-height:1;cursor:pointer;}
+.topbar-brand{font-size:1.3em;font-weight:800;letter-spacing:-0.5px;display:inline-flex;align-items:center;gap:6px;line-height:1;cursor:pointer;}
 .topbar-brand-text{background:linear-gradient(135deg,#60a5fa,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:inherit;font-weight:inherit;letter-spacing:inherit;line-height:1;display:inline-block;}
 .topbar-right{display:flex;align-items:center;gap:6px;}
 .topbar-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-muted);padding:6px 10px;border-radius:8px;font-size:0.78em;cursor:pointer;transition:all 0.15s;white-space:nowrap;font-weight:500;font-family:inherit;}

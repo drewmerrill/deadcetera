@@ -1187,21 +1187,21 @@ function _triggerDashboardEntrance() {
 
         /* ── Layout ── */
         '.home-dashboard { padding: 12px; max-width: 680px; margin: 0 auto; }',
-        '.home-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }',
+        '.home-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }',
         '@media (max-width: 420px) { .home-card-grid { grid-template-columns: 1fr; } }',
 
         /* ── Base card ── */
         '.home-card {',
-        '  background: var(--bg-card);',
-        '  border: 1px solid var(--border);',
+        '  background: rgba(255,255,255,0.04);',
+        '  border: 1px solid rgba(255,255,255,0.12);',
         '  border-radius: var(--radius);',
         '  padding: 14px;',
         '  display: flex;',
         '  flex-direction: column;',
         '  gap: 6px;',
-        '  transition: border-color 0.15s;',
+        '  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;',
         '}',
-        '.home-card:hover { border-color: rgba(255,255,255,0.16); }',
+        '.home-card:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }',
 
         /* ── Card header row ── */
         '.home-card__header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }',
@@ -1233,7 +1233,7 @@ function _triggerDashboardEntrance() {
         /* ── CTA buttons ── */
         '.home-card__actions { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }',
         '.home-card__cta { width: 100%; padding: 9px 12px; border-radius: 8px; font-size: 0.82em; font-weight: 700; cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; text-align: center; }',
-        '.home-card__cta--primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }',
+        '.home-card__cta--primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; box-shadow: 0 2px 12px rgba(102,126,234,0.35); }',
         '.home-card__cta--primary:hover { opacity: 0.9; }',
         '.home-card__cta--secondary { background: rgba(255,255,255,0.06); color: var(--text-muted); border: 1px solid var(--border); }',
         '.home-card__cta--secondary:hover { background: rgba(255,255,255,0.1); color: var(--text); }',
@@ -1241,11 +1241,11 @@ function _triggerDashboardEntrance() {
         '.home-card__cta--ghost:hover { background: rgba(255,255,255,0.04); color: var(--text-muted); }',
 
         /* ── Band Readiness widget ── */
-        '.home-readiness-widget { margin-bottom: 12px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }',
+        '.home-readiness-widget { margin-bottom: 24px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }',
         '.home-readiness-widget__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }',
         '.home-readiness-widget__title { font-size: 0.78em; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }',
         '.home-readiness-widget__pct { font-size: 1.1em; font-weight: 800; }',
-        '.home-readiness-widget__bar { height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; margin-bottom: 4px; }',
+        '.home-readiness-widget__bar { height: 10px; background: rgba(255,255,255,0.07); border-radius: 5px; overflow: hidden; margin-bottom: 4px; }',
         '.home-readiness-widget__fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }',
         '.home-readiness-widget__label { font-size: 0.72em; color: var(--text-dim); }',
 

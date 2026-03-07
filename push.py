@@ -70,6 +70,7 @@ DEPLOY_FILES = [
     'js/features/playlists.js',
     'js/features/stoner-mode.js',
     'js/features/home-dashboard.js',
+    'js/features/chart-import.js',
 ]
 
 def get_token():
