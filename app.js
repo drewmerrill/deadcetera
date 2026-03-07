@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-081626', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-084047', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-081626';
+var BUILD_VERSION = '20260307-084047';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -2397,44 +2397,7 @@ async function deletePracticeTrack(songTitle, index) {
 }
 
 // Extract YouTube video ID from any YouTube URL format
-function extractYouTubeId(url) {
-    if (!url) return null;
-    url = url.trim();
-    
-    // Handle youtube.com/watch?v=
-    const match1 = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (match1) return match1[1];
-    
-    // Handle youtu.be/VIDEO_ID
-    const match2 = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-    if (match2) return match2[1];
-    
-    // Handle youtube.com/shorts/VIDEO_ID
-    const match3 = url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
-    if (match3) return match3[1];
-    
-    // Handle youtube.com/embed/VIDEO_ID
-    const match4 = url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
-    if (match4) return match4[1];
-    
-    // Handle youtube.com/v/VIDEO_ID
-    const match5 = url.match(/youtube\.com\/v\/([a-zA-Z0-9_-]{11})/);
-    if (match5) return match5[1];
-    
-    // Handle mobile m.youtube.com
-    const match6 = url.match(/m\.youtube\.com.*[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (match6) return match6[1];
-    
-    // Handle music.youtube.com
-    const match7 = url.match(/music\.youtube\.com.*[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (match7) return match7[1];
-    
-    // Last resort - look for 11-char alphanumeric string after common patterns
-    const match8 = url.match(/(?:\/|%2F)([a-zA-Z0-9_-]{11})(?:[?&]|$)/);
-    if (match8 && url.includes('youtube')) return match8[1];
-    
-    return null;
-}
+// extractYouTubeId() → js/core/utils.js (Wave-1 refactor)
 
 // Auto-fetch video title and thumbnail from URL
 async function fetchVideoMetadata(url) {
@@ -2810,10 +2773,7 @@ async function fetchRefTrackInfo(trackUrl) {
     }
 }
 
-function extractSpotifyTrackId(url) {
-    const match = url.match(/track\/([a-zA-Z0-9]+)/);
-    return match ? match[1] : null;
-}
+// extractSpotifyTrackId() → js/core/utils.js (Wave-1 refactor)
 
 // Update reference version rendering to fetch metadata
 async function renderRefVersions(songTitle, bandData) {
@@ -3637,14 +3597,7 @@ async function uploadHarmonyAudio(sectionIndex) {
     }
 }
 
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-}
+// fileToBase64() → js/core/utils.js (Wave-1 refactor)
 
 async function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
     // Load from Google Drive first
@@ -5163,7 +5116,7 @@ function generateSheetMusic(sectionIndex, section) {
 // ── Multi-band data isolation ───────────────────────────────────────────────
 // All Firebase paths are prefixed with /bands/{slug}/ so each band's data is isolated.
 // Default: 'deadcetera' (the original band). Future: band switcher sets this.
-var currentBandSlug = localStorage.getItem('deadcetera_current_band') || 'deadcetera';
+// var currentBandSlug → js/core/firebase-service.js (Wave-1 refactor)
 
 function bandPath(subpath) {
     return 'bands/' + currentBandSlug + '/' + subpath;
@@ -5648,18 +5601,10 @@ async function handleGoogleDriveAuth(silent) {
 // FIREBASE PATH HELPERS
 // ============================================================================
 
-function sanitizeFirebasePath(str) {
-    // Firebase paths cannot contain . # $ [ ] /
-    return str.replace(/[.#$\[\]\/]/g, '_');
-}
+// sanitizeFirebasePath() → js/core/utils.js (Wave-1 refactor)
 
 // Firebase converts arrays to objects with numeric keys - this normalizes them back
-function toArray(val) {
-    if (!val) return [];
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'object') return Object.values(val);
-    return [];
-}
+// toArray() → js/core/utils.js (Wave-1 refactor)
 
 function songPath(songTitle, dataType) {
     return bandPath(`songs/${sanitizeFirebasePath(songTitle)}/${sanitizeFirebasePath(dataType)}`);
@@ -8662,8 +8607,13 @@ console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
 // ============================================================================
 // NAV SHELL: Menu Toggle, Page Navigation
 // ============================================================================
-// showPage(), toggleMenu(), pageRenderers, currentPage → js/ui/navigation.js
-// DO NOT redeclare here — navigation.js sets window.showPage / window.toggleMenu
+// let currentPage → js/ui/navigation.js
+
+// toggleMenu() → js/ui/navigation.js (Wave-2 stabilization)
+
+// showPage() → js/ui/navigation.js (Wave-2 stabilization)
+
+// const pageRenderers → js/ui/navigation.js
 
 // ============================================================================
 // SETLIST BUILDER
@@ -10932,7 +10882,7 @@ async function notifGetAllPhones() {
 // Flow: buildPack → save to Firebase → worker serves /pack/:id → SMS link
 // ══════════════════════════════════════════════════════════════════════════
 
-var WORKER_URL = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+// var WORKER_URL → js/core/worker-api.js (Wave-1 refactor)
 var FIREBASE_DB_URL = 'https://deadcetera-35424-default-rtdb.firebaseio.com';
 
 // ── Unique pack ID generator ──────────────────────────────────────────────
@@ -10998,7 +10948,7 @@ async function carePackageSave(packData) {
 
     // Also write to public node (no bandPath prefix) so worker can read it
     // Worker reads /bands/deadcetera/care_packages/:id
-    var publicPath = 'bands/deadcetera/care_packages/' + packId;
+    var publicPath = bandPath('care_packages/' + packId);
     await firebaseDB.ref(publicPath).set(packData);
 
     return packId;
@@ -13714,47 +13664,20 @@ function renderPocketMeterPage(el) {
     el.innerHTML =
         '<div class="page-header"><h1>🎯 Pocket Meter</h1><p>Real-time BPM detection — stay locked in with the band</p></div>' +
         '<div id="pmPageContainer" style="max-width:420px;margin:0 auto;padding:8px 0"></div>';
-
-    function _mountPM() {
-        if (typeof PocketMeter !== 'function') return false;
-        if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
-        var container = el.querySelector('#pmPageContainer');
-        if (!container) return false;
-        // Pull targetBPM from the currently selected song if available
-        var songBPM = 120;
-        try {
-            if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.bpm) {
-                songBPM = parseInt(selectedSong.bpm) || 120;
-            }
-        } catch(e) {}
-        _pmInstance = new PocketMeter(container, {
-            targetBPM: songBPM,
-            mode: 'rehearsal',
-            songKey: (typeof selectedSong !== 'undefined' && selectedSong) ? (selectedSong.firebaseKey || selectedSong.id || null) : null,
-            bandPath: typeof bandPath === 'function' ? bandPath() : null,
-            db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
-        });
-        _pmInstance.mount();
-        return true;
+    if (typeof PocketMeter !== 'function') {
+        el.querySelector('#pmPageContainer').innerHTML =
+            '<p style="color:var(--text-dim);text-align:center;padding:32px">Pocket Meter not available.</p>';
+        return;
     }
-
-    if (!_mountPM()) {
-        // pocket-meter.js loads after app.js — retry until class is available
-        var container = el.querySelector('#pmPageContainer');
-        if (container) container.innerHTML =
-            '<p style="color:var(--text-dim);text-align:center;padding:20px">Loading Pocket Meter…</p>';
-        var attempts = 0;
-        var retryTimer = setInterval(function() {
-            attempts++;
-            if (_mountPM()) { clearInterval(retryTimer); return; }
-            if (attempts >= 20) {
-                clearInterval(retryTimer);
-                var c = el.querySelector('#pmPageContainer');
-                if (c) c.innerHTML =
-                    '<p style="color:var(--text-dim);text-align:center;padding:32px">⚠️ pocket-meter.js not loaded — check index.html script order.</p>';
-            }
-        }, 150);
-    }
+    if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
+    var container = el.querySelector('#pmPageContainer');
+    _pmInstance = new PocketMeter(container, {
+        targetBPM: 120,
+        mode: 'rehearsal',
+        bandPath: typeof bandPath === 'function' ? bandPath() : null,
+        db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
+    });
+    _pmInstance.mount();
 }
 
 // Called from Gig Mode (gigs.js gmOpenPocket)
@@ -15208,25 +15131,7 @@ function onPartyEnded() {
 // ── Toast helper (reusable) ───────────────────────────────────────────────────
 // Creates a brief notification at the bottom of the screen.
 
-function showToast(message, duration = 2500) {
-    const existing = document.getElementById('dc-toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.id = 'dc-toast';
-    toast.style.cssText = `
-        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-        background: #1e293b; border: 1px solid rgba(102,126,234,0.4);
-        color: #f1f5f9; padding: 10px 20px; border-radius: 20px;
-        font-size: 0.88em; font-weight: 600; z-index: 9999;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-        animation: slideUpBanner 0.25s ease-out;
-        white-space: nowrap; max-width: 90vw; text-align: center;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), duration);
-}
+// showToast() → js/core/utils.js (Wave-1 refactor)
 
 // ── VERSION CHECKER ──────────────────────────────────────────────────────────
 
