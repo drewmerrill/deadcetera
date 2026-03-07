@@ -956,30 +956,31 @@ function _gmEnsureOverlay() {
         if (tabBar)  ov.appendChild(tabBar);
         if (body)    ov.appendChild(body);
         if (footer)  ov.appendChild(footer);
-        // Capture Moment floating button
+        // Capture Moment floating button — appended to body so position:fixed works
         var capBtn = document.createElement('button');
         capBtn.id = 'rmCaptureMomentBtn';
-        capBtn.innerHTML = '📸';
+        capBtn.innerHTML = '\uD83D\uDCF8';
         capBtn.title = 'Capture a moment';
         capBtn.onclick = rmCaptureMoment;
         capBtn.style.cssText = 'position:fixed;bottom:74px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(102,126,234,0.25);border:1.5px solid rgba(102,126,234,0.5);color:#a5b4fc;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
         document.body.appendChild(capBtn);
         sheets.forEach(function(s) { ov.appendChild(s); });
-        // Monkey (hide-chart) button — reparent if already built, otherwise create it fresh
+        // Monkey button — must go on body, not inside gmOverlay.
+        // position:fixed inside a fixed/flex container loses viewport anchoring.
         if (monkey) {
-            ov.appendChild(monkey);
+            monkey.style.cssText = 'position:fixed;bottom:74px;left:14px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);color:#f1f5f9;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
+            document.body.appendChild(monkey);
         } else {
-            // Build it directly so it works even if practice mode was never opened first
             var mkBtn = document.createElement('button');
             mkBtn.id = 'rmMonkeyBtn';
-            mkBtn.innerHTML = '🐒';
+            mkBtn.innerHTML = '\uD83D\uDC12';
             mkBtn.title = 'Hide chart';
             mkBtn.style.cssText = 'position:fixed;bottom:74px;left:14px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);color:#f1f5f9;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
             mkBtn.onclick = function() {
                 var panel = document.querySelector('#gmOverlay .rm-panel.active, #gmOverlay #rmChartPanel');
                 if (panel) panel.style.visibility = panel.style.visibility === 'hidden' ? '' : 'hidden';
             };
-            ov.appendChild(mkBtn);
+            document.body.appendChild(mkBtn);
         }
         // Remove the now-empty rmOverlay shell (we'll rebuild from scratch next time practice mode opens)
         rmOv.remove();
