@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-092941', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-094417', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-092941';
+var BUILD_VERSION = '20260307-094417';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -1243,7 +1243,7 @@ Right-click the MP3 filename → Save Link As...`);
     // Setup Moises button
     const moisesBtn = document.getElementById('moisesBtn');
     moisesBtn.onclick = () => {
-        window.open('https://studio.moises.ai/', '_blank');
+        window.open('https://moises.ai/', '_blank');
         step5.classList.remove('hidden');
         resetContainer.classList.remove('hidden');
     };

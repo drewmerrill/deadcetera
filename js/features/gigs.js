@@ -965,7 +965,22 @@ function _gmEnsureOverlay() {
         capBtn.style.cssText = 'position:fixed;bottom:74px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(102,126,234,0.25);border:1.5px solid rgba(102,126,234,0.5);color:#a5b4fc;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
         document.body.appendChild(capBtn);
         sheets.forEach(function(s) { ov.appendChild(s); });
-        if (monkey)  ov.appendChild(monkey);
+        // Monkey (hide-chart) button — reparent if already built, otherwise create it fresh
+        if (monkey) {
+            ov.appendChild(monkey);
+        } else {
+            // Build it directly so it works even if practice mode was never opened first
+            var mkBtn = document.createElement('button');
+            mkBtn.id = 'rmMonkeyBtn';
+            mkBtn.innerHTML = '🐒';
+            mkBtn.title = 'Hide chart';
+            mkBtn.style.cssText = 'position:fixed;bottom:74px;left:14px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);color:#f1f5f9;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
+            mkBtn.onclick = function() {
+                var panel = document.querySelector('#gmOverlay .rm-panel.active, #gmOverlay #rmChartPanel');
+                if (panel) panel.style.visibility = panel.style.visibility === 'hidden' ? '' : 'hidden';
+            };
+            ov.appendChild(mkBtn);
+        }
         // Remove the now-empty rmOverlay shell (we'll rebuild from scratch next time practice mode opens)
         rmOv.remove();
         // Mark rmOverlay as gone so rmEnsureOverlay rebuilds it when practice mode is opened normally
