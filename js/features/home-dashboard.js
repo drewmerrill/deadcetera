@@ -197,9 +197,25 @@ async function _loadUpcomingGigs(n) {
     }
 }
 
-/** Phase 1 stub — Phase 2 implements fully */
+/**
+ * Load upcoming rehearsal events from Firebase (same source as rehearsal.js).
+ * Each event: { id, date, time, location, plan: { songs: [...] }, rsvps: {...} }
+ */
 async function _loadUpcomingPlans(n) {
-    return [];
+    if (typeof firebaseDB === 'undefined' || !firebaseDB) return [];
+    var today = _todayStr();
+    try {
+        var snap = await firebaseDB.ref(window.bandPath('rehearsals')).once('value');
+        var val = snap.val();
+        if (!val) return [];
+        return Object.values(val)
+            .filter(function(e) { return e && e.date && e.date >= today; })
+            .sort(function(a, b) { return (a.date||'').localeCompare(b.date||''); })
+            .slice(0, n || 2);
+    } catch(e) {
+        console.warn('[Home] _loadUpcomingPlans failed:', e);
+        return [];
+    }
 }
 
 /** Phase 1 stub — Phase 3 implements fully */
@@ -227,8 +243,8 @@ function _computeHomeContext(bundle) {
 
     var scores = {
         playShow: _scorePlayShowCard(bundle),
-        rehearse: 0,    // Phase 2
-        practice: 0,    // Phase 2
+        rehearse: _scoreRehearseCard(bundle),
+        practice: _scorePracticeCard(bundle),
         setlist:  0     // Phase 3
     };
 
@@ -254,10 +270,16 @@ function _resolveBannerType(bundle) {
 
     if (!nextGig) return null;
 
-    if (nextGig.date === today) return 'gig_today';
+    if (nextGig && nextGig.date === today) return 'gig_today';
 
-    var diff = _dayDiff(today, nextGig.date);
-    if (diff >= 0 && diff <= 2) return 'gig_soon';
+    // rehearsal today takes priority over gig_soon
+    var nextPlan = bundle.plans && bundle.plans[0];
+    if (nextPlan && nextPlan.date === today) return 'rehearsal_today';
+
+    if (nextGig) {
+        var diff = _dayDiff(today, nextGig.date);
+        if (diff >= 0 && diff <= 2) return 'gig_soon';
+    }
 
     // rehearsal_today handled in Phase 2 when plans load
     return null;
@@ -265,7 +287,10 @@ function _resolveBannerType(bundle) {
 
 function _resolveBannerData(bannerType, bundle) {
     if (!bannerType) return null;
-    return { gig: bundle.gigs && bundle.gigs[0] || null };
+    return {
+        gig:  bundle.gigs  && bundle.gigs[0]  || null,
+        plan: bundle.plans && bundle.plans[0] || null
+    };
 }
 
 /**
@@ -319,7 +344,33 @@ function _renderDashboard(bundle, context) {
 // ── Context Banner ────────────────────────────────────────────────────────────
 
 function _renderContextBanner(bannerType, bannerData, isStoner) {
-    var gig = bannerData && bannerData.gig;
+    var gig  = bannerData && bannerData.gig;
+    var plan = bannerData && bannerData.plan;
+
+    var venueName    = gig ? _escHtml(gig.venue || 'Tonight\'s Show') : '';
+    var linkedSetlist = gig ? (gig.linkedSetlist || null) : null;
+    var linkedSetlistEsc = linkedSetlist ? _escHtml(linkedSetlist) : '';
+
+    if (bannerType === 'rehearsal_today') {
+        var loc = plan && plan.location ? ' · 📍 ' + _escHtml(plan.location) : '';
+        var time = plan && plan.time ? ' at ' + _escHtml(plan.time) : '';
+        var planSongs = plan && plan.plan && Array.isArray(plan.plan.songs) ? plan.plan.songs.length : 0;
+        var songsLine = planSongs ? planSongs + ' song' + (planSongs > 1 ? 's' : '') + ' planned' : 'No songs planned yet';
+        return [
+            '<div class="home-banner home-banner--rehearse">',
+            '  <div class="home-banner__body">',
+            '    <span class="home-banner__icon">🎸</span>',
+            '    <div class="home-banner__text">',
+            '      <strong>Rehearsal Tonight' + time + '</strong>' + loc,
+            '      <div class="home-banner__sub">' + songsLine + '</div>',
+            '    </div>',
+            '    <button class="home-banner__cta home-banner__cta--primary" onclick="showPage(\'rehearsal\')">Open Plan →</button>',
+            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">✕</button>',
+            '  </div>',
+            '</div>'
+        ].join('');
+    }
+
     if (!gig) return '';
 
     var venueName    = _escHtml(gig.venue || 'Tonight\'s Show');
@@ -392,8 +443,8 @@ function _renderContextBanner(bannerType, bannerData, isStoner) {
 function _renderCardGrid(cardOrder, bundle, isStoner) {
     var renderers = {
         playShow: _renderPlayShowCard,
-        rehearse: _renderRehearseCardStub,
-        practice: _renderPracticeCardStub,
+        rehearse: _renderRehearseCard,
+        practice: _renderPracticeCard,
         setlist:  _renderSetlistCardStub
     };
     return cardOrder.map(function(key) {
@@ -472,35 +523,156 @@ function _renderPlayShowCard(bundle, isStoner) {
     ].join('');
 }
 
-// ── Phase 1 stubs for cards built in Phase 2 / Phase 3 ──────────────────────
+// ── Phase 2: Rehearse Card ───────────────────────────────────────────────────
 
-function _renderRehearseCardStub(bundle, isStoner) {
+function _scoreRehearseCard(bundle) {
+    var plans = bundle.plans || [];
+    if (!plans.length) return 0;
+    var today = _todayStr();
+    var next = plans[0];
+    if (next.date === today) return 3;
+    var diff = _dayDiff(today, next.date);
+    if (diff <= 2) return 2;
+    return 1;
+}
+
+function _renderRehearseCard(bundle, isStoner) {
+    var plans = bundle.plans || [];
+    var myKey = bundle.memberKey;
+
+    if (!plans.length) {
+        return [
+            '<div class="home-card home-card--rehearse home-card--empty">',
+            '  <div class="home-card__header"><span class="home-card__icon">🎼</span><span class="home-card__label">Rehearse</span></div>',
+            '  <div class="home-card__title">No Rehearsals Scheduled</div>',
+            '  <div class="home-card__empty-msg">Add a rehearsal to build a practice plan.</div>',
+            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'rehearsal\')">Open Rehearsals</button>',
+            '</div>'
+        ].join('');
+    }
+
+    var next = plans[0];
+    var today = _todayStr();
+    var isToday = next.date === today;
+    var diff = _dayDiff(today, next.date);
+    var dateLabel = isToday ? 'Tonight' : diff === 1 ? 'Tomorrow' : _formatDateShort(next.date);
+
+    var planSongs = (next.plan && Array.isArray(next.plan.songs)) ? next.plan.songs : [];
+    var time = next.time ? ' at ' + _escHtml(next.time) : '';
+
+    var myRsvp = myKey && next.rsvps && next.rsvps[myKey] ? (next.rsvps[myKey].status || '') : '';
+    var rsvpBadge = myRsvp === 'yes'
+        ? '<span style="color:var(--green);font-size:0.72em;font-weight:700">\u2705 You\'re in</span>'
+        : myRsvp === 'maybe'
+        ? '<span style="color:var(--yellow);font-size:0.72em;font-weight:700">\u2753 Maybe</span>'
+        : myRsvp === 'no'
+        ? '<span style="color:var(--red);font-size:0.72em;font-weight:700">\u274C Out</span>'
+        : '<span style="color:var(--text-dim);font-size:0.72em">RSVP needed</span>';
+
+    var songsHtml;
+    if (planSongs.length) {
+        var preview = planSongs.slice(0, 3);
+        songsHtml = '<div class="home-card__list">'
+            + preview.map(function(t) {
+                return '<div class="home-card__list-item">\uD83C\uDFB5 ' + _escHtml(t) + '</div>';
+            }).join('')
+            + (planSongs.length > 3 ? '<div class="home-card__list-item" style="color:var(--text-dim)">+' + (planSongs.length - 3) + ' more\u2026</div>' : '')
+            + '</div>';
+    } else {
+        songsHtml = '<div class="home-card__sub" style="color:var(--text-dim)">No songs planned yet</div>';
+    }
+
     return [
-        '<div class="home-card home-card--rehearse home-card--stub">',
-        '  <div class="home-card__header"><span class="home-card__icon">🎼</span><span class="home-card__label">Rehearse</span></div>',
-        '  <div class="home-card__title" style="color:var(--text-muted)">Practice Plan</div>',
-        '  <div class="home-card__stub-msg">Coming in the next update</div>',
-        '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'practice\')">Open Practice Plan</button>',
+        '<div class="home-card home-card--rehearse' + (isToday ? ' home-card--urgent' : '') + '">',
+        '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFBC</span><span class="home-card__label">Rehearse</span>' + rsvpBadge + '</div>',
+        '  <div class="home-card__title">' + dateLabel + time + '</div>',
+        '  <div class="home-card__sub">' + (next.location ? _escHtml(next.location) : 'Location TBD') + '</div>',
+        songsHtml,
+        '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'rehearsal\')">Open Plan \u2192</button>',
         '</div>'
     ].join('');
 }
 
-function _renderPracticeCardStub(bundle, isStoner) {
+// ── Phase 2: Practice Card ───────────────────────────────────────────────────
+
+function _scorePracticeCard(bundle) {
+    var rc = bundle.readinessCache || {};
+    var myKey = bundle.memberKey;
+    if (!myKey) return 0;
+    var weak = 0;
+    Object.values(rc).forEach(function(ratings) {
+        var mine = ratings && ratings[myKey];
+        if (typeof mine === 'number' && mine > 0 && mine < 3) weak++;
+    });
+    if (weak >= 5) return 3;
+    if (weak >= 2) return 2;
+    if (weak >= 1) return 1;
+    return 0;
+}
+
+function _renderPracticeCard(bundle, isStoner) {
+    var rc = bundle.readinessCache || {};
+    var myKey = bundle.memberKey;
+
+    if (!myKey) {
+        return [
+            '<div class="home-card home-card--practice home-card--stub">',
+            '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFA7</span><span class="home-card__label">Practice</span></div>',
+            '  <div class="home-card__title">My Practice Queue</div>',
+            '  <div class="home-card__stub-msg">Sign in to see your personal song queue</div>',
+            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'songs\')">Song Library</button>',
+            '</div>'
+        ].join('');
+    }
+
+    var weak = [];
+    Object.entries(rc).forEach(function(entry) {
+        var title = entry[0];
+        var ratings = entry[1] || {};
+        var mine = ratings[myKey];
+        if (typeof mine === 'number' && mine > 0 && mine < 3) {
+            weak.push({ title: title, score: mine });
+        }
+    });
+    weak.sort(function(a, b) { return a.score - b.score; });
+
+    if (!weak.length) {
+        return [
+            '<div class="home-card home-card--practice">',
+            '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFA7</span><span class="home-card__label">Practice</span></div>',
+            '  <div class="home-card__title">All Caught Up! \uD83D\uDCAA</div>',
+            '  <div class="home-card__sub">No songs below your readiness threshold.</div>',
+            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'songs\')">Song Library</button>',
+            '</div>'
+        ].join('');
+    }
+
+    var preview = weak.slice(0, 4);
+    var songsHtml = '<div class="home-card__list">'
+        + preview.map(function(s) {
+            var dot = s.score <= 1 ? '\uD83D\uDD34' : '\uD83D\uDFE1';
+            return '<div class="home-card__list-item">' + dot + ' ' + _escHtml(s.title) + '</div>';
+        }).join('')
+        + (weak.length > 4 ? '<div class="home-card__list-item" style="color:var(--text-dim)">+' + (weak.length - 4) + ' more\u2026</div>' : '')
+        + '</div>';
+
     return [
-        '<div class="home-card home-card--practice home-card--stub">',
-        '  <div class="home-card__header"><span class="home-card__icon">🎧</span><span class="home-card__label">Practice</span></div>',
-        '  <div class="home-card__title" style="color:var(--text-muted)">My Songs</div>',
-        '  <div class="home-card__stub-msg">Coming in the next update</div>',
-        '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'songs\')">Song Library</button>',
+        '<div class="home-card home-card--practice">',
+        '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFA7</span><span class="home-card__label">Practice</span></div>',
+        '  <div class="home-card__title">' + weak.length + ' Song' + (weak.length > 1 ? 's' : '') + ' Need Work</div>',
+        songsHtml,
+        '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'songs\')">Go Practice \u2192</button>',
         '</div>'
     ].join('');
 }
+
+// ── Phase 3 stub: Setlist card ───────────────────────────────────────────────
 
 function _renderSetlistCardStub(bundle, isStoner) {
     return [
         '<div class="home-card home-card--setlist home-card--stub">',
-        '  <div class="home-card__header"><span class="home-card__icon">📋</span><span class="home-card__label">Build Setlist</span></div>',
-        '  <div class="home-card__title" style="color:var(--text-muted)">Setlists</div>',
+        '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Build Setlist</span></div>',
+        '  <div class="home-card__title">Setlists</div>',
         '  <div class="home-card__stub-msg">Coming in the next update</div>',
         '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'setlists\')">Open Setlists</button>',
         '</div>'
@@ -805,6 +977,11 @@ console.log('🏠 home-dashboard.js loaded');
         '.home-banner { border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; position: relative; }',
         '.home-banner--gig  { background: linear-gradient(135deg, rgba(102,126,234,0.18), rgba(118,75,162,0.12)); border: 1px solid rgba(102,126,234,0.3); }',
         '.home-banner--soon { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); }',
+        '.home-banner--rehearse { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25); }',
+
+        /* ── Card list (song previews) ── */
+        '.home-card__list { margin: 6px 0 10px 0; display: flex; flex-direction: column; gap: 3px; }',
+        '.home-card__list-item { font-size: 0.78em; color: var(--text-muted); padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
         '.home-banner__body { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
         '.home-banner__icon { font-size: 1.3em; flex-shrink: 0; }',
         '.home-banner__text { flex: 1; min-width: 0; font-size: 0.88em; color: var(--text); }',
