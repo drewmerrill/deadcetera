@@ -301,6 +301,8 @@
 
       // Update DOM
       this.el.querySelector('.pm-live-bpm').textContent = this.liveBPM.toFixed(1);
+      const miniBPM = this.el.querySelector('.pm-mini-bpm');
+      if (miniBPM) miniBPM.textContent = this.liveBPM.toFixed(1);
       const sign = delta >= 0 ? '+' : '';
       this.el.querySelector('.pm-delta').textContent = sign + delta.toFixed(1) + ' BPM';
       this.el.querySelector('.pm-status-label').textContent = status;
@@ -327,52 +329,61 @@
       if (!svg) return;
 
       const range = 10;
+      // Hard-clamp delta so needle never escapes the arc
       const clamped = Math.max(-range, Math.min(range, delta));
       const pct = clamped / range; // -1 to +1
+      const absDelta = Math.abs(delta);
+      const absClamped = Math.abs(clamped);
 
-      // Needle: rotate around center point
+      // ── Needle ──────────────────────────────────────────────────────────────
+      // Arc spans 260 degrees total: ±130 deg from 12 o'clock
+      // Scale: 13 deg per BPM (130 / 10 = 13)
       const needleEl = svg.querySelector('.pm-needle');
       if (needleEl) {
-        const angleDeg = pct * 140;
-        // Use SVG transform attribute only — CSS transform fights it on Safari/iOS
+        const angleDeg = pct * 130;
         needleEl.setAttribute('transform', `rotate(${angleDeg}, 100, 100)`);
-        needleEl.classList.toggle('pm-needle--pegged', Math.abs(delta) >= 10);
+        // Pegged: delta at or beyond max → shimmer red
+        needleEl.classList.toggle('pm-needle--pegged', absDelta >= 9.5);
       }
 
-      // Color based on delta
-      const absDelta = Math.abs(delta);
+      // ── Color ────────────────────────────────────────────────────────────────
       const color = absDelta <= 2 ? '#00ff88' : absDelta <= 5 ? '#ffcc00' : '#ff3b3b';
 
-      // Right arc (rushing, pct > 0): path length = 125.66
+      // ── Fill arcs ────────────────────────────────────────────────────────────
+      // Each quarter-arc path is 130 degrees = 181.51px of arc length
+      const HALF_ARC = 181.51;
+
       const arcRight = svg.querySelector('.pm-arc-right');
       if (arcRight) {
         if (pct > 0) {
-          const len = pct * 125.66;
+          const len = pct * HALF_ARC;
           arcRight.style.stroke = color;
-          arcRight.setAttribute('stroke-dasharray', `${len} 999`);
+          arcRight.setAttribute('stroke-dasharray', `${len.toFixed(1)} 999`);
           arcRight.setAttribute('stroke-dashoffset', '0');
         } else {
           arcRight.setAttribute('stroke-dasharray', '0 999');
         }
       }
 
-      // Left arc (dragging, pct < 0): path drawn left-to-center, fill from end
+      // arc-left path goes from left-endpoint → 12 o'clock (clockwise)
+      // To fill FROM the center outward (i.e. fill the tail end of the path),
+      // use dashoffset = (HALF_ARC - fill_len)
       const arcLeft = svg.querySelector('.pm-arc-left');
       if (arcLeft) {
         if (pct < 0) {
-          const len = Math.abs(pct) * 125.66;
+          const len = absClamped * HALF_ARC;
           arcLeft.style.stroke = color;
-          arcLeft.setAttribute('stroke-dasharray', `${len} 999`);
-          arcLeft.setAttribute('stroke-dashoffset', `${125.66 - len}`);
+          arcLeft.setAttribute('stroke-dasharray', `${len.toFixed(1)} 999`);
+          arcLeft.setAttribute('stroke-dashoffset', `${(HALF_ARC - len).toFixed(1)}`);
         } else {
           arcLeft.setAttribute('stroke-dasharray', '0 999');
         }
       }
 
-      // Clear both if in pocket
+      // In-pocket: clear both fill arcs
       if (absDelta < 1.0) {
         if (arcRight) arcRight.setAttribute('stroke-dasharray', '0 999');
-        if (arcLeft) arcLeft.setAttribute('stroke-dasharray', '0 999');
+        if (arcLeft)  arcLeft.setAttribute('stroke-dasharray', '0 999');
       }
     }
 
@@ -492,9 +503,95 @@
         this.el.querySelector('.pm-flash-btn').classList.toggle('pm-flash-btn--active', this._screenFlash);
         this._flashBanner(this._screenFlash ? 'Screen flash ON' : 'Screen flash OFF');
       });
+
+      // ── View mode (full / float / mini) ────────────────────────────────────
+      this._viewMode = 'full';
+      this.el.querySelectorAll('.pm-view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.view;
+          this._setViewMode(mode);
+        });
+      });
+
+      // ── Drag support for float + mini modes ────────────────────────────────
+      this._initDrag();
     }
 
-    // -- Calibration settings -----------------------------------------------------
+    // -- View Modes ------------------------------------------------------------
+
+    _setViewMode(mode) {
+      this._viewMode = mode;
+      this.el.classList.remove('pm-float', 'pm-mini');
+      this.el.querySelectorAll('.pm-view-btn').forEach(b => {
+        b.classList.toggle('pm-view-btn--active', b.dataset.view === mode);
+      });
+      const miniBPM = this.el.querySelector('.pm-mini-bpm');
+
+      if (mode === 'float') {
+        // Detach from page flow → fixed overlay
+        // Move to body so it floats over all pages
+        document.body.appendChild(this.el);
+        this.el.classList.add('pm-float');
+        if (miniBPM) miniBPM.style.display = 'none';
+        this._flashBanner('Float mode — drag to reposition');
+      } else if (mode === 'mini') {
+        document.body.appendChild(this.el);
+        this.el.classList.add('pm-mini');
+        if (miniBPM) miniBPM.style.display = 'block';
+        this._flashBanner('Mini mode — drag to reposition');
+      } else {
+        // Full: put back in original container
+        if (this.container) this.container.appendChild(this.el);
+        this.el.style.position = '';
+        this.el.style.left = '';
+        this.el.style.top = '';
+        this.el.style.bottom = '';
+        this.el.style.right = '';
+        if (miniBPM) miniBPM.style.display = 'none';
+      }
+    }
+
+    _initDrag() {
+      let startX, startY, origLeft, origTop;
+      const onMouseMove = (e) => {
+        if (!this.el.classList.contains('pm-float') && !this.el.classList.contains('pm-mini')) return;
+        const dx = (e.clientX || e.touches[0].clientX) - startX;
+        const dy = (e.clientY || e.touches[0].clientY) - startY;
+        this.el.style.left   = (origLeft + dx) + 'px';
+        this.el.style.top    = (origTop  + dy) + 'px';
+        this.el.style.bottom = 'auto';
+        this.el.style.right  = 'auto';
+      };
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup',   onMouseUp);
+        document.removeEventListener('touchmove', onMouseMove);
+        document.removeEventListener('touchend',  onMouseUp);
+      };
+      this.el.addEventListener('mousedown', (e) => {
+        // Don't drag when clicking buttons/inputs
+        if (e.target.closest('button,input,select,textarea')) return;
+        if (!this.el.classList.contains('pm-float') && !this.el.classList.contains('pm-mini')) return;
+        const rect = this.el.getBoundingClientRect();
+        startX   = e.clientX; startY = e.clientY;
+        origLeft = rect.left;  origTop = rect.top;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup',   onMouseUp);
+        e.preventDefault();
+      });
+      this.el.addEventListener('touchstart', (e) => {
+        if (e.target.closest('button,input,select,textarea')) return;
+        if (!this.el.classList.contains('pm-float') && !this.el.classList.contains('pm-mini')) return;
+        const rect = this.el.getBoundingClientRect();
+        startX   = e.touches[0].clientX; startY = e.touches[0].clientY;
+        origLeft = rect.left;             origTop = rect.top;
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('touchend',  onMouseUp);
+        e.preventDefault();
+      }, { passive: false });
+    }
+
+    // -- Calibration settings -------------------------------------------------
 
     _getSetting(key, def) {
       try { return localStorage.getItem('pm_cal_' + key) || def; } catch(e) { return def; }
@@ -646,6 +743,14 @@
 
         <div class="pm-flash-overlay"></div>
 
+        <div class="pm-view-toggle">
+          <button class="pm-view-btn pm-view-btn--active" data-view="full" title="Full view">⬛ Full</button>
+          <button class="pm-view-btn" data-view="float" title="Float over other pages">⧉ Float</button>
+          <button class="pm-view-btn" data-view="mini" title="Mini BPM pill">▪ Mini</button>
+        </div>
+
+        <div class="pm-mini-bpm" style="display:none">--.-</div>
+
         <div class="pm-top-row">
           <div class="pm-label-sm">TARGET</div>
           <div class="pm-target-bpm">${this.targetBPM}</div>
@@ -690,50 +795,52 @@
 
         <div class="pm-gauge-wrap">
           <div class="pm-pulse-ring"></div>
-          <svg class="pm-gauge-arc" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">
-            <!-- Background arc track -->
+          <!--
+            ARC GEOMETRY (r=80, center 100,100):
+            Total span: 260 degrees (±130 deg from 12 o'clock)
+            Left endpoint  (−130 deg): (38.7, 151.4)
+            Right endpoint (+130 deg): (161.3, 151.4)
+            Half-arc length (130 deg): 181.51 px
+            Scale: 13 deg per BPM → needle never escapes arc
+            Green zone: ±2 BPM = ±26 deg = 72.6 px centered on full arc (offset −145.2)
+          -->
+          <svg class="pm-gauge-arc" viewBox="0 0 200 175" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background track: 260-degree arc -->
             <path class="pm-arc-track"
-              d="M 20 100 A 80 80 0 0 1 180 100"
+              d="M 38.7 151.4 A 80 80 0 1 1 161.3 151.4"
               fill="none" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round"/>
-            <!-- Zone coloring: green center band -->
+            <!-- Green pocket zone: ±2 BPM centered on arc -->
             <path class="pm-arc-zone-green"
-              d="M 20 100 A 80 80 0 0 1 180 100"
+              d="M 38.7 151.4 A 80 80 0 1 1 161.3 151.4"
               fill="none" stroke="#00ff88" stroke-width="3" stroke-linecap="round"
-              stroke-dasharray="28 999" stroke-dashoffset="-98"/>
-            <!-- Active fill: right side (rushing) -->
+              stroke-dasharray="72.6 999" stroke-dashoffset="-145.2"/>
+            <!-- Active fill: right (rushing) — 12 o'clock → right endpoint, 130 deg -->
             <path class="pm-arc-right"
-              d="M 100 20 A 80 80 0 0 1 180 100"
+              d="M 100 20 A 80 80 0 0 1 161.3 151.4"
               fill="none" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"
               stroke-dasharray="0 999" stroke-dashoffset="0"/>
-            <!-- Active fill: left side (dragging) -->
+            <!-- Active fill: left (dragging) — left endpoint → 12 o'clock, 130 deg -->
             <path class="pm-arc-left"
-              d="M 20 100 A 80 80 0 0 1 100 20"
+              d="M 38.7 151.4 A 80 80 0 0 1 100 20"
               fill="none" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"
-              stroke-dasharray="0 999" stroke-dashoffset="0"/>
-            <!-- Tick marks -->
-            <g class="pm-ticks" stroke="#333" stroke-width="1.5">
-              <line x1="20"  y1="100" x2="24"  y2="100" transform="rotate(-140 100 100)"/>
-              <line x1="20"  y1="100" x2="22"  y2="100" transform="rotate(-112 100 100)"/>
-              <line x1="20"  y1="100" x2="24"  y2="100" transform="rotate(-84 100 100)"/>
-              <line x1="20"  y1="100" x2="22"  y2="100" transform="rotate(-56 100 100)"/>
-              <line x1="20"  y1="100" x2="26"  y2="100" transform="rotate(-28 100 100)"/>
-              <!-- Center tick (target) -->
-              <line x1="20"  y1="100" x2="27"  y2="100" stroke="#00ff88" stroke-width="2" transform="rotate(0 100 100)"/>
-              <line x1="20"  y1="100" x2="22"  y2="100" transform="rotate(28 100 100)"/>
-              <line x1="20"  y1="100" x2="24"  y2="100" transform="rotate(56 100 100)"/>
-              <line x1="20"  y1="100" x2="22"  y2="100" transform="rotate(84 100 100)"/>
-              <line x1="20"  y1="100" x2="24"  y2="100" transform="rotate(112 100 100)"/>
-              <line x1="20"  y1="100" x2="24"  y2="100" transform="rotate(140 100 100)"/>
+              stroke-dasharray="0 999" stroke-dashoffset="181.5"/>
+            <!-- Ticks: at ±10, ±5, 0 BPM using rotate() around center -->
+            <g class="pm-ticks" stroke-linecap="round">
+              <line x1="100" y1="20" x2="100" y2="32" stroke="#444" stroke-width="1.5" transform="rotate(-130 100 100)"/>
+              <line x1="100" y1="20" x2="100" y2="28" stroke="#444" stroke-width="1.5" transform="rotate(-65 100 100)"/>
+              <line x1="100" y1="20" x2="100" y2="33" stroke="#00ff88" stroke-width="2.5"/>
+              <line x1="100" y1="20" x2="100" y2="28" stroke="#444" stroke-width="1.5" transform="rotate(65 100 100)"/>
+              <line x1="100" y1="20" x2="100" y2="32" stroke="#444" stroke-width="1.5" transform="rotate(130 100 100)"/>
             </g>
-            <!-- Slow / Fast labels -->
-            <text x="18" y="98" font-family="monospace" font-size="9" fill="#888" text-anchor="middle" font-weight="700">−10</text>
-            <text x="182" y="98" font-family="monospace" font-size="9" fill="#888" text-anchor="middle" font-weight="700">+10</text>
-            <!-- Needle pivot dot -->
-            <circle cx="100" cy="100" r="5" fill="#555"/>
-            <!-- Needle (rotated around 100,100) -->
+            <!-- Labels -->
+            <text x="30" y="168" font-family="monospace" font-size="9" fill="#555" text-anchor="middle" font-weight="700">−10</text>
+            <text x="170" y="168" font-family="monospace" font-size="9" fill="#555" text-anchor="middle" font-weight="700">+10</text>
+            <!-- Pivot cap -->
+            <circle cx="100" cy="100" r="6" fill="#1a1a1a" stroke="#333" stroke-width="1.5"/>
+            <!-- Needle -->
             <g class="pm-needle">
-              <line x1="100" y1="100" x2="100" y2="28" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="100" cy="100" r="3" fill="#fff"/>
+              <line x1="100" y1="100" x2="100" y2="28" stroke="#e0e0e0" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="100" cy="100" r="4" fill="#e0e0e0"/>
             </g>
           </svg>
 
@@ -890,13 +997,14 @@
         }
         .pm-pulse-anim { animation: pm-pulse 0.35s ease-out forwards; }
 
-        /* ── Center readout ── */
+        /* ── Center readout — sits inside the arc bowl ── */
         .pm-center-readout {
           position: absolute;
-          bottom: 0; left: 50%;
-          transform: translateX(-50%) translateY(-6px);
+          bottom: 18px; left: 50%;
+          transform: translateX(-50%);
           text-align: center;
           line-height: 1;
+          pointer-events: none;
         }
         .pm-live-label {
           font-size: 8px;
@@ -1038,10 +1146,10 @@
         /* Count-in */
         .pm-countin-btn { width:100%; margin-top:8px; padding:8px; border-radius:8px; background:#0d2a1a; border:1px solid rgba(0,255,136,0.25); color:#00ff88; font-family:monospace; font-size:0.72em; font-weight:700; letter-spacing:0.08em; cursor:pointer; transition:all 0.2s; }
         .pm-countin-btn:hover { background:#0d3a1a; border-color:#00ff88; }
-        /* Gear */
-        .pm-settings-btn { position:absolute; right:0; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1em; opacity:0.5; padding:2px 4px; transition:opacity 0.2s; }
+        /* Gear button — top-right corner of the card, never overlaps BPM */
+        .pm-settings-btn { position:absolute; right:12px; top:12px; background:none; border:none; cursor:pointer; font-size:1em; opacity:0.4; padding:4px 6px; transition:opacity 0.2s; z-index:2; }
         .pm-settings-btn:hover { opacity:1; }
-        .pm-top-row { position:relative; }
+        .pm-top-row { position:relative; padding-right:32px; }
         /* Settings panel */
         .pm-settings-panel { background:#0d0d0d; border:1px solid #222; border-radius:10px; padding:12px 16px; margin:0 4px 8px; font-family:monospace; }
         .pm-settings-title { font-size:0.65em; color:#555; letter-spacing:0.1em; font-weight:700; margin-bottom:12px; text-align:center; }
@@ -1063,6 +1171,56 @@
         .pm-drift-stat span { color:#ccc; float:right; }
         .pm-drift-close { width:100%; margin-top:10px; padding:6px; border-radius:6px; background:#111; border:1px solid #222; color:#444; font-family:monospace; font-size:0.65em; cursor:pointer; letter-spacing:0.06em; }
         .pm-drift-close:hover { color:#888; border-color:#444; }
+
+        /* ── View Modes ── */
+        /* Mode toggle row */
+        .pm-view-toggle {
+          display: flex; gap: 4px; align-self: flex-end; margin-bottom: -4px;
+        }
+        .pm-view-btn {
+          background: #111; border: 1px solid #222; color: #444;
+          font-family: monospace; font-size: 0.65em; letter-spacing: 0.06em;
+          padding: 3px 7px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+        }
+        .pm-view-btn:hover { color: #888; border-color: #444; }
+        .pm-view-btn--active { background: #0d2a1a !important; border-color: #00ff88 !important; color: #00ff88 !important; }
+
+        /* Float mode: draggable overlay widget */
+        .pm-root.pm-float {
+          position: fixed;
+          bottom: 90px; right: 16px;
+          width: min(300px, 90vw);
+          max-width: 300px;
+          z-index: 9999;
+          cursor: move;
+          box-shadow: 0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px #00ff8820;
+          resize: both;
+          overflow: auto;
+        }
+        .pm-root.pm-float .pm-settings-panel,
+        .pm-root.pm-float .pm-graph-section,
+        .pm-root.pm-float .pm-drift-report { display: none !important; }
+
+        /* Mini mode: just BPM pill */
+        .pm-root.pm-mini {
+          position: fixed;
+          bottom: 90px; right: 16px;
+          width: auto; max-width: 140px;
+          padding: 8px 14px;
+          z-index: 9999;
+          cursor: move;
+          flex-direction: row;
+          align-items: center;
+          gap: 6px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.7), 0 0 0 1px #00ff8820;
+        }
+        .pm-root.pm-mini > *:not(.pm-mini-bpm):not(.pm-view-toggle):not(.pm-status-label) { display: none !important; }
+        .pm-root.pm-mini .pm-view-toggle { margin-bottom: 0; }
+        .pm-root.pm-mini .pm-status-label { font-size: 9px; letter-spacing: 0.12em; margin-top: 0; }
+        .pm-mini-bpm {
+          font-size: 22px; font-family: monospace; color: #e0e0e0;
+          letter-spacing: -0.03em; line-height: 1; white-space: nowrap;
+        }
 
         /* ── Scanline texture overlay ── */
         .pm-root::before {

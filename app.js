@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-065925', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-073949', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-065925';
+var BUILD_VERSION = '20260307-073949';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -13737,20 +13737,39 @@ function renderPocketMeterPage(el) {
     el.innerHTML =
         '<div class="page-header"><h1>🎯 Pocket Meter</h1><p>Real-time BPM detection — stay locked in with the band</p></div>' +
         '<div id="pmPageContainer" style="max-width:420px;margin:0 auto;padding:8px 0"></div>';
-    if (typeof PocketMeter !== 'function') {
-        el.querySelector('#pmPageContainer').innerHTML =
-            '<p style="color:var(--text-dim);text-align:center;padding:32px">Pocket Meter not available.</p>';
-        return;
+
+    function _mountPM() {
+        if (typeof PocketMeter !== 'function') return false;
+        if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
+        var container = el.querySelector('#pmPageContainer');
+        if (!container) return false;
+        _pmInstance = new PocketMeter(container, {
+            targetBPM: 120,
+            mode: 'rehearsal',
+            bandPath: typeof bandPath === 'function' ? bandPath() : null,
+            db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
+        });
+        _pmInstance.mount();
+        return true;
     }
-    if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
-    var container = el.querySelector('#pmPageContainer');
-    _pmInstance = new PocketMeter(container, {
-        targetBPM: 120,
-        mode: 'rehearsal',
-        bandPath: typeof bandPath === 'function' ? bandPath() : null,
-        db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
-    });
-    _pmInstance.mount();
+
+    if (!_mountPM()) {
+        // pocket-meter.js loads after app.js — retry until script is ready
+        var container = el.querySelector('#pmPageContainer');
+        if (container) container.innerHTML =
+            '<p style="color:var(--text-dim);text-align:center;padding:20px">Loading…</p>';
+        var attempts = 0;
+        var retryTimer = setInterval(function() {
+            attempts++;
+            if (_mountPM()) { clearInterval(retryTimer); return; }
+            if (attempts >= 20) {
+                clearInterval(retryTimer);
+                var c = el.querySelector('#pmPageContainer');
+                if (c) c.innerHTML =
+                    '<p style="color:var(--text-dim);text-align:center;padding:32px">⚠️ Pocket Meter script not loaded. Check that pocket-meter.js is in your repo.</p>';
+            }
+        }, 150);
+    }
 }
 
 // Called from Gig Mode (gigs.js gmOpenPocket)
