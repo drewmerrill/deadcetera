@@ -59,6 +59,16 @@ DEPLOY_FILES = [
     # Wave-2 modules
     'js/features/gigs.js',
     'js/features/rehearsal.js',
+    # Wave-3 modules
+    'js/features/setlists.js',
+    'js/features/practice.js',
+    'js/features/calendar.js',
+    'js/features/notifications.js',
+    'js/features/social.js',
+    'js/features/finances.js',
+    'js/features/bestshot.js',
+    'js/features/playlists.js',
+    'js/features/stoner-mode.js',
 ]
 
 def get_token():
