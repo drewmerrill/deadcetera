@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-001335', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-001905', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-001335';
+var BUILD_VERSION = '20260307-001905';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -5155,35 +5155,10 @@ function generateSheetMusic(sectionIndex, section) {
 // Replaces Google Drive for reliable cross-browser data sharing
 // ============================================================================
 
-const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo",
-    authDomain: "deadcetera-35424.firebaseapp.com",
-    databaseURL: "https://deadcetera-35424-default-rtdb.firebaseio.com",
-    projectId: "deadcetera-35424",
-    storageBucket: "deadcetera-35424.firebasestorage.app",
-    messagingSenderId: "218400123401",
-    appId: "1:218400123401:web:7f64ad84231dcaba6966d8"
-};
-
-// Keep Google config for sign-in identity only (email/profile, no Drive access needed)
-const GOOGLE_DRIVE_CONFIG = {
-    apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
-    clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    scope: 'email profile'
-};
-
-let isGoogleDriveInitialized = false; // Keep name for compatibility - means "backend ready"
-let isUserSignedIn = false;
-let accessToken = null;
-let tokenClient = null;
-let currentUserEmail = localStorage.getItem('deadcetera_google_email') || null;
-let currentUserName = localStorage.getItem('deadcetera_google_name') || '';
-let currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
-// ^ Pre-populated from last session so Profile shows email before auth re-fires
-
-// Firebase references (set during init)
-let firebaseDB = null;
-let firebaseStorage = null;
+// FIREBASE_CONFIG, GOOGLE_DRIVE_CONFIG, isGoogleDriveInitialized, isUserSignedIn,
+// accessToken, tokenClient, currentUserEmail, currentUserName, currentUserPicture,
+// firebaseDB, firebaseStorage
+// → js/core/firebase-service.js
 
 // ── Multi-band data isolation ───────────────────────────────────────────────
 // All Firebase paths are prefixed with /bands/{slug}/ so each band's data is isolated.
