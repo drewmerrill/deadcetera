@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-175730', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-181217', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-175730';
+var BUILD_VERSION = '20260307-181217';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -758,6 +758,7 @@ function showAddCustomSongModal() {
 }
 
 async function saveCustomSong() {
+    if (!requireSignIn()) return;
     const title = document.getElementById('csTitle')?.value.trim();
     const band = document.getElementById('csBand')?.value || 'Other';
     const notes = document.getElementById('csNotes')?.value.trim() || '';
@@ -781,6 +782,7 @@ async function saveCustomSong() {
 }
 
 async function deleteCustomSong(title) {
+    if (!requireSignIn()) return;
     if (!confirm(`Remove "${title}" from the library?`)) return;
     let custom = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
     custom = custom.filter(s => s.title !== title);
@@ -890,6 +892,7 @@ function songQuickFill(title, e) {
 function qfCancel() { document.getElementById('quickFillPopup')?.remove(); }
 
 async function songQuickFillSave(title) {
+    if (!requireSignIn()) return;
     var key = (document.getElementById('qfKey')?.value||''). trim();
     var bpm = (document.getElementById('qfBpm')?.value||''). trim();
     if (!key && !bpm) { showToast('Enter key or BPM'); return; }
@@ -1649,6 +1652,7 @@ function getBandMemberName(identifier) {
 }
 
 async function addPersonalTabForMember(songTitle, memberKey) {
+    if (!requireSignIn()) return;
     const urlInput = document.getElementById(`tabUrl_${memberKey}`);
     const labelInput = document.getElementById(`tabLabel_${memberKey}`);
     const notesInput = document.getElementById(`tabNotes_${memberKey}`);
@@ -1669,6 +1673,7 @@ async function addPersonalTabForMember(songTitle, memberKey) {
 }
 
 async function addPersonalTab() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) {
         alert('Please select a song first!');
@@ -1715,6 +1720,7 @@ async function addPersonalTab() {
 }
 
 async function deletePersonalTab(songTitle, index) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this tab link?')) return;
     
     let tabs = await loadPersonalTabs(songTitle) || [];
@@ -1982,6 +1988,7 @@ async function uploadMoisesStems() {
 // (original Drive versions removed)
 
 async function addMoisesStems() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     
@@ -2047,6 +2054,7 @@ async function editMoisesStems() {
 }
 
 async function saveMoisesStems() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     const newStems = {
@@ -2206,6 +2214,7 @@ async function showAddCoverMeForm() {
 }
 
 async function saveCoverMe(editIndex = null) {
+    if (!requireSignIn()) return;
     const artist = document.getElementById('coverMeArtist')?.value?.trim();
     if (!artist) { showToast('Enter an artist name'); return; }
     const url = document.getElementById('coverMeUrl')?.value?.trim();
@@ -2250,6 +2259,7 @@ async function editCoverMe(index) {
 }
 
 async function deleteCoverMe(index) {
+    if (!requireSignIn()) return;
     if (!confirm('Remove this cover version?')) return;
     const songTitle = selectedSong?.title || selectedSong;
     const existing = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
@@ -2287,6 +2297,7 @@ async function renderGigNotes(songTitle, bandData) {
 }
 
 async function addGigNote() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     const container = document.getElementById('gigNotesContainer');
@@ -2308,6 +2319,7 @@ async function addGigNote() {
 }
 
 async function saveGigNoteInline() {
+    if (!requireSignIn()) return;
     const input = document.getElementById('gigNoteInput');
     const note = input?.value?.trim();
     if (!note) return;
@@ -2322,6 +2334,7 @@ async function saveGigNoteInline() {
 }
 
 async function deleteGigNote(index, btn) {
+    if (!requireSignIn()) return;
     if (btn && btn.dataset.confirming) {
         const songTitle = selectedSong?.title || selectedSong;
         if (!songTitle) return;
@@ -2366,6 +2379,7 @@ async function editGigNote(index) {
 }
 
 async function saveGigNoteEdit(index, value) {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle || !value?.trim()) return;
     let notes = await loadGigNotes(songTitle) || [];
@@ -2458,6 +2472,7 @@ async function fetchVideoMetadata(url) {
 
 // Simple add track flow with auto-fetch
 async function addPracticeTrackSimple() {
+    if (!requireSignIn()) return;
     const url = document.getElementById('practiceTrackUrlInput').value.trim();
     const instrument = document.getElementById('practiceTrackInstrument').value;
     const notes = document.getElementById('practiceTrackNotes').value.trim();
@@ -2538,6 +2553,7 @@ function ptToggleUploadForm() {
 }
 
 async function addPracticeTrackUpload() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) { alert('Please select a song first'); return; }
 
@@ -2876,6 +2892,7 @@ async function renderRefVersions(songTitle, bandData) {
 }
 
 async function addRefVersion() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) { alert('Please select a song first!'); return; }
 
@@ -3058,6 +3075,7 @@ function detectRefPlatform(url) {
 }
 
 async function saveRefVersionFromModal() {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     const url = document.getElementById('refUrl')?.value.trim();
     const title = document.getElementById('refTitle')?.value.trim();
@@ -3106,6 +3124,7 @@ async function saveRefVersionFromModal() {
 // Alias for old render function compatibility
 
 async function toggleRefVote(versionIndex, voterEmail) {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     
@@ -3167,6 +3186,7 @@ async function editVersionNotes(versionIndex) {
 }
 
 async function saveVersionNotes(versionIndex) {
+    if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     const newNotes = document.getElementById(`versionNotesInput_${versionIndex}`)?.value?.trim();
@@ -3182,6 +3202,7 @@ async function saveVersionNotes(versionIndex) {
 }
 
 async function deleteRefVersion(versionIndex) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this reference version?')) return;
     
     const songTitle = selectedSong?.title || selectedSong;
@@ -3342,6 +3363,7 @@ function hideRehearsalNoteForm() {
 }
 
 async function addRehearsalNote() {
+    if (!requireSignIn()) return;
     const author = document.getElementById('rehearsalNoteAuthor').value;
     const priority = document.getElementById('rehearsalNotePriority').value;
     const text = document.getElementById('rehearsalNoteText').value.trim();
@@ -3396,6 +3418,7 @@ async function editRehearsalNote(songTitle, index) {
 }
 
 async function saveRehearsalNoteEdit(songTitle, index) {
+    if (!requireSignIn()) return;
     const textarea = document.getElementById(`rn_edit_${index}`);
     if (!textarea) return;
     const notes = await loadRehearsalNotes(songTitle);
@@ -3406,6 +3429,7 @@ async function saveRehearsalNoteEdit(songTitle, index) {
 }
 
 async function deleteRehearsalNoteInline(songTitle, index, btn) {
+    if (!requireSignIn()) return;
     if (btn && btn.dataset.confirming) {
         const notes = await loadRehearsalNotes(songTitle);
         notes.splice(index, 1);
@@ -3626,6 +3650,7 @@ async function loadHarmonyAudioSnippets(songTitle, sectionIndex) {
 
 
 async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this audio snippet?')) return;
     
     // Load from Drive
@@ -3677,6 +3702,7 @@ async function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
 }
 
 async function saveSnippetRename(songTitle, sectionIndex, snippetIndex) {
+    if (!requireSignIn()) return;
     const newName = document.getElementById(`snippetNameInput_${sectionIndex}_${snippetIndex}`)?.value?.trim();
     if (!newName) return;
     const key = `deadcetera_harmony_audio_${songTitle}_section${sectionIndex}`;
@@ -4035,6 +4061,7 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
 
 // Helper functions for part metadata
 async function updatePartMetadata(songTitle, sectionIndex, singer, field, value) {
+    if (!requireSignIn()) return;
     const metadata = await loadHarmonyMetadataFromDrive(songTitle, sectionIndex) || {};
     
     if (!metadata[singer]) metadata[singer] = {};
@@ -4520,6 +4547,7 @@ function updateVoiceSelection() {
 }
 
 async function saveABCNotation(sectionIndex) {
+    if (!requireSignIn()) return;
     const abc = document.getElementById('abcEditorTextarea').value;
     const songTitle = selectedSong?.title || selectedSong;
     
@@ -5242,6 +5270,37 @@ function showSignInNudge() {
     setTimeout(() => banner?.remove(), 12000);
 }
 
+/**
+ * Auth gate for all band-data writes.
+ * Returns true if signed in (safe to proceed), false if not (shows modal, caller returns early).
+ */
+window.requireSignIn = function requireSignIn() {
+    if (isUserSignedIn) return true;
+
+    document.getElementById('glAuthGate')?.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'glAuthGate';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)';
+    modal.innerHTML = [
+        '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:28px 24px;max-width:320px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6)">',
+        '  <div style="font-size:2em;margin-bottom:12px">🔒</div>',
+        '  <div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:8px">Sign in to save changes</div>',
+        '  <div style="font-size:0.85em;color:var(--text-muted,#94a3b8);margin-bottom:24px;line-height:1.5">Band updates only save when you\'re signed in.</div>',
+        '  <button onclick="handleGoogleDriveAuth();document.getElementById(\'glAuthGate\')?.remove()" style="width:100%;padding:13px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:10px;font-size:0.95em;font-weight:700;cursor:pointer;margin-bottom:10px">',
+        '    👤 Sign In',
+        '  </button>',
+        '  <button onclick="document.getElementById(\'glAuthGate\')?.remove()" style="width:100%;padding:10px;background:transparent;color:var(--text-dim,#64748b);border:1px solid rgba(255,255,255,0.08);border-radius:10px;font-size:0.85em;cursor:pointer">',
+        '    Cancel',
+        '  </button>',
+        '</div>'
+    ].join('');
+
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    return false;
+};
+
 // ── Lightweight Firebase-only init (no Google Identity) ─────────────────────
 // Called automatically on page load so firebaseDB is ready immediately.
 // loadGoogleDriveAPI() (full init including Google Identity) is called on 
@@ -5477,7 +5536,7 @@ function updateDriveAuthButton() {
             button.innerHTML = '<span style="display:flex;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:#fff">' + initials + '</span>';
         }
         button.className = 'topbar-btn';
-        button.style.cssText = 'background:none!important;border:2px solid #22c55e!important;padding:2px!important;border-radius:50%!important;width:36px!important;height:36px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;flex-shrink:0!important;';
+        button.style.cssText = 'background:none!important;border:2px solid #22c55e!important;padding:2px!important;border-radius:50%!important;width:36px!important;height:36px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;flex-shrink:0!important;animation:none!important;';
         button.title = (currentUserName || currentUserEmail || 'Signed in') + ' — tap to manage';
         button.onclick = showAvatarMenu;
 
@@ -5488,9 +5547,16 @@ function updateDriveAuthButton() {
     } else {
         button.innerHTML = '👤';
         button.className = 'topbar-btn';
-        button.style.cssText = 'background:#667eea!important;color:#fff!important;border:none!important;border-radius:50%!important;width:36px!important;height:36px!important;padding:0!important;font-size:1.1em!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex-shrink:0!important;';
+        button.style.cssText = 'background:#667eea!important;color:#fff!important;border:none!important;border-radius:50%!important;width:36px!important;height:36px!important;padding:0!important;font-size:1.1em!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;flex-shrink:0!important;animation:glSignInPulse 2.5s ease-in-out infinite!important;';
         button.title = 'Sign in to sync with your bandmates';
         button.onclick = handleGoogleDriveAuth;
+        // Inject pulse keyframe once
+        if (!document.getElementById('glSignInPulseStyle')) {
+            var ps = document.createElement('style');
+            ps.id = 'glSignInPulseStyle';
+            ps.textContent = '@keyframes glSignInPulse{0%,100%{box-shadow:0 0 0 0 rgba(102,126,234,0.5)}50%{box-shadow:0 0 0 6px rgba(102,126,234,0)}}';
+            document.head.appendChild(ps);
+        }
 
         const heroBtn = document.getElementById('googleDriveAuthBtn2');
         if (heroBtn) { heroBtn.innerHTML = '👤 Sign In'; heroBtn.style.background = 'var(--accent)'; }
@@ -6243,6 +6309,7 @@ async function loadHasHarmonies(songTitle) {
 // ============================================================================
 
 async function updateSongStatus(status) {
+    if (!requireSignIn()) return;
     if (!selectedSong || !selectedSong.title) return;
     if (!isUserSignedIn) showSignInNudge();
     
@@ -6359,6 +6426,7 @@ function addStatusBadges() {
 // ============================================================================
 
 async function updateSongBpm(bpm) {
+    if (!requireSignIn()) return;
     if (!selectedSong || !selectedSong.title) return;
     if (!isUserSignedIn) showSignInNudge();
     
@@ -7791,6 +7859,16 @@ function mtToggleMetronome(si){
     else{mtStartMetronome(si);if(btn){btn.textContent='⏸ Stop';btn.style.background='#ef4444';btn.style.color='white';}}
 }
 function mtStartMetronome(si){
+    // iOS silent switch fix: play a silent Audio element first to unlock the audio session
+    if (!window._mtAudioUnlocked) {
+        try {
+            var silentAudio = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjM0LjEwNAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAAYZVqpWqAAAAAAAAAAAAAAAAAAAA//tQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tQZB4P8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV');
+            silentAudio.volume = 0.001;
+            silentAudio.play().then(function() {
+                window._mtAudioUnlocked = true;
+            }).catch(function() {});
+        } catch(e) {}
+    }
     if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();mtAudioContext.resume();
     const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,intv=60/bpm;
     const beats=document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`);
@@ -11390,6 +11468,7 @@ function setHarmonyViewFilter(singer) {
 // ── SECTION STATUS ────────────────────────────────────────────────────────────
 
 async function markSectionStatus(songTitle, sectionIndex, field) {
+    if (!requireSignIn()) return;
     const data = await loadBandDataFromDrive(songTitle, 'harmonies_data');
     if (!data || !data.sections) return;
     const sections = Array.isArray(data.sections) ? data.sections : Object.values(data.sections);
@@ -12387,6 +12466,7 @@ function previewReadiness(value, songTitle) {
 
 // ── Save score to Firebase + update cache + refresh chains ───────────────────
 async function saveMyReadiness(songTitle, value) {
+    if (!requireSignIn()) return;
     var memberKey = getCurrentMemberReadinessKey();
     if (!memberKey || !firebaseDB) return;
     var v = parseInt(value);

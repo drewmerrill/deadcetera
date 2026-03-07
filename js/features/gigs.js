@@ -37,6 +37,7 @@ function venueShortLabel(v) {
 }
 
 async function deleteGig(idx) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this gig? This cannot be undone.')) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     data.splice(idx, 1);
@@ -89,6 +90,7 @@ async function editGig(idx) {
 }
 
 async function saveGigEdit(idx) {
+    if (!requireSignIn()) return;
     const gigData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     gigData[idx] = {
         ...gigData[idx],
@@ -289,6 +291,7 @@ function renderGigsPage(el) {
 }
 
 async function gigLaunchLinkedSetlist(setlistName) {
+    if (!requireSignIn()) return;
     var allSl = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var idx = allSl.findIndex(function(sl) { return (sl.name||'') === setlistName; });
     if (idx < 0) { showToast('Setlist not found'); return; }
@@ -411,6 +414,7 @@ async function _syncGigToCalendar(gig, createdKey) {
 }
 
 async function saveGig() {
+    if (!requireSignIn()) return;
     const gig = {
         venue:      document.getElementById('gigVenue')?.value?.trim(),
         date:       document.getElementById('gigDate')?.value,
@@ -626,6 +630,7 @@ var _gmOverlayBuilt = false;
 
 // ── Launch from setlist card ─────────────────────────────────────────────────
 async function launchGigMode(setlistIdx) {
+    if (!requireSignIn()) return;
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var sl = data[setlistIdx];
     if (!sl) { showToast('Setlist not found'); return; }
@@ -719,6 +724,7 @@ function rmCaptureMoment() {
 function rmCaptureCancel() { document.getElementById('rmCapturePopup')?.remove(); }
 
 async function rmCaptureSave() {
+    if (!requireSignIn()) return;
     var ta = document.getElementById('rmCaptureText');
     var text = ta ? ta.value.trim() : '';
     if (!text) { showToast('Write something first!'); return; }

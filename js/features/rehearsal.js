@@ -397,6 +397,7 @@ async function rhSetRsvp(eventId, status) {
 
 // ── Plan management ───────────────────────────────────────────────────────────
 async function rhAddSongToPlan(eventId) {
+    if (!requireSignIn()) return;
     var input = document.getElementById('rhAddSongInput');
     if (!input) return;
     var title = input.value.trim();
@@ -428,6 +429,7 @@ async function rhRemoveSongFromPlan(eventId, title) {
 }
 
 async function rhSavePlan(eventId) {
+    if (!requireSignIn()) return;
     var planListEl = document.getElementById('rhPlanList');
     var notesEl = document.getElementById('rhPlanNotes');
     var ev = (await rhGetAllEvents()).find(function(e) { return e.id === eventId; });
@@ -650,6 +652,7 @@ async function rhShowEventModal(eventId) {
 }
 
 async function rhSaveEvent(eventId) {
+    if (!requireSignIn()) return;
     var dateEl = document.getElementById('rhDate');
     var timeEl = document.getElementById('rhTime');
     var locEl = document.getElementById('rhLocation');
@@ -679,6 +682,7 @@ async function rhSaveEvent(eventId) {
 }
 
 async function rhDeleteEvent(eventId) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this rehearsal?')) return;
     try {
         await firebaseDB.ref(bandPath('rehearsals/' + eventId)).remove();

@@ -159,6 +159,7 @@ async function exportSetlistToiPad(setlistIndex) {
 }
 
 function createNewSetlist() {
+    if (!requireSignIn()) return;
     const container = document.getElementById('setlistsList');
     if (!container) return;
     window._slSets = [{ name: 'Set 1', songs: [] }];
@@ -187,6 +188,7 @@ function slSearchSong(input, setIdx) {
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
 }
 function slAddSongToSet(setIdx, title) {
+    if (!requireSignIn()) return;
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
     window._slSets[setIdx].songs.push({title: title, segue: 'stop'});
     slRenderSetSongs(setIdx);
@@ -392,6 +394,7 @@ function slRemoveSong(setIdx, songIdx) {
 
 let _slSetCount = 1;
 function slAddSet(type) {
+    if (!requireSignIn()) return;
     const name = type === 'encore' ? 'Encore' : type === 'soundcheck' ? '🔊 Soundcheck' : ('Set ' + (++_slSetCount));
     window._slSets.push({ name, songs: [] });
     const idx = window._slSets.length - 1;
@@ -406,6 +409,7 @@ function slAddSet(type) {
 }
 
 async function slSaveSetlist() {
+    if (!requireSignIn()) return;
     const sl = {
         name: document.getElementById('slName')?.value || 'Untitled',
         date: document.getElementById('slDate')?.value || '',
@@ -768,6 +772,7 @@ function parachuteOpenOfflinePack() {
 
 
 async function slSaveSetlistEdit(idx) {
+    if (!requireSignIn()) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data[idx] = {
         ...data[idx],
@@ -784,6 +789,7 @@ async function slSaveSetlistEdit(idx) {
 }
 
 async function deleteSetlist(idx) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this setlist? This cannot be undone.')) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data.splice(idx, 1);

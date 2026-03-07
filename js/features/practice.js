@@ -284,6 +284,7 @@ function practicePlanSelectDate(dateStr) {
 }
 
 async function ppAddGoal(dateStr) {
+    if (!requireSignIn()) return;
     const inp = document.getElementById('ppNewGoal');
     const val = inp?.value.trim();
     if (!val) return;
@@ -306,6 +307,7 @@ async function ppRemoveGoal(idx, dateStr) {
 }
 
 async function ppAddSong(dateStr) {
+    if (!requireSignIn()) return;
     const title = document.getElementById('ppSongPicker')?.value;
     if (!title) return;
     const focus = document.getElementById('ppSongFocus')?.value.trim() || '';
@@ -331,6 +333,7 @@ async function ppRemoveSong(idx, dateStr) {
 }
 
 async function practicePlanSave(dateStr) {
+    if (!requireSignIn()) return;
     const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
     plan.notes = document.getElementById('ppNotes')?.value || plan.notes || '';
     plan.updatedAt = new Date().toISOString();
@@ -374,6 +377,7 @@ function practicePlanEditMeta(dateStr) {
 }
 
 async function practicePlanSaveMeta(dateStr) {
+    if (!requireSignIn()) return;
     const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
     plan.startTime = document.getElementById('ppMetaTime')?.value.trim() || '';
     plan.location  = document.getElementById('ppMetaLoc')?.value.trim() || '';
