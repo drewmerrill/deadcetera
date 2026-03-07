@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-172656', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-174115', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-172656';
+var BUILD_VERSION = '20260307-174115';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -611,9 +611,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Render songs immediately from built-in data (fast, no Firebase needed)
     renderSongs();
 
-    // Show Home Dashboard as the default landing screen
-    // (songs still render in background — navigation back to Songs is instant)
-    if (typeof showPage === 'function') {
+    // Show Home Dashboard as the default landing screen for signed-in users.
+    // For signed-out users, glHeroCheck(false) will show the hero instead.
+    if (typeof showPage === 'function' && localStorage.getItem('deadcetera_google_email')) {
         setTimeout(function() { showPage('home'); }, 50);
     }
 
@@ -639,6 +639,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (localStorage.getItem('deadcetera_google_email')) {
             console.log('🔑 Auto-reconnecting (was signed in)...');
             handleGoogleDriveAuth(true);
+        } else {
+            // No saved session — show hero to signed-out users
+            if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
         }
         
         // Check for ?join= invite link
@@ -5400,6 +5403,8 @@ async function getCurrentUserEmail() {
         injectAdminButton();
         // Re-update button now that we have the email
         updateDriveAuthButton();
+        // Hero gate: user is now authenticated — transition to home
+        if (typeof window.glHeroCheck === 'function') window.glHeroCheck(true);
         // Migrate any localStorage-only data to Firebase (recovers data saved before Firebase was ready)
         recoverLocalStorageToFirebase();
     } catch (error) {
