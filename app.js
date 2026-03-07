@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-073949', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-080235', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-073949';
+var BUILD_VERSION = '20260307-080235';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -13743,9 +13743,17 @@ function renderPocketMeterPage(el) {
         if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
         var container = el.querySelector('#pmPageContainer');
         if (!container) return false;
+        // Pull targetBPM from the currently selected song if available
+        var songBPM = 120;
+        try {
+            if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.bpm) {
+                songBPM = parseInt(selectedSong.bpm) || 120;
+            }
+        } catch(e) {}
         _pmInstance = new PocketMeter(container, {
-            targetBPM: 120,
+            targetBPM: songBPM,
             mode: 'rehearsal',
+            songKey: (typeof selectedSong !== 'undefined' && selectedSong) ? (selectedSong.firebaseKey || selectedSong.id || null) : null,
             bandPath: typeof bandPath === 'function' ? bandPath() : null,
             db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
         });
@@ -13754,10 +13762,10 @@ function renderPocketMeterPage(el) {
     }
 
     if (!_mountPM()) {
-        // pocket-meter.js loads after app.js — retry until script is ready
+        // pocket-meter.js loads after app.js — retry until class is available
         var container = el.querySelector('#pmPageContainer');
         if (container) container.innerHTML =
-            '<p style="color:var(--text-dim);text-align:center;padding:20px">Loading…</p>';
+            '<p style="color:var(--text-dim);text-align:center;padding:20px">Loading Pocket Meter…</p>';
         var attempts = 0;
         var retryTimer = setInterval(function() {
             attempts++;
@@ -13766,7 +13774,7 @@ function renderPocketMeterPage(el) {
                 clearInterval(retryTimer);
                 var c = el.querySelector('#pmPageContainer');
                 if (c) c.innerHTML =
-                    '<p style="color:var(--text-dim);text-align:center;padding:32px">⚠️ Pocket Meter script not loaded. Check that pocket-meter.js is in your repo.</p>';
+                    '<p style="color:var(--text-dim);text-align:center;padding:32px">⚠️ pocket-meter.js not loaded — check index.html script order.</p>';
             }
         }, 150);
     }

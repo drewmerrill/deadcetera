@@ -271,7 +271,9 @@
       this._renderGauge(0);
       this._updateGraph();
       const lbl = this.el && this.el.querySelector('.pm-status-label');
-      if (lbl) lbl.textContent = 'STOPPED';
+      if (lbl) { lbl.textContent = 'STOPPED'; lbl.className = 'pm-status-label pm-status--neutral'; }
+      const miniSt = this.el && this.el.querySelector('.pm-mini-status');
+      if (miniSt) { miniSt.textContent = 'stopped'; miniSt.style.color = ''; }
       if (hadHistory) this._showDriftReport();
     }
 
@@ -299,15 +301,21 @@
       else if (delta > 0)      { status = 'RUSHING';       zone = 'red';    }
       else                     { status = 'DRAGGING';      zone = 'red';    }
 
-      // Update DOM
-      this.el.querySelector('.pm-live-bpm').textContent = this.liveBPM.toFixed(1);
-      const miniBPM = this.el.querySelector('.pm-mini-bpm');
-      if (miniBPM) miniBPM.textContent = this.liveBPM.toFixed(1);
+      const bpmStr = this.liveBPM.toFixed(1);
       const sign = delta >= 0 ? '+' : '';
-      this.el.querySelector('.pm-delta').textContent = sign + delta.toFixed(1) + ' BPM';
-      this.el.querySelector('.pm-status-label').textContent = status;
-      this.el.querySelector('.pm-delta').className = 'pm-delta pm-delta--' + zone;
-      this.el.querySelector('.pm-status-label').className = 'pm-status-label pm-status--' + zone;
+
+      // Update main readout
+      this.el.querySelector('.pm-live-bpm').textContent = bpmStr;
+      const deltaEl = this.el.querySelector('.pm-delta');
+      if (deltaEl) { deltaEl.textContent = sign + delta.toFixed(1) + ' BPM'; deltaEl.className = 'pm-delta pm-delta--' + zone; }
+      const statusEl = this.el.querySelector('.pm-status-label');
+      if (statusEl) { statusEl.textContent = status; statusEl.className = 'pm-status-label pm-status--' + zone; }
+
+      // Sync mini pill
+      const miniVal = this.el.querySelector('.pm-mini-bpm-val');
+      if (miniVal) miniVal.textContent = bpmStr;
+      const miniSt = this.el.querySelector('.pm-mini-status');
+      if (miniSt) { miniSt.textContent = status; miniSt.style.color = zone === 'green' ? 'var(--pm-green)' : zone === 'yellow' ? 'var(--pm-yellow)' : 'var(--pm-red)'; }
 
       // Gauge arc
       this._renderGauge(delta);
@@ -341,13 +349,13 @@
       const needleEl = svg.querySelector('.pm-needle');
       if (needleEl) {
         const angleDeg = pct * 130;
-        needleEl.setAttribute('transform', `rotate(${angleDeg}, 100, 100)`);
+        needleEl.setAttribute('transform', `rotate(${angleDeg}, 100, 80)`);
         // Pegged: delta at or beyond max → shimmer red
         needleEl.classList.toggle('pm-needle--pegged', absDelta >= 9.5);
       }
 
       // ── Color ────────────────────────────────────────────────────────────────
-      const color = absDelta <= 2 ? '#00ff88' : absDelta <= 5 ? '#ffcc00' : '#ff3b3b';
+      const color = absDelta <= 2 ? '#4ade80' : absDelta <= 5 ? '#fbbf24' : '#f87171';
 
       // ── Fill arcs ────────────────────────────────────────────────────────────
       // Each quarter-arc path is 130 degrees = 181.51px of arc length
@@ -398,7 +406,7 @@
 
       const ring = this.el.querySelector('.pm-pulse-ring');
       if (!ring) return;
-      ring.style.borderColor = zone === 'green' ? '#00ff88' : zone === 'yellow' ? '#ffcc00' : '#ff3b3b';
+      ring.style.borderColor = zone === 'green' ? '#4ade80' : zone === 'yellow' ? '#fbbf24' : '#f87171';
       ring.classList.remove('pm-pulse-anim');
       void ring.offsetWidth; // reflow
       ring.classList.add('pm-pulse-anim');
@@ -427,7 +435,7 @@
       this._flashBanner(`📡 Broadcast: ${this.tapTarget} BPM → all members`);
       this.tapper.reset();
       this.tapTarget = null;
-      this.el.querySelector('.pm-tap-readout').textContent = 'TAP TEMPO';
+      this.el.querySelector('.pm-tap-readout').textContent = 'Tap Tempo';
       this.el.querySelector('.pm-broadcast-btn').classList.add('pm-hidden');
       this.el.querySelector('.pm-lock-btn').classList.add('pm-hidden');
     }
@@ -441,7 +449,7 @@
       this._flashBanner(`💾 Saved ${this.tapTarget} BPM as new default`);
       this.tapper.reset();
       this.tapTarget = null;
-      this.el.querySelector('.pm-tap-readout').textContent = 'TAP TEMPO';
+      this.el.querySelector('.pm-tap-readout').textContent = 'Tap Tempo';
       this.el.querySelector('.pm-broadcast-btn').classList.add('pm-hidden');
       this.el.querySelector('.pm-lock-btn').classList.add('pm-hidden');
     }
@@ -462,7 +470,7 @@
     _updateListenBtn() {
       const btn = this.el && this.el.querySelector('.pm-listen-btn');
       if (!btn) return;
-      btn.textContent = this.listening ? '⏹ STOP' : '🎙 LISTEN';
+      btn.textContent = this.listening ? '⏹ Stop' : '🎙 Listen';
       btn.classList.toggle('pm-listen--active', this.listening);
     }
 
@@ -504,12 +512,56 @@
         this._flashBanner(this._screenFlash ? 'Screen flash ON' : 'Screen flash OFF');
       });
 
+      // ── BPM +/− adjustment ────────────────────────────────────────────────
+      this._pendingBPM = null;
+      this.el.querySelectorAll('.pm-bpm-adj').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const dir = parseInt(btn.dataset.dir);
+          this.targetBPM = Math.max(20, Math.min(300, (this.targetBPM || 120) + dir));
+          this._updateTarget();
+          // Show save prompt if we have a song to save to
+          this._pendingBPM = this.targetBPM;
+          const prompt = this.el.querySelector('.pm-bpm-prompt');
+          const valEl = this.el.querySelector('.pm-bpm-prompt-val');
+          if (prompt && valEl) {
+            valEl.textContent = this.targetBPM;
+            prompt.classList.remove('pm-hidden');
+          }
+        });
+      });
+      this.el.querySelector('.pm-bpm-save-yes').addEventListener('click', () => {
+        if (this._pendingBPM && this.songKey && this.db) {
+          try {
+            var ref = this.db.ref(this.bandPath + '/songs/' + this.songKey + '/bpm');
+            ref.set(this._pendingBPM);
+            // Also update global app state if available
+            if (typeof selectedSong !== 'undefined' && selectedSong) selectedSong.bpm = this._pendingBPM;
+            this._flashBanner('✅ BPM saved to song (' + this._pendingBPM + ')');
+          } catch(e) { this._flashBanner('⚠️ Could not save BPM: ' + e.message); }
+        }
+        this.el.querySelector('.pm-bpm-prompt').classList.add('pm-hidden');
+        this._pendingBPM = null;
+      });
+      this.el.querySelector('.pm-bpm-save-no').addEventListener('click', () => {
+        this.el.querySelector('.pm-bpm-prompt').classList.add('pm-hidden');
+        this._pendingBPM = null;
+      });
+
+      // ── Settings gear ──────────────────────────────────────────────────────
+      this.el.querySelector('.pm-settings-btn').addEventListener('click', () => {
+        const panel = this.el.querySelector('.pm-settings-panel');
+        const btn   = this.el.querySelector('.pm-settings-btn');
+        if (!panel) return;
+        const open = panel.classList.toggle('pm-hidden');
+        if (btn) btn.classList.toggle('pm-active', !open);
+      });
+
       // ── View mode (full / float / mini) ────────────────────────────────────
       this._viewMode = 'full';
       this.el.querySelectorAll('.pm-view-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const mode = btn.dataset.view;
-          this._setViewMode(mode);
+          if (mode) this._setViewMode(mode);
         });
       });
 
@@ -522,32 +574,21 @@
     _setViewMode(mode) {
       this._viewMode = mode;
       this.el.classList.remove('pm-float', 'pm-mini');
-      this.el.querySelectorAll('.pm-view-btn').forEach(b => {
-        b.classList.toggle('pm-view-btn--active', b.dataset.view === mode);
-      });
-      const miniBPM = this.el.querySelector('.pm-mini-bpm');
-
       if (mode === 'float') {
-        // Detach from page flow → fixed overlay
-        // Move to body so it floats over all pages
         document.body.appendChild(this.el);
         this.el.classList.add('pm-float');
-        if (miniBPM) miniBPM.style.display = 'none';
         this._flashBanner('Float mode — drag to reposition');
       } else if (mode === 'mini') {
         document.body.appendChild(this.el);
         this.el.classList.add('pm-mini');
-        if (miniBPM) miniBPM.style.display = 'block';
-        this._flashBanner('Mini mode — drag to reposition');
+        var miniVal = this.el.querySelector('.pm-mini-bpm-val');
+        if (miniVal) miniVal.textContent = this.liveBPM > 0 ? this.liveBPM.toFixed(1) : '—';
+        this._flashBanner('Mini — drag to reposition');
       } else {
-        // Full: put back in original container
         if (this.container) this.container.appendChild(this.el);
-        this.el.style.position = '';
-        this.el.style.left = '';
-        this.el.style.top = '';
-        this.el.style.bottom = '';
-        this.el.style.right = '';
-        if (miniBPM) miniBPM.style.display = 'none';
+        ['position','left','top','bottom','right','width'].forEach(function(p) {
+          this.el.style[p] = '';
+        }.bind(this));
       }
     }
 
@@ -606,13 +647,6 @@
       this._sensitivityMult = [2.0, 1.7, 1.4, 1.25, 1.1][s - 1];
     }
     _bindSettingsUI() {
-      const panel = this.el.querySelector('.pm-settings-panel');
-      const btn   = this.el.querySelector('.pm-settings-btn');
-      if (!btn || !panel) return;
-      btn.addEventListener('click', () => {
-        panel.classList.toggle('pm-hidden');
-        btn.style.opacity = panel.classList.contains('pm-hidden') ? '0.5' : '1';
-      });
       const senSlider = this.el.querySelector('.pm-cal-sensitivity');
       const reactSlider = this.el.querySelector('.pm-cal-reactivity');
       if (senSlider) senSlider.addEventListener('input', () => {
@@ -629,7 +663,7 @@
       if (this._countInTimer) {
         clearInterval(this._countInTimer); this._countInTimer = null;
         const btn = this.el.querySelector('.pm-countin-btn');
-        if (btn) btn.textContent = '🏁 COUNT IN';
+        if (btn) btn.textContent = 'Count In';
         return;
       }
       if (this.listening) { this._stopListening(); return; }
@@ -657,7 +691,7 @@
         if (lbl) lbl.textContent = count <= beats ? String(count) : '';
         if (count >= beats) {
           clearInterval(this._countInTimer); this._countInTimer = null;
-          if (btn) btn.textContent = '🏁 COUNT IN';
+          if (btn) btn.textContent = 'Count In';
           setTimeout(() => this._startListening(), interval * 0.5);
         }
       }, interval);
@@ -735,150 +769,162 @@
     // ── Render ─────────────────────────────────────────────────────────────────
 
     _render() {
-      const isGig = this.mode === 'gig';
       const div = document.createElement('div');
       div.className = `pm-root pm-mode-${this.mode}`;
       div.innerHTML = `
         <div class="pm-banner"></div>
-
         <div class="pm-flash-overlay"></div>
 
-        <div class="pm-view-toggle">
-          <button class="pm-view-btn pm-view-btn--active" data-view="full" title="Full view">⬛ Full</button>
-          <button class="pm-view-btn" data-view="float" title="Float over other pages">⧉ Float</button>
-          <button class="pm-view-btn" data-view="mini" title="Mini BPM pill">▪ Mini</button>
+        <!-- Header row: target BPM + gear + view controls -->
+        <div class="pm-header">
+          <div class="pm-header-left">
+            <span class="pm-header-label">TARGET</span>
+            <div class="pm-target-row">
+              <button class="pm-bpm-adj" data-dir="-1" title="Decrease target BPM">−</button>
+              <div class="pm-target-bpm">${this.targetBPM}</div>
+              <button class="pm-bpm-adj" data-dir="1" title="Increase target BPM">+</button>
+            </div>
+            <span class="pm-header-label">BPM</span>
+          </div>
+          <div class="pm-header-right">
+            <button class="pm-settings-btn" title="Calibration">⚙</button>
+          </div>
         </div>
 
-        <div class="pm-mini-bpm" style="display:none">--.-</div>
-
-        <div class="pm-top-row">
-          <div class="pm-label-sm">TARGET</div>
-          <div class="pm-target-bpm">${this.targetBPM}</div>
-          <div class="pm-label-sm">BPM</div>
-          <button class="pm-settings-btn" title="Calibration">&#x2699;&#xFE0F;</button>
-        </div>
-
+        <!-- Toolbar: multiplier + time sig + flash -->
         <div class="pm-toolbar">
-          <button class="pm-mult-btn pm-mult--half">1/2x</button>
+          <button class="pm-mult-btn pm-mult--half">½x</button>
           <button class="pm-mult-btn pm-mult--1x pm-mult--active">1x</button>
           <button class="pm-mult-btn pm-mult--2x">2x</button>
-          <span class="pm-toolbar-sep"></span>
+          <div class="pm-toolbar-divider"></div>
           <button class="pm-sig-btn pm-sig--3">3/4</button>
           <button class="pm-sig-btn pm-sig--4 pm-sig--active">4/4</button>
           <button class="pm-sig-btn pm-sig--6">6/8</button>
-          <span class="pm-toolbar-sep"></span>
-          <button class="pm-flash-btn" title="Screen flash">&#x1F4A1;</button>
+          <div class="pm-toolbar-divider"></div>
+          <button class="pm-flash-btn" title="Screen flash on beat">⚡</button>
+          <div class="pm-toolbar-divider"></div>
+          <button class="pm-view-btn" data-view="float" title="Float over other pages">⧉</button>
+          <button class="pm-view-btn" data-view="mini" title="Mini pill">▾</button>
         </div>
 
+        <!-- Calibration panel (hidden by default) -->
         <div class="pm-settings-panel pm-hidden">
-          <div class="pm-settings-title">&#x2699;&#xFE0F; CALIBRATION</div>
+          <div class="pm-settings-title">Calibration</div>
           <div class="pm-settings-row">
-            <label class="pm-settings-label">SENSITIVITY</label>
+            <label class="pm-settings-label">Sensitivity</label>
             <div class="pm-settings-track">
               <span class="pm-settings-hint">Low</span>
-              <input type="range" class="pm-cal-sensitivity" min="1" max="5" step="1" value="${this._getSetting('sensitivity','3')}" title="How easily beats are detected. If meter misses beats or reads erratically, move LEFT (less sensitive). If it triggers on non-beats or background noise, move RIGHT (more sensitive).">
+              <input type="range" class="pm-cal-sensitivity" min="1" max="5" step="1" value="${this._getSetting('sensitivity','3')}">
               <span class="pm-settings-hint">High</span>
             </div>
-            <div class="pm-settings-desc">Move LEFT if meter misses beats &bull; Move RIGHT if it triggers on noise</div>
+            <div class="pm-settings-desc">Low = only loud beats · High = catches subtle playing</div>
           </div>
           <div class="pm-settings-row">
-            <label class="pm-settings-label">REACTIVITY</label>
+            <label class="pm-settings-label">Reactivity</label>
             <div class="pm-settings-track">
               <span class="pm-settings-hint">Smooth</span>
-              <input type="range" class="pm-cal-reactivity" min="1" max="5" step="1" value="${this._getSetting('reactivity','3')}" title="How fast the BPM number reacts to tempo changes. Move RIGHT (snappy) if the number feels sluggish or slow to update. Move LEFT (smooth) if the number jumps around too much.">
+              <input type="range" class="pm-cal-reactivity" min="1" max="5" step="1" value="${this._getSetting('reactivity','3')}">
               <span class="pm-settings-hint">Snappy</span>
             </div>
-            <div class="pm-settings-desc">Move LEFT if number jumps too much &bull; Move RIGHT if it feels sluggish</div>
+            <div class="pm-settings-desc">Smooth = stable number · Snappy = fast response</div>
           </div>
-          <div class="pm-settings-save">Adjustments apply instantly</div>
         </div>
 
+        <!-- Gauge -->
         <div class="pm-gauge-wrap">
           <div class="pm-pulse-ring"></div>
-          <!--
-            ARC GEOMETRY (r=80, center 100,100):
-            Total span: 260 degrees (±130 deg from 12 o'clock)
-            Left endpoint  (−130 deg): (38.7, 151.4)
-            Right endpoint (+130 deg): (161.3, 151.4)
-            Half-arc length (130 deg): 181.51 px
-            Scale: 13 deg per BPM → needle never escapes arc
-            Green zone: ±2 BPM = ±26 deg = 72.6 px centered on full arc (offset −145.2)
-          -->
-          <svg class="pm-gauge-arc" viewBox="0 0 200 175" xmlns="http://www.w3.org/2000/svg">
-            <!-- Background track: 260-degree arc -->
-            <path class="pm-arc-track"
-              d="M 38.7 151.4 A 80 80 0 1 1 161.3 151.4"
-              fill="none" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round"/>
-            <!-- Green pocket zone: ±2 BPM centered on arc -->
-            <path class="pm-arc-zone-green"
-              d="M 38.7 151.4 A 80 80 0 1 1 161.3 151.4"
-              fill="none" stroke="#00ff88" stroke-width="3" stroke-linecap="round"
-              stroke-dasharray="72.6 999" stroke-dashoffset="-145.2"/>
-            <!-- Active fill: right (rushing) — 12 o'clock → right endpoint, 130 deg -->
-            <path class="pm-arc-right"
-              d="M 100 20 A 80 80 0 0 1 161.3 151.4"
-              fill="none" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"
-              stroke-dasharray="0 999" stroke-dashoffset="0"/>
-            <!-- Active fill: left (dragging) — left endpoint → 12 o'clock, 130 deg -->
-            <path class="pm-arc-left"
-              d="M 38.7 151.4 A 80 80 0 0 1 100 20"
-              fill="none" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"
-              stroke-dasharray="0 999" stroke-dashoffset="181.5"/>
-            <!-- Ticks: at ±10, ±5, 0 BPM using rotate() around center -->
-            <g class="pm-ticks" stroke-linecap="round">
-              <line x1="100" y1="20" x2="100" y2="32" stroke="#444" stroke-width="1.5" transform="rotate(-130 100 100)"/>
-              <line x1="100" y1="20" x2="100" y2="28" stroke="#444" stroke-width="1.5" transform="rotate(-65 100 100)"/>
-              <line x1="100" y1="20" x2="100" y2="33" stroke="#00ff88" stroke-width="2.5"/>
-              <line x1="100" y1="20" x2="100" y2="28" stroke="#444" stroke-width="1.5" transform="rotate(65 100 100)"/>
-              <line x1="100" y1="20" x2="100" y2="32" stroke="#444" stroke-width="1.5" transform="rotate(130 100 100)"/>
+          <svg class="pm-gauge-arc" viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="pm-glow-green"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <filter id="pm-glow-red"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+            <!-- Track -->
+            <path class="pm-arc-track" d="M 38.7 131.4 A 80 80 0 1 1 161.3 131.4" fill="none" stroke="#1e1e2e" stroke-width="14" stroke-linecap="round"/>
+            <!-- Green pocket zone -->
+            <path class="pm-arc-zone-green" d="M 38.7 131.4 A 80 80 0 1 1 161.3 131.4" fill="none" stroke="#4ade80" stroke-width="4" stroke-linecap="round" stroke-dasharray="72.6 999" stroke-dashoffset="-145.2" opacity="0.5"/>
+            <!-- Active fill right (rushing) -->
+            <path class="pm-arc-right" d="M 100 0 A 80 80 0 0 1 161.3 131.4" fill="none" stroke="#f87171" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 999"/>
+            <!-- Active fill left (dragging) -->
+            <path class="pm-arc-left" d="M 38.7 131.4 A 80 80 0 0 1 100 0" fill="none" stroke="#f87171" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 999" stroke-dashoffset="181.5"/>
+            <!-- Ticks -->
+            <g stroke-linecap="round">
+              <line x1="100" y1="0" x2="100" y2="12" stroke="#333" stroke-width="2" transform="rotate(-130 100 80)"/>
+              <line x1="100" y1="0" x2="100" y2="8"  stroke="#333" stroke-width="1.5" transform="rotate(-65 100 80)"/>
+              <line x1="100" y1="0" x2="100" y2="14" stroke="#4ade80" stroke-width="2.5"/>
+              <line x1="100" y1="0" x2="100" y2="8"  stroke="#333" stroke-width="1.5" transform="rotate(65 100 80)"/>
+              <line x1="100" y1="0" x2="100" y2="12" stroke="#333" stroke-width="2" transform="rotate(130 100 80)"/>
             </g>
             <!-- Labels -->
-            <text x="30" y="168" font-family="monospace" font-size="9" fill="#555" text-anchor="middle" font-weight="700">−10</text>
-            <text x="170" y="168" font-family="monospace" font-size="9" fill="#555" text-anchor="middle" font-weight="700">+10</text>
-            <!-- Pivot cap -->
-            <circle cx="100" cy="100" r="6" fill="#1a1a1a" stroke="#333" stroke-width="1.5"/>
+            <text x="28" y="136" font-family="system-ui,sans-serif" font-size="8" fill="#444" text-anchor="middle">−10</text>
+            <text x="172" y="136" font-family="system-ui,sans-serif" font-size="8" fill="#444" text-anchor="middle">+10</text>
+            <!-- Pivot -->
+            <circle cx="100" cy="80" r="7" fill="#12121f" stroke="#2a2a3e" stroke-width="2"/>
             <!-- Needle -->
             <g class="pm-needle">
-              <line x1="100" y1="100" x2="100" y2="28" stroke="#e0e0e0" stroke-width="2.5" stroke-linecap="round"/>
-              <circle cx="100" cy="100" r="4" fill="#e0e0e0"/>
+              <line x1="100" y1="80" x2="100" y2="8" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="100" cy="80" r="4" fill="#e2e8f0"/>
             </g>
           </svg>
 
+          <!-- BPM readout centered in arc bowl -->
           <div class="pm-center-readout">
             <div class="pm-live-label">LIVE BPM</div>
-            <div class="pm-live-bpm">--.-</div>
-            <div class="pm-delta pm-delta--green" title="Difference from target BPM">±0.0</div>
+            <div class="pm-live-bpm">—</div>
+            <div class="pm-delta pm-delta--neutral">±0.0</div>
           </div>
         </div>
 
-        <div class="pm-status-label pm-status--green">STANDBY</div>
+        <!-- Status -->
+        <div class="pm-status-label pm-status--neutral">STANDBY</div>
 
+        <!-- Main controls -->
         <div class="pm-controls">
-          <button class="pm-listen-btn">🎙 LISTEN</button>
-          <button class="pm-tap-btn">TAP</button>
+          <button class="pm-listen-btn">🎙 Listen</button>
+          <button class="pm-tap-btn">Tap</button>
         </div>
 
+        <!-- Tap readout + actions -->
         <div class="pm-tap-zone">
-          <div class="pm-tap-readout">TAP TEMPO</div>
+          <div class="pm-tap-readout">Tap Tempo</div>
           <div class="pm-action-row">
-            <button class="pm-broadcast-btn pm-hidden">📡 BROADCAST</button>
-            <button class="pm-lock-btn pm-hidden">💾 LOCK</button>
+            <button class="pm-broadcast-btn pm-hidden">📡 Broadcast</button>
+            <button class="pm-lock-btn pm-hidden">💾 Save to Song</button>
           </div>
-          <button class="pm-countin-btn">🏁 COUNT IN</button>
+          <button class="pm-countin-btn">Count In</button>
         </div>
 
+        <!-- Tempo history graph -->
         <div class="pm-graph-section">
-          <div class="pm-graph-label">TEMPO HISTORY</div>
-          <svg class="pm-history-graph" viewBox="0 0 280 60" preserveAspectRatio="none">
-            <line class="pm-graph-target-line" x1="0" y1="30" x2="280" y2="30" stroke="#00ff88" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.4"/>
-            <polyline class="pm-graph-line" points="" fill="none" stroke="#00ff88" stroke-width="1.5" stroke-linejoin="round"/>
+          <div class="pm-graph-label">Tempo History</div>
+          <svg class="pm-history-graph" viewBox="0 0 280 50" preserveAspectRatio="none">
+            <line class="pm-graph-target-line" x1="0" y1="25" x2="280" y2="25" stroke="#4ade80" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
+            <polyline class="pm-graph-line" points="" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
         </div>
 
+        <!-- Drift report (shown after stop) -->
         <div class="pm-drift-report pm-hidden">
-          <div class="pm-drift-title">📊 SESSION REPORT</div>
+          <div class="pm-drift-title">Session Report</div>
           <div class="pm-drift-body"></div>
-          <button class="pm-drift-close">× DISMISS</button>
+          <button class="pm-drift-close">Dismiss</button>
+        </div>
+
+        <!-- BPM save prompt (shown when user adjusts target BPM) -->
+        <div class="pm-bpm-prompt pm-hidden">
+          <div class="pm-bpm-prompt-msg">Save <span class="pm-bpm-prompt-val"></span> BPM to this song?</div>
+          <div class="pm-bpm-prompt-btns">
+            <button class="pm-bpm-save-yes">Save to Song</button>
+            <button class="pm-bpm-save-no">Just for Now</button>
+          </div>
+        </div>
+
+        <!-- Mini mode pill (only visible in mini mode) -->
+        <div class="pm-mini-pill">
+          <div class="pm-mini-bpm-val">—</div>
+          <div class="pm-mini-status"></div>
+          <div class="pm-mini-controls">
+            <button class="pm-view-btn" data-view="full" title="Expand">↗</button>
+          </div>
         </div>
       `;
       this.container.appendChild(div);
@@ -892,363 +938,300 @@
       const s = document.createElement('style');
       s.id = 'pm-styles';
       s.textContent = `
-        /* ── Pocket Meter Root ── */
+        /* ── Root ──────────────────────────────────────────────────────────── */
         .pm-root {
-          --pm-bg:       #0a0a0a;
-          --pm-surface:  #111;
-          --pm-border:   #222;
-          --pm-green:    #00ff88;
-          --pm-yellow:   #ffcc00;
-          --pm-red:      #ff3b3b;
-          --pm-text:     #e0e0e0;
-          --pm-dim:      #555;
-          --pm-mono:     'Courier New', 'Lucida Console', monospace;
+          --pm-bg:        #0f0f1a;
+          --pm-surface:   #1a1a2e;
+          --pm-border:    #2a2a3e;
+          --pm-green:     #4ade80;
+          --pm-yellow:    #fbbf24;
+          --pm-red:       #f87171;
+          --pm-blue:      #818cf8;
+          --pm-text:      #e2e8f0;
+          --pm-muted:     #64748b;
+          --pm-radius:    12px;
+          --pm-font:      system-ui, -apple-system, sans-serif;
 
           background: var(--pm-bg);
           border: 1px solid var(--pm-border);
-          border-radius: 12px;
+          border-radius: 16px;
           padding: 16px;
           display: flex;
           flex-direction: column;
-          align-items: center;
-          gap: 8px;
+          align-items: stretch;
+          gap: 10px;
           position: relative;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 0 30px rgba(0,255,136,0.03), inset 0 1px 0 #1e1e1e;
-          max-width: 320px;
+          font-family: var(--pm-font);
+          color: var(--pm-text);
+          max-width: 360px;
           width: 100%;
           margin: 0 auto;
-          font-family: var(--pm-mono);
+          /* Scrollable so it never overflows the page */
+          max-height: calc(100vh - 120px);
+          overflow-y: auto;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
+        .pm-root::-webkit-scrollbar { width: 4px; }
+        .pm-root::-webkit-scrollbar-track { background: transparent; }
+        .pm-root::-webkit-scrollbar-thumb { background: var(--pm-border); border-radius: 2px; }
 
-        /* Gig mode: bigger, more dramatic */
-        .pm-mode-gig {
-          max-width: 400px;
-          padding: 20px;
-          border-color: #1a1a1a;
-          background: #050505;
-          box-shadow: 0 0 60px rgba(0,255,136,0.05);
-        }
+        .pm-mode-gig { max-width: 420px; --pm-bg: #080812; }
 
-        /* ── Banner ── */
+        /* ── Banner ─────────────────────────────────────────────────────────── */
         .pm-banner {
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          background: #1a2a1a;
-          color: var(--pm-green);
-          font-size: 11px;
-          letter-spacing: 0.05em;
-          text-align: center;
-          padding: 6px;
-          transform: translateY(-100%);
-          transition: transform 0.25s ease;
-          z-index: 10;
-          border-bottom: 1px solid #1e3a1e;
+          position: absolute; top: 0; left: 0; right: 0;
+          background: #1a2e1a; color: var(--pm-green);
+          font-size: 11px; text-align: center; padding: 7px 12px;
+          transform: translateY(-100%); transition: transform 0.2s ease;
+          z-index: 10; border-radius: 16px 16px 0 0;
+          border-bottom: 1px solid #2a3e2a;
         }
         .pm-banner--show { transform: translateY(0); }
+        .pm-flash-overlay { position: absolute; inset: 0; border-radius: 16px; pointer-events: none; z-index: 10; opacity: 0; transition: opacity 0.05s; }
 
-        /* ── Top row ── */
-        .pm-top-row {
-          display: flex;
-          align-items: baseline;
-          gap: 4px;
-          color: var(--pm-dim);
+        /* ── Header ─────────────────────────────────────────────────────────── */
+        .pm-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 0 2px;
         }
-        .pm-label-sm {
-          font-size: 9px;
-          letter-spacing: 0.15em;
-          color: var(--pm-dim);
-        }
+        .pm-header-left { display: flex; align-items: baseline; gap: 6px; }
+        .pm-header-label { font-size: 10px; color: var(--pm-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+        .pm-target-row { display: flex; align-items: center; gap: 4px; }
         .pm-target-bpm {
-          font-size: 28px;
-          color: var(--pm-text);
-          line-height: 1;
-          letter-spacing: -0.02em;
+          font-size: 32px; font-weight: 700; color: var(--pm-text);
+          letter-spacing: -0.03em; min-width: 56px; text-align: center; line-height: 1;
         }
-        .pm-mode-gig .pm-target-bpm { font-size: 36px; }
+        .pm-mode-gig .pm-target-bpm { font-size: 40px; }
+        .pm-bpm-adj {
+          width: 28px; height: 28px; border-radius: 8px;
+          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          color: var(--pm-text); font-size: 16px; font-weight: 300;
+          cursor: pointer; display: flex; align-items: center; justify-content: center;
+          transition: all 0.15s; line-height: 1; padding: 0;
+        }
+        .pm-bpm-adj:hover { background: var(--pm-border); border-color: var(--pm-blue); color: var(--pm-blue); }
+        .pm-bpm-adj:active { transform: scale(0.92); }
+        .pm-header-right { display: flex; align-items: center; gap: 6px; }
+        .pm-settings-btn {
+          width: 32px; height: 32px; border-radius: 8px;
+          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          color: var(--pm-muted); font-size: 14px; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          transition: all 0.15s;
+        }
+        .pm-settings-btn:hover { color: var(--pm-text); border-color: var(--pm-blue); }
+        .pm-settings-btn.pm-active { color: var(--pm-blue); border-color: var(--pm-blue); background: rgba(129,140,248,0.1); }
 
-        /* ── Gauge wrapper ── */
+        /* ── Toolbar ────────────────────────────────────────────────────────── */
+        .pm-toolbar {
+          display: flex; align-items: center; gap: 4px;
+          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          border-radius: 10px; padding: 5px 8px; flex-wrap: wrap;
+        }
+        .pm-mult-btn, .pm-sig-btn {
+          background: transparent; border: 1px solid transparent;
+          color: var(--pm-muted); font-family: var(--pm-font); font-size: 11px;
+          font-weight: 500; padding: 3px 8px; border-radius: 6px;
+          cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em;
+        }
+        .pm-mult-btn:hover, .pm-sig-btn:hover { color: var(--pm-text); background: var(--pm-border); }
+        .pm-mult--active, .pm-sig--active {
+          background: rgba(129,140,248,0.15) !important;
+          border-color: var(--pm-blue) !important; color: var(--pm-blue) !important;
+        }
+        .pm-toolbar-divider { width: 1px; height: 14px; background: var(--pm-border); margin: 0 2px; }
+        .pm-flash-btn {
+          background: transparent; border: 1px solid transparent;
+          font-size: 13px; padding: 3px 5px; border-radius: 6px;
+          cursor: pointer; opacity: 0.4; transition: all 0.15s;
+        }
+        .pm-flash-btn:hover { opacity: 0.8; }
+        .pm-flash-btn--active { opacity: 1 !important; border-color: var(--pm-yellow) !important; }
+        .pm-view-btn {
+          background: transparent; border: 1px solid transparent;
+          color: var(--pm-muted); font-size: 13px; padding: 3px 5px;
+          border-radius: 6px; cursor: pointer; transition: all 0.15s;
+        }
+        .pm-view-btn:hover { color: var(--pm-text); background: var(--pm-border); }
+
+        /* ── Settings panel ─────────────────────────────────────────────────── */
+        .pm-settings-panel {
+          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          border-radius: 10px; padding: 12px 14px;
+        }
+        .pm-settings-title { font-size: 11px; font-weight: 600; color: var(--pm-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+        .pm-settings-row { margin-bottom: 10px; }
+        .pm-settings-label { display: block; font-size: 11px; color: var(--pm-muted); font-weight: 500; margin-bottom: 5px; }
+        .pm-settings-track { display: flex; align-items: center; gap: 8px; }
+        .pm-settings-hint { font-size: 10px; color: var(--pm-muted); min-width: 38px; }
+        .pm-settings-track input[type=range] {
+          flex: 1; -webkit-appearance: none; height: 4px;
+          background: var(--pm-border); border-radius: 2px; outline: none;
+        }
+        .pm-settings-track input[type=range]::-webkit-slider-thumb {
+          -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+          background: var(--pm-blue); cursor: pointer;
+          box-shadow: 0 0 0 3px rgba(129,140,248,0.25);
+        }
+        .pm-settings-desc { font-size: 10px; color: #3a3a5e; margin-top: 4px; line-height: 1.4; }
+
+        /* ── Gauge ──────────────────────────────────────────────────────────── */
         .pm-gauge-wrap {
-          position: relative;
-          width: 100%;
-          max-width: 240px;
+          position: relative; width: 100%; max-width: 260px;
+          margin: 0 auto;
         }
         .pm-mode-gig .pm-gauge-wrap { max-width: 300px; }
+        .pm-gauge-arc { width: 100%; height: auto; display: block; overflow: visible; }
 
-        .pm-gauge-arc {
-          width: 100%;
-          height: auto;
-          display: block;
-        }
+        /* Needle pegged: shimmer red */
+        .pm-needle--pegged line { stroke: var(--pm-red) !important; animation: pm-peg-pulse 0.4s ease-in-out infinite alternate; }
+        .pm-needle--pegged circle { fill: var(--pm-red) !important; }
+        @keyframes pm-peg-pulse { from { opacity: 1; } to { opacity: 0.3; } }
 
-        /* ── Pulse ring (gig mode beat flash) ── */
-        .pm-pulse-ring {
-          position: absolute;
-          inset: -8px;
-          border-radius: 50%;
-          border: 2px solid transparent;
-          pointer-events: none;
-        }
-        @keyframes pm-pulse {
-          0%   { opacity: 0.9; transform: scale(0.97); }
-          60%  { opacity: 0.2; transform: scale(1.04); }
-          100% { opacity: 0;   transform: scale(1.07); }
-        }
+        /* Pulse ring (gig mode) */
+        .pm-pulse-ring { position: absolute; inset: -8px; border-radius: 50%; border: 2px solid transparent; pointer-events: none; }
+        @keyframes pm-pulse { 0% { opacity: 0.8; transform: scale(0.97); } 100% { opacity: 0; transform: scale(1.06); } }
         .pm-pulse-anim { animation: pm-pulse 0.35s ease-out forwards; }
 
-        /* ── Center readout — sits inside the arc bowl ── */
+        /* Center readout */
         .pm-center-readout {
-          position: absolute;
-          bottom: 18px; left: 50%;
+          position: absolute; bottom: 10px; left: 50%;
           transform: translateX(-50%);
-          text-align: center;
-          line-height: 1;
-          pointer-events: none;
+          text-align: center; line-height: 1; pointer-events: none;
+          width: 100%;
         }
-        .pm-live-label {
-          font-size: 8px;
-          letter-spacing: 0.18em;
-          color: var(--pm-dim);
-          margin-bottom: 2px;
-        }
-        .pm-live-bpm {
-          font-size: 36px;
-          color: var(--pm-text);
-          letter-spacing: -0.03em;
-        }
-        .pm-mode-gig .pm-live-bpm { font-size: 48px; }
-        .pm-delta {
-          font-size: 15px;
-          letter-spacing: 0.05em;
-          margin-top: 2px;
-        }
-        .pm-mode-gig .pm-delta { font-size: 18px; }
-        .pm-delta--green { color: var(--pm-green); }
-        .pm-delta--yellow { color: var(--pm-yellow); }
-        .pm-delta--red   { color: var(--pm-red); }
+        .pm-live-label { font-size: 9px; letter-spacing: 0.12em; color: var(--pm-muted); text-transform: uppercase; margin-bottom: 2px; }
+        .pm-live-bpm { font-size: 40px; font-weight: 700; color: var(--pm-text); letter-spacing: -0.04em; }
+        .pm-mode-gig .pm-live-bpm { font-size: 52px; }
+        .pm-delta { font-size: 13px; font-weight: 600; letter-spacing: 0.03em; margin-top: 2px; }
+        .pm-delta--green   { color: var(--pm-green); }
+        .pm-delta--yellow  { color: var(--pm-yellow); }
+        .pm-delta--red     { color: var(--pm-red); }
+        .pm-delta--neutral { color: var(--pm-muted); }
 
-        /* ── Status label ── */
+        /* ── Status label ───────────────────────────────────────────────────── */
         .pm-status-label {
-          font-size: 13px;
-          letter-spacing: 0.25em;
-          font-weight: bold;
-          margin-top: 4px;
+          font-size: 12px; font-weight: 700; letter-spacing: 0.2em;
+          text-align: center; text-transform: uppercase; min-height: 1.4em;
           transition: color 0.3s;
-          min-height: 1.4em;
-          text-align: center;
         }
-        .pm-mode-gig .pm-status-label { font-size: 16px; }
-        .pm-status--green  { color: var(--pm-green); text-shadow: 0 0 10px rgba(0,255,136,0.5); }
-        .pm-status--yellow { color: var(--pm-yellow); text-shadow: 0 0 10px rgba(255,204,0,0.4); }
-        .pm-status--red    { color: var(--pm-red);    text-shadow: 0 0 10px rgba(255,59,59,0.5); }
+        .pm-mode-gig .pm-status-label { font-size: 15px; }
+        .pm-status--green  { color: var(--pm-green); }
+        .pm-status--yellow { color: var(--pm-yellow); }
+        .pm-status--red    { color: var(--pm-red); }
+        .pm-status--neutral { color: var(--pm-muted); }
 
-        /* ── Controls ── */
-        .pm-controls {
-          display: flex;
-          gap: 8px;
-          margin-top: 4px;
-          width: 100%;
-        }
+        /* ── Controls ───────────────────────────────────────────────────────── */
+        .pm-controls { display: flex; gap: 8px; }
         .pm-controls button {
-          flex: 1;
-          padding: 8px 4px;
-          background: #141414;
-          border: 1px solid var(--pm-border);
+          flex: 1; padding: 10px 8px; border-radius: 10px;
+          font-family: var(--pm-font); font-size: 13px; font-weight: 600;
+          cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em;
+          background: var(--pm-surface); border: 1px solid var(--pm-border);
           color: var(--pm-text);
-          font-family: var(--pm-mono);
-          font-size: 11px;
-          letter-spacing: 0.1em;
-          cursor: pointer;
-          border-radius: 6px;
-          transition: all 0.15s;
         }
-        .pm-controls button:hover { background: #1a1a1a; border-color: #333; }
+        .pm-controls button:hover { border-color: var(--pm-blue); color: var(--pm-blue); background: rgba(129,140,248,0.08); }
         .pm-controls button:active { transform: scale(0.97); }
-
-        .pm-listen-btn.pm-listen--active {
-          border-color: var(--pm-red);
-          color: var(--pm-red);
-          box-shadow: 0 0 8px rgba(255,59,59,0.2);
-        }
+        .pm-listen-btn.pm-listen--active { border-color: var(--pm-red) !important; color: var(--pm-red) !important; background: rgba(248,113,113,0.08) !important; }
         .pm-tap-btn { touch-action: manipulation; }
-        @keyframes pm-tap-f {
-          0%   { background: #00ff8820; }
-          100% { background: #141414; }
-        }
-        .pm-tap-flash { animation: pm-tap-f 0.1s ease-out forwards; }
+        @keyframes pm-tap-f { 0% { background: rgba(74,222,128,0.15); } 100% { background: var(--pm-surface); } }
+        .pm-tap-flash { animation: pm-tap-f 0.12s ease-out forwards; }
 
-        /* ── Tap zone ── */
-        .pm-tap-zone {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 6px;
-        }
-        .pm-tap-readout {
-          font-size: 18px;
-          color: var(--pm-yellow);
-          letter-spacing: 0.05em;
-          min-height: 1.4em;
-          text-align: center;
-        }
-        .pm-mode-gig .pm-tap-readout { font-size: 22px; }
-
-        .pm-action-row {
-          display: flex;
-          gap: 6px;
-          width: 100%;
-        }
+        /* ── Tap zone ───────────────────────────────────────────────────────── */
+        .pm-tap-zone { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .pm-tap-readout { font-size: 20px; font-weight: 700; color: var(--pm-yellow); min-height: 1.4em; text-align: center; letter-spacing: -0.01em; }
+        .pm-mode-gig .pm-tap-readout { font-size: 26px; }
+        .pm-action-row { display: flex; gap: 6px; width: 100%; }
         .pm-action-row button {
-          flex: 1;
-          padding: 9px 4px;
-          font-family: var(--pm-mono);
-          font-size: 10px;
-          letter-spacing: 0.1em;
-          cursor: pointer;
-          border-radius: 6px;
-          transition: all 0.15s;
-          border: 1px solid;
+          flex: 1; padding: 9px 8px; border-radius: 10px;
+          font-family: var(--pm-font); font-size: 12px; font-weight: 600;
+          cursor: pointer; transition: all 0.15s;
         }
         .pm-action-row button:active { transform: scale(0.97); }
-
-        .pm-broadcast-btn {
-          background: #0a1a10;
-          border-color: #00aa55 !important;
-          color: var(--pm-green);
-        }
-        .pm-broadcast-btn:hover { background: #0f2218; box-shadow: 0 0 10px rgba(0,255,136,0.15); }
-
-        .pm-lock-btn {
-          background: #1a1500;
-          border-color: #997700 !important;
-          color: var(--pm-yellow);
-        }
-        .pm-lock-btn:hover { background: #221c00; box-shadow: 0 0 10px rgba(255,204,0,0.15); }
-
+        .pm-broadcast-btn { background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.3); color: var(--pm-green); }
+        .pm-broadcast-btn:hover { background: rgba(74,222,128,0.15); }
+        .pm-lock-btn { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.3); color: var(--pm-yellow); }
+        .pm-lock-btn:hover { background: rgba(251,191,36,0.15); }
         .pm-hidden { display: none !important; }
-
-        /* Flash overlay */
-        .pm-flash-overlay { position:absolute; inset:0; border-radius:16px; pointer-events:none; z-index:10; opacity:0; transition:opacity 0.05s; }
-        .pm-root { position:relative; }
-        /* Toolbar */
-        .pm-toolbar { display:flex; align-items:center; justify-content:center; gap:4px; padding:6px 8px; margin:4px 0; background:#0a0a0a; border-radius:8px; border:1px solid #1a1a1a; }
-        .pm-mult-btn, .pm-sig-btn { background:#111; border:1px solid #2a2a2a; color:#555; font-family:monospace; font-size:0.7em; font-weight:700; padding:3px 8px; border-radius:5px; cursor:pointer; letter-spacing:0.05em; transition:all 0.15s; }
-        .pm-mult-btn:hover, .pm-sig-btn:hover { color:#888; border-color:#444; }
-        .pm-mult--active, .pm-sig--active { background:#0d2a1a !important; border-color:#00ff88 !important; color:#00ff88 !important; }
-        .pm-toolbar-sep { width:1px; height:16px; background:#222; margin:0 2px; }
-        .pm-flash-btn { background:#111; border:1px solid #2a2a2a; font-size:0.85em; padding:3px 7px; border-radius:5px; cursor:pointer; transition:all 0.15s; opacity:0.5; }
-        .pm-flash-btn--active { opacity:1 !important; border-color:#ffcc00 !important; }
-        .pm-needle--pegged line { stroke:#ff3b3b !important; animation:pm-peg-pulse 0.4s ease-in-out infinite alternate; }
-        @keyframes pm-peg-pulse { from { opacity:1; } to { opacity:0.4; } }
-        .pm-settings-desc { font-size:0.58em; color:#3a3a3a; letter-spacing:0.04em; margin-top:4px; line-height:1.4; }
-        /* Count-in */
-        .pm-countin-btn { width:100%; margin-top:8px; padding:8px; border-radius:8px; background:#0d2a1a; border:1px solid rgba(0,255,136,0.25); color:#00ff88; font-family:monospace; font-size:0.72em; font-weight:700; letter-spacing:0.08em; cursor:pointer; transition:all 0.2s; }
-        .pm-countin-btn:hover { background:#0d3a1a; border-color:#00ff88; }
-        /* Gear button — top-right corner of the card, never overlaps BPM */
-        .pm-settings-btn { position:absolute; right:12px; top:12px; background:none; border:none; cursor:pointer; font-size:1em; opacity:0.4; padding:4px 6px; transition:opacity 0.2s; z-index:2; }
-        .pm-settings-btn:hover { opacity:1; }
-        .pm-top-row { position:relative; padding-right:32px; }
-        /* Settings panel */
-        .pm-settings-panel { background:#0d0d0d; border:1px solid #222; border-radius:10px; padding:12px 16px; margin:0 4px 8px; font-family:monospace; }
-        .pm-settings-title { font-size:0.65em; color:#555; letter-spacing:0.1em; font-weight:700; margin-bottom:12px; text-align:center; }
-        .pm-settings-row { margin-bottom:12px; }
-        .pm-settings-label { display:block; font-size:0.6em; color:#555; letter-spacing:0.08em; font-weight:700; margin-bottom:6px; }
-        .pm-settings-track { display:flex; align-items:center; gap:8px; }
-        .pm-settings-hint { font-size:0.6em; color:#444; min-width:36px; letter-spacing:0.05em; }
-        .pm-settings-track input[type=range] { flex:1; -webkit-appearance:none; height:3px; background:linear-gradient(to right,#1a3a2a,#00ff88); border-radius:2px; outline:none; }
-        .pm-settings-track input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#00ff88; cursor:pointer; border:2px solid #030305; box-shadow:0 0 6px rgba(0,255,136,0.4); }
-        .pm-settings-save { font-size:0.58em; color:#333; text-align:center; letter-spacing:0.06em; }
-        /* History graph */
-        .pm-graph-section { margin:8px 4px 4px; background:#050505; border:1px solid #1a1a1a; border-radius:8px; padding:6px 8px; }
-        .pm-graph-label { font-family:monospace; font-size:0.55em; color:#333; letter-spacing:0.1em; margin-bottom:4px; }
-        .pm-history-graph { width:100%; height:60px; display:block; }
-        /* Drift report */
-        .pm-drift-report { margin:8px 4px; background:#0a0f0a; border:1px solid rgba(0,255,136,0.18); border-radius:10px; padding:12px 14px; }
-        .pm-drift-title { font-family:monospace; font-size:0.65em; color:#00ff88; letter-spacing:0.1em; font-weight:700; margin-bottom:10px; text-align:center; }
-        .pm-drift-stat { font-family:monospace; font-size:0.68em; color:#555; padding:4px 0; border-bottom:1px solid #111; letter-spacing:0.04em; }
-        .pm-drift-stat span { color:#ccc; float:right; }
-        .pm-drift-close { width:100%; margin-top:10px; padding:6px; border-radius:6px; background:#111; border:1px solid #222; color:#444; font-family:monospace; font-size:0.65em; cursor:pointer; letter-spacing:0.06em; }
-        .pm-drift-close:hover { color:#888; border-color:#444; }
-
-        /* ── View Modes ── */
-        /* Mode toggle row */
-        .pm-view-toggle {
-          display: flex; gap: 4px; align-self: flex-end; margin-bottom: -4px;
+        .pm-countin-btn {
+          width: 100%; padding: 9px; border-radius: 10px;
+          background: rgba(74,222,128,0.06); border: 1px solid rgba(74,222,128,0.2);
+          color: var(--pm-green); font-family: var(--pm-font); font-size: 12px;
+          font-weight: 600; letter-spacing: 0.05em; cursor: pointer; transition: all 0.2s;
         }
-        .pm-view-btn {
-          background: #111; border: 1px solid #222; color: #444;
-          font-family: monospace; font-size: 0.65em; letter-spacing: 0.06em;
-          padding: 3px 7px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
-        }
-        .pm-view-btn:hover { color: #888; border-color: #444; }
-        .pm-view-btn--active { background: #0d2a1a !important; border-color: #00ff88 !important; color: #00ff88 !important; }
+        .pm-countin-btn:hover { background: rgba(74,222,128,0.12); border-color: var(--pm-green); }
 
-        /* Float mode: draggable overlay widget */
-        .pm-root.pm-float {
-          position: fixed;
-          bottom: 90px; right: 16px;
-          width: min(300px, 90vw);
-          max-width: 300px;
-          z-index: 9999;
-          cursor: move;
-          box-shadow: 0 4px 32px rgba(0,0,0,0.7), 0 0 0 1px #00ff8820;
-          resize: both;
-          overflow: auto;
+        /* ── Graph ──────────────────────────────────────────────────────────── */
+        .pm-graph-section {
+          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          border-radius: 10px; padding: 8px 10px;
         }
-        .pm-root.pm-float .pm-settings-panel,
-        .pm-root.pm-float .pm-graph-section,
-        .pm-root.pm-float .pm-drift-report { display: none !important; }
+        .pm-graph-label { font-size: 10px; color: var(--pm-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
+        .pm-history-graph { width: 100%; height: 50px; display: block; }
 
-        /* Mini mode: just BPM pill */
+        /* ── Drift report ───────────────────────────────────────────────────── */
+        .pm-drift-report {
+          background: var(--pm-surface); border: 1px solid rgba(74,222,128,0.2);
+          border-radius: 10px; padding: 12px 14px;
+        }
+        .pm-drift-title { font-size: 11px; font-weight: 700; color: var(--pm-green); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+        .pm-drift-stat { font-size: 12px; color: var(--pm-muted); padding: 4px 0; border-bottom: 1px solid var(--pm-border); display: flex; justify-content: space-between; }
+        .pm-drift-stat span { color: var(--pm-text); font-weight: 600; }
+        .pm-drift-close {
+          width: 100%; margin-top: 8px; padding: 7px; border-radius: 8px;
+          background: transparent; border: 1px solid var(--pm-border);
+          color: var(--pm-muted); font-family: var(--pm-font); font-size: 11px;
+          cursor: pointer; transition: all 0.15s;
+        }
+        .pm-drift-close:hover { color: var(--pm-text); border-color: var(--pm-text); }
+
+        /* ── BPM save prompt ─────────────────────────────────────────────────── */
+        .pm-bpm-prompt {
+          background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.25);
+          border-radius: 10px; padding: 10px 12px;
+        }
+        .pm-bpm-prompt-msg { font-size: 12px; color: var(--pm-yellow); font-weight: 600; margin-bottom: 8px; text-align: center; }
+        .pm-bpm-prompt-btns { display: flex; gap: 6px; }
+        .pm-bpm-prompt-btns button {
+          flex: 1; padding: 7px; border-radius: 8px; cursor: pointer;
+          font-family: var(--pm-font); font-size: 11px; font-weight: 600;
+          transition: all 0.15s;
+        }
+        .pm-bpm-save-yes { background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.4); color: var(--pm-yellow); }
+        .pm-bpm-save-yes:hover { background: rgba(251,191,36,0.25); }
+        .pm-bpm-save-no { background: transparent; border: 1px solid var(--pm-border); color: var(--pm-muted); }
+        .pm-bpm-save-no:hover { color: var(--pm-text); }
+
+        /* ── Mini pill ──────────────────────────────────────────────────────── */
+        .pm-mini-pill { display: none; }
         .pm-root.pm-mini {
-          position: fixed;
-          bottom: 90px; right: 16px;
-          width: auto; max-width: 140px;
-          padding: 8px 14px;
-          z-index: 9999;
-          cursor: move;
-          flex-direction: row;
-          align-items: center;
-          gap: 6px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.7), 0 0 0 1px #00ff8820;
+          position: fixed; bottom: 90px; right: 16px; z-index: 9999;
+          width: auto; max-width: none; max-height: none; overflow: visible;
+          padding: 8px 12px; border-radius: 40px; cursor: move;
+          flex-direction: row; align-items: center; gap: 8px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(74,222,128,0.15);
+          background: rgba(15,15,26,0.95); backdrop-filter: blur(12px);
         }
-        .pm-root.pm-mini > *:not(.pm-mini-bpm):not(.pm-view-toggle):not(.pm-status-label) { display: none !important; }
-        .pm-root.pm-mini .pm-view-toggle { margin-bottom: 0; }
-        .pm-root.pm-mini .pm-status-label { font-size: 9px; letter-spacing: 0.12em; margin-top: 0; }
-        .pm-mini-bpm {
-          font-size: 22px; font-family: monospace; color: #e0e0e0;
-          letter-spacing: -0.03em; line-height: 1; white-space: nowrap;
+        /* In mini mode: hide everything except the mini pill */
+        .pm-root.pm-mini > *:not(.pm-mini-pill) { display: none !important; }
+        .pm-root.pm-mini .pm-mini-pill {
+          display: flex; align-items: center; gap: 8px;
         }
+        .pm-mini-bpm-val { font-size: 24px; font-weight: 700; color: var(--pm-text); letter-spacing: -0.03em; line-height: 1; white-space: nowrap; min-width: 52px; }
+        .pm-mini-status { font-size: 9px; font-weight: 700; color: var(--pm-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+        .pm-mini-controls button { width: 26px; height: 26px; border-radius: 50%; background: var(--pm-surface); border: 1px solid var(--pm-border); color: var(--pm-muted); font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
+        .pm-mini-controls button:hover { color: var(--pm-text); border-color: var(--pm-blue); }
 
-        /* ── Scanline texture overlay ── */
-        .pm-root::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 2px,
-            rgba(0,0,0,0.08) 2px,
-            rgba(0,0,0,0.08) 4px
-          );
-          pointer-events: none;
-          border-radius: inherit;
-          z-index: 0;
+        /* ── Float mode ─────────────────────────────────────────────────────── */
+        .pm-root.pm-float {
+          position: fixed; bottom: 90px; right: 16px; z-index: 9999;
+          width: min(320px, 92vw); cursor: move;
+          box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(74,222,128,0.1);
+          backdrop-filter: blur(12px); max-height: calc(100vh - 120px);
         }
-        .pm-root > * { position: relative; z-index: 1; }
-
-        /* ── Gig mode: glowing edge ── */
-        .pm-mode-gig::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: 12px;
-          box-shadow: inset 0 0 40px rgba(0,255,136,0.03);
-          pointer-events: none;
-        }
+        .pm-root.pm-float .pm-graph-section,
+        .pm-root.pm-float .pm-drift-report,
+        .pm-root.pm-float .pm-settings-panel { display: none !important; }
       `;
       document.head.appendChild(s);
     }
