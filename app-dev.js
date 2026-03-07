@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-102803', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-103853', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-102803';
+var BUILD_VERSION = '20260307-103853';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -9067,15 +9067,26 @@ function renderPocketMeterPage(el) {
 // Called from Gig Mode (gigs.js gmOpenPocket)
 function openGigPocketMeter(songTitle, bpm, songKey, bpArg) {
     if (typeof PocketMeter !== 'function') return;
-    var overlay = document.getElementById('gmOverlay');
-    if (!overlay) return;
     var container = document.getElementById('gmPocketContainer');
     if (!container) {
+        // Wrapper — full-screen backdrop so tapping outside closes it
+        var wrap = document.createElement('div');
+        wrap.id = 'gmPocketWrap';
+        wrap.style.cssText = 'position:fixed;inset:0;z-index:10010;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.55)';
+        wrap.onclick = function(e) { if (e.target === wrap) closeGigPocketMeter(); };
+        // Close button
+        var closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '\u2715 Close';
+        closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#94a3b8;padding:6px 14px;border-radius:8px;font-size:0.82em;cursor:pointer;font-weight:600;z-index:10011';
+        closeBtn.onclick = closeGigPocketMeter;
+        wrap.appendChild(closeBtn);
         container = document.createElement('div');
         container.id = 'gmPocketContainer';
-        container.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:10010;width:min(420px,96vw)';
-        overlay.appendChild(container);
+        container.style.cssText = 'width:min(420px,96vw);padding-bottom:16px';
+        wrap.appendChild(container);
+        document.body.appendChild(wrap);
     }
+    document.getElementById('gmPocketWrap').style.display = 'flex';
     container.style.display = 'block';
     if (_pmGigInstance) { try { _pmGigInstance.destroy(); } catch(e) {} _pmGigInstance = null; }
     _pmGigInstance = new PocketMeter(container, {
@@ -9093,8 +9104,8 @@ function openGigPocketMeter(songTitle, bpm, songKey, bpArg) {
 function closeGigPocketMeter() {
     if (_pmGigInstance) { try { _pmGigInstance.destroy(); } catch(e) {} _pmGigInstance = null; }
     window._gigPocketMeterInstance = null;
-    var container = document.getElementById('gmPocketContainer');
-    if (container) container.style.display = 'none';
+    var wrap = document.getElementById('gmPocketWrap');
+    if (wrap) wrap.style.display = 'none';
 }
 
 function renderTunerPage(el) {

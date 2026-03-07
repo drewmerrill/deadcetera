@@ -786,33 +786,37 @@ function _gmRenderNav() {
     var total = _gmFlatList.length;
     var played = _gmPlayedSet ? _gmPlayedSet.size : 0;
     var isPlayed = _gmPlayedSet && _gmPlayedSet.has(rmIndex);
+    var segueIcon = { stop:'', flow:' →', segue:' ~', cutoff:' |' };
 
-    var segueIcon = { stop:'', flow:' \u2192', segue:' ~', cutoff:' |' };
+    // Close button (left)
+    var closeBtn = '<button onclick="closeGigMode()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;width:28px;height:28px;min-width:28px;border-radius:6px;font-size:0.85em;cursor:pointer">✕</button>';
+
+    // Prev song
     var prevHTML = prev
-        ? '<button onclick="gmNavigate(-1)" style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:5px 8px;cursor:pointer;text-align:left;overflow:hidden">'
-          + '<div style="font-size:0.6em;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">PREV</div>'
-          + '<div style="font-size:0.78em;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + prev.title + '</div></button>'
+        ? '<button onclick="gmNavigate(-1)" style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:3px 6px;cursor:pointer;text-align:left;overflow:hidden">'
+          + '<div style="font-size:0.55em;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">PREV</div>'
+          + '<div style="font-size:0.72em;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + prev.title + '</div></button>'
         : '<div style="flex:1"></div>';
 
-    var curHTML = '<div style="flex:2;min-width:0;text-align:center;padding:0 6px">'
-        + '<div style="font-size:0.6em;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.06em">'
-        + (rmIndex+1) + ' / ' + total + ' \u2022 ' + played + ' played</div>'
-        + '<div style="font-size:0.85em;font-weight:800;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (isPlayed?'text-decoration:line-through;color:#475569':'') + '">' + (cur ? cur.title : '') + '</div>'
-        + '<div style="margin-top:3px">'
-        + '<button onclick="gmMarkPlayed()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid;cursor:pointer;font-weight:700;'
+    // Current song — song name + action buttons on one compact row
+    var curHTML = '<div style="flex:2;min-width:0;text-align:center;padding:0 4px">'
+        + '<div style="font-size:0.78em;font-weight:800;color:' + (isPlayed?'#475569':'#f1f5f9') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (isPlayed?'text-decoration:line-through;':'') + '">' + (cur ? cur.title : '') + '</div>'
+        + '<div style="font-size:0.55em;color:#64748b;margin:1px 0 3px">' + (rmIndex+1) + ' / ' + total + ' • ' + played + ' played</div>'
+        + '<div style="display:flex;gap:4px;justify-content:center">'
+        + '<button onclick="gmMarkPlayed()" style="font-size:0.6em;padding:2px 8px;border-radius:8px;border:1px solid;cursor:pointer;font-weight:700;'
         + (isPlayed ? 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:#64748b' : 'background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.3);color:#22c55e')
-        + '">' + (isPlayed ? '\u21a9 Unmark' : '\u2713 Played') + '</button>'
-        + ' <button onclick="gmToggleDrawer()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#94a3b8;cursor:pointer;font-weight:700">\u25b2 Setlist</button>'
-        + ' <button onclick="gmOpenPocket()" style="font-size:0.65em;padding:2px 10px;border-radius:10px;border:1px solid rgba(0,170,85,0.35);background:rgba(0,255,136,0.08);color:#00cc66;cursor:pointer;font-weight:700">\uD83C\uDFAF Pocket</button>'
+        + '">' + (isPlayed ? '↩ Unmark' : '✓ Played') + '</button>'
+        + '<button onclick="gmToggleDrawer()" style="font-size:0.6em;padding:2px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#94a3b8;cursor:pointer;font-weight:700">▲ Setlist</button>'
         + '</div></div>';
 
+    // Next song
     var nextHTML = next
-        ? '<button onclick="gmNavigate(1)" style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:5px 8px;cursor:pointer;text-align:right;overflow:hidden">'
-          + '<div style="font-size:0.6em;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">NEXT' + (segueIcon[cur?cur.segue:'stop']||'') + '</div>'
-          + '<div style="font-size:0.78em;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + next.title + '</div></button>'
+        ? '<button onclick="gmNavigate(1)" style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:3px 6px;cursor:pointer;text-align:right;overflow:hidden">'
+          + '<div style="font-size:0.55em;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">NEXT' + (segueIcon[cur?cur.segue:'stop']||'') + '</div>'
+          + '<div style="font-size:0.72em;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + next.title + '</div></button>'
         : '<div style="flex:1"></div>';
 
-    bar.innerHTML = prevHTML + curHTML + nextHTML;
+    bar.innerHTML = closeBtn + prevHTML + curHTML + nextHTML;
 
     // Also sync the rmOverlay song title / position
     var rmTitle = document.getElementById('rmSongTitle');
@@ -909,8 +913,8 @@ function _gmEnsureOverlay() {
     style.textContent = [
         '#gmOverlay{display:none;position:fixed;inset:0;z-index:3000;background:#0a0f1e;flex-direction:column;overflow:hidden}',
         '#gmOverlay.gm-visible{display:flex!important}',
-        '#gmNavBar{display:flex;align-items:stretch;gap:6px;padding:6px 10px;background:linear-gradient(135deg,#0f172a,#060d1a);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;min-height:54px}',
-        '#gmNowPlayingBar{padding:4px 12px;background:rgba(102,126,234,0.08);border-bottom:1px solid rgba(102,126,234,0.15);flex-shrink:0;min-height:28px;display:flex;align-items:center}',
+        '#gmNavBar{display:flex;align-items:center;gap:4px;padding:3px 6px;background:linear-gradient(135deg,#0f172a,#060d1a);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;min-height:40px}',
+        '#gmNowPlayingBar{display:none}',  // removed — key/BPM shown in nav bar meta
         '#gmDrawer{position:fixed;bottom:0;left:0;right:0;z-index:3100;background:#111827;border-radius:16px 16px 0 0;border-top:1px solid rgba(102,126,234,0.25);max-height:65vh;transform:translateY(100%);transition:transform 0.28s cubic-bezier(.32,.72,0,1);overflow-y:auto}',
         '#gmDrawerBackdrop{display:none;position:fixed;inset:0;z-index:3050;background:rgba(0,0,0,0.5)}',
         // Reuse rmOverlay styles but inside gmOverlay — remap panels
@@ -919,30 +923,24 @@ function _gmEnsureOverlay() {
         '#gmOverlay #rmBody{flex:1;overflow:hidden}',
         '#gmOverlay .rm-footer{flex-shrink:0}',
         '#gmOverlay .rm-panel.active{display:block}',
-        // Monkey button reparented to body during gig mode — override its CSS class positioning
-        'body > .rm-monkey-float{position:fixed!important;bottom:130px!important;right:12px!important;z-index:3500!important;display:block!important}'
+        // Hide non-essential tabs in gig mode (Know/Mem/Listen stay but are accessible; we hide tab buttons for space)
+        '#gmOverlay .rm-tab[data-tab="know"],#gmOverlay .rm-tab[data-tab="memory"],#gmOverlay .rm-tab[data-tab="harmony"]{display:none}',
+        // Hide YouTube and Moises footer buttons in gig mode
+        '#gmOverlay .rm-footer .rm-action-btn:nth-child(1),#gmOverlay .rm-footer .rm-action-btn:nth-child(2){display:none}',
+        // FAB stack — monkey, capture, utility all right-side, evenly spaced, same size
+        'body > .rm-monkey-float{position:fixed!important;bottom:186px!important;right:12px!important;width:36px!important;height:36px!important;padding:0!important;display:flex!important;align-items:center!important;justify-content:center!important;z-index:3500!important;border-radius:8px!important}',
+        '#rmCaptureMomentBtn{bottom:142px!important;right:12px!important;width:36px!important;height:36px!important}',
+        '#gmPocketMinimized{position:fixed!important;bottom:98px!important;right:12px!important;width:36px!important;height:36px!important;z-index:3500!important}'
     ].join('\n');
     document.head.appendChild(style);
 
     var ov = document.createElement('div');
     ov.id = 'gmOverlay';
 
-    // Close button + title bar (tiny)
-    var topBar = document.createElement('div');
-    topBar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 0;flex-shrink:0';
-    topBar.innerHTML = '<button onclick="closeGigMode()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;width:28px;height:28px;border-radius:6px;font-size:0.85em;cursor:pointer;flex-shrink:0">\u2715</button>'
-        + '<span style="font-size:0.68em;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.08em">\uD83C\uDFA4 Live Gig Mode \u2014 ' + (_gmSetlist ? _gmSetlist.name || '' : '') + '</span>';
-    ov.appendChild(topBar);
-
-    // Nav bar (prev / current+played+drawer / next)
+    // Single compact nav bar — close button + prev/song/next all in one row
     var navBar = document.createElement('div');
     navBar.id = 'gmNavBar';
     ov.appendChild(navBar);
-
-    // Now Playing bar (song + key + BPM)
-    var nowBar = document.createElement('div');
-    nowBar.id = 'gmNowPlayingBar';
-    ov.appendChild(nowBar);
 
     // Hijack the rmOverlay DOM — move it inside gmOverlay
     // We use rmEnsureOverlay() to build the standard overlay, then reparent its innards
