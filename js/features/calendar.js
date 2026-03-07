@@ -32,7 +32,7 @@ async function calShowEvent(idx) {
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${ev.date}';showPage('practice')" class="btn btn-primary btn-sm">📋 Practice Plan</button>` : ''}
+        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${ev.date}';showPage('rehearsal')" class="btn btn-primary btn-sm">📅 Rehearsal Plan</button>` : ''}
         <button onclick="calEditEvent(${idx})" class="btn btn-ghost btn-sm">✏️ Edit</button>
         <button onclick="calDeleteEvent(${idx})" class="btn btn-danger btn-sm">✕ Delete</button>
         <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
@@ -178,7 +178,7 @@ async function loadCalendarEvents() {
                 </div>
                 ${e.time?`<span style="font-size:0.75em;color:var(--text-muted);flex-shrink:0">${e.time}</span>`:''}
                 <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap">
-                    ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('practice')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
+                    ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('rehearsal')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
                     <button onclick="calEditEvent(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
                     <button onclick="calDeleteEvent(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;">✕</button>
                 </div>

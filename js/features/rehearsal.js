@@ -30,15 +30,87 @@
 var rhCurrentEventId = null; // which event is open in detail view
 
 // ── Page entry point ──────────────────────────────────────────────────────────
+var _rhActiveTab = 'events';
+
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     el.innerHTML =
-        '<div class="page-header"><h1>🎯 Rehearsals</h1><p>Plan sessions, RSVP, and get smart song suggestions</p></div>' +
-        '<div style="display:flex;gap:8px;margin-bottom:16px">' +
-            '<button class="btn btn-primary" onclick="rhOpenCreateModal()">+ New Rehearsal</button>' +
+        '<div class="page-header"><h1>📅 Rehearsals</h1><p>Schedule band sessions, track plans, RSVP, and review recordings</p></div>' +
+        '<div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">' +
+            '<button id="rhTab-events" class="btn" onclick="rhShowTab(\'events\')" style="flex:1;font-size:0.85em">📅 Sessions</button>' +
+            '<button id="rhTab-plans"  class="btn" onclick="rhShowTab(\'plans\')"  style="flex:1;font-size:0.85em">📋 Plans</button>' +
         '</div>' +
-        '<div id="rhEventList"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
-    await rhLoadEvents();
+        '<div id="rhTabContent"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
+    rhShowTab(_rhActiveTab);
+}
+
+async function rhShowTab(tab) {
+    _rhActiveTab = tab;
+    ['events','plans'].forEach(function(t) {
+        var btn = document.getElementById('rhTab-' + t);
+        if (!btn) return;
+        var active = t === tab;
+        btn.style.background = active ? 'var(--accent)' : 'rgba(255,255,255,0.04)';
+        btn.style.color      = active ? 'white' : 'var(--text-muted)';
+        btn.style.border     = active ? '1px solid var(--accent)' : '1px solid var(--border)';
+        btn.style.fontWeight = active ? '700' : '500';
+    });
+    var content = document.getElementById('rhTabContent');
+    if (!content) return;
+    if (tab === 'events') {
+        content.innerHTML =
+            '<div style="display:flex;gap:8px;margin-bottom:14px">' +
+            '<button class="btn btn-primary" onclick="rhOpenCreateModal()">+ New Rehearsal</button>' +
+            '</div>' +
+            '<div id="rhEventList"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
+        await rhLoadEvents();
+    } else {
+        await rhShowPlansTab(content);
+    }
+}
+
+async function rhShowPlansTab(container) {
+    container.innerHTML = '<div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div>';
+    var allEvents = await loadCalendarEventsRaw();
+    var today = new Date(); today.setHours(0,0,0,0);
+    var rehearsals = allEvents
+        .filter(function(e) { return e.type === 'rehearsal'; })
+        .sort(function(a, b) { return (a.date||'').localeCompare(b.date||''); });
+    if (!practicePlanActiveDate && rehearsals.length) {
+        var upcoming = rehearsals.filter(function(r) { return new Date(r.date+'T00:00:00') >= today; });
+        practicePlanActiveDate = upcoming.length ? upcoming[0].date : rehearsals[0].date;
+    }
+    var tabsHtml = '';
+    if (rehearsals.length) {
+        tabsHtml = '<div class="app-card" style="margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+            + '<div style="font-weight:700;font-size:0.9em">📋 Rehearsal Plans</div>'
+            + '<button class="btn btn-primary btn-sm" onclick="practicePlanNew()">+ New</button>'
+            + '</div>'
+            + '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none">';
+        rehearsals.forEach(function(r) {
+            var isPast = new Date(r.date+'T00:00:00') < today;
+            var isActive = r.date === practicePlanActiveDate;
+            tabsHtml += '<button data-plan-date="' + r.date + '" onclick="practicePlanSelectDate(\'' + r.date + '\')"'
+                + ' style="flex-shrink:0;padding:6px 14px;border-radius:20px;'
+                + 'border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';'
+                + 'background:' + (isActive ? 'var(--accent)' : 'rgba(255,255,255,0.03)') + ';'
+                + 'color:' + (isActive ? 'white' : isPast ? 'var(--text-dim)' : 'var(--text-muted)') + ';'
+                + 'font-size:0.78em;font-weight:' + (isActive ? '700' : '500') + ';cursor:pointer;white-space:nowrap">'
+                + (isPast ? '' : '🎸 ') + formatPracticeDate(r.date) + (isPast ? ' ✓' : '') + '</button>';
+        });
+        tabsHtml += '</div></div>';
+    }
+    var planBodyHtml = rehearsals.length
+        ? '<div class="app-card" style="border-top-left-radius:0;border-top-right-radius:0"><div id="practicePlanBody">Loading plan...</div></div>'
+        : '<div class="app-card" style="text-align:center;padding:32px 20px">'
+          + '<div style="font-size:2em;margin-bottom:10px">📆</div>'
+          + '<div style="font-weight:700;margin-bottom:6px">No rehearsals scheduled yet</div>'
+          + '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Add a rehearsal event in the Calendar to create a plan here.</div>'
+          + '<button class="btn btn-primary" onclick="showPage(\'calendar\')">📆 Go to Calendar</button>'
+          + '</div>';
+    container.innerHTML = tabsHtml + planBodyHtml;
+    if (rehearsals.length && practicePlanActiveDate) renderPracticePlanForDate(practicePlanActiveDate);
 }
 
 // ── Load & render event list ──────────────────────────────────────────────────
@@ -455,7 +527,7 @@ async function rhSendToPracticePlan(eventId) {
     if (!songs.length) { showToast('No songs in plan'); return; }
     if (typeof sendToPracticePlan === 'function') {
         songs.forEach(function(title) { sendToPracticePlan(title); });
-        showToast('📋 ' + songs.length + ' songs sent to Practice Plan');
+        showToast('🎯 ' + songs.length + ' songs flagged as This Week');
     } else {
         showToast('Practice Plan not available');
     }
@@ -715,3 +787,475 @@ function rhFormatDate(dateStr) {
 console.log('Rehearsal Planner loaded');
 
 console.log('✅ rehearsal.js loaded');
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REHEARSAL PLANNER — per-rehearsal plans (songs, goals, notes, export)
+// Data key: _band/rehearsal_plan_{YYYY-MM-DD}
+// Previously in practice.js — moved here so Rehearsal owns all band planning.
+// One-time migration: reads practice_plan_* keys and copies to rehearsal_plan_*
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var practicePlanActiveDate = null;
+
+async function loadCalendarEventsRaw() {
+    try {
+        return toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    } catch(e) { return []; }
+}
+
+function formatPracticeDate(dateStr) {
+    if (!dateStr) return '?';
+    var d = new Date(dateStr + 'T12:00:00');
+    var opts = { month: 'short', day: 'numeric' };
+    var day = d.toLocaleDateString('en-US', opts);
+    var dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    return dow + ' ' + day;
+}
+
+async function renderPracticePlanForDate(dateStr, statusMap) {
+    var body = document.getElementById('practicePlanBody');
+    if (!body) return;
+
+    // ── One-time migration: copy old practice_plan_ keys → rehearsal_plan_ ──────
+    var migKey = 'gl_plan_migrated_' + dateStr;
+    if (!sessionStorage.getItem(migKey)) {
+        try {
+            var oldData = await loadBandDataFromDrive('_band', 'practice_plan_' + dateStr);
+            if (oldData && Object.keys(oldData).length) {
+                await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, oldData);
+                console.log('[Migration] practice_plan_' + dateStr + ' → rehearsal_plan_' + dateStr);
+            }
+            sessionStorage.setItem(migKey, '1');
+        } catch(e) {}
+    }
+
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    var today = new Date(); today.setHours(0,0,0,0);
+    var isPast = new Date(dateStr + 'T00:00:00') < today;
+    var goals = toArray(plan.goals || []);
+    var planSongs = toArray(plan.songs || []);
+    var displayDate = formatPracticeDate(dateStr);
+
+    // ── Ranked suggestions ────────────────────────────────────────────────────
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var THRESH = 3, now2 = Date.now(), actLog2 = [], lastSeen2 = {};
+    try { actLog2 = await window.loadMasterFile('_master_activity_log.json') || []; } catch(e) {}
+    var ACTS = {practice_track:1,readiness_set:1,rehearsal_note:1,harmony_add:1,harmony_edit:1,part_notes:1};
+    (Array.isArray(actLog2) ? actLog2 : []).forEach(function(e) {
+        if (!e || !e.song || !e.time || !ACTS[e.action]) return;
+        var t = new Date(e.time).getTime();
+        if (!isNaN(t) && (!lastSeen2[e.song] || t > lastSeen2[e.song])) lastSeen2[e.song] = t;
+    });
+    var scored2 = [];
+    Object.keys(rc).forEach(function(title) {
+        var ratings = rc[title];
+        var keys = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
+        if (!keys.length) return;
+        var avg = keys.reduce(function(s, k) { return s + ratings[k]; }, 0) / keys.length;
+        if (avg >= THRESH) return;
+        var ds = lastSeen2[title] ? Math.floor((now2 - lastSeen2[title]) / 86400000) : null;
+        scored2.push({ title: title, avg: avg, score: Math.max(0, THRESH - avg) * 2 + (ds === null ? 3 : ds > 21 ? Math.min(3, Math.floor(ds / 7)) : 0) });
+    });
+    scored2.sort(function(a, b) { return b.score - a.score; });
+
+    // ── Build DOM ─────────────────────────────────────────────────────────────
+    body.innerHTML = '';
+
+    // Header
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px';
+    var hdrLeft = document.createElement('div');
+    var hdrTitle = document.createElement('h3');
+    hdrTitle.style.cssText = 'margin:0;color:var(--accent-light)';
+    hdrTitle.textContent = '🎸 ' + displayDate + (isPast ? ' — Past Rehearsal' : '');
+    hdrLeft.appendChild(hdrTitle);
+    if (plan.location) {
+        var locDiv = document.createElement('div');
+        locDiv.style.cssText = 'font-size:0.8em;color:var(--text-dim);margin-top:2px';
+        locDiv.textContent = '📍 ' + plan.location;
+        hdrLeft.appendChild(locDiv);
+    }
+    hdr.appendChild(hdrLeft);
+    var hdrBtns = document.createElement('div');
+    hdrBtns.style.cssText = 'display:flex;gap:6px';
+    var detailsBtn = document.createElement('button');
+    detailsBtn.className = 'btn btn-ghost btn-sm';
+    detailsBtn.textContent = '✏️ Details';
+    detailsBtn.onclick = function() { practicePlanEditMeta(dateStr); };
+    hdrBtns.appendChild(detailsBtn);
+    if (!isPast) {
+        var saveHdrBtn = document.createElement('button');
+        saveHdrBtn.className = 'btn btn-primary btn-sm';
+        saveHdrBtn.textContent = '💾 Save Plan';
+        saveHdrBtn.onclick = function() { practicePlanSave(dateStr); };
+        hdrBtns.appendChild(saveHdrBtn);
+    }
+    hdr.appendChild(hdrBtns);
+    body.appendChild(hdr);
+
+    // Meta info bar
+    if (plan.startTime || plan.location) {
+        var metaBar = document.createElement('div');
+        metaBar.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:0.82em;color:var(--text-muted)';
+        if (plan.startTime) { var s = document.createElement('span'); s.textContent = '⏰ ' + plan.startTime; metaBar.appendChild(s); }
+        if (plan.location)  { var s = document.createElement('span'); s.textContent = '📍 ' + plan.location; metaBar.appendChild(s); }
+        if (plan.duration)  { var s = document.createElement('span'); s.textContent = '⏱ ' + plan.duration; metaBar.appendChild(s); }
+        body.appendChild(metaBar);
+    }
+
+    // Goals section
+    var goalsSection = document.createElement('div');
+    goalsSection.style.marginBottom = '16px';
+    var goalsLbl = document.createElement('div');
+    goalsLbl.style.cssText = 'font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+    goalsLbl.textContent = '🎯 Session Goals';
+    goalsSection.appendChild(goalsLbl);
+    var goalsList = document.createElement('div');
+    goalsList.id = 'ppGoalsList';
+    goalsList.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-bottom:8px';
+    if (goals.length) {
+        goals.forEach(function(g, i) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px';
+            var txt = document.createElement('span');
+            txt.style.flex = '1'; txt.style.fontSize = '0.88em'; txt.textContent = g;
+            row.appendChild(txt);
+            if (!isPast) {
+                var rmBtn = document.createElement('button');
+                rmBtn.style.cssText = 'background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em';
+                rmBtn.textContent = '✕';
+                (function(idx) { rmBtn.onclick = function() { ppRemoveGoal(idx, dateStr); }; })(i);
+                row.appendChild(rmBtn);
+            }
+            goalsList.appendChild(row);
+        });
+    } else {
+        var noGoals = document.createElement('div');
+        noGoals.style.cssText = 'color:var(--text-dim);font-size:0.85em;font-style:italic';
+        noGoals.textContent = 'No goals set yet';
+        goalsList.appendChild(noGoals);
+    }
+    goalsSection.appendChild(goalsList);
+    if (!isPast) {
+        var goalInputRow = document.createElement('div');
+        goalInputRow.style.cssText = 'display:flex;gap:6px';
+        var goalInp = document.createElement('input');
+        goalInp.className = 'app-input'; goalInp.id = 'ppNewGoal';
+        goalInp.placeholder = "Add a goal, e.g. 'Nail the Scarlet→Fire transition'";
+        goalInp.style.cssText = 'flex:1;font-size:0.85em';
+        goalInp.onkeydown = function(e) { if (e.key === 'Enter') ppAddGoal(dateStr); };
+        var addGoalBtn = document.createElement('button');
+        addGoalBtn.className = 'btn btn-ghost btn-sm'; addGoalBtn.textContent = '+ Add';
+        addGoalBtn.onclick = function() { ppAddGoal(dateStr); };
+        goalInputRow.appendChild(goalInp); goalInputRow.appendChild(addGoalBtn);
+        goalsSection.appendChild(goalInputRow);
+    }
+    body.appendChild(goalsSection);
+
+    // Songs section
+    var songsSection = document.createElement('div');
+    songsSection.style.marginBottom = '16px';
+    var songsLbl = document.createElement('div');
+    songsLbl.style.cssText = 'font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+    songsLbl.textContent = '🎵 Songs to Rehearse';
+    songsSection.appendChild(songsLbl);
+    var songsList2 = document.createElement('div');
+    songsList2.id = 'ppSongsList';
+    if (planSongs.length) {
+        planSongs.forEach(function(s, i) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px;margin-bottom:4px';
+            var bandSpan = document.createElement('span');
+            bandSpan.style.cssText = 'color:var(--text-dim);font-size:0.72em;min-width:28px';
+            bandSpan.textContent = s.band || '';
+            var titleSpan = document.createElement('span');
+            titleSpan.style.cssText = 'flex:1;font-size:0.88em;cursor:pointer';
+            titleSpan.textContent = s.title || '';
+            (function(t) { titleSpan.onclick = function() { selectSong(t); showPage('songs'); }; })(s.title);
+            row.appendChild(bandSpan); row.appendChild(titleSpan);
+            if (s.focus) {
+                var focSpan = document.createElement('span');
+                focSpan.style.cssText = 'font-size:0.7em;color:var(--yellow);flex-shrink:0';
+                focSpan.textContent = s.focus;
+                row.appendChild(focSpan);
+            }
+            if (!isPast) {
+                var rmBtn2 = document.createElement('button');
+                rmBtn2.style.cssText = 'background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em;flex-shrink:0';
+                rmBtn2.textContent = '✕';
+                (function(idx) { rmBtn2.onclick = function() { ppRemoveSong(idx, dateStr); }; })(i);
+                row.appendChild(rmBtn2);
+            }
+            songsList2.appendChild(row);
+        });
+    } else {
+        var noSongs = document.createElement('div');
+        noSongs.style.cssText = 'color:var(--text-dim);font-size:0.85em;font-style:italic;padding:4px 0';
+        noSongs.textContent = 'No songs added yet';
+        songsList2.appendChild(noSongs);
+    }
+    songsSection.appendChild(songsList2);
+    if (!isPast) {
+        var addSongRow = document.createElement('div');
+        addSongRow.style.cssText = 'margin-top:8px;display:flex;gap:6px;flex-wrap:wrap';
+        var picker = document.createElement('select');
+        picker.className = 'app-select'; picker.id = 'ppSongPicker';
+        picker.style.cssText = 'flex:2;min-width:160px;font-size:0.82em';
+        var optBlank = document.createElement('option'); optBlank.value = ''; optBlank.textContent = '— Pick a song —';
+        picker.appendChild(optBlank);
+        if (scored2.length) {
+            var og1 = document.createElement('optgroup'); og1.label = '🎯 Needs Work (ranked)';
+            scored2.slice(0, 12).forEach(function(s) {
+                var o = document.createElement('option'); o.value = s.title;
+                o.textContent = s.title + ' — avg ' + s.avg.toFixed(1);
+                og1.appendChild(o);
+            });
+            picker.appendChild(og1);
+        }
+        var og2 = document.createElement('optgroup'); og2.label = 'All Songs';
+        (allSongs||[]).forEach(function(s) {
+            var o = document.createElement('option'); o.value = s.title; o.textContent = s.title;
+            og2.appendChild(o);
+        });
+        picker.appendChild(og2);
+        var focusInp = document.createElement('input');
+        focusInp.className = 'app-input'; focusInp.id = 'ppSongFocus';
+        focusInp.placeholder = 'Focus note (optional)';
+        focusInp.style.cssText = 'flex:2;min-width:120px;font-size:0.82em';
+        var addSongBtn = document.createElement('button');
+        addSongBtn.className = 'btn btn-ghost btn-sm'; addSongBtn.textContent = '+ Add';
+        addSongBtn.onclick = function() { ppAddSong(dateStr); };
+        addSongRow.appendChild(picker); addSongRow.appendChild(focusInp); addSongRow.appendChild(addSongBtn);
+        songsSection.appendChild(addSongRow);
+    }
+    body.appendChild(songsSection);
+
+    // Notes section
+    var notesSection = document.createElement('div');
+    var notesLbl = document.createElement('div');
+    notesLbl.style.cssText = 'font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+    notesLbl.textContent = '📝 Notes & Agenda';
+    notesSection.appendChild(notesLbl);
+    if (!isPast) {
+        var ta = document.createElement('textarea');
+        ta.className = 'app-textarea'; ta.id = 'ppNotes'; ta.rows = 4;
+        ta.placeholder = 'Warm-up order, who\'s bringing what, special requests...';
+        ta.value = plan.notes || '';
+        notesSection.appendChild(ta);
+        var notesBtns = document.createElement('div');
+        notesBtns.style.cssText = 'display:flex;gap:8px;margin-top:8px;flex-wrap:wrap';
+        var saveBtn2 = document.createElement('button');
+        saveBtn2.className = 'btn btn-primary btn-sm'; saveBtn2.textContent = '💾 Save Plan';
+        saveBtn2.onclick = function() { practicePlanSave(dateStr); };
+        var shareBtn = document.createElement('button');
+        shareBtn.className = 'btn btn-success btn-sm'; shareBtn.textContent = '🔔 Share to Band';
+        shareBtn.onclick = function() { notifFromPracticePlan(dateStr); };
+        var exportBtn = document.createElement('button');
+        exportBtn.className = 'btn btn-ghost btn-sm'; exportBtn.textContent = '📄 Export Text';
+        exportBtn.onclick = function() { practicePlanExport(dateStr); };
+        notesBtns.appendChild(saveBtn2); notesBtns.appendChild(shareBtn); notesBtns.appendChild(exportBtn);
+        notesSection.appendChild(notesBtns);
+    } else {
+        var notesView = document.createElement('div');
+        notesView.style.cssText = 'background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;font-size:0.88em;color:var(--text-muted);white-space:pre-wrap';
+        notesView.textContent = plan.notes || 'No notes recorded.';
+        notesSection.appendChild(notesView);
+    }
+    body.appendChild(notesSection);
+}
+
+function practicePlanSelectDate(dateStr) {
+    practicePlanActiveDate = dateStr;
+    renderPracticePlanForDate(dateStr);
+    document.querySelectorAll('[data-plan-date]').forEach(function(btn) {
+        var active = btn.getAttribute('data-plan-date') === dateStr;
+        btn.style.background   = active ? 'var(--accent)' : 'rgba(255,255,255,0.03)';
+        btn.style.borderColor  = active ? 'var(--accent)' : 'var(--border)';
+        btn.style.color        = active ? 'white' : 'var(--text-muted)';
+        btn.style.fontWeight   = active ? '700' : '500';
+    });
+    var planBody = document.getElementById('practicePlanBody');
+    if (planBody) planBody.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+async function ppAddGoal(dateStr) {
+    if (!requireSignIn()) return;
+    var inp = document.getElementById('ppNewGoal');
+    var val = inp ? inp.value.trim() : '';
+    if (!val) return;
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    var goals = toArray(plan.goals || []);
+    goals.push(val);
+    plan.goals = goals;
+    await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, plan);
+    inp.value = '';
+    renderPracticePlanForDate(dateStr);
+}
+
+async function ppRemoveGoal(idx, dateStr) {
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    var goals = toArray(plan.goals || []);
+    goals.splice(idx, 1);
+    plan.goals = goals;
+    await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, plan);
+    renderPracticePlanForDate(dateStr);
+}
+
+async function ppAddSong(dateStr) {
+    if (!requireSignIn()) return;
+    var pickerEl = document.getElementById('ppSongPicker');
+    var title = pickerEl ? pickerEl.value : '';
+    if (!title) return;
+    var focusEl = document.getElementById('ppSongFocus');
+    var focus = focusEl ? focusEl.value.trim() : '';
+    var songData = (allSongs||[]).find(function(s) { return s.title === title; });
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    var songs = toArray(plan.songs || []);
+    if (songs.find(function(s) { return s.title === title; })) { showToast('Already in this plan'); return; }
+    songs.push({ title: title, band: songData ? (songData.band || '') : '', focus: focus });
+    plan.songs = songs;
+    await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, plan);
+    if (pickerEl) pickerEl.value = '';
+    if (focusEl) focusEl.value = '';
+    renderPracticePlanForDate(dateStr);
+}
+
+async function ppRemoveSong(idx, dateStr) {
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    var songs = toArray(plan.songs || []);
+    songs.splice(idx, 1);
+    plan.songs = songs;
+    await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, plan);
+    renderPracticePlanForDate(dateStr);
+}
+
+async function practicePlanSave(dateStr) {
+    if (!requireSignIn()) return;
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    var notesEl = document.getElementById('ppNotes');
+    plan.notes = notesEl ? notesEl.value : (plan.notes || '');
+    plan.updatedAt = new Date().toISOString();
+    plan.updatedBy = currentUserEmail || 'unknown';
+    await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, plan);
+    var btn = event ? event.target : null;
+    if (btn) { var orig = btn.textContent; btn.textContent = '✅ Saved!'; setTimeout(function(){ btn.textContent = orig; }, 1800); }
+}
+
+function practicePlanEditMeta(dateStr) {
+    var modal = document.createElement('div');
+    modal.id = 'ppMetaModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    var inner = document.createElement('div');
+    inner.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:400px;width:100%;color:var(--text)';
+    var mhdr = document.createElement('div');
+    mhdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px';
+    var mh3 = document.createElement('h3'); mh3.style.margin = '0'; mh3.style.color = 'var(--accent-light)'; mh3.textContent = '✏️ Rehearsal Details';
+    var mClose = document.createElement('button'); mClose.style.cssText = 'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em'; mClose.textContent = '✕';
+    mClose.onclick = function() { modal.remove(); };
+    mhdr.appendChild(mh3); mhdr.appendChild(mClose); inner.appendChild(mhdr);
+    function metaField(id, label, placeholder) {
+        var row = document.createElement('div'); row.className = 'form-row'; row.style.marginTop = '8px';
+        var lbl = document.createElement('label'); lbl.className = 'form-label'; lbl.textContent = label;
+        var inp = document.createElement('input'); inp.className = 'app-input'; inp.id = id; inp.placeholder = placeholder;
+        row.appendChild(lbl); row.appendChild(inp); inner.appendChild(row);
+    }
+    metaField('ppMetaTime', 'Start Time', 'e.g. 7:00 PM');
+    metaField('ppMetaLoc',  'Location / Venue', "e.g. Drew's garage, Studio B");
+    metaField('ppMetaDur',  'Expected Duration', 'e.g. 3 hours');
+    var mBtns = document.createElement('div'); mBtns.style.cssText = 'display:flex;gap:8px;margin-top:16px';
+    var mSave = document.createElement('button'); mSave.className = 'btn btn-primary'; mSave.style.flex = '1'; mSave.textContent = '💾 Save';
+    mSave.onclick = function() { practicePlanSaveMeta(dateStr); };
+    var mCancel = document.createElement('button'); mCancel.className = 'btn btn-ghost'; mCancel.textContent = 'Cancel';
+    mCancel.onclick = function() { modal.remove(); };
+    mBtns.appendChild(mSave); mBtns.appendChild(mCancel); inner.appendChild(mBtns);
+    modal.appendChild(inner);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr).then(function(plan) {
+        if (!plan) return;
+        if (plan.startTime) document.getElementById('ppMetaTime').value = plan.startTime;
+        if (plan.location)  document.getElementById('ppMetaLoc').value  = plan.location;
+        if (plan.duration)  document.getElementById('ppMetaDur').value  = plan.duration;
+    });
+}
+
+async function practicePlanSaveMeta(dateStr) {
+    if (!requireSignIn()) return;
+    var plan = await loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr) || {};
+    plan.startTime = document.getElementById('ppMetaTime') ? document.getElementById('ppMetaTime').value.trim() : '';
+    plan.location  = document.getElementById('ppMetaLoc')  ? document.getElementById('ppMetaLoc').value.trim()  : '';
+    plan.duration  = document.getElementById('ppMetaDur')  ? document.getElementById('ppMetaDur').value.trim()  : '';
+    await saveBandDataToDrive('_band', 'rehearsal_plan_' + dateStr, plan);
+    var m = document.getElementById('ppMetaModal'); if (m) m.remove();
+    renderPracticePlanForDate(dateStr);
+}
+
+function practicePlanNew() {
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    var inner = document.createElement('div');
+    inner.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:360px;width:100%;color:var(--text);text-align:center';
+    inner.innerHTML = '<div style="font-size:2em;margin-bottom:12px">📆</div>'
+        + '<h3 style="margin-bottom:8px">Add a Rehearsal on the Calendar</h3>'
+        + '<p style="color:var(--text-dim);font-size:0.88em;margin-bottom:20px">Rehearsal plans are tied to calendar events. Add a rehearsal event first, then its plan will appear here.</p>';
+    var btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;justify-content:center';
+    var goBtn = document.createElement('button'); goBtn.className = 'btn btn-primary'; goBtn.textContent = '📆 Go to Calendar';
+    goBtn.onclick = function() { modal.remove(); showPage('calendar'); };
+    var cancelBtn = document.createElement('button'); cancelBtn.className = 'btn btn-ghost'; cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = function() { modal.remove(); };
+    btns.appendChild(goBtn); btns.appendChild(cancelBtn); inner.appendChild(btns);
+    modal.appendChild(inner);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+function practicePlanExport(dateStr) {
+    loadBandDataFromDrive('_band', 'rehearsal_plan_' + dateStr).then(function(plan) {
+        if (!plan) return;
+        var displayDate = formatPracticeDate(dateStr);
+        var songs = toArray(plan.songs||[]).map(function(s){ return '  \u2022 ' + s.title + (s.focus ? ' \u2014 ' + s.focus : ''); }).join('\n');
+        var goals = toArray(plan.goals||[]).map(function(g){ return '  \u2022 ' + g; }).join('\n');
+        var text = 'GROOVELINX REHEARSAL PLAN \u2014 ' + displayDate + '\n'
+            + (plan.startTime ? '\u23f0 ' + plan.startTime : '') + (plan.location ? '  \ud83d\udccd ' + plan.location : '') + '\n\n'
+            + 'GOALS:\n' + (goals || '  (none)') + '\n\nSONGS:\n' + (songs || '  (none)') + '\n\nNOTES:\n' + (plan.notes || '  (none)');
+        var modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        var inner = document.createElement('div');
+        inner.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text)';
+        var mhdr = document.createElement('div'); mhdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
+        var mh3 = document.createElement('h3'); mh3.style.margin = '0'; mh3.style.color = 'var(--accent-light)'; mh3.textContent = '\ud83d\udce4 Share Rehearsal Plan';
+        var mClose = document.createElement('button'); mClose.style.cssText = 'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em'; mClose.textContent = '\u2715';
+        mClose.onclick = function() { modal.remove(); };
+        mhdr.appendChild(mh3); mhdr.appendChild(mClose); inner.appendChild(mhdr);
+        var ta = document.createElement('textarea'); ta.className = 'app-textarea'; ta.rows = 12;
+        ta.style.cssText = 'font-family:monospace;font-size:0.78em'; ta.value = text;
+        inner.appendChild(ta);
+        var copyBtn = document.createElement('button'); copyBtn.className = 'btn btn-primary'; copyBtn.style.cssText = 'width:100%;margin-top:10px'; copyBtn.textContent = '\ud83d\udccb Copy to Clipboard';
+        copyBtn.onclick = function() {
+            navigator.clipboard.writeText(ta.value).then(function() {
+                copyBtn.textContent = '\u2705 Copied!';
+                setTimeout(function(){ copyBtn.textContent = '\ud83d\udccb Copy to Clipboard'; }, 1800);
+            });
+        };
+        inner.appendChild(copyBtn); modal.appendChild(inner);
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+    });
+}
+
+// ── Rehearsal Planner: window exports ─────────────────────────────────────────
+window.loadCalendarEventsRaw     = loadCalendarEventsRaw;
+window.formatPracticeDate        = formatPracticeDate;
+window.renderPracticePlanForDate = renderPracticePlanForDate;
+window.practicePlanSelectDate    = practicePlanSelectDate;
+window.ppAddGoal                 = ppAddGoal;
+window.ppRemoveGoal              = ppRemoveGoal;
+window.ppAddSong                 = ppAddSong;
+window.ppRemoveSong              = ppRemoveSong;
+window.practicePlanSave          = practicePlanSave;
+window.practicePlanEditMeta      = practicePlanEditMeta;
+window.practicePlanSaveMeta      = practicePlanSaveMeta;
+window.practicePlanNew           = practicePlanNew;
+window.practicePlanExport        = practicePlanExport;
+
