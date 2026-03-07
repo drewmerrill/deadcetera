@@ -807,6 +807,7 @@ function _gmRenderNav() {
         + (isPlayed ? 'background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:#64748b' : 'background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.3);color:#22c55e')
         + '">' + (isPlayed ? '↩ Unmark' : '✓ Played') + '</button>'
         + '<button onclick="gmToggleDrawer()" style="font-size:0.6em;padding:2px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#94a3b8;cursor:pointer;font-weight:700">▲ Setlist</button>'
+        + '<button onclick="gmOpenPocket()" style="font-size:0.6em;padding:2px 8px;border-radius:8px;border:1px solid rgba(0,170,85,0.35);background:rgba(0,255,136,0.08);color:#00cc66;cursor:pointer;font-weight:700">&#127903; Pocket</button>'
         + '</div></div>';
 
     // Next song
