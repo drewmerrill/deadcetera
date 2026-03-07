@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-080235', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-081626', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-080235';
+var BUILD_VERSION = '20260307-081626';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -8662,31 +8662,8 @@ console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
 // ============================================================================
 // NAV SHELL: Menu Toggle, Page Navigation
 // ============================================================================
-// let currentPage → js/ui/navigation.js
-
-function toggleMenu() {
-    const menu = document.getElementById('slideMenu');
-    const overlay = document.getElementById('menuOverlay');
-    const isOpen = menu.classList.contains('open');
-    menu.classList.toggle('open', !isOpen);
-    overlay.classList.toggle('open', !isOpen);
-}
-
-function showPage(page) {
-    document.getElementById('slideMenu')?.classList.remove('open');
-    document.getElementById('menuOverlay')?.classList.remove('open');
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    const el = document.getElementById('page-' + page);
-    if (el) { el.classList.remove('hidden'); el.classList.add('fade-in'); }
-    document.querySelectorAll('.menu-item').forEach(m => { m.classList.toggle('active', m.dataset.page === page); });
-    currentPage = page;
-    if (el && page !== 'songs') {
-        const renderer = pageRenderers[page];
-        if (renderer) renderer(el);
-    }
-}
-
-// const pageRenderers → js/ui/navigation.js
+// showPage(), toggleMenu(), pageRenderers, currentPage → js/ui/navigation.js
+// DO NOT redeclare here — navigation.js sets window.showPage / window.toggleMenu
 
 // ============================================================================
 // SETLIST BUILDER
