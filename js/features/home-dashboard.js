@@ -477,9 +477,10 @@ function _renderPlayShowCard(bundle, isStoner) {
 function _renderRehearseCardStub(bundle, isStoner) {
     return [
         '<div class="home-card home-card--rehearse home-card--stub">',
-        '  <div class="home-card__icon">🎼</div>',
-        '  <div class="home-card__label">Rehearse</div>',
-        '  <div class="home-card__stub-msg">Loading rehearsal data…</div>',
+        '  <div class="home-card__header"><span class="home-card__icon">🎼</span><span class="home-card__label">Rehearse</span></div>',
+        '  <div class="home-card__title" style="color:var(--text-muted)">Practice Plan</div>',
+        '  <div class="home-card__stub-msg">Coming in the next update</div>',
+        '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'practice\')">Open Practice Plan</button>',
         '</div>'
     ].join('');
 }
@@ -487,9 +488,10 @@ function _renderRehearseCardStub(bundle, isStoner) {
 function _renderPracticeCardStub(bundle, isStoner) {
     return [
         '<div class="home-card home-card--practice home-card--stub">',
-        '  <div class="home-card__icon">🎧</div>',
-        '  <div class="home-card__label">Practice</div>',
-        '  <div class="home-card__stub-msg">Loading practice data…</div>',
+        '  <div class="home-card__header"><span class="home-card__icon">🎧</span><span class="home-card__label">Practice</span></div>',
+        '  <div class="home-card__title" style="color:var(--text-muted)">My Songs</div>',
+        '  <div class="home-card__stub-msg">Coming in the next update</div>',
+        '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'songs\')">Song Library</button>',
         '</div>'
     ].join('');
 }
@@ -497,9 +499,10 @@ function _renderPracticeCardStub(bundle, isStoner) {
 function _renderSetlistCardStub(bundle, isStoner) {
     return [
         '<div class="home-card home-card--setlist home-card--stub">',
-        '  <div class="home-card__icon">📋</div>',
-        '  <div class="home-card__label">Build Setlist</div>',
-        '  <div class="home-card__stub-msg">Loading setlist data…</div>',
+        '  <div class="home-card__header"><span class="home-card__icon">📋</span><span class="home-card__label">Build Setlist</span></div>',
+        '  <div class="home-card__title" style="color:var(--text-muted)">Setlists</div>',
+        '  <div class="home-card__stub-msg">Coming in the next update</div>',
+        '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'setlists\')">Open Setlists</button>',
         '</div>'
     ].join('');
 }
@@ -792,9 +795,9 @@ console.log('🏠 home-dashboard.js loaded');
         '.home-card__cta--ghost:hover { background: rgba(255,255,255,0.04); color: var(--text-muted); }',
 
         /* ── Empty / stub states ── */
-        '.home-card--stub { opacity: 0.55; pointer-events: none; }',
+        '.home-card--stub { opacity: 0.75; }',
         '.home-card--stub .home-card__icon { font-size: 1.1em; }',
-        '.home-card__stub-msg { font-size: 0.75em; color: var(--text-dim); font-style: italic; margin-top: 4px; }',
+        '.home-card__stub-msg { font-size: 0.72em; color: var(--text-dim); padding: 4px 0 8px 0; }',
         '.home-card--empty { border-style: dashed; }',
         '.home-card__empty-msg { font-size: 0.78em; color: var(--text-dim); padding: 8px 0; }',
 

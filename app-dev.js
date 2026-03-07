@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-160902', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-161537', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-160902';
+var BUILD_VERSION = '20260307-161537';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -630,6 +630,10 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadNorthStarCache();
         backgroundScanNorthStars();
         preloadReadinessCache().then(function() { addReadinessChains(); });
+
+        // Re-render home dashboard now that Firebase is ready — gigs load correctly
+        if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
+        if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         
         // Auto-re-authenticate if user was previously signed in
         if (localStorage.getItem('deadcetera_google_email')) {
