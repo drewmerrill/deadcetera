@@ -56,6 +56,7 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
         var bundle = await _homeDataLoad();
         var context = _computeHomeContext(bundle);
         container.innerHTML = _renderDashboard(bundle, context);
+        _triggerDashboardEntrance();
     } catch (err) {
         console.warn('[Home] Load error:', err);
         container.innerHTML = _renderErrorState();
@@ -72,6 +73,7 @@ window.refreshHomeDashboard = function refreshHomeDashboard() {
     if (_homeBundle && (Date.now() - _homeCacheTime < _HOME_CACHE_TTL)) {
         var context = _computeHomeContext(_homeBundle);
         container.innerHTML = _renderDashboard(_homeBundle, context);
+        _triggerDashboardEntrance();
     } else {
         window.renderHomeDashboard();
     }
@@ -359,12 +361,12 @@ function _renderDashboard(bundle, context) {
 
     return [
         '<div class="home-dashboard">',
-        readinessHTML,
-        bannerHTML,
-        '<div class="home-card-grid">',
+        readinessHTML ? readinessHTML.replace('class="home-readiness-widget"', 'class="home-readiness-widget home-anim-header"') : '',
+        bannerHTML    ? bannerHTML.replace('class="home-banner', 'class="home-banner home-anim-header') : '',
+        '<div class="home-card-grid home-anim-cards">',
         cardsHTML,
         '</div>',
-        activityHTML,
+        activityHTML  ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" style="opacity:0"') : activityHTML,
         '</div>'
     ].join('');
 }
@@ -1137,6 +1139,33 @@ console.log('🏠 home-dashboard.js loaded');
 
 // ============================================================================
 // CSS — injected into <head> at runtime to keep all home-dashboard code in one file
+// ── Entrance Animation ────────────────────────────────────────────────────────
+
+function _triggerDashboardEntrance() {
+    // Readiness bar fill: start from 0 on load
+    requestAnimationFrame(function() {
+        var fill = document.querySelector('.home-readiness-widget__fill');
+        if (fill) {
+            var target = fill.style.width;
+            fill.style.transition = 'none';
+            fill.style.width = '0';
+            requestAnimationFrame(function() {
+                fill.style.transition = 'width 600ms ease-out';
+                fill.style.width = target;
+            });
+        }
+
+        // Activity feed: fade in after cards settle
+        var feed = document.getElementById('home-activity-feed');
+        if (feed) {
+            setTimeout(function() {
+                feed.style.transition = 'opacity 180ms ease-out';
+                feed.style.opacity = '1';
+            }, 180);
+        }
+    });
+}
+
 // ============================================================================
 
 (function _injectHomeDashboardCSS() {
@@ -1144,6 +1173,17 @@ console.log('🏠 home-dashboard.js loaded');
     var style = document.createElement('style');
     style.id = 'home-dashboard-css';
     style.textContent = [
+
+        /* ── Entrance animation keyframes ── */
+        '@keyframes glFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }',
+        '@keyframes glFadeIn { from { opacity: 0; } to { opacity: 1; } }',
+        '@keyframes glBarFill { from { width: 0 !important; } to { } }',
+
+        /* ── Animation classes ── */
+        '.home-anim-header { animation: glFadeIn 180ms ease-out both; }',
+        '.home-anim-cards  { animation: glFadeUp 180ms ease-out both; }',
+        '.home-anim-feed   { animation: glFadeIn 180ms ease-out both; animation-delay: 180ms; }',
+        '.home-anim-bar    { animation: glBarFill 600ms ease-out both; }',
 
         /* ── Layout ── */
         '.home-dashboard { padding: 12px; max-width: 680px; margin: 0 auto; }',
