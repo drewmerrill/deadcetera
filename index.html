@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260307-151132">
+    <meta name="build-version" content="20260307-152332">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx — Where Bands Lock In</title>
@@ -663,34 +663,5 @@
     <script src="version-hub.js"></script>
     <script src="pocket-meter.js"></script>
     <script src="help.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => {
-                        console.log('[SW] Registered:', reg.scope);
-                        reg.addEventListener('updatefound', () => {
-                            const newWorker = reg.installing;
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                                }
-                            });
-                        });
-                    })
-                    .catch(err => console.log('[SW] Registration failed:', err));
-                navigator.serviceWorker.addEventListener('message', event => {
-                    if (event.data?.type === 'SW_UPDATED') {
-                        // showUpdateBanner is defined in app.js — call it if ready, else retry
-                        if (typeof showUpdateBanner === 'function') {
-                            showUpdateBanner();
-                        } else {
-                            setTimeout(() => { if (typeof showUpdateBanner === 'function') showUpdateBanner(); }, 2000);
-                        }
-                    }
-                });
-            });
-        }
-    </script>
 </body>
 </html>
