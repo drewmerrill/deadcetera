@@ -4,7 +4,7 @@
 //
 // Phase 1: skeleton · homeDataLoad · loadUpcomingGigs · context banner · Play Show card
 // Phase 2 (next): Rehearse card · Practice card
-// Phase 3 (next): Build Setlist card · dynamic ordering · full Stoner Mode
+// Phase 3 complete: Build Setlist card · dynamic ordering
 //
 // DEPENDENCIES (all window globals from existing files):
 //   loadBandDataFromDrive()            — firebase-service.js
@@ -218,14 +218,38 @@ async function _loadUpcomingPlans(n) {
     }
 }
 
-/** Phase 1 stub — Phase 3 implements fully */
+/** Load all setlists. Returns array of { name, date, venue, sets, songCount }.
+ */
 async function _loadSetlistSummaries() {
-    return [];
+    if (typeof window.loadBandDataFromDrive !== 'function') return [];
+    try {
+        var raw = window.toArray ? window.toArray(await window.loadBandDataFromDrive('_band', 'setlists') || [])
+                                 : (await window.loadBandDataFromDrive('_band', 'setlists') || []);
+        return raw.map(function(sl, i) {
+            var songCount = (sl.sets || []).reduce(function(acc, s) { return acc + (s.songs || []).length; }, 0);
+            return { name: sl.name || 'Untitled', date: sl.date || '', venue: sl.venue || '', sets: sl.sets || [], songCount: songCount, _origIdx: i };
+        });
+    } catch(e) {
+        console.warn('[Home] _loadSetlistSummaries failed:', e);
+        return [];
+    }
 }
 
-/** Phase 1 stub — Phase 3 implements fully */
+/**
+ * Load recent gig history — gigs in the past 90 days.
+ */
 async function _loadRecentGigHistory() {
-    return [];
+    if (typeof window.loadBandDataFromDrive !== 'function') return [];
+    try {
+        var today = _todayStr();
+        var cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - 90);
+        var cutoffStr = cutoff.toISOString().slice(0, 10);
+        var all = window.toArray ? window.toArray(await window.loadBandDataFromDrive('_band', 'gigs') || [])
+                                 : (await window.loadBandDataFromDrive('_band', 'gigs') || []);
+        return all.filter(function(g) { return (g.date || '') >= cutoffStr && (g.date || '') < today; })
+                  .sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); })
+                  .slice(0, 5);
+    } catch(e) { return []; }
 }
 
 // ── Context computation (pure, synchronous) ──────────────────────────────────
@@ -245,7 +269,7 @@ function _computeHomeContext(bundle) {
         playShow: _scorePlayShowCard(bundle),
         rehearse: _scoreRehearseCard(bundle),
         practice: _scorePracticeCard(bundle),
-        setlist:  0     // Phase 3
+        setlist:  _scoreSetlistCard(bundle)
     };
 
     var cardOrder = _computeCardOrder(scores, bannerType);
@@ -445,7 +469,7 @@ function _renderCardGrid(cardOrder, bundle, isStoner) {
         playShow: _renderPlayShowCard,
         rehearse: _renderRehearseCard,
         practice: _renderPracticeCard,
-        setlist:  _renderSetlistCardStub
+        setlist:  _renderSetlistCard
     };
     return cardOrder.map(function(key) {
         var fn = renderers[key];
@@ -666,15 +690,85 @@ function _renderPracticeCard(bundle, isStoner) {
     ].join('');
 }
 
-// ── Phase 3 stub: Setlist card ───────────────────────────────────────────────
+// ── Phase 3: Setlist Card ────────────────────────────────────────────────────
 
-function _renderSetlistCardStub(bundle, isStoner) {
+function _scoreSetlistCard(bundle) {
+    var setlists = bundle.setlists || [];
+    var gigs = bundle.gigs || [];
+    if (!setlists.length) return 0;
+    // Check if upcoming gig has no linked setlist
+    var nextGig = gigs[0];
+    if (nextGig && !nextGig.linkedSetlist) return 2;
+    if (nextGig && nextGig.linkedSetlist) return 1;
+    return 0;
+}
+
+function _renderSetlistCard(bundle, isStoner) {
+    var setlists = bundle.setlists || [];
+    var gigs = bundle.gigs || [];
+    var rc = bundle.readinessCache || {};
+    var nextGig = gigs[0];
+
+    if (!setlists.length) {
+        return [
+            '<div class="home-card home-card--setlist home-card--empty">',
+            '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Build Setlist</span></div>',
+            '  <div class="home-card__title">No Setlists Yet</div>',
+            '  <div class="home-card__empty-msg">Build your first setlist for an upcoming show.</div>',
+            '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'setlists\')">Create Setlist \u2192</button>',
+            '</div>'
+        ].join('');
+    }
+
+    // Find the most relevant setlist: linked to next gig first, else most recent
+    var featured = null;
+    if (nextGig && nextGig.linkedSetlist) {
+        featured = setlists.find(function(sl) { return sl.name === nextGig.linkedSetlist; }) || null;
+    }
+    if (!featured) {
+        // Most recently dated setlist
+        featured = setlists.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); })[0];
+    }
+
+    var isLinked = nextGig && nextGig.linkedSetlist && featured && featured.name === nextGig.linkedSetlist;
+    var totalSongs = featured.songCount || 0;
+    var setCount = (featured.sets || []).length;
+
+    // Readiness summary: count songs with band avg >= 3
+    var allTitles = [];
+    (featured.sets || []).forEach(function(s) {
+        (s.songs || []).forEach(function(sg) {
+            allTitles.push(typeof sg === 'string' ? sg : (sg.title || ''));
+        });
+    });
+    var readyCount = allTitles.filter(function(t) {
+        return _bandAvgForSong(rc[t] || {}) >= 3;
+    }).length;
+    var readyPct = allTitles.length ? Math.round((readyCount / allTitles.length) * 100) : 0;
+    var readyColor = readyPct >= 80 ? 'var(--green)' : readyPct >= 50 ? 'var(--yellow)' : 'var(--red)';
+
+    var subtitle = isLinked
+        ? '\uD83C\uDFAF Linked to ' + _escHtml(nextGig.venue || nextGig.date || 'next gig')
+        : (featured.date ? '\uD83D\uDCC5 ' + _escHtml(featured.date) + (featured.venue ? ' \u00B7 ' + _escHtml(featured.venue) : '') : '');
+
+    var readinessHtml = allTitles.length ? [
+        '<div class="home-readiness-row" style="margin:8px 0 10px">',
+        '  <span class="home-readiness-row__label">Ready</span>',
+        '  <div class="home-readiness-row__bar"><div class="home-readiness-row__fill" style="width:' + readyPct + '%;background:' + readyColor + '"></div></div>',
+        '  <span class="home-readiness-row__count" style="color:' + readyColor + '">' + readyCount + '/' + allTitles.length + '</span>',
+        '</div>'
+    ].join('') : '';
+
+    var statLine = setCount + ' set' + (setCount !== 1 ? 's' : '') + ' \u00B7 ' + totalSongs + ' songs';
+
     return [
-        '<div class="home-card home-card--setlist home-card--stub">',
+        '<div class="home-card home-card--setlist' + (isLinked ? ' home-card--urgent' : '') + '">',
         '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Build Setlist</span></div>',
-        '  <div class="home-card__title">Setlists</div>',
-        '  <div class="home-card__stub-msg">Coming in the next update</div>',
-        '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'setlists\')">Open Setlists</button>',
+        '  <div class="home-card__title">' + _escHtml(featured.name) + '</div>',
+        '  <div class="home-card__sub">' + subtitle + '</div>',
+        '  <div class="home-card__sub" style="color:var(--text-dim);font-size:0.72em">' + statLine + '</div>',
+        readinessHtml,
+        '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'setlists\')">Open Setlists \u2192</button>',
         '</div>'
     ].join('');
 }
