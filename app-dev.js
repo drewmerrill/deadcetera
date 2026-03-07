@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-193125', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-200326', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-193125';
+var BUILD_VERSION = '20260307-200326';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -10637,9 +10637,18 @@ async function checkForAppUpdate() {
 }
 
 var _updateBannerShown = false;
+// sessionStorage key: stores the BUILD_VERSION when banner was shown+dismissed this session.
+// Cleared automatically when the browser tab/session ends (true reload = new session = correct).
+var _GL_BANNER_KEY = 'gl_update_banner_dismissed';
+
 function showUpdateBanner() {
+    // Hard guard 1: in-memory (prevents double-fire within same page lifecycle)
     if (_updateBannerShown) return;
+    // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
+    // Hard guard 3: sessionStorage — survives in-app navigation but NOT a true reload.
+    // If the user already dismissed the banner this session, never show again.
+    if (sessionStorage.getItem(_GL_BANNER_KEY) === BUILD_VERSION) return;
     _updateBannerShown = true;
     console.log('[Update] Creating banner');
     var banner = document.createElement('div');
@@ -10652,6 +10661,7 @@ function showUpdateBanner() {
     reloadBtn.textContent = 'Reload';
     reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em;white-space:nowrap;flex-shrink:0';
     reloadBtn.addEventListener('click', function() {
+        sessionStorage.setItem(_GL_BANNER_KEY, BUILD_VERSION);
         banner.remove();
         // Tell waiting SW to take over, then reload
         if (navigator.serviceWorker) {
@@ -10672,7 +10682,18 @@ function showUpdateBanner() {
             window.location.reload();
         }
     });
+    // ✕ dismiss button — closes the banner without reloading, never shows again this session
+    var dismissBtn = document.createElement('button');
+    dismissBtn.textContent = '✕';
+    dismissBtn.title = 'Dismiss — you can reload later';
+    dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;margin-left:2px;flex-shrink:0;line-height:1';
+    dismissBtn.addEventListener('click', function() {
+        sessionStorage.setItem(_GL_BANNER_KEY, BUILD_VERSION);
+        _updateBannerShown = false; // reset so a true reload can re-show if needed
+        banner.remove();
+    });
     banner.appendChild(reloadBtn);
+    banner.appendChild(dismissBtn);
     document.body.appendChild(banner);
     console.log('[Update] Banner appended. In DOM:', !!document.getElementById('dc-update-banner'));
 }
