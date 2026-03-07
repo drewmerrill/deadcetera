@@ -507,7 +507,7 @@ function _renderPlayShowCard(bundle, isStoner) {
         return [
             '<div class="home-card home-card--playshow">',
             '  <div class="home-card__icon">🎤</div>',
-            '  <div class="home-card__label">Play Show</div>',
+            '  <div class="home-card__label">Go Live</div>',
             '  <div class="home-card__title">' + _escHtml(venueName) + '</div>',
             '  <div class="home-card__sub">' + (isToday ? 'Tonight' : dateLabel) + (timeLabel ? ' · ' + _escHtml(timeLabel) : '') + '</div>',
             '  <button class="home-card__cta home-card__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">' + (isToday ? "I'm Ready →" : "View Show →") + '</button>',
@@ -535,7 +535,7 @@ function _renderPlayShowCard(bundle, isStoner) {
         '<div class="home-card ' + urgencyClass + '">',
         '  <div class="home-card__header">',
         '    <span class="home-card__icon">🎤</span>',
-        '    <span class="home-card__label">Play Show</span>',
+        '    <span class="home-card__label">Go Live</span>',
         '    ' + (isToday ? '<span class="home-card__badge home-card__badge--live">TONIGHT</span>' : (daysUntil !== null && daysUntil <= 2 ? '<span class="home-card__badge home-card__badge--soon">' + (daysUntil === 1 ? 'TOMORROW' : 'IN ' + daysUntil + ' DAYS') + '</span>' : '')),
         '  </div>',
         '  <div class="home-card__title">' + _escHtml(venueName) + '</div>',
@@ -716,7 +716,7 @@ function _renderSetlistCard(bundle, isStoner) {
     if (!setlists.length) {
         return [
             '<div class="home-card home-card--setlist home-card--empty">',
-            '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Build Setlist</span></div>',
+            '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Setlists</span></div>',
             '  <div class="home-card__title">No Setlists Yet</div>',
             '  <div class="home-card__empty-msg">Build your first setlist for an upcoming show.</div>',
             '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'setlists\')">Create Setlist \u2192</button>',
@@ -767,7 +767,7 @@ function _renderSetlistCard(bundle, isStoner) {
 
     return [
         '<div class="home-card home-card--setlist' + (isLinked ? ' home-card--urgent' : '') + '">',
-        '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Build Setlist</span></div>',
+        '  <div class="home-card__header"><span class="home-card__icon">\uD83D\uDCCB</span><span class="home-card__label">Setlists</span></div>',
         '  <div class="home-card__title">' + _escHtml(featured.name) + '</div>',
         '  <div class="home-card__sub">' + subtitle + '</div>',
         '  <div class="home-card__sub" style="color:var(--text-dim);font-size:0.72em">' + statLine + '</div>',
@@ -858,10 +858,10 @@ function _renderReadinessWarnings(gig, rc) {
 
 function _renderCardEmptyState(cardKey) {
     var configs = {
-        playShow: { icon: '🎤', label: 'Play Show', msg: 'No upcoming shows',   cta: 'Add a Gig', action: "showPage('gigs')" },
+        playShow: { icon: '🎤', label: 'Go Live',   msg: 'No upcoming shows',   cta: 'Add a Gig', action: "showPage('gigs')" },
         rehearse: { icon: '🎼', label: 'Rehearse',  msg: 'No rehearsal scheduled', cta: 'Open Rehearsals', action: "showPage('rehearsal')" },
         practice: { icon: '🎧', label: 'Practice',  msg: 'Sign in to see your practice queue', cta: 'Open Practice', action: "showPage('practice')" },
-        setlist:  { icon: '📋', label: 'Build Setlist', msg: 'No setlists yet', cta: 'Create Setlist', action: "showPage('setlists')" }
+        setlist:  { icon: '📋', label: 'Setlists',      msg: 'No setlists yet', cta: 'Create Setlist', action: "showPage('setlists')" }
     };
     var cfg = configs[cardKey] || configs.playShow;
     return [
@@ -1043,21 +1043,37 @@ async function _loadActivityFeed() {
     } catch(e) { return []; }
 }
 
+var _MEMBER_DISPLAY = {
+    'drewmerrill1029@gmail.com': 'Drew',
+    'drew': 'Drew', 'chris': 'Chris', 'brian': 'Brian', 'pierce': 'Pierce', 'jay': 'Jay'
+};
+
+function _displayName(userOrKey) {
+    if (!userOrKey) return 'Someone';
+    var direct = _MEMBER_DISPLAY[userOrKey];
+    if (direct) return direct;
+    var prefix = userOrKey.split('@')[0].toLowerCase();
+    for (var k in _MEMBER_DISPLAY) {
+        if (prefix.indexOf(k) === 0 || k.indexOf(prefix) === 0) return _MEMBER_DISPLAY[k];
+    }
+    return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+}
+
 var _ACTION_LABELS = {
-    readiness_set:    function(e) { return (e.member || 'Someone') + ' updated readiness for ' + (e.song || 'a song'); },
-    status_change:    function(e) { return (e.user||'').split('@')[0] + ' marked ' + (e.song||'a song') + ' as ' + (e.details || 'updated'); },
-    practice_track:   function(e) { return (e.user||'').split('@')[0] + ' practiced ' + (e.song || 'a song'); },
-    rehearsal_note:   function(e) { return (e.user||'').split('@')[0] + ' added crib notes to ' + (e.song || 'a song'); },
-    harmony_add:      function(e) { return (e.user||'').split('@')[0] + ' added harmony to ' + (e.song || 'a song'); },
-    harmony_edit:     function(e) { return (e.user||'').split('@')[0] + ' edited harmony on ' + (e.song || 'a song'); },
-    part_notes:       function(e) { return (e.user||'').split('@')[0] + ' added part notes to ' + (e.song || 'a song'); },
-    sign_in:          function(e) { return (e.user||'').split('@')[0] + ' joined the session'; },
+    readiness_set:    function(e) { return _displayName(e.member || e.user) + ' updated readiness for ' + (e.song || 'a song'); },
+    status_change:    function(e) { return _displayName(e.user) + ' marked ' + (e.song||'a song') + ' as ' + (e.details || 'updated'); },
+    practice_track:   function(e) { return _displayName(e.user) + ' practiced ' + (e.song || 'a song'); },
+    rehearsal_note:   function(e) { return _displayName(e.user) + ' added crib notes to ' + (e.song || 'a song'); },
+    harmony_add:      function(e) { return _displayName(e.user) + ' added harmony to ' + (e.song || 'a song'); },
+    harmony_edit:     function(e) { return _displayName(e.user) + ' edited harmony on ' + (e.song || 'a song'); },
+    part_notes:       function(e) { return _displayName(e.user) + ' added part notes to ' + (e.song || 'a song'); },
+    sign_in:          function(e) { return _displayName(e.user) + ' joined the session'; },
 };
 
 function _activityLabel(e) {
     var fn = _ACTION_LABELS[e.action];
     if (fn) return fn(e);
-    return (e.user||'').split('@')[0] + ' ' + e.action.replace(/_/g, ' ') + (e.song ? ' · ' + e.song : '');
+    return _displayName(e.user) + ' ' + e.action.replace(/_/g, ' ') + (e.song ? ' · ' + e.song : '');
 }
 
 function _activityTimeAgo(isoStr) {
