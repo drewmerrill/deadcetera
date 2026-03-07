@@ -56,6 +56,9 @@ DEPLOY_FILES = [
     'js/core/worker-api.js',
     'js/ui/navigation.js',
     'js/features/songs.js',
+    # Wave-2 modules
+    'js/features/gigs.js',
+    'js/features/rehearsal.js',
 ]
 
 def get_token():
@@ -185,7 +188,11 @@ def stamp_version(version_str, repo_dir):
         fpath = os.path.join(repo_dir, fname)
         if not os.path.exists(fpath):
             continue
-        text = open(fpath).read()
+        original = open(fpath).read()
+        if len(original) < 1000:
+            print(f"⚠️  Skipping stamp of {fname} — too small ({len(original)} bytes), may be corrupt")
+            continue
+        text = original
         text = re.sub(r"console\.log\('%c(?:🎸 DeadCetera|🔗 GrooveLinx) BUILD:.*?\n", "", text)
         if re.search(r"// ={40,}\n\n", text):
             text = re.sub(r"(// ={40,}\n\n)", r"\g<1>" + stamp_line, text, count=1)
@@ -193,6 +200,9 @@ def stamp_version(version_str, repo_dir):
             text = stamp_line + text
         text = re.sub(r"(?:el|stamp)\.textContent = 'BUILD: .*?'", f"el.textContent = 'BUILD: {version_str}'", text)
         text = re.sub(r"var BUILD_VERSION = '[^']*'", f"var BUILD_VERSION = '{version_str}'", text)
+        if len(text) < len(original) * 0.9:
+            print(f"🚨 ABORT stamp of {fname} — result ({len(text)}b) is <90% of original ({len(original)}b). NOT written.")
+            continue
         open(fpath, 'w').write(text)
 
     # app-dev.js always mirrors app.js
