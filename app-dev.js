@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-002152', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-063249', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-002152';
+var BUILD_VERSION = '20260307-063249';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -8696,7 +8696,7 @@ function renderSetlistsPage(el) {
     <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
     <div id="setlistsList"></div>`;
-    loadGigHistory().then(() => loadSetlists());
+    if (typeof loadGigHistory === 'function') loadGigHistory().then(() => loadSetlists()); else loadSetlists();
 }
 
 async function loadSetlists() {
@@ -17809,7 +17809,7 @@ async function stonerLaunchSetlist(idx) {
     localStorage.setItem('deadcetera_stoner_mode', '0');
     var btn = document.getElementById('stonerBtn');
     if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
-    await launchGigMode(idx);
+    if (typeof launchGigMode === 'function') await launchGigMode(idx);
 }
 
 function stonerOpenGigs() {
