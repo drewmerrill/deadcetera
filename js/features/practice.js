@@ -19,7 +19,7 @@
 // _band/practice_plans/{YYYY-MM-DD}
 // ============================================================================
 
-let practicePlanActiveDate = null;   // which rehearsal's plan is open
+var practicePlanActiveDate = null;   // which rehearsal's plan is open — global: written by calendar.js + notifications.js
 
 async function renderPracticePage(el) {
     el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading...</div>';
