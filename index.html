@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260307-181217">
+    <meta name="build-version" content="20260307-182353">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx — Where Bands Lock In</title>
@@ -127,6 +127,9 @@
                 <span style="color:var(--text-dim,#64748b);font-size:0.8em;margin-left:auto" id="songCount"></span>
                 <button onclick="showCustomSongsList()" class="btn btn-ghost btn-sm" title="Add a custom song not in the library" style="margin-left:6px;font-size:0.75em;padding:4px 8px" id="customSongBtn">
                     ➕ <span id="customSongCount" style="background:var(--accent);color:white;border-radius:10px;padding:1px 5px;font-size:0.85em;display:none"></span>
+                </button>
+                <button onclick="showChartImportModal()" class="btn btn-ghost btn-sm" title="Import songs with chord charts pre-filled" style="margin-left:4px;font-size:0.75em;padding:4px 8px">
+                    📋
                 </button>
             </div>
             <div class="search-box">
@@ -653,6 +656,7 @@
     <script src="js/features/playlists.js"></script>
     <script src="js/features/stoner-mode.js"></script>
     <script src="js/features/home-dashboard.js"></script>
+    <script src="js/features/chart-import.js"></script>
     <script src="app.js"></script>
     <script src="rehearsal-mode.js"></script>
     <script src="version-hub.js"></script>
