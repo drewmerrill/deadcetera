@@ -69,6 +69,7 @@ DEPLOY_FILES = [
     'js/features/bestshot.js',
     'js/features/playlists.js',
     'js/features/stoner-mode.js',
+    'js/features/home-dashboard.js',
 ]
 
 def get_token():

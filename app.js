@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-152332', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-160902', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-152332';
+var BUILD_VERSION = '20260307-160902';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -610,6 +610,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Google Identity (for user email) is still loaded on first "Connect" click.
     // Render songs immediately from built-in data (fast, no Firebase needed)
     renderSongs();
+
+    // Show Home Dashboard as the default landing screen
+    // (songs still render in background — navigation back to Songs is instant)
+    if (typeof showPage === 'function') {
+        setTimeout(function() { showPage('home'); }, 50);
+    }
 
     // Then init Firebase and reload everything that depends on it
     initFirebaseOnly().then(() => {
@@ -12375,6 +12381,8 @@ async function saveMyReadiness(songTitle, value) {
     var memberKey = getCurrentMemberReadinessKey();
     if (!memberKey || !firebaseDB) return;
     var v = parseInt(value);
+    // Guard: only write valid numeric scores 1-5
+    if (isNaN(v) || v < 1 || v > 5) return;
     var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/readiness/' + memberKey);
     try {
         await firebaseDB.ref(path).set(v);
@@ -12383,6 +12391,13 @@ async function saveMyReadiness(songTitle, value) {
         readinessCache[songTitle][memberKey] = v;
         // Persist to master file
         saveMasterFile(MASTER_READINESS_FILE, readinessCache).catch(function(){});
+        // Write to aggregated readiness index (used by Home Dashboard)
+        try {
+            var indexPath = bandPath('meta/readinessIndex/' + sanitizeFirebasePath(songTitle) + '/' + memberKey);
+            firebaseDB.ref(indexPath).set(v);
+        } catch(ei) {}
+        // Invalidate home dashboard cache so next visit reflects the new score
+        if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         // Refresh chain links in song list
         requestAnimationFrame(addReadinessChains);
         // Re-render section to update avg + bars
