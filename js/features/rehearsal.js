@@ -298,16 +298,22 @@ async function rhOpenEvent(eventId) {
     if (planSongs.length) {
         html += '<button onclick="rhSendToPracticePlan(\'' + eventId + '\')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:7px 12px;cursor:pointer;font-size:0.82em">📋 Send to Practice Plan</button>';
     }
+    // ── Pocket Meter launch ──
+    html += '<button onclick="rhOpenPocketMeter(\'' + eventId + '\')" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#34d399;border-radius:7px;padding:7px 12px;cursor:pointer;font-size:0.82em;font-weight:700">🎚️ Pocket Meter</button>';
     html += '</div></div>';
     html += '</div>';
 
     // ── Suggestion results area (hidden until generated) ──
     html += '<div id="rhSuggestionArea"></div>';
 
+    // ── Groove Analysis summary (populated async below) ──
+    html += '<div id="rhGrooveAnalysis"></div>';
+
     container.innerHTML = html;
     // Init timer and scoreboard
     if (planSongs.length) rhTimerInit(planSongs);
     rhRenderScoreboard(eventId);
+    rhRenderGrooveAnalysis(eventId);
 }
 
 // Rehearsal Timer
@@ -1243,6 +1249,76 @@ function practicePlanExport(dateStr) {
         document.body.appendChild(modal);
     });
 }
+
+// ── Pocket Meter integration ───────────────────────────────────────────────────
+
+/**
+ * Navigate to Pocket Meter page and pass the rehearsal event ID as context
+ * so groove analysis auto-saves to rehearsals/{eventId}/grooveAnalysis.
+ */
+function rhOpenPocketMeter(eventId) {
+    // Store eventId in a global so renderPocketMeterPage can pick it up
+    window._pmPendingRehearsalEventId = eventId;
+    if (typeof showPage === 'function') showPage('pocketmeter');
+}
+window.rhOpenPocketMeter = rhOpenPocketMeter;
+
+/**
+ * Load and display groove analysis summary for a rehearsal event.
+ * Reads from Firebase: bandPath('rehearsals/{eventId}/grooveAnalysis')
+ */
+async function rhRenderGrooveAnalysis(eventId) {
+    var container = document.getElementById('rhGrooveAnalysis');
+    if (!container) return;
+
+    try {
+        if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return;
+        var snap = await firebaseDB.ref(bandPath('rehearsals/' + eventId + '/grooveAnalysis')).once('value');
+        var ga = snap.val();
+        if (!ga) {
+            container.innerHTML =
+                '<div style="margin-top:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 14px">' +
+                '<div style="font-weight:700;font-size:0.82em;margin-bottom:6px;color:var(--text-muted)">🎚️ Groove Analysis</div>' +
+                '<div style="font-size:0.8em;color:var(--text-dim)">No groove data yet — tap <strong style="color:#34d399">Pocket Meter</strong> during rehearsal to record.</div>' +
+                '</div>';
+            return;
+        }
+
+        var score = ga.stabilityScore || 0;
+        var scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+        var offsetMs   = ga.pocketPositionMs;
+        var offsetStr  = offsetMs === undefined ? '—' : (offsetMs >= 0 ? '+' : '') + offsetMs + 'ms';
+        var pocket     = ga.pocketLabel || '';
+        var pct        = ga.pctInPocket ? Math.round(ga.pctInPocket) + '%' : '—';
+        var beats      = ga.beatCount || '—';
+        var savedAt    = ga.savedAt ? new Date(ga.savedAt).toLocaleString() : '';
+
+        container.innerHTML =
+            '<div style="margin-top:8px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.18);border-radius:10px;padding:12px 14px">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+            '<span style="font-weight:700;font-size:0.82em;color:#34d399">🎚️ Groove Analysis</span>' +
+            (savedAt ? '<span style="font-size:0.7em;color:var(--text-dim)">' + savedAt + '</span>' : '') +
+            '</div>' +
+            '<div style="display:flex;align-items:flex-end;gap:4px;margin-bottom:8px">' +
+            '<span style="font-size:2.4em;font-weight:900;color:' + scoreColor + ';line-height:1">' + score + '</span>' +
+            '<span style="font-size:0.8em;color:var(--text-muted);margin-bottom:4px">/100 stability</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
+            '<div><div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">Pocket</div>' +
+            '<div style="font-size:0.88em;font-weight:700;color:var(--text)">' + (pocket || '—') + '</div></div>' +
+            '<div><div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">Offset</div>' +
+            '<div style="font-size:0.88em;font-weight:700;color:var(--text)">' + offsetStr + '</div></div>' +
+            '<div><div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">In Pocket</div>' +
+            '<div style="font-size:0.88em;font-weight:700;color:var(--text)">' + pct + '</div></div>' +
+            '<div><div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">Beats</div>' +
+            '<div style="font-size:0.88em;font-weight:700;color:var(--text)">' + beats + '</div></div>' +
+            '</div>' +
+            '</div>';
+    } catch(e) {
+        console.warn('[rehearsal] grooveAnalysis load failed:', e);
+    }
+}
+window.rhRenderGrooveAnalysis = rhRenderGrooveAnalysis;
 
 // ── Rehearsal Planner: window exports ─────────────────────────────────────────
 window.loadCalendarEventsRaw     = loadCalendarEventsRaw;

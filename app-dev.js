@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-215438', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-230332', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-215438';
+var BUILD_VERSION = '20260307-230332';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -9151,7 +9151,10 @@ function renderPocketMeterPage(el) {
             mode: 'rehearsal',
             bandPath: typeof bandPath === 'function' ? bandPath() : null,
             db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
+            rehearsalEventId: window._pmPendingRehearsalEventId || null,
         });
+        // Consume the pending rehearsal context (one-shot)
+        window._pmPendingRehearsalEventId = null;
         _pmInstance.mount();
     }
     _mountPM();

@@ -113,26 +113,57 @@ function _ccPopulateSummaryStrip() {
     }
   } catch(e) {}
 
-  // Pocket trend
+  // Pocket trend — now populated by pocket-meter.js via window._lastPocketScore
   try {
     var score = window._lastPocketScore;
+    var trend = window._lastPocketTrend;
     var pocketEl = document.getElementById('cc-pocket-text');
-    if (pocketEl) pocketEl.textContent = score ? score + ' ' + (score >= 80 ? '↑' : score >= 60 ? '→' : '↓') : 'No data';
+    if (pocketEl) {
+      if (score !== null && score !== undefined) {
+        var arrow = trend ? (trend.direction==='up'?'↑':trend.direction==='down'?'↓':'→') : '→';
+        pocketEl.textContent = score + ' ' + arrow;
+      } else {
+        pocketEl.textContent = 'No data';
+      }
+    }
     document.getElementById('cc-pill-pocket')?.classList.remove('cc-strip-pill--skeleton');
   } catch(e) {}
 
   // Rehearsal — look for next rehearsal plan in Firebase
   _ccLoadNextRehearsal();
 
+  // Mix pill — read most recent practice mix from Firebase
+  _ccLoadActiveMix();
+
   // Harmony tasks stub
   var harmonyEl = document.getElementById('cc-harmony-text');
   if (harmonyEl) harmonyEl.textContent = '—';
   document.getElementById('cc-pill-harmony')?.classList.remove('cc-strip-pill--skeleton');
+}
 
-  // Mix stub
-  var mixEl = document.getElementById('cc-mix-text');
-  if (mixEl) mixEl.textContent = 'Practice';
-  document.getElementById('cc-pill-mix')?.classList.remove('cc-strip-pill--skeleton');
+async function _ccLoadActiveMix() {
+  var el   = document.getElementById('cc-mix-text');
+  var pill = document.getElementById('cc-pill-mix');
+  if (!el) return;
+  try {
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') {
+      el.textContent = 'Mixes';
+      pill?.classList.remove('cc-strip-pill--skeleton');
+      return;
+    }
+    var snap = await firebaseDB.ref(bandPath('practice_mixes')).orderByChild('updatedAt').limitToLast(1).once('value');
+    var val = snap.val();
+    if (val) {
+      var mix = Object.values(val)[0];
+      var typeEmoji = {practice:'🎯', rehearsal:'🎸', gig:'🎤', weak:'⚠️'}[mix.type] || '🎵';
+      el.textContent = typeEmoji + ' ' + (mix.title || 'Mix');
+    } else {
+      el.textContent = 'No mixes yet';
+    }
+  } catch(e) {
+    el.textContent = 'Mixes';
+  }
+  pill?.classList.remove('cc-strip-pill--skeleton');
 }
 
 async function _ccLoadNextRehearsal() {
@@ -223,18 +254,21 @@ function _ccRenderReadinessRadar() {
 // ── Pocket Snapshot Card ──────────────────────────────────────────────────────
 
 function _ccRenderPocketSnapshot() {
-  var score = window._lastPocketScore || null;
-  var trend = window._lastPocketTrend || null;  // { direction: 'up'|'down'|'flat', delta: N }
+  var score = (window._lastPocketScore !== null && window._lastPocketScore !== undefined)
+    ? window._lastPocketScore : null;
+  var trend = window._lastPocketTrend || null;
 
   var scoreHTML, trendHTML;
-  if (score) {
-    var trendArrow = trend ? (trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→') : '→';
-    var trendColor = trend ? (trend.direction === 'up' ? '#10b981' : trend.direction === 'down' ? '#ef4444' : '#94a3b8') : '#94a3b8';
-    scoreHTML = '<div class="cc-pocket-score">' + score + '<span class="cc-pocket-trend" style="color:' + trendColor + '">' + trendArrow + '</span></div>';
-    trendHTML = '<div class="cc-pocket-label">Last groove score</div>';
+  if (score !== null) {
+    var trendArrow = trend ? (trend.direction==='up' ? '↑' : trend.direction==='down' ? '↓' : '→') : '→';
+    var trendColor = trend ? (trend.direction==='up' ? '#10b981' : trend.direction==='down' ? '#ef4444' : '#94a3b8') : '#94a3b8';
+    var scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+    scoreHTML = '<div class="cc-pocket-score" style="color:' + scoreColor + '">' + score +
+                '<span class="cc-pocket-trend" style="color:' + trendColor + '">' + trendArrow + '</span></div>';
+    trendHTML = '<div class="cc-pocket-label">Last groove score (0–100)</div>';
   } else {
     scoreHTML = '<div class="cc-pocket-score cc-pocket-score--empty">—</div>';
-    trendHTML = '<div class="cc-pocket-label">No pocket data yet</div>';
+    trendHTML = '<div class="cc-pocket-label">Open Pocket Meter during rehearsal to record</div>';
   }
 
   return [

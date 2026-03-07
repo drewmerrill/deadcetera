@@ -1326,6 +1326,17 @@
 
       report.classList.remove('pm-hidden');
 
+      // ── Expose last groove score globally for Command Center ─────────────
+      (function _pmUpdateGlobalScore(groove) {
+        var prev = window._lastPocketScore || null;
+        var score = groove.stabilityScore;
+        window._lastPocketScore = score;
+        window._lastPocketTrend = {
+          direction: prev === null ? 'flat' : score > prev ? 'up' : score < prev ? 'down' : 'flat',
+          delta:     prev === null ? 0 : score - prev
+        };
+      }(result.metrics));
+
       // ── Auto-save to rehearsal record if context exists ───────────────────
       this._saveGrooveToRehearsal(result, savedId);
     }
