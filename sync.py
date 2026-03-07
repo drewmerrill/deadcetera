@@ -18,7 +18,14 @@ FILES = [
     "rehearsal-mode.js", "rehearsal-mode.css", "version-hub.js", "version-hub.css", "service-worker.js",
     "worker.js", "styles.css", "app-shell.css", "manifest.json",
     "logo.png", "logo-large.png", "hero-logo.png", "hero-logo-sm.png", "badge-logo.png",
-    "push.py", "sync.py", "version.json"
+    "push.py", "sync.py", "version.json",
+    # Wave-1 modules
+    "js/core/utils.js", "js/core/firebase-service.js", "js/core/worker-api.js",
+    "js/ui/navigation.js",
+    "js/features/songs.js",
+    # Wave-2 modules
+    "js/features/gigs.js",
+    "js/features/rehearsal.js",
 ]
 
 def gh_get(path):
@@ -43,11 +50,13 @@ for f in FILES:
         except UnicodeDecodeError:
             # Binary file (png etc) — write as bytes, skip line count
             dest = os.path.join(REPO, f)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
             open(dest, 'wb').write(raw)
             manifest[f] = {"sha": info["sha"][:8], "lines": -1, "size": len(raw)}
             print(f"  ✅ {f:<30} (binary)  sha:{info['sha'][:8]}")
             continue
         dest = os.path.join(REPO, f)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
         open(dest, 'w', encoding='utf-8').write(content)
         lines = content.count('\n')
         manifest[f] = {"sha": info["sha"][:8], "lines": lines, "size": len(content)}
