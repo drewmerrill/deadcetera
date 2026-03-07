@@ -648,7 +648,7 @@ function _renderPracticeCard(bundle, isStoner) {
             '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFA7</span><span class="home-card__label">Practice</span></div>',
             '  <div class="home-card__title">My Practice Queue</div>',
             '  <div class="home-card__stub-msg">Sign in to see your personal song queue</div>',
-            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'songs\')">Song Library</button>',
+            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'practice\')">Song Library</button>',
             '</div>'
         ].join('');
     }
@@ -670,7 +670,7 @@ function _renderPracticeCard(bundle, isStoner) {
             '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFA7</span><span class="home-card__label">Practice</span></div>',
             '  <div class="home-card__title">All Caught Up! \uD83D\uDCAA</div>',
             '  <div class="home-card__sub">No songs below your readiness threshold.</div>',
-            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'songs\')">Song Library</button>',
+            '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'practice\')">Song Library</button>',
             '</div>'
         ].join('');
     }
@@ -689,7 +689,7 @@ function _renderPracticeCard(bundle, isStoner) {
         '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFA7</span><span class="home-card__label">Practice</span></div>',
         '  <div class="home-card__title">' + weak.length + ' Song' + (weak.length > 1 ? 's' : '') + ' Need Work</div>',
         songsHtml,
-        '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'songs\')">Go Practice \u2192</button>',
+        '  <button class="home-card__cta home-card__cta--primary" onclick="showPage(\'practice\')">Go Practice \u2192</button>',
         '</div>'
     ].join('');
 }
@@ -860,7 +860,7 @@ function _renderCardEmptyState(cardKey) {
     var configs = {
         playShow: { icon: '🎤', label: 'Play Show', msg: 'No upcoming shows',   cta: 'Add a Gig', action: "showPage('gigs')" },
         rehearse: { icon: '🎼', label: 'Rehearse',  msg: 'No rehearsal scheduled', cta: 'Open Rehearsals', action: "showPage('rehearsal')" },
-        practice: { icon: '🎧', label: 'Practice',  msg: 'Sign in to see your practice queue', cta: 'Song Library', action: "showPage('songs')" },
+        practice: { icon: '🎧', label: 'Practice',  msg: 'Sign in to see your practice queue', cta: 'Open Practice', action: "showPage('practice')" },
         setlist:  { icon: '📋', label: 'Build Setlist', msg: 'No setlists yet', cta: 'Create Setlist', action: "showPage('setlists')" }
     };
     var cfg = configs[cardKey] || configs.playShow;
