@@ -353,14 +353,18 @@ function _renderDashboard(bundle, context) {
         ? _renderContextBanner(context.bannerType, context.bannerData, isStoner)
         : '';
 
-    var cardsHTML = _renderCardGrid(context.cardOrder, bundle, isStoner);
+    var cardsHTML   = _renderCardGrid(context.cardOrder, bundle, isStoner);
+    var readinessHTML = _renderBandReadinessScore(bundle);
+    var activityHTML  = _renderActivityFeed(bundle);
 
     return [
         '<div class="home-dashboard">',
+        readinessHTML,
         bannerHTML,
         '<div class="home-card-grid">',
         cardsHTML,
         '</div>',
+        activityHTML,
         '</div>'
     ].join('');
 }
@@ -855,7 +859,7 @@ function _renderReadinessWarnings(gig, rc) {
 function _renderCardEmptyState(cardKey) {
     var configs = {
         playShow: { icon: '🎤', label: 'Play Show', msg: 'No upcoming shows',   cta: 'Add a Gig', action: "showPage('gigs')" },
-        rehearse: { icon: '🎼', label: 'Rehearse',  msg: 'No rehearsal scheduled', cta: 'Create Plan', action: "showPage('practice')" },
+        rehearse: { icon: '🎼', label: 'Rehearse',  msg: 'No rehearsal scheduled', cta: 'Open Rehearsals', action: "showPage('rehearsal')" },
         practice: { icon: '🎧', label: 'Practice',  msg: 'Sign in to see your practice queue', cta: 'Song Library', action: "showPage('songs')" },
         setlist:  { icon: '📋', label: 'Build Setlist', msg: 'No setlists yet', cta: 'Create Setlist', action: "showPage('setlists')" }
     };
@@ -974,6 +978,126 @@ function bundle_readinessRef() {
     return (typeof readinessCache !== 'undefined') ? readinessCache : {};
 }
 
+// ── Band Readiness Score ─────────────────────────────────────────────────────
+
+/**
+ * Compute overall band readiness as a percentage.
+ * Uses in-memory readinessCache: avg all songs where at least one member has rated.
+ * A song "counts" if band avg >= 3.
+ */
+function _computeBandReadinessPct(bundle) {
+    var rc = bundle.readinessCache || {};
+    var entries = Object.values(rc).filter(function(ratings) {
+        return ratings && typeof ratings === 'object' && Object.keys(ratings).length > 0;
+    });
+    if (!entries.length) return null;
+    var ready = entries.filter(function(ratings) {
+        return _bandAvgForSong(ratings) >= 3;
+    }).length;
+    return Math.round((ready / entries.length) * 100);
+}
+
+function _renderBandReadinessScore(bundle) {
+    var pct = _computeBandReadinessPct(bundle);
+    if (pct === null) return '';
+    var color = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--yellow)' : 'var(--red)';
+    var label = pct >= 80 ? 'Gig ready' : pct >= 55 ? 'Getting there' : 'Needs work';
+    return [
+        '<div class="home-readiness-widget">',
+        '  <div class="home-readiness-widget__header">',
+        '    <span class="home-readiness-widget__title">Band Readiness</span>',
+        '    <span class="home-readiness-widget__pct" style="color:' + color + '">' + pct + '%</span>',
+        '  </div>',
+        '  <div class="home-readiness-widget__bar">',
+        '    <div class="home-readiness-widget__fill" style="width:' + pct + '%;background:' + color + '"></div>',
+        '  </div>',
+        '  <div class="home-readiness-widget__label" style="color:' + color + '">' + label + '</div>',
+        '</div>'
+    ].join('');
+}
+
+// ── Activity Feed ─────────────────────────────────────────────────────────────
+
+var _activityFeedCache = null;
+var _activityFeedTime  = 0;
+var _ACTIVITY_TTL      = 120000; // 2 min
+
+/**
+ * Load the activity log from the master file and return the last 5 entries.
+ * Called lazily — result cached for 2 minutes.
+ */
+async function _loadActivityFeed() {
+    if (_activityFeedCache && (Date.now() - _activityFeedTime < _ACTIVITY_TTL)) {
+        return _activityFeedCache;
+    }
+    try {
+        var log = await window.loadMasterFile('_master_activity_log.json') || [];
+        var entries = (Array.isArray(log) ? log : Object.values(log))
+            .filter(function(e) { return e && e.action && e.time; })
+            .slice(-20)
+            .reverse()
+            .slice(0, 5);
+        _activityFeedCache = entries;
+        _activityFeedTime  = Date.now();
+        return entries;
+    } catch(e) { return []; }
+}
+
+var _ACTION_LABELS = {
+    readiness_set:    function(e) { return (e.member || 'Someone') + ' updated readiness for ' + (e.song || 'a song'); },
+    status_change:    function(e) { return (e.user||'').split('@')[0] + ' marked ' + (e.song||'a song') + ' as ' + (e.details || 'updated'); },
+    practice_track:   function(e) { return (e.user||'').split('@')[0] + ' practiced ' + (e.song || 'a song'); },
+    rehearsal_note:   function(e) { return (e.user||'').split('@')[0] + ' added crib notes to ' + (e.song || 'a song'); },
+    harmony_add:      function(e) { return (e.user||'').split('@')[0] + ' added harmony to ' + (e.song || 'a song'); },
+    harmony_edit:     function(e) { return (e.user||'').split('@')[0] + ' edited harmony on ' + (e.song || 'a song'); },
+    part_notes:       function(e) { return (e.user||'').split('@')[0] + ' added part notes to ' + (e.song || 'a song'); },
+    sign_in:          function(e) { return (e.user||'').split('@')[0] + ' joined the session'; },
+};
+
+function _activityLabel(e) {
+    var fn = _ACTION_LABELS[e.action];
+    if (fn) return fn(e);
+    return (e.user||'').split('@')[0] + ' ' + e.action.replace(/_/g, ' ') + (e.song ? ' · ' + e.song : '');
+}
+
+function _activityTimeAgo(isoStr) {
+    if (!isoStr) return '';
+    try {
+        var diff = Math.floor((Date.now() - new Date(isoStr)) / 60000);
+        if (diff < 2)  return 'just now';
+        if (diff < 60) return diff + 'm ago';
+        var h = Math.floor(diff / 60);
+        if (h < 24)    return h + 'h ago';
+        return Math.floor(h / 24) + 'd ago';
+    } catch(e) { return ''; }
+}
+
+function _renderActivityFeed(bundle) {
+    // Feed loads async — render a placeholder and fill in after load
+    // Uses a post-render async fill pattern
+    setTimeout(function() {
+        var el = document.getElementById('home-activity-feed');
+        if (!el) return;
+        _loadActivityFeed().then(function(entries) {
+            if (!entries || !entries.length) {
+                el.style.display = 'none';
+                return;
+            }
+            el.innerHTML = [
+                '<div class="home-activity__title">Recent Activity</div>',
+                entries.map(function(e) {
+                    return '<div class="home-activity__item">'
+                        + '<span class="home-activity__text">' + _escHtml(_activityLabel(e)) + '</span>'
+                        + '<span class="home-activity__time">' + _activityTimeAgo(e.time) + '</span>'
+                        + '</div>';
+                }).join('')
+            ].join('');
+        });
+    }, 300);
+
+    return '<div id="home-activity-feed" class="home-activity"></div>';
+}
+
 // ── Register with navigation system ─────────────────────────────────────────
 
 // Attach to pageRenderers so showPage('home') triggers the render
@@ -1059,6 +1183,24 @@ console.log('🏠 home-dashboard.js loaded');
         '.home-card__cta--secondary:hover { background: rgba(255,255,255,0.1); color: var(--text); }',
         '.home-card__cta--ghost { background: transparent; color: var(--text-dim); border: 1px solid rgba(255,255,255,0.05); font-size: 0.75em; }',
         '.home-card__cta--ghost:hover { background: rgba(255,255,255,0.04); color: var(--text-muted); }',
+
+        /* ── Band Readiness widget ── */
+        '.home-readiness-widget { margin-bottom: 12px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }',
+        '.home-readiness-widget__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }',
+        '.home-readiness-widget__title { font-size: 0.78em; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }',
+        '.home-readiness-widget__pct { font-size: 1.1em; font-weight: 800; }',
+        '.home-readiness-widget__bar { height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; margin-bottom: 4px; }',
+        '.home-readiness-widget__fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }',
+        '.home-readiness-widget__label { font-size: 0.72em; color: var(--text-dim); }',
+
+        /* ── Activity feed ── */
+        '.home-activity { margin-top: 12px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; min-height: 0; }',
+        '.home-activity:empty { display: none; }',
+        '.home-activity__title { font-size: 0.72em; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }',
+        '.home-activity__item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }',
+        '.home-activity__item:last-child { border-bottom: none; }',
+        '.home-activity__text { font-size: 0.8em; color: var(--text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+        '.home-activity__time { font-size: 0.7em; color: var(--text-dim); flex-shrink: 0; }',
 
         /* ── Empty / stub states ── */
         '.home-card--stub { opacity: 0.75; }',
