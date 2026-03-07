@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-101103', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-102248', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
 let rmIndex   = 0;
@@ -206,7 +206,8 @@ function rmSwitchTab(tab, btn) {
     const controls = document.getElementById('rmStickyBar');
     if (controls) controls.style.display = (tab === 'chart' && !rmToolbarHidden) ? 'flex' : 'none';
     const monkey = document.getElementById('rmMonkeyBtn');
-    if (monkey) monkey.style.display = tab === 'chart' ? 'block' : 'none';
+    // In gig mode the monkey lives on document.body — always keep it visible there
+    if (monkey) monkey.style.display = (tab === 'chart' || monkey.parentElement === document.body) ? 'block' : 'none';
     const tools = document.getElementById('rmStickyBar');
     // tools merged into sticky bar
 }
@@ -1194,7 +1195,7 @@ async function rmSaveNote(){const s=rmQueue[rmIndex],t=document.getElementById('
 function rmAddSongToQueue(){const p=document.getElementById('rmQueuePicker');p.innerHTML='<option value="">— Pick a song —</option>';const iq=new Set(rmQueue.map(s=>s.title));(typeof allSongs!=='undefined'?allSongs:[]).forEach(s=>{if(!iq.has(s.title)){const o=document.createElement('option');o.value=s.title;o.textContent=s.title+(s.band?' · '+s.band:'');p.appendChild(o);}});document.getElementById('rmQueueSheet').classList.remove('hidden');}
 function rmConfirmAddSong(){const t=document.getElementById('rmQueuePicker').value;if(!t)return;const sd=(typeof allSongs!=='undefined'?allSongs:[]).find(s=>s.title===t);rmQueue.splice(rmIndex+1,0,{title:t,band:sd?.band||''});rmCloseSheet('rmQueueSheet');showToast(`✅ "${t}" added — next up`);document.getElementById('rmPosition').textContent=rmQueue.length>1?`${rmIndex+1} / ${rmQueue.length}`:'';document.getElementById('rmNextBtn').style.opacity='1';}
 function rmOpenYouTube(){const s=rmQueue[rmIndex];window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+(s.band||'')+' live'),'_blank');}
-function rmOpenMoises(){window.open('https://moises.ai/studio','_blank');}
+function rmOpenMoises(){window.open('https://moises.ai','_blank');}
 
 // ── Touch swipe ──────────────────────────────────────────────────────────────
 (function(){let sx=0;document.addEventListener('touchstart',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;sx=e.touches[0].clientX;},{passive:true});document.addEventListener('touchend',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>60)rmNavigate(dx<0?1:-1);},{passive:true});})();
