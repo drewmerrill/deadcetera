@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-001905', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-002152', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-001905';
+var BUILD_VERSION = '20260307-002152';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -4943,7 +4943,7 @@ function convertBasicPitchToABC(noteData, title) {
 // FADR HARMONY AUTO-IMPORT
 // ============================================================================
 
-const FADR_PROXY = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+// const FADR_PROXY → js/core/worker-api.js
 
 async function importHarmoniesFromFadr(songTitle) {
     const bandData = bandKnowledgeBase[songTitle] || {};
@@ -8662,7 +8662,7 @@ console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
 // ============================================================================
 // NAV SHELL: Menu Toggle, Page Navigation
 // ============================================================================
-let currentPage = 'songs';
+// let currentPage → js/ui/navigation.js
 
 function toggleMenu() {
     const menu = document.getElementById('slideMenu');
@@ -8686,23 +8686,7 @@ function showPage(page) {
     }
 }
 
-const pageRenderers = {
-    setlists: renderSetlistsPage,
-    playlists: renderPlaylistsPage,
-    practice: renderPracticePage,
-    rehearsal: renderRehearsalPage,
-    calendar: renderCalendarPage,
-    gigs: renderGigsPage,
-    venues: renderVenuesPage,
-    finances: renderFinancesPage,
-    tuner: renderTunerPage,
-    metronome: renderMetronomePage,
-    bestshot: renderBestShotPage,
-    admin: renderSettingsPage,
-    social: renderSocialPage,
-    notifications: renderNotificationsPage,
-    help: (el) => (typeof renderHelpPage === 'function' ? renderHelpPage(el) : (el.innerHTML = '<p>Help loading...</p>'))
-};
+// const pageRenderers → js/ui/navigation.js
 
 // ============================================================================
 // SETLIST BUILDER
