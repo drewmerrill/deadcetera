@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-092612', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260307-092941', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-092612';
+var BUILD_VERSION = '20260307-092941';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -5589,7 +5589,34 @@ async function handleGoogleDriveAuth(silent) {
         // Sign in
         try {
             console.log('🔑 Requesting sign-in...' + (silent ? ' (auto-reconnect)' : ''));
-            tokenClient.requestAccessToken({ prompt: silent ? 'none' : '' });
+            if (silent) {
+                // Auto-reconnect: pass stored email as hint so GSI can use a hidden
+                // iframe/cookie flow instead of a popup (popup would be blocked anyway).
+                // Suppress GSI's "[GSI_LOGGER]: Failed to open popup" console noise —
+                // if silent re-auth fails we just stay signed out until the user taps Connect.
+                var savedEmail = localStorage.getItem('deadcetera_google_email') || '';
+                var origError = console.error.bind(console);
+                var origWarn  = console.warn.bind(console);
+                // Temporarily suppress GSI popup-blocked noise
+                console.error = function() {
+                    var msg = Array.prototype.join.call(arguments, ' ');
+                    if (msg.indexOf('GSI_LOGGER') !== -1 || msg.indexOf('popup') !== -1) return;
+                    origError.apply(console, arguments);
+                };
+                console.warn = function() {
+                    var msg = Array.prototype.join.call(arguments, ' ');
+                    if (msg.indexOf('GSI_LOGGER') !== -1 || msg.indexOf('popup') !== -1) return;
+                    origWarn.apply(console, arguments);
+                };
+                tokenClient.requestAccessToken({ prompt: 'none', hint: savedEmail });
+                // Restore after GSI has had a tick to fire its logs
+                setTimeout(function() {
+                    console.error = origError;
+                    console.warn  = origWarn;
+                }, 2000);
+            } else {
+                tokenClient.requestAccessToken({ prompt: '' });
+            }
         } catch (error) {
             console.error('Sign-in failed:', error);
             if (!silent) alert('Sign-in failed.\n\nError: ' + error.message);
