@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-210833', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260308-000928', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260307-210833';
+var BUILD_VERSION = '20260308-000928';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -1039,60 +1039,29 @@ function setupSearchAndFilters() {
 // ============================================================================
 
 function selectSong(songTitle) {
-    // Store as object with title property for consistency
+    // Update shared state
     selectedSong = {
         title: songTitle,
         band: allSongs.find(s => s.title === songTitle)?.band || 'GD'
     };
-    
-    // Get band info from allSongs
-    const songData = allSongs.find(s => s.title === songTitle);
-    const bandAbbr = songData ? songData.band : 'GD';
-    const bandName = getFullBandName(bandAbbr);
-    
-    // Highlight selected song
+
+    // Highlight selected row in song list
     document.querySelectorAll('.song-item').forEach(item => {
         item.classList.remove('selected');
     });
     const clickedItem = event?.target?.closest('.song-item');
     if (clickedItem) {
         clickedItem.classList.add('selected');
-        // Add a brief glow effect
         clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
         setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
     }
-    
-    // Show Step 2: Song Blueprint
+
+    // Run showBandResources in background so legacy step-cards stay populated
+    // as a fallback during the Phase 2 transition period.
     showBandResources(songTitle);
-    
-    // Show steps 3-5 (new sections)
-    const stepVersionHub = document.getElementById('stepVersionHub');
-    const step3ref = document.getElementById('step3ref');
-    const step3bestshot = document.getElementById('step3bestshot');
-    const step4ref = document.getElementById('step4ref');
-    const step5ref = document.getElementById('step5ref');
-    if (stepVersionHub) stepVersionHub.classList.remove('hidden');
-    if (step3ref) step3ref.classList.remove('hidden');
-    if (step3bestshot) step3bestshot.classList.remove('hidden');
-    if (step4ref) step4ref.classList.remove('hidden');
-    const step4cover = document.getElementById('step4cover');
-    if (step4cover) step4cover.classList.remove('hidden');
-    if (step5ref) step5ref.classList.remove('hidden');
-    renderBestShotVsNorthStar(songTitle);
-    
-    // Hide old steps
-    const step3 = document.getElementById('step3');
-    const step4 = document.getElementById('step4');
-    const step5 = document.getElementById('step5');
-    if (step3) step3.classList.add('hidden');
-    if (step4) step4.classList.add('hidden');
-    if (step5) step5.classList.add('hidden');
-    document.getElementById('resetContainer')?.classList.add('hidden');
-    
-    // Scroll to step 2 after a short delay (gives user time to see selection)
-    setTimeout(() => {
-        document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 500);
+
+    // Navigate to 5-lens Song Detail page
+    showPage('songdetail');
 }
 
 
@@ -9151,7 +9120,10 @@ function renderPocketMeterPage(el) {
             mode: 'rehearsal',
             bandPath: typeof bandPath === 'function' ? bandPath() : null,
             db: typeof firebaseDB !== 'undefined' ? firebaseDB : null,
+            rehearsalEventId: window._pmPendingRehearsalEventId || null,
         });
+        // Consume the pending rehearsal context (one-shot)
+        window._pmPendingRehearsalEventId = null;
         _pmInstance.mount();
     }
     _mountPM();
