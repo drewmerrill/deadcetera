@@ -1259,6 +1259,303 @@ Added rcHasData guard: shows "No ratings yet" when readinessCache is empty, "All
 
 ---
 
+## UAT-055 — Rehearsal Plan Add Songs has no autocomplete
+
+**Status:** 🔴 Open
+**Area:** Rehearsal — Plans
+**Page/Module:** Rehearsal Plan (rehearsal.js)
+**Severity:** High
+**Type:** Bug
+
+**Expected:**
+Typing in the Add Songs box shows a filtered autocomplete list from the band's song database.
+
+**Actual:**
+No autocomplete. No DB matching. User must type an exact blind match.
+
+---
+
+## UAT-056 — "All sections looking solid" always shown regardless of ratings
+
+**Status:** 🔴 Open
+**Area:** Rehearsal — Plans
+**Page/Module:** Rehearsal Plan (rehearsal.js)
+**Severity:** High
+**Type:** Bug
+
+**Expected:**
+Green trophy banner reflects actual aggregate readiness of songs in the plan.
+
+**Actual:**
+Banner always shows regardless of song ratings (e.g. avg 3.0 or lower).
+
+---
+
+## UAT-057 — Saved Rehearsal Plan does not appear in Rehearsals > Plans tab
+
+**Status:** 🔴 Open
+**Area:** Rehearsal — Plans
+**Page/Module:** Rehearsal Plan / rehearsal.js
+**Severity:** High
+**Type:** Bug
+
+**Expected:**
+After clicking Save Plan, the plan appears immediately under Rehearsals > Plans tab.
+
+**Actual:**
+Plan does not appear. Only previously existing plans visible.
+
+**Notes:** Likely related to UAT-055 — if songs are not linking to DB records the plan object may not be saving correctly.
+
+---
+
+## UAT-058 — Suggested Rehearsal Plan always defaults to alphabetical top of list
+
+**Status:** 🔴 Open
+**Area:** Rehearsal — Suggested Plan
+**Page/Module:** rehearsal.js
+**Severity:** Medium
+**Type:** Bug / Feature Gap
+
+**Expected:**
+Suggestions filtered by readiness, status, or recency. List scrollable to see full set.
+
+**Actual:**
+With 400+ songs, suggestions always surface #41, 1000 Miles, 46 Days, 555 — pure alphabetical, no smart filtering.
+
+---
+
+## UAT-059 — All pages open mid-scroll; should always scroll to top on navigation
+
+**Status:** 🔴 Open
+**Area:** Navigation — Global
+**Page/Module:** js/ui/navigation.js (showPage)
+**Severity:** Low
+**Type:** Polish
+
+**Expected:**
+Every `showPage()` call scrolls to top of page.
+
+**Actual:**
+Pages open at whatever scroll position was last used.
+
+**Fix:** Add `window.scrollTo(0, 0)` to `showPage()` in `navigation.js`. One line, global fix.
+
+---
+
+## UAT-060 — Feedback inbox close button requires scrolling to find
+
+**Status:** 🔴 Open
+**Area:** Notifications — Feedback Inbox
+**Page/Module:** js/features/notifications.js
+**Severity:** Medium
+**Type:** Polish
+
+**Expected:**
+Close (X) button is always visible regardless of scroll position within the panel.
+
+**Actual:**
+X button is at the bottom — on a long inbox, user must scroll past all items to close.
+
+**Fix:** Position X as fixed/floating in the upper-right corner of the panel.
+
+---
+
+## UAT-061 — Feedback inbox has no reply or close-loop workflow
+
+**Status:** 🔴 Open
+**Area:** Notifications — Feedback Inbox
+**Page/Module:** js/features/notifications.js
+**Severity:** Medium
+**Type:** Feature Gap
+
+**Expected:**
+Each item has a status (open/in progress/closed) and a response visible to the submitter. Closed items shown in green or collapsed.
+
+**Actual:**
+All items remain open indefinitely. No status, no reply, no resolution tracking.
+
+---
+
+## UAT-062 — Heatmap toggle hides readiness chain-link and harmony mic icons on song rows
+
+**Status:** 🔴 Open
+**Area:** Songs List
+**Page/Module:** app.js / songs.js / app-shell.css
+**Severity:** Medium
+**Type:** Bug
+
+**Expected:**
+Chain-link readiness icons and harmony mic are always visible on song rows. Heatmap toggle should not affect them.
+
+**Actual:**
+After toggling Heatmap, chain-link icons disappear and harmony mic becomes barely visible.
+
+**Notes:** Likely a CSS conflict introduced by a recent patch. Check song row render and heatmap toggle logic.
+
+---
+
+## UAT-063 — Home Dashboard stat pills cut off above viewport on load
+
+**Status:** 🔴 Open
+**Area:** Home Dashboard
+**Page/Module:** js/features/home-dashboard.js
+**Severity:** Medium
+**Type:** Polish
+
+**Expected:**
+Top stat row (date, mixes, readiness, groove) visible immediately on Home tab load.
+
+**Actual:**
+Pills hidden above viewport — user must scroll up.
+
+**Notes:** Same root cause as UAT-059. Resolved by the `showPage()` scroll-to-top fix.
+
+---
+
+## UAT-064 — Home Dashboard stat pills layout visually cluttered
+
+**Status:** 🔴 Open
+**Area:** Home Dashboard
+**Page/Module:** js/features/home-dashboard.js
+**Severity:** Low
+**Type:** Polish
+
+**Expected:**
+Stat pills center-aligned or in a clean consistent grid with uniform sizing and spacing.
+
+**Actual:**
+Pills left-aligned, inconsistently sized, ad-hoc layout.
+
+---
+
+## UAT-065 — Band Readiness percentage has no explanation
+
+**Status:** 🔴 Open
+**Area:** Home Dashboard
+**Page/Module:** js/features/home-dashboard.js
+**Severity:** Medium
+**Type:** Polish
+
+**Expected:**
+Tapping the score or a nearby info button shows how it is calculated (e.g. "Average of all member readiness ratings across active songs").
+
+**Actual:**
+Score displays with no context, not tappable beyond navigation.
+
+---
+
+## UAT-066 — "No data" pill label is not intuitive
+
+**Status:** 🔴 Open
+**Area:** Home Dashboard
+**Page/Module:** js/features/home-dashboard.js
+**Severity:** Low
+**Type:** Polish
+
+**Expected:**
+Label communicates what it tracks and where it goes, e.g. "Groove: No data yet".
+
+**Actual:**
+Label reads "No data" — unclear it links to Pocket Meter or what it means.
+
+---
+
+## UAT-067 — Practice Focus/Mixes selectors look like chips, not tabs
+
+**Status:** 🔴 Open
+**Area:** Practice
+**Page/Module:** js/features/practice.js
+**Severity:** Medium
+**Type:** Polish
+
+**Expected:**
+Focus/Mixes use standard tab bar matching Sessions/Plans tab style elsewhere in the app.
+
+**Actual:**
+Small rounded chip/pill buttons — visually inconsistent.
+
+---
+
+## UAT-068 — Practice queue empty despite songs having status set
+
+**Status:** 🔴 Open
+**Area:** Practice
+**Page/Module:** js/features/practice.js
+**Severity:** High
+**Type:** Bug
+
+**Expected:**
+Any song with status needsPolish / onDeck / gigReady appears in the Practice queue automatically.
+
+**Actual:**
+"No songs in the queue yet" shown even though many songs have status set.
+
+**Likely Cause:** `practice.js` queue filter may still reference old field names (`wip`, `prospect`) rather than current names (`needsPolish`, `onDeck`). Grep practice.js for these strings before patching.
+
+---
+
+## UAT-069 — Blank Edit Gig / wrong venue after new gig creation
+
+**Status:** 🔴 Open (fix identified, not deployed)
+**Area:** Gigs
+**Page/Module:** js/features/gigs.js (saveGig / loadGigs)
+**Severity:** High
+**Type:** Bug
+
+**Expected:**
+Clicking Edit on any gig opens that gig's correct data.
+
+**Actual:**
+Clicking Edit on a recently created gig opens a blank form with wrong venue selected.
+
+**Root Cause (confirmed):**
+`loadGigs()` bakes `_origIdx` (raw Firebase array position) into each Edit button onclick at render time. `editGig(idx)` re-fetches fresh from Firebase and uses `gigData[idx]`. If a new gig was added after `loadGigs()` last rendered, the array has shifted — all subsequent `_origIdx` values point to the wrong gig.
+
+**Fix:** Call `loadGigs()` at the end of `saveGig()` to re-render with fresh indices. Long-term: assign stable UUID per gig and look up by key instead of array index.
+
+---
+
+## UAT-070 — Setlist Add Song button does nothing
+
+**Status:** 🔴 Open
+**Area:** Setlists
+**Page/Module:** js/features/setlists.js
+**Severity:** High
+**Type:** Bug
+
+**Expected:**
+Typing a song name and clicking Add appends it to the setlist and displays it.
+
+**Actual:**
+Nothing happens when Add is clicked. Existing setlists also open empty.
+
+---
+
+## FEAT-055 — Filter setlist song picker by readiness status
+
+**Status:** 🔴 Open
+**Area:** Setlists
+**Page/Module:** js/features/setlists.js
+**Severity:** Medium
+**Type:** Feature Request — pierce 2026-03-08
+
+Filter song picker to show only songs flagged in progress / prospecting / gig ready.
+
+---
+
+## FEAT-056 — Initiate setlist directly from Gigs page
+
+**Status:** 🔴 Open
+**Area:** Gigs
+**Page/Module:** js/features/gigs.js
+**Severity:** Medium
+**Type:** Feature Request — pierce 2026-03-06
+
+While defining a gig, allow creating a new setlist inline without navigating away.
+
+---
+
 ## Deferred / Open
 
 ---

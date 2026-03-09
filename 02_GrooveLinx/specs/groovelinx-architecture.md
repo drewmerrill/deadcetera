@@ -103,6 +103,13 @@ GrooveLinx browser auth uses **Google Identity Services** token client, not Fire
 - Silent re-auth is used on page load where possible
 - Adding Drive scopes too casually can reintroduce unverified-app friction
 
+### OAuth Credential Location
+The OAuth client is **not** in the `deadcetera-35424` Firebase GCP project. It lives in a separate project: **"Deadcetera YouTube"**, client named **"Deadcetera Web Client"**.
+- Client ID: `177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com`
+- Defined in: `js/core/firebase-service.js` as `GOOGLE_DRIVE_CONFIG.clientId`
+- Authorized origins: `https://drewmerrill.github.io`, `http://localhost:8000`
+- No redirect URIs needed — `initTokenClient` is a token flow
+
 ---
 
 ## Cloudflare Worker Responsibilities

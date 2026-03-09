@@ -102,6 +102,19 @@ The Command Center / Home Dashboard should answer:
 - `02_GrooveLinx/notes/uat_bug_log.md`
 - `02_GrooveLinx/notes/page_file_map.md`
 
+## Pending Deploy
+
+`app.js` did not deploy in session 20260308-S4 due to SHA lag.
+First action next session: `glsync && gldeploy "Fix update banner data.version scope error"`
+
+## Top Open Bugs (priority order)
+
+1. **UAT-069** — Blank Edit Gig after new gig save → `gigs.js`: add `loadGigs()` at end of `saveGig()`
+2. **UAT-068** — Practice queue empty → grep `practice.js` for `wip`/`prospect`, rename to `needsPolish`/`onDeck`
+3. **UAT-059** — All pages open mid-scroll → add `window.scrollTo(0, 0)` to `showPage()` in `navigation.js`
+4. **UAT-070** — Setlist Add Song does nothing → investigate setlists.js add-song handler
+5. **CF** — `navigateTo('playlists')` at `app.js:2134` → change to `showPage('playlists')`
+
 ## Open Near-Term Doc Tasks
 
 - Merge/compare the duplicate `notes/uat_bug_log.md` sources if needed.
