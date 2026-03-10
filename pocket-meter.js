@@ -18,23 +18,32 @@
   'use strict';
 
   // ─── BPM Detection Engine ────────────────────────────────────────────────────
-  // Onset-energy based beat detection via Web Audio API
-  // Accumulates inter-onset intervals, median-filters to produce stable BPM
+  // Spectral-flux rhythmic onset detection via Web Audio API.
+  // Detects transient onsets (kick/snare/hi-hat) via frame-to-frame spectral flux
+  // in two weighted bands:
+  //   • Kick band  50–200 Hz  (weight 0.6) — reliable on phone mics, room bounce
+  //   • Snare/hat band 200–8 kHz (weight 0.4) — upper transients
+  // Adaptive noise floor prevents false triggers in loud rooms.
+  // Passes onset timestamps to GrooveAnalyser for metric computation.
 
   class BPMEngine {
     constructor(onBPM) {
-      this.onBPM = onBPM;
+      this.onBPM   = onBPM;
       this.audioCtx = null;
       this.analyser = null;
-      this.stream = null;
-      this.source = null;
-      this.running = false;
-      this.onsets = [];          // timestamps of detected onsets
-      this.prevEnergy = 0;
+      this.stream   = null;
+      this.source   = null;
+      this.running  = false;
+      this.onsets   = [];     // ms timestamps of detected onsets
       this.bufferSize = 2048;
-      this.raf = null;
-      this.lastBPM = null;
+      this.raf      = null;
       this.smoothedBPM = null;
+
+      // Spectral flux state — previous magnitude bins
+      this._prevMag     = null;
+      // Adaptive noise floor — rolling median of flux values (no-onset frames)
+      this._fluxHistory = [];   // last 60 frames of flux
+      this._noiseFloor  = 0;
     }
 
     async start() {
@@ -43,10 +52,11 @@
         this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         this.analyser = this.audioCtx.createAnalyser();
         this.analyser.fftSize = this.bufferSize;
-        this.analyser.smoothingTimeConstant = 0.3;
+        this.analyser.smoothingTimeConstant = 0;  // raw frames — we handle smoothing
         this.source = this.audioCtx.createMediaStreamSource(this.stream);
         this.source.connect(this.analyser);
-        this.running = true;
+        this.running  = true;
+        this._prevMag = new Float32Array(this.analyser.frequencyBinCount);
         this._tick();
         return true;
       } catch(e) {
@@ -61,69 +71,331 @@
       if (this.source) this.source.disconnect();
       if (this.stream) this.stream.getTracks().forEach(t => t.stop());
       if (this.audioCtx) this.audioCtx.close();
-      this.onsets = [];
+      this.onsets      = [];
       this.smoothedBPM = null;
+      this._prevMag    = null;
+      this._fluxHistory = [];
     }
 
     _tick() {
       if (!this.running) return;
       this.raf = requestAnimationFrame(() => this._tick());
 
-      const data = new Uint8Array(this.analyser.frequencyBinCount);
-      this.analyser.getByteFrequencyData(data);
+      const freqData = new Float32Array(this.analyser.frequencyBinCount);
+      this.analyser.getFloatFrequencyData(freqData);   // dBFS values
 
-      // Focus on kick/snare range: roughly 60Hz–4kHz
-      const sampleRate = this.audioCtx.sampleRate;
-      const binHz = sampleRate / this.bufferSize;
-      const loB = Math.floor(60 / binHz);
-      const hiB = Math.min(Math.floor(4000 / binHz), data.length - 1);
+      // Convert dBFS → linear magnitude (0–1)
+      const mag = freqData.map(db => Math.pow(10, db / 20));
 
-      let energy = 0;
-      for (let i = loB; i <= hiB; i++) energy += data[i] * data[i];
-      energy /= (hiB - loB + 1);
+      const sr     = this.audioCtx.sampleRate;
+      const binHz  = sr / this.bufferSize;
+      const nBins  = mag.length;
+      const bin    = hz => Math.min(Math.floor(hz / binHz), nBins - 1);
 
+      // ── Spectral flux per band ────────────────────────────────────────────
+      // Only sum positive increases (half-wave rectify) so decays don't trigger
+      const kickFlux  = this._bandFlux(mag, bin(50),   bin(200),  0.6);
+      const snapFlux  = this._bandFlux(mag, bin(200),  bin(8000), 0.4);
+      const flux      = kickFlux + snapFlux;
+
+      // ── Adaptive noise floor ──────────────────────────────────────────────
+      this._fluxHistory.push(flux);
+      if (this._fluxHistory.length > 60) this._fluxHistory.shift();
+      // Noise floor = lower-quartile of recent flux (robust to occasional loud beats)
+      const sorted = [...this._fluxHistory].sort((a, b) => a - b);
+      this._noiseFloor = sorted[Math.floor(sorted.length * 0.25)] || 0;
+
+      const sensitivityMult = this._sensitivityMult || 1.4;
+      const threshold = this._noiseFloor * sensitivityMult + 0.002;
+
+      // ── Onset detection ───────────────────────────────────────────────────
       const now = performance.now();
-      const threshold = this.prevEnergy * (this._sensitivityMult || 1.4) + 30;
-
-      if (energy > threshold && energy > 500) {
-        // Onset detected — enforce min 250ms between onsets (~240 BPM max)
+      if (flux > threshold) {
         const last = this.onsets[this.onsets.length - 1];
-        if (!last || (now - last) > 250) {
+        if (!last || (now - last) > 250) {   // max ~240 BPM
           this.onsets.push(now);
-          if (this.onsets.length > 24) this.onsets.shift();
+          if (this.onsets.length > 32) this.onsets.shift();
           this._calcBPM();
         }
       }
 
-      this.prevEnergy = energy * 0.7 + this.prevEnergy * 0.3;
+      this._prevMag = mag;
+    }
+
+    _bandFlux(mag, lo, hi, weight) {
+      if (!this._prevMag) return 0;
+      let flux = 0;
+      for (let i = lo; i <= hi; i++) {
+        const diff = mag[i] - this._prevMag[i];
+        if (diff > 0) flux += diff;   // half-wave rectify
+      }
+      return (flux / Math.max(1, hi - lo + 1)) * weight;
     }
 
     _calcBPM() {
       if (this.onsets.length < 4) return;
 
-      // Compute inter-onset intervals
+      // Inter-onset intervals
       const iois = [];
       for (let i = 1; i < this.onsets.length; i++) {
         iois.push(this.onsets[i] - this.onsets[i - 1]);
       }
 
-      // Median filter
+      // Median filter (robust to occasional double-triggers)
       const sorted = [...iois].sort((a, b) => a - b);
-      const med = sorted[Math.floor(sorted.length / 2)];
+      const med    = sorted[Math.floor(sorted.length / 2)];
 
-      if (med < 250 || med > 2500) return; // out of 24–240 BPM range
+      if (med < 250 || med > 2500) return; // 24–240 BPM range
 
       const rawBPM = 60000 / med;
 
-      // Exponential smoothing
       if (this.smoothedBPM === null) {
         this.smoothedBPM = rawBPM;
       } else {
-        this.smoothedBPM = this.smoothedBPM * (1 - (this._smoothing||0.5)) + rawBPM * (this._smoothing||0.5);
+        const alpha = this._smoothing || 0.5;
+        this.smoothedBPM = this.smoothedBPM * (1 - alpha) + rawBPM * alpha;
       }
 
-      const bpm = Math.round(this.smoothedBPM * 10) / 10;
-      this.onBPM(bpm);
+      this.onBPM(Math.round(this.smoothedBPM * 10) / 10);
+    }
+  }
+
+  // ─── Groove Analyser ─────────────────────────────────────────────────────────
+  // Computes tempo stability, beat spacing variance, and pocket position
+  // from an array of onset timestamps (ms). Used by both live mode and
+  // file analysis mode (OfflineAnalyser).
+
+  const GrooveAnalyser = {
+    /**
+     * @param {number[]} onsets   - ms timestamps
+     * @param {number}   targetBPM
+     * @returns {{ stabilityScore, spacingVarianceMsRaw, pocketPositionMs,
+     *             pocketLabel, iois, medianIOI, targetBeatMs, pctInPocket }}
+     */
+    analyse(onsets, targetBPM) {
+      if (onsets.length < 4) return null;
+
+      const iois = [];
+      for (let i = 1; i < onsets.length; i++) iois.push(onsets[i] - onsets[i - 1]);
+
+      // Filter outliers: keep IOIs within 3× the target beat (handles missed beats)
+      const targetBeatMs = 60000 / targetBPM;
+      const filtered = iois.filter(v => v > targetBeatMs * 0.4 && v < targetBeatMs * 3.0);
+      if (filtered.length < 3) return null;
+
+      // Normalise multi-beat gaps: divide by nearest integer multiple
+      const normed = filtered.map(v => {
+        const mult = Math.round(v / targetBeatMs);
+        return v / Math.max(1, mult);
+      });
+
+      const n    = normed.length;
+      const mean = normed.reduce((a, b) => a + b, 0) / n;
+
+      // Variance + std dev
+      const variance = normed.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / n;
+      const stdDev   = Math.sqrt(variance);
+
+      // Stability score: 100 = rock-solid, 0 = erratic
+      // stdDev of 0ms → 100, stdDev of ≥50ms → 0
+      const stabilityScore = Math.round(Math.max(0, 100 - (stdDev / 50) * 100));
+
+      // Pocket position: median IOI vs target beat
+      // Positive = dragging (behind), negative = rushing (ahead)
+      const sortedN      = [...normed].sort((a, b) => a - b);
+      const medianIOI    = sortedN[Math.floor(sortedN.length / 2)];
+      const pocketPositionMs = medianIOI - targetBeatMs;
+      const absPos       = Math.abs(pocketPositionMs);
+
+      // ── Confidence-weighted pocket label ────────────────────────────────
+      // Pocket position is only meaningful when:
+      //   (a) enough beats were detected (≥12 for medium, ≥24 for high)
+      //   (b) stdDev is low enough that the median is reliable
+      //   (c) the offset is large enough relative to spread to be real
+      // This prevents overconfident AHEAD/BEHIND labels from noisy mic captures.
+      const beatCount    = n;
+      const offsetToSpread = stdDev > 0 ? absPos / stdDev : 99; // signal-to-noise
+
+      // Raw direction
+      const rawDir = absPos < 3 ? 'CENTERED'
+        : pocketPositionMs < 0 ? 'AHEAD'
+        : 'BEHIND';
+
+      // Confidence tiers
+      // HIGH:   ≥24 beats, stdDev < 20ms, offset > 1.5× spread
+      // MEDIUM: ≥12 beats, offset > spread
+      // LOW:    anything else → collapse to CENTERED or hedged label
+      let pocketLabel, pocketConfidence;
+      if (beatCount >= 24 && stdDev < 20 && offsetToSpread > 1.5 && absPos >= 8) {
+        pocketLabel      = rawDir;
+        pocketConfidence = 'high';
+      } else if (beatCount >= 12 && offsetToSpread > 1.0 && absPos >= 12) {
+        pocketLabel      = rawDir;
+        pocketConfidence = 'medium';
+      } else {
+        // Not enough confidence to call direction — report as centered
+        pocketLabel      = 'CENTERED';
+        pocketConfidence = 'low';
+      }
+
+      // % samples within ±15ms of target beat period
+      const pctInPocket = Math.round(
+        normed.filter(v => Math.abs(v - targetBeatMs) <= 15).length / n * 100
+      );
+
+      return {
+        stabilityScore,
+        spacingVarianceMsRaw: Math.round(stdDev * 10) / 10,
+        pocketPositionMs:     Math.round(pocketPositionMs * 10) / 10,
+        pocketLabel,
+        pocketConfidence,   // 'high' | 'medium' | 'low'
+        iois: normed,
+        medianIOI:    Math.round(medianIOI),
+        targetBeatMs: Math.round(targetBeatMs),
+        pctInPocket,
+      };
+    },
+  };
+
+  // ─── Offline Analyser ────────────────────────────────────────────────────────
+  // Decodes an audio file (ArrayBuffer) and runs the same spectral-flux onset
+  // detection engine offline (no mic, no real-time). Returns GrooveAnalyser
+  // metrics. Used for recording / board-mix / stem analysis.
+  //
+  // Source types:
+  //   'mic'       — live microphone (handled by BPMEngine, not here)
+  //   'recording' — rehearsal recording (full mix, all instruments)
+  //   'stem'      — individual stem or board mix (cleanest signal)
+  //
+  // Note: instrument-level separation is NOT attempted regardless of source.
+  // Onset detection on the full mix is sufficient for groove stability analysis.
+
+  class OfflineAnalyser {
+    /**
+     * @param {ArrayBuffer}  arrayBuffer
+     * @param {number}       targetBPM
+     * @param {string}       sourceType  'recording' | 'stem'
+     * @param {function}     onProgress  (0–1)
+     */
+    async analyse(arrayBuffer, targetBPM, sourceType, onProgress) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) throw new Error('Web Audio API not available');
+
+      onProgress && onProgress(0.05);
+
+      // Decode audio
+      const decodeCtx = new AudioCtx();
+      let audioBuffer;
+      try {
+        audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer);
+      } finally {
+        decodeCtx.close();
+      }
+      onProgress && onProgress(0.2);
+
+      const sr          = audioBuffer.sampleRate;
+      const nChannels   = audioBuffer.numberOfChannels;
+      const duration    = audioBuffer.duration;
+      const FRAME_SIZE  = 2048;
+      const HOP_SIZE    = 512;    // overlap for better time resolution
+
+      // Mix down to mono
+      const mono = new Float32Array(audioBuffer.length);
+      for (let ch = 0; ch < nChannels; ch++) {
+        const chData = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < mono.length; i++) mono[i] += chData[i] / nChannels;
+      }
+      onProgress && onProgress(0.3);
+
+      // Process frames with offline FFT via OfflineAudioContext
+      // We process in chunks to avoid blocking the UI thread
+      const onsets      = [];
+      const CHUNK_SECS  = 10;    // process 10s at a time
+      const chunkFrames = Math.floor(CHUNK_SECS * sr);
+      const totalFrames = mono.length;
+      let offset        = 0;
+      let prevMagSlice  = null;
+      let noiseHistory  = [];
+      let noiseFloor    = 0;
+      const binHz       = sr / FRAME_SIZE;
+      const bin         = hz => Math.min(Math.floor(hz / binHz), FRAME_SIZE / 2 - 1);
+      const kickLo  = bin(50),  kickHi  = bin(200);
+      const snapLo  = bin(200), snapHi  = bin(8000);
+
+      while (offset < totalFrames) {
+        const end    = Math.min(offset + chunkFrames, totalFrames);
+        const slice  = mono.subarray(offset, end);
+        const sliceMs = (offset / sr) * 1000;
+
+        // Compute spectral flux for each hop in this chunk
+        let frameStart = 0;
+        while (frameStart + FRAME_SIZE <= slice.length) {
+          const frame  = slice.subarray(frameStart, frameStart + FRAME_SIZE);
+          const mag    = this._fft(frame);
+
+          if (prevMagSlice) {
+            const kFlux = this._bandFluxOffline(mag, prevMagSlice, kickLo, kickHi, 0.6);
+            const sFlux = this._bandFluxOffline(mag, prevMagSlice, snapLo, snapHi, 0.4);
+            const flux  = kFlux + sFlux;
+
+            noiseHistory.push(flux);
+            if (noiseHistory.length > 120) noiseHistory.shift();
+            const sorted = [...noiseHistory].sort((a, b) => a - b);
+            noiseFloor = sorted[Math.floor(sorted.length * 0.25)] || 0;
+
+            const threshold = noiseFloor * 1.5 + 0.001;
+            const frameTimeMs = sliceMs + (frameStart / sr) * 1000;
+
+            if (flux > threshold) {
+              const lastOnset = onsets[onsets.length - 1];
+              if (!lastOnset || (frameTimeMs - lastOnset) > 250) {
+                onsets.push(frameTimeMs);
+              }
+            }
+          }
+
+          prevMagSlice = mag;
+          frameStart  += HOP_SIZE;
+        }
+
+        offset += chunkFrames;
+        onProgress && onProgress(0.3 + (offset / totalFrames) * 0.6);
+
+        // Yield to UI thread
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      onProgress && onProgress(1.0);
+
+      const metrics = GrooveAnalyser.analyse(onsets, targetBPM);
+      return { metrics, onsets, duration, sourceType };
+    }
+
+    // Minimal DFT magnitude spectrum (no phase) — good enough for flux detection
+    // Uses a Hann window to reduce spectral leakage
+    _fft(samples) {
+      const N   = samples.length;
+      const mag = new Float32Array(N / 2);
+      for (let k = 0; k < N / 2; k++) {
+        let re = 0, im = 0;
+        for (let n = 0; n < N; n++) {
+          const hann  = 0.5 * (1 - Math.cos(2 * Math.PI * n / (N - 1)));
+          const angle = (2 * Math.PI * k * n) / N;
+          re += samples[n] * hann * Math.cos(angle);
+          im -= samples[n] * hann * Math.sin(angle);
+        }
+        mag[k] = Math.sqrt(re * re + im * im) / N;
+      }
+      return mag;
+    }
+
+    _bandFluxOffline(mag, prev, lo, hi, weight) {
+      let flux = 0;
+      for (let i = lo; i <= hi; i++) {
+        const diff = mag[i] - prev[i];
+        if (diff > 0) flux += diff;
+      }
+      return (flux / Math.max(1, hi - lo + 1)) * weight;
     }
   }
 
@@ -152,6 +424,88 @@
     reset() { this.taps = []; }
   }
 
+  // ─── Report Helpers ──────────────────────────────────────────────────────────
+
+  function _pmStatCell(label, value, color) {
+    return '<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px 6px;text-align:center">'
+      + '<div style="font-size:12px;font-weight:700;color:' + color + '">' + value + '</div>'
+      + '<div style="font-size:9px;color:var(--pm-muted);letter-spacing:0.06em;text-transform:uppercase;margin-top:2px">' + label + '</div>'
+      + '</div>';
+  }
+
+  function _pmIOIHistogram(iois, targetMs) {
+    if (!iois || !iois.length) return '';
+    // Build ±60ms histogram with 10ms buckets
+    const HALF = 60, BUCKET = 10;
+    const buckets = new Array(Math.ceil(HALF * 2 / BUCKET)).fill(0);
+    iois.forEach(function(v) {
+      const dev = v - targetMs;
+      const idx = Math.floor((dev + HALF) / BUCKET);
+      if (idx >= 0 && idx < buckets.length) buckets[idx]++;
+    });
+    const maxCount = Math.max(1, ...buckets);
+    const W = 240, H = 36;
+    const bw = W / buckets.length;
+    let bars = '';
+    buckets.forEach(function(count, i) {
+      const h   = Math.round((count / maxCount) * H);
+      const x   = i * bw;
+      const dev = (i * BUCKET) - HALF + BUCKET / 2;
+      const col = Math.abs(dev) < BUCKET ? '#4ade80' : Math.abs(dev) < 30 ? '#fbbf24' : '#f87171';
+      if (count > 0) bars += '<rect x="' + x.toFixed(1) + '" y="' + (H - h) + '" width="' + (bw - 1).toFixed(1) + '" height="' + h + '" fill="' + col + '" rx="1"/>';
+    });
+    // Center line
+    const cx = (HALF / (HALF * 2)) * W;
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:36px">'
+      + '<line x1="' + cx + '" y1="0" x2="' + cx + '" y2="' + H + '" stroke="#4ade80" stroke-width="0.5" stroke-dasharray="2 2" opacity="0.5"/>'
+      + bars
+      + '</svg>'
+      + '<div style="display:flex;justify-content:space-between;font-size:8px;color:var(--pm-muted);margin-top:1px">'
+      + '<span>-60ms</span><span style="color:#4ade80">on beat</span><span>+60ms</span></div>';
+  }
+
+  // ─── Shared report helpers ───────────────────────────────────────────────────
+
+  // Returns display string + color for pocket position, conservative by default.
+  // sourceConfidence: 'high' | 'medium' | 'low'  (from source type, not beat count)
+  // groove.pocketConfidence: 'high' | 'medium' | 'low' (from beat count + spread)
+  function _pmPocketDisplay(groove, sourceConfidence) {
+    // Combined confidence: both data quality AND source quality must be adequate
+    const confRank = { high: 3, medium: 2, low: 1 };
+    const combined = Math.min(confRank[groove.pocketConfidence], confRank[sourceConfidence]);
+
+    const absMs  = Math.abs(groove.pocketPositionMs);
+    const dir    = groove.pocketLabel;  // 'CENTERED' | 'AHEAD' | 'BEHIND'
+
+    let label, color, note;
+
+    if (combined >= 3 && dir !== 'CENTERED') {
+      // High confidence — show clear directional label
+      label = dir === 'AHEAD' ? '⏩ Ahead' : '⏪ Behind';
+      color = '#fbbf24';
+      note  = absMs + 'ms ' + (dir === 'AHEAD' ? 'early' : 'late');
+    } else if (combined === 2 && dir !== 'CENTERED') {
+      // Medium confidence — softer language
+      label = dir === 'AHEAD' ? 'Slightly early' : 'Slightly late';
+      color = '#fbbf24';
+      note  = '~' + absMs + 'ms';
+    } else {
+      // Low confidence or truly centered
+      label = '⏺ Centered';
+      color = '#4ade80';
+      note  = combined < 2 ? 'limited data' : '';
+    }
+
+    return { label, color, note };
+  }
+
+  // Source type → confidence tier + display label
+  function _pmSourceInfo(sourceType) {
+    if (sourceType === 'stem')      return { confidence: 'high',   label: '🎚️ Stem/Mix',   badge: 'Highest confidence' };
+    if (sourceType === 'recording') return { confidence: 'medium', label: '🎵 Recording',   badge: 'Good confidence' };
+    return                                 { confidence: 'low',    label: '🎙 Live Mic',    badge: 'Estimate only' };
+  }
+
   // ─── PocketMeter ─────────────────────────────────────────────────────────────
 
   class PocketMeter {
@@ -166,6 +520,8 @@
       this.db         = opts.db         || (typeof firebase !== 'undefined' ? firebase.database() : null);
       this.mode       = opts.mode       || 'rehearsal'; // 'rehearsal' | 'gig'
       this.onSave     = opts.onSave     || null;  // callback(newBPM)
+      // Optional: rehearsal event ID for auto-saving groove analysis to Firebase
+      this._rehearsalEventId = opts.rehearsalEventId || null;
 
       this.liveBPM    = null;
       this.listening  = false;
@@ -191,6 +547,11 @@
       this._lastFlashBeat = 0;  // separate from _lastBeat used by gig pulse
       this._smoothing    = 0.5;
       this._sensitivityMult = 1.4;
+
+      // Source + offline analysis
+      this._sourceMode    = 'mic';    // 'mic' | 'recording' | 'stem'
+      this._offlineResult = null;     // last OfflineAnalyser result
+      this._onsets        = [];       // raw onset timestamps for live mode
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -263,6 +624,7 @@
     }
 
     _stopListening() {
+      const capturedOnsets = this.engine ? [...this.engine.onsets] : [];
       if (this.engine) { this.engine.stop(); this.engine = null; }
       this.listening = false;
       const hadHistory = this._history.length >= 4;
@@ -274,7 +636,7 @@
       if (lbl) { lbl.textContent = 'STOPPED'; lbl.className = 'pm-status-label pm-status--neutral'; }
       const miniSt = this.el && this.el.querySelector('.pm-mini-status');
       if (miniSt) { miniSt.textContent = 'stopped'; miniSt.style.color = ''; }
-      if (hadHistory) this._showDriftReport();
+      if (hadHistory) this._showDriftReport(capturedOnsets);
     }
 
     _onLiveBPM(bpm) {
@@ -567,6 +929,79 @@
 
       // ── Drag support for float + mini modes ────────────────────────────────
       this._initDrag();
+
+      // ── Audio source selector ─────────────────────────────────────────────
+      this.el.querySelectorAll('.pm-src-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this._sourceMode = btn.dataset.src;
+          this.el.querySelectorAll('.pm-src-btn').forEach(b => b.classList.remove('pm-src--active'));
+          btn.classList.add('pm-src--active');
+          const isMic = this._sourceMode === 'mic';
+          this.el.querySelector('.pm-controls--mic').classList.toggle('pm-hidden', !isMic);
+          this.el.querySelector('.pm-controls--file').classList.toggle('pm-hidden', isMic);
+          // Stop any active listening when switching sources
+          if (!isMic && this.listening) this._stopListening();
+        });
+      });
+
+      // ── File picker + analyze ─────────────────────────────────────────────
+      const fileInput  = this.el.querySelector('.pm-file-input');
+      const fileLabel  = this.el.querySelector('.pm-file-name');
+      const analyzeBtn = this.el.querySelector('.pm-analyze-btn');
+
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          const f = fileInput.files[0];
+          if (!f) return;
+          if (fileLabel) fileLabel.textContent = f.name.length > 28 ? f.name.slice(0, 25) + '…' : f.name;
+          if (analyzeBtn) analyzeBtn.classList.remove('pm-hidden');
+        });
+      }
+
+      if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', () => this._runFileAnalysis());
+      }
+    }
+
+    // ── File Analysis ─────────────────────────────────────────────────────────
+
+    async _runFileAnalysis() {
+      const fileInput = this.el.querySelector('.pm-file-input');
+      const f = fileInput && fileInput.files[0];
+      if (!f) return;
+
+      const progress  = this.el.querySelector('.pm-progress-wrap');
+      const fill      = this.el.querySelector('.pm-progress-fill');
+      const lbl       = this.el.querySelector('.pm-progress-label');
+      const analyzeBtn = this.el.querySelector('.pm-analyze-btn');
+      if (analyzeBtn) analyzeBtn.disabled = true;
+      if (progress) progress.classList.remove('pm-hidden');
+      if (lbl) lbl.textContent = 'Decoding audio…';
+
+      try {
+        const arrayBuffer = await f.arrayBuffer();
+        const analyser = new OfflineAnalyser();
+        const result   = await analyser.analyse(
+          arrayBuffer,
+          this.targetBPM,
+          this._sourceMode,   // 'recording' or 'stem'
+          (pct) => {
+            if (fill) fill.style.width = Math.round(pct * 100) + '%';
+            if (lbl) lbl.textContent = pct < 0.3 ? 'Decoding audio…' : pct < 0.9 ? 'Detecting onsets…' : 'Computing groove…';
+          }
+        );
+        // Attach file name and rehearsal context for Firebase save
+        result.sourceFile = f.name;
+        this._offlineResult = result;
+        if (progress) progress.classList.add('pm-hidden');
+        if (analyzeBtn) { analyzeBtn.disabled = false; analyzeBtn.textContent = '↺ Re-analyze'; }
+        this._showFileReport(result);
+      } catch(e) {
+        console.error('[PocketMeter] File analysis error:', e);
+        if (progress) progress.classList.add('pm-hidden');
+        if (analyzeBtn) { analyzeBtn.disabled = false; }
+        this._flashBanner('⚠️ Could not analyze file: ' + e.message);
+      }
     }
 
     // -- View Modes ------------------------------------------------------------
@@ -744,26 +1179,203 @@
 
     // -- Drift Report ----------------------------------------------------------
 
-    _showDriftReport() {
+    _showDriftReport(onsets) {
       if (!this._history.length) return;
-      const bpms = this._history.map(p => p.bpm), target = this.targetBPM;
-      const avg = bpms.reduce((a,b)=>a+b,0)/bpms.length;
-      const maxRush = Math.max(...bpms.map(b=>b-target));
-      const maxDrag = Math.min(...bpms.map(b=>b-target));
-      const pct = Math.round(bpms.filter(b=>Math.abs(b-target)<=2).length/bpms.length*100);
-      const dur = Math.round(this._history[this._history.length-1].t/1000);
+      const bpms   = this._history.map(p => p.bpm);
+      const target = this.targetBPM;
+      const dur    = Math.round(this._history[this._history.length - 1].t / 1000);
       this._history = []; this._historyStart = null;
+
       const report = this.el && this.el.querySelector('.pm-drift-report');
       const body   = this.el && this.el.querySelector('.pm-drift-body');
       if (!report || !body) return;
+
+      // Run GrooveAnalyser on captured onset timestamps
+      const groove = (onsets && onsets.length >= 4)
+        ? GrooveAnalyser.analyse(onsets, target)
+        : null;
+
+      // Live mic = low source confidence (phone mic, room reflections)
+      const srcInfo = _pmSourceInfo('mic');
+
+      // Fallback BPM-history metrics (always available from smoothed BPM stream)
+      const avg     = bpms.reduce((a, b) => a + b, 0) / bpms.length;
+      const maxRush = Math.max(...bpms.map(b => b - target));
+      const maxDrag = Math.min(...bpms.map(b => b - target));
+      const pct     = Math.round(bpms.filter(b => Math.abs(b - target) <= 2).length / bpms.length * 100);
+
+      let html = '';
+
+      // Source confidence badge
+      html += '<div style="text-align:center;margin-bottom:10px">'
+        + '<span style="font-size:9px;letter-spacing:0.1em;color:var(--pm-muted);text-transform:uppercase;'
+        + 'background:rgba(255,255,255,0.05);padding:2px 8px;border-radius:10px">'
+        + srcInfo.label + ' · ' + srcInfo.badge
+        + '</span></div>';
+
+      if (groove) {
+        const sc      = groove.stabilityScore;
+        const scCol   = sc >= 80 ? '#4ade80' : sc >= 55 ? '#fbbf24' : '#f87171';
+        const scGrade = sc >= 80 ? 'Rock Solid' : sc >= 65 ? 'Pretty Tight' : sc >= 50 ? 'Drifting' : 'Loose';
+        const pocket  = _pmPocketDisplay(groove, srcInfo.confidence);
+        const varCol  = groove.spacingVarianceMsRaw < 10 ? '#4ade80' : groove.spacingVarianceMsRaw < 25 ? '#fbbf24' : '#f87171';
+        const pctCol  = groove.pctInPocket >= 75 ? '#4ade80' : groove.pctInPocket >= 55 ? '#fbbf24' : '#f87171';
+
+        html +=
+          // Hero: Tempo Stability Score
+          '<div style="text-align:center;margin-bottom:14px">'
+          + '<div style="font-size:52px;font-weight:800;line-height:1;color:' + scCol + '">' + sc + '</div>'
+          + '<div style="font-size:10px;letter-spacing:0.12em;color:var(--pm-muted);text-transform:uppercase;margin-top:2px">Tempo Stability</div>'
+          + '<div style="font-size:13px;font-weight:700;color:' + scCol + ';margin-top:4px">' + scGrade + '</div>'
+          + '</div>'
+          // Three supporting metrics
+          + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">'
+          + _pmStatCell('Beat Variance', groove.spacingVarianceMsRaw + 'ms', varCol)
+          + _pmStatCell('Pocket', pocket.note ? pocket.label + '<br><span style="font-size:8px;opacity:0.7">' + pocket.note + '</span>' : pocket.label, pocket.color)
+          + _pmStatCell('In Pocket', groove.pctInPocket + '%', pctCol)
+          + '</div>'
+          // Beat spacing histogram
+          + '<div style="margin-bottom:10px">'
+          + '<div style="font-size:9px;color:var(--pm-muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">Beat Spacing Distribution</div>'
+          + _pmIOIHistogram(groove.iois, groove.targetBeatMs)
+          + '</div>';
+      }
+
+      // Fallback stats (always shown as secondary detail)
       const grade = pct >= 80 ? '🟢' : pct >= 60 ? '🟡' : '🔴';
-      body.innerHTML =
-        '<div class="pm-drift-stat">' + grade + ' <span>' + pct + '%</span> in the pocket</div>' +
-        '<div class="pm-drift-stat">🎯 Avg <span>' + avg.toFixed(1) + ' BPM</span> (target ' + target + ')</div>' +
-        '<div class="pm-drift-stat">⏩ Max rush <span>+' + maxRush.toFixed(1) + '</span></div>' +
-        '<div class="pm-drift-stat">⏪ Max drag <span>' + maxDrag.toFixed(1) + '</span></div>' +
-        '<div class="pm-drift-stat">⏱ Duration <span>' + dur + 's</span></div>';
+      html +=
+        '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;margin-top:4px">'
+        + '<div class="pm-drift-stat">' + grade + ' <span>' + pct + '%</span> BPM in pocket</div>'
+        + '<div class="pm-drift-stat">🎯 Avg <span>' + avg.toFixed(1) + ' BPM</span> · target ' + target + '</div>'
+        + '<div class="pm-drift-stat">⏩ Rush <span>+' + maxRush.toFixed(1) + '</span> · ⏪ Drag <span>' + maxDrag.toFixed(1) + '</span></div>'
+        + '<div class="pm-drift-stat">⏱ <span>' + dur + 's</span> session</div>'
+        + '</div>';
+
+      body.innerHTML = html;
       report.classList.remove('pm-hidden');
+    }
+
+    _showFileReport(result) {
+      const report = this.el && this.el.querySelector('.pm-drift-report');
+      const body   = this.el && this.el.querySelector('.pm-drift-body');
+      if (!report || !body) return;
+
+      const groove = result.metrics;
+      if (!groove) {
+        body.innerHTML = '<div class="pm-drift-stat">⚠️ Not enough onsets detected. Try a louder or cleaner source, or lower sensitivity.</div>';
+        report.classList.remove('pm-hidden');
+        return;
+      }
+
+      const srcInfo = _pmSourceInfo(result.sourceType);
+      const pocket  = _pmPocketDisplay(groove, srcInfo.confidence);
+      const sc      = groove.stabilityScore;
+      const scCol   = sc >= 80 ? '#4ade80' : sc >= 55 ? '#fbbf24' : '#f87171';
+      const scGrade = sc >= 80 ? 'Rock Solid' : sc >= 65 ? 'Pretty Tight' : sc >= 50 ? 'Drifting' : 'Loose';
+      const durStr  = result.duration ? Math.round(result.duration) + 's' : '—';
+      const varCol  = groove.spacingVarianceMsRaw < 10 ? '#4ade80' : groove.spacingVarianceMsRaw < 25 ? '#fbbf24' : '#f87171';
+      const pctCol  = groove.pctInPocket >= 75 ? '#4ade80' : groove.pctInPocket >= 55 ? '#fbbf24' : '#f87171';
+
+      // Build saved-to-rehearsal status area (filled in after save attempt)
+      const savedId = 'pm-save-status-' + Date.now();
+
+      body.innerHTML =
+        // Source + confidence badge
+        '<div style="text-align:center;margin-bottom:12px">'
+        + '<span style="font-size:9px;letter-spacing:0.1em;color:var(--pm-muted);text-transform:uppercase;'
+        + 'background:rgba(255,255,255,0.05);padding:3px 10px;border-radius:10px">'
+        + srcInfo.label + ' · ' + srcInfo.badge
+        + '</span>'
+        + '<div style="font-size:9px;color:var(--pm-muted);margin-top:4px">'
+        + durStr + ' · ' + groove.iois.length + ' beats detected'
+        + '</div>'
+        + '</div>'
+        // Hero: Tempo Stability Score
+        + '<div style="text-align:center;margin-bottom:14px">'
+        + '<div style="font-size:56px;font-weight:800;line-height:1;color:' + scCol + '">' + sc + '</div>'
+        + '<div style="font-size:10px;letter-spacing:0.12em;color:var(--pm-muted);text-transform:uppercase;margin-top:2px">Groove Stability Score</div>'
+        + '<div style="font-size:14px;font-weight:700;color:' + scCol + ';margin-top:4px">' + scGrade + '</div>'
+        + '</div>'
+        // Three supporting metrics
+        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">'
+        + _pmStatCell('Beat Variance', groove.spacingVarianceMsRaw + 'ms', varCol)
+        + _pmStatCell('Pocket', pocket.note
+            ? pocket.label + '<br><span style="font-size:8px;opacity:0.7">' + pocket.note + '</span>'
+            : pocket.label, pocket.color)
+        + _pmStatCell('In Pocket', groove.pctInPocket + '%', pctCol)
+        + '</div>'
+        // Beat spacing histogram
+        + '<div style="margin-bottom:12px">'
+        + '<div style="font-size:9px;color:var(--pm-muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">Beat Spacing Distribution</div>'
+        + _pmIOIHistogram(groove.iois, groove.targetBeatMs)
+        + '</div>'
+        // Detail stats
+        + '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">'
+        + '<div class="pm-drift-stat">🎯 Target beat <span>' + groove.targetBeatMs + 'ms</span> · Median actual <span>' + groove.medianIOI + 'ms</span></div>'
+        + '<div class="pm-drift-stat">📐 Pocket offset <span>' + (groove.pocketPositionMs >= 0 ? '+' : '') + groove.pocketPositionMs + 'ms</span>'
+        + (groove.pocketConfidence === 'low' ? ' <span style="font-size:9px;color:var(--pm-muted)">(low confidence)</span>' : '')
+        + '</div>'
+        + (result.sourceType !== 'stem'
+            ? '<div style="font-size:9px;color:var(--pm-muted);margin-top:6px;line-height:1.5">'
+              + 'ℹ️ Groove measured from full mix onset detection. '
+              + 'For cleaner results, upload individual stems.</div>'
+            : '')
+        + '</div>'
+        // Rehearsal save status area
+        + '<div id="' + savedId + '" style="margin-top:10px;font-size:10px;text-align:center;color:var(--pm-muted)"></div>';
+
+      report.classList.remove('pm-hidden');
+
+      // ── Expose last groove score globally for Command Center ─────────────
+      (function _pmUpdateGlobalScore(groove) {
+        var prev = window._lastPocketScore || null;
+        var score = groove.stabilityScore;
+        window._lastPocketScore = score;
+        window._lastPocketTrend = {
+          direction: prev === null ? 'flat' : score > prev ? 'up' : score < prev ? 'down' : 'flat',
+          delta:     prev === null ? 0 : score - prev
+        };
+      }(result.metrics));
+
+      // ── Auto-save to rehearsal record if context exists ───────────────────
+      this._saveGrooveToRehearsal(result, savedId);
+    }
+
+    _saveGrooveToRehearsal(result, statusElId) {
+      // Only save if we have a rehearsal context (eventId) and Firebase
+      if (!this.db || !this.bandPath || !this._rehearsalEventId) return;
+
+      const groove   = result.metrics;
+      const record   = {
+        savedAt:          new Date().toISOString(),
+        sourceType:       result.sourceType,
+        sourceFile:       result.sourceFile || null,
+        duration:         result.duration ? Math.round(result.duration) : null,
+        targetBPM:        this.targetBPM,
+        stabilityScore:   groove.stabilityScore,
+        spacingVarianceMs: groove.spacingVarianceMsRaw,
+        pocketPositionMs: groove.pocketPositionMs,
+        pocketLabel:      groove.pocketLabel,
+        pocketConfidence: groove.pocketConfidence,
+        pctInPocket:      groove.pctInPocket,
+        beatCount:        groove.iois.length,
+      };
+
+      const path = this.bandPath + '/rehearsals/' + this._rehearsalEventId + '/grooveAnalysis';
+      this.db.ref(path).set(record).then(function() {
+        var el = document.getElementById(statusElId);
+        if (el) {
+          el.textContent = '✅ Saved to rehearsal record';
+          el.style.color = '#4ade80';
+        }
+      }).catch(function(e) {
+        console.warn('[PocketMeter] Could not save groove analysis:', e);
+        var el = document.getElementById(statusElId);
+        if (el) {
+          el.textContent = '⚠️ Could not save to rehearsal';
+          el.style.color = 'var(--pm-muted)';
+        }
+      });
     }
 
     // ── Render ─────────────────────────────────────────────────────────────────
@@ -877,10 +1489,32 @@
         <!-- Status -->
         <div class="pm-status-label pm-status--neutral">STANDBY</div>
 
-        <!-- Main controls -->
-        <div class="pm-controls">
+        <!-- Audio source selector -->
+        <div class="pm-source-bar">
+          <button class="pm-src-btn pm-src--active" data-src="mic">🎙 Live Mic</button>
+          <button class="pm-src-btn" data-src="recording">🎵 Recording</button>
+          <button class="pm-src-btn" data-src="stem">🎚️ Stem/Mix</button>
+        </div>
+
+        <!-- Main controls (live mic) -->
+        <div class="pm-controls pm-controls--mic">
           <button class="pm-listen-btn">🎙 Listen</button>
           <button class="pm-tap-btn">Tap</button>
+        </div>
+
+        <!-- File controls (recording / stem) -->
+        <div class="pm-controls pm-controls--file pm-hidden">
+          <label class="pm-file-label">
+            <input type="file" class="pm-file-input" accept="audio/*" style="display:none">
+            <span class="pm-file-name">Choose audio file…</span>
+          </label>
+          <button class="pm-analyze-btn pm-hidden">▶ Analyze</button>
+        </div>
+
+        <!-- File analysis progress -->
+        <div class="pm-progress-wrap pm-hidden">
+          <div class="pm-progress-bar"><div class="pm-progress-fill" style="width:0%"></div></div>
+          <div class="pm-progress-label">Analyzing…</div>
         </div>
 
         <!-- Tap readout + actions -->
@@ -963,7 +1597,7 @@
           position: relative;
           font-family: var(--pm-font);
           color: var(--pm-text);
-          max-width: 360px;
+          max-width: 400px;
           width: 100%;
           margin: 0 auto;
           /* Scrollable so it never overflows the page */
@@ -1024,14 +1658,14 @@
 
         /* ── Toolbar ────────────────────────────────────────────────────────── */
         .pm-toolbar {
-          display: flex; align-items: center; gap: 4px;
+          display: flex; align-items: center; gap: 2px;
           background: var(--pm-surface); border: 1px solid var(--pm-border);
-          border-radius: 10px; padding: 5px 8px; flex-wrap: wrap;
+          border-radius: 10px; padding: 4px 6px; flex-wrap: nowrap; overflow: hidden;
         }
         .pm-mult-btn, .pm-sig-btn {
           background: transparent; border: 1px solid transparent;
           color: var(--pm-muted); font-family: var(--pm-font); font-size: 11px;
-          font-weight: 500; padding: 3px 8px; border-radius: 6px;
+          font-weight: 500; padding: 3px 5px; border-radius: 6px;
           cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em;
         }
         .pm-mult-btn:hover, .pm-sig-btn:hover { color: var(--pm-text); background: var(--pm-border); }
@@ -1184,6 +1818,56 @@
           cursor: pointer; transition: all 0.15s;
         }
         .pm-drift-close:hover { color: var(--pm-text); border-color: var(--pm-text); }
+
+        /* ── Source selector ────────────────────────────────────────────── */
+        .pm-source-bar {
+          display: flex; gap: 4px; margin-bottom: 8px;
+        }
+        .pm-src-btn {
+          flex: 1; padding: 6px 4px; font-size: 10px; font-weight: 600;
+          letter-spacing: 0.04em; border-radius: 6px; cursor: pointer;
+          border: 1px solid var(--pm-border); background: rgba(255,255,255,0.03);
+          color: var(--pm-muted); transition: all 0.15s; white-space: nowrap;
+        }
+        .pm-src-btn.pm-src--active {
+          background: rgba(129,140,248,0.15); border-color: var(--pm-blue);
+          color: var(--pm-blue);
+        }
+
+        /* ── File controls ──────────────────────────────────────────────── */
+        .pm-controls--file {
+          display: flex; flex-direction: column; align-items: center; gap: 8px;
+          padding: 10px 0;
+        }
+        .pm-file-label {
+          width: 100%; padding: 10px 14px; border: 1px dashed var(--pm-border);
+          border-radius: 8px; cursor: pointer; text-align: center;
+          color: var(--pm-muted); font-size: 12px; transition: border-color 0.15s;
+        }
+        .pm-file-label:hover { border-color: var(--pm-blue); color: var(--pm-blue); }
+        .pm-analyze-btn {
+          width: 100%; padding: 10px; font-size: 13px; font-weight: 700;
+          letter-spacing: 0.05em; border-radius: 8px; cursor: pointer;
+          border: 1px solid var(--pm-blue); background: rgba(129,140,248,0.12);
+          color: var(--pm-blue); transition: all 0.15s;
+        }
+        .pm-analyze-btn:hover:not(:disabled) { background: rgba(129,140,248,0.25); }
+        .pm-analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Progress bar ───────────────────────────────────────────────── */
+        .pm-progress-wrap { padding: 8px 0; }
+        .pm-progress-bar {
+          height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px;
+          overflow: hidden; margin-bottom: 6px;
+        }
+        .pm-progress-fill {
+          height: 100%; background: var(--pm-blue); border-radius: 2px;
+          transition: width 0.3s ease;
+        }
+        .pm-progress-label {
+          font-size: 10px; color: var(--pm-muted); text-align: center;
+          letter-spacing: 0.06em; text-transform: uppercase;
+        }
 
         /* ── BPM save prompt ─────────────────────────────────────────────────── */
         .pm-bpm-prompt {

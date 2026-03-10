@@ -3,7 +3,7 @@
 // Full visual help with overview, feature walkthroughs, and tips
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260307-144248', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260308-214626', 'color:#667eea;font-weight:bold;font-size:14px');
 function renderHelpPage(el) {
     el.innerHTML = `
     <div style="max-width:860px;margin:0 auto;padding:0 0 60px 0">
@@ -392,3 +392,258 @@ window.helpJump = helpJump;
     if (helpEl && !helpEl.classList.contains('hidden')) renderHelpPage(helpEl);
 })();
 console.log('❓ Help system loaded');
+
+// ============================================================================
+// HELP CONTENT REGISTRY
+// Single source of truth for all in-product help content.
+// Surfaces: first-time overlays, topbar ❓ button, local page triggers.
+// Each entry: { icon, title, subtitle, bullets, helpSectionId, videoUrl? }
+// ============================================================================
+
+var GL_HELP_REGISTRY = {
+
+    songs: {
+        icon: '🎵',
+        title: 'Songs',
+        subtitle: 'Your band\'s full repertoire — everything starts here.',
+        bullets: [
+            '🔍 Search or filter to find any song in the catalog',
+            '📋 Import starter charts with key, BPM, and chord charts pre-filled',
+            '🧬 Open a song to set status, key, singer, and song structure',
+            '⭐ Add reference versions, cover recordings, and crib notes',
+            '📊 Rate each song\'s readiness — your scores feed the dashboard',
+            '🧠 Launch Practice Mode for a full-screen learning experience',
+        ],
+        helpSectionId: 'song-workflow',
+        videoUrl: null,
+    },
+
+    practice: {
+        icon: '🧠',
+        title: 'Practice Mode',
+        subtitle: 'Full-screen music lab — five tabs for learning any song.',
+        bullets: [
+            '📋 Chart tab: chord charts with transpose, metronome, and brain trainer',
+            '📖 Know tab: song history and meaning pulled from Genius',
+            '🧠 Memory tab: AI-powered visual memory palace for lyrics',
+            '🎵 Harmony tab: find stems on Archive.org and send to Fadr',
+            '🎙️ Record tab: multi-track recorder — layer parts and export',
+            '← → arrows (or swipe) to move between songs in a queue',
+        ],
+        helpSectionId: 'practice-mode',
+        videoUrl: null,
+    },
+
+    rehearsal: {
+        icon: '📅',
+        title: 'Rehearsals',
+        subtitle: 'Build a plan, run the session, stay focused.',
+        bullets: [
+            '➕ Create a rehearsal plan with goals, songs, and focus notes',
+            '🎸 Launch Rehearsal Mode — full-screen charts for the whole queue',
+            '✂️ Use the Chopper to slice a recording into individual songs',
+            '📣 Share the plan to the band with one tap',
+            '📆 Rehearsals appear on the Calendar automatically',
+        ],
+        helpSectionId: 'practice-plan',
+        videoUrl: null,
+    },
+
+    setlists: {
+        icon: '📋',
+        title: 'Setlists',
+        subtitle: 'Build gig-night song order — from blank page to PDF.',
+        bullets: [
+            '➕ Create a setlist and add songs to sets, encores, and soundcheck',
+            '↕️ Drag and drop to reorder songs within each set',
+            '→ Mark segues between songs that flow directly together',
+            '🖨️ Print to a large-format PDF designed for music stands',
+            '📱 Export a Crib Sheet with charts for every song, by set',
+            '🔗 Link a setlist to a Playlist for pre-gig listening',
+        ],
+        helpSectionId: 'setlists',
+        videoUrl: null,
+    },
+
+    gigs: {
+        icon: '🎤',
+        title: 'Gigs',
+        subtitle: 'Track every show — past, upcoming, and the details in between.',
+        bullets: [
+            '➕ Add a gig with date, venue, load-in time, and setlist link',
+            '📍 Venues are saved with address, PA info, and directions',
+            '💰 Track per-gig pay and per-member splits',
+            '🗓️ Gigs appear on the Calendar — tap to view details',
+            '🗺️ Gig Map shows all your shows on a dark Google Map',
+            '🔴 Go Live to launch gig mode when the show starts',
+        ],
+        helpSectionId: 'gigs',
+        videoUrl: null,
+    },
+
+};
+
+// ============================================================================
+// ONBOARDING OVERLAY ENGINE
+// ============================================================================
+
+var _GL_ONBOARD_PREFIX = 'gl_onboarded_';
+
+/**
+ * Called by showPage() after every navigation.
+ * Shows overlay only if page is in registry and not yet dismissed on this device.
+ */
+function glCheckOnboarding(pageId) {
+    if (!GL_HELP_REGISTRY[pageId]) return;
+    var key = _GL_ONBOARD_PREFIX + pageId;
+    if (localStorage.getItem(key)) return; // already seen
+    // Small delay so the page render completes first
+    setTimeout(function() { glShowOnboarding(pageId, false); }, 350);
+}
+
+/**
+ * Show the onboarding overlay for a page.
+ * force=true: show even if already dismissed (used by ❓ button and local triggers).
+ */
+function glShowOnboarding(pageId, force) {
+    var entry = GL_HELP_REGISTRY[pageId];
+    if (!entry) return;
+
+    // Remove any existing overlay
+    var existing = document.getElementById('gl-onboard-overlay');
+    if (existing) existing.remove();
+
+    var bulletsHTML = entry.bullets.map(function(b) {
+        return '<li style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
+            + '<span style="flex-shrink:0;font-size:1em;line-height:1.5">' + b.split(' ')[0] + '</span>'
+            + '<span style="color:var(--text-muted,#94a3b8);font-size:0.875em;line-height:1.5">' + b.split(' ').slice(1).join(' ') + '</span>'
+            + '</li>';
+    }).join('');
+
+    var videoHTML = entry.videoUrl
+        ? '<a href="' + entry.videoUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:var(--accent-light,#818cf8);font-size:0.82em;font-weight:600;margin-top:12px;text-decoration:none;padding:6px 12px;border:1px solid rgba(129,140,248,0.3);border-radius:20px;background:rgba(99,102,241,0.08)">'
+            + '▶️ Watch 60-second walkthrough</a>'
+        : '';
+
+    var moreHTML = '<button onclick="glDismissOnboarding(\'' + pageId + '\');showPage(\'help\');setTimeout(function(){helpJump(\'' + entry.helpSectionId + '\')},200)" '
+        + 'style="background:none;border:none;color:var(--accent-light,#818cf8);font-size:0.78em;cursor:pointer;padding:0;text-decoration:underline;margin-top:4px">'
+        + 'Full guide →</button>';
+
+    var overlay = document.createElement('div');
+    overlay.id = 'gl-onboard-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Welcome to ' + entry.title);
+    overlay.innerHTML = [
+        '<div id="gl-onboard-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9998;backdrop-filter:blur(2px)" onclick="glDismissOnboarding(\'' + pageId + '\')"></div>',
+        '<div id="gl-onboard-card" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.95);opacity:0;transition:transform 0.22s cubic-bezier(.34,1.56,.64,1),opacity 0.18s ease;z-index:9999;width:min(440px,92vw);background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.4);border-radius:18px;padding:24px 22px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)">',
+        '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">',
+        '    <span style="font-size:1.8em;line-height:1">' + entry.icon + '</span>',
+        '    <div style="flex:1">',
+        '      <div style="font-weight:800;font-size:1.05em;color:var(--text,#f1f5f9)">' + entry.title + '</div>',
+        '      <div style="font-size:0.78em;color:var(--text-dim,#64748b);margin-top:2px">' + entry.subtitle + '</div>',
+        '    </div>',
+        '    <button onclick="glDismissOnboarding(\'' + pageId + '\')" aria-label="Dismiss" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim,#64748b);width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>',
+        '  </div>',
+        '  <ul style="list-style:none;padding:0;margin:0 0 12px">' + bulletsHTML + '</ul>',
+        '  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:4px">',
+        '    <div style="display:flex;flex-direction:column;gap:4px">',
+        '      ' + moreHTML,
+        '      ' + videoHTML,
+        '    </div>',
+        '    <button onclick="glDismissOnboarding(\'' + pageId + '\')" style="background:var(--accent,#6366f1);color:white;border:none;padding:8px 20px;border-radius:20px;font-weight:700;font-size:0.85em;cursor:pointer;font-family:inherit">Got it</button>',
+        '  </div>',
+        '</div>',
+    ].join('');
+
+    document.body.appendChild(overlay);
+
+    // Animate in
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            var card = document.getElementById('gl-onboard-card');
+            if (card) { card.style.transform = 'translate(-50%,-50%) scale(1)'; card.style.opacity = '1'; }
+        });
+    });
+
+    // Escape key to dismiss
+    overlay._escHandler = function(e) {
+        if (e.key === 'Escape') glDismissOnboarding(pageId);
+    };
+    document.addEventListener('keydown', overlay._escHandler);
+}
+
+/**
+ * Dismiss the overlay and mark page as seen.
+ */
+function glDismissOnboarding(pageId) {
+    localStorage.setItem(_GL_ONBOARD_PREFIX + pageId, '1');
+    var overlay = document.getElementById('gl-onboard-overlay');
+    if (!overlay) return;
+    var card = document.getElementById('gl-onboard-card');
+    if (card) { card.style.transform = 'translate(-50%,-50%) scale(0.95)'; card.style.opacity = '0'; }
+    document.removeEventListener('keydown', overlay._escHandler);
+    setTimeout(function() { if (overlay.parentNode) overlay.remove(); }, 200);
+}
+
+/**
+ * Show onboarding for the currently active page (used by topbar ❓ button).
+ * Always shows regardless of dismissed state.
+ */
+function glHelpCurrentPage() {
+    var page = (typeof currentPage !== 'undefined') ? currentPage : '';
+    if (GL_HELP_REGISTRY[page]) {
+        glShowOnboarding(page, true);
+    } else {
+        showPage('help');
+    }
+}
+
+/**
+ * Render a small inline help trigger for dynamic pages.
+ * Call from the page renderer after setting the page title HTML.
+ * containerId: the element to inject into (page container ID or element).
+ * pageId: key in GL_HELP_REGISTRY.
+ *
+ * Usage in a page renderer:
+ *   glInjectPageHelpTrigger('page-gigs', 'gigs');
+ */
+function glInjectPageHelpTrigger(containerId, pageId) {
+    if (!GL_HELP_REGISTRY[pageId]) return;
+    // Use a small delay to allow the page renderer to finish writing innerHTML
+    setTimeout(function() {
+        // Look for an h2 inside the container and append trigger after it
+        var container = typeof containerId === 'string'
+            ? document.getElementById(containerId)
+            : containerId;
+        if (!container) return;
+        // Don't add twice
+        if (container.querySelector('.gl-page-help-trigger')) return;
+        var h2 = container.querySelector('h2, h1, .page-title');
+        if (!h2) return;
+        var btn = document.createElement('button');
+        btn.className = 'gl-page-help-trigger';
+        btn.title = 'What can I do here?';
+        btn.setAttribute('aria-label', 'Help for this page');
+        btn.textContent = '❓';
+        btn.style.cssText = 'background:none;border:1px solid rgba(255,255,255,0.12);color:var(--text-dim,#64748b);font-size:0.75em;padding:3px 7px;border-radius:12px;cursor:pointer;margin-left:8px;vertical-align:middle;font-family:inherit;line-height:1.4;flex-shrink:0';
+        btn.onclick = function() { glShowOnboarding(pageId, true); };
+        // Insert inline after h2 — if h2 is inside a flex container, append sibling
+        var parent = h2.parentNode;
+        if (parent && parent.style && parent.style.display === 'flex') {
+            parent.appendChild(btn);
+        } else {
+            h2.insertAdjacentElement('afterend', btn);
+        }
+    }, 80);
+}
+
+// Expose all public functions
+window.glCheckOnboarding      = glCheckOnboarding;
+window.glShowOnboarding       = glShowOnboarding;
+window.glDismissOnboarding    = glDismissOnboarding;
+window.glHelpCurrentPage      = glHelpCurrentPage;
+window.glInjectPageHelpTrigger = glInjectPageHelpTrigger;
+window.GL_HELP_REGISTRY       = GL_HELP_REGISTRY;
+
+console.log('🧭 Onboarding system loaded — ' + Object.keys(GL_HELP_REGISTRY).length + ' pages registered');

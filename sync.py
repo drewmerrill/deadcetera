@@ -20,12 +20,28 @@ FILES = [
     "logo.png", "logo-large.png", "hero-logo.png", "hero-logo-sm.png", "badge-logo.png",
     "push.py", "sync.py", "version.json",
     # Wave-1 modules
-    "js/core/utils.js", "js/core/firebase-service.js", "js/core/worker-api.js",
+    "js/core/utils.js", "js/core/firebase-service.js", "js/core/groovelinx_store.js", "js/core/worker-api.js",
     "js/ui/navigation.js",
     "js/features/songs.js",
     # Wave-2 modules
     "js/features/gigs.js",
     "js/features/rehearsal.js",
+    "js/features/setlists.js",
+    "js/features/practice.js",
+    "js/features/calendar.js",
+    "js/features/notifications.js",
+    "js/features/social.js",
+    "js/features/finances.js",
+    "js/features/bestshot.js",
+    "js/features/playlists.js",
+    "js/features/stoner-mode.js",
+    "js/features/home-dashboard.js",
+    "js/features/home-dashboard-cc.js",
+    "js/features/chart-import.js",
+    # Song Intelligence System
+    "js/features/song-detail.js",
+    "js/features/harmony-lab.js",
+
 ]
 
 def gh_get(path):
@@ -74,9 +90,9 @@ if git_status:
     print(f"\n🚨 WARNING: app.js is MODIFIED but not committed!")
     print(f"   The file on disk may not match what is deployed.")
     print(f"   If unexpected, find the correct app.js from a previous chat upload.")
-if appjs_lines < 15000:
+if appjs_lines < 10000:
     print(f"\n🚨 WARNING: app.js is only {appjs_lines} lines — looks wrong!")
-    print(f"   Expected ~19000+ lines. Do not work on this file until resolved.")
+    print(f"   Expected ~12000+ lines. Do not work on this file until resolved.")
 
 # Read version
 version = "unknown"

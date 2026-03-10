@@ -1,26 +1,26 @@
 {
-  "synced_at": "2026-03-05T19:35:09.270600Z",
-  "version": "20260305-193056",
+  "synced_at": "2026-03-08T21:46:26.279924Z",
+  "version": "20260308-214520",
   "files": {
     "app.js": {
-      "sha": "f474b727",
-      "lines": 16583,
-      "size": 916295
+      "sha": "5cd5b2a7",
+      "lines": 12622,
+      "size": 676905
     },
     "app-dev.js": {
-      "sha": "f474b727",
-      "lines": 16583,
-      "size": 916295
+      "sha": "0a085f6b",
+      "lines": 12622,
+      "size": 676905
     },
     "index.html": {
-      "sha": "52319d6f",
-      "lines": 657,
-      "size": 42862
+      "sha": "36a00391",
+      "lines": 741,
+      "size": 46271
     },
     "help.js": {
-      "sha": "d99a3144",
-      "lines": 394,
-      "size": 50290
+      "sha": "0d4ba5a4",
+      "lines": 649,
+      "size": 62514
     },
     "data.js": {
       "sha": "6ef7baad",
@@ -28,9 +28,9 @@
       "size": 63204
     },
     "rehearsal-mode.js": {
-      "sha": "092db5e4",
-      "lines": 1202,
-      "size": 92776
+      "sha": "aa180ced",
+      "lines": 1237,
+      "size": 94713
     },
     "rehearsal-mode.css": {
       "sha": "641a163b",
@@ -48,14 +48,14 @@
       "size": 10410
     },
     "service-worker.js": {
-      "sha": "9c8bca7b",
+      "sha": "fc23c6ee",
       "lines": 155,
       "size": 6041
     },
     "worker.js": {
-      "sha": "09bbcc34",
-      "lines": 617,
-      "size": 36245
+      "sha": "67c7b0e7",
+      "lines": 805,
+      "size": 43777
     },
     "styles.css": {
       "sha": "ff4c426c",
@@ -63,29 +63,164 @@
       "size": 23539
     },
     "app-shell.css": {
-      "sha": "28380212",
-      "lines": 905,
-      "size": 43755
+      "sha": "bcdd7768",
+      "lines": 952,
+      "size": 45712
     },
     "manifest.json": {
       "sha": "08ac35c9",
       "lines": 62,
       "size": 1604
     },
+    "logo.png": {
+      "sha": "9d3d52d0",
+      "lines": -1,
+      "size": 2408
+    },
+    "logo-large.png": {
+      "sha": "06684129",
+      "lines": -1,
+      "size": 12844
+    },
+    "hero-logo.png": {
+      "sha": "2b013950",
+      "lines": -1,
+      "size": 598918
+    },
+    "hero-logo-sm.png": {
+      "sha": "ba3ea016",
+      "lines": -1,
+      "size": 208619
+    },
+    "badge-logo.png": {
+      "sha": "51c48917",
+      "lines": -1,
+      "size": 163400
+    },
     "push.py": {
-      "sha": "39443c81",
-      "lines": 287,
-      "size": 9905
+      "sha": "931df3d6",
+      "lines": 323,
+      "size": 11249
     },
     "sync.py": {
-      "sha": "cfbd464b",
-      "lines": 108,
-      "size": 4147
+      "sha": "6faddb85",
+      "lines": 155,
+      "size": 6158
     },
     "version.json": {
-      "sha": "2bddc2e9",
+      "sha": "ae546926",
       "lines": 3,
       "size": 79
+    },
+    "js/core/utils.js": {
+      "sha": "de0b6b8a",
+      "lines": 177,
+      "size": 6002
+    },
+    "js/core/firebase-service.js": {
+      "sha": "30bf59cb",
+      "lines": 419,
+      "size": 17136
+    },
+    "js/core/groovelinx_store.js": {
+      "sha": "89f324b7",
+      "lines": 523,
+      "size": 18315
+    },
+    "js/core/worker-api.js": {
+      "sha": "82baede5",
+      "lines": 288,
+      "size": 10284
+    },
+    "js/ui/navigation.js": {
+      "sha": "5ce79ab3",
+      "lines": 110,
+      "size": 5027
+    },
+    "js/features/songs.js": {
+      "sha": "807238da",
+      "lines": 267,
+      "size": 13350
+    },
+    "js/features/gigs.js": {
+      "sha": "4f0546ac",
+      "lines": 1170,
+      "size": 74159
+    },
+    "js/features/rehearsal.js": {
+      "sha": "2d1962e0",
+      "lines": 1337,
+      "size": 78523
+    },
+    "js/features/setlists.js": {
+      "sha": "489814f9",
+      "lines": 869,
+      "size": 51980
+    },
+    "js/features/practice.js": {
+      "sha": "0f56cd74",
+      "lines": 618,
+      "size": 32572
+    },
+    "js/features/calendar.js": {
+      "sha": "5a437f6b",
+      "lines": 488,
+      "size": 30848
+    },
+    "js/features/notifications.js": {
+      "sha": "dc6d54ce",
+      "lines": 1148,
+      "size": 66982
+    },
+    "js/features/social.js": {
+      "sha": "b040ddb9",
+      "lines": 342,
+      "size": 20275
+    },
+    "js/features/finances.js": {
+      "sha": "7d633f91",
+      "lines": 121,
+      "size": 9176
+    },
+    "js/features/bestshot.js": {
+      "sha": "cea66d9d",
+      "lines": 1585,
+      "size": 93675
+    },
+    "js/features/playlists.js": {
+      "sha": "374653a1",
+      "lines": 472,
+      "size": 23789
+    },
+    "js/features/stoner-mode.js": {
+      "sha": "1f7701af",
+      "lines": 416,
+      "size": 22376
+    },
+    "js/features/home-dashboard.js": {
+      "sha": "b3d82d18",
+      "lines": 1549,
+      "size": 72047
+    },
+    "js/features/home-dashboard-cc.js": {
+      "sha": "781690b6",
+      "lines": 530,
+      "size": 20728
+    },
+    "js/features/chart-import.js": {
+      "sha": "dd54cb4c",
+      "lines": 924,
+      "size": 29042
+    },
+    "js/features/song-detail.js": {
+      "sha": "9382802d",
+      "lines": 534,
+      "size": 33156
+    },
+    "js/features/harmony-lab.js": {
+      "sha": "08c9b6e0",
+      "lines": 1232,
+      "size": 55855
     }
   }
 }

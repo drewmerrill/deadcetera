@@ -53,7 +53,9 @@ DEPLOY_FILES = [
     # Wave-1 modules
     'js/core/utils.js',
     'js/core/firebase-service.js',
+    'js/core/groovelinx_store.js',
     'js/core/worker-api.js',
+    'js/core/calendar-export.js',
     'js/ui/navigation.js',
     'js/features/songs.js',
     # Wave-2 modules
@@ -69,6 +71,12 @@ DEPLOY_FILES = [
     'js/features/bestshot.js',
     'js/features/playlists.js',
     'js/features/stoner-mode.js',
+    'js/features/home-dashboard.js',
+    'js/features/home-dashboard-cc.js',
+    'js/features/chart-import.js',
+    # Song Intelligence System
+    'js/features/song-detail.js',
+    'js/features/harmony-lab.js',
 ]
 
 def get_token():

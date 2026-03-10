@@ -59,6 +59,9 @@ window.showPage = function showPage(page) {
             renderer(el);
         }
     }
+
+    // First-time onboarding overlay — shows once per page per device
+    if (typeof glCheckOnboarding === 'function') glCheckOnboarding(page);
 };
 
 /**

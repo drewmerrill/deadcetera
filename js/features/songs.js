@@ -239,27 +239,29 @@ window.selectSong = function selectSong(songTitle) {
         setTimeout(function() { clickedItem.style.boxShadow = ''; }, 600);
     }
 
-    // Show song blueprint (Step 2)
+    // ── Navigate to 5-lens Song Detail page (Phase 2) ────────────────────
+    // showBandResources() still runs in the background so the legacy step-cards
+    // in page-songs remain populated as a fallback during the transition period.
     if (typeof showBandResources === 'function') showBandResources(songTitle);
 
-    // Reveal detail sections
-    var toShow = ['stepVersionHub','step3ref','step3bestshot','step4ref','step4cover','step5ref'];
-    toShow.forEach(function(id) {
-        document.getElementById(id)?.classList.remove('hidden');
-    });
-
-    if (typeof renderBestShotVsNorthStar === 'function') renderBestShotVsNorthStar(songTitle);
-
-    // Hide legacy step containers
-    ['step3','step4','step5'].forEach(function(id) {
-        document.getElementById(id)?.classList.add('hidden');
-    });
-    document.getElementById('resetContainer')?.classList.add('hidden');
-
-    // Smooth scroll to step 2
-    setTimeout(function() {
-        document.getElementById('step2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 500);
+    // Navigate to the new Song Detail page immediately
+    if (typeof showPage === 'function') {
+        showPage('songdetail');
+    } else {
+        // Fallback: reveal legacy step-cards in page-songs
+        var toShow = ['stepVersionHub','step3ref','step3bestshot','step4ref','step4cover','step5ref'];
+        toShow.forEach(function(id) {
+            document.getElementById(id)?.classList.remove('hidden');
+        });
+        if (typeof renderBestShotVsNorthStar === 'function') renderBestShotVsNorthStar(songTitle);
+        ['step3','step4','step5'].forEach(function(id) {
+            document.getElementById(id)?.classList.add('hidden');
+        });
+        document.getElementById('resetContainer')?.classList.add('hidden');
+        setTimeout(function() {
+            document.getElementById('step2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 500);
+    }
 };
 
 console.log('✅ songs.js loaded');

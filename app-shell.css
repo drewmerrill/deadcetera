@@ -9,7 +9,7 @@ a{color:var(--accent-light);}
 .topbar-left{display:flex;align-items:center;gap:12px;}
 .hamburger{background:none;border:none;color:var(--text);cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;transition:background 0.15s;}
 .hamburger:hover{background:rgba(255,255,255,0.08);}
-.topbar-brand{font-size:1.15em;font-weight:800;letter-spacing:-0.5px;display:inline-flex;align-items:center;gap:6px;line-height:1;cursor:pointer;}
+.topbar-brand{font-size:1.3em;font-weight:800;letter-spacing:-0.5px;display:inline-flex;align-items:center;gap:6px;line-height:1;cursor:pointer;}
 .topbar-brand-text{background:linear-gradient(135deg,#60a5fa,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:inherit;font-weight:inherit;letter-spacing:inherit;line-height:1;display:inline-block;}
 .topbar-right{display:flex;align-items:center;gap:6px;}
 .topbar-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-muted);padding:6px 10px;border-radius:8px;font-size:0.78em;cursor:pointer;transition:all 0.15s;white-space:nowrap;font-weight:500;font-family:inherit;}
@@ -346,6 +346,9 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
     /* Main content padding */
     .main-content { padding: 10px 10px !important; }
     .app-card { padding: 12px !important; }
+    #calendarInner .app-card:first-child { padding: 12px 0px !important; }
+    #calendarInner { margin: 0 -10px; }
+    #calendarInner .app-card:first-child { border-radius: 0 !important; border-left: none !important; border-right: none !important; }
     .resource-section { padding: 12px !important; }
 
     /* Page header */
@@ -726,6 +729,45 @@ button[style*="background:rgba(29"],
     .topbar-brand { font-size: 0.92em !important; }
 }
 
+/* ── Connect button: pulsing glow when signed out to drive attention ── */
+/* glSignInPulse is already injected by updateDriveAuthButton() in app.js */
+/* Additional arrow nudge injected alongside the button — see .connect-arrow-nudge */
+.connect-arrow-nudge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7em;
+    color: #818cf8;
+    font-weight: 800;
+    animation: connectArrowBounce 1.2s ease-in-out infinite;
+    pointer-events: none;
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+@keyframes connectArrowBounce {
+    0%, 100% { transform: translateX(0); opacity: 1; }
+    50%       { transform: translateX(4px); opacity: 0.6; }
+}
+
+/* ── Mobile topbar: compress on small phones ── */
+@media(max-width:480px) {
+    /* Hide the help ? button on mobile — it's in the hamburger menu */
+    #glHelpBtn { display: none !important; }
+    /* Give topbar-right slightly more room */
+    .topbar-right { gap: 4px !important; }
+    /* Connect button: slightly smaller padding but keep visible */
+    #googleDriveAuthBtn.topbar-btn:not([style*="border-radius:50%"]) {
+        padding: 5px 10px !important;
+        font-size: 0.75em !important;
+    }
+}
+
+@media(max-width:390px) {
+    /* Very small iPhones — also shrink gear + brand */
+    .topbar-brand { font-size: 0.92em !important; gap: 4px !important; }
+    .topbar-brand img { width: 22px !important; height: 22px !important; }
+    .topbar-btn { padding: 5px 7px !important; font-size: 0.72em !important; }
+}
+
 /* ── Playlist index: card action buttons wrap on small phones ── */
 @media(max-width:480px) {
     /* Playlist card button row: stack to 2 rows */
@@ -830,6 +872,11 @@ button[style*="background:rgba(29"],
         font-size: 16px !important; /* prevents iOS auto-zoom on focus */
         padding: 12px !important;
     }
+}
+
+/* Date inputs: never overflow card on mobile */
+@media(max-width:640px){
+  input[type="date"] { width: 100% !important; box-sizing: border-box !important; max-width: calc(100vw - 48px) !important; min-width: 0 !important; }
 }
 
 /* ── Prevent iOS font size auto-zoom on ALL inputs ── */

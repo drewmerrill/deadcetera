@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260307-144248">
+    <meta name="build-version" content="20260308-214626">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx — Where Bands Lock In</title>
@@ -55,6 +55,12 @@
             border-color: rgba(99,102,241,0.5);
         }
     </style>
+<style>
+@media(max-width:640px){
+  #calendarInner{margin:0 -6px 0 -4px!important;}
+  #calendarInner .app-card:first-child{padding:12px 2px!important;border-radius:8px!important;width:calc(100% + 10px)!important;box-sizing:border-box!important;}
+}
+</style>
 </head>
 <body>
     <!-- TOP BAR -->
@@ -63,10 +69,11 @@
             <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <span class="topbar-brand" onclick="showPage('songs')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
+            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
         </div>
         <div class="topbar-right">
-            <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()">🔗 Connect</button>
+            <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()" title="Sign in to sync">👤</button>
+            <button class="topbar-btn" onclick="glHelpCurrentPage()" title="Help for this page" id="glHelpBtn" style="padding:6px 8px">❓</button>
             <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin" style="padding:6px 8px">⚙️</button>
         </div>
     </div>
@@ -77,32 +84,34 @@
         <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
         <div class="menu-section">
             <div class="menu-section-title">Music</div>
-            <button class="menu-item active" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Song Library</button>
-            <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">🎯</span> Rehearsals</button>
+            <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
+            <button class="menu-item" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Songs</button>
             <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
-            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
-            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">📅</span> Practice Plan</button>
+            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
+            <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">📅</span> Rehearsals</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
-            <div class="menu-section-title">Band</div>
-            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
+            <div class="menu-section-title">Gigs</div>
             <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
+            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
             <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
-            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
-            <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
             <div class="menu-section-title">Tools</div>
-            <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎯</span> Pocket Meter</button>
+            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
+            <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎚️</span> Pocket Meter</button>
             <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🎸</span> Guitar Tuner</button>
             <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
-            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
+            <div class="menu-section-title">More</div>
             <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
+            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
+            <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
+            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
             <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
             <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
             <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
@@ -114,47 +123,23 @@
     <!-- MAIN CONTENT AREA -->
     <div class="main-content" id="mainContent">
         <!-- PAGE: Songs (existing app content) -->
-        <div id="page-songs" class="app-page">
+        <div id="page-songs" class="app-page hidden">
     <div class="container">
-        <header>
-            <!-- GrooveLinx Hero -->
-            <img src="hero-logo.png" alt="GrooveLinx" class="logo" style="max-width:260px;max-height:260px;border-radius:16px;box-shadow:0 8px 40px rgba(102,126,234,0.3)">
-            <h1 style="margin-top:12px;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent">GrooveLinx</h1>
-            <p class="subtitle">Where bands lock in. Less admin. More jams.</p>
-            
-            <!-- Sign In -->
-            <div id="signInPrompt" style="text-align:center;margin-top:12px;">
-                <div style="position:relative;display:inline-block;">
-                    <button id="googleDriveAuthBtn2" onclick="handleGoogleDriveAuth()" 
-                        style="background:var(--accent);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:0.95em;cursor:pointer;font-weight:600;">
-                        👤 Sign In
-                    </button>
-                    <button onclick="const t=document.getElementById('signInTooltip');t.style.display=t.style.display==='block'?'none':'block';event.stopPropagation();"
-                        style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:var(--text-muted);padding:8px 10px;border-radius:8px;font-size:0.82em;cursor:pointer;margin-left:6px;"
-                        title="Why sign in?">❓</button>
-                    <div id="signInTooltip" style="display:none;position:absolute;bottom:120%;right:0;margin-bottom:8px;background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:14px;width:280px;max-width:80vw;z-index:100;text-align:left;font-size:0.82em;line-height:1.5;color:var(--text-muted,#94a3b8);box-shadow:0 8px 30px rgba(0,0,0,0.4);">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                            <span style="font-weight:700;color:white">Why sign in?</span>
-                            <button onclick="document.getElementById('signInTooltip').style.display='none';event.stopPropagation();" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em;padding:0 0 0 8px">✕</button>
-                        </div>
-                        <div style="color:var(--green,#10b981);margin-bottom:4px;">✅ <b>Signed in:</b></div>
-                        <div style="margin-left:18px;margin-bottom:8px;">Your name appears on recordings, uploads & votes · Band data syncs across all members · Access shared setlists, finances & calendar</div>
-                        <div style="color:var(--yellow,#f59e0b);margin-bottom:4px;">⚠️ <b>Not signed in:</b></div>
-                        <div style="margin-left:18px;">You can browse songs & use tools · Uploads won't have your name · No access to shared band data</div>
-                    </div>
-                </div>
-                <p style="font-size:0.82em;color:var(--text-dim,#64748b);margin-top:6px;">Sign in to sync with your bandmates</p>
-            </div>
-        </header>
 
         <!-- Step 1: Song Selection -->
         <div class="step-card" id="step1">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
                 <div class="step-number" style="flex-shrink:0">1</div>
-                <h2 style="margin:0;line-height:1.2">Song Library</h2>
+                <h2 style="margin:0;line-height:1.2">Songs</h2>
                 <span style="color:var(--text-dim,#64748b);font-size:0.8em;margin-left:auto" id="songCount"></span>
                 <button onclick="showCustomSongsList()" class="btn btn-ghost btn-sm" title="Add a custom song not in the library" style="margin-left:6px;font-size:0.75em;padding:4px 8px" id="customSongBtn">
                     ➕ <span id="customSongCount" style="background:var(--accent);color:white;border-radius:10px;padding:1px 5px;font-size:0.85em;display:none"></span>
+                </button>
+                <button onclick="showChartImportModal()" class="btn btn-ghost btn-sm" title="Import songs with chord charts pre-filled" style="margin-left:4px;font-size:0.75em;padding:4px 8px">
+                    📋
+                </button>
+                <button onclick="glShowOnboarding('songs',true)" class="btn btn-ghost btn-sm" title="What can I do here?" style="margin-left:4px;font-size:0.75em;padding:4px 8px;color:var(--text-dim)" aria-label="Help for Songs page">
+                    ❓
                 </button>
             </div>
             <div class="search-box">
@@ -614,6 +599,28 @@
     </div>
         </div><!-- end page-songs -->
 
+
+        <!-- Hero: shown to signed-out users only, hidden once authenticated -->
+        <div id="page-hero" class="app-page hidden">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:32px 24px;text-align:center;">
+                <img src="hero-logo.png" alt="GrooveLinx" style="width:200px;height:200px;border-radius:20px;box-shadow:0 8px 40px rgba(102,126,234,0.35);margin-bottom:28px;">
+                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx</h1>
+                <p style="font-size:1.15em;font-weight:600;color:var(--text-main,#e2e8f0);margin:0 0 10px;">Where Bands Lock In.</p>
+                <p style="font-size:0.95em;color:var(--text-muted,#94a3b8);max-width:340px;line-height:1.6;margin:0 0 36px;">GrooveLinx helps bands rehearse smarter, build setlists faster, and walk on stage ready.</p>
+                <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;">
+                    <button onclick="handleGoogleDriveAuth()" style="background:var(--accent,#667eea);color:white;border:none;padding:14px 24px;border-radius:10px;font-size:1em;font-weight:700;cursor:pointer;letter-spacing:0.02em;">
+                        👤 Sign In
+                    </button>
+                    <button onclick="showPage('admin')" style="background:transparent;color:var(--text-muted,#94a3b8);border:1px solid rgba(255,255,255,0.15);padding:12px 24px;border-radius:10px;font-size:0.9em;font-weight:600;cursor:pointer;">
+                        Create Band
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Home Dashboard -->
+        <div id="page-home" class="app-page hidden"></div>
+
         <!-- Dynamic pages rendered by JS -->
         <div id="page-setlists" class="app-page hidden"></div>
         <div id="page-rehearsal" class="app-page hidden"></div>
@@ -631,7 +638,10 @@
         <div id="page-social" class="app-page hidden"></div>
         <div id="page-admin" class="app-page hidden"></div>
         <div id="page-notifications" class="app-page hidden"></div>
+        <div id="page-bestshot" class="app-page hidden"></div>
+        <div id="page-stoner" class="app-page hidden"></div>
         <div id="page-help" class="app-page hidden"></div>
+        <div id="page-songdetail" class="app-page hidden"></div>
     </div>
 
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
@@ -641,6 +651,7 @@
 
     <script src="js/core/utils.js"></script>
     <script src="js/core/firebase-service.js"></script>
+    <script src="js/core/groovelinx_store.js"></script>
     <script src="js/core/worker-api.js"></script>
     <script src="js/ui/navigation.js"></script>
     <script src="js/features/songs.js"></script>
@@ -650,45 +661,81 @@
     <script src="js/features/setlists.js"></script>
     <script src="js/features/practice.js"></script>
     <script src="js/features/calendar.js"></script>
+    <script src="js/core/calendar-export.js"></script>
     <script src="js/features/notifications.js"></script>
     <script src="js/features/social.js"></script>
     <script src="js/features/finances.js"></script>
     <script src="js/features/bestshot.js"></script>
     <script src="js/features/playlists.js"></script>
     <script src="js/features/stoner-mode.js"></script>
+    <script src="js/features/home-dashboard.js"></script>
+    <script src="js/features/song-detail.js"></script>
+    <script src="js/features/harmony-lab.js"></script>
+    <script src="js/features/home-dashboard-cc.js"></script>
+    <script src="js/features/chart-import.js"></script>
     <script src="app.js"></script>
     <script src="rehearsal-mode.js"></script>
     <script src="version-hub.js"></script>
     <script src="pocket-meter.js"></script>
     <script src="help.js"></script>
+
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => {
-                        console.log('[SW] Registered:', reg.scope);
-                        reg.addEventListener('updatefound', () => {
-                            const newWorker = reg.installing;
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                                }
-                            });
-                        });
-                    })
-                    .catch(err => console.log('[SW] Registration failed:', err));
-                navigator.serviceWorker.addEventListener('message', event => {
-                    if (event.data?.type === 'SW_UPDATED') {
-                        // showUpdateBanner is defined in app.js — call it if ready, else retry
-                        if (typeof showUpdateBanner === 'function') {
-                            showUpdateBanner();
-                        } else {
-                            setTimeout(() => { if (typeof showUpdateBanner === 'function') showUpdateBanner(); }, 2000);
-                        }
-                    }
-                });
-            });
+    // Hero gate — fires immediately on load, before Firebase resolves
+    (function() {
+        var savedEmail = localStorage.getItem('deadcetera_google_email');
+        if (!savedEmail) {
+            // Not signed in — show hero right away, no flash
+            var hero = document.getElementById('page-hero');
+            if (hero) hero.classList.remove('hidden');
         }
+        // (Signed-in users: page-songs is hidden, showPage('home') fires at 50ms in app.js)
+    })();
+
+    // Called by app.js after auth resolves
+    window.glHeroCheck = function(isSignedIn) {
+        var hero = document.getElementById('page-hero');
+        if (isSignedIn) {
+            if (hero) hero.classList.add('hidden');
+            if (typeof showPage === 'function') showPage('home');
+        } else {
+            var allPages = document.querySelectorAll('.app-page');
+            allPages.forEach(function(p) { p.classList.add('hidden'); });
+            if (hero) hero.classList.remove('hidden');
+        }
+    };
+    </script>
+    <script>
+    // Service Worker registration
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(function(reg) {
+                    console.log('[SW] Registered:', reg.scope);
+                    reg.addEventListener('updatefound', function() {
+                        var newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', function() {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                if (typeof showUpdateBanner === 'function') showUpdateBanner();
+                            }
+                        });
+                    });
+                })
+                .catch(function(err) { console.log('[SW] Registration failed:', err); });
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+                if (typeof showUpdateBanner === 'function') showUpdateBanner();
+            });
+        });
+    }
+    </script>
+    <script>
+    // Strip stale share params (?playlist=, ?pack=) from URL on every load.
+    // These are generated by share link builders and should never persist as the launch URL.
+    (function() {
+        var p = new URLSearchParams(window.location.search);
+        if (p.has('playlist') || p.has('pack')) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    })();
     </script>
 </body>
 </html>

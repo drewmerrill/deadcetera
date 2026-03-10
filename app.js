@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260308-000928', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260308-214626', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260308-000928';
+var BUILD_VERSION = '20260308-214626';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -496,7 +496,7 @@ if ('serviceWorker' in navigator) {
                 // NEVER auto-reload — user clicks the banner when ready
                 function promptUpdate() {
                     console.log('[PWA] New version detected — showing banner');
-                    showUpdateBanner();
+                    showUpdateBanner(null);
                 }
 
                 // If a SW is already waiting when we register
@@ -636,11 +636,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         
         // Auto-re-authenticate if user was previously signed in
-        if (localStorage.getItem('deadcetera_google_email')) {
+        var savedEmail = localStorage.getItem('deadcetera_google_email');
+        var savedName  = localStorage.getItem('deadcetera_google_name');
+        if (savedEmail || savedName) {
+            // Either full session or partial (email cleared but name present) — attempt reconnect
             console.log('🔑 Auto-reconnecting (was signed in)...');
             handleGoogleDriveAuth(true);
         } else {
-            // No saved session — show hero to signed-out users
+            // No saved session at all — show hero to signed-out users
             if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
         }
         
@@ -5508,6 +5511,9 @@ function updateDriveAuthButton() {
         button.style.cssText = 'background:none!important;border:2px solid #22c55e!important;padding:2px!important;border-radius:50%!important;width:36px!important;height:36px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;flex-shrink:0!important;animation:none!important;';
         button.title = (currentUserName || currentUserEmail || 'Signed in') + ' — tap to manage';
         button.onclick = showAvatarMenu;
+        // Remove the arrow nudge now that user is signed in
+        var existingArrow = document.getElementById('connectArrowNudge');
+        if (existingArrow) existingArrow.remove();
 
         const heroBtn = document.getElementById('googleDriveAuthBtn2');
         if (heroBtn) { heroBtn.innerHTML = '👋 Sign Out'; heroBtn.style.background = '#64748b'; }
@@ -5525,6 +5531,16 @@ function updateDriveAuthButton() {
             ps.id = 'glSignInPulseStyle';
             ps.textContent = '@keyframes glSignInPulse{0%,100%{box-shadow:0 0 0 0 rgba(102,126,234,0.5)}50%{box-shadow:0 0 0 6px rgba(102,126,234,0)}}';
             document.head.appendChild(ps);
+        }
+        // Inject animated arrow nudge next to Connect button when signed out
+        if (!document.getElementById('connectArrowNudge')) {
+            var arrow = document.createElement('span');
+            arrow.id = 'connectArrowNudge';
+            arrow.className = 'connect-arrow-nudge';
+            arrow.title = 'Tap to sign in';
+            arrow.textContent = '→';
+            var topbarRight = document.querySelector('.topbar-right');
+            if (topbarRight) topbarRight.insertBefore(arrow, topbarRight.firstChild);
         }
 
         const heroBtn = document.getElementById('googleDriveAuthBtn2');
@@ -5633,6 +5649,7 @@ async function handleGoogleDriveAuth(silent) {
             accessToken = null;
             currentUserEmail = null;
             localStorage.removeItem('deadcetera_google_email');
+            window._justSignedOut = true;
             updateSignInStatus(false);
         });
     } else {
@@ -5665,7 +5682,9 @@ async function handleGoogleDriveAuth(silent) {
                     console.warn  = origWarn;
                 }, 2000);
             } else {
-                tokenClient.requestAccessToken({ prompt: '' });
+                var prompt = window._justSignedOut ? 'select_account' : '';
+                window._justSignedOut = false;
+                tokenClient.requestAccessToken({ prompt: prompt });
             }
         } catch (error) {
             console.error('Sign-in failed:', error);
@@ -10613,14 +10632,14 @@ var _updateBannerShown = false;
 // Cleared automatically when the browser tab/session ends (true reload = new session = correct).
 var _GL_BANNER_KEY = 'gl_update_banner_dismissed';
 
-function showUpdateBanner() {
+function showUpdateBanner(serverVersion) {
     // Hard guard 1: in-memory (prevents double-fire within same page lifecycle)
     if (_updateBannerShown) return;
     // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
     // Hard guard 3: sessionStorage — survives in-app navigation but NOT a true reload.
     // If the user already dismissed the banner this session, never show again.
-    if (sessionStorage.getItem(_GL_BANNER_KEY) === BUILD_VERSION) return;
+    if (sessionStorage.getItem(_GL_BANNER_KEY) === _loadedVersion) return;
     _updateBannerShown = true;
     console.log('[Update] Creating banner');
     var banner = document.createElement('div');
@@ -10633,7 +10652,7 @@ function showUpdateBanner() {
     reloadBtn.textContent = 'Reload';
     reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em;white-space:nowrap;flex-shrink:0';
     reloadBtn.addEventListener('click', function() {
-        sessionStorage.setItem(_GL_BANNER_KEY, BUILD_VERSION);
+        sessionStorage.setItem(_GL_BANNER_KEY, serverVersion || BUILD_VERSION);
         banner.remove();
         // Tell waiting SW to take over, then reload
         if (navigator.serviceWorker) {
@@ -10660,7 +10679,7 @@ function showUpdateBanner() {
     dismissBtn.title = 'Dismiss — you can reload later';
     dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;margin-left:2px;flex-shrink:0;line-height:1';
     dismissBtn.addEventListener('click', function() {
-        sessionStorage.setItem(_GL_BANNER_KEY, BUILD_VERSION);
+        sessionStorage.setItem(_GL_BANNER_KEY, serverVersion || BUILD_VERSION);
         _updateBannerShown = false; // reset so a true reload can re-show if needed
         banner.remove();
     });

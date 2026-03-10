@@ -37,6 +37,7 @@ function venueShortLabel(v) {
 }
 
 async function deleteGig(idx) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this gig? This cannot be undone.')) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     data.splice(idx, 1);
@@ -50,6 +51,8 @@ async function editGig(idx) {
     const g = gigData[idx];
     if (!g) return;
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    window._cachedSetlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${venueShortLabel(v)}</option>`).join('');
     const el = document.getElementById('gigsList');
@@ -89,6 +92,7 @@ async function editGig(idx) {
 }
 
 async function saveGigEdit(idx) {
+    if (!requireSignIn()) return;
     const gigData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     gigData[idx] = {
         ...gigData[idx],
@@ -266,6 +270,7 @@ function gigsMapSetFilter(f, btn) {
 
 
 function renderGigsPage(el) {
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'gigs');
     el.innerHTML = `
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
@@ -289,6 +294,7 @@ function renderGigsPage(el) {
 }
 
 async function gigLaunchLinkedSetlist(setlistName) {
+    if (!requireSignIn()) return;
     var allSl = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var idx = allSl.findIndex(function(sl) { return (sl.name||'') === setlistName; });
     if (idx < 0) { showToast('Setlist not found'); return; }
@@ -326,7 +332,7 @@ async function loadGigs() {
         ${g.linkedSetlist ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist}</span>
             <button onclick="gigLaunchLinkedSetlist('${g.linkedSetlist.replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
-            <button onclick="navigateTo('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
+            <button onclick="showPage('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
         </div>` : ''}
     </div>`).join('');
 }
@@ -377,14 +383,49 @@ function gigVenueSelected(sel) {
     if (!input) return;
     if (val === '__new__') {
         sel.value = '';
-        // Navigate to Venues page to add a new venue
-        showToast('💡 Adding venue — your gig progress is saved in the form. Come back after adding!');
-        setTimeout(function() { navigateTo('venues'); }, 1500);
+        var ex = document.getElementById('gigAddVenueModal'); if (ex) ex.remove();
+        var m = document.createElement('div');
+        m.id = 'gigAddVenueModal';
+        m.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        m.innerHTML = '<div style="background:#1e293b;border-radius:12px;padding:24px;width:100%;max-width:420px">'
+            + '<h3 style="margin:0 0 16px;color:#fff">🏛 Add New Venue</h3>'
+            + '<div class="form-row" style="margin-bottom:10px"><label class="form-label">Venue Name</label><input class="app-input" id="newVenueName" placeholder="e.g. The Earl"></div>'
+            + '<div class="form-row" style="margin-bottom:10px"><label class="form-label">City / Area</label><input class="app-input" id="newVenueCity" placeholder="e.g. Atlanta, GA"></div>'
+            + '<div class="form-row" style="margin-bottom:16px"><label class="form-label">Address (optional)</label><input class="app-input" id="newVenueAddress" placeholder="e.g. 488 Flat Shoals Ave"></div>'
+            + '<div style="display:flex;gap:8px">'
+            + '<button onclick="gigSaveNewVenue()" class="btn btn-success" style="flex:1">💾 Save Venue</button>'
+            + '<button onclick="document.getElementById(String.fromCharCode(103,105,103,65,100,100,86,101,110,117,101,77,111,100,97,108)).remove()" class="btn btn-ghost" style="flex:1">Cancel</button>'
+            + '</div></div>';
+        document.body.appendChild(m);
+        setTimeout(function(){ var n=document.getElementById('newVenueName'); if(n) n.focus(); },100);
     } else if (val) {
         input.value = val;
     }
 }
 
+async function gigSaveNewVenue() {
+    var name = (document.getElementById("newVenueName")||{}).value||"";
+    var city = (document.getElementById("newVenueCity")||{}).value||"";
+    var addr = (document.getElementById("newVenueAddress")||{}).value||"";
+    var t = name.trim();
+    if (!t) { showToast("Please enter a venue name"); return; }
+    var venues = toArray(await loadBandDataFromDrive("_band", "venues") || []);
+    venues.push({ name: t, city: city, address: addr, created: new Date().toISOString() });
+    venues.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
+    await saveBandDataToDrive("_band", "venues", venues);
+    var modal = document.getElementById("gigAddVenueModal"); if (modal) modal.remove();
+    var sel = document.getElementById("gigVenueSelect");
+    if (sel) {
+        var opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = city ? t+" — "+city : t;
+        opt.selected = true;
+        sel.insertBefore(opt, sel.lastElementChild);
+    }
+    var inp = document.getElementById("gigVenue"); if (inp) inp.value = t;
+    showToast("🏛 Venue saved!");
+}
+window.gigSaveNewVenue = gigSaveNewVenue;
 // Sync a gig record to calendar_events — upsert by venue+date key
 async function _syncGigToCalendar(gig, createdKey) {
     if (!gig || !gig.date || !gig.venue) return;
@@ -411,6 +452,7 @@ async function _syncGigToCalendar(gig, createdKey) {
 }
 
 async function saveGig() {
+    if (!requireSignIn()) return;
     const gig = {
         venue:      document.getElementById('gigVenue')?.value?.trim(),
         date:       document.getElementById('gigDate')?.value,
@@ -626,6 +668,7 @@ var _gmOverlayBuilt = false;
 
 // ── Launch from setlist card ─────────────────────────────────────────────────
 async function launchGigMode(setlistIdx) {
+    if (!requireSignIn()) return;
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var sl = data[setlistIdx];
     if (!sl) { showToast('Setlist not found'); return; }
@@ -719,6 +762,7 @@ function rmCaptureMoment() {
 function rmCaptureCancel() { document.getElementById('rmCapturePopup')?.remove(); }
 
 async function rmCaptureSave() {
+    if (!requireSignIn()) return;
     var ta = document.getElementById('rmCaptureText');
     var text = ta ? ta.value.trim() : '';
     if (!text) { showToast('Write something first!'); return; }

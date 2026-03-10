@@ -17,6 +17,7 @@
 //   POST /spotify-search  → Search Spotify for tracks (client credentials)
 //   POST /odesli-links    → Get cross-platform links via Odesli/Songlink
 //   GET  /fadr-diag       → Fadr API key diagnostics
+//   GET  /ical/:bandSlug  → Live ICS calendar feed for Google/Apple Calendar
 
 export default {
   async fetch(request, env, ctx) {
@@ -57,6 +58,8 @@ export default {
       return handleOdesliLinks(request);
     if (path === '/fadr-diag' && request.method === 'GET')
       return handleFadrDiag(request, env);
+    if (path.startsWith('/ical/') && request.method === 'GET')
+      return handleICalFeed(request, env, path);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -614,4 +617,189 @@ async function handleOdesliLinks(request) {
     }
     return jsonResp({ links, title, artist, thumbnail, pageUrl: data.pageUrl || '' });
   } catch(e) { return jsonResp({ error: e.message, links: {} }, 500); }
+}
+
+// ── ICS Calendar Feed ─────────────────────────────────────────────────────────
+// GET /ical/:bandSlug  → Live VCALENDAR ICS feed for Google/Apple/Outlook.
+// Band members subscribe once — events auto-update via 1h cache TTL.
+//
+// Firebase path: /bands/{bandSlug}/_band/calendar_events
+// UID stability: ev.id > ev.uid > ev.created (never hash title+date)
+// Schema: supports both current {date,time} and future {start_at,end_at}
+
+const FIREBASE_PROJECT = 'deadcetera-35424';
+const FIREBASE_BASE    = 'https://' + FIREBASE_PROJECT + '-default-rtdb.firebaseio.com';
+
+async function handleICalFeed(request, env, path) {
+  try {
+    // Sanitize slug — only lowercase alphanumeric, hyphens, underscores
+    const bandSlug = path.replace('/ical/', '').replace(/[^a-z0-9_-]/gi, '').toLowerCase();
+    if (!bandSlug) {
+      return new Response('Band slug required. Use /ical/deadcetera', { status: 400 });
+    }
+
+    // Read events from Firebase REST (no auth needed for public band data)
+    const fbUrl = FIREBASE_BASE + '/bands/' + bandSlug + '/_band/calendar_events.json';
+    let fbRes;
+    try {
+      fbRes = await fetch(fbUrl, { headers: { 'Accept': 'application/json' } });
+    } catch (fetchErr) {
+      return new Response('Firebase unreachable: ' + fetchErr.message, { status: 502 });
+    }
+    if (fbRes.status === 404) {
+      // Band exists but has no events — return valid empty calendar
+      return icsResponse(icsCalendar([], bandSlug), bandSlug);
+    }
+    if (!fbRes.ok) {
+      return new Response('Firebase error ' + fbRes.status, { status: 502 });
+    }
+
+    const raw = await fbRes.json();
+    // Firebase returns null when path is empty, object when populated, or array
+    let events = [];
+    if (Array.isArray(raw)) {
+      events = raw.filter(Boolean);
+    } else if (raw && typeof raw === 'object') {
+      events = Object.values(raw).filter(Boolean);
+    }
+    // raw === null means no events — valid, return empty calendar
+
+    return icsResponse(icsCalendar(events, bandSlug), bandSlug);
+
+  } catch(e) {
+    // Return error as valid ICS with descriptive X-ERROR header
+    // rather than returning non-ICS text which breaks subscribed clients
+    return new Response(
+      'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//GrooveLinx//Band Calendar//EN\r\nX-ERROR:' + e.message + '\r\nEND:VCALENDAR',
+      { status: 200, headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Access-Control-Allow-Origin': '*' } }
+    );
+  }
+}
+
+function icsResponse(icsString, bandSlug) {
+  return new Response(icsString, {
+    status: 200,
+    headers: {
+      // text/calendar is the correct MIME type per RFC 5545
+      'Content-Type': 'text/calendar; charset=utf-8',
+      // inline so Google Calendar can read it directly; attachment for direct-download browsers
+      'Content-Disposition': 'inline; filename="' + bandSlug + '-groovelinx.ics"',
+      // 1h cache: subscribed clients re-fetch hourly. Matches X-PUBLISHED-TTL in body.
+      // Must NOT be no-store or Google Calendar subscription breaks.
+      'Cache-Control': 'public, max-age=3600, s-maxage=3600',
+      'Access-Control-Allow-Origin': '*',
+    }
+  });
+}
+
+function icsCalendar(events, bandSlug) {
+  const slug    = bandSlug || 'groovelinx';
+  const calName = 'GrooveLinx \u2014 ' + slug.charAt(0).toUpperCase() + slug.slice(1) + ' Band Calendar';
+  const nowStr  = icsUTCStr(new Date());
+
+  const vevents = events
+    .filter(function(ev) { return ev && (ev.date || ev.start_at); })
+    .map(function(ev) { return icsVEvent(ev, nowStr); })
+    .filter(Boolean)
+    .join('\r\n');
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//GrooveLinx//Band Calendar//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    icsFold('X-WR-CALNAME:' + icsEsc(calName)),
+    'X-WR-TIMEZONE:America/New_York',
+    'X-PUBLISHED-TTL:PT1H',
+    vevents,
+    'END:VCALENDAR'
+  ].filter(Boolean).join('\r\n');
+}
+
+function icsVEvent(ev, nowStr) {
+  try {
+    // Time parsing: prefer future schema (start_at/end_at), fall back to date+time
+    let start, end;
+    if (ev.start_at) {
+      start = new Date(ev.start_at);
+      end   = ev.end_at ? new Date(ev.end_at) : new Date(start.getTime() + 7200000);
+    } else {
+      const timeStr = (ev.time && /^\d{1,2}:\d{2}$/.test(ev.time)) ? ev.time : '19:00';
+      start = new Date(ev.date + 'T' + timeStr + ':00');
+      end   = new Date(start.getTime() + 7200000);
+    }
+    if (isNaN(start.getTime())) return ''; // Malformed date — skip silently
+
+    // UID: stable identity. Priority: id > uid > created. Never hash title+date.
+    const uidBase = (ev.id || ev.uid || ev.created || '');
+    const uid     = (uidBase ? uidBase.replace(/[^a-zA-Z0-9\-_.]/g, '') : icsGenId()) + '@groovelinx.band';
+
+    const lastMod = ev.updated_at ? icsUTCStr(new Date(ev.updated_at)) : nowStr;
+
+    // SUMMARY: no emoji (Outlook strips them; plain text is safest)
+    const typeLabel = { rehearsal: 'Rehearsal', gig: 'Gig', meeting: 'Meeting', other: 'Event' };
+    const summary   = (typeLabel[ev.type] || 'Event') + ': ' + (ev.title || 'Untitled');
+
+    // CATEGORIES: maps to calendar color in Google Calendar
+    const catMap  = { rehearsal: 'REHEARSAL', gig: 'GIG', meeting: 'MEETING', other: 'EVENT' };
+    const category = catMap[ev.type] || 'EVENT';
+
+    // DESCRIPTION: multiline, all fields visible in calendar event detail
+    const desc = [
+      ev.type    ? 'Type: ' + (typeLabel[ev.type] || ev.type)  : null,
+      ev.venue   ? 'Venue: ' + ev.venue                        : null,
+      ev.linkedSetlist ? 'Setlist: ' + ev.linkedSetlist        : null,
+      ev.notes   ? ev.notes                                    : null,
+      '\u2014 GrooveLinx Band Calendar',
+    ].filter(Boolean).join('\n');
+
+    const lines = [
+      'BEGIN:VEVENT',
+      icsFold('UID:'          + uid),
+      icsFold('DTSTAMP:'      + nowStr),
+      icsFold('LAST-MODIFIED:' + lastMod),
+      icsFold('DTSTART:'      + icsUTCStr(start)),
+      icsFold('DTEND:'        + icsUTCStr(end)),
+      icsFold('SUMMARY:'      + icsEsc(summary)),
+      icsFold('CATEGORIES:'   + category),
+      icsFold('DESCRIPTION:'  + icsEsc(desc)),
+    ];
+    if (ev.venue) lines.push(icsFold('LOCATION:' + icsEsc(ev.venue)));
+    lines.push('STATUS:CONFIRMED');
+    lines.push('TRANSP:OPAQUE');
+    lines.push('END:VEVENT');
+    return lines.join('\r\n');
+  } catch(e) {
+    return ''; // Malformed event — skip silently, don't break the feed
+  }
+}
+
+// ── ICS utilities (worker-side, no DOM) ──────────────────────────────────────
+
+function icsUTCStr(d) {
+  return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+}
+
+function icsEsc(str) {
+  // RFC 5545 §3.3.11: escape backslash first, then semicolon, comma, newlines
+  return (str || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r\n|\r|\n/g, '\\n');
+}
+
+function icsFold(line) {
+  // RFC 5545 §3.1: fold at 75 octets, continuation lines begin with single space
+  if (line.length <= 75) return line;
+  const out = [line.slice(0, 75)];
+  let i = 75;
+  while (i < line.length) { out.push(' ' + line.slice(i, i + 74)); i += 74; }
+  return out.join('\r\n');
+}
+
+function icsGenId() {
+  // Simple random ID for last-resort UID generation (no crypto needed in worker)
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }

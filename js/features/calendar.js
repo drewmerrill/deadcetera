@@ -32,10 +32,13 @@ async function calShowEvent(idx) {
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${ev.date}';showPage('practice')" class="btn btn-primary btn-sm">📋 Practice Plan</button>` : ''}
+        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${ev.date}';showPage('rehearsal')" class="btn btn-primary btn-sm">📅 Rehearsal Plan</button>` : ''}
         <button onclick="calEditEvent(${idx})" class="btn btn-ghost btn-sm">✏️ Edit</button>
         <button onclick="calDeleteEvent(${idx})" class="btn btn-danger btn-sm">✕ Delete</button>
         <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07)">
+        ${typeof calExportButtonsHTML === 'function' ? calExportButtonsHTML(ev, '_calExp_' + idx) : ''}
     </div>`;
     area.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
@@ -53,6 +56,16 @@ function renderCalendarPage(el) {
 }
 
 function renderCalendarInner() {
+    // Mobile: pull grid card edge-to-edge to fit 7 columns
+    if (window.innerWidth <= 640) {
+        var style = document.getElementById('_calGridStyle');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = '_calGridStyle';
+            style.textContent = '#calendarInner .app-card:first-child{margin:0 -16px!important;border-radius:0!important;border-left:none!important;border-right:none!important;padding:12px 0!important;width:calc(100vw)!important;box-sizing:border-box!important;} #calGrid{padding:0 2px!important;}';
+            document.head.appendChild(style);
+        }
+    }
     const el = document.getElementById('calendarInner');
     if (!el) return;
     const year = calViewYear, month = calViewMonth;
@@ -76,6 +89,7 @@ function renderCalendarInner() {
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
         <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Block Dates</button>
+        <button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||'deadcetera')" style="color:var(--accent-light)" title="Subscribe to band calendar in Google/Apple Calendar">📅 Subscribe</button>
     </div>
     <div class="app-card" id="calEventFormArea"></div>
     <div class="app-card"><h3>📌 Upcoming Events</h3>
@@ -167,18 +181,23 @@ async function loadCalendarEvents() {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">No upcoming events. Click a date or + Add Event.</div>';
     } else {
         el.innerHTML = upcoming.map((e,i) => {
+            // Stamp event onto window now (at render time) so onclick can safely reference it
+            // Cannot reference `upcoming` inside onclick — it's out of scope once innerHTML is set
+            var wk = '_calEv_' + i; window[wk] = e;
             const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[e.type]||'📌';
             const isRehearsal = e.type === 'rehearsal';
             return `<div class="list-item" style="padding:10px 12px;gap:10px">
                 <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
                 <div style="flex:1;min-width:0">
-                    <div style="font-weight:600">${typeIcon} ${e.title||'Untitled'}</div>
-                    ${e.venue?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px">📍 ${e.venue}</div>`:''}
-                    ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light)">📋 ${e.linkedSetlist}</div>`:''}
+                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${typeIcon} ${e.title||'Untitled'}</div>
+                    ${e.venue?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📍 ${e.venue}</div>`:''}
+                    ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📋 ${e.linkedSetlist}</div>`:''}
                 </div>
                 ${e.time?`<span style="font-size:0.75em;color:var(--text-muted);flex-shrink:0">${e.time}</span>`:''}
-                <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap">
-                    ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('practice')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
+                <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:nowrap;align-items:center">
+                    ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('rehearsal')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
+                    <button onclick="var u=calExportGoogleLink(window['_calEv_${i}']);if(u!=='#')window.open(u,'_blank')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Add to Google Calendar">📅</button>
+                    <button onclick="calExportICS(window['_calEv_${i}'])" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Download .ics">⬇️</button>
                     <button onclick="calEditEvent(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
                     <button onclick="calDeleteEvent(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;">✕</button>
                 </div>
@@ -387,10 +406,19 @@ async function calSaveEvent(editIdx) {
         const old = upcoming[editIdx];
         if (old) {
             const i = events.findIndex(e => e.date===old.date && e.title===old.title);
-            if (i >= 0) { events[i] = {...events[i], ...ev}; }
+            if (i >= 0) {
+                // Preserve existing id (never overwrite a stable id)
+                const existingId = events[i].id;
+                events[i] = { ...events[i], ...ev };
+                if (existingId) events[i].id = existingId;
+                events[i].updated_at = new Date().toISOString();
+            }
         }
     } else {
         ev.created = new Date().toISOString();
+        ev.updated_at = ev.created;
+        // Stamp a stable id at creation — this is the most important moment
+        ev.id = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36);
         events.push(ev);
     }
     await saveBandDataToDrive('_band', 'calendar_events', events);
@@ -457,3 +485,4 @@ window.calVenueSelected = calVenueSelected;
 window.calEditEvent = calEditEvent;
 window.calDeleteEvent = calDeleteEvent;
 window.calSaveEvent = calSaveEvent;
+window.calShowSubscribeModal = typeof calShowSubscribeModal !== 'undefined' ? calShowSubscribeModal : function() { alert('Calendar export module not loaded.'); };

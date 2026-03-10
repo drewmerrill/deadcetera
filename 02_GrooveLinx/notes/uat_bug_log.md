@@ -17,22 +17,20 @@ Version: 2.1 — Full Historical Record · Updated 2026-03-08-S2
 **Type:** Environment / Config
 
 **Expected:**
-Local GrooveLinx at `http://localhost:8000` should allow Google sign-in / token flow during development.
+Local GrooveLinx at `http://localhost:8000` should allow Google sign-in during development.
 
 **Actual:**
-Google returned `redirect_uri_mismatch` / origin mismatch when attempting local sign-in from `http://localhost:8000`.
+Google returned origin mismatch when attempting local sign-in from `http://localhost:8000`.
 
-**Steps to Reproduce:**
-1. Run local server on port 8000
-2. Open GrooveLinx locally
-3. Click Google sign-in / sync button
-4. Google rejects the request
-
-**Likely Cause / Notes:**
-The relevant credential was the **OAuth client**, not the browser API key restriction. GrooveLinx uses `google.accounts.oauth2.initTokenClient(...)`, so local development required `http://localhost:8000` to be added as an **Authorized JavaScript origin** on the OAuth client.
+**Root Cause:**
+The OAuth credential is **not** in the `deadcetera-35424` GCP project. It lives in a separate project called **"Deadcetera YouTube"**. The client is named **"Deadcetera Web Client"**.
+- Client ID: `177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com`
+- Defined in: `js/core/firebase-service.js` as `GOOGLE_DRIVE_CONFIG.clientId`
 
 **Fix Applied:**
-Added `http://localhost:8000` to the OAuth client’s Authorized JavaScript origins. Confirmed local development should use the token-client flow assumptions rather than Firebase popup/redirect assumptions.
+Added `http://localhost:8000` to Authorized JavaScript Origins on "Deadcetera Web Client" in the "Deadcetera YouTube" GCP project. No redirect URIs needed — `initTokenClient` is a token flow, not a redirect flow.
+
+**Note:** The `deadcetera-35424` project API key also needs `http://localhost:8000` added to its HTTP referrers list for Maps/Firebase calls to work locally.
 
 
 ---

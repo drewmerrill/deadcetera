@@ -1,4 +1,36 @@
+groovelinx_doc_patch/
+apply_patches.py
+patch.py
 
-.DS_Store
+# --- Session / AI workflow files ---
+NEXT_SESSION.md
+SESSION_CLOSEOUT_*.md
+
+# --- Claude patch tooling ---
+apply_patches.py
+patch.py
+uat*_patch*/
+groovelinx_doc_patch/
+
+# --- Local tool caches ---
+.wrangler/
+__pycache__/
+*.pyc
+
+# --- Logs ---
+*.log
+
+# --- Node / package installs ---
+node_modules/
+
+# --- Temporary / backup files ---
 *.bak
+*.tmp
 *.zip
+*.tar
+
+# --- macOS junk ---
+.DS_Store
+
+# --- Safety guard ---
+/mnt/

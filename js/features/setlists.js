@@ -15,6 +15,7 @@
 // SETLIST BUILDER
 // ============================================================================
 function renderSetlistsPage(el) {
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
     el.innerHTML = `
     <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
@@ -159,6 +160,7 @@ async function exportSetlistToiPad(setlistIndex) {
 }
 
 function createNewSetlist() {
+    if (!requireSignIn()) return;
     const container = document.getElementById('setlistsList');
     if (!container) return;
     window._slSets = [{ name: 'Set 1', songs: [] }];
@@ -169,7 +171,7 @@ function createNewSetlist() {
             <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" placeholder="Venue name"></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
         </div>
-        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="margin-bottom:4px"><div id="slSongResults0"></div></div></div></div>
+        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
             <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
@@ -178,15 +180,29 @@ function createNewSetlist() {
         </div></div>`;
 }
 
+var _slOnlyActive = false; // Pierce filter: show only prospect/wip/gig_ready songs
+
+function slToggleActiveFilter(btn) {
+    _slOnlyActive = !_slOnlyActive;
+    btn.style.background = _slOnlyActive ? 'var(--accent)' : 'rgba(255,255,255,0.06)';
+    btn.style.color = _slOnlyActive ? 'white' : 'var(--text-muted)';
+    btn.textContent = _slOnlyActive ? '⚡ Active Only' : '⚡ All Songs';
+}
+
 function slSearchSong(input, setIdx) {
     const q = input.value.toLowerCase();
     const results = document.getElementById('slSongResults' + setIdx);
     if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
-    const matches = (typeof allSongs !== "undefined" ? allSongs : songs || []).filter(s => s.title.toLowerCase().includes(q)).slice(0, 8);
+    const _activeStatuses = ['prospect','wip','gig_ready'];
+    const matches = (typeof allSongs !== "undefined" ? allSongs : songs || [])
+        .filter(s => s.title.toLowerCase().includes(q))
+        .filter(s => !_slOnlyActive || _activeStatuses.includes(window.statusCache && window.statusCache[s.title]))
+        .slice(0, 12);
     results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onclick="slAddSongToSet(${setIdx},this.dataset.title)">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
 }
 function slAddSongToSet(setIdx, title) {
+    if (!requireSignIn()) return;
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
     window._slSets[setIdx].songs.push({title: title, segue: 'stop'});
     slRenderSetSongs(setIdx);
@@ -392,6 +408,7 @@ function slRemoveSong(setIdx, songIdx) {
 
 let _slSetCount = 1;
 function slAddSet(type) {
+    if (!requireSignIn()) return;
     const name = type === 'encore' ? 'Encore' : type === 'soundcheck' ? '🔊 Soundcheck' : ('Set ' + (++_slSetCount));
     window._slSets.push({ name, songs: [] });
     const idx = window._slSets.length - 1;
@@ -401,11 +418,12 @@ function slAddSet(type) {
         <div class="app-card" style="background:rgba(255,255,255,0.02)">
             <h3 style="color:${color}">${name}</h3>
             <div id="slSet${idx}Songs"></div>
-            <div style="margin-top:8px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="margin-bottom:4px"><div id="slSongResults${idx}"></div></div>
+            <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults${idx}"></div></div>
         </div>`);
 }
 
 async function slSaveSetlist() {
+    if (!requireSignIn()) return;
     const sl = {
         name: document.getElementById('slName')?.value || 'Untitled',
         date: document.getElementById('slDate')?.value || '',
@@ -418,6 +436,7 @@ async function slSaveSetlist() {
     existing.push(sl);
     await saveBandDataToDrive('_band', 'setlists', existing);
     showToast('✅ Setlist saved!');
+    window._cachedSetlists = null;
     loadSetlists();
 }
 
@@ -435,16 +454,17 @@ async function editSetlist(idx) {
     container.innerHTML = `<div class="app-card"><h3>Edit: ${sl.name||'Untitled'}</h3>
         <div class="form-grid" style="margin-bottom:12px">
             <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" value="${(sl.name||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${sl.date||''}"></div>
+            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${sl.date||''}" style="max-width:100%;box-sizing:border-box;padding-right:36px;"></div>
             <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" value="${(sl.venue||'').replace(/"/g,'&quot;')}"></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" value="${(sl.notes||'').replace(/"/g,'&quot;')}"></div>
         </div>
+        <div id="slLinkedGigRow" style="margin-bottom:8px"></div>
         <div id="slReadinessMeter"></div>
         <div id="slSets">${window._slSets.map((set, si) => `
             <div class="app-card" style="background:rgba(255,255,255,0.02)">
                 <h3 style="color:var(--accent-light)">${set.name||'Set '+(si+1)}</h3>
                 <div id="slSet${si}Songs"></div>
-                <div style="margin-top:8px"><input class="app-input" id="slAddSong${si}" placeholder="Type song name..." oninput="slSearchSong(this,${si})" style="margin-bottom:4px"><div id="slSongResults${si}"></div></div>
+                <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${si}" placeholder="Type song name..." oninput="slSearchSong(this,${si})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults${si}"></div></div>
             </div>`).join('')}
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -459,6 +479,23 @@ async function editSetlist(idx) {
     // Render existing songs in each set
     window._slSets.forEach((set, si) => slRenderSetSongs(si));
     slEnrichKeyBpm();
+    (async function() {
+        var row = document.getElementById("slLinkedGigRow");
+        if (!row || !sl.date) return;
+        try {
+            var gigs = toArray(await loadBandDataFromDrive("_band", "gigs") || []);
+            var match = gigs.find(function(g){ return g.date === sl.date; });
+            if (match) {
+                var gigIdx = gigs.indexOf(match);
+                var label = match.title || match.venue || "Gig";
+                var html = '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(99,102,241,0.12);border-radius:8px;font-size:0.85em">';
+                html += '<span style="color:var(--accent-light)">⼿ Linked Gig:</span>';
+                html += '<span style="color:#fff;font-weight:600">' + label + '</span>';
+                html += '<button onclick="showPage(\'gigs\');setTimeout(function(){editGig(' + gigIdx + ');},400);" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer">Open →</button></div>';
+                row.innerHTML = html;
+            }
+        } catch(e) {}
+    })();
 }
 
 function slShareSetlist(idx) {
@@ -768,6 +805,7 @@ function parachuteOpenOfflinePack() {
 
 
 async function slSaveSetlistEdit(idx) {
+    if (!requireSignIn()) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data[idx] = {
         ...data[idx],
@@ -780,10 +818,12 @@ async function slSaveSetlistEdit(idx) {
     };
     await saveBandDataToDrive('_band', 'setlists', data);
     showToast('✅ Setlist updated!');
+    window._cachedSetlists = null;
     loadSetlists();
 }
 
 async function deleteSetlist(idx) {
+    if (!requireSignIn()) return;
     if (!confirm('Delete this setlist? This cannot be undone.')) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data.splice(idx, 1);

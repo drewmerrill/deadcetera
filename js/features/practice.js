@@ -1,454 +1,618 @@
-// ============================================================================
-// js/features/practice.js
-// Practice Plan: per-rehearsal song checklists linked to calendar events.
-// Extracted from app.js Wave-3 refactor.
+// ─────────────────────────────────────────────────────────────────────────────
+// practice.js — Personal Practice (Woodshed) + Practice Mixes
 //
-// DEPENDS ON: firebase-service.js, utils.js, calendar.js
-// EXPOSES globals: renderPracticePage, renderPracticePlanForDate,
-//   practicePlanSelectDate, sendToPracticePlan, exportPracticePlan
-// ============================================================================
-
+// Tabs:
+//   Focus  — This Week / Needs Polish / Gig Ready / weak songs / readiness
+//   Mixes  — practiceMixes CRUD, shareSlug, band sharing
+//
+// Firebase schema:
+//   bandPath('practice_mixes/{mixId}') → { id, title, type, songIds[], createdBy,
+//     createdAt, shareSlug, isShared }
+//
+// EXPOSES: renderPracticePage, loadSongStatusMap
+// DEPENDS ON: allSongs, readinessCache, loadBandDataFromDrive,
+//             saveBandDataToDrive, bandPath, firebaseDB, showToast,
+//             toArray, getCurrentMemberReadinessKey, sanitizeFirebasePath
+// ─────────────────────────────────────────────────────────────────────────────
 'use strict';
 
-// ============================================================================
-// PRACTICE PLAN
-// ============================================================================
-// ============================================================================
-// PRACTICE PLAN — linked to calendar rehearsal events
-// Each rehearsal event on the calendar has its own plan stored under
-// _band/practice_plans/{YYYY-MM-DD}
-// ============================================================================
+// ── Module state ──────────────────────────────────────────────────────────────
+var _pmTab         = 'focus';      // 'focus' | 'mixes'
+var _pmMixes       = [];           // loaded mix objects
+var _pmEditingMix  = null;         // mix object being edited/created (null = none)
+var _pmMixSongs    = [];           // working song list for editor
 
-var practicePlanActiveDate = null;   // which rehearsal's plan is open — global: written by calendar.js + notifications.js
+var MIX_TYPES = [
+    { id:'practice',   emoji:'🎯', label:'Practice'       },
+    { id:'rehearsal',  emoji:'🎸', label:'Rehearsal Prep'  },
+    { id:'gig',        emoji:'🎤', label:'Gig Prep'        },
+    { id:'weak',       emoji:'⚠️', label:'Weak Songs'      },
+];
 
+// ── Page entry point ──────────────────────────────────────────────────────────
 async function renderPracticePage(el) {
-    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Loading...</div>';
+    if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'practice');
 
-    // Load song statuses and calendar events in parallel
-    const [statusMap, allEvents] = await Promise.all([
-        loadSongStatusMap(),
-        loadCalendarEventsRaw()
-    ]);
+    el.innerHTML =
+        '<div class="page-header">' +
+        '  <h1>🎯 Practice</h1>' +
+        '  <p>Woodshed and your practice mixes</p>' +
+        '</div>' +
+        '<div style="display:flex;gap:0;margin:0 0 16px;border-bottom:2px solid rgba(255,255,255,0.08)">' +
+        '  <button id="pm-tab-focus" class="pm-tab pm-tab--active" onclick="pmSwitchTab(\'focus\')">🎯 Focus</button>' +
+        '  <button id="pm-tab-mixes" class="pm-tab" onclick="pmSwitchTab(\'mixes\')">🎵 Mixes</button>' +
+        '</div>' +
+        '<div id="pm-panel-focus"></div>' +
+        '<div id="pm-panel-mixes" style="display:none"></div>';
 
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    _pmInjectStyles();
+    _pmTab = 'focus';
+    _pmRenderFocusTab();
+    _pmRenderMixesTab();   // pre-load mixes in background
+}
 
-    // Filter to rehearsal events only, sorted by date
-    const rehearsals = allEvents
-        .filter(e => e.type === 'rehearsal')
-        .sort((a,b) => (a.date||'').localeCompare(b.date||''));
+// ── Tab switching ─────────────────────────────────────────────────────────────
+window.pmSwitchTab = function pmSwitchTab(tab) {
+    _pmTab = tab;
+    document.querySelectorAll('.pm-tab').forEach(function(b) {
+        b.classList.toggle('pm-tab--active', b.id === 'pm-tab-' + tab);
+    });
+    document.getElementById('pm-panel-focus').style.display = tab === 'focus' ? 'block' : 'none';
+    document.getElementById('pm-panel-mixes').style.display = tab === 'mixes' ? 'block' : 'none';
+};
 
-    // Find next upcoming rehearsal (or most recent past one)
-    const upcoming = rehearsals.filter(r => new Date(r.date+'T00:00:00') >= today);
-    const past     = rehearsals.filter(r => new Date(r.date+'T00:00:00') <  today);
-    const defaultEvent = upcoming[0] || past[past.length-1] || null;
+// ── Focus Tab ─────────────────────────────────────────────────────────────────
+async function _pmRenderFocusTab() {
+    var el = document.getElementById('pm-panel-focus');
+    if (!el) return;
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-dim)">Loading…</div>';
 
-    if (!practicePlanActiveDate && defaultEvent) {
-        practicePlanActiveDate = defaultEvent.date;
+    var statusMap = await loadSongStatusMap();
+    var songList  = typeof allSongs !== 'undefined' ? allSongs : [];
+
+    // App status values: '' | 'prospect' | 'wip' | 'gig_ready'
+    // Map to Focus buckets:
+    //   'wip'       → needsPolish  (work in progress = needs polish)
+    //   'prospect'  → onDeck       (on the radar but not yet active)
+    //   'gig_ready' → gigReady
+    //   legacy values kept for forward compat
+    var thisWeek    = songList.filter(function(s){return statusMap[s.title]==='this_week';});
+    var needsPolish = songList.filter(function(s){
+        var st = statusMap[s.title];
+        return st === 'needs_polish' || st === 'wip';
+    });
+    var gigReady    = songList.filter(function(s){return statusMap[s.title]==='gig_ready';});
+    var onDeck      = songList.filter(function(s){
+        var st = statusMap[s.title];
+        return st === 'on_deck' || st === 'prospect';
+    });
+
+    function songRow(s, badge) {
+        badge = badge || '';
+        return '<div class="list-item" style="cursor:pointer" onclick="selectSong(\''+s.title.replace(/'/g,"\\'")+'\')">'+
+               '<span style="color:var(--text-dim);font-size:0.78em;min-width:35px;flex-shrink:0">'+(s.band||'')+'</span>'+
+               '<span style="flex:1">'+s.title+'</span>'+badge+'</div>';
     }
 
-    const songList = typeof allSongs !== 'undefined' ? allSongs : [];
-    const thisWeek    = songList.filter(s => statusMap[s.title] === 'this_week');
-    const needsPolish = songList.filter(s => statusMap[s.title] === 'needs_polish');
-    const gigReady    = songList.filter(s => statusMap[s.title] === 'gig_ready');
-    const onDeck      = songList.filter(s => statusMap[s.title] === 'on_deck');
+    var html = '';
+    html += '<div id="practice-weak-songs"></div>';
 
-    function songRow(s, badge='') {
-        return `<div class="list-item" style="cursor:pointer" onclick="selectSong('${s.title.replace(/'/g,"\\'")}');showPage('songs')">
-            <span style="color:var(--text-dim);font-size:0.78em;min-width:35px;flex-shrink:0">${s.band||''}</span>
-            <span style="flex:1">${s.title}</span>${badge}
-        </div>`;
+    if (thisWeek.length || needsPolish.length) {
+        html += '<div class="app-card" style="margin-bottom:16px">'+
+                '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🔥 This Week\'s Focus</div>'+
+                thisWeek.map(function(s){return songRow(s,'<span style="background:rgba(239,68,68,0.15);color:#f87171;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">THIS WEEK</span>');}).join('')+
+                needsPolish.map(function(s){var st=statusMap[s.title];var badge=st==='wip'?'<span style="background:rgba(245,158,11,0.15);color:#fbbf24;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">WIP</span>':'<span style="background:rgba(245,158,11,0.15);color:#fbbf24;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">NEEDS POLISH</span>';return songRow(s,badge);}).join('')+
+                '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:10px;padding-top:10px;font-size:0.78em;color:var(--text-dim)">Tap any song to open it.</div>'+
+                '</div>';
+    }
+    if (gigReady.length) {
+        html += '<div class="app-card" style="margin-bottom:16px">'+
+                '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">✅ Gig Ready</div>'+
+                gigReady.map(function(s){return songRow(s,'<span style="background:rgba(34,197,94,0.12);color:#4ade80;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">GIG READY</span>');}).join('')+
+                '</div>';
+    }
+    if (onDeck.length) {
+        html += '<div class="app-card" style="margin-bottom:16px">'+
+                '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🃏 On Deck</div>'+
+                onDeck.map(function(s){return songRow(s);}).join('')+
+                '</div>';
+    }
+    if (!thisWeek.length && !needsPolish.length && !gigReady.length && !onDeck.length) {
+        html += '<div class="app-card" style="margin-bottom:16px;text-align:center;padding:32px 20px">'+
+                '<div style="font-size:2em;margin-bottom:10px">🎸</div>'+
+                '<div style="font-weight:700;margin-bottom:6px">No songs in the queue yet</div>'+
+                '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Open any song → set status to <b>Work in Progress</b>, <b>Prospect</b>, or <b>Gig Ready</b> to see it here.</div>'+
+                '<button class="btn btn-primary" onclick="showPage(\'songs\')">Browse Song Library →</button>'+
+                '</div>';
     }
 
-    // Build rehearsal selector tabs
-    const tabsHtml = rehearsals.length === 0 ? '' : `
-    <div class="app-card" style="margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <h3 style="margin:0">🎸 Rehearsal Plans</h3>
-            <button class="btn btn-primary btn-sm" onclick="practicePlanNew()">+ New Rehearsal</button>
-        </div>
-        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none">
-            ${rehearsals.map(r => {
-                const isPast = new Date(r.date+'T00:00:00') < today;
-                const isActive = r.date === practicePlanActiveDate;
-                const label = formatPracticeDate(r.date);
-                return `<button onclick="practicePlanSelectDate('${r.date}')"
-                    style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1px solid ${isActive?'var(--accent)':'var(--border)'};
-                    background:${isActive?'var(--accent)':'rgba(255,255,255,0.03)'};
-                    color:${isActive?'white':isPast?'var(--text-dim)':'var(--text-muted)'};
-                    font-size:0.78em;font-weight:${isActive?'700':'500'};cursor:pointer;white-space:nowrap">
-                    ${isPast?'':'🎸 '}${label}${isPast?' ✓':''}
-                </button>`;
-            }).join('')}
-        </div>
-    </div>`;
+    html += '<div class="app-card" style="margin-bottom:16px">'+
+            '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🎧 Practice Resources</div>'+
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'pocketmeter\')">🎚️ Tuner / Metronome</button>'+
+            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'bestshot\')">🏆 Best Versions</button>'+
+            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'songs\')">🎸 Song Library</button>'+
+            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'playlists\')">🎧 Playlists</button>'+
+            '</div></div>';
 
-    el.innerHTML = `
-    <div class="page-header">
-        <h1>📋 Practice Plans</h1>
-        <p>Each rehearsal has its own plan — songs to focus on, goals, notes</p>
-    </div>
+    html += '<div class="app-card" style="margin-bottom:16px">'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+            '<div style="font-weight:700;font-size:0.95em">📊 Your Readiness</div>'+
+            '<button class="btn btn-ghost btn-sm" onclick="showPage(\'songs\')">View All →</button>'+
+            '</div>'+
+            '<div id="practice-readiness-list"><div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:12px">Loading…</div></div>'+
+            '</div>';
 
-    <!-- STAT CARDS -->
-    <div class="card-grid" style="margin-bottom:16px">
-        <div class="stat-card"><div class="stat-value" style="color:var(--red)">${thisWeek.length}</div><div class="stat-label">This Week</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--yellow)">${needsPolish.length}</div><div class="stat-label">Needs Polish</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--green)">${gigReady.length}</div><div class="stat-label">Gig Ready</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--accent-light)">${onDeck.length}</div><div class="stat-label">On Deck</div></div>
-    </div>
+    el.innerHTML = html;
+    _fillPracticeWeakSongs();
+    _fillPracticeReadiness();
+}
 
-    <!-- REHEARSAL TABS + PLAN -->
-    ${rehearsals.length === 0
-        ? `<div class="app-card" style="text-align:center;padding:32px">
-            <div style="font-size:2em;margin-bottom:12px">🎸</div>
-            <div style="font-weight:600;margin-bottom:8px">No rehearsals on the calendar yet</div>
-            <div style="color:var(--text-dim);font-size:0.9em;margin-bottom:16px">Add a rehearsal event on the Calendar page, then come back to build its practice plan.</div>
-            <button class="btn btn-primary" onclick="showPage('calendar')">📆 Go to Calendar</button>
-           </div>`
-        : `${tabsHtml}
-           <div class="app-card" id="practicePlanBody" style="border-top-left-radius:0;border-top-right-radius:0">
-               <div style="text-align:center;padding:20px;color:var(--text-dim)">Loading plan...</div>
-           </div>`
+async function _fillPracticeWeakSongs() {
+    var el = document.getElementById('practice-weak-songs');
+    if (!el) return;
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    if (!Object.keys(rc).length) return;
+    var THRESH = 3, now = Date.now(), actLog = [], lastSeen = {};
+    try { actLog = await window.loadMasterFile('_master_activity_log.json') || []; } catch(e) {}
+    var ACTS = {practice_track:1,readiness_set:1,rehearsal_note:1,harmony_add:1,harmony_edit:1,part_notes:1};
+    (Array.isArray(actLog)?actLog:[]).forEach(function(e){
+        if(!e||!e.song||!e.time||!ACTS[e.action])return;
+        var t=new Date(e.time).getTime();
+        if(!isNaN(t)&&(!lastSeen[e.song]||t>lastSeen[e.song]))lastSeen[e.song]=t;
+    });
+    var scored=[];
+    Object.keys(rc).forEach(function(title){
+        var ratings=rc[title];
+        var keys=Object.keys(ratings).filter(function(k){return typeof ratings[k]==='number'&&ratings[k]>0;});
+        if(!keys.length)return;
+        var avg=keys.reduce(function(s,k){return s+ratings[k];},0)/keys.length;
+        if(avg>=THRESH)return;
+        var ds=lastSeen[title]?Math.floor((now-lastSeen[title])/86400000):null;
+        scored.push({title:title,avg:avg,score:Math.max(0,THRESH-avg)*2+(ds===null?3:ds>21?Math.min(3,Math.floor(ds/7)):0)});
+    });
+    scored.sort(function(a,b){return b.score-a.score;});
+    var top=scored.slice(0,5);
+    if(!top.length) return;
+    el.innerHTML='<div class="app-card" style="margin-bottom:16px">'+
+        '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">⚠️ Weakest Songs — Work These First</div>'+
+        top.map(function(s){
+            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer"'+
+                   ' onclick="selectSong(\''+s.title.replace(/'/g,"\\'")+'\')">'+
+                   '<div style="flex:1;font-size:0.88em;color:var(--text)">'+s.title+'</div>'+
+                   '<div style="font-size:0.78em;color:'+(s.avg<2?'#f87171':'#fbbf24')+';font-weight:700">avg '+s.avg.toFixed(1)+'</div>'+
+                   '</div>';
+        }).join('')+
+        '</div>';
+}
+
+async function _fillPracticeReadiness() {
+    var el = document.getElementById('practice-readiness-list');
+    if (!el) return;
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var myKey = typeof getCurrentMemberReadinessKey === 'function' ? getCurrentMemberReadinessKey() : null;
+    if (!myKey) {
+        el.innerHTML='<div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:8px">Sign in to see your readiness scores.</div>';
+        return;
+    }
+    var songs = typeof allSongs !== 'undefined' ? allSongs : [];
+    var rows = songs.map(function(s){return{title:s.title,score:((rc[s.title]||{})[myKey]||0)};})
+        .filter(function(r){return r.score>0;})
+        .sort(function(a,b){return a.score-b.score;})
+        .slice(0,8);
+    if (!rows.length) {
+        el.innerHTML='<div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:8px">No readiness data yet.</div>';
+        return;
+    }
+    el.innerHTML=rows.map(function(r){
+        var pct=(r.score/5)*100;
+        var color=r.score>=4?'#4ade80':r.score>=3?'#fbbf24':'#f87171';
+        return '<div style="margin-bottom:8px">'+
+               '<div style="display:flex;justify-content:space-between;font-size:0.82em;margin-bottom:3px">'+
+               '<span style="color:var(--text);cursor:pointer" onclick="selectSong(\''+r.title.replace(/'/g,"\\'")+'\')">'+r.title+'</span>'+
+               '<span style="color:'+color+';font-weight:700">'+r.score+'/5</span></div>'+
+               '<div style="height:4px;background:rgba(255,255,255,0.07);border-radius:2px">'+
+               '<div style="height:4px;width:'+pct+'%;background:'+color+';border-radius:2px;transition:width 0.4s ease"></div>'+
+               '</div></div>';
+    }).join('');
+}
+
+// ── Mixes Tab ─────────────────────────────────────────────────────────────────
+async function _pmRenderMixesTab() {
+    var el = document.getElementById('pm-panel-mixes');
+    if (!el) return;
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-dim)">Loading mixes…</div>';
+
+    _pmMixes = await _pmLoadMixes();
+    _pmRedrawMixList();
+}
+
+function _pmRedrawMixList() {
+    var el = document.getElementById('pm-panel-mixes');
+    if (!el) return;
+
+    var myMixes  = _pmMixes.filter(function(m){return !m.isShared || m.createdBy === _pmMyKey();});
+    var bandMixes = _pmMixes.filter(function(m){return m.isShared && m.createdBy !== _pmMyKey();});
+
+    var html = '';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+            '<div style="font-weight:700;font-size:0.95em">🎵 Practice Mixes</div>'+
+            '<div style="display:flex;gap:6px">'+
+            '<button class="btn btn-ghost btn-sm" onclick="pmGenerateWeakMix()" style="font-size:0.78em">⚠️ Auto from Readiness</button>'+
+            '<button class="btn btn-primary btn-sm" onclick="pmNewMix()" style="font-size:0.78em">+ New Mix</button>'+
+            '</div></div>';
+
+    if (!_pmMixes.length) {
+        html += '<div class="app-card" style="text-align:center;padding:28px;margin-bottom:16px">'+
+                '<div style="font-size:2em;margin-bottom:8px">🎛️</div>'+
+                '<div style="font-weight:700;margin-bottom:6px">No mixes yet</div>'+
+                '<div style="font-size:0.85em;color:var(--text-dim)">Create a mix to organize songs for practice or rehearsal.</div>'+
+                '</div>';
+    } else {
+        if (myMixes.length) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">MY MIXES</div>';
+            html += myMixes.map(_pmMixCard).join('');
+        }
+        if (bandMixes.length) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;margin:16px 0 8px">BAND MIXES</div>';
+            html += bandMixes.map(_pmMixCard).join('');
+        }
     }
 
-    <!-- SONG STATUS LISTS -->
-    <div class="app-card"><h3 style="margin-bottom:10px">🎯 This Week's Focus</h3>
-        ${thisWeek.length
-            ? thisWeek.map(s => songRow(s, '<span style="color:var(--red);font-size:0.72em;font-weight:600;margin-left:4px">🎯</span>')).join('')
-            : '<div style="padding:12px;color:var(--text-dim);text-align:center;font-size:0.9em">No songs marked "This Week" yet</div>'}
-    </div>
-    <div class="app-card"><h3 style="margin-bottom:10px">⚠️ Needs Polish</h3>
-        ${needsPolish.length
-            ? needsPolish.map(s => songRow(s)).join('')
-            : '<div style="padding:12px;color:var(--text-dim);text-align:center;font-size:0.9em">None — looking tight! 💪</div>'}
-    </div>
-    <div class="app-card"><h3 style="margin-bottom:10px">📚 On Deck (${onDeck.length})</h3>
-        ${onDeck.length
-            ? onDeck.map(s => songRow(s)).join('')
-            : '<div style="padding:12px;color:var(--text-dim);text-align:center;font-size:0.9em">No songs on deck</div>'}
-    </div>`;
+    // Editor pane (shown inline when creating/editing)
+    html += '<div id="pm-mix-editor" style="display:none"></div>';
 
-    // Render the active plan
-    if (practicePlanActiveDate) {
-        renderPracticePlanForDate(practicePlanActiveDate, statusMap);
+    el.innerHTML = html;
+}
+
+function _pmMixCard(mix) {
+    var type = MIX_TYPES.find(function(t){return t.id===mix.type;}) || MIX_TYPES[0];
+    var songs = mix.songIds || [];
+    var shareTag = mix.isShared
+        ? '<span style="font-size:0.7em;background:rgba(102,126,234,0.15);color:#818cf8;padding:2px 8px;border-radius:8px;font-weight:700;flex-shrink:0">Shared</span>'
+        : '';
+    return '<div class="app-card" style="margin-bottom:10px">'+
+           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+           '<span style="font-size:1.1em">'+type.emoji+'</span>'+
+           '<div style="flex:1;min-width:0">'+
+           '<div style="font-weight:700;font-size:0.9em;color:var(--text)">'+_pmEsc(mix.title)+'</div>'+
+           '<div style="font-size:0.72em;color:var(--text-dim)">'+type.label+' · '+songs.length+' songs</div>'+
+           '</div>'+
+           shareTag+
+           '<button onclick="pmEditMix(\''+mix.id+'\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">✏️</button>'+
+           '<button onclick="pmDeleteMix(\''+mix.id+'\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85em;padding:4px 8px">🗑️</button>'+
+           '</div>'+
+           (songs.length
+               ? '<div style="display:flex;flex-wrap:wrap;gap:4px">'+
+                 songs.slice(0,6).map(function(s){
+                     return '<span style="font-size:0.72em;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);padding:2px 8px;border-radius:8px;color:var(--text-muted)">'+_pmEsc(s)+'</span>';
+                 }).join('')+
+                 (songs.length>6?'<span style="font-size:0.72em;color:var(--text-dim)">+'+( songs.length-6)+' more</span>':'')+
+                 '</div>'
+               : '<div style="font-size:0.78em;color:var(--text-dim)">No songs yet</div>')+
+           '</div>';
+}
+
+// ── Mix Editor ────────────────────────────────────────────────────────────────
+window.pmNewMix = function pmNewMix() {
+    _pmEditingMix = { id: null, title:'', type:'practice', songIds:[], isShared:false, createdBy: _pmMyKey() };
+    _pmMixSongs = [];
+    _pmShowEditor();
+};
+
+window.pmEditMix = function pmEditMix(mixId) {
+    var mix = _pmMixes.find(function(m){return m.id===mixId;});
+    if (!mix) return;
+    _pmEditingMix = Object.assign({}, mix);
+    _pmMixSongs = (mix.songIds || []).slice();
+    _pmShowEditor();
+};
+
+function _pmShowEditor() {
+    var el = document.getElementById('pm-mix-editor');
+    if (!el) return;
+
+    var typeOpts = MIX_TYPES.map(function(t){
+        return '<option value="'+t.id+'"'+(_pmEditingMix.type===t.id?' selected':'')+'>'+t.emoji+' '+t.label+'</option>';
+    }).join('');
+
+    var songSearchHtml =
+        '<input type="text" id="pm-song-search" placeholder="Type to search songs…" '+
+        'style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:7px 10px;font-size:0.85em;font-family:inherit" '+
+        'oninput="pmSongSearchFilter(this.value)" onclick="event.stopPropagation()">';
+
+    var songListHtml = '<div id="pm-song-search-results" style="max-height:160px;overflow-y:auto;margin-top:6px"></div>';
+
+    var addedHtml = _pmMixSongs.length
+        ? '<div style="display:flex;flex-direction:column;gap:4px">'+
+          _pmMixSongs.map(function(s,i){
+              return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'+
+                     '<span style="flex:1;font-size:0.85em;color:var(--text)">'+_pmEsc(s)+'</span>'+
+                     (i>0?'<button onclick="pmMoveSong('+i+',-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 6px">↑</button>':'<span style="width:26px"></span>')+
+                     (i<_pmMixSongs.length-1?'<button onclick="pmMoveSong('+i+',1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 6px">↓</button>':'<span style="width:26px"></span>')+
+                     '<button onclick="pmRemoveSong('+i+')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px 6px">✕</button>'+
+                     '</div>';
+          }).join('')+
+          '</div>'
+        : '<div style="font-size:0.82em;color:var(--text-dim)">No songs added yet</div>';
+
+    el.style.display = 'block';
+    el.innerHTML =
+        '<div class="app-card" style="margin-top:16px;border:1px solid rgba(102,126,234,0.3)">'+
+        '<div style="font-weight:700;font-size:0.9em;margin-bottom:12px">'+(_pmEditingMix.id?'✏️ Edit Mix':'➕ New Mix')+'</div>'+
+
+        '<label style="display:block;margin-bottom:10px">'+
+        '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Mix Name</div>'+
+        '<input type="text" id="pm-mix-title" value="'+_pmEsc(_pmEditingMix.title||'')+'" placeholder="e.g. Pre-Rehearsal Brush-Up" '+
+        'style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px 10px;font-size:0.88em;font-family:inherit" '+
+        'onclick="event.stopPropagation()"></label>'+
+
+        '<label style="display:block;margin-bottom:12px">'+
+        '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Type</div>'+
+        '<select id="pm-mix-type" class="app-select" style="font-size:0.88em">'+typeOpts+'</select>'+
+        '</label>'+
+
+        '<div style="margin-bottom:12px">'+
+        '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:6px">Songs ('+_pmMixSongs.length+')</div>'+
+        '<div id="pm-added-songs">'+addedHtml+'</div>'+
+        '<div style="margin-top:8px">'+songSearchHtml+songListHtml+'</div>'+
+        '</div>'+
+
+        '<label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer">'+
+        '<input type="checkbox" id="pm-mix-shared" '+(_pmEditingMix.isShared?'checked':'')+' onclick="event.stopPropagation()">'+
+        '<span style="font-size:0.85em;color:var(--text)">Share with band</span>'+
+        '<span style="font-size:0.72em;color:var(--text-dim)">(bandmates can view this mix)</span>'+
+        '</label>'+
+
+        '<div style="display:flex;gap:8px">'+
+        '<button class="btn btn-primary" onclick="pmSaveMix()" style="flex:1">💾 Save Mix</button>'+
+        '<button class="btn btn-ghost" onclick="pmCancelEdit()">Cancel</button>'+
+        '</div>'+
+        '</div>';
+
+    // Initial song search results (show all)
+    pmSongSearchFilter('');
+}
+
+window.pmSongSearchFilter = function pmSongSearchFilter(term) {
+    var el = document.getElementById('pm-song-search-results');
+    if (!el) return;
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var filtered = songs.filter(function(s){
+        return s.title.toLowerCase().includes(term.toLowerCase()) && !_pmMixSongs.includes(s.title);
+    }).slice(0, 20);
+    if (!filtered.length) {
+        el.innerHTML = '<div style="font-size:0.8em;color:var(--text-dim);padding:6px">No matching songs</div>';
+        return;
+    }
+    el.innerHTML = filtered.map(function(s){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:background 0.1s" '+
+               'onmouseover="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseout="this.style.background=\'\'" '+
+               'onclick="pmAddSongToMix(\''+s.title.replace(/'/g,"\\'")+'\')">'+
+               '<span style="font-size:0.78em;color:var(--text-dim);min-width:28px">'+_pmEsc(s.band||'')+'</span>'+
+               '<span style="font-size:0.85em;color:var(--text);flex:1">'+_pmEsc(s.title)+'</span>'+
+               '<span style="font-size:0.8em;color:var(--accent-light)">+ Add</span>'+
+               '</div>';
+    }).join('');
+};
+
+window.pmAddSongToMix = function pmAddSongToMix(title) {
+    if (!_pmMixSongs.includes(title)) {
+        _pmMixSongs.push(title);
+        _pmRefreshAddedSongs();
+        // Re-filter to remove added song
+        var searchEl = document.getElementById('pm-song-search');
+        pmSongSearchFilter(searchEl ? searchEl.value : '');
+    }
+};
+
+window.pmRemoveSong = function pmRemoveSong(idx) {
+    _pmMixSongs.splice(idx, 1);
+    _pmRefreshAddedSongs();
+    var searchEl = document.getElementById('pm-song-search');
+    pmSongSearchFilter(searchEl ? searchEl.value : '');
+};
+
+window.pmMoveSong = function pmMoveSong(idx, dir) {
+    var newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= _pmMixSongs.length) return;
+    var tmp = _pmMixSongs[idx];
+    _pmMixSongs[idx] = _pmMixSongs[newIdx];
+    _pmMixSongs[newIdx] = tmp;
+    _pmRefreshAddedSongs();
+};
+
+function _pmRefreshAddedSongs() {
+    var el = document.getElementById('pm-added-songs');
+    if (!el) return;
+    var html = _pmMixSongs.length
+        ? '<div style="display:flex;flex-direction:column;gap:4px">'+
+          _pmMixSongs.map(function(s,i){
+              return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'+
+                     '<span style="flex:1;font-size:0.85em;color:var(--text)">'+_pmEsc(s)+'</span>'+
+                     (i>0?'<button onclick="pmMoveSong('+i+',-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 6px">↑</button>':'<span style="width:26px"></span>')+
+                     (i<_pmMixSongs.length-1?'<button onclick="pmMoveSong('+i+',1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:2px 6px">↓</button>':'<span style="width:26px"></span>')+
+                     '<button onclick="pmRemoveSong('+i+')" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:2px 6px">✕</button>'+
+                     '</div>';
+          }).join('')+
+          '</div>'
+        : '<div style="font-size:0.82em;color:var(--text-dim)">No songs added yet</div>';
+    el.innerHTML = html;
+    // Update count label
+    var countEl = el.closest('.app-card');
+    if (countEl) {
+        var lbl = countEl.querySelector('[id^="pm-added-songs"]')?.previousElementSibling;
+        if (lbl) lbl.textContent = 'Songs (' + _pmMixSongs.length + ')';
     }
 }
 
-// Load all song statuses into a map
-async function loadSongStatusMap() {
-    const statusMap = {};
+window.pmSaveMix = async function pmSaveMix() {
+    var titleEl  = document.getElementById('pm-mix-title');
+    var typeEl   = document.getElementById('pm-mix-type');
+    var sharedEl = document.getElementById('pm-mix-shared');
+    if (!titleEl) return;
+
+    var title    = titleEl.value.trim();
+    var type     = typeEl ? typeEl.value : 'practice';
+    var isShared = sharedEl ? sharedEl.checked : false;
+
+    if (!title) { if (typeof showToast==='function') showToast('Please enter a mix name'); return; }
+
+    var mix = {
+        title:     title,
+        type:      type,
+        songIds:   _pmMixSongs.slice(),
+        isShared:  isShared,
+        createdBy: _pmMyKey(),
+        updatedAt: new Date().toISOString(),
+    };
+
     try {
-        const allStatuses = await loadBandDataFromDrive('_band', 'song_statuses');
-        if (allStatuses && typeof allStatuses === 'object') Object.assign(statusMap, allStatuses);
-        // Fallback to localStorage
-        (allSongs||[]).forEach(s => {
-            if (!statusMap[s.title]) {
-                const cached = localStorage.getItem('deadcetera_status_' + s.title);
-                if (cached) statusMap[s.title] = cached;
-            }
+        if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') {
+            if (typeof showToast==='function') showToast('Not connected — sign in to save mixes');
+            return;
+        }
+        var ref;
+        if (_pmEditingMix && _pmEditingMix.id) {
+            // Update existing
+            mix.createdAt = _pmEditingMix.createdAt || mix.updatedAt;
+            mix.shareSlug = _pmEditingMix.shareSlug || null;
+            if (isShared && !mix.shareSlug) mix.shareSlug = _pmGenSlug(title);
+            ref = firebaseDB.ref(bandPath('practice_mixes/' + _pmEditingMix.id));
+            await ref.update(mix);
+            mix.id = _pmEditingMix.id;
+        } else {
+            // Create new
+            mix.createdAt = mix.updatedAt;
+            if (isShared) mix.shareSlug = _pmGenSlug(title);
+            ref = firebaseDB.ref(bandPath('practice_mixes')).push();
+            mix.id = ref.key;
+            await ref.set(mix);
+        }
+
+        // Update local list
+        var idx = _pmMixes.findIndex(function(m){return m.id===mix.id;});
+        if (idx >= 0) _pmMixes[idx] = mix; else _pmMixes.unshift(mix);
+
+        _pmEditingMix = null;
+        _pmMixSongs   = [];
+        _pmRedrawMixList();
+        if (typeof showToast==='function') showToast('Mix saved ✅');
+    } catch(e) {
+        console.error('[practice] saveMix failed:', e);
+        if (typeof showToast==='function') showToast('Save failed — check connection');
+    }
+};
+
+window.pmDeleteMix = async function pmDeleteMix(mixId) {
+    if (!confirm('Delete this mix?')) return;
+    try {
+        if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+            await firebaseDB.ref(bandPath('practice_mixes/' + mixId)).remove();
+        }
+        _pmMixes = _pmMixes.filter(function(m){return m.id!==mixId;});
+        _pmRedrawMixList();
+        if (typeof showToast==='function') showToast('Mix deleted');
+    } catch(e) {
+        if (typeof showToast==='function') showToast('Delete failed');
+    }
+};
+
+window.pmCancelEdit = function pmCancelEdit() {
+    _pmEditingMix = null;
+    _pmMixSongs   = [];
+    var el = document.getElementById('pm-mix-editor');
+    if (el) el.style.display = 'none';
+};
+
+// ── Auto-generate weak mix ────────────────────────────────────────────────────
+window.pmGenerateWeakMix = async function pmGenerateWeakMix() {
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var weak = songs
+        .map(function(s){
+            var scores=rc[s.title]||{};
+            var vals=Object.values(scores).filter(function(v){return typeof v==='number';});
+            var avg=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null;
+            return {title:s.title,avg:avg};
+        })
+        .filter(function(s){return s.avg!==null&&s.avg<=2.5;})
+        .sort(function(a,b){return a.avg-b.avg;})
+        .map(function(s){return s.title;})
+        .slice(0,15);
+
+    if (!weak.length) {
+        if (typeof showToast==='function') showToast('No weak songs found (avg ≤ 2.5)');
+        return;
+    }
+
+    var today = new Date().toISOString().slice(0,10);
+    _pmEditingMix = { id:null, title:'Weak Songs — '+today, type:'weak', songIds:[], isShared:false, createdBy:_pmMyKey() };
+    _pmMixSongs = weak;
+    pmSwitchTab('mixes');
+    _pmShowEditor();
+    if (typeof showToast==='function') showToast('Generated '+weak.length+' weak songs — review and save');
+};
+
+// ── Firebase helpers ──────────────────────────────────────────────────────────
+async function _pmLoadMixes() {
+    try {
+        if (typeof firebaseDB==='undefined'||!firebaseDB||typeof bandPath!=='function') return [];
+        var snap = await firebaseDB.ref(bandPath('practice_mixes')).once('value');
+        var val = snap.val();
+        if (!val) return [];
+        return Object.entries(val).map(function(entry){
+            return Object.assign({}, entry[1], {id:entry[0]});
+        }).sort(function(a,b){
+            return (b.updatedAt||b.createdAt||'').localeCompare(a.updatedAt||a.createdAt||'');
         });
-    } catch(e) {}
-    return statusMap;
-}
-
-// Load all calendar events as raw array
-async function loadCalendarEventsRaw() {
-    try {
-        return toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     } catch(e) { return []; }
 }
 
-function formatPracticeDate(dateStr) {
-    if (!dateStr) return '?';
-    const d = new Date(dateStr + 'T12:00:00');
-    const opts = { month: 'short', day: 'numeric' };
-    const day = d.toLocaleDateString('en-US', opts);
-    const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
-    return `${dow} ${day}`;
+function _pmMyKey() {
+    return typeof getCurrentMemberKey==='function' ? (getCurrentMemberKey()||'unknown') : 'unknown';
 }
 
-async function renderPracticePlanForDate(dateStr, statusMap) {
-    const body = document.getElementById('practicePlanBody');
-    if (!body) return;
-
-    // Load the stored plan for this date
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    const statusMap2 = statusMap || await loadSongStatusMap();
-    const songList = typeof allSongs !== 'undefined' ? allSongs : [];
-    const suggested = songList.filter(s =>
-        ['this_week','needs_polish'].includes(statusMap2[s.title])
-    );
-
-    const displayDate = formatPracticeDate(dateStr);
-    const today = new Date(); today.setHours(0,0,0,0);
-    const isPast = new Date(dateStr+'T00:00:00') < today;
-
-    // Goals list
-    const goals = toArray(plan.goals || []);
-    // Song list for this rehearsal
-    const planSongs = toArray(plan.songs || []);
-
-    body.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-        <div>
-            <h3 style="margin:0;color:var(--accent-light)">🎸 ${displayDate}${isPast?' — Past Rehearsal':''}</h3>
-            ${plan.location ? `<div style="font-size:0.8em;color:var(--text-dim);margin-top:2px">📍 ${plan.location}</div>` : ''}
-        </div>
-        <div style="display:flex;gap:6px">
-            <button class="btn btn-ghost btn-sm" onclick="practicePlanEditMeta('${dateStr}')">✏️ Details</button>
-            ${!isPast ? `<button class="btn btn-primary btn-sm" onclick="practicePlanSave('${dateStr}')">💾 Save Plan</button>` : ''}
-        </div>
-    </div>
-
-    <!-- START TIME / LOCATION summary -->
-    ${plan.startTime || plan.location ? `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:0.82em;color:var(--text-muted)">
-        ${plan.startTime ? `<span>⏰ ${plan.startTime}</span>` : ''}
-        ${plan.location  ? `<span>📍 ${plan.location}</span>` : ''}
-        ${plan.duration  ? `<span>⏱ ${plan.duration}</span>` : ''}
-    </div>` : ''}
-
-    <!-- GOALS -->
-    <div style="margin-bottom:16px">
-        <div style="font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🎯 Session Goals</div>
-        <div id="ppGoalsList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">
-            ${goals.length ? goals.map((g,i) => `
-            <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px">
-                <span style="flex:1;font-size:0.88em">${g}</span>
-                ${!isPast ? `<button onclick="ppRemoveGoal(${i},'${dateStr}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em">✕</button>` : ''}
-            </div>`).join('') : '<div style="color:var(--text-dim);font-size:0.85em;font-style:italic">No goals set yet</div>'}
-        </div>
-        ${!isPast ? `
-        <div style="display:flex;gap:6px">
-            <input class="app-input" id="ppNewGoal" placeholder="Add a goal, e.g. 'Nail the Scarlet→Fire transition'" style="flex:1;font-size:0.85em" onkeydown="if(event.key==='Enter')ppAddGoal('${dateStr}')">
-            <button class="btn btn-ghost btn-sm" onclick="ppAddGoal('${dateStr}')">+ Add</button>
-        </div>` : ''}
-    </div>
-
-    <!-- SONGS FOR THIS REHEARSAL -->
-    <div style="margin-bottom:16px">
-        <div style="font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🎵 Songs to Rehearse</div>
-        <div id="ppSongsList">
-            ${planSongs.length ? planSongs.map((s,i) => `
-            <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border-radius:6px;padding:6px 10px;margin-bottom:4px">
-                <span style="color:var(--text-dim);font-size:0.72em;min-width:28px">${s.band||''}</span>
-                <span style="flex:1;font-size:0.88em;cursor:pointer" onclick="selectSong('${(s.title||'').replace(/'/g,"\\'")}');showPage('songs')">${s.title||''}</span>
-                ${s.focus ? `<span style="font-size:0.7em;color:var(--yellow);flex-shrink:0">${s.focus}</span>` : ''}
-                ${!isPast ? `<button onclick="ppRemoveSong(${i},'${dateStr}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em;flex-shrink:0">✕</button>` : ''}
-            </div>`).join('') : '<div style="color:var(--text-dim);font-size:0.85em;font-style:italic;padding:4px 0">No songs added yet</div>'}
-        </div>
-        ${!isPast ? `
-        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-            <select class="app-select" id="ppSongPicker" style="flex:2;min-width:160px;font-size:0.82em">
-                <option value="">— Pick a song —</option>
-                ${suggested.length ? '<optgroup label="🎯 Suggested (This Week / Needs Polish)">' + suggested.map(s=>`<option value="${s.title.replace(/"/g,'&quot;')}">${s.title}</option>`).join('') + '</optgroup>' : ''}
-                <optgroup label="All Songs">
-                    ${(allSongs||[]).map(s=>`<option value="${s.title.replace(/"/g,'&quot;')}">${s.title}</option>`).join('')}
-                </optgroup>
-            </select>
-            <input class="app-input" id="ppSongFocus" placeholder="Focus note (optional)" style="flex:2;min-width:120px;font-size:0.82em">
-            <button class="btn btn-ghost btn-sm" onclick="ppAddSong('${dateStr}')">+ Add</button>
-        </div>` : ''}
-    </div>
-
-    <!-- NOTES / AGENDA -->
-    <div>
-        <div style="font-weight:700;font-size:0.85em;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📝 Notes & Agenda</div>
-        ${!isPast
-            ? `<textarea class="app-textarea" id="ppNotes" rows="4" placeholder="Anything else — warm-up order, who's bringing what, special requests...">${plan.notes||''}</textarea>
-               <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-                   <button class="btn btn-primary btn-sm" onclick="practicePlanSave('${dateStr}')">💾 Save Plan</button>
-                   <button class="btn btn-success btn-sm" onclick="notifFromPracticePlan('${dateStr}')">🔔 Share to Band</button>
-                   <button class="btn btn-ghost btn-sm" onclick="practicePlanExport('${dateStr}')">📄 Export Text</button>
-               </div>`
-            : `<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;font-size:0.88em;color:var(--text-muted);white-space:pre-wrap">${plan.notes || 'No notes recorded.'}</div>`
-        }
-    </div>`;
+function _pmGenSlug(title) {
+    // Generate a short URL-safe slug for sharing
+    var base = title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,20);
+    var rand = Math.random().toString(36).slice(2,7);
+    return base + '-' + rand;
 }
 
-function practicePlanSelectDate(dateStr) {
-    practicePlanActiveDate = dateStr;
-    // Update tab highlight
-    document.querySelectorAll('#practicePlanBody').forEach(b => {});
-    // Re-render just the plan body (fast)
-    renderPracticePlanForDate(dateStr);
-    // Update tab button styles
-    document.querySelectorAll('[onclick^="practicePlanSelectDate"]').forEach(btn => {
-        const active = btn.getAttribute('onclick').includes(`'${dateStr}'`);
-        btn.style.background = active ? 'var(--accent)' : 'rgba(255,255,255,0.03)';
-        btn.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
-        btn.style.color = active ? 'white' : 'var(--text-muted)';
-        btn.style.fontWeight = active ? '700' : '500';
-    });
-    document.getElementById('practicePlanBody')?.scrollIntoView({behavior:'smooth', block:'nearest'});
+function _pmEsc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-async function ppAddGoal(dateStr) {
-    const inp = document.getElementById('ppNewGoal');
-    const val = inp?.value.trim();
-    if (!val) return;
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    const goals = toArray(plan.goals || []);
-    goals.push(val);
-    plan.goals = goals;
-    await saveBandDataToDrive('_band', `practice_plan_${dateStr}`, plan);
-    inp.value = '';
-    renderPracticePlanForDate(dateStr);
+// ── Status map ────────────────────────────────────────────────────────────────
+async function loadSongStatusMap() {
+    try {
+        var allStatuses = await loadBandDataFromDrive('_band','song_statuses');
+        if (!allStatuses||typeof allStatuses!=='object') return {};
+        var map={};
+        Object.keys(allStatuses).forEach(function(k){
+            var v=allStatuses[k];
+            var raw=(v&&v.status)?v.status:(typeof v==='string'?v:'');
+            if(raw) map[k]=raw.toLowerCase().replace(/\s+/g,'_');
+        });
+        return map;
+    } catch(e){return {};}
 }
 
-async function ppRemoveGoal(idx, dateStr) {
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    const goals = toArray(plan.goals || []);
-    goals.splice(idx, 1);
-    plan.goals = goals;
-    await saveBandDataToDrive('_band', `practice_plan_${dateStr}`, plan);
-    renderPracticePlanForDate(dateStr);
+// ── Styles ────────────────────────────────────────────────────────────────────
+function _pmInjectStyles(){
+    if(document.getElementById('pm-styles'))return;
+    var s=document.createElement('style');
+    s.id='pm-styles';
+    s.textContent=
+    /* Tab strip container */
+    '.pm-tab-strip{display:flex;gap:0;margin:0 0 16px;border-bottom:2px solid rgba(255,255,255,0.08);background:transparent;}'+
+    /* Individual tab */
+    '.pm-tab{padding:10px 20px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--text-muted,#94a3b8);cursor:pointer;font-weight:700;font-size:0.88em;transition:all 0.15s;flex-shrink:0;font-family:inherit;-webkit-appearance:none;appearance:none;}'+
+    '.pm-tab:hover{color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);}'+
+    '.pm-tab--active{color:var(--accent,#667eea)!important;border-bottom-color:var(--accent,#667eea)!important;background:transparent!important;-webkit-text-fill-color:var(--accent,#667eea)!important;}';
+    document.head.appendChild(s);
 }
 
-async function ppAddSong(dateStr) {
-    const title = document.getElementById('ppSongPicker')?.value;
-    if (!title) return;
-    const focus = document.getElementById('ppSongFocus')?.value.trim() || '';
-    const songData = (allSongs||[]).find(s => s.title === title);
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    const songs = toArray(plan.songs || []);
-    if (songs.find(s => s.title === title)) { alert('Already in this plan!'); return; }
-    songs.push({ title, band: songData?.band || '', focus });
-    plan.songs = songs;
-    await saveBandDataToDrive('_band', `practice_plan_${dateStr}`, plan);
-    document.getElementById('ppSongPicker').value = '';
-    document.getElementById('ppSongFocus').value = '';
-    renderPracticePlanForDate(dateStr);
-}
-
-async function ppRemoveSong(idx, dateStr) {
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    const songs = toArray(plan.songs || []);
-    songs.splice(idx, 1);
-    plan.songs = songs;
-    await saveBandDataToDrive('_band', `practice_plan_${dateStr}`, plan);
-    renderPracticePlanForDate(dateStr);
-}
-
-async function practicePlanSave(dateStr) {
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    plan.notes = document.getElementById('ppNotes')?.value || plan.notes || '';
-    plan.updatedAt = new Date().toISOString();
-    plan.updatedBy = currentUserEmail || 'unknown';
-    await saveBandDataToDrive('_band', `practice_plan_${dateStr}`, plan);
-    // Visual confirmation
-    const btn = event?.target;
-    if (btn) { const orig = btn.textContent; btn.textContent = '✅ Saved!'; setTimeout(()=>btn.textContent=orig, 1800); }
-}
-
-function practicePlanEditMeta(dateStr) {
-    const modal = document.createElement('div');
-    modal.id = 'ppMetaModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-    modal.innerHTML = `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:400px;width:100%;color:var(--text)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h3 style="margin:0;color:var(--accent-light)">✏️ Rehearsal Details</h3>
-            <button onclick="document.getElementById('ppMetaModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
-        </div>
-        <div class="form-row"><label class="form-label">Start Time</label>
-            <input class="app-input" id="ppMetaTime" placeholder="e.g. 7:00 PM"></div>
-        <div class="form-row" style="margin-top:8px"><label class="form-label">Location / Venue</label>
-            <input class="app-input" id="ppMetaLoc" placeholder="e.g. Drew's garage, Studio B"></div>
-        <div class="form-row" style="margin-top:8px"><label class="form-label">Expected Duration</label>
-            <input class="app-input" id="ppMetaDur" placeholder="e.g. 3 hours"></div>
-        <div style="display:flex;gap:8px;margin-top:16px">
-            <button class="btn btn-primary" style="flex:1" onclick="practicePlanSaveMeta('${dateStr}')">💾 Save</button>
-            <button class="btn btn-ghost" onclick="document.getElementById('ppMetaModal').remove()">Cancel</button>
-        </div>
-    </div>`;
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-    document.body.appendChild(modal);
-    // Pre-fill
-    loadBandDataFromDrive('_band', `practice_plan_${dateStr}`).then(plan => {
-        if (!plan) return;
-        if (plan.startTime) document.getElementById('ppMetaTime').value = plan.startTime;
-        if (plan.location)  document.getElementById('ppMetaLoc').value  = plan.location;
-        if (plan.duration)  document.getElementById('ppMetaDur').value  = plan.duration;
-    });
-}
-
-async function practicePlanSaveMeta(dateStr) {
-    const plan = await loadBandDataFromDrive('_band', `practice_plan_${dateStr}`) || {};
-    plan.startTime = document.getElementById('ppMetaTime')?.value.trim() || '';
-    plan.location  = document.getElementById('ppMetaLoc')?.value.trim() || '';
-    plan.duration  = document.getElementById('ppMetaDur')?.value.trim() || '';
-    await saveBandDataToDrive('_band', `practice_plan_${dateStr}`, plan);
-    document.getElementById('ppMetaModal')?.remove();
-    renderPracticePlanForDate(dateStr);
-}
-
-function practicePlanNew() {
-    // Just send user to calendar to add a rehearsal event
-    const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-    modal.innerHTML = `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:360px;width:100%;color:var(--text);text-align:center">
-        <div style="font-size:2em;margin-bottom:12px">📆</div>
-        <h3 style="margin-bottom:8px">Add a Rehearsal on the Calendar</h3>
-        <p style="color:var(--text-dim);font-size:0.88em;margin-bottom:20px">Practice plans are created from calendar rehearsal events. Add a rehearsal event first, then its plan will appear here.</p>
-        <div style="display:flex;gap:8px;justify-content:center">
-            <button class="btn btn-primary" onclick="this.closest('[style]').remove();showPage('calendar')">📆 Go to Calendar</button>
-            <button class="btn btn-ghost" onclick="this.closest('[style]').remove()">Cancel</button>
-        </div>
-    </div>`;
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-    document.body.appendChild(modal);
-}
-
-function practicePlanExport(dateStr) {
-    loadBandDataFromDrive('_band', `practice_plan_${dateStr}`).then(plan => {
-        if (!plan) return;
-        const displayDate = formatPracticeDate(dateStr);
-        const songs = toArray(plan.songs||[]).map(s=>`  • ${s.title}${s.focus?' — '+s.focus:''}`).join('\n');
-        const goals = toArray(plan.goals||[]).map(g=>`  • ${g}`).join('\n');
-        const text = `🎸 DEADCETERA PRACTICE PLAN — ${displayDate}
-${plan.startTime ? '⏰ ' + plan.startTime : ''}${plan.location ? '  📍 ' + plan.location : ''}
-
-GOALS:
-${goals || '  (none)'}
-
-SONGS:
-${songs || '  (none)'}
-
-NOTES:
-${plan.notes || '  (none)'}`.trim();
-
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-        modal.innerHTML = `
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <h3 style="margin:0;color:var(--accent-light)">📤 Share Practice Plan</h3>
-                <button onclick="this.closest('[style]').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
-            </div>
-            <textarea class="app-textarea" rows="12" style="font-family:monospace;font-size:0.78em">${text}</textarea>
-            <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="navigator.clipboard.writeText(document.querySelector('[style*=fixed] textarea').value).then(()=>{this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy to Clipboard',1800)})">📋 Copy to Clipboard</button>
-        </div>`;
-        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-        document.body.appendChild(modal);
-    });
-}
-
-
-// ── Window exports (called from inline HTML onclick handlers) ──────────────
 window.renderPracticePage = renderPracticePage;
-window.loadSongStatusMap = loadSongStatusMap;
-window.loadCalendarEventsRaw = loadCalendarEventsRaw;
-window.formatPracticeDate = formatPracticeDate;
-window.renderPracticePlanForDate = renderPracticePlanForDate;
-window.practicePlanSelectDate = practicePlanSelectDate;
-window.ppAddGoal = ppAddGoal;
-window.ppRemoveGoal = ppRemoveGoal;
-window.ppAddSong = ppAddSong;
-window.ppRemoveSong = ppRemoveSong;
-window.practicePlanSave = practicePlanSave;
-window.practicePlanEditMeta = practicePlanEditMeta;
-window.practicePlanSaveMeta = practicePlanSaveMeta;
-window.practicePlanNew = practicePlanNew;
-window.practicePlanExport = practicePlanExport;
+window.loadSongStatusMap  = loadSongStatusMap;
