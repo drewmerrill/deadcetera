@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260308-214626', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260310-234437', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260308-214626';
+var BUILD_VERSION = '20260310-234437';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -3667,7 +3667,7 @@ async function renameHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
             value="${snippet.name || ''}" placeholder="Snippet name"
             style="flex:1" autocomplete="off">
         <button onclick="saveSnippetRename('${songTitle}',${sectionIndex},${snippetIndex})" class="btn btn-primary btn-sm">Save</button>
-        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
     `;
     insertTarget.after(form);
     document.getElementById(`snippetNameInput_${sectionIndex}_${snippetIndex}`)?.select();
@@ -5757,7 +5757,7 @@ async function addPartNote(songTitle, sectionIndex, singer) {
             placeholder="Practice note for ${singer}..."
             style="flex:1;min-width:180px" autocomplete="off">
         <button onclick="savePartNote('${songTitle}',${sectionIndex},'${singer}')" class="btn btn-primary btn-sm">Save</button>
-        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
     `;
     addBtn.after(form);
     document.getElementById(`partNoteInput_${sectionIndex}_${singer}`)?.focus();
@@ -5791,7 +5791,7 @@ async function editPartNote(songTitle, sectionIndex, singer, noteIndex) {
             style="flex:1;min-width:180px" autocomplete="off">
         <button onclick="saveEditedPartNote('${songTitle}',${sectionIndex},'${singer}',${noteIndex})" class="btn btn-primary btn-sm">Save</button>
         <button onclick="deletePartNote('${songTitle}',${sectionIndex},'${singer}',${noteIndex})" class="btn btn-sm" style="background:#ef4444;color:white;border:none;border-radius:6px;padding:5px 8px;cursor:pointer">Delete</button>
-        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
     `;
     noteEl.after(form);
     document.getElementById(`editPartNoteInput_${sectionIndex}_${singer}_${noteIndex}`)?.select();
@@ -9271,8 +9271,9 @@ function tunerStop() {
     document.getElementById('tunerStartBtn').classList.remove('btn-danger');
 }
 
-function tunerPlayRef(freq) {
+async function tunerPlayRef(freq) {
     if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    await mtAudioContext.resume();
     const o = mtAudioContext.createOscillator(), g = mtAudioContext.createGain();
     o.connect(g); g.connect(mtAudioContext.destination);
     o.frequency.value = freq; o.type = 'sine';
@@ -9381,6 +9382,11 @@ function settingsTab(tab, btn) {
     if (btn) btn.classList.add('active');
     const el = document.getElementById('settingsContent');
     if (!el) return;
+    // Auto-populate current user from Google login if not already set
+    var _autoKey = getCurrentMemberKey();
+    if (_autoKey && !localStorage.getItem('deadcetera_current_user')) {
+        localStorage.setItem('deadcetera_current_user', _autoKey);
+    }
     const cu = localStorage.getItem('deadcetera_current_user') || '';
     const ci = localStorage.getItem('deadcetera_instrument') || '';
     const bn = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
@@ -9581,7 +9587,7 @@ async function editMember(key) {
             placeholder="e.g. Lead Guitar, Vocals..."
             style="flex:1;min-width:150px" autocomplete="off">
         <button onclick="saveMemberRole('${key}')" class="btn btn-primary btn-sm">Save</button>
-        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">✕</button>
+        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
     `;
     editBtn.after(form);
     document.getElementById(`memberRoleInput_${key}`)?.focus();
@@ -10026,9 +10032,12 @@ function equipPickPhoto() {
 
 // ---- CONTACTS (#27) ----
 function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
-async function loadContacts(){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const el=document.getElementById('ctList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No contacts yet.</div>';return;}el.innerHTML=d.map(c=>`<div class="list-item" style="padding:10px 12px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${c.firstName||''} ${c.lastName||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${c.title||''} ${c.company?'@ '+c.company:''}</div></div><div style="display:flex;gap:10px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">${c.email?'<span>📧 '+c.email+'</span>':''}${c.cell?'<span>📱 '+c.cell+'</span>':''}</div></div>`).join('');}
+async function loadContacts(){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const el=document.getElementById('ctList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No contacts yet.</div>';return;}el.innerHTML=d.map((c,i)=>`<div class="list-item" style="padding:10px 12px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${c.firstName||''} ${c.lastName||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${c.title||''} ${c.company?'@ '+c.company:''}</div></div><div style="display:flex;gap:10px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">${c.email?'<span>📧 '+c.email+'</span>':''}${c.cell?'<span>📱 '+c.cell+'</span>':''}</div><div style="display:flex;gap:4px;flex-shrink:0"><button onclick="editContact(${i})" class="btn btn-sm btn-ghost">✏️</button><button onclick="deleteContact(${i})" class="btn btn-sm btn-ghost" style="color:#ef4444">🗑️</button></div></div>`).join('');}
 function addContact(){const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Add Contact</h3><div class="form-grid">${[['First Name','ctF'],['Last Name','ctL'],['Email','ctE'],['Cell','ctP'],['Title','ctT'],['Company/Venue','ctC']].map(([l,id])=>'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'"></div>').join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="ctN"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCt()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
 async function saveCt(){const c={firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};if(!c.firstName&&!c.lastName){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','contacts')||[]);ex.push(c);await saveBandDataToDrive('_band','contacts',ex);alert('✅ Saved!');loadContacts();}
+async function editContact(idx){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const c=d[idx];if(!c)return;const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Edit Contact</h3><div class="form-grid">${[['First Name','ctF',c.firstName],['Last Name','ctL',c.lastName],['Email','ctE',c.email],['Cell','ctP',c.cell],['Title','ctT',c.title],['Company/Venue','ctC',c.company]].map(([l,id,v])=>'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" value="'+(v||'').replace(/"/g,'&quot;')+ '">\</div>').join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="ctN">${c.notes||''}</textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCtEdit()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
+async function saveCtEdit(idx){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);d[idx]={...d[idx],firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};await saveBandDataToDrive('_band','contacts',d);showToast('✅ Contact updated!');loadContacts();}
+async function deleteContact(idx){if(!confirm('Delete this contact?'))return;const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);d.splice(idx,1);await saveBandDataToDrive('_band','contacts',d);showToast('🗑️ Contact deleted');loadContacts();}
 
 // ---- FIX #11: Step 2 header ----
 
