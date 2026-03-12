@@ -201,12 +201,21 @@ setTimeout(function () { editGig(idx); }, 400);
 ### 1. Command Center / Home Dashboard
 Operational control panel rather than passive dashboard.
 
-It should surface:
-- next rehearsal/show context
-- weak songs / readiness gaps
-- individual practice priorities
-- pocket trend / groove state
-- quick actions
+As of build 20260312, the home dashboard renders a **Mission Board** layout:
+- `renderHdMissionStrip` — narrative sentence + readiness status badge (replaces chip strip)
+- `_renderHdHeroGig` — Command Card: readiness badge, coaching sentence, countdown, event-specific CTAs
+- `renderHdYourPrep` — Action Anchor: top weak song callout, event tie-in, "+N more need attention"
+- `renderHdBandStatus` — Band Intelligence: 3-4 interpreted lines (replaces table-style rows)
+- `renderHdQuickActions` — demoted compact utility strip
+
+Derivation helpers (all in `home-dashboard.js`):
+- `deriveHdReadinessLabel(pct)` — GIG READY / MINOR TUNE-UP NEEDED / NEEDS REHEARSAL / CRITICAL PREP
+- `deriveHdConfidenceTone(bundle)` — shared vocabulary object
+- `deriveHdMissionSummary(bundle)` — narrative sentence + subtitle details
+- `deriveHdPrepFocus(bundle)` — top personal weak song + reason + event tie-in
+- `deriveHdBandIntel(bundle)` — 3-4 interpreted band state lines
+
+**CSS styling pass pending** for new BEM classes introduced in this layout.
 
 ### 2. Song Intelligence System
 Each song is the hub connecting:

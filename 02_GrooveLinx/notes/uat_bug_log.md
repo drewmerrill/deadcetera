@@ -1,1259 +1,215 @@
 # GrooveLinx UAT Bug Log
-Version: 2.1 — Full Historical Record · Updated 2026-03-08-S2
 
-**Status Key:**
-- 🔴 Open
-- 🟡 In Progress
-- 🟢 Fixed
-- ⚫ Won't Fix
-- 🔵 Deferred
-
-## UAT-054 — Local Google OAuth failed on localhost:8000
-
-**Status:** 🟢 Fixed
-**Area:** Auth / Local Development
-**Page/Module:** Google Identity Services token client (`GOOGLE_DRIVE_CONFIG.clientId`)
-**Severity:** Medium
-**Type:** Environment / Config
-
-**Expected:**
-Local GrooveLinx at `http://localhost:8000` should allow Google sign-in during development.
-
-**Actual:**
-Google returned origin mismatch when attempting local sign-in from `http://localhost:8000`.
-
-**Root Cause:**
-The OAuth credential is **not** in the `deadcetera-35424` GCP project. It lives in a separate project called **"Deadcetera YouTube"**. The client is named **"Deadcetera Web Client"**.
-- Client ID: `177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com`
-- Defined in: `js/core/firebase-service.js` as `GOOGLE_DRIVE_CONFIG.clientId`
-
-**Fix Applied:**
-Added `http://localhost:8000` to Authorized JavaScript Origins on "Deadcetera Web Client" in the "Deadcetera YouTube" GCP project. No redirect URIs needed — `initTokenClient` is a token flow, not a redirect flow.
-
-**Note:** The `deadcetera-35424` project API key also needs `http://localhost:8000` added to its HTTP referrers list for Maps/Firebase calls to work locally.
-
+_Last updated: 2026-03-11 — Session 20260311-S4_
 
 ---
 
-## UAT-001 — Pocket Snapshot always empty
-
-**Status:** 🟢 Fixed
-**Area:** Command Center
-**Page/Module:** home-dashboard-cc.js / groovelinx_store.js
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Pocket Snapshot should show latest groove score and trend after Pocket Meter analysis is completed.
-
-**Actual:**
-Card is always empty.
-
-**Steps to Reproduce:**
-1. Open rehearsal
-2. Run Pocket Meter
-3. Save analysis
-4. Return to Command Center
-5. Pocket Snapshot remains blank
-
-**Likely Cause / Notes:**
-`window._lastPocketScore` was overwritten before `prev` was captured in `savePocketSummary()`, so trend delta always evaluated to zero. Also: `window.selectedSong = ...` from GLStore did not update the `let selectedSong` binding in app.js — `let` vars are not window properties.
-
-**Fix Applied:**
-groovelinx_store.js: capture `prev` before overwriting `_lastPocketScore`. Use direct variable assignment `selectedSong = {...}` instead of `window.selectedSong = {...}`.
-
-**Evidence:**
-- screenshot_2026-03-07_uat_001.png
+## Legend
+- **Priority:** High / Medium / Low
+- **Status:** 🔴 Open · 🟡 In Progress · 🟢 Closed · ⬜ Deferred
+- **Source:** pierce / drew / internal
 
 ---
 
-## UAT-002 — sync.py zeroed app.js on every run
-
-**Status:** 🟢 Fixed
-**Area:** Toolchain
-**Page/Module:** sync.py
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-`python3 sync.py` fetches all files from GitHub without modifying them.
-
-**Actual:**
-app.js was overwritten with 0 bytes on every sync run. "app.js is only 0 lines" warning fired at the start of every session.
-
-**Steps to Reproduce:**
-1. Run `python3 sync.py`
-2. Check app.js — file is empty (0 bytes)
-
-**Likely Cause / Notes:**
-UnicodeDecodeError triggered by PNG binary files in the except block. The handler opened app.js for write (`open(..., 'w')`) then failed before writing any content, zeroing it.
-
-**Fix Applied:**
-Detect binary files by extension, write with `'wb'` mode, skip line count for binaries.
+## Open Bugs & Feature Requests
 
 ---
 
-## UAT-003 — push.py created 22 GitHub Actions runs per push
-
-**Status:** 🟢 Fixed
-**Area:** Toolchain
-**Page/Module:** push.py
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-One `python3 push.py "message"` = one commit = one GitHub Pages deployment trigger.
-
-**Actual:**
-Each file pushed via GitHub Contents API individually — one commit per file. 22 files × multiple pushes = 2,789 queued Actions runs, jamming the Pages pipeline completely.
-
-**Steps to Reproduce:**
-1. Run old push.py
-2. Check GitHub Actions — ~22 runs queued
-
-**Fix Applied:**
-Rewrote push.py to use Git Data API batch approach: create blobs → one tree → one commit → update ref. Exactly one commit and one Pages trigger per push.
+### BUG-001 · 🔴 Open · High
+**Rehearsal Plan — Add Songs box has no autocomplete / no song DB sync**
+- **Screen:** IMG_0482 (Rehearsal Plan)
+- **Source:** drew · 2026-03-08
+- **Description:** When typing a song name into the "Add Songs" input on the Rehearsal Plan, there is no autocomplete dropdown and no matching against the song database. User has to type an exact match blind. Songs typed do not visibly link to the canonical song record.
+- **Expected:** Typing in the box should show a filtered autocomplete list of song names from the band's repertoire. Selecting one should link to the song record.
+- **Notes:** Companion to BUG-002 — plan not saving correctly either.
 
 ---
 
-## UAT-004 — GitHub Contents API silently returned empty content for files over 1MB
-
-**Status:** 🟢 Fixed
-**Area:** Toolchain
-**Page/Module:** sync.py
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-sync.py fetches correct file content regardless of size.
-
-**Actual:**
-Files over 1MB returned empty content with no error. Correct sha but 0 lines reported.
-
-**Steps to Reproduce:**
-1. app.js exceeds 1MB
-2. Run `python3 sync.py`
-3. app.js shows correct sha but 0 lines
-
-**Fix Applied:**
-Added fallback to git blobs API endpoint when Contents API returns empty content.
+### BUG-002 · 🔴 Open · High
+**Rehearsal Plan — "All sections looking solid" message shown regardless of actual ratings**
+- **Screen:** IMG_0482
+- **Source:** drew · 2026-03-08
+- **Description:** The green trophy banner "All sections looking solid! No major weak spots." appears even when songs in the plan have low readiness scores (e.g., avg 3.0 or lower). Message appears to be hardcoded or always-true.
+- **Expected:** Message should reflect actual aggregate readiness of songs in the current plan. If any songs are below threshold, show a warning instead.
 
 ---
 
-## UAT-005 — Stale uploaded file patched instead of live version
-
-**Status:** 🟢 Fixed
-**Area:** Toolchain / Workflow
-**Page/Module:** sync.py / push.py / session workflow
-**Severity:** Critical
-**Type:** Process Bug
-
-**Expected:**
-Claude always patches the currently deployed file.
-
-**Actual:**
-Mid-session uploads were stale relative to GitHub. Fixes applied to wrong base — features appeared to deploy but never reached the live site.
-
-**Fix Applied:**
-Established rule: sync.py first, fresh upload, then patch. Always copy from `/mnt/user-data/outputs/` (deployed), never `/mnt/user-data/uploads/` (original upload).
+### BUG-003 · 🔴 Open · High
+**Rehearsal Plan — Saved plan does not appear in Rehearsals > Plans tab**
+- **Screen:** IMG_0482, IMG_0486, IMG_0487
+- **Source:** drew · 2026-03-08
+- **Description:** After clicking "Save Plan" on the Rehearsal Plan, the saved plan does not show up under Rehearsals > Plans tab. Only old plans (Mon Feb 23, Sat Feb 28) appear.
+- **Expected:** Newly saved plan should appear in the Plans tab list immediately after save.
+- **Notes:** May be related to BUG-001 — if songs aren't linking to DB records, the plan object may not be saving correctly.
 
 ---
 
-## UAT-006 — Signed-in users not landing on Home Dashboard on app load
-
-**Status:** 🟢 Fixed
-**Area:** App Shell / App Load
-**Page/Module:** app.js (DOMContentLoaded)
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Users with a saved session land on Home Dashboard on load.
-
-**Actual:**
-App always loaded to Songs page regardless of sign-in state.
-
-**Steps to Reproduce:**
-1. Sign in
-2. Close the tab
-3. Reopen — Songs page appears instead of Home
-
-**Fix Applied:**
-Added `showPage('home')` call gated on `localStorage.getItem('deadcetera_google_email')` in DOMContentLoaded.
+### BUG-004 · 🟡 In Progress · Medium
+**Suggested Rehearsal Plan — No filters; always defaults to alphabetical top of list**
+- **Screen:** IMG_0483
+- **Source:** drew · 2026-03-08
+- **Description:** With 400+ songs in the repertoire, the Suggested Rehearsal Plan always surfaces songs alphabetically (#41, 1000 Miles, 46 Days, 555…). There are no filters to narrow by status, band, or other criteria. The list does not appear scrollable to see more options.
+- **Expected:** Filters (by readiness status, band, recent rehearsal date) should be available. List should be scrollable to see full suggestion set. Previously discussed adding limiters to this feature.
+- **Notes:** Pierce filed a related feature request (IMG_0484) for filtering setlist song selection by flag status.
 
 ---
 
-## UAT-007 — GSI Logger popup error on auto-reconnect
-
-**Status:** 🟢 Fixed
-**Area:** Auth
-**Page/Module:** app.js (handleGoogleDriveAuth)
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Auto-reconnect on page load is completely silent.
-
-**Actual:**
-GSI Logger popup error fired on every auto-reconnect attempt.
-
-**Steps to Reproduce:**
-1. Sign in, then reload the page
-2. GSI Logger popup appears during auto-reconnect
-
-**Fix Applied:**
-Changed `prompt: ''` to `prompt: silent ? 'none' : ''` so auto-reconnect uses silent cookie-based token refresh.
+### BUG-005 · 🔴 Open · Low
+**Pocket Meter — Page always opens mid-scroll; should scroll to top**
+- **Screen:** IMG_0484
+- **Source:** drew · 2026-03-08
+- **Description:** Every time the Pocket Meter tab is opened, the page is scrolled down and the user must manually scroll up to see the full interface. This is a general UX issue affecting all tabs, not just Pocket Meter.
+- **Expected:** Every tab/page navigation should scroll to top on load (window.scrollTo(0,0) or equivalent on showPage).
+- **Scope:** Applies to ALL pages — this is a global fix needed in the navigation/showPage function.
 
 ---
 
-## UAT-008 — Google OAuth showed "unverified app" warning on sign-in
-
-**Status:** 🟢 Fixed
-**Area:** Auth
-**Page/Module:** app.js (OAuth scopes)
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Sign-in proceeds directly without any interstitial.
-
-**Actual:**
-All users (including bandmate Brian) saw "unverified app" and had to click Advanced → Continue.
-
-**Steps to Reproduce:**
-1. Tap sign-in button
-2. Google OAuth shows "This app isn't verified"
-
-**Fix Applied:**
-Dropped OAuth scope to `email profile` only. No Drive scope needed — Firebase handles all data.
+### BUG-006 · 🔴 Open · Medium
+**Feedback Inbox — No close/dismiss X visible without scrolling; needs floating X**
+- **Screen:** IMG_0484 (Feedback & Bug Reports panel)
+- **Source:** drew · 2026-03-08
+- **Description:** To dismiss or close the Feedback & Bug Reports panel, user must scroll to the bottom to find the X button. On long inboxes this becomes increasingly painful.
+- **Expected:** Close (X) button should be fixed/floating in the upper-right corner of the panel at all times, visible regardless of scroll position.
 
 ---
 
-## UAT-009 — Write functions accessible to signed-out users
-
-**Status:** 🟢 Fixed
-**Area:** Auth / All write features
-**Page/Module:** app.js (requireSignIn)
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Attempting to save data while signed out shows a sign-in prompt.
-
-**Actual:**
-All ~25 band-data write functions executed without any auth check, silently failing.
-
-**Steps to Reproduce:**
-1. Use the app without signing in
-2. Attempt to save any data — no prompt, silent fail
-
-**Fix Applied:**
-Added `requireSignIn()` auth gate (polished modal, backdrop blur, gradient sign-in button). Applied to ~25 write functions: saveCustomSong, deleteCustomSong, addPersonalTab, saveCoverMe, addGigNote, saveRefVersionFromModal, toggleRefVote, saveMyReadiness, markSectionStatus, saveABCNotation, addMoisesStems, addPracticeTrackSimple, addRehearsalNote, and more.
+### BUG-007 · 🔴 Open · Medium
+**Feedback Inbox — No reply/close-loop workflow; items will pile up indefinitely**
+- **Screen:** IMG_0484
+- **Source:** drew · 2026-03-08
+- **Description:** As the inbox grows, there is no way to respond to individual feedback items, mark them resolved, or close the loop with the submitter. All items remain open indefinitely with no status tracking.
+- **Expected:** Each feedback item should have: (1) a reply/response field visible to the submitter, (2) a status toggle (open → in progress → closed), (3) closed items shown in green or collapsed. This is a best-in-class inbox pattern (similar to Linear/GitHub Issues).
+- **Notes:** Drew wants Claude to draft a response to each existing item in the next pass.
 
 ---
 
-## UAT-010 — Update banner appeared on every page load / appeared twice
-
-**Status:** 🟢 Fixed
-**Area:** App Shell
-**Page/Module:** app.js (showUpdateBanner) / index.html
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Update banner appears once when a new build is actually deployed.
-
-**Actual:**
-Banner appeared on every page load, appeared twice, and had an aggressive auto-reload IIFE.
-
-**Steps to Reproduce:**
-1. Open the app — banner fires with no new build deployed
-2. Navigate — banner fires again
-
-**Fix Applied:**
-Triple guard: in-memory flag + DOM check + sessionStorage key (`gl_update_banner_dismissed`). Removed auto-reload IIFE. Added ✕ dismiss button. Removed duplicate SW registration from index.html. Added `_loadedVersion` initialized from `BUILD_VERSION`.
+### BUG-008 · 🔴 Open · Medium
+**Songs list — Heatmap toggle: readiness chain-link icon and harmony mic no longer visible**
+- **Screen:** IMG_0485
+- **Source:** drew · 2026-03-08
+- **Description:** When toggling the Heatmap button on/off on the Songs list, the readiness chain-link icon that used to appear on each song row is no longer showing. The harmony microphone icon is also barely visible (very low contrast or hidden).
+- **Expected:** Chain-link readiness indicator should be clearly visible on each song row. Harmony mic should be visually distinct. Heatmap toggle should not affect visibility of these persistent row icons.
+- **Notes:** May be a CSS conflict introduced by a recent patch — need to check song row render and heatmap toggle logic.
 
 ---
 
-## UAT-011 — Song row layout broken — badges, mic icons, band names not aligned
-
-**Status:** 🟢 Fixed
-**Area:** Songs List
-**Page/Module:** app-shell.css
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Each song row: title, status badge, mic/harmony icon, band name, readiness chain — all on one line.
-
-**Actual:**
-Elements wrapped or overlapped. Visible on "After Midnight" and other fully-populated rows.
-
-**Steps to Reproduce:**
-1. Open Songs page
-2. Find a song with status badge + harmony mic + band name all set
-3. Row elements wrap or overlap
-
-**Fix Applied:**
-Explicit `grid-template-columns: 1fr 28px 50px 68px 44px !important` in the injected `deadcetera-responsive-css` style tag, which loads after app-shell.css and wins the cascade.
+## Pierce's Reported Bugs (from IMG_0484 — Feedback & Bug Reports)
 
 ---
 
-## UAT-012 — Clicking a song opened legacy step-cards instead of Song Detail
-
-**Status:** 🟢 Fixed
-**Area:** Songs List → Song Detail
-**Page/Module:** app.js (selectSong) / songs.js
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-Clicking a song opens page-songdetail (5-lens Song Detail).
-
-**Actual:**
-Old legacy step-cards UI opened instead.
-
-**Steps to Reproduce:**
-1. Click any song
-2. Old step-cards appear instead of Song Detail
-
-**Fix Applied:**
-The `function selectSong()` declaration in app.js hoisted globally over `window.selectSong` in songs.js. Fixed by replacing app.js selectSong body to call `showPage('songdetail')`.
+### BUG-P001 · 🟢 Closed · High
+**Edit Gig opens blank form with wrong venue (Buckhead Theater) after new gig creation**
+- **Source:** pierce · 2026-03-06
+- **Root cause confirmed:** Stale `_origIdx` after `saveGig()` — Firebase array shifts but baked button indices don't update.
+- **Fix:** Call `loadGigs()` at end of `saveGig()` to re-render with fresh indices.
+- **Status:** Root cause documented in session notes 20260308-S4. Fix not yet deployed — carried forward.
+- **Response to Pierce:** _Pending — see BUG-007 response workflow_
 
 ---
 
-## UAT-013 — page-songdetail div and Song Detail scripts missing from index.html
-
-**Status:** 🟢 Fixed
-**Area:** App Shell
-**Page/Module:** index.html
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-Song Detail, Harmony Lab, and home-dashboard-cc load correctly.
-
-**Actual:**
-`page-songdetail` div, song-detail.js, harmony-lab.js, and home-dashboard-cc.js script tags absent from deployed index.html.
-
-**Steps to Reproduce:**
-1. View source of deployed index.html
-2. Search for `page-songdetail` — not present
-
-**Fix Applied:**
-Committed patched index.html before next sync.
+### BUG-P002 · 🟡 In Progress · Low
+**Add Venue button on Gigs page did nothing**
+- **Source:** pierce · 2026-03-06
+- **Notes:** Fixed in session 20260308-S4 — inline Add Venue modal (gigSaveNewVenue) deployed in build 20260308-214520.
+- **Response to Pierce:** _Pending_
 
 ---
 
-## UAT-014 — Band Lens DNA fields (Lead Singer, Status, Key, BPM) blank on load
-
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Band Lens
-**Page/Module:** song-detail.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Lead Singer, Status, Key, BPM all show saved values when a song is opened.
-
-**Actual:**
-All four fields blank regardless of saved data.
-
-**Steps to Reproduce:**
-1. Save Lead Singer, Status, Key, BPM for a song
-2. Reload and reopen the song
-3. All four fields are blank
-
-**Likely Cause / Notes:**
-Six simultaneous wrong data paths: lead_singer and song_status read via `_sdGet` (got wrapper objects, not strings), key read from allSongs.key (not set), bpm not loaded at all, Crib Notes used key `crib` (real: `personal_tabs`), North Star used key `ref_versions` (real: `spotify_versions`).
-
-**Fix Applied:**
-All six corrected to use `loadBandDataFromDrive` with correct keys.
+### BUG-P003 · 🔴 Open · High
+**Setlist page — clicking Add Song does nothing; existing setlists show empty song list**
+- **Source:** pierce · 2026-03-06
+- **Description:** When adding a song to a setlist, typing works but clicking Add does nothing. Setlists that Drew created show songs in the list view but open empty when clicked.
+- **Expected:** Add button should append song to setlist and display it. Opening a setlist should show all songs.
+- **Notes:** Possibly related to BUG-001 (no song DB linking). Needs investigation in setlists.js add-song flow.
 
 ---
 
-## UAT-015 — Band Lens saves (Lead Singer, Status, Key, BPM) did not persist
-
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Band Lens
-**Page/Module:** song-detail.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Changes to Lead Singer, Status, Key, BPM persist after reload.
-
-**Actual:**
-Changes appeared to save but vanished on reload.
-
-**Steps to Reproduce:**
-1. Set Lead Singer to "Drew"
-2. Reload
-3. Lead Singer is blank again
-
-**Likely Cause / Notes:**
-sdUpdateLeadSinger wrote raw string (correct: `{singer: v}`). sdUpdateSongStatus wrote raw string (correct: `{status: v, updatedAt}`). sdUpdateSongKey and sdUpdateSongBpm wrote to wrong Firebase paths.
-
-**Fix Applied:**
-All four write functions corrected with right shapes and paths.
+### FEAT-P001 · 🔴 Open · Medium
+**Filter setlist song selection by status (in progress / prospecting / gig ready)**
+- **Source:** pierce · 2026-03-08
+- **Description:** When building a setlist, allow filtering the song picker to only show songs with specific readiness flags. Pierce notes this mirrors a filter already on the Rehearsal Plan feature.
+- **Notes:** Pierce has additional setlist UX ideas to discuss.
 
 ---
 
-## UAT-016 — Saving readiness score did not update song list or Home Dashboard
-
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Band Lens
-**Page/Module:** song-detail.js
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-After saving readiness, chain links in the song list and Command Center refresh immediately.
-
-**Actual:**
-Firebase write succeeded but no side effects ran — song list and Command Center showed stale data.
-
-**Steps to Reproduce:**
-1. Set your readiness on a song to 4
-2. Check song list — chains unchanged
-3. Check Command Center — readiness snapshot unchanged
-
-**Fix Applied:**
-Added full side-effect chain matching app.js canonical pattern: master file update, readiness index write (`meta/readinessIndex`), home dashboard cache invalidation, `addReadinessChains()` refresh, and activity log.
+### FEAT-P002 · 🔴 Open · Medium
+**Initiate Setlist directly from Gigs page**
+- **Source:** pierce · 2026-03-06
+- **Description:** While defining gig details, allow user to create a new setlist inline rather than navigating away to the Setlists page.
+- **Notes:** Partially visible in screenshot — full text cut off.
 
 ---
 
-## UAT-017 — Stage Crib Notes section rendered blank
+---
 
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Band Lens
-**Page/Module:** song-detail.js
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Stage Crib Notes shows each member's saved tab/chart links as clickable rows.
-
-**Actual:**
-Section rendered blank even when tabs were saved.
-
-**Steps to Reproduce:**
-1. Save a tab link for a member
-2. Open that song in Song Detail
-3. Crib Notes section is blank
-
-**Fix Applied:**
-Renderer corrected to handle `personal_tabs` array of `{url, label, notes, memberKey}`, group by memberKey, and render each as a clickable link.
+### BUG-009 · 🔴 Open · Medium
+**Home Dashboard — Top stat pills covered/cut off on load; must scroll up to see**
+- **Screen:** IMG_0489 (Home tab)
+- **Source:** drew · 2026-03-08
+- **Description:** When navigating to the Home tab, the top row of stat pills (03-16, No mixes yet, 1 need work, No data) is partially or fully hidden above the viewport. User must manually scroll up to see them.
+- **Expected:** Home tab should always render scrolled to top (same as BUG-005 — global showPage scroll-to-top fix will cover this).
+- **Notes:** Companion to BUG-005. Both resolved by a single `window.scrollTo(0,0)` in `showPage()`.
 
 ---
 
-## UAT-018 — Band Lens had no Practice Mode / chart card
-
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Band Lens
-**Page/Module:** song-detail.js
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Band Lens shows a Practice Mode card that previews chart and launches the Rehearsal Chopper.
-
-**Actual:**
-Only a bare UG link visible from showBandResources() still running in the background.
-
-**Fix Applied:**
-Added 🧠 Practice Mode card that loads chart data and calls `openRehearsalMode()`.
+### BUG-010 · 🔴 Open · Low
+**Home Dashboard — Stat pills row layout is visually cluttered; needs better alignment**
+- **Screen:** IMG_0489
+- **Source:** drew · 2026-03-08
+- **Description:** The top stat pills (date, mixes, readiness warning, groove data) are left-aligned and inconsistently sized. Layout feels ad-hoc rather than intentional.
+- **Expected:** Pills should be center-aligned or laid out in a clean grid/flex row. Consider grouping related pills or giving them consistent sizing and spacing.
 
 ---
 
-## UAT-019 — Rating click killed audio player
-
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Best Shot / Section Scorecard
-**Page/Module:** app.js (updateSectionRatingInline)
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Clicking a star rating updates the score without affecting audio playback.
-
-**Actual:**
-Clicking any rating stopped currently playing audio immediately.
-
-**Steps to Reproduce:**
-1. Open a song's Best Shot section
-2. Start playing a recording
-3. Click a star rating
-4. Audio stops
-
-**Fix Applied:**
-Replaced full DOM re-render with `updateSectionRatingInline` using `data-bar` and `data-votes` attributes for in-place updates that never touch the audio element.
+### BUG-011 · 🔴 Open · Medium
+**Home Dashboard — Band Readiness score has no explanation; not clickable**
+- **Screen:** IMG_0489 (88% Band Readiness)
+- **Source:** drew · 2026-03-08
+- **Description:** The 88% Band Readiness score displays with no context about how it is calculated or what it means. There is no tooltip, info button, or tap target.
+- **Expected:** Tapping the score or a nearby ⓘ button should show a brief explanation (e.g. "Average of all member readiness ratings across gig-ready songs"). Consider a popover or inline expand.
 
 ---
 
-## UAT-020 — Rehearsal Chopper keyboard shortcuts not working
-
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Rehearsal Chopper
-**Page/Module:** app.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Spacebar and arrow keys work inside the Rehearsal Chopper modal.
-
-**Actual:**
-No keyboard response inside the chopper.
-
-**Steps to Reproduce:**
-1. Open Rehearsal Chopper
-2. Press spacebar or arrow keys
-3. Nothing happens
-
-**Fix Applied:**
-Keyboard handler referenced `chopModal` but element ID was `rehearsalChopperModal`. Corrected.
+### BUG-012 · 🔴 Open · Low
+**Home Dashboard — "No data" pill links to Pocket Meter; label is not intuitive**
+- **Screen:** IMG_0489
+- **Source:** drew · 2026-03-08
+- **Description:** The "No data" pill in the stat row navigates to Pocket Meter, but the label gives no indication of this. Users won't know what "No data" refers to or where it goes.
+- **Expected:** Label should be more descriptive, e.g. "🎛 Groove: No data" or "No groove data yet". Alternatively, tooltip/popover on tap explaining what it tracks.
 
 ---
 
-## UAT-021 — Chopper drag resize cursor not locking during drag
-
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Rehearsal Chopper
-**Page/Module:** app.js
-**Severity:** Low
-**Type:** Polish
-
-**Expected:**
-Resize cursor stays consistent throughout a drag. Mouse up anywhere ends the drag.
-
-**Actual:**
-Cursor reverted to default on fast mouse moves. Drag could get stuck.
-
-**Fix Applied:**
-Added `document.body` cursor lock during drag and document-level `mouseup` handler.
+### BUG-013 · 🔴 Open · Medium
+**Practice — Focus/Mixes tabs look unprofessional (pill/chip style, not real tabs)**
+- **Screen:** IMG_0490
+- **Source:** drew · 2026-03-08
+- **Description:** The Focus and Mixes tab selectors appear as small rounded chip/pill buttons rather than proper tab UI. Visually inconsistent with the rest of the app's tab patterns (e.g. Rehearsals Sessions/Plans tabs).
+- **Expected:** Replace with standard tab bar matching the Sessions/Plans tab style — full-width underline or filled tab with clear active state.
 
 ---
 
-## UAT-022 — Fadr import modal stuck on "Initializing"
-
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Fadr Import
-**Page/Module:** app.js / rehearsal-mode.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Fadr import progress bar advances through analysis and completes.
-
-**Actual:**
-Progress bar stuck on "Initializing" indefinitely.
-
-**Steps to Reproduce:**
-1. Open a song with a recording
-2. Launch Fadr import
-3. Progress bar never advances
-
-**Fix Applied:**
-`innerHTML +=` was destroying and recreating the DOM tree on each update, orphaning element refs. Replaced with `appendChild` so refs remain valid.
+### BUG-014 · 🔴 Open · High
+**Practice — "No songs in the queue yet" shown despite many songs having status set**
+- **Screen:** IMG_0490
+- **Source:** drew · 2026-03-08
+- **Description:** The Practice > Focus tab shows "No songs in the queue yet" with a Browse Song Library CTA, even though many songs already have their status set to Work in Progress, Prospect, or Gig Ready.
+- **Expected:** Any song with status WIP / needsPolish / onDeck (or equivalent) should appear in the queue automatically. This is a data-binding bug — the queue is likely not reading from the correct status field or filtering correctly.
+- **Notes:** Status field names were updated in a recent session (wip→needsPolish, prospect→onDeck). Check that the Practice queue filter is using the new field names.
 
 ---
 
-## UAT-023 — Chart saves/loads used mismatched Firebase keys
+## Carried-Forward Bugs (from prior sessions)
 
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Chart Tab
-**Page/Module:** app.js / rehearsal-mode.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Saved chord chart reappears the next time Practice Mode is opened.
-
-**Actual:**
-Chart saved to `rehearsal_crib` key but loaded from `chart` key — never reappeared.
-
-**Steps to Reproduce:**
-1. Paste a chart in Practice Mode and save
-2. Close and reopen Practice Mode
-3. Chart tab is blank
-
-**Fix Applied:**
-Standardized all chart reads and writes to use the `chart` key.
+| ID | Description | Priority | Status |
+|----|-------------|----------|--------|
+| CF-001 | `navigateTo('playlists')` stale ref in app.js line 2134 | Medium | 🔴 Open |
+| CF-002 | Date input overflow / missing calendar icon on iPhone (setlist edit form) | Medium | 🟢 Closed — deployed 20260311-150143 |
+| CF-003 | Calendar Saturday card clipping | Low | ⬜ Deferred |
+| CF-004 | Pocket Meter mobile toolbar wrap | Low | 🟡 Unknown (deploy status unclear) |
 
 ---
 
-## UAT-024 — renderChartSection() missing — no Practice Mode button visible
-
-**Status:** 🟢 Fixed
-**Area:** Songs — Woodshed / Practice Mode entry
-**Page/Module:** app.js
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-Practice Mode button visible in the Woodshed section.
-
-**Actual:**
-No Practice Mode button anywhere.
-
-**Steps to Reproduce:**
-1. Open any song detail
-2. Scroll to Woodshed
-3. No Practice Mode button
-
-**Fix Applied:**
-`renderChartSection()` was accidentally deleted during a prior refactor. Restored.
-
----
-
-## UAT-025 — Firebase key errors for song titles with periods
-
-**Status:** 🟢 Fixed
-**Area:** Songs / Firebase
-**Page/Module:** app.js (sanitizeFirebasePath / saveMasterFile)
-**Severity:** Critical
-**Type:** Bug
-
-**Expected:**
-Songs with periods in titles (U.S. Blues, St. Stephen) save and load correctly.
-
-**Actual:**
-Firebase refused writes — key validation errors. Songs inaccessible.
-
-**Steps to Reproduce:**
-1. Open "U.S. Blues"
-2. Try to save any data
-3. Firebase key error in console, silent fail
-
-**Fix Applied:**
-Added `sanitizeFirebasePath()` replacing `. # $ / [ ]` with `_`, applied in `saveMasterFile` before every `.set()` call.
-
----
-
-## UAT-026 — Band slug not validated on band creation
-
-**Status:** 🟢 Fixed
-**Area:** Multi-band / Firebase
-**Page/Module:** app.js (validateBandSlug)
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Band creation only proceeds with a valid, non-empty, sanitized slug.
-
-**Actual:**
-Empty or malformed slug could be submitted, routing all data to a wrong Firebase path.
-
-**Steps to Reproduce:**
-1. Open band creation modal
-2. Leave slug blank or enter spaces
-3. Submit — band created with bad path
-
-**Fix Applied:**
-Added `validateBandSlug()` enforcing non-empty, alphanumeric-hyphen-only slugs.
-
----
-
-## UAT-027 — Gig edit loaded wrong gig's data
-
-**Status:** 🟢 Fixed
-**Area:** Gigs
-**Page/Module:** js/features/gigs.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Clicking edit on a gig opens that exact gig's data.
-
-**Actual:**
-Wrong gig's data appeared in the edit form.
-
-**Steps to Reproduce:**
-1. Create two or more gigs
-2. Click edit on the second gig
-3. First gig's data appears in the form
-
-**Fix Applied:**
-`_origIdx` was set incorrectly after venue sort operations reordered the array. Fixed by preserving `_origIdx` through all sort operations.
-
----
-
-## UAT-028 — Venue edit/delete buttons not responding
-
-**Status:** 🟢 Fixed
-**Area:** Gigs — Venues
-**Page/Module:** js/features/gigs.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Edit and delete buttons on venue cards work correctly.
-
-**Actual:**
-Buttons did not respond, or edit form opened blank. Also: venue lat/lng dropped silently on edit.
-
-**Steps to Reproduce:**
-1. Open Venues page
-2. Click Edit on a venue
-3. Form opens blank or does nothing
-
-**Fix Applied:**
-Fixed event handlers. Venue edit form now preserves lat/lng through edits.
-
----
-
-## UAT-029 — Venue alpha sort inconsistent across dropdowns
-
-**Status:** 🟢 Fixed
-**Area:** Gigs — Venues
-**Page/Module:** js/features/gigs.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Venues alphabetical in all three contexts: Venues page, Add Gig dropdown, Edit Gig dropdown.
-
-**Actual:**
-Inconsistent ordering across the three contexts.
-
-**Fix Applied:**
-Applied consistent alpha sort to all three venue list render points.
-
----
-
-## UAT-030 — Calendar gig events not syncing to Gigs page
-
-**Status:** 🟢 Fixed
-**Area:** Calendar → Gigs
-**Page/Module:** app.js / js/features/calendar.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Gigs created from the Calendar page appear on the Gigs page.
-
-**Actual:**
-Calendar gig events existed as separate Firebase records — never visible in the Gigs list.
-
-**Steps to Reproduce:**
-1. Create a gig from the Calendar page
-2. Navigate to Gigs page
-3. Gig is not listed
-
-**Fix Applied:**
-Added `_syncGigToCalendar()` — both `saveGig` and `saveGigEdit` now sync to `calendar_events`.
-
----
-
-## UAT-031 — Directions API returning 400 errors
-
-**Status:** 🟢 Fixed
-**Area:** Gigs — Directions
-**Page/Module:** app.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Tapping Directions opens Google Maps with the correct route.
-
-**Actual:**
-400 Bad Request. No route opened.
-
-**Steps to Reproduce:**
-1. Open a gig with a venue
-2. Tap Get Directions
-3. 400 error returned
-
-**Fix Applied:**
-Three-step resolution: Distance Matrix API (deprecated Feb 2026) → Routes REST API (400, key extraction unreliable) → `google.maps.DirectionsService` (final fix — uses already-loaded JS SDK, handles auth automatically).
-
----
-
-## UAT-032 — Settings tab bar cut off on iPhone — About tab hidden
-
-**Status:** 🟢 Fixed
-**Area:** Settings
-**Page/Module:** app.js / styles.css
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-All Settings tabs visible without horizontal scrolling on iPhone.
-
-**Actual:**
-About tab hidden off-screen on iPhone Safari.
-
-**Fix Applied:**
-Shortened tab labels to Chart / Know / Mem / Listen / Rec.
-
----
-
-## UAT-033 — Topbar logo appearing too low relative to other topbar elements
-
-**Status:** 🟢 Fixed
-**Area:** Topbar
-**Page/Module:** logo.png / app-shell.css
-**Severity:** Low
-**Type:** Polish
-
-**Expected:**
-Logo guitar picks vertically centered in the topbar with the GrooveLinx wordmark.
-
-**Actual:**
-Logo appeared noticeably lower than the text and Connected button.
-
-**Steps to Reproduce:**
-1. Open the app
-2. Observe the topbar — picks sit below the text baseline
-
-**Likely Cause / Notes:**
-The 40×40px logo.png had 16px of pure black dead space at the top of the canvas, placing the visual center at Y=27.5 instead of Y=20. Every CSS centering approach was centering the image canvas, not the visible picks.
-
-**Fix Applied:**
-Recropped the PNG to rows 8–31 (visual center ~Y=19.5px).
-
----
-
-## UAT-034 — Monkey button not opening hamburger menu
-
-**Status:** 🟢 Fixed
-**Area:** App Shell — Hamburger Menu
-**Page/Module:** app.js / index.html
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Floating 🙈 monkey button opens the hamburger menu from any page.
-
-**Actual:**
-Button did not respond or rendered in wrong position.
-
-**Steps to Reproduce:**
-1. Scroll down on any page
-2. Tap the 🙈 button
-3. Nothing happens
-
-**Fix Applied:**
-Button was inside a scrollable container. Reparented to `document.body` so it's truly position-fixed.
-
----
-
-## UAT-035 — Moises button linked to marketing homepage
-
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Stems
-**Page/Module:** app.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Moises button opens the user's Moises Studio library.
-
-**Actual:**
-Link opened `moises.ai/` (marketing homepage).
-
-**Fix Applied:**
-Updated URL to `studio.moises.ai/library/`.
-
----
-
-## UAT-036 — App URL contained stale ?playlist= query param on iPhone PWA
-
-**Status:** 🟢 Fixed
-**Area:** App Shell / URL
-**Page/Module:** index.html (inline script)
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-PWA launches at `https://drewmerrill.github.io/deadcetera/`
-
-**Actual:**
-PWA launched at `https://drewmerrill.github.io/deadcetera/?playlist=pl_1771798250200`
-
-**Steps to Reproduce:**
-1. Open the app as a PWA on iPhone
-2. Check `window.location.href` in console
-3. `?playlist=` param present on every launch
-
-**Likely Cause / Notes:**
-`buildPlaylistShareUrl()` generates `?playlist=` share links. URL was in the address bar when the PWA was installed to iPhone home screen — iOS captures the exact URL at install time as the permanent launch URL.
-
-**Fix Applied:**
-Added inline script in index.html before `</body>` that calls `window.history.replaceState` when `?playlist=` or `?pack=` is present. Also requires: delete and reinstall the PWA on iPhone to get a clean launch URL.
-
----
-
-## UAT-037 — Pocket Meter needle SVG not rendering correctly
-
-**Status:** 🟢 Fixed
-**Area:** Pocket Meter
-**Page/Module:** pocket-meter.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Needle rotates to the correct angle based on stability score.
-
-**Actual:**
-Needle at wrong position or not updating.
-
-**Fix Applied:**
-SVG transform origin and rotation calculation corrected.
-
----
-
-## UAT-038 — Pocket Meter arc dashoffset not animating
-
-**Status:** 🟢 Fixed
-**Area:** Pocket Meter
-**Page/Module:** pocket-meter.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Score arc fills proportionally to stability score.
-
-**Actual:**
-Arc stayed at zero regardless of score.
-
-**Fix Applied:**
-dashoffset calculation corrected for SVG circle circumference formula.
-
----
-
-## UAT-039 — Pocket Meter screen flash too aggressive
-
-**Status:** 🟢 Fixed
-**Area:** Pocket Meter
-**Page/Module:** pocket-meter.js
-**Severity:** Low
-**Type:** Polish
-
-**Expected:**
-Beat detection produces a subtle readable pulse.
-
-**Actual:**
-Rapid successive flashes were disorienting.
-
-**Fix Applied:**
-Added minimum interval throttle guard on flash trigger.
-
----
-
-## UAT-040 — Pocket Meter font sizes too small on iPhone
-
-**Status:** 🟢 Fixed
-**Area:** Pocket Meter
-**Page/Module:** pocket-meter.js
-**Severity:** Low
-**Type:** Polish
-
-**Expected:**
-Score, labels, status text readable on iPhone at arm's length.
-
-**Actual:**
-Text too small to read clearly.
-
-**Fix Applied:**
-Font sizes bumped for all key display elements.
-
----
-
-## UAT-041 — Metronome silent on iPhone when hardware silent switch is on
-
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Metronome
-**Page/Module:** app.js (mtStartMetronome)
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Metronome clicks play regardless of iPhone silent switch position.
-
-**Actual:**
-Metronome completely silent when iPhone silent switch was engaged.
-
-**Steps to Reproduce:**
-1. Enable iPhone silent switch
-2. Open a song and start the metronome
-3. No audio output
-
-**Fix Applied:**
-Added silent MP3 data URL playback at volume 0.001 before starting AudioContext, guarded with `window._mtAudioUnlocked` flag to run only once per session.
-
----
-
-## UAT-042 — Google Drive practice tracks returned 403 errors
-
-**Status:** 🟢 Fixed
-**Area:** Practice Mode — Audio Playback
-**Page/Module:** app.js (loadGdriveAudio)
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Practice tracks from Google Drive play in the app audio player.
-
-**Actual:**
-Audio elements showed 403 Forbidden for all Drive MP3 URLs.
-
-**Steps to Reproduce:**
-1. Attach a Drive MP3 to a song
-2. Open Practice Mode
-3. Attempt to play — 403 error
-
-**Fix Applied:**
-Added `drive.readonly` OAuth scope and token-first fetch approach in `loadGdriveAudio`.
-
----
-
-## UAT-043 — prompt() calls blocked on iPhone Safari
-
-**Status:** 🟢 Fixed
-**Area:** Multiple features
-**Page/Module:** app.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-All input collection works on iPhone.
-
-**Actual:**
-iOS Safari blocks `prompt()` in many contexts, silently failing.
-
-**Fix Applied:**
-Replaced all 8 `prompt()` occurrences with inline forms and modals.
-
----
-
-## UAT-044 — Archive.org search returned no results for song searches
-
-**Status:** 🟢 Fixed
-**Area:** Version Hub — Archive.org
-**Page/Module:** worker.js / version-hub.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Searching "Bird Song" returns Archive.org shows containing that song in the setlist.
-
-**Actual:**
-Zero results returned.
-
-**Steps to Reproduce:**
-1. Open Version Hub
-2. Select Archive.org tab
-3. Search for "Bird Song"
-4. Zero results
-
-**Fix Applied:**
-Changed from `title:"Bird Song"` (show title field) to `description:"Bird Song"` (setlist content field). Archive.org advanced search requires `description:` for setlist searching.
-
----
-
-## UAT-045 — Archive.org fetch hung silently due to CORS
-
-**Status:** 🟢 Fixed
-**Area:** Version Hub — Archive.org
-**Page/Module:** version-hub.js / worker.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Archive.org search loads results or shows an error quickly.
-
-**Actual:**
-Search hung indefinitely — no results, no error, no timeout.
-
-**Likely Cause / Notes:**
-Archive.org blocks browser `fetch()` with CORS — hangs rather than rejecting. All Archive.org calls must route through the Cloudflare Worker proxy.
-
-**Fix Applied:**
-Direct browser fetch removed entirely. All Archive.org calls go through worker proxy.
-
----
-
-## UAT-046 — Spotify search returned "Invalid limit" error
-
-**Status:** 🟢 Fixed
-**Area:** Version Hub — Spotify
-**Page/Module:** worker.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Spotify search returns results.
-
-**Actual:**
-"Invalid limit" error returned.
-
-**Fix Applied:**
-Worker updated to enforce `limit=10` maximum (Spotify's cap for development-tier apps).
-
----
-
-## UAT-047 — Archive.org sort parameter ignored by Worker
-
-**Status:** 🟢 Fixed
-**Area:** Version Hub — Archive.org
-**Page/Module:** worker.js (handleArchiveSearch)
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Sort toggle (Downloads / Rating / Date) changes result order.
-
-**Actual:**
-Results always in default order regardless of sort selection.
-
-**Steps to Reproduce:**
-1. Search Archive.org
-2. Toggle sort buttons
-3. Order does not change
-
-**Fix Applied:**
-Worker was destructuring but ignoring `sortParam`. Fixed to pass it through to the Archive.org API call.
-
----
-
-## UAT-048 — Relisten API returned no results
-
-**Status:** 🟢 Fixed
-**Area:** Version Hub — Relisten
-**Page/Module:** worker.js
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-Relisten tab shows shows for the selected song.
-
-**Actual:**
-No results returned.
-
-**Fix Applied:**
-Relisten API versioning split corrected: songs endpoint = v2, individual song shows endpoint = v3. Also fixed duplicate `const songsData` declaration in the Worker (scoping error).
-
----
-
-
-## UAT-049 — Band Readiness widget not clickable
-
-**Status:** 🟢 Fixed
-**Area:** Home Dashboard
-**Page/Module:** js/features/home-dashboard.js (_renderBandReadinessScore)
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Tapping Band Readiness widget navigates to weak songs (or Songs page if 100%).
-
-**Actual:**
-Widget had no onclick — tapping did nothing. Made the feature feel broken at 100% readiness.
-
-**Steps to Reproduce:**
-1. Open Home Dashboard
-2. Tap Band Readiness widget
-3. Nothing happens
-
-**Fix Applied:**
-Added `onclick`, `cursor:pointer`, and tooltip. Weak songs → `homeGoWeakSongs(weakTitles)`. 100% (no weak songs) → `showPage('songs')`. Weak titles computed inline from `readinessCache`.
-
----
-
-## UAT-050 — Key dropdown missing minor keys
-
-**Status:** 🟢 Fixed
-**Area:** Song Detail — Band Lens
-**Page/Module:** js/features/song-detail.js
-**Severity:** Medium
-**Type:** Bug
-
-**Expected:**
-Key dropdown contains the full chromatic set of major and minor keys.
-
-**Actual:**
-Several minor keys missing: F#m, C#m, D#m, G#m, Bbm, Abm.
-
-**Steps to Reproduce:**
-1. Open any song in Song Detail
-2. Open the Key dropdown
-3. F#m and other minor keys are absent
-
-**Fix Applied:**
-Expanded key list to full chromatic set: A, Am, Bb, Bbm, B, Bm, C, C#, C#m, D, Dm, D#m, E, Em, F, F#, F#m, G, Gm, G#m, Ab, Abm.
-
----
-
-## UAT-051 — interaction_required error silently signed user out
-
-**Status:** 🟢 Fixed
-**Area:** Auth
-**Page/Module:** app.js (tokenClient callback)
-**Severity:** High
-**Type:** Bug
-
-**Expected:**
-When silent auto-reconnect can't complete, user is prompted to pick their account — not silently signed out.
-
-**Actual:**
-interaction_required / consent_required errors from prompt:'none' caused updateSignInStatus(false) — user appeared signed out with no explanation.
-
-**Steps to Reproduce:**
-1. Let Google session expire or revoke consent
-2. Reload the app
-3. User is silently signed out with no prompt to re-authenticate
-
-**Fix Applied:**
-Error callback now catches interaction_required and consent_required and falls back to tokenClient.requestAccessToken({ prompt: 'select_account' }) rather than failing silently.
-
----
-
-## UAT-052 — Connect arrow nudge missing on cold load (signed-out)
-
-**Status:** 🟢 Fixed
-**Area:** App Shell — Topbar
-**Page/Module:** app.js (DOMContentLoaded)
-**Severity:** Low
-**Type:** Polish
-
-**Expected:**
-Animated arrow nudge next to Connect button is visible immediately on cold load for signed-out users.
-
-**Actual:**
-Arrow only appeared after updateDriveAuthButton() ran — delayed or missing on first paint for signed-out users.
-
-**Steps to Reproduce:**
-1. Sign out
-2. Hard reload or open in incognito
-3. Arrow nudge absent or appears late
-
-**Fix Applied:**
-Arrow injected immediately in the signed-out else branch of DOMContentLoaded, before any other UI renders.
-
----
-
-## UAT-053 — "All rehearsed" shown when no readiness data exists
-
-**Status:** 🟢 Fixed
-**Area:** Home Dashboard — Command Center
-**Page/Module:** js/features/home-dashboard-cc.js
-**Severity:** Low
-**Type:** Bug
-
-**Expected:**
-Weak songs pill shows "No ratings yet" when the band has not rated any songs.
-
-**Actual:**
-"All rehearsed" appeared on a fresh band with zero readiness data — misleading green state.
-
-**Steps to Reproduce:**
-1. Create a new band or clear all readiness ratings
-2. Open Home Dashboard
-3. Weak songs pill reads "All rehearsed"
-
-**Fix Applied:**
-Added rcHasData guard: shows "No ratings yet" when readinessCache is empty, "All rehearsed" only when cache has data and all songs score >= 3.
+_End of log_
 
 ---
 
@@ -1325,7 +281,8 @@ With 400+ songs, suggestions always surface #41, 1000 Miles, 46 Days, 555 — pu
 
 ## UAT-059 — All pages open mid-scroll; should always scroll to top on navigation
 
-**Status:** 🔴 Open
+**Status:** 🟢 Closed — deployed 20260311-081114
+**Fix:** window.scrollTo(0,0) added to showPage() in navigation.js
 **Area:** Navigation — Global
 **Page/Module:** js/ui/navigation.js (showPage)
 **Severity:** Low
@@ -1377,7 +334,8 @@ All items remain open indefinitely. No status, no reply, no resolution tracking.
 
 ## UAT-062 — Heatmap toggle hides readiness chain-link and harmony mic icons on song rows
 
-**Status:** 🔴 Open
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** Heatmap dots repositioned from right:58px to right:112px to clear chain-strip and harmony mic
 **Area:** Songs List
 **Page/Module:** app.js / songs.js / app-shell.css
 **Severity:** Medium
@@ -1445,7 +403,8 @@ Score displays with no context, not tappable beyond navigation.
 
 ## UAT-066 — "No data" pill label is not intuitive
 
-**Status:** 🔴 Open
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** pocketEl.textContent changed from "No data" to "Groove: No data"
 **Area:** Home Dashboard
 **Page/Module:** js/features/home-dashboard.js
 **Severity:** Low
@@ -1461,7 +420,8 @@ Label reads "No data" — unclear it links to Pocket Meter or what it means.
 
 ## UAT-067 — Practice Focus/Mixes selectors look like chips, not tabs
 
-**Status:** 🔴 Open
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** Tab strip now uses .pm-tab-strip class so injected CSS applies correctly
 **Area:** Practice
 **Page/Module:** js/features/practice.js
 **Severity:** Medium
@@ -1477,7 +437,8 @@ Small rounded chip/pill buttons — visually inconsistent.
 
 ## UAT-068 — Practice queue empty despite songs having status set
 
-**Status:** 🔴 Open
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** practice.js queue filter now also matches camelCase field names (needsPolish, onDeck) in addition to legacy snake_case values
 **Area:** Practice
 **Page/Module:** js/features/practice.js
 **Severity:** High
@@ -1495,7 +456,8 @@ Any song with status needsPolish / onDeck / gigReady appears in the Practice que
 
 ## UAT-069 — Blank Edit Gig / wrong venue after new gig creation
 
-**Status:** 🔴 Open (fix identified, not deployed)
+**Status:** 🟢 Closed — deployed 20260311-081114
+**Fix:** editGig/deleteGig now use window._cachedGigs raw array instead of re-fetching from Firebase
 **Area:** Gigs
 **Page/Module:** js/features/gigs.js (saveGig / loadGigs)
 **Severity:** High
@@ -1516,7 +478,7 @@ Clicking Edit on a recently created gig opens a blank form with wrong venue sele
 
 ## UAT-070 — Setlist Add Song button does nothing
 
-**Status:** 🔴 Open
+**Status:** ✅ Closed — verified working 20260310
 **Area:** Setlists
 **Page/Module:** js/features/setlists.js
 **Severity:** High
@@ -1554,44 +516,694 @@ While defining a gig, allow creating a new setlist inline without navigating awa
 
 ---
 
-## Deferred / Open
+## UAT-072 — Member avatar pills show only first initial
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** song-detail.js now splits name on whitespace and concatenates first+last initial
+**Area:** Song Detail | **Module:** song-detail.js | **Severity:** Low
 
 ---
 
-## UAT-D01 — Inspire lens is placeholder only
-
-**Status:** 🔵 Deferred (Phase 3)
-**Area:** Song Detail — Inspire Lens
-**Severity:** Low
-
-Content TBD. Currently renders an empty card without crashing.
+## UAT-073 — Learn tab section cards narrower than song header card
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** sd-header gets border-radius:12px 12px 0 0, sd-panels padding flush, sd-card margin 0 0 12px
+**Area:** Song Detail | **Module:** song-detail.js | **Severity:** Low
 
 ---
 
-## UAT-D02 — Pocket snapshot does not persist across page reloads
-
-**Status:** 🔵 Deferred (Phase 3)
-**Area:** Command Center — Pocket Snapshot
-**Severity:** Low
-
-`window._lastPocketScore` is session-only memory. Reloading resets it to `—`. Fix: read last `grooveAnalysis` from Firebase on Home Dashboard load. Blocked on GLStore Phase 3 Steps 5–6.
+## UAT-074 — Gig/calendar sync creating duplicate event entries
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** calSaveEvent now requires venue for gig events preventing key mismatch duplicates
 
 ---
 
-## UAT-D03 — Practice Mix public share page not implemented
-
-**Status:** 🔵 Deferred (Phase 3)
-**Area:** Practice — Mixes
-**Severity:** Low
-
-`shareSlug` is saved to Firebase but no public read-by-slug page exists yet.
+## UAT-075 — Calendar delete event not removing from UI
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Removed object reference check from calDeleteEvent; relies on field match only
 
 ---
 
-## UAT-D04 — Harmony microphone badge misaligned in song rows
+## UAT-076 — Gig Map pan/scroll broken on desktop
+**Status:** ✅ Closed — deployed 20260310
+Fix: Added gestureHandling greedy to map options in gigs.js | **Area:** Gigs Map | **Module:** gigs.js | **Severity:** Medium
+Fix hint: Add gestureHandling greedy to map options
 
-**Status:** 🔵 Deferred
-**Area:** Songs List — Harmony indicator
-**Severity:** Low
+---
 
-🎤 emoji renders as large OS color emoji rather than small inline badge. Multiple CSS fixes attempted but emoji rendering is OS-controlled. Requires PNG or SVG badge asset replacement.
+## UAT-077 — Directions panel shows wrong venue name (stale cache)
+**Status:** ✅ Closed — deployed 20260310
+Fix: mapsUrl falls back v.address then v.name then g.venue | **Area:** Venues | **Module:** venues.js | **Severity:** High
+
+---
+
+## UAT-078 — Directions address field has no autocomplete
+**Status:** 🔴 Open | **Area:** Venues | **Module:** venues.js | **Severity:** Medium
+
+---
+
+## UAT-079 — Could not calculate route / Google Maps deep link returns 404
+**Status:** ✅ Closed — deployed 20260310
+Fix: mapsUrl uses v.address||v.name||g.venue preventing bare name 404s | **Area:** Venues | **Module:** venues.js | **Severity:** High
+
+---
+
+## UAT-080 — Google Maps console error about deprecated API
+**Status:** 🔴 Open | **Area:** index.html | **Severity:** Medium
+
+---
+
+## UAT-081 — Pocket Meter controls layout broken in Safari
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** Removed -webkit-fill-available max-height (causes Safari collapse bug). Added min-width:0 and -webkit-appearance:none to flex button children.
+**Area:** Pocket Meter | **Module:** pocket-meter.js | **Severity:** High
+
+---
+
+## UAT-082 — Tuner shows cents with no label or explanation
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** tunerCents now shows "in tune" when within 5 cents, otherwise "+N¢ sharp" or "N¢ flat"
+**Area:** Tuner | **Module:** app.js | **Severity:** Low
+
+---
+
+## UAT-083 — First tap on string reference tone produces crackle
+**Status:** ✅ Closed — deployed 20260310
+Fix: tunerPlayRef now async with await mtAudioContext.resume() before tone | **Area:** Tuner | **Module:** app.js | **Severity:** Medium
+Fix hint: AudioContext cold-start — call resume() before playing tone
+
+---
+
+## UAT-084 — Best Shot shows object Object as title and page hangs
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** selectSong called with string not object literal in renderBestShotOverviewList
+
+---
+
+## UAT-085 — Deleting transaction doesnt remove from UI
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** deleteTransaction now matches sorted index to original array before splice
+
+---
+
+## UAT-086 — Transaction type shows raw key not human label
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Added catLabels map in loadFinances render
+
+---
+
+## UAT-087 — Contacts list has no Edit or Delete button
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Added editContact, saveCtEdit, deleteContact; buttons added to contact rows
+
+---
+
+## UAT-088 — Share links open stale cached version
+**Status:** 🔴 Open — deferred
+**Notes:** Root cause unclear. SW cache behavior intentional. Needs deeper investigation.
+
+---
+
+## UAT-089 — Settings Profile dropdowns reset on every visit
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Auto-populate current user from Google login on Settings load
+
+---
+
+## UAT-090 — Band Members edit row shows two X buttons side by side
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Edit form cancel button relabeled Cancel instead of X
+**Area:** Settings Band Members | **Module:** app.js | **Severity:** Low
+
+---
+
+## FEAT-057 — Replace free-form Time input with native time picker
+**Status:** 🔴 Open | Low | calendar.js
+
+---
+
+## FEAT-058 — Gig Map should be collapsible not always-on
+**Status:** 🟢 Closed — deployed 20260311-140850
+**Fix:** Map header is now a toggle. Collapsed by default, expands on tap, map lazy-renders on first open. State persists in localStorage.
+
+---
+
+## FEAT-059 — Per-gig directions with home address + Places autocomplete
+**Status:** 🟢 Closed — deployed 20260311-140850
+**Fix:** Each gig card has a 📍 button opening an inline directions panel. Pre-fills home address from Settings. Google Places autocomplete on start field. DirectionsService renders route + distance + ETA + leave-by time. Falls back to Google Maps deep link.
+
+---
+
+## FEAT-060 — Replace synthetic tuner tones with real guitar samples
+**Status:** 🔴 Open | Medium | app.js (WebAudioFont)
+
+---
+
+## FEAT-061 — Metronome upgrade: tap tempo, subdivisions, time sig, sounds, tempo trainer
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** Full metronome rebuild — tap tempo, BPM slider with tick marks, time signature selector (2/4–7/8), subdivision selector (quarter/8th/triplet/16th), sound selector (click/wood/cowbell/hihat), tempo trainer (+BPM per N bars), visual pulse with downbeat highlight and subdivision dots
+
+---
+
+## FEAT-062 — Best Shot only show songs with recordings; add readiness context
+**Status:** 🔴 Open | Medium | bestshot.js
+
+---
+
+## FEAT-063 — Confirm before delete with dont ask again option (global)
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-064 — Transaction receipt photo upload
+**Status:** 🔴 Open | Medium | finances.js
+
+---
+
+## FEAT-065 — Transaction rows show submitter username and timestamp
+**Status:** 🔴 Open | Low | finances.js
+
+---
+
+## FEAT-066 — After saving transaction offer Add Another button
+**Status:** 🔴 Open | Low | finances.js
+
+---
+
+## FEAT-067 — Replace Photo URL in Edit Gear with native camera/photo picker
+**Status:** 🔴 Open | Medium | app.js (reuse equipPickPhoto)
+
+---
+
+## FEAT-068 — Add Contact address field with Google Places autocomplete
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-069 — Add Contact venue association with inline Add Venue option
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-070 — Add Contact Website field
+**Status:** 🔴 Open | Low | app.js
+
+---
+
+## FEAT-071 — Contacts assign band member as primary relationship owner
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-072 — Contacts send message to assigned member to verify contact info
+**Status:** 🔴 Open | Low | app.js
+
+---
+
+## FEAT-073 — Contacts filter/search by contact type
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-074 — Band members auto-populate in Contacts from member profiles
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-075 — Sub musicians by instrument and availability request and direct message
+**Status:** 🔴 Open | High | app.js
+
+---
+
+## FEAT-076 — Band Contact Directory sync all contact fields to Contacts page
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-077 — Add Member replace Role/Instrument free text with structured selector
+**Status:** 🔴 Open | Medium | app.js — design review required
+
+---
+
+## FEAT-078 — Settings Profile Primary Instrument needs vocals pairing and expanded options
+**Status:** 🔴 Open | Medium | app.js — solve with FEAT-077
+
+---
+
+## FEAT-079 — Band Members enforce single source of truth across all entry points
+**Status:** 🔴 Open | High | app.js — architectural fix
+
+---
+
+## FEAT-080 — Band Members add substitute members with instrument and availability
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## UAT-072 — Member avatar pills show only first initial
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** song-detail.js now splits name on whitespace and concatenates first+last initial
+**Area:** Song Detail | **Module:** song-detail.js | **Severity:** Low
+
+---
+
+## UAT-073 — Learn tab section cards narrower than song header card
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** sd-header gets border-radius:12px 12px 0 0, sd-panels padding flush, sd-card margin 0 0 12px
+**Area:** Song Detail | **Module:** song-detail.js | **Severity:** Low
+
+---
+
+## UAT-074 — Gig/calendar sync creating duplicate event entries
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** calSaveEvent now requires venue for gig events preventing key mismatch duplicates
+
+---
+
+## UAT-075 — Calendar delete event not removing from UI
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Removed object reference check from calDeleteEvent; relies on field match only
+
+---
+
+## UAT-076 — Gig Map pan/scroll broken on desktop
+**Status:** ✅ Closed — deployed 20260310
+Fix: Added gestureHandling greedy to map options in gigs.js | **Area:** Gigs Map | **Module:** gigs.js | **Severity:** Medium
+Fix hint: Add gestureHandling greedy to map options
+
+---
+
+## UAT-077 — Directions panel shows wrong venue name (stale cache)
+**Status:** ✅ Closed — deployed 20260310
+Fix: mapsUrl falls back v.address then v.name then g.venue | **Area:** Venues | **Module:** venues.js | **Severity:** High
+
+---
+
+## UAT-078 — Directions address field has no autocomplete
+**Status:** 🔴 Open | **Area:** Venues | **Module:** venues.js | **Severity:** Medium
+
+---
+
+## UAT-079 — Could not calculate route / Google Maps deep link returns 404
+**Status:** ✅ Closed — deployed 20260310
+Fix: mapsUrl uses v.address||v.name||g.venue preventing bare name 404s | **Area:** Venues | **Module:** venues.js | **Severity:** High
+
+---
+
+## UAT-080 — Google Maps console error about deprecated API
+**Status:** 🔴 Open | **Area:** index.html | **Severity:** Medium
+
+---
+
+## UAT-081 — Pocket Meter controls layout broken in Safari
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** Removed -webkit-fill-available max-height (causes Safari collapse bug). Added min-width:0 and -webkit-appearance:none to flex button children.
+**Area:** Pocket Meter | **Module:** pocket-meter.js | **Severity:** High
+
+---
+
+## UAT-082 — Tuner shows cents with no label or explanation
+**Status:** 🟢 Closed — deployed 20260311-132719
+**Fix:** tunerCents now shows "in tune" when within 5 cents, otherwise "+N¢ sharp" or "N¢ flat"
+**Area:** Tuner | **Module:** app.js | **Severity:** Low
+
+---
+
+## UAT-083 — First tap on string reference tone produces crackle
+**Status:** ✅ Closed — deployed 20260310
+Fix: tunerPlayRef now async with await mtAudioContext.resume() before tone | **Area:** Tuner | **Module:** app.js | **Severity:** Medium
+Fix hint: AudioContext cold-start — call resume() before playing tone
+
+---
+
+## UAT-084 — Best Shot shows object Object as title and page hangs
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** selectSong called with string not object literal in renderBestShotOverviewList
+
+---
+
+## UAT-085 — Deleting transaction doesnt remove from UI
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** deleteTransaction now matches sorted index to original array before splice
+
+---
+
+## UAT-086 — Transaction type shows raw key not human label
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Added catLabels map in loadFinances render
+
+---
+
+## UAT-087 — Contacts list has no Edit or Delete button
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Added editContact, saveCtEdit, deleteContact; buttons added to contact rows
+
+---
+
+## UAT-088 — Share links open stale cached version
+**Status:** 🔴 Open — deferred
+**Notes:** Root cause unclear. SW cache behavior intentional. Needs deeper investigation.
+
+---
+
+## UAT-089 — Settings Profile dropdowns reset on every visit
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Auto-populate current user from Google login on Settings load
+
+---
+
+## UAT-090 — Band Members edit row shows two X buttons side by side
+**Status:** 🟢 Closed — deployed 20260310
+**Fix:** Edit form cancel button relabeled Cancel instead of X
+**Area:** Settings Band Members | **Module:** app.js | **Severity:** Low
+
+---
+
+## FEAT-057 — Replace free-form Time input with native time picker
+**Status:** 🔴 Open | Low | calendar.js
+
+---
+
+## FEAT-058 — Gig Map should be collapsible not always-on
+**Status:** 🟢 Closed — deployed 20260311-140850
+**Fix:** Map header is now a toggle. Collapsed by default, expands on tap, map lazy-renders on first open. State persists in localStorage.
+
+---
+
+## FEAT-059 — Per-gig directions with home address + Places autocomplete
+**Status:** 🟢 Closed — deployed 20260311-140850
+**Fix:** Each gig card has a 📍 button opening an inline directions panel. Pre-fills home address from Settings. Google Places autocomplete on start field. DirectionsService renders route + distance + ETA + leave-by time. Falls back to Google Maps deep link.
+
+---
+
+## FEAT-060 — Replace synthetic tuner tones with real guitar samples
+**Status:** 🔴 Open | Medium | app.js (WebAudioFont)
+
+---
+
+## FEAT-061 — Metronome upgrade: tap tempo, subdivisions, time sig, sounds, tempo trainer
+**Status:** 🟢 Closed — deployed 20260311-150143
+**Fix:** Full metronome rebuild — tap tempo, BPM slider with tick marks, time signature selector (2/4–7/8), subdivision selector (quarter/8th/triplet/16th), sound selector (click/wood/cowbell/hihat), tempo trainer (+BPM per N bars), visual pulse with downbeat highlight and subdivision dots
+
+---
+
+## FEAT-062 — Best Shot only show songs with recordings; add readiness context
+**Status:** 🔴 Open | Medium | bestshot.js
+
+---
+
+## FEAT-063 — Confirm before delete with dont ask again option (global)
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-064 — Transaction receipt photo upload
+**Status:** 🔴 Open | Medium | finances.js
+
+---
+
+## FEAT-065 — Transaction rows show submitter username and timestamp
+**Status:** 🔴 Open | Low | finances.js
+
+---
+
+## FEAT-066 — After saving transaction offer Add Another button
+**Status:** 🔴 Open | Low | finances.js
+
+---
+
+## FEAT-067 — Replace Photo URL in Edit Gear with native camera/photo picker
+**Status:** 🔴 Open | Medium | app.js (reuse equipPickPhoto)
+
+---
+
+## FEAT-068 — Add Contact address field with Google Places autocomplete
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-069 — Add Contact venue association with inline Add Venue option
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-070 — Add Contact Website field
+**Status:** 🔴 Open | Low | app.js
+
+---
+
+## FEAT-071 — Contacts assign band member as primary relationship owner
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-072 — Contacts send message to assigned member to verify contact info
+**Status:** 🔴 Open | Low | app.js
+
+---
+
+## FEAT-073 — Contacts filter/search by contact type
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-074 — Band members auto-populate in Contacts from member profiles
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-075 — Sub musicians by instrument and availability request and direct message
+**Status:** 🔴 Open | High | app.js
+
+---
+
+## FEAT-076 — Band Contact Directory sync all contact fields to Contacts page
+**Status:** 🔴 Open | Medium | app.js
+
+---
+
+## FEAT-077 — Add Member replace Role/Instrument free text with structured selector
+**Status:** 🔴 Open | Medium | app.js — design review required
+
+---
+
+## FEAT-078 — Settings Profile Primary Instrument needs vocals pairing and expanded options
+**Status:** 🔴 Open | Medium | app.js — solve with FEAT-077
+
+---
+
+## FEAT-079 — Band Members enforce single source of truth across all entry points
+**Status:** 🔴 Open | High | app.js — architectural fix
+
+---
+
+## FEAT-080 — Band Members add substitute members with instrument and availability
+**Status:** 🔴 Open | Medium | app.js
+
+## UAT-072 -- Member avatar pills show only first initial
+Status: Open | Area: Song Detail | Module: song-detail.js | Severity: Low
+Pills should show first+last initial, not just first.
+
+## UAT-073 -- Learn tab section cards narrower than song header card
+Status: Open | Area: Song Detail | Module: song-detail.js | Severity: Low | Type: Polish
+
+## UAT-074 -- Gig/calendar sync creating duplicate event entries
+Status: Closed -- deployed 20260310
+Fix: calSaveEvent now requires venue for gig events preventing key mismatch duplicates
+
+## UAT-075 -- Calendar delete event not removing from UI
+Status: Closed -- deployed 20260310
+Fix: Removed object reference check from calDeleteEvent; relies on field match only
+
+## UAT-076 -- Gig Map pan/scroll broken on desktop
+Status: Open | Area: Gigs Map | Module: gigs.js | Severity: Medium
+Fix hint: Add gestureHandling greedy to map options
+
+## UAT-077 -- Directions panel shows wrong venue name stale cache
+Status: Open | Area: Venues | Module: venues.js | Severity: High
+
+## UAT-078 -- Directions address field has no autocomplete
+Status: Open | Area: Venues | Module: venues.js | Severity: Medium
+
+## UAT-079 -- Could not calculate route Google Maps deep link returns 404
+Status: Open | Area: Venues | Module: venues.js | Severity: High
+
+## UAT-080 -- Google Maps console error about deprecated API
+Status: Open | Area: index.html | Severity: Medium
+
+## UAT-081 -- Pocket Meter controls layout broken in Safari
+Status: Open | Area: Pocket Meter | Module: pocket-meter.js / app-shell.css | Severity: High
+
+## UAT-082 -- Tuner shows cents with no label or explanation
+Status: Open | Area: Tuner | Module: app.js | Severity: Low
+
+## UAT-083 -- First tap on string reference tone produces crackle
+Status: Open | Area: Tuner | Module: app.js | Severity: Medium
+Fix hint: AudioContext cold-start -- call resume() before playing tone
+
+## UAT-084 -- Best Shot shows object Object as title and page hangs
+Status: Closed -- deployed 20260310
+Fix: selectSong called with string not object literal in renderBestShotOverviewList
+
+## UAT-085 -- Deleting transaction doesnt remove from UI
+Status: Closed -- deployed 20260310
+Fix: deleteTransaction now matches sorted index to original array before splice
+
+## UAT-086 -- Transaction type shows raw key not human label
+Status: Closed -- deployed 20260310
+Fix: Added catLabels map in loadFinances render
+
+## UAT-087 -- Contacts list has no Edit or Delete button
+Status: Closed -- deployed 20260310
+Fix: Added editContact, saveCtEdit, deleteContact; buttons added to contact rows
+
+## UAT-088 -- Share links open stale cached version
+Status: Open -- deferred
+Notes: Root cause unclear. SW cache behavior intentional. Needs deeper investigation.
+
+## UAT-089 -- Settings Profile dropdowns reset on every visit
+Status: Closed -- deployed 20260310
+Fix: Auto-populate current user from Google login on Settings load
+
+## UAT-090 -- Band Members edit row shows two X buttons side by side
+Status: Open | Area: Settings Band Members | Module: app.js | Severity: Low
+
+## FEAT-057 -- Replace free-form Time input with native time picker
+Status: Open | Low | calendar.js
+
+## FEAT-058 -- Gig Map should be collapsible not always-on
+Status: Open | Medium | gigs.js
+
+## FEAT-059 -- Gig Map show band member locations and gig pins with legend
+Status: Open | Medium | gigs.js
+
+## FEAT-060 -- Replace synthetic tuner tones with real guitar samples
+Status: Open | Medium | app.js WebAudioFont
+
+## FEAT-061 -- Metronome tap-to-type BPM and slider tick marks
+Status: Open | Low | app.js
+
+## FEAT-062 -- Best Shot only show songs with recordings add readiness context
+Status: Open | Medium | bestshot.js
+
+## FEAT-063 -- Confirm before delete with dont ask again option global
+Status: Open | Medium | app.js
+
+## FEAT-064 -- Transaction receipt photo upload
+Status: Open | Medium | finances.js
+
+## FEAT-065 -- Transaction rows show submitter username and timestamp
+Status: Open | Low | finances.js
+
+## FEAT-066 -- After saving transaction offer Add Another button
+Status: Open | Low | finances.js
+
+## FEAT-067 -- Replace Photo URL in Edit Gear with native camera/photo picker
+Status: Open | Medium | app.js reuse equipPickPhoto
+
+## FEAT-068 -- Add Contact address field with Google Places autocomplete
+Status: Open | Medium | app.js
+
+## FEAT-069 -- Add Contact venue association with inline Add Venue option
+Status: Open | Medium | app.js
+
+## FEAT-070 -- Add Contact Website field
+Status: Open | Low | app.js
+
+## FEAT-071 -- Contacts assign band member as primary relationship owner
+Status: Open | Medium | app.js
+
+## FEAT-072 -- Contacts send message to assigned member to verify contact info
+Status: Open | Low | app.js
+
+## FEAT-073 -- Contacts filter/search by contact type
+Status: Open | Medium | app.js
+
+## FEAT-074 -- Band members auto-populate in Contacts from member profiles
+Status: Open | Medium | app.js
+
+## FEAT-075 -- Sub musicians by instrument and availability request and direct message
+Status: Open | High | app.js
+
+## FEAT-076 -- Band Contact Directory sync all contact fields to Contacts page
+Status: Open | Medium | app.js
+
+## FEAT-077 -- Add Member replace Role/Instrument free text with structured selector
+Status: Open | Medium | app.js -- design review required
+
+## FEAT-078 -- Settings Profile Primary Instrument needs vocals pairing and expanded options
+Status: Open | Medium | app.js -- solve with FEAT-077
+
+## FEAT-079 -- Band Members enforce single source of truth across all entry points
+Status: Open | High | app.js -- architectural fix
+
+## FEAT-080 -- Band Members add substitute members with instrument and availability
+Status: Open | Medium | app.js
+
+---
+### BUG-015 · 🟢 Closed · High
+**Gigs — deleteGig/editGig use display-sorted index on unsorted Firebase data**
+- **Source:** claude canvas · 2026-03-11
+- **Description:** loadGigs() sorts by date descending and stamps _origIdx before display. deleteGig() and editGig() re-fetch raw unsorted data and use the passed idx directly — causing wrong gig to be edited or deleted when gigs are not in insertion order.
+- **Fix:** editGig/deleteGig now use window._cachedGigs raw unsorted array (stamped by loadGigs before sort). Removed re-fetch + sort approach — Firebase return order is non-deterministic.
+- **Status:** Fixed 2026-03-11
+---
+### BUG-016 · 🟢 Closed · High
+**Setlists — editSetlist/deleteSetlist/exportSetlistToiPad use display-sorted index on unsorted data**
+- **Source:** claude canvas · 2026-03-11
+- **Description:** Same pattern as BUG-015. loadSetlists() sorts newest-first before display but edit/delete/export re-fetch raw unsorted data. Wrong setlist could be edited, deleted, or exported.
+- **Fix:** editSetlist/deleteSetlist/slSaveSetlistEdit now use window._cachedSetlists raw array. Removed re-fetch + sort approach — Firebase return order is non-deterministic.
+- **Status:** Fixed 2026-03-11
+---
+### BUG-017 · 🟢 Closed · Medium
+**Gig Map — injected style tag (monkey button reposition) never removed on exit**
+- **Source:** claude canvas · 2026-03-11
+- **Description:** initGigMap() injects a <style> tag that globally repositions .rm-monkey-float. This style tag persists after Gig Map is closed, affecting monkey button position on all other pages for the rest of the session.
+- **Expected:** Style tag should be removed when Gig Map exits, or scoped to #gmOverlay only.
+- **Fix:** Style tag given id="gm-injected-style" on creation; closeGigMode() now removes it and resets _gmOverlayBuilt flag.
+- **Deployed:** 20260311-132719
+---
+### BUG-018 · 🔴 Open · Low
+**Gig Map — Capture Moment button appended to document.body, persists outside Gig Map**
+- **Source:** claude canvas · 2026-03-11
+- **Description:** The Capture Moment floating button (rmCaptureMomentBtn) is appended directly to document.body inside initGigMap(). It persists visibly on other pages after Gig Map is closed.
+- **Expected:** Button should be hidden or removed when Gig Map exits.
+- **Scope:** gigs.js initGigMap()
+
+## UAT-091 — Settings has no home address field
+**Status:** 🟢 Closed — deployed 20260311-140850
+**Fix:** Home Address field added to Settings > Profile with Google Places autocomplete. Saves to localStorage and Firebase member record. Used as default starting point for gig directions.
+
+---
+## UAT-092 — Pocket Meter v2 improvements
+**Status:** 🟢 Deployed 20260311-211448
+**Changes:** BPM display centered; gear button enlarged with touch-action; float mode exit button (✕) added to toolbar; mini mode corner bolts hidden; toolbar wraps instead of clipping; screen flash 3-4x brighter; 7/8 time signature added; hover tooltips on all controls; full ? help panel with calibration guide; gold nameplate centered.
+**Pending verification:** Gear panel open/close, float mode exit button behavior.
+
+---
+## UAT-093 — Home dashboard mission board
+**Status:** 🟢 Deployed 20260311-214722 / 20260311-215645
+**Changes:** Replaced card grid with mission board layout: hd-strip (event/readiness/weak chips), hd-hero (next gig or rehearsal), YOUR PREP bucket (personal weak songs), BAND STATUS bucket (readiness rows), QUICK ACTIONS bucket (4 utility buttons). Old readiness widget and cc summary strip suppressed in mission board context. Login events filtered from activity feed.
+
+---
+## UAT-094 — Rehearsal Intelligence tab
+**Status:** 🟢 Deployed 20260311-231349 / 20260311-233053
+**Changes:** New Intel tab added to Rehearsals section. Sections: hero summary (band status label + session time), Rehearsal Focus (top 5 weak songs with reason tags), Auto-Generated Plan (warmup + song blocks with time/goals, Use This Plan CTA), Band Readiness Breakdown (overall % + weakest song bars), Improvement Tracking (last rehearsal songs + optional Pocket Meter groove). renderRehearsalIntel() in rehearsal.js. Navigation route registered in navigation.js.
+**Note:** Section header icons render as [>] [~] [=] [+] — emoji encoding issue, cosmetic only.
+
+---
+## BUG-019 · 🔴 Open · Low
+**Song title edit — no edit button visible on song detail**
+- **Source:** Drew UAT · 2026-03-11
+- **Description:** User could not find how to edit a song title after adding a song. Edit flow needs investigation.
+- **Scope:** song-detail.js or songs.js
+
+
+---
+## UAT-095 — Rehearsal Intelligence UX upgrade
+**Status:** 🟢 Deployed 20260312-001650
+**Changes:** `rehearsal.js` — `deriveRiBandStatus`, `deriveRiConfidenceLabel` helpers added. Focus song reason tags: "Upcoming setlist song", "Groove drift detected", "Harmony instability". Section icons upgraded to emoji (🎯📋📊📈). Confidence label pill added to hero. Renamed to "SUGGESTED REHEARSAL AGENDA". `renderRiGrooveInsight` (stability score + trend when grooveData present). `renderRiCTA` (Start Rehearsal Mode full-width gradient button).
+
+---
+## UAT-096 — Home Dashboard Mission Board upgrade
+**Status:** 🟢 Deployed 20260312-004735
+**Changes:** `home-dashboard.js` — chip strip replaced with narrative mission strip. Hero upgraded to Command Card (readiness badge, coaching sentence, countdown, "Open Gig →", "Start Rehearsal Prep" tertiary). YOUR PREP shows top weak song + event tie-in + "+N more". BAND STATUS → BAND INTELLIGENCE (3-4 interpreted lines, "Open Command Center →"). Quick Actions demoted to compact utility strip (emoji icons, no header). Activity feed capped at 3 items. 5 new derivation helpers added.
+**Pending:** CSS styling pass for all new BEM classes (see HANDOFF for full list).

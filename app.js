@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260310-234437', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260311-150143', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260310-234437';
+var BUILD_VERSION = '20260311-150143';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -60,7 +60,7 @@ var _loadedVersion = BUILD_VERSION;
         .harmony-badge { font-size:9px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.2); padding:1px 2px; border-radius:4px; border:1px solid rgba(129,140,248,0.3); width:16px; height:14px; overflow:hidden; flex-shrink:0; }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
         /* Col 3: Chain strip */
-        .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; }
+        .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; position:relative; z-index:3; }
         /* Col 4: Status badge */
         .status-badge { white-space:nowrap; font-size:0.52em; padding:2px 3px; border-radius:10px; font-weight:700; letter-spacing:0.01em; display:inline-flex; align-items:center; justify-content:center; width:100%; max-width:68px; text-align:center; box-sizing:border-box; overflow:hidden; }
         /* Col 5: Band badge */
@@ -7479,7 +7479,8 @@ async function showAdminPanel() {
     ` : '';
 
     panel.innerHTML = `
-        <div style="padding: 20px;">
+        <div style="padding: 20px; position: relative;">
+            <button onclick="document.getElementById('adminPanel').remove()" style="position:sticky;top:0;float:right;z-index:10;background:rgba(30,30,40,0.95);border:1px solid #333;color:#999;font-size:20px;cursor:pointer;border-radius:6px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;margin-bottom:8px">&#x2715;</button>
             ${feedbackHTML}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0; color: #667eea; font-size: 1.3em;">📊 Band Activity</h2>
@@ -7715,18 +7716,87 @@ ${hasAbc?`
     </div>
 </div>
 
-<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:6px">
+<div style="background:rgba(255,255,255,0.06);padding:12px;border-radius:12px;margin-bottom:10px">
+
+    <!-- Row 1: Title + Start/Stop -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <strong style="font-size:0.85em">🥁 Metronome ${mtHelp('metronome')}</strong>
-        <div style="display:flex;align-items:center;gap:5px">
-            <button onclick="mtAdjustBPM(${sectionIndex},-5)" style="background:rgba(255,255,255,0.1);color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer">−</button>
-            <input id="mtBPM_${sectionIndex}" type="number" value="${getBPMForSong()}" min="40" max="240" style="width:46px;text-align:center;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:3px;font-size:1em;font-weight:700" onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}">
-            <button onclick="mtAdjustBPM(${sectionIndex},5)" style="background:rgba(255,255,255,0.1);color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer">+</button>
-            <span style="font-size:0.7em;color:rgba(255,255,255,0.35)">BPM</span>
-            <button id="mtMetronomeToggle_${sectionIndex}" onclick="mtToggleMetronome(${sectionIndex})" style="background:#667eea;color:white;border:none;padding:5px 10px;border-radius:5px;cursor:pointer;font-weight:600;font-size:0.8em">▶ Start</button>
+        <button id="mtMetronomeToggle_${sectionIndex}" onclick="mtToggleMetronome(${sectionIndex})" style="background:#667eea;color:white;border:none;padding:6px 16px;border-radius:20px;cursor:pointer;font-weight:700;font-size:0.82em;letter-spacing:0.03em">▶ Start</button>
+    </div>
+
+    <!-- Row 2: BPM display + tap + nudge -->
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">
+        <button onclick="mtAdjustBPM(${sectionIndex},-1)" style="background:rgba(255,255,255,0.08);color:white;border:none;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em">−</button>
+        <div style="position:relative;text-align:center">
+            <input id="mtBPM_${sectionIndex}" type="number" value="${getBPMForSong()}" min="20" max="300"
+                style="width:64px;text-align:center;background:rgba(255,255,255,0.07);color:white;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:6px 4px;font-size:1.6em;font-weight:800;line-height:1"
+                onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}">
+            <div style="font-size:0.62em;color:rgba(255,255,255,0.35);letter-spacing:0.08em;text-transform:uppercase;margin-top:2px">BPM</div>
+        </div>
+        <button onclick="mtAdjustBPM(${sectionIndex},1)" style="background:rgba(255,255,255,0.08);color:white;border:none;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:1em">+</button>
+        <button onclick="mtTapTempo(${sectionIndex})" id="mtTapBtn_${sectionIndex}"
+            style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;padding:8px 14px;border-radius:20px;cursor:pointer;font-weight:700;font-size:0.82em;letter-spacing:0.02em;box-shadow:0 2px 8px rgba(99,102,241,0.3)">
+            TAP
+        </button>
+    </div>
+
+    <!-- Row 3: BPM slider with tick marks -->
+    <div style="margin-bottom:10px;padding:0 4px">
+        <input id="mtBPMSlider_${sectionIndex}" type="range" min="20" max="300" value="${getBPMForSong()}"
+            style="width:100%;accent-color:#667eea;cursor:pointer"
+            oninput="mtSyncBPMFromSlider(${sectionIndex},this.value)">
+        <div style="display:flex;justify-content:space-between;font-size:0.58em;color:rgba(255,255,255,0.2);margin-top:2px;padding:0 2px">
+            ${[40,60,80,100,120,140,160,180,200,240].map(t=>`<span>${t}</span>`).join('')}
         </div>
     </div>
-    <div id="mtBeatVisual_${sectionIndex}" style="display:flex;gap:5px;justify-content:center">${[0,1,2,3].map(i=>`<div class="mt-beat" data-beat="${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.1);transition:all 0.05s"></div>`).join('')}</div>
+
+    <!-- Row 4: Time sig + Subdivision + Sound -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="font-size:0.6em;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.06em">Time Sig</div>
+            <select id="mtTimeSig_${sectionIndex}" onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}"
+                style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 6px;font-size:0.8em;cursor:pointer">
+                ${['2/4','3/4','4/4','5/4','6/8','7/8'].map(ts=>`<option value="${ts}"${ts==='4/4'?' selected':''}>${ts}</option>`).join('')}
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="font-size:0.6em;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.06em">Subdivision</div>
+            <select id="mtSubdiv_${sectionIndex}" onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}"
+                style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 6px;font-size:0.8em;cursor:pointer">
+                <option value="1">Quarter</option>
+                <option value="2">8th</option>
+                <option value="3">Triplet</option>
+                <option value="4">16th</option>
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="font-size:0.6em;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.06em">Sound</div>
+            <select id="mtSound_${sectionIndex}" onchange="if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(${sectionIndex})}"
+                style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:4px 6px;font-size:0.8em;cursor:pointer">
+                <option value="click">Click</option>
+                <option value="wood">Wood</option>
+                <option value="cowbell">Cowbell</option>
+                <option value="hihat">Hi-hat</option>
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-left:auto">
+            <div style="font-size:0.6em;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.06em">Trainer +BPM</div>
+            <div style="display:flex;align-items:center;gap:4px">
+                <input id="mtTrainerAmt_${sectionIndex}" type="number" value="5" min="1" max="20"
+                    style="width:34px;text-align:center;background:rgba(255,255,255,0.07);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:5px;padding:3px;font-size:0.75em">
+                <span style="font-size:0.65em;color:rgba(255,255,255,0.3)">per</span>
+                <input id="mtTrainerBars_${sectionIndex}" type="number" value="4" min="1" max="32"
+                    style="width:34px;text-align:center;background:rgba(255,255,255,0.07);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:5px;padding:3px;font-size:0.75em">
+                <span style="font-size:0.65em;color:rgba(255,255,255,0.3)">bars</span>
+                <label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer">
+                    <input type="checkbox" id="mtTrainerOn_${sectionIndex}" style="accent-color:#667eea"> On
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 5: Beat visualizer (dynamic based on time sig) -->
+    <div id="mtBeatVisual_${sectionIndex}" style="display:flex;gap:6px;justify-content:center;align-items:center;min-height:24px"></div>
 </div>
 
 <div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:8px;margin-bottom:10px">
@@ -7841,40 +7911,225 @@ function getBPMForSong(){const b=document.getElementById('songBpmInput');return(
 // ============================================================================
 // METRONOME
 // ============================================================================
-function mtToggleMetronome(si){
-    const btn=document.getElementById(`mtMetronomeToggle_${si}`);
-    if(mtMetronomeInterval){mtStopMetronome();if(btn){btn.textContent='▶ Start';btn.style.background='#667eea';}}
-    else{mtStartMetronome(si);if(btn){btn.textContent='⏸ Stop';btn.style.background='#ef4444';btn.style.color='white';}}
+// ── Metronome state ──────────────────────────────────────────────────────────
+var _mtTapTimes = [];
+var _mtTrainerBar = 0;
+
+function mtToggleMetronome(si) {
+    var btn = document.getElementById('mtMetronomeToggle_' + si);
+    if (mtMetronomeInterval) {
+        mtStopMetronome();
+        if (btn) { btn.textContent = '▶ Start'; btn.style.background = '#667eea'; }
+        _mtTrainerBar = 0;
+    } else {
+        mtBuildBeatDots(si);
+        mtStartMetronome(si);
+        if (btn) { btn.textContent = '⏸ Stop'; btn.style.background = '#ef4444'; }
+    }
 }
-function mtStartMetronome(si){
-    // iOS silent switch fix: play a silent Audio element first to unlock the audio session
+
+function mtBuildBeatDots(si) {
+    var vis = document.getElementById('mtBeatVisual_' + si);
+    if (!vis) return;
+    var ts = (document.getElementById('mtTimeSig_' + si) || {}).value || '4/4';
+    var beats = parseInt(ts.split('/')[0]) || 4;
+    var subdiv = parseInt((document.getElementById('mtSubdiv_' + si) || {}).value) || 1;
+    var total = beats * subdiv;
+    vis.innerHTML = '';
+    for (var i = 0; i < total; i++) {
+        var dot = document.createElement('div');
+        dot.className = 'mt-beat';
+        dot.dataset.beat = i;
+        var isBeat = (i % subdiv === 0);
+        var isOne = (i === 0);
+        dot.style.cssText = 'width:' + (isBeat ? '14px' : '8px') + ';height:' + (isBeat ? '14px' : '8px') + ';border-radius:50%;background:rgba(255,255,255,0.1);transition:all 0.05s;flex-shrink:0';
+        vis.appendChild(dot);
+    }
+}
+
+function mtMakeClick(ctx, sound, freq, gain, time, dur) {
+    var o = ctx.createOscillator();
+    var g = ctx.createGain();
+    var f = ctx.createBiquadFilter();
+    if (sound === 'wood') {
+        o.type = 'triangle';
+        o.frequency.value = freq * 0.6;
+        f.type = 'bandpass';
+        f.frequency.value = freq * 0.6;
+        f.Q.value = 3;
+        o.connect(f); f.connect(g);
+    } else if (sound === 'cowbell') {
+        o.type = 'square';
+        o.frequency.value = freq * 0.55;
+        o.connect(g);
+    } else if (sound === 'hihat') {
+        // White noise buffer for hi-hat
+        var buf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+        var data = buf.getChannelData(0);
+        for (var n = 0; n < data.length; n++) data[n] = (Math.random() * 2 - 1);
+        var src = ctx.createBufferSource();
+        src.buffer = buf;
+        var hf = ctx.createBiquadFilter();
+        hf.type = 'highpass';
+        hf.frequency.value = 8000;
+        src.connect(hf); hf.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(gain, time);
+        g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+        src.start(time); src.stop(time + dur);
+        return;
+    } else {
+        // Default click
+        o.type = 'sine';
+        o.frequency.value = freq;
+        o.connect(g);
+    }
+    g.connect(ctx.destination);
+    g.gain.setValueAtTime(gain, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    o.start(time); o.stop(time + dur);
+}
+
+function mtStartMetronome(si) {
     if (!window._mtAudioUnlocked) {
         try {
-            var silentAudio = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjM0LjEwNAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAAYZVqpWqAAAAAAAAAAAAAAAAAAAA//tQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tQZB4P8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV');
-            silentAudio.volume = 0.001;
-            silentAudio.play().then(function() {
-                window._mtAudioUnlocked = true;
-            }).catch(function() {});
+            var sa = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjM0LjEwNAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAAYZVqpWqAAAAAAAAAAAAAAAAAAAA//tQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tQZB4P8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV');
+            sa.volume = 0.001;
+            sa.play().then(function() { window._mtAudioUnlocked = true; }).catch(function() {});
         } catch(e) {}
     }
-    if(!mtAudioContext)mtAudioContext=new(window.AudioContext||window.webkitAudioContext)();mtAudioContext.resume();
-    const bpm=parseInt(document.getElementById(`mtBPM_${si}`)?.value)||120,intv=60/bpm;
-    const beats=document.querySelectorAll(`#mtBeatVisual_${si} .mt-beat`);
-    let next=mtAudioContext.currentTime+0.05,b=0;
-    function sched(){
-        const o=mtAudioContext.createOscillator(),g=mtAudioContext.createGain();
-        o.connect(g);g.connect(mtAudioContext.destination);
-        o.frequency.value=(b%4===0)?1000:700;g.gain.setValueAtTime(0.3,next);
-        g.gain.exponentialRampToValueAtTime(0.001,next+0.08);o.start(next);o.stop(next+0.08);
-        const cb=b%4,d=Math.max(0,(next-mtAudioContext.currentTime)*1000);
-        setTimeout(()=>{beats.forEach((el,i)=>{el.style.background=i===cb?(cb===0?'#ef4444':'#667eea'):'rgba(255,255,255,0.1)';el.style.transform=i===cb?'scale(1.3)':'scale(1)';});},d);
-        b++;next+=intv;
+    if (!mtAudioContext) mtAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    mtAudioContext.resume();
+
+    var bpm = parseInt(document.getElementById('mtBPM_' + si) ? document.getElementById('mtBPM_' + si).value : 120) || 120;
+    var ts = (document.getElementById('mtTimeSig_' + si) || {}).value || '4/4';
+    var subdiv = parseInt((document.getElementById('mtSubdiv_' + si) || {}).value) || 1;
+    var sound = (document.getElementById('mtSound_' + si) || {}).value || 'click';
+    var beatsPerBar = parseInt(ts.split('/')[0]) || 4;
+    var subdivIntv = (60 / bpm) / subdiv;
+    var totalSubdivs = beatsPerBar * subdiv;
+    var dots = document.querySelectorAll('#mtBeatVisual_' + si + ' .mt-beat');
+    var next = mtAudioContext.currentTime + 0.05;
+    var tick = 0;
+    var barCount = 0;
+
+    function sched() {
+        var isDownbeat = (tick % totalSubdivs === 0);
+        var isBeat = (tick % subdiv === 0);
+        var freq = isDownbeat ? 1200 : (isBeat ? 900 : 600);
+        var gain = isDownbeat ? 0.45 : (isBeat ? 0.28 : 0.14);
+        var dur = isDownbeat ? 0.09 : 0.06;
+        mtMakeClick(mtAudioContext, sound, freq, gain, next, dur);
+
+        // Visual
+        var cb = tick % totalSubdivs;
+        var d = Math.max(0, (next - mtAudioContext.currentTime) * 1000);
+        (function(idx, isDb, isBt) {
+            setTimeout(function() {
+                dots.forEach(function(el, i) {
+                    if (i === idx) {
+                        el.style.background = isDb ? '#ef4444' : (isBt ? '#667eea' : 'rgba(255,255,255,0.35)');
+                        el.style.transform = isDb ? 'scale(1.5)' : (isBt ? 'scale(1.3)' : 'scale(1.1)');
+                        el.style.boxShadow = isDb ? '0 0 8px #ef4444' : 'none';
+                    } else {
+                        el.style.background = 'rgba(255,255,255,0.1)';
+                        el.style.transform = 'scale(1)';
+                        el.style.boxShadow = 'none';
+                    }
+                });
+            }, d);
+        })(cb, isDownbeat, isBeat);
+
+        // Tempo trainer
+        if (isDownbeat) {
+            barCount++;
+            var trainerOn = document.getElementById('mtTrainerOn_' + si);
+            if (trainerOn && trainerOn.checked && barCount > 1) {
+                var trainerBars = parseInt((document.getElementById('mtTrainerBars_' + si) || {}).value) || 4;
+                if (barCount % trainerBars === 0) {
+                    var trainerAmt = parseInt((document.getElementById('mtTrainerAmt_' + si) || {}).value) || 5;
+                    var inp = document.getElementById('mtBPM_' + si);
+                    var slider = document.getElementById('mtBPMSlider_' + si);
+                    if (inp) {
+                        var newBPM = Math.min(300, parseInt(inp.value) + trainerAmt);
+                        inp.value = newBPM;
+                        if (slider) slider.value = newBPM;
+                        bpm = newBPM;
+                        subdivIntv = (60 / bpm) / subdiv;
+                    }
+                }
+            }
+        }
+
+        tick++;
+        next += subdivIntv;
     }
+
     sched();
-    mtMetronomeInterval=setInterval(()=>{while(next<mtAudioContext.currentTime+0.1)sched();},25);
+    mtMetronomeInterval = setInterval(function() {
+        while (next < mtAudioContext.currentTime + 0.1) sched();
+    }, 25);
 }
-function mtStopMetronome(){if(mtMetronomeInterval){clearInterval(mtMetronomeInterval);mtMetronomeInterval=null;}}
-function mtAdjustBPM(si,d){const inp=document.getElementById(`mtBPM_${si}`);if(inp){inp.value=Math.max(40,Math.min(240,parseInt(inp.value)+d));if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(si);}}}
+
+function mtStopMetronome() {
+    if (mtMetronomeInterval) { clearInterval(mtMetronomeInterval); mtMetronomeInterval = null; }
+}
+
+function mtAdjustBPM(si, d) {
+    var inp = document.getElementById('mtBPM_' + si);
+    var slider = document.getElementById('mtBPMSlider_' + si);
+    if (inp) {
+        var v = Math.max(20, Math.min(300, parseInt(inp.value) + d));
+        inp.value = v;
+        if (slider) slider.value = v;
+        if (mtMetronomeInterval) { mtStopMetronome(); mtStartMetronome(si); }
+    }
+}
+
+function mtSyncBPMFromSlider(si, val) {
+    var inp = document.getElementById('mtBPM_' + si);
+    if (inp) inp.value = val;
+    if (mtMetronomeInterval) { mtStopMetronome(); mtStartMetronome(si); }
+}
+
+function mtTapTempo(si) {
+    var now = Date.now();
+    _mtTapTimes.push(now);
+    // Keep last 8 taps
+    if (_mtTapTimes.length > 8) _mtTapTimes.shift();
+    // Need at least 2 taps
+    if (_mtTapTimes.length < 2) {
+        var btn = document.getElementById('mtTapBtn_' + si);
+        if (btn) { btn.textContent = 'TAP...'; setTimeout(function() { btn.textContent = 'TAP'; }, 1000); }
+        return;
+    }
+    // Clear taps if gap > 3 seconds
+    if (now - _mtTapTimes[_mtTapTimes.length - 2] > 3000) {
+        _mtTapTimes = [now];
+        return;
+    }
+    var intervals = [];
+    for (var i = 1; i < _mtTapTimes.length; i++) {
+        intervals.push(_mtTapTimes[i] - _mtTapTimes[i-1]);
+    }
+    var avg = intervals.reduce(function(a,b) { return a+b; }, 0) / intervals.length;
+    var bpm = Math.round(60000 / avg);
+    bpm = Math.max(20, Math.min(300, bpm));
+    var inp = document.getElementById('mtBPM_' + si);
+    var slider = document.getElementById('mtBPMSlider_' + si);
+    if (inp) inp.value = bpm;
+    if (slider) slider.value = bpm;
+    if (mtMetronomeInterval) { mtStopMetronome(); mtStartMetronome(si); }
+    // Flash tap button
+    var btn = document.getElementById('mtTapBtn_' + si);
+    if (btn) {
+        btn.style.background = 'linear-gradient(135deg,#ef4444,#f97316)';
+        btn.textContent = bpm + ' BPM';
+        setTimeout(function() {
+            btn.style.background = 'linear-gradient(135deg,#6366f1,#8b5cf6)';
+            btn.textContent = 'TAP';
+        }, 800);
+    }
+}
 
 // ============================================================================
 // LATENCY
@@ -8723,6 +8978,12 @@ console.log('🎛️ Multi-Track Harmony Studio v3 loaded');
 
 // const pageRenderers → js/ui/navigation.js
 
+// Live Gig Mode launcher
+function launchLiveGig(setlistId) {
+  window._lgLaunchSetlistId = setlistId;
+  if (typeof initLiveGig === 'function') initLiveGig();
+}
+
 // setlists.js → js/features/setlists.js (Wave-3 refactor)
 
 // practice.js → js/features/practice.js (Wave-3 refactor)
@@ -8765,6 +9026,7 @@ async function venueGetDirections(venueIdx) {
     // Load venues if not cached
     if (!_venuesCache.length) {
         _venuesCache = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+        _venuesCache.sort((a, b) => (a.name||'').localeCompare(b.name||''));
     }
     var venue = _venuesCache[venueIdx];
     if (!venue) return;
@@ -8930,6 +9192,7 @@ async function loadVenues() {
 
 async function editVenue(idx) {
     const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    data.sort((a, b) => (a.name||'').localeCompare(b.name||''));
     const v = data[idx];
     if (!v) return;
     const el = document.getElementById('venuesList');
@@ -8998,6 +9261,7 @@ async function saveVenueEdit(idx) {
 async function deleteVenue(idx) {
     if (!confirm('Delete this venue?')) return;
     const data = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    data.sort((a, b) => (a.name||'').localeCompare(b.name||''));
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'venues', data);
     showToast('🗑️ Venue deleted');
@@ -9202,7 +9466,7 @@ function renderTunerPage(el) {
             <div style="position:absolute;top:0;left:50%;width:2px;height:100%;background:rgba(255,255,255,0.15)"></div>
             <div id="tunerNeedle" style="position:absolute;top:0;width:4px;height:100%;background:var(--green);border-radius:2px;left:50%;transition:left 0.1s"></div>
         </div>
-        <div id="tunerCents" style="font-size:0.9em;color:var(--text-dim);margin-top:10px">0¢</div>
+        <div id="tunerCents" style="font-size:0.9em;color:var(--text-dim);margin-top:10px">in tune</div>
         <div id="tunerFreq" style="font-size:0.75em;color:var(--text-dim);margin-top:4px">— Hz</div>
         <div style="margin-top:20px;display:flex;gap:10px;justify-content:center">
             <button class="btn btn-primary" id="tunerStartBtn" onclick="tunerToggle()">🎤 Start Tuner</button>
@@ -9246,7 +9510,9 @@ async function tunerStart() {
                     document.getElementById('tunerNote').textContent = note.name;
                     document.getElementById('tunerNote').style.color = Math.abs(note.cents) < 5 ? 'var(--green)' : Math.abs(note.cents) < 15 ? 'var(--yellow)' : 'var(--red)';
                     document.getElementById('tunerOctave').textContent = 'Octave ' + note.octave;
-                    document.getElementById('tunerCents').textContent = (note.cents >= 0 ? '+' : '') + note.cents + '¢';
+                    var c = note.cents;
+                    var cLabel = Math.abs(c) < 5 ? 'in tune' : (c > 0 ? '+' + c + '¢ sharp' : c + '¢ flat');
+                    document.getElementById('tunerCents').textContent = cLabel;
                     document.getElementById('tunerNeedle').style.left = (50 + note.cents * 0.4) + '%';
                     document.getElementById('tunerFreq').textContent = freq.toFixed(1) + ' Hz';
                 }
@@ -9396,7 +9662,7 @@ function settingsTab(tab, btn) {
         <div class="app-card"><h3>👤 Your Profile</h3>
             <div class="form-grid">
                 <div class="form-row"><label class="form-label">Who are you?</label>
-                    <select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value)">
+                    <select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value);(function(r){var map={'Lead Guitar':'leadGuitar','Rhythm Guitar':'rhythmGuitar','Bass':'bass','Bass Guitar':'bass','Keys':'keys','Keyboard':'keys','Drums':'drums','Vocals':'vocals'};var m=bandMembers[document.getElementById('settingsUser').value];if(m&&m.role){var inst=map[m.role];if(inst){localStorage.setItem('deadcetera_instrument',inst);var si=document.getElementById('settingsInst');if(si)si.value=inst;}}})(this.value)">
                         <option value="">Select your name...</option>
                         ${Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(cu===k?' selected':'')+'>'+m.name+' — '+m.role+'</option>').join('')}
                     </select></div>
@@ -9405,6 +9671,15 @@ function settingsTab(tab, btn) {
                         <option value="">Select...</option>
                         ${['bass|🎸 Bass','leadGuitar|🎸 Lead Guitar','rhythmGuitar|🎸 Rhythm Guitar','keys|🎹 Keys','drums|🥁 Drums','vocals|🎤 Vocals'].map(o=>{const[v,l]=o.split('|');return'<option value="'+v+'"'+(ci===v?' selected':'')+'>'+l+'</option>';}).join('')}
                     </select></div>
+                <div class="form-row"><label class="form-label">🏠 Home Address</label>
+                    <div style="display:flex;gap:8px">
+                        <input class="app-input" id="settingsHomeAddress" placeholder="Start typing your address..." style="flex:1"
+                            value="${localStorage.getItem('deadcetera_home_address')||''}"
+                            oninput="localStorage.setItem('deadcetera_home_address',this.value)">
+                        <button class="btn btn-sm btn-primary" onclick="saveHomeAddress()">Save</button>
+                    </div>
+                    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used as default starting point for gig directions & leave-time calculations.</div>
+                </div>
             </div>
             <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
                 🔗 Google: <span style="color:${isUserSignedIn && currentUserEmail ? '#10b981' : 'var(--text-muted)'}">${isUserSignedIn && currentUserEmail ? currentUserEmail : 'Not connected — click Sign In above'}</span>
@@ -9516,6 +9791,7 @@ function settingsTab(tab, btn) {
     // Post-render: load feedback history
     if (tab === 'feedback') loadFeedbackHistory();
     if (tab === 'data') checkSyncStatus();
+    if (tab === 'profile' || !tab) setTimeout(initSettingsAddressAutocomplete, 300);
 }
 
 async function loadFeedbackHistory() {
@@ -9550,6 +9826,35 @@ function checkSyncStatus() {
             <span style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
             Local Storage: ${Object.keys(localStorage).filter(k=>k.startsWith('deadcetera')).length} keys cached
         </div>`;
+}
+
+function saveHomeAddress() {
+    var val = (document.getElementById('settingsHomeAddress') || {}).value || '';
+    if (!val.trim()) { alert('Please enter an address first.'); return; }
+    localStorage.setItem('deadcetera_home_address', val.trim());
+    // Also save to Firebase under member record if signed in
+    var key = localStorage.getItem('deadcetera_current_user');
+    if (key && typeof bandPath === 'function') {
+        firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim());
+    }
+    var btn = document.querySelector('#settingsHomeAddress + button') ||
+              document.querySelector('[onclick="saveHomeAddress()"]');
+    if (btn) { btn.textContent = 'Saved!'; setTimeout(function(){ btn.textContent = 'Save'; }, 1500); }
+}
+
+function initSettingsAddressAutocomplete() {
+    var input = document.getElementById('settingsHomeAddress');
+    if (!input || !window.google || !window.google.maps || !window.google.maps.places) return;
+    if (input._acInit) return;
+    input._acInit = true;
+    var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });
+    ac.addListener('place_changed', function() {
+        var place = ac.getPlace();
+        if (place && place.formatted_address) {
+            input.value = place.formatted_address;
+            localStorage.setItem('deadcetera_home_address', place.formatted_address);
+        }
+    });
 }
 
 function addNewMember() {
@@ -10625,7 +10930,8 @@ function onPartyEnded() {
 
 async function checkForAppUpdate() {
     try {
-        var res = await fetch('/deadcetera/version.json?t=' + Date.now(), { cache: 'no-store' });
+        var base = location.hostname === 'localhost' ? '' : '/deadcetera';
+        var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
         if (!res.ok) { console.log('[Update] version.json fetch failed:', res.status); return; }
         var data = await res.json();
         console.log('[Update] Server version:', data.version, '| Loaded:', _loadedVersion);
@@ -12613,7 +12919,7 @@ function renderHeatmapOverlay() {
         stripe.style.cssText = 'position:absolute;left:0;top:0;bottom:0;width:3px;background:hsl('+hue+',65%,45%);border-radius:8px 0 0 8px;pointer-events:none;z-index:1';
         var dots = document.createElement('div');
         dots.className = 'song-heatmap-bar';
-        dots.style.cssText = 'position:absolute;right:3px;top:50%;transform:translateY(-50%);display:flex;gap:2px;align-items:center;pointer-events:none;z-index:2';
+        dots.style.cssText = 'position:absolute;right:112px;top:50%;transform:translateY(-50%);display:flex;gap:2px;align-items:center;pointer-events:none;z-index:2';
         dots.innerHTML = BAND_MEMBERS_ORDERED.map(function(m) {
             var s = scores[m.key] || 0;
             var c = s ? readinessColor(s) : 'rgba(255,255,255,0.1)';
