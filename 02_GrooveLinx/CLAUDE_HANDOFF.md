@@ -206,44 +206,41 @@ Build Milestone 1: Songs 3-Pane Shell — replace the full-page `showPage('songd
 ## CURRENT MILESTONE / PHASE
 
 **Milestone 1 — Songs 3-Pane Shell (Band Command Center)**  
-**Phase D — Wire song row clicks through GLStore.selectSong()**
+**Phase F — Deprecation shim for showPage('songdetail') in navigation.js**
 
-Phases A, B, C complete. Phase D is the next action.
+Phases A–E complete and deployed. Panel fully working on desktop and mobile.
 
 Full phase table in: `02_GrooveLinx/CURRENT_PHASE.md`
 
 ## WHAT WAS COMPLETED THIS SESSION
 
-- **Dev sandbox rules locked** — `index.html` + `app.js` are production-frozen. All milestone work goes through `index-dev.html` + `app-dev.js` + new modules in `js/ui/`, `js/features/`, `css/`.
-- **Phase B** — `#gl-shell` flex wrapper and `#gl-right-panel` static DOM aside added to `index-dev.html`. `css/gl-shell.css` created: shell layout, panel width:0 default, `gl-shell--panel-open` toggle at 420px, mobile fixed overlay at <900px. Pre-flight CSS audit of `app-shell.css` confirmed one conflict (`.main-content { max-width:960px; margin:0 auto }`) — neutralised via `#gl-shell > .main-content` override rules in `gl-shell.css`.
-- **Phase C** — `js/ui/gl-right-panel.js` created. Subscribes to `gl-song-selected` (opens panel, calls `renderSongDetail(title, #gl-right-panel-content)`) and `gl-song-cleared` (reverts to band snapshot). Close button restores workspace scroll via `GLStore.restoreScroll()`. Legacy `glLastPage:'songdetail'` side-effect from `song-detail.js` is cleaned up immediately after render. Script tag wired into `index-dev.html` after `navigation.js`, before feature files.
-- **`push.py` updated** — `css/gl-shell.css` and `js/ui/gl-right-panel.js` added to `DEPLOY_FILES`.
-- **`index.html` confirmed untouched** — modified timestamp unchanged at Thu Mar 12 19:58:09.
+- **Phase C.5** — `renderSongDetail()` updated to accept `options` param. `panelMode:true` suppresses `glLastPage:'songdetail'` write. `gl-right-panel.js` calls `renderSongDetail(title, _content, { panelMode:true })`. Post-hoc cleanup block removed from `gl-right-panel.js`.
+- **Phase D** — `songs.js selectSong()` now routes through `GLStore.selectSong()` when `window.glRightPanel.open` is available (dev shell), falls back to `showPage('songdetail')` in production. Guard is `glRightPanel.open` not GLStore existence (GLStore loads in both index.html and index-dev.html).
+- **Phase E** — Duplicate `selectSong()` removed from `app-dev.js` (~line 1023). Section header replaced with Phase E comment. `window.selectSong` now permanently resolves to the `songs.js` canonical version.
+- **Panel close fixes** — `glSongDetailBack` overridden in panel mode to call `close()` instead of `showPage('songs')`. Restored to original on `close()`. Marked as TEMPORARY PANEL-MODE COMPATIBILITY PATCH.
+- **CSS fixes** — `.gl-rp-header` gets `position:relative; z-index:60`. `.gl-rp-content` gets `isolation:isolate`. Mobile `z-index` raised to `1100` (true full-screen overlay). Larger close button tap target on mobile. `body:has(#gl-dev-banner)` rule shifts panel down 32px on mobile in dev only (fixes ✕ hidden under dev banner).
 
 ## FILES CHANGED THIS SESSION
 
 | File | Change |
 |------|--------|
-| `css/gl-shell.css` | NEW — Phase B shell layout CSS |
-| `js/ui/gl-right-panel.js` | NEW — Phase C right panel controller |
-| `index-dev.html` | Phase B: `#gl-shell` wrapper + `#gl-right-panel` aside + `css/gl-shell.css` link. Phase C: `gl-right-panel.js` script tag |
-| `push.py` | Both new files added to `DEPLOY_FILES` |
+| `js/features/song-detail.js` | C.5: `options` param + `panelMode` guard on `glLastPage` write |
+| `js/ui/gl-right-panel.js` | C.5: calls `renderSongDetail` with `{panelMode:true}`. Panel close fixes: `glSongDetailBack` override + restore |
+| `js/features/songs.js` | D: `selectSong()` routes via `glRightPanel.open` guard to `GLStore.selectSong()` |
+| `app-dev.js` | E: duplicate `selectSong()` removed (~line 1023) |
+| `css/gl-shell.css` | Header z-index, content isolation, mobile overlay z-index, tap target, dev-banner offset |
 | `index.html` | **UNTOUCHED** |
-| `app.js` / `app-dev.js` | **UNTOUCHED** |
+| `app.js` | **UNTOUCHED** |
 
 ## WHAT IS IN PROGRESS RIGHT NOW
 
-Phases B and C are deployed but **not yet smoke-tested by Drew**. The smoke test (documented in `CURRENT_PHASE.md`) must pass before Phase D begins.
+Phases A–E complete and deployed. All smoke tests passing on desktop and mobile.
 
 ## NEXT SINGLE STEP
 
-**1. Drew runs `gldeploy` then runs the smoke test from `CURRENT_PHASE.md`.**  
-**2. If smoke test passes → apply the architectural correction (Phase C.5 — see below), then begin Phase D.**
+**Phase F** — Add a deprecation shim in `navigation.js` so any remaining `showPage('songdetail')` calls in the codebase open the right panel instead of navigating full-page. Then remove `#page-songdetail` from `index-dev.html`.
 
-**Phase C.5 (prerequisite — must precede Phase D):**  
-Add `options` param to `renderSongDetail()` in `song-detail.js`. Suppress `glLastPage` write when `options.panelMode === true`. Update `gl-right-panel.js` to call `renderSongDetail(title, _content, { panelMode: true })`. Remove the post-hoc `glLastPage` cleanup block from `gl-right-panel.js`. Full spec in `CURRENT_PHASE.md`.
-
-**Phase D** (after C.5 passes): Edit `js/features/songs.js` — find `selectSong(songTitle)`, remove `showPage('songdetail')`, replace with `GLStore.selectSong(songTitle)`. Run `glhot selectSong` first to confirm the function location before editing.
+Before starting Phase F, run `glhot showPage` to find all remaining `showPage('songdetail')` call sites in the codebase so the shim is comprehensive.
 
 ## RISKS / WATCHOUTS
 

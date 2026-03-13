@@ -10,9 +10,9 @@ Full spec: `02_GrooveLinx/system_audit/groovelinx_milestone_1_songs_3pane.md`
 
 ---
 
-## Current Phase: Phase D — Wire song row clicks through GLStore
+## Current Phase: Phase F — Deprecation shim for showPage('songdetail')
 
-Phases A, B, C are complete and deployed (pending smoke test by Drew).
+Phases A–E complete and deployed. Panel fully working on desktop and mobile.
 
 ---
 
@@ -23,9 +23,10 @@ Phases A, B, C are complete and deployed (pending smoke test by Drew).
 | A | `GLStore.selectSong()` + `clearSong()` + `getSelectedSong()` + scroll cache | ✅ DONE |
 | B | `#gl-shell` wrapper + `#gl-right-panel` DOM shell in `index-dev.html`. `css/gl-shell.css` | ✅ DONE |
 | C | `js/ui/gl-right-panel.js` — event subscriber, panel open/close, `renderSongDetail()` dispatch | ✅ DONE |
-| D | Edit `songs.js selectSong()`: remove `showPage('songdetail')`, replace with `GLStore.selectSong()` | ⏳ NEXT |
-| E | Delete duplicate `selectSong()` from `app-dev.js` ~line 971 | ⏳ PENDING |
-| F | Deprecation shim for `showPage('songdetail')` in `navigation.js`. Remove `#page-songdetail` from `index-dev.html` | ⏳ PENDING |
+| C.5 | `renderSongDetail()` options param — `panelMode:true` suppresses `glLastPage` write | ✅ DONE |
+| D | `songs.js selectSong()` — guard on `window.glRightPanel.open`, routes to `GLStore.selectSong()` | ✅ DONE |
+| E | Duplicate `selectSong()` removed from `app-dev.js` | ✅ DONE |
+| F | Deprecation shim for `showPage('songdetail')` in `navigation.js`. Remove `#page-songdetail` from `index-dev.html` | ⏳ NEXT |
 | G | Replace polling restore loop in `navigation.js` — reload should restore song in right panel, not navigate to songdetail page | ⏳ PENDING |
 | H | `song-drawer.js` — gate DOM drawer to mobile (<900px), always call `GLStore.selectSong()` first | ⏳ PENDING |
 
