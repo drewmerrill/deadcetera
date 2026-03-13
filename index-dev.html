@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="build-version" content="20260312-235531">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrooveLinx DEV — app-dev.js</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- iOS / Safari PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="GrooveLinx">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
+
+    <!-- Android / Chrome -->
+    <meta name="theme-color" content="#6366f1">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+    <link rel="shortcut icon" href="favicon.ico">
+
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="app-shell.css">
+    <link rel="stylesheet" href="rehearsal-mode.css">
+    <link rel="stylesheet" href="version-hub.css">
+    <link rel="stylesheet" href="css/gl-shell.css"><!-- Phase B: 3-pane shell — dev only -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBDADFjoqqLvkmJgevpkIZxf-GTwc9RxI0&libraries=places&loading=async" defer></script>
+    <style>
+        /* ⓘ Section help tooltip icons */
+        .gl-help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(99,102,241,0.12);
+            color: rgba(129,140,248,0.6);
+            font-size: 0.65em;
+            cursor: pointer;
+            vertical-align: middle;
+            border: 1px solid rgba(99,102,241,0.2);
+            transition: all 0.15s;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        .gl-help-icon:hover {
+            background: rgba(99,102,241,0.25);
+            color: #818cf8;
+            border-color: rgba(99,102,241,0.5);
+        }
+
+        /* DEV MODE banner */
+        #gl-dev-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 99999;
+            background: #b45309;
+            color: #fef3c7;
+            font-size: 0.78em;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-align: center;
+            padding: 5px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-family: 'Inter', monospace, sans-serif;
+            border-bottom: 2px solid #92400e;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        #gl-dev-banner a {
+            color: #fde68a;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        /* Push app content down to make room for the banner */
+        body { padding-top: 32px; }
+    </style>
+<style>
+@media(max-width:640px){
+  #calendarInner{margin:0 -6px 0 -4px!important;}
+  #calendarInner .app-card:first-child{padding:12px 2px!important;border-radius:8px!important;width:calc(100% + 10px)!important;box-sizing:border-box!important;}
+}
+</style>
+</head>
+<body>
+
+    <!-- DEV MODE BANNER — only in index-dev.html -->
+    <div id="gl-dev-banner">
+        ⚠️ DEV MODE — loading <code style="background:rgba(0,0,0,0.25);padding:1px 5px;border-radius:3px">app-dev.js</code>
+        &nbsp;|&nbsp; production at
+        <a href="index.html">index.html</a>
+        &nbsp;|&nbsp; <span id="gl-dev-ts" style="opacity:0.7;font-weight:400"></span>
+    </div>
+    <script>
+    // Stamp the load time in the banner so it's obvious when you're looking at a stale page
+    (function() {
+        var el = document.getElementById('gl-dev-ts');
+        if (el) {
+            var d = new Date();
+            el.textContent = 'loaded ' + d.toLocaleTimeString();
+        }
+    })();
+    </script>
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
+        </div>
+        <div class="topbar-right">
+            <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()" title="Sign in to sync">👤</button>
+            <button class="topbar-btn" onclick="glHelpCurrentPage()" title="Help for this page" id="glHelpBtn" style="padding:6px 8px">❓</button>
+            <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin" style="padding:6px 8px">⚙️</button>
+        </div>
+    </div>
+
+    <!-- SLIDE-OUT MENU -->
+    <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
+    <nav class="slide-menu" id="slideMenu">
+        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
+        <div class="menu-section">
+            <div class="menu-section-title">Music</div>
+            <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
+            <button class="menu-item" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Songs</button>
+            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
+            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
+            <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">📅</span> Rehearsals</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <div class="menu-section-title">Gigs</div>
+            <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
+            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
+            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <div class="menu-section-title">Tools</div>
+            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
+            <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎚️</span> Pocket Meter</button>
+            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🎸</span> Guitar Tuner</button>
+            <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <div class="menu-section-title">More</div>
+            <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
+            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
+            <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
+            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
+            <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
+            <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
+            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
+            <div class="menu-divider"></div>
+            <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help & Guide</button>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT AREA -->
+    <!-- Phase B: #gl-shell wraps center workspace + right context panel -->
+    <div id="gl-shell">
+    <div class="main-content" id="mainContent">
+        <!-- PAGE: Songs (existing app content) -->
+        <div id="page-songs" class="app-page hidden">
+    <div class="container">
+
+        <!-- Step 1: Song Selection -->
+        <div class="step-card" id="step1">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <div class="step-number" style="flex-shrink:0">1</div>
+                <h2 style="margin:0;line-height:1.2">Songs</h2>
+                <span style="color:var(--text-dim,#64748b);font-size:0.8em;margin-left:auto" id="songCount"></span>
+                <button onclick="showCustomSongsList()" class="btn btn-ghost btn-sm" title="Add a custom song not in the library" style="margin-left:6px;font-size:0.75em;padding:4px 8px" id="customSongBtn">
+                    ➕ <span id="customSongCount" style="background:var(--accent);color:white;border-radius:10px;padding:1px 5px;font-size:0.85em;display:none"></span>
+                </button>
+                <button onclick="showChartImportModal()" class="btn btn-ghost btn-sm" title="Import songs with chord charts pre-filled" style="margin-left:4px;font-size:0.75em;padding:4px 8px">
+                    📋
+                </button>
+                <button onclick="glShowOnboarding('songs',true)" class="btn btn-ghost btn-sm" title="What can I do here?" style="margin-left:4px;font-size:0.75em;padding:4px 8px;color:var(--text-dim)" aria-label="Help for Songs page">
+                    ❓
+                </button>
+            </div>
+            <div class="search-box">
+                <input 
+                    type="text" 
+                    id="songSearch" 
+                    placeholder="Search for a song..." 
+                    class="search-input"
+                >
+            </div>
+            <!-- COMPACT FILTERS ROW -->
+            <div class="filter-row" style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;align-items:center">
+                <select id="bandFilter" class="app-select" onchange="filterByBand(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
+                    <option value="all">🎸 All Bands</option>
+                    <option value="GD">Grateful Dead</option>
+                    <option value="JGB">Jerry Garcia Band</option>
+                    <option value="WSP">Widespread Panic</option>
+                    <option value="Phish">Phish</option>
+                    <option value="ABB">Allman Brothers</option>
+                    <option value="Goose">Goose</option>
+                    <option value="DMB">Dave Matthews Band</option>
+                    <option value="Other">🎵 Other</option>
+                </select>
+                <select id="statusFilter" class="app-select" onchange="filterByStatus(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
+                    <option value="all">📊 All Statuses</option>
+                    <option value="prospect">👀 Prospect</option>
+                    <option value="wip">🔧 Work in Progress</option>
+                    <option value="gig_ready">✅ Gig Ready</option>
+                </select>
+                <span title="🎯 This Week = songs you're actively rehearsing this week&#10;✅ Gig Ready = polished and ready to play live&#10;⚠️ Needs Polish = know it but needs work&#10;📚 On Deck = learning, not yet rehearsed" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85em;font-weight:600;color:var(--text-muted,#94a3b8);padding:7px 10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.04);min-width:140px" title="Show only songs that have documented vocal harmony parts for the band to practice together">
+                    <input type="checkbox" id="harmoniesOnlyFilter" onchange="filterSongsSync(this.checked?'harmonies':'all')" style="accent-color:var(--accent,#667eea);width:14px;height:14px">
+                    🎤 Harmonies
+                </label>
+                <span title="Filter to show only songs with documented multi-part vocal harmonies" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85em;font-weight:600;color:var(--text-muted,#94a3b8);padding:7px 10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.04);min-width:140px" title="Show only songs with a North Star reference version voted on by the band">
+                    <input type="checkbox" id="northStarFilter" onchange="toggleNorthStarFilter(this.checked)" style="accent-color:#f59e0b;width:14px;height:14px">
+                    ⭐ North Star
+                </label>
+                <span title="Show only songs that have a North Star reference version chosen by the band" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
+            </div>
+            
+            <div class="song-dropdown" id="songDropdown">
+                <!-- Songs populated here -->
+            </div>
+        </div>
+
+<!-- Step 2: Song Blueprint -->
+<div class="step-card hidden" id="step2">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">2</div>
+        <h2 style="margin:0" id="step2Title">Song DNA</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="What is Song DNA?">ⓘ</span>
+    </div>
+    
+    <!-- SONG METADATA -->
+    <div class="song-metadata" style="background:rgba(255,255,255,0.04);padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border,rgba(255,255,255,0.08))">
+        <div class="meta-row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+            <div class="meta-item">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎤 Lead:</span>
+                <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" class="app-select" style="width:auto;min-width:100px;padding:5px 8px;font-size:0.85em">
+                    <option value="">Select...</option>
+                    <option value="drew">Drew</option>
+                    <option value="chris">Chris</option>
+                    <option value="brian">Brian</option>
+                    <option value="pierce">Pierce</option>
+                    <option value="drew,chris">Drew & Chris</option>
+                </select>
+            </div>
+            <div class="meta-item">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎯 Status:</span>
+                <select id="songStatusSelect" onchange="updateSongStatus(this.value)" class="app-select" style="width:auto;min-width:120px;padding:5px 8px;font-size:0.85em;font-weight:600">
+                    <option value="">— Not on Radar —</option>
+                    <option value="prospect">👀 Prospect</option>
+                    <option value="wip">🔧 Work in Progress</option>
+                    <option value="gig_ready">✅ Gig Ready</option>
+                </select>
+            </div>
+            <div class="meta-item">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🔑 Key:</span>
+                <select id="songKeySelect" onchange="updateSongKey(this.value)" class="app-select" style="width:auto;min-width:70px;padding:5px 8px;font-size:0.85em">
+                    <option value="">—</option>
+                    <option>A</option><option>Am</option><option>Bb</option><option>Bbm</option>
+                    <option>B</option><option>Bm</option><option>C</option><option>Cm</option>
+                    <option>C#</option><option>C#m</option><option>D</option><option>Dm</option>
+                    <option>Eb</option><option>Ebm</option><option>E</option><option>Em</option>
+                    <option>F</option><option>Fm</option><option>F#</option><option>F#m</option>
+                    <option>G</option><option>Gm</option><option>Ab</option><option>Abm</option>
+                </select>
+            </div>
+            <div class="meta-item">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🥁 BPM:</span>
+                <input type="number" id="songBpmInput" min="40" max="240" step="1" placeholder="120" onchange="updateSongBpm(this.value)"
+                    class="app-input" style="width:65px;padding:5px 8px;font-size:0.85em">
+            </div>
+            <div class="meta-item" title="Who starts, who cues the ending, transitions & arrangement">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px;cursor:help">🏗️ Structure:</span>
+                <span id="songStructureSummary" style="font-size:0.85em;color:var(--text,#f1f5f9)">—</span>
+                <button class="btn btn-sm btn-ghost" onclick="showSongStructureForm()" style="margin-left:4px;padding:2px 6px;font-size:0.75em" title="Edit song structure">✏️</button>
+            </div>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
+            <div class="meta-item">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
+                    <span style="font-weight:600;color:var(--text-muted,#94a3b8)">🎶 Harmonies</span>
+                </label>
+            </div>
+            <div class="meta-item" id="harmonyMembersRow" style="display:none;flex-wrap:wrap;gap:6px;align-items:center;width:100%;flex:1 1 100%">
+                <span style="font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em;flex-shrink:0">Singers:</span>
+                <div style="position:relative;flex:1;min-width:140px">
+                    <button id="singersDropdownBtn" onclick="toggleSingersDropdown()" 
+                        style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text,#f1f5f9);font-size:0.85em;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center">
+                        <span id="singersLabel">Select singers...</span>
+                        <span>▾</span>
+                    </button>
+                    <div id="singersDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:8px;z-index:500;padding:6px;margin-top:4px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Song Structure form (hidden, opens as modal) -->\n    <div id="songStructureSection" style="display:none">
+        <div id="songStructureContainer"></div>
+        <div id="songStructureFormContainer"></div>
+    </div>
+
+    <!-- Band Lock-In Readiness -->
+    <div id="readinessContainer"></div>
+
+</div>
+
+<!-- Find a Version Hub launcher -->
+<div class="step-card hidden" id="stepVersionHub" style="background:linear-gradient(135deg,rgba(102,126,234,0.08),rgba(118,75,162,0.08));border:1px solid rgba(102,126,234,0.2)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#667eea,#764ba2)">🔍</div>
+        <h2 style="margin:0">Find a Version</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('listen',this)" title="About Find a Version">ⓘ</span>
+    </div>
+    <button onclick="launchVersionHub()" class="btn btn-primary" style="width:100%;padding:12px;font-size:0.95em;margin-top:8px;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Find a Version</button>
+</div>
+
+<!-- Step 3: North Star (Reference Version) -->
+<div class="step-card hidden" id="step3ref">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">3</div>
+        <h2 style="margin:0">The North Star</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('northstar',this)" title="What is The North Star?">ⓘ</span>
+    </div>
+    
+    <div class="resource-section" id="refVersionSection">
+        <div class="section-header">
+            <h3>⭐ Reference Version (Band Voted) <span class="gl-help-icon" onclick="glShowHelp('northstar',this)" title="About reference versions">ⓘ</span></h3>
+            <div style="margin-top:4px">
+                <button onclick="launchVersionHubForNorthStar()" title="Search all sources and add a reference version" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.85em;padding:0">🔍 Find a Version</button>
+            </div>
+        </div>
+        <div id="spotifyVersionsContainer"></div>
+        <button class="secondary-btn" id="addRefVersionBtn" style="margin-top:12px">+ Suggest Reference Version</button>
+    </div>
+</div>
+
+<!-- Step 3b: Best Shot vs North Star -->
+<div class="step-card hidden" id="step3bestshot">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#f59e0b,#ef4444)">🏆</div>
+        <h2 style="margin:0">Best Shot vs North Star</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('bestshot',this)" title="What is Best Shot?">ⓘ</span>
+    </div>
+    <div id="bestShotVsNorthStar"></div>
+</div>
+
+<!-- Step 4: Stage Cheat Sheets -->
+<div class="step-card hidden" id="step4ref">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">4</div>
+        <h2 style="margin:0">Stage Crib Notes</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('crib',this)" title="What are Stage Crib Notes?">ⓘ</span>
+    </div>
+    
+    <div class="resource-section" id="personalTabsSection">
+        <div id="personalTabsContainer"></div>
+    </div>
+</div>
+
+<!-- Step 4b: Cover Me -->
+<div class="step-card hidden" id="step4cover">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0;font-size:0.8em">4b</div>
+        <h2 style="margin:0">Cover Me 🎤</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('listen',this)" title="About Cover Me">ⓘ</span>
+    </div>
+    <div class="resource-section" id="coverMeSection">
+        <div id="coverMeContainer"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="secondary-btn" onclick="showAddCoverMeForm()" style="flex:1">+ Add Cover Version</button>
+            <button class="secondary-btn" onclick="launchVersionHubForCoverMe()" style="flex:0 0 auto;color:var(--accent-light,#818cf8)">🔍 Find</button>
+        </div>
+    </div>
+</div>
+
+<!-- Step 5: Practice Workshop -->
+<div class="step-card hidden" id="step5ref">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="step-number" style="flex-shrink:0">5</div>
+        <h2 style="margin:0">The Woodshed</h2>
+        <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="What is The Woodshed?">ⓘ</span>
+        <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.8em;padding:0;margin-left:4px">🔍 UG</button>
+    </div>
+    
+    <!-- CHORD CHART (The Band's Chart) -->
+    <div class="resource-section" id="chartSection">
+        <div class="section-header">
+            <h3>🎸 The Chart <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="About chord charts">ⓘ</span></h3>
+        </div>
+        <div id="chartContainer"></div>
+    </div>
+    
+    <!-- MOISES STEMS -->
+    <div class="resource-section" id="moisesSection">
+        <div class="section-header">
+            <h3>🎚️ Moises Stems <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About stems">ⓘ</span></h3>
+        </div>
+        <div id="moisesStemsContainer"></div>
+    </div>
+    
+    <!-- PRACTICE TRACKS -->
+    <div class="resource-section" id="practiceTracksSection">
+        <div class="section-header">
+            <h3>🎸 Practice Tracks <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About practice tracks">ⓘ</span></h3>
+        </div>
+        <div id="practiceTrackAddForm" style="background:rgba(255,255,255,0.03);padding:16px;border-radius:10px;margin-bottom:16px;border:1px solid var(--border,rgba(255,255,255,0.08))">
+            <h4 style="margin:0 0 12px 0;color:var(--text,#f1f5f9);font-size:0.95em">Add Practice Track</h4>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Video URL:</label>
+                <input type="text" id="practiceTrackUrlInput" placeholder="Paste YouTube, Vimeo, or any video URL" class="app-input" style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="margin-bottom:10px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Instrument:</label>
+                <select id="practiceTrackInstrument" class="app-select" style="width:100%">
+                    <option value="">-- Select Instrument --</option>
+                    <option value="bass">🎸 Bass</option>
+                    <option value="leadGuitar">🎸 Lead Guitar</option>
+                    <option value="rhythmGuitar">🎸 Rhythm Guitar</option>
+                    <option value="keys">🎹 Keys/Keyboards</option>
+                    <option value="drums">🥁 Drums</option>
+                    <option value="vocals">🎤 Vocals</option>
+                    <option value="wholeBand">🎶 Whole Band</option>
+                </select>
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Notes (optional):</label>
+                <input type="text" id="practiceTrackNotes" placeholder="E.g., Great breakdown of the bass line" class="app-input" style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="display:flex;gap:8px">
+                <button id="addPracticeTrackBtn" class="btn btn-primary" onclick="addPracticeTrackSimple()" style="flex:1">✨ Add Track</button>
+                <button class="btn btn-ghost" onclick="ptToggleUploadForm()" style="white-space:nowrap">📁 Upload MP3</button>
+            </div>
+            <!-- MP3 upload form (hidden by default) -->
+            <div id="ptUploadForm" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,rgba(255,255,255,0.08))">
+                <div style="margin-bottom:10px">
+                    <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Audio File:</label>
+                    <input type="file" id="ptAudioFile" accept="audio/*,.mp3,.m4a,.wav,.aac"
+                        style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:8px;color:var(--text,#f1f5f9);font-size:0.85em;box-sizing:border-box">
+                    <div style="font-size:0.76em;color:var(--text-dim,#64748b);margin-top:3px">MP3, M4A, WAV · max 20MB · uploaded to Firebase, shared with band</div>
+                </div>
+                <div style="margin-bottom:10px">
+                    <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Track Title:</label>
+                    <input type="text" id="ptUploadTitle" placeholder="e.g. Bass isolated, Whole band slow run-through" class="app-input" style="width:100%;box-sizing:border-box">
+                </div>
+                <div id="ptUploadProgress" style="display:none;margin-bottom:8px">
+                    <div style="background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;height:6px">
+                        <div id="ptUploadBar" style="height:100%;background:var(--accent,#6366f1);width:0%;transition:width 0.3s"></div>
+                    </div>
+                    <div id="ptUploadStatus" style="font-size:0.78em;color:var(--text-dim,#64748b);margin-top:3px;text-align:center">Uploading…</div>
+                </div>
+                <button class="btn btn-primary" onclick="addPracticeTrackUpload()" style="width:100%">📤 Upload & Add Track</button>
+            </div>
+        </div>
+        <div id="practiceTracksContainer"></div>
+    </div>
+    
+    <!-- WOODSHED CHECKLISTS -->
+    <div class="resource-section" id="woodshedChecklistSection">
+        <div class="section-header">
+            <h3>✅ Woodshed Checklists <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About Woodshed Checklists">ⓘ</span></h3>
+        </div>
+        <div id="woodshedChecklistContainer"></div>
+    </div>
+
+    <!-- HARMONIES -->
+    <div class="resource-section" id="harmoniesSection">
+        <div class="section-header">
+            <h3>🎤 Harmony Parts <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="About harmony parts">ⓘ</span></h3>
+        </div>
+        <div id="harmoniesContainer"></div>
+    </div>
+
+    <!-- SONG IN PLAYLISTS -->
+    <div class="resource-section" id="songPlaylistsSection" style="margin-top:8px">
+        <div style="font-size:0.8em;color:var(--text-muted,#94a3b8);font-weight:600;margin-bottom:6px">📋 In Playlists:</div>
+        <div id="songPlaylistsContainer"></div>
+    </div>
+    
+    <!-- REHEARSAL NOTES -->
+    <div class="resource-section" id="rehearsalNotesSection">
+        <div class="section-header">
+            <h3>📋 Rehearsal Notes <span class="gl-help-icon" onclick="glShowHelp('rehearsal',this)" title="About Rehearsal Notes">ⓘ</span></h3>
+        </div>
+        <div id="rehearsalNoteFormContainer"></div>
+        <div id="rehearsalNotesContainer"></div>
+        <button class="secondary-btn" onclick="showRehearsalNoteForm()" style="margin-top:12px">+ Add Note</button>
+    </div>
+    
+    <!-- GIG NOTES / PERFORMANCE TIPS -->
+    <div class="resource-section" id="gigNotesSection">
+        <div class="section-header">
+            <h3>🎤 Performance Tips</h3>
+        </div>
+        <div id="gigNotesContainer"></div>
+    </div>
+    
+    <!-- MULTI-TRACK STUDIO (Audio Snippets) -->
+</div><!-- end step5ref -->
+        <!-- Step 3: Version Selection (renumbered from Step 2) -->
+        <div class="step-card hidden" id="step3">
+            <div class="step-number">3</div>
+            <h2>Top 5 Live Versions</h2>
+            <p class="step-description">Based on community rankings and sound quality</p>
+            <div id="versionsContainer">
+                <!-- Top 5 versions populated here -->
+            </div>
+        </div>
+
+        <!-- Step 4: Download (renumbered from Step 3) -->
+        <div class="step-card hidden" id="step4">
+            <div class="step-number">4</div>
+            <h2>Download & Upload to Moises</h2>
+            <div class="download-card">
+                <div class="selected-info" id="selectedInfo">
+                    <!-- Selected song and version info -->
+                </div>
+                <div class="action-buttons">
+                    <button class="primary-btn smart-download-btn" id="smartDownloadBtn" style="background: #10b981;">
+                        ⚡ Smart Download (Just This Song!)
+                    </button>
+                    <button class="primary-btn" id="downloadBtn">
+                        ⬇️ Download Full Show from Archive.org
+                    </button>
+                    <button class="primary-btn moises-btn" id="moisesBtn">
+                        🎛️ Open Moises.ai Studio
+                    </button>
+                    <button class="primary-btn" id="setlistBtn" style="background: #48bb78;">
+                        📋 View Setlist (Song Order & Timing)
+                    </button>
+                    <button class="primary-btn youtube-btn" id="youtubeSearchBtn" style="background: #ef4444;">
+                        🎥 Search YouTube for This Song
+                    </button>
+                </div>
+                <div id="progressContainer" class="hidden" style="margin-top: 15px; padding: 15px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner"></div>
+                        <div>
+                            <strong id="progressMessage">Processing...</strong>
+                            <div style="margin-top: 5px; height: 8px; background: #dbeafe; border-radius: 4px; overflow: hidden;">
+                                <div id="progressBar" style="height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="workflow-guide">
+                    <h3>📋 Your Practice Workflow:</h3>
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #48bb78;">
+                            <strong>✅ STEP 1: Download MP3</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Click "Download MP3" button above → Find the file on Archive.org → Right-click → Save to Downloads
+                            </p>
+                        </div>
+                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #4299e1;">
+                            <strong>⬆️ STEP 2: Upload to Moises</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Click "Open Moises.ai Studio" → Click Upload → Select your downloaded MP3
+                            </p>
+                        </div>
+                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #ed8936;">
+                            <strong>⚙️ STEP 3: Separate Stems</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Choose "6 Stems" separation → Wait 1-2 minutes for AI processing
+                            </p>
+                        </div>
+                        <div style="padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #667eea;">
+                            <strong>🎸 STEP 4: Solo Your Part</strong>
+                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
+                                Click "Solo" on your instrument → Adjust tempo → Loop sections → Practice!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: Part Selection Guide (renumbered from Step 4) -->
+        <div class="step-card hidden" id="step5">
+            <div class="step-number">5</div>
+            <h2>Isolate Your Part in Moises</h2>
+            <div class="parts-grid">
+                <div class="part-card">
+                    <div class="part-icon">🎤</div>
+                    <h3>Vocals / Harmonies</h3>
+                    <p>Solo the vocals track to learn melody and harmonies</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎸</div>
+                    <h3>Jerry Garcia (Lead)</h3>
+                    <p>Isolate lead guitar to learn solos and fills</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎸</div>
+                    <h3>Bob Weir (Rhythm)</h3>
+                    <p>Focus on rhythm guitar and chord progressions</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎸</div>
+                    <h3>Phil Lesh (Bass)</h3>
+                    <p>Learn Phil's melodic bass lines</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🥁</div>
+                    <h3>Drums</h3>
+                    <p>Practice the groove and fills</p>
+                </div>
+                <div class="part-card">
+                    <div class="part-icon">🎹</div>
+                    <h3>Keyboards</h3>
+                    <p>Isolate keys for atmospheric parts</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reset Button -->
+        <div class="reset-container hidden" id="resetContainer">
+            <button class="reset-btn" onclick="resetWorkflow()">
+                ↺ Start Over with New Song
+            </button>
+        </div>
+        
+
+        
+
+    </div>
+        </div><!-- end page-songs -->
+
+
+        <!-- Hero: shown to signed-out users only, hidden once authenticated -->
+        <div id="page-hero" class="app-page hidden">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:32px 24px;text-align:center;">
+                <img src="hero-logo.png" alt="GrooveLinx" style="width:200px;height:200px;border-radius:20px;box-shadow:0 8px 40px rgba(102,126,234,0.35);margin-bottom:28px;">
+                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx</h1>
+                <p style="font-size:1.15em;font-weight:600;color:var(--text-main,#e2e8f0);margin:0 0 10px;">Where Bands Lock In.</p>
+                <p style="font-size:0.95em;color:var(--text-muted,#94a3b8);max-width:340px;line-height:1.6;margin:0 0 36px;">GrooveLinx helps bands rehearse smarter, build setlists faster, and walk on stage ready.</p>
+                <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;">
+                    <button onclick="handleGoogleDriveAuth()" style="background:var(--accent,#667eea);color:white;border:none;padding:14px 24px;border-radius:10px;font-size:1em;font-weight:700;cursor:pointer;letter-spacing:0.02em;">
+                        👤 Sign In
+                    </button>
+                    <button onclick="showPage('admin')" style="background:transparent;color:var(--text-muted,#94a3b8);border:1px solid rgba(255,255,255,0.15);padding:12px 24px;border-radius:10px;font-size:0.9em;font-weight:600;cursor:pointer;">
+                        Create Band
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Home Dashboard -->
+        <div id="page-home" class="app-page hidden"></div>
+
+        <!-- Dynamic pages rendered by JS -->
+        <div id="page-setlists" class="app-page hidden"></div>
+        <div id="page-rehearsal" class="app-page hidden"></div>
+        <div id="page-rehearsal-intel" class="app-page hidden"></div>
+        <div id="page-playlists" class="app-page hidden"></div>
+        <div id="page-practice" class="app-page hidden"></div>
+        <div id="page-calendar" class="app-page hidden"></div>
+        <div id="page-gigs" class="app-page hidden"></div>
+        <div id="page-pocketmeter" class="app-page hidden"></div>
+        <div id="page-venues" class="app-page hidden"></div>
+        <div id="page-finances" class="app-page hidden"></div>
+        <div id="page-tuner" class="app-page hidden"></div>
+        <div id="page-metronome" class="app-page hidden"></div>
+        <div id="page-equipment" class="app-page hidden"></div>
+        <div id="page-contacts" class="app-page hidden"></div>
+        <div id="page-social" class="app-page hidden"></div>
+        <div id="page-admin" class="app-page hidden"></div>
+        <div id="page-notifications" class="app-page hidden"></div>
+        <div id="page-bestshot" class="app-page hidden"></div>
+        <div id="page-stoner" class="app-page hidden"></div>
+        <div id="page-help" class="app-page hidden"></div>
+        <div id="page-songdetail" class="app-page hidden"></div>
+    </div>
+
+    <!-- Phase B: right context panel — sibling of #mainContent inside #gl-shell -->
+    <aside id="gl-right-panel" aria-label="Song context panel">
+        <div class="gl-rp-header">
+            <span id="gl-rp-title" class="gl-rp-title"></span>
+            <button class="gl-rp-close-btn" id="gl-rp-close" title="Close panel">✕</button>
+        </div>
+        <div id="gl-right-panel-content" class="gl-rp-content">
+            <!-- Phase C: renderSongDetail() renders here via gl-right-panel.js -->
+        </div>
+    </aside>
+
+    </div><!-- /#gl-shell -->
+
+    <footer style="text-align:center;padding:20px;font-size:0.8em;">
+        <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
+        <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
+    </footer>
+
+    <script src="js/core/utils.js"></script>
+    <script src="js/core/firebase-service.js"></script>
+    <script src="js/core/groovelinx_store.js"></script>
+    <script src="js/core/worker-api.js"></script>
+    <script src="js/ui/navigation.js"></script>
+    <script src="js/ui/gl-right-panel.js"></script><!-- Phase C: right panel controller — dev only -->
+    <script src="js/features/songs.js"></script>
+    <script src="data.js"></script>
+    <script src="js/features/gigs.js"></script>
+    <script src="js/features/rehearsal.js"></script>
+    <script src="js/features/setlists.js"></script>
+    <script src="js/features/live-gig.js"></script>
+    <script src="js/features/practice.js"></script>
+    <script src="js/features/calendar.js"></script>
+    <script src="js/core/calendar-export.js"></script>
+    <script src="js/features/notifications.js"></script>
+    <script src="js/features/social.js"></script>
+    <script src="js/features/finances.js"></script>
+    <script src="js/features/bestshot.js"></script>
+    <script src="js/features/playlists.js"></script>
+    <script src="js/features/stoner-mode.js"></script>
+    <script src="js/features/home-dashboard.js"></script>
+    <script src="js/features/song-detail.js"></script>
+    <script src="js/features/song-drawer.js"></script>
+    <script src="js/features/harmony-lab.js"></script>
+    <script src="js/features/home-dashboard-cc.js"></script>
+    <script src="js/features/chart-import.js"></script>
+    <script src="app-dev.js"></script><!-- ← DEV: loads app-dev.js instead of app.js -->
+    <script src="rehearsal-mode.js"></script>
+    <script src="version-hub.js"></script>
+    <script src="pocket-meter.js"></script>
+    <script src="help.js"></script>
+
+    <script>
+    // Hero gate — fires immediately on load, before Firebase resolves
+    (function() {
+        var savedEmail = localStorage.getItem('deadcetera_google_email');
+        if (!savedEmail) {
+            // Not signed in — show hero right away, no flash
+            var hero = document.getElementById('page-hero');
+            if (hero) hero.classList.remove('hidden');
+        }
+        // (Signed-in users: page-songs is hidden, showPage('home') fires at 50ms in app.js)
+    })();
+
+    // Called by app.js after auth resolves
+    window.glHeroCheck = function(isSignedIn) {
+        var hero = document.getElementById('page-hero');
+        if (isSignedIn) {
+            if (hero) hero.classList.add('hidden');
+            if (typeof showPage === 'function') showPage('home');
+        } else {
+            var allPages = document.querySelectorAll('.app-page');
+            allPages.forEach(function(p) { p.classList.add('hidden'); });
+            if (hero) hero.classList.remove('hidden');
+        }
+    };
+    </script>
+    <script>
+    // Service Worker registration
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(function(reg) {
+                    console.log('[SW] Registered:', reg.scope);
+                    reg.addEventListener('updatefound', function() {
+                        var newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', function() {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                if (typeof showUpdateBanner === 'function') showUpdateBanner();
+                            }
+                        });
+                    });
+                })
+                .catch(function(err) { console.log('[SW] Registration failed:', err); });
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+                if (typeof showUpdateBanner === 'function') showUpdateBanner();
+            });
+        });
+    }
+    </script>
+    <script>
+    // Strip stale share params (?playlist=, ?pack=) from URL on every load.
+    // These are generated by share link builders and should never persist as the launch URL.
+    (function() {
+        var p = new URLSearchParams(window.location.search);
+        if (p.has('playlist') || p.has('pack')) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    })();
+    </script>
+</body>
+</html>

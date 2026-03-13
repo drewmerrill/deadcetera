@@ -28,6 +28,9 @@ EXCLUDE = {
 # All files that belong in the deployed repo
 DEPLOY_FILES = [
     'index.html',
+    'index-dev.html',      # dev entry point — loads app-dev.js
+    'css/gl-shell.css',    # Phase B: 3-pane shell CSS — dev only
+    'js/ui/gl-right-panel.js', # Phase C: right panel controller — dev only
     'app.js',
     'app-dev.js',
     'help.js',
@@ -240,7 +243,7 @@ def stamp_version(version_str, repo_dir):
         )
         open(sw_path, 'w').write(sw_text)
 
-    # Stamp index.html
+    # Stamp index.html build-version meta tag
     html_path = os.path.join(repo_dir, 'index.html')
     if os.path.exists(html_path):
         html = open(html_path).read()
@@ -249,6 +252,16 @@ def stamp_version(version_str, repo_dir):
         else:
             html = html.replace('<head>', f'<head>\n    <meta name="build-version" content="{version_str}">', 1)
         open(html_path, 'w').write(html)
+
+    # Stamp index-dev.html build-version meta tag (same pattern, separate file)
+    dev_html_path = os.path.join(repo_dir, 'index-dev.html')
+    if os.path.exists(dev_html_path):
+        dev_html = open(dev_html_path).read()
+        if '<meta name="build-version"' in dev_html:
+            dev_html = re.sub(r'<meta name="build-version"[^>]*>', f'<meta name="build-version" content="{version_str}">', dev_html)
+        else:
+            dev_html = dev_html.replace('<head>', f'<head>\n    <meta name="build-version" content="{version_str}">', 1)
+        open(dev_html_path, 'w').write(dev_html)
 
 def update_version():
     """Generate version, stamp all files, write version.json."""

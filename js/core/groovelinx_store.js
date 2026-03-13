@@ -16,7 +16,7 @@
  *
  * MIGRATION STATUS (update as globals are absorbed):
  *   [ ] allSongs          — still in data.js, store exposes via getSongs()
- *   [ ] selectedSong      — still in app.js, store.setActiveSong() syncs it
+ *   [~] selectedSong      — synced by selectSong() (Milestone 1 Phase A)
  *   [ ] readinessCache    — still in app.js, store reads it via getReadiness()
  *   [ ] statusCache       — still in app.js, store reads it via getStatus()
  *   [ ] _lastPocketScore  — still window global, store absorbs in Phase 3
@@ -511,6 +511,96 @@
     });
   }
 
+  // ── Navigation / Selection state ─────────────────────────────────────────
+  // Milestone 1 Phase A — additive only. Zero behavior change to existing paths.
+
+  var _navScrollCache = {};  // { pageKey: scrollY }
+
+  /**
+   * Select a song by title. Canonical single writer for song selection.
+   *
+   * Writes:
+   *   _state.activeSongId   — store's own selection record
+   *   window.selectedSong   — legacy compat sync for app.js callers
+   *   localStorage.glLastSong — entity restore key on reload (RIGHT PANEL only)
+   *   _navScrollCache[page] — workspace scroll saved for panel close restore
+   *
+   * Does NOT write glLastPage — page navigation state is owned by showPage()
+   * and navigation.js exclusively. Song selection and page navigation are
+   * independent axes of state.
+   *
+   * Does NOT call showPage() or navigate away from the current page.
+   *
+   * @param {string} title  Exact song title matching an entry in allSongs
+   */
+  function selectSong(title) {
+    if (!title) { clearSong(); return; }
+    var prev = _state.activeSongId;
+    _state.activeSongId = title;
+    // Sync legacy global — app.js code that reads selectedSong keeps working
+    try {
+      var songData = getSongs().find(function(s) { return s.title === title; });
+      window.selectedSong = { title: title, band: songData ? (songData.band || 'GD') : 'GD' };
+    } catch(e) {}
+    // Persist entity selection for reload restore (right panel only — NOT page nav)
+    // glLastPage is intentionally NOT written here; it belongs to showPage()
+    try {
+      localStorage.setItem('glLastSong', title);
+    } catch(e) {}
+    // Save current workspace scroll so close can restore it
+    var page = typeof currentPage !== 'undefined' ? currentPage : 'songs';
+    _navScrollCache[page] = window.scrollY;
+    // Only emit if the selection actually changed (avoid double-render)
+    if (prev !== title) {
+      emit('gl-song-selected', { title: title });
+    }
+  }
+
+  /**
+   * Clear the active song selection.
+   * Emits 'gl-song-cleared' — right panel reverts to band snapshot.
+   *
+   * Does NOT write glLastPage — clearing a selection doesn't change
+   * which workspace page the user is on.
+   */
+  function clearSong() {
+    _state.activeSongId = null;
+    try { window.selectedSong = null; } catch(e) {}
+    // Remove entity selection key only — glLastPage is not our concern
+    try {
+      localStorage.removeItem('glLastSong');
+    } catch(e) {}
+    emit('gl-song-cleared');
+  }
+
+  /**
+   * Return the currently selected song title, or null.
+   */
+  function getSelectedSong() {
+    return _state.activeSongId;
+  }
+
+  /**
+   * Save current scroll position for a page key.
+   * Called automatically by selectSong(); also callable manually before
+   * any navigation that should be undoable with restoreScroll().
+   * @param {string} [page]  Defaults to currentPage global
+   */
+  function saveScroll(page) {
+    var key = page || (typeof currentPage !== 'undefined' ? currentPage : 'songs');
+    _navScrollCache[key] = window.scrollY;
+  }
+
+  /**
+   * Restore saved scroll position for a page key.
+   * Called by glRightPanel.close() after panel closes.
+   * @param {string} [page]  Defaults to currentPage global
+   */
+  function restoreScroll(page) {
+    var key = page || (typeof currentPage !== 'undefined' ? currentPage : 'songs');
+    window.scrollTo(0, _navScrollCache[key] || 0);
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.GLStore = {
@@ -521,6 +611,13 @@
     // Active context
     setActiveSong:     setActiveSong,
     getActiveSong:     getActiveSong,
+
+    // Song selection (Milestone 1 Phase A)
+    selectSong:        selectSong,
+    clearSong:         clearSong,
+    getSelectedSong:   getSelectedSong,
+    saveScroll:        saveScroll,
+    restoreScroll:     restoreScroll,
 
     // Song writes
     updateSongField:   updateSongField,

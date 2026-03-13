@@ -1,3 +1,5 @@
+⚠️ Claude must update this document at the end of every meaningful phase.
+
 # GrooveLinx AI Handoff
 
 _Last consolidated: 2026-03-11_
@@ -188,3 +190,94 @@ The Command Center / Home Dashboard should answer:
 - **CSS styling pass pending:** New classes not yet styled: `hd-strip--narrative`, `hd-strip__line1/2`, `hd-strip__status-badge`, `hd-hero__ready-badge`, `hd-hero__coach`, `hd-hero__countdown`, `hd-hero__title-row`, `hd-intel__row/label/value`, `hd-bucket__focus-song`, `hd-bucket__reason-line`, `hd-bucket__event-tie`, `hd-quick__btn--compact`, `hd-quick__grid--compact`, `hd-bucket--utility`.
 - app.js modified warning — confirmed expected/harmless. `push.py` stamps build version into local `app.js` post-commit; local always diverges from HEAD. Not a bug.
 - Rehearsal Intelligence upgrade (build 20260312-001650) — `rehearsal.js` upgraded with narrative confidence label pill, emoji section icons, `deriveRiBandStatus`, `deriveRiConfidenceLabel`, focus song reason tags, "SUGGESTED REHEARSAL AGENDA" rename, `renderRiGrooveInsight`, `renderRiCTA` (Start Rehearsal Mode button).
+
+---
+This document is the canonical session restart artifact for GrooveLinx.
+---
+
+# GrooveLinx Claude Handoff
+
+_Last updated: 2026-03-13_
+
+## CURRENT OBJECTIVE
+
+Build Milestone 1: Songs 3-Pane Shell — replace the full-page `showPage('songdetail')` navigation with a right-panel context pane that keeps the Songs workspace visible when a song is selected.
+
+## CURRENT MILESTONE / PHASE
+
+**Milestone 1 — Songs 3-Pane Shell (Band Command Center)**  
+**Phase D — Wire song row clicks through GLStore.selectSong()**
+
+Phases A, B, C complete. Phase D is the next action.
+
+Full phase table in: `02_GrooveLinx/CURRENT_PHASE.md`
+
+## WHAT WAS COMPLETED THIS SESSION
+
+- **Dev sandbox rules locked** — `index.html` + `app.js` are production-frozen. All milestone work goes through `index-dev.html` + `app-dev.js` + new modules in `js/ui/`, `js/features/`, `css/`.
+- **Phase B** — `#gl-shell` flex wrapper and `#gl-right-panel` static DOM aside added to `index-dev.html`. `css/gl-shell.css` created: shell layout, panel width:0 default, `gl-shell--panel-open` toggle at 420px, mobile fixed overlay at <900px. Pre-flight CSS audit of `app-shell.css` confirmed one conflict (`.main-content { max-width:960px; margin:0 auto }`) — neutralised via `#gl-shell > .main-content` override rules in `gl-shell.css`.
+- **Phase C** — `js/ui/gl-right-panel.js` created. Subscribes to `gl-song-selected` (opens panel, calls `renderSongDetail(title, #gl-right-panel-content)`) and `gl-song-cleared` (reverts to band snapshot). Close button restores workspace scroll via `GLStore.restoreScroll()`. Legacy `glLastPage:'songdetail'` side-effect from `song-detail.js` is cleaned up immediately after render. Script tag wired into `index-dev.html` after `navigation.js`, before feature files.
+- **`push.py` updated** — `css/gl-shell.css` and `js/ui/gl-right-panel.js` added to `DEPLOY_FILES`.
+- **`index.html` confirmed untouched** — modified timestamp unchanged at Thu Mar 12 19:58:09.
+
+## FILES CHANGED THIS SESSION
+
+| File | Change |
+|------|--------|
+| `css/gl-shell.css` | NEW — Phase B shell layout CSS |
+| `js/ui/gl-right-panel.js` | NEW — Phase C right panel controller |
+| `index-dev.html` | Phase B: `#gl-shell` wrapper + `#gl-right-panel` aside + `css/gl-shell.css` link. Phase C: `gl-right-panel.js` script tag |
+| `push.py` | Both new files added to `DEPLOY_FILES` |
+| `index.html` | **UNTOUCHED** |
+| `app.js` / `app-dev.js` | **UNTOUCHED** |
+
+## WHAT IS IN PROGRESS RIGHT NOW
+
+Phases B and C are deployed but **not yet smoke-tested by Drew**. The smoke test (documented in `CURRENT_PHASE.md`) must pass before Phase D begins.
+
+## NEXT SINGLE STEP
+
+**1. Drew runs `gldeploy` then runs the smoke test from `CURRENT_PHASE.md`.**  
+**2. If smoke test passes → apply the architectural correction (Phase C.5 — see below), then begin Phase D.**
+
+**Phase C.5 (prerequisite — must precede Phase D):**  
+Add `options` param to `renderSongDetail()` in `song-detail.js`. Suppress `glLastPage` write when `options.panelMode === true`. Update `gl-right-panel.js` to call `renderSongDetail(title, _content, { panelMode: true })`. Remove the post-hoc `glLastPage` cleanup block from `gl-right-panel.js`. Full spec in `CURRENT_PHASE.md`.
+
+**Phase D** (after C.5 passes): Edit `js/features/songs.js` — find `selectSong(songTitle)`, remove `showPage('songdetail')`, replace with `GLStore.selectSong(songTitle)`. Run `glhot selectSong` first to confirm the function location before editing.
+
+## RISKS / WATCHOUTS
+
+1. **Duplicate `selectSong()`** — `songs.js` has its own AND `app-dev.js ~971` has a duplicate. Phase D touches `songs.js` only. Phase E deletes the `app-dev.js` duplicate. Run `glhot selectSong` before either edit.
+2. **`song-detail.js` writes `glLastPage:'songdetail'`** — handled in `gl-right-panel.js` (clears it back after render). Must verify this is working in smoke test step 4.
+3. **`push.py` overwrites `app-dev.js`** — `stamp_version()` mirrors `app.js` → `app-dev.js` on every `gldeploy`. Never deploy partially-complete milestone work or it gets wiped. Complete all phases before promoting to production.
+4. **`#page-songdetail` still in DOM** — Do not remove it until Phase F shim is confirmed. If removed too early, the legacy restore path in `navigation.js` will throw.
+5. **Mobile overlay** — Panel is `position:fixed` at <900px. Confirm the `z-index:500` sits below the slide-menu (z:1200) and topbar (z:1000). If the panel overlaps the topbar on mobile, raise to `z-index:600` in `gl-shell.css`.
+
+## VALIDATION STATUS
+
+| Item | Status |
+|------|--------|
+| Phase A smoke test (GLStore.selectSong, clearSong, glLastPage null) | ✅ Verified in session |
+| Phase B DOM structure (gl-shell, gl-right-panel in index-dev.html) | ✅ Written, not yet browser-tested |
+| Phase C event subscription + renderSongDetail dispatch | ✅ Written, not yet browser-tested |
+| `gldeploy` of Phase B + C | ⏳ Drew to run |
+| Browser smoke test (Phase B + C checklist) | ⏳ Drew to run |
+| `index.html` untouched | ✅ Confirmed (timestamp unchanged) |
+
+---
+
+## RESTART PROMPT
+
+Read these files first, in order:
+1. `CLAUDE.md`
+2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
+3. `02_GrooveLinx/CURRENT_PHASE.md`
+
+Then:
+- Ask Drew to run `sync.py` and paste the output.
+- Continue exactly from the **Next Single Step** above.
+- Do not re-plan the project.
+- Do not broaden scope.
+- Resume Milestone 1 at the current phase only.
+
+

@@ -19,13 +19,17 @@ var SD_LENSES = [
 ];
 
 // ── Entry ────────────────────────────────────────────────────────────────────
-window.renderSongDetail = function renderSongDetail(songTitle, containerOverride) {
+window.renderSongDetail = function renderSongDetail(songTitle, containerOverride, options) {
     var title = songTitle || (selectedSong && (selectedSong.title || selectedSong));
     if (!title) { if (typeof showPage==='function') showPage('songs'); return; }
     _sdCurrentSong   = title;
     _sdLensPopulated = {};
     _sdCurrentLens   = 'band';
-    try { localStorage.setItem('glLastPage', 'songdetail'); localStorage.setItem('glLastSong', title); } catch(e) {}
+    var _sdOpts = options || {};
+    try {
+        if (!_sdOpts.panelMode) { localStorage.setItem('glLastPage', 'songdetail'); }
+        localStorage.setItem('glLastSong', title);
+    } catch(e) {}
     var container = containerOverride || document.getElementById('page-songdetail');
     if (!container) return;
     _sdContainer = container;

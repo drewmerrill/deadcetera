@@ -1,0 +1,146 @@
+/* =============================================================================
+   GL-SHELL — 3-Pane Band Command Center shell
+   Phase B: Center workspace + Right context panel
+   Loaded only by index-dev.html — production index.html is untouched.
+   ============================================================================= */
+
+/* ── Shell wrapper ─────────────────────────────────────────────────────────── */
+#gl-shell {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+  min-height: calc(100vh - 92px); /* match .main-content min-height */
+  position: relative;
+}
+
+/* ── Center workspace inside the shell ─────────────────────────────────────── */
+/*
+   .main-content normally has max-width:960px; margin:0 auto (from app-shell.css).
+   Inside #gl-shell it must be a flex child that shrinks when the panel opens,
+   so we override the centering and let the flex layout take over.
+*/
+#gl-shell > .main-content {
+  flex: 1 1 0;
+  min-width: 0;          /* allow compression below max-width */
+  max-width: none;       /* let flex control width, not a hard cap */
+  margin: 0;             /* remove the auto-centering */
+  /* padding, min-height, and all other rules remain from app-shell.css */
+  overflow-y: auto;
+  transition: flex-basis 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── Right context panel ───────────────────────────────────────────────────── */
+#gl-right-panel {
+  /* Hidden by default — zero width, overflow clipped */
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+
+  /* Visual treatment */
+  background: var(--bg-card, #1e293b);
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+
+  /* Layout */
+  display: flex;
+  flex-direction: column;
+
+  /* Animate open/close */
+  transition: width 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Panel open — triggered by class on #gl-shell */
+#gl-shell.gl-shell--panel-open #gl-right-panel {
+  width: 420px;
+}
+
+/* ── Panel internals ───────────────────────────────────────────────────────── */
+.gl-rp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.15);
+  min-height: 44px;
+}
+
+.gl-rp-title {
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim, #475569);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  margin-right: 8px;
+}
+
+.gl-rp-close-btn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  border-radius: 7px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.gl-rp-close-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+
+.gl-rp-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Thin scrollbar consistent with app-shell.css */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.gl-rp-content::-webkit-scrollbar { width: 4px; }
+.gl-rp-content::-webkit-scrollbar-track { background: transparent; }
+.gl-rp-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+/* ── Mobile: panel overlays instead of pushing ─────────────────────────────── */
+@media (max-width: 900px) {
+  #gl-right-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+    width: 0;
+    z-index: 500;          /* above topbar (z=1000 would cover it, 500 sits below) */
+    box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
+  }
+
+  #gl-shell.gl-shell--panel-open #gl-right-panel {
+    width: 92vw;
+    max-width: 420px;
+  }
+
+  /* On mobile the center workspace does NOT compress — panel overlays */
+  #gl-shell > .main-content {
+    transition: none;
+  }
+}
+
+/* ── Dev-only: outline to confirm shell boundary during Phase B ─────────────
+   Remove this block when Phase C is wired and visually confirmed.          */
+#gl-shell[data-dev-outline="true"] {
+  outline: 2px dashed rgba(245, 158, 11, 0.3);
+}

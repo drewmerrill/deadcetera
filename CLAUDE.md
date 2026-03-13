@@ -62,6 +62,8 @@ Claude must follow these rules when modifying the project.
 5. **Avoid large refactors unless explicitly requested.**
    Prefer incremental changes.
 
+6. Claude must follow the UI architecture rules defined in: 02_GrooveLinx/specs/groovelinx-ui-principles.md
+
 ---
 
 UI MODEL
@@ -125,6 +127,31 @@ Avoid:
 - unnecessary patterns
 - over-engineering
 - deep inheritance structures
+
+---
+
+## SESSION CONTINUITY RULES
+
+Claude must maintain the following files as the canonical continuity system:
+
+- `02_GrooveLinx/CLAUDE_HANDOFF.md`
+- `02_GrooveLinx/CURRENT_PHASE.md`
+- `02_GrooveLinx/specs/SESSION_CLOSE_PROTOCOL.md`
+
+Claude must update `02_GrooveLinx/CLAUDE_HANDOFF.md` whenever:
+1. a milestone phase is completed
+2. a meaningful code patch is applied
+3. a multi-step task pauses
+4. the conversation becomes long, slow, or fragmented
+5. the user says: checkpoint, handoff, close out, new chat, restart, or wrap up
+
+Before ending a session, Claude must:
+- update `CLAUDE_HANDOFF.md`
+- update `CURRENT_PHASE.md`
+- record the exact next recommended step
+- include a ready-to-paste restart prompt
+
+If repo docs conflict with chat memory, repo docs win.
 
 ---
 
