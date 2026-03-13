@@ -542,6 +542,14 @@ function vhRenderUrlPanel() {
         '</div>';
 }
 
+function vhUrlPanelSendTo(btn) {
+    var dest = btn.getAttribute('data-dest');
+    if (!dest) return;
+    vhSelectPastedUrl();
+    // vhSelectPastedUrl sets vhSelectedUrl — give it a tick then send
+    setTimeout(function() { vhSendTo(dest); }, 0);
+}
+
 function vhDetectPlatform(url) {
     var el = document.getElementById('vhUrlDetect');
     if (!el) return;
@@ -555,7 +563,15 @@ function vhDetectPlatform(url) {
     else if (url.includes('phish.in')) platform = 'phishin';
     else if (/\.(mp3|m4a|wav|ogg|flac)(\?|$)/i.test(url)) platform = 'audio';
     var icons = { spotify: '🟢 Spotify', youtube: '▶️ YouTube', archive: '🏛️ Archive.org', soundcloud: '🔊 SoundCloud', relisten: '🔄 Relisten', phishin: '🐟 Phish.in', audio: '🎵 Audio File', link: '🔗 Link' };
-    el.innerHTML = '<span class="vh-detect-badge">' + (icons[platform] || icons.link) + ' detected</span>';
+    el.innerHTML =
+        '<span class="vh-detect-badge">' + (icons[platform] || icons.link) + ' detected</span>' +
+        '<div class="vh-url-sendto" style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">' +
+        '<span style="font-size:0.72em;color:#64748b;align-self:center;margin-right:4px">Send to:</span>' +
+        '<button class="vh-action-btn vh-action-northstar" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="northstar" onclick="vhUrlPanelSendTo(this)">&#11088; North Star</button>' +
+        '<button class="vh-action-btn vh-action-coverme" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="coverme" onclick="vhUrlPanelSendTo(this)">&#127908; Cover Me</button>' +
+        '<button class="vh-action-btn vh-action-fadr" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="fadr" onclick="vhUrlPanelSendTo(this)">&#127928; Fadr</button>' +
+        '<button class="vh-action-btn vh-action-practice" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="practice" onclick="vhUrlPanelSendTo(this)">&#127925; Practice</button>' +
+        '</div>';
 }
 
 function vhSelectPastedUrl() {
@@ -673,11 +689,30 @@ function vhShowAllActions() {
         '<button class="vh-action-btn vh-action-practice" onclick="vhSendTo(\'practice\')">🎵 Practice</button>';
 }
 
+function vhSaveUrl(songTitle, url, title, platform) {
+    // Persist URL to Firebase so it survives across sessions
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return;
+    if (typeof sanitizeFirebasePath !== 'function') return;
+    var songKey = sanitizeFirebasePath(songTitle);
+    var urlKey = 'url_' + Date.now();
+    var record = {
+        url: url,
+        title: title || songTitle,
+        platform: platform || 'link',
+        savedAt: new Date().toISOString(),
+        savedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : ''
+    };
+    firebaseDB.ref(bandPath('songUrls/' + songKey + '/' + urlKey)).set(record)
+        .catch(function(e) { console.warn('[vh] saveUrl failed:', e); });
+}
+
 async function vhSendTo(dest) {
     if (!vhSelectedUrl || !vhSong) return;
     var songTitle = vhSong.title;
     var url = vhSelectedUrl;
     var title = vhSelectedTitle;
+    // Persist URL to Firebase regardless of destination
+    vhSaveUrl(songTitle, url, title, vhSelectedPlatform);
 
     if (dest === 'northstar') {
         // Add as reference version
@@ -708,6 +743,13 @@ async function vhSendTo(dest) {
         }
         if (typeof showToast === 'function') showToast('⭐ Added to North Star!');
         closeVersionHub();
+        // Re-render Listen lens in song-detail if it is currently open
+        setTimeout(function() {
+            var listenPanel = document.querySelector('.sd-lens-panel[data-lens="listen"]');
+            if (listenPanel && listenPanel.style.display !== 'none' && typeof _sdPopulateListenLensPublic === 'function') {
+                _sdPopulateListenLensPublic(songTitle);
+            }
+        }, 300);
 
     } else if (dest === 'coverme') {
         // Add as cover version

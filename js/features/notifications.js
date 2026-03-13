@@ -706,8 +706,7 @@ async function carePackageSave(packData) {
     await firebaseDB.ref(path).set(packData);
 
     // Also write to public node (no bandPath prefix) so worker can read it
-    // Worker reads /bands/deadcetera/care_packages/:id
-    var publicPath = bandPath('care_packages/' + packId);
+    var publicPath = 'care_packages_public/' + packId;
     await firebaseDB.ref(publicPath).set(packData);
 
     return packId;

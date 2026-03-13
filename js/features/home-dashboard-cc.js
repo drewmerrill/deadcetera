@@ -26,6 +26,7 @@
 
 (function _patchHomeDashboard() {
   var _originalRender = window.renderHomeDashboard;
+  if (typeof _originalRender !== "function") { console.warn("[cc] renderHomeDashboard not ready"); return; }
 
   window.renderHomeDashboard = async function renderHomeDashboard() {
     await _originalRender.apply(this, arguments);
@@ -38,10 +39,12 @@
     if (!dashboard) return;
 
     // 1. Inject Summary Strip at the very top of .home-dashboard
-    var strip = document.createElement('div');
-    strip.id = 'cc-summary-strip';
-    strip.innerHTML = _ccRenderSummaryStrip();
-    dashboard.insertBefore(strip, dashboard.firstChild);
+    if (!dashboard.classList.contains('hd-mission-board')) {
+      var strip = document.createElement('div');
+      strip.id = 'cc-summary-strip';
+      strip.innerHTML = _ccRenderSummaryStrip();
+      dashboard.insertBefore(strip, dashboard.firstChild);
+    }
 
     // 2. Add new cards to card grid — Radar, Pocket, Quick Actions
     var cardGrid = dashboard.querySelector('.home-card-grid');
@@ -73,7 +76,7 @@
     if (!container) return;
     var dashboard = container.querySelector('.home-dashboard');
     if (!dashboard) return;
-    if (!document.getElementById('cc-summary-strip')) {
+    if (!document.getElementById('cc-summary-strip') && !dashboard.classList.contains('hd-mission-board')) {
       var strip = document.createElement('div');
       strip.id = 'cc-summary-strip';
       strip.innerHTML = _ccRenderSummaryStrip();
@@ -110,7 +113,7 @@ function _ccRenderSummaryStrip() {
 function _ccPopulateSummaryStrip() {
   // Weak songs from readinessCache
   try {
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var weakCount = 0;
     var ratedCount = 0;
@@ -146,7 +149,7 @@ function _ccPopulateSummaryStrip() {
         var arrow = trend ? (trend.direction==='up'?'↑':trend.direction==='down'?'↓':'→') : '→';
         pocketEl.textContent = score + ' ' + arrow;
       } else {
-        pocketEl.textContent = 'No data';
+        pocketEl.textContent = 'Groove: No data';
       }
     }
     document.getElementById('cc-pill-pocket')?.classList.remove('cc-strip-pill--skeleton');
@@ -267,7 +270,7 @@ async function _ccLoadNextRehearsal() {
 
 function _ccRenderReadinessRadar() {
   var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-  var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+  var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
 
   // Score every song
   var scored = songs.map(function(song) {

@@ -111,6 +111,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var bandClass  = (song.band || 'other').toLowerCase();
         var customAttr = song.isCustom ? ' data-custom="true"' : '';
         var customClass = song.isCustom ? ' custom-song' : '';
+        var drawerBtn = '<button class="song-drawer-btn" title="Quick view (S)" '+
+            'onclick="event.stopPropagation();openSongDrawer(\'' + titleOnclick + '\')">'+
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">'+
+            '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>'+
+            '</button>';
         return '<div class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<span class="song-name">' + song.title + '</span>' +
@@ -118,6 +123,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                '<span class="song-chain-strip" data-song="' + titleEsc + '"></span>' +
                '<span class="song-status-cell"></span>' +
                '<span class="song-badge ' + bandClass + '">' + (song.band || '') + '</span>' +
+               drawerBtn +
                '</div>';
     }).join('');
 

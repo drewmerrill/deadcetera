@@ -41,7 +41,7 @@
 .vh-search-btn:hover { background:rgba(102,126,234,0.35); }
 
 /* Results area */
-.vh-results { max-height:calc(100vh - 340px); overflow-y:auto; }
+.vh-results { /* scroll handled by .vh-body */ }
 .vh-loading { color:#94a3b8; font-size:0.85em; padding:16px; text-align:center; }
 .vh-empty { color:#64748b; font-size:0.85em; padding:16px; text-align:center; }
 .vh-error { color:#ef4444; font-size:0.85em; padding:16px; text-align:center; }
@@ -141,5 +141,5 @@
 @media (min-width:768px) {
     .vh-body { padding:16px 24px; }
     .vh-tab { font-size:0.85em; padding:9px 16px; }
-    .vh-results { max-height:calc(100vh - 360px); }
+    /* .vh-results max-height removed — vh-body is sole scroll container */
 }

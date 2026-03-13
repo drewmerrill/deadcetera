@@ -27,6 +27,7 @@ async function loadSetlists() {
     const rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     // Sort newest first; track original indices for edit/delete operations
     const data = rawData.map((sl, origIdx) => ({ ...sl, _origIdx: origIdx })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    window._cachedSetlists = rawData; // cache unsorted for live-gig.js index lookup
     const container = document.getElementById('setlistsList');
     if (!container) return;
     if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
@@ -42,7 +43,7 @@ async function loadSetlists() {
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="btn btn-sm btn-ghost" onclick="editSetlist(${sl._origIdx})" title="Edit">✏️</button>
-                <button class="btn btn-sm btn-ghost" onclick="launchGigMode(${sl._origIdx})" title="Go Live" style="color:#22c55e">🎤</button>
+                <button class="btn btn-sm btn-ghost" onclick="launchLiveGig('${sl.id || sl._origIdx}')" title="Go Live" style="color:#22c55e">🎤</button>
                 <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${sl._origIdx})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
                 <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${sl._origIdx})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
             </div>
@@ -53,6 +54,7 @@ async function loadSetlists() {
 
 async function exportSetlistToiPad(setlistIndex) {
     const allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    allSetlists.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const sl = allSetlists[setlistIndex];
     if (!sl) return;
 
@@ -196,7 +198,7 @@ function slSearchSong(input, setIdx) {
     const _activeStatuses = ['prospect','wip','gig_ready'];
     const matches = (typeof allSongs !== "undefined" ? allSongs : songs || [])
         .filter(s => s.title.toLowerCase().includes(q))
-        .filter(s => !_slOnlyActive || _activeStatuses.includes(window.statusCache && window.statusCache[s.title]))
+        .filter(s => !_slOnlyActive || _activeStatuses.includes(GLStore && GLStore.getStatus(s.title)))
         .slice(0, 12);
     results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onclick="slAddSongToSet(${setIdx},this.dataset.title)">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
@@ -269,7 +271,7 @@ async function slRenderReadinessMeter() {
     });
     if (!allTitles.length) { container.innerHTML = ''; return; }
     var songRows = allTitles.map(function(title) {
-        var scores = readinessCache[title] || {};
+        var scores = (GLStore ? GLStore.getAllReadiness() : readinessCache || {})[title] || {};
         var vals = BAND_MEMBERS_ORDERED.map(function(m) { return scores[m.key] || 0; }).filter(Boolean);
         var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0)/vals.length : 0;
         return { title: title, avg: avg, color: avg ? readinessColor(Math.round(avg)) : '#334155', scores: scores };
@@ -442,7 +444,7 @@ async function slSaveSetlist() {
 
 async function editSetlist(idx) {
     window._slEditIdx = idx;
-    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const data = window._cachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const sl = data[idx];
     if (!sl) { alert('Setlist not found'); return; }
     
@@ -806,7 +808,7 @@ function parachuteOpenOfflinePack() {
 
 async function slSaveSetlistEdit(idx) {
     if (!requireSignIn()) return;
-    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const data = window._cachedSetlists ? [...window._cachedSetlists] : toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     data[idx] = {
         ...data[idx],
         name: document.getElementById('slName')?.value || 'Untitled',
@@ -825,7 +827,8 @@ async function slSaveSetlistEdit(idx) {
 async function deleteSetlist(idx) {
     if (!requireSignIn()) return;
     if (!confirm('Delete this setlist? This cannot be undone.')) return;
-    const data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const raw = window._cachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    const data = [...raw];
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'setlists', data);
     showToast('🗑️ Setlist deleted');

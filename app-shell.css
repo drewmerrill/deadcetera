@@ -45,7 +45,7 @@ a{color:var(--accent-light);}
 .fade-in{animation:fadeIn 0.2s ease-out;}
 
 /* ===== CARDS ===== */
-.app-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;}
+.app-card{background:rgba(20,30,50,0.75);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 10px 30px rgba(0,0,0,0.4);}
 .app-card h3{font-size:0.95em;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;}
 .stat-card{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;}
@@ -950,3 +950,104 @@ button[style*="background: var(--red)"],
     flex-shrink: 0 !important;
     max-width: 100% !important;
 }
+
+/* ============================================================
+   LIVE GIG MODE — #lgOverlay
+   === LIVE GIG MODE ===
+   ============================================================ */
+
+#lgOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: #0a0a0a;
+  color: #f0ede8;
+  font-family: inherit;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.lg-layout { display:flex; flex-direction:column; height:100%; width:100%; box-sizing:border-box; padding:0; }
+.lg-header { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid #2a2a2a; flex-shrink:0; min-height:52px; }
+.lg-header-center { display:flex; flex-direction:column; align-items:center; line-height:1.2; }
+.lg-band-name { font-size:0.7rem; letter-spacing:0.18em; text-transform:uppercase; color:#888; }
+.lg-setlist-name { font-size:0.85rem; color:#bbb; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lg-btn-exit, .lg-btn-fs { background:transparent; border:1px solid #333; color:#aaa; padding:8px 14px; border-radius:6px; font-size:0.8rem; cursor:pointer; min-width:64px; min-height:44px; transition:border-color 0.15s,color 0.15s; }
+.lg-btn-exit:hover, .lg-btn-fs:hover { border-color:#666; color:#eee; }
+.lg-header-right { display:flex; align-items:center; gap:8px; }
+.lg-song-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 16px; border-bottom:1px solid #1a1a1a; flex-shrink:0; min-height:36px; }
+.lg-chart-region { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 16px 80px; min-height:0; }
+.lg-chart-text { font-family:'SF Mono','Fira Code','Consolas',monospace; font-size:15px; line-height:1.55; color:#e2e8f0; white-space:pre-wrap; word-wrap:break-word; margin:0; tab-size:4; }
+.lg-chart-loading { color:#555; font-size:0.85rem; padding:20px 0; }
+.lg-no-chart { color:#555; font-size:0.9rem; padding:40px 0; text-align:center; }
+.lg-song-counter { font-size:0.75rem; letter-spacing:0.14em; color:#555; text-transform:uppercase; white-space:nowrap; }
+.lg-song-card { display:flex; flex-direction:column; gap:10px; }
+.lg-song-badges { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.lg-key-badge, .lg-bpm-badge { font-size:0.8rem; padding:4px 10px; border-radius:4px; background:#1e1e1e; border:1px solid #333; color:#c8c8c8; }
+.lg-status-tag { font-size:0.7rem; padding:3px 10px; border-radius:4px; border:1px solid; letter-spacing:0.1em; text-transform:uppercase; font-weight:600; }
+.lg-song-title { font-size:1.1rem; font-weight:800; color:#f5f0e8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+.lg-song-notes { font-size:clamp(0.9rem,2.5vw,1.1rem); color:#888; font-style:italic; line-height:1.4; max-width:600px; }
+.lg-readiness-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:10px 24px; border-top:1px solid #1a1a1a; border-bottom:1px solid #1a1a1a; flex-shrink:0; min-height:44px; }
+.lg-readiness-label { font-size:0.65rem; letter-spacing:0.16em; color:#555; text-transform:uppercase; margin-right:4px; }
+.lg-member-block { display:flex; align-items:center; gap:4px; }
+.lg-member-initial { font-size:0.75rem; color:#777; min-width:14px; }
+.lg-dot { width:7px; height:7px; border-radius:50%; background:#2a2a2a; border:1px solid #3a3a3a; display:inline-block; }
+.lg-dot.lg-dot-on { background:#4caf74; border-color:#4caf74; box-shadow:0 0 3px #4caf7460; }
+.lg-controls { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; gap:12px; flex-shrink:0; }
+.lg-ctrl-btn { flex:1; min-height:64px; background:#141414; border:1px solid #2e2e2e; color:#ddd; font-size:clamp(0.9rem,2.5vw,1.1rem); letter-spacing:0.1em; font-weight:700; border-radius:8px; cursor:pointer; transition:background 0.12s,border-color 0.12s,color 0.12s; font-family:inherit; }
+.lg-ctrl-btn:hover, .lg-ctrl-btn:active { background:#1e1e1e; border-color:#555; color:#fff; }
+.lg-btn-next { background:#0d2018; border-color:#1d5535; color:#4caf74; }
+.lg-btn-next:hover { background:#112a1f; border-color:#4caf74; color:#7ad89a; }
+.lg-btn-flash { border-color:#555 !important; color:#888 !important; }
+.lg-jump-wrap { position:relative; flex:1; }
+.lg-btn-jump { width:100%; }
+.lg-jump-menu { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); width:280px; max-height:50vh; overflow-y:auto; background:#141414; border:1px solid #333; border-radius:10px; z-index:9100; -webkit-overflow-scrolling:touch; }
+.lg-jump-item { display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid #1e1e1e; cursor:pointer; transition:background 0.1s; }
+.lg-jump-item:last-child { border-bottom:none; }
+.lg-jump-item:hover, .lg-jump-item:active { background:#1e1e1e; }
+.lg-jump-item.lg-jump-active { background:#0d2018; color:#4caf74; }
+.lg-jump-num { font-size:0.75rem; color:#555; min-width:24px; text-align:right; }
+.lg-jump-title { font-size:0.9rem; color:#ddd; }
+.lg-queue { display:flex; align-items:center; gap:10px; padding:8px 24px; flex-shrink:0; min-height:38px; flex-wrap:wrap; }
+.lg-queue-label { font-size:0.65rem; letter-spacing:0.14em; color:#555; text-transform:uppercase; }
+.lg-queue-song { font-size:0.85rem; color:#bbb; }
+.lg-queue-dim { color:#555; }
+.lg-queue-arrow { color:#444; font-size:0.8rem; }
+.lg-links-row { display:flex; gap:10px; padding:10px 16px 14px; flex-shrink:0; flex-wrap:wrap; }
+.lg-link-btn { flex:1; min-width:80px; padding:10px 8px; background:#141414; border:1px solid #2e2e2e; border-radius:6px; color:#888; font-size:0.75rem; text-align:center; text-decoration:none; transition:border-color 0.12s,color 0.12s; display:block; }
+.lg-link-btn:hover { border-color:#555; color:#ccc; }
+.lg-error-layout { justify-content:center; align-items:center; gap:24px; padding:40px; }
+.lg-error-msg { font-size:1.1rem; color:#e05a2b; text-align:center; max-width:320px; line-height:1.5; }
+@media (min-width:480px) {
+  .lg-chart-text { font-size:17px; }
+  .lg-controls { padding:14px 24px; }
+  .lg-ctrl-btn { min-height:72px; }
+}
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .lg-links-row { padding-bottom:calc(14px + env(safe-area-inset-bottom)); }
+}
+
+/* CF-002: iOS date input overflow fix */
+input[type="date"].app-input,
+input[type="time"].app-input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+/* Song Drawer trigger button */
+.song-drawer-btn{opacity:0;position:absolute;right:4px;top:50%;transform:translateY(-50%);z-index:10;background:#0f172a;border:1px solid rgba(102,126,234,0.6);color:#818cf8;border-radius:6px;padding:4px 10px;cursor:pointer;transition:opacity 0.15s;display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:700;white-space:nowrap}
+.song-item:hover .song-drawer-btn{opacity:1!important}
+.song-drawer-btn:hover{background:rgba(102,126,234,0.25)!important;border-color:rgba(102,126,234,0.9)!important}
+
+/* Scrollbar styling */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
+html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
+body{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}

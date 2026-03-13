@@ -275,12 +275,28 @@
    */
   async function saveReadiness(songId, memberKey, value) {
     var v = parseInt(value, 10);
-    if (isNaN(v) || v < 1 || v > 5) return;
+    if (isNaN(v) || v < 0 || v > 5) return;
     var db = _db();
     if (!db) return;
     var k = _sanitize(songId);
     var path = _bp('songs/' + k + '/readiness/' + memberKey);
     try {
+      // 0 = clear score: remove from Firebase and cache
+      if (v === 0) {
+        await db.ref(path).remove();
+        if (typeof readinessCache !== 'undefined' && readinessCache[songId]) {
+          delete readinessCache[songId][memberKey];
+        }
+        if (_state.songDetailCache[songId] && _state.songDetailCache[songId].readiness) {
+          delete _state.songDetailCache[songId].readiness[memberKey];
+        }
+        try { db.ref(_bp('meta/readinessIndex/' + k + '/' + memberKey)).remove(); } catch(ei) {}
+        if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
+        if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
+        emit('readinessChanged', { songId: songId, memberKey: memberKey, value: 0 });
+        if (typeof showToast === 'function') showToast('Readiness cleared');
+        return;
+      }
       await db.ref(path).set(v);
       // Update readinessCache
       if (typeof readinessCache !== 'undefined') {
@@ -450,6 +466,23 @@
     emit('practiceMixDeleted', { mixId: mixId });
   }
 
+  // ── Full cache accessors (migration helpers) ─────────────────────────────
+
+  function getAllReadiness() {
+    if (typeof readinessCache !== 'undefined') return readinessCache || {};
+    return {};
+  }
+
+  function getAllStatus() {
+    if (typeof statusCache !== 'undefined') return statusCache || {};
+    return {};
+  }
+
+  function getStatus(songId) {
+    if (typeof statusCache !== 'undefined') return (statusCache && statusCache[songId]) || null;
+    return null;
+  }
+
   // ── UI State ──────────────────────────────────────────────────────────────
 
   function setActiveLens(lens) {
@@ -509,6 +542,9 @@
     // UI State
     setActiveLens:     setActiveLens,
     getActiveLens:     getActiveLens,
+    getAllReadiness:    getAllReadiness,
+    getAllStatus:       getAllStatus,
+    getStatus:         getStatus,
 
     // Event bus
     subscribe:         subscribe,

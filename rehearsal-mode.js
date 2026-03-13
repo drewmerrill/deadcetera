@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260308-214626', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260312-235531', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
 let rmIndex   = 0;
@@ -56,12 +56,13 @@ function rmArchiveQuery(title, bandCode) {
 
 
 // ── Entry: single song ───────────────────────────────────────────────────────
-function openRehearsalMode(songTitle) {
+function openRehearsalMode(songTitle, mode) {
     const songData = (typeof allSongs !== 'undefined' ? allSongs : [])
         .find(s => s.title === songTitle);
     rmQueue = [{ title: songTitle, band: songData?.band || '' }];
     rmIndex = 0;
     rmShow();
+    if (mode === 'paste') { setTimeout(function(){ if (typeof rmStartEdit === 'function') rmStartEdit(); }, 400); }
 }
 
 // Alias for PM v2 button

@@ -39,15 +39,24 @@ async function renderRehearsalPage(el) {
         '<div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">' +
             '<button id="rhTab-events" class="btn" onclick="rhShowTab(\'events\')" style="flex:1;font-size:0.85em">📅 Sessions</button>' +
             '<button id="rhTab-plans"  class="btn" onclick="rhShowTab(\'plans\')"  style="flex:1;font-size:0.85em">📋 Plans</button>' +
+            '<button id="rhTab-intel"  class="btn" onclick="rhShowTab(\'intel\')"  style="flex:1;font-size:0.85em">Intel</button>' +
         '</div>' +
         '<div id="rhTabContent"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
+    // Restore last sub-tab if set
+    setTimeout(function() {
+        try {
+            var saved = localStorage.getItem('glRhLastTab');
+            if (saved && saved !== 'events' && typeof rhShowTab === 'function') rhShowTab(saved);
+        } catch(e) {}
+    }, 0);
     rhShowTab(_rhActiveTab);
 }
 
 async function rhShowTab(tab) {
     _rhActiveTab = tab;
-    ['events','plans'].forEach(function(t) {
-        var btn = document.getElementById('rhTab-' + t);
+    ['events','plans','intel'].forEach(function(t) {
+        try { localStorage.setItem('glRhLastTab', t); } catch(e) {}
+    var btn = document.getElementById('rhTab-' + t);
         if (!btn) return;
         var active = t === tab;
         btn.style.background = active ? 'var(--accent)' : 'rgba(255,255,255,0.04)';
@@ -64,6 +73,8 @@ async function rhShowTab(tab) {
             '</div>' +
             '<div id="rhEventList"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
         await rhLoadEvents();
+    } else if (tab === 'intel') {
+        await rhShowIntelTab(content);
     } else {
         await rhShowPlansTab(content);
     }
@@ -429,7 +440,36 @@ async function rhRenderScoreboard(eventId) {
     allWeakSections.sort(function(a,b){return a.avg-b.avg;});
     var top = allWeakSections.slice(0,5);
     if (!top.length) {
-        container.innerHTML = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 14px;font-size:0.82em;color:#86efac;margin-bottom:12px">🏆 All sections looking solid! No major weak spots.</div>';
+        // Fallback: check overall readiness when no section ratings exist
+        var readinessAll = (window.GLStore && typeof GLStore.getAllReadiness === 'function')
+            ? GLStore.getAllReadiness() : (window._masterReadiness || {});
+        var lowReadiness = [];
+        planSongs.forEach(function(title) {
+            var scores = readinessAll[title] || readinessAll[sanitizeFirebasePath(title)] || {};
+            var vals = Object.values(scores).filter(function(v){ return typeof v === 'number' && v > 0; });
+            if (!vals.length) return;
+            var avg = vals.reduce(function(a,b){return a+b;},0)/vals.length;
+            if (avg < 3.5) lowReadiness.push({ song: title, avg: avg });
+        });
+        if (lowReadiness.length) {
+            lowReadiness.sort(function(a,b){return a.avg-b.avg;});
+            var h2 = '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;margin-bottom:12px">';
+            h2 += '<div style="font-weight:700;font-size:0.88em;margin-bottom:10px">⚠️ Songs Needing Work</div>';
+            lowReadiness.slice(0,5).forEach(function(item) {
+                var pct = Math.round(item.avg/5*100);
+                var c = item.avg<2 ? '#ef4444' : item.avg<3 ? '#f97316' : '#f59e0b';
+                h2 += '<div style="margin-bottom:8px">';
+                h2 += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">';
+                h2 += '<span style="font-size:0.8em;color:#f1f5f9;font-weight:600">' + item.song + '</span>';
+                h2 += '<span style="font-size:0.78em;font-weight:700;color:' + c + '">' + item.avg.toFixed(1) + '/5</span></div>';
+                h2 += '<div style="height:4px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">';
+                h2 += '<div style="height:100%;width:' + pct + '%;background:' + c + ';border-radius:2px"></div></div></div>';
+            });
+            h2 += '</div>';
+            container.innerHTML = h2;
+        } else {
+            container.innerHTML = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 14px;font-size:0.82em;color:#86efac;margin-bottom:12px">🏆 All songs looking solid! No major weak spots.</div>';
+        }
         return;
     }
     var h = '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;margin-bottom:12px">';
@@ -516,6 +556,20 @@ async function rhSavePlan(eventId) {
     var plan = ev.plan || { songs: [], focusSections: {}, notes: '' };
     plan.notes = notesEl ? notesEl.value : (plan.notes || '');
     await rhSavePlanData(eventId, plan);
+    // Also write to rehearsal_plan_{date} so Plans tab can find it
+    if (ev.date) {
+        try {
+            var planForDate = {
+                songs: (plan.songs || []).map(function(s) {
+                    return typeof s === 'string' ? { title: s, focus: '' } : s;
+                }),
+                notes: plan.notes || '',
+                focusSections: plan.focusSections || {},
+                updatedAt: new Date().toISOString()
+            };
+            await saveBandDataToDrive('_band', 'rehearsal_plan_' + ev.date, planForDate);
+        } catch(e) { console.warn('rhSavePlan: could not mirror to rehearsal_plan_', e); }
+    }
     showToast('✅ Plan saved');
 }
 
@@ -548,7 +602,7 @@ async function rhGenerateSuggestions(eventId) {
     // Preload data
     await preloadReadinessCache();
     var statusData = {};
-    if (typeof statusCache !== 'undefined') statusData = statusCache;
+    statusData = (typeof GLStore !== 'undefined') ? GLStore.getAllStatus() : (typeof statusCache !== 'undefined' ? statusCache : {});
 
     // Load all best shot dates from Firebase for recency scoring
     // We'll pull the master readiness file (already loaded) and do per-song recency via existing cache
@@ -566,7 +620,7 @@ async function rhGenerateSuggestions(eventId) {
 
     allSongs.forEach(function(song) {
         var title = song.title;
-        var scores = readinessCache[title] || {};
+        var scores = ((typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : (readinessCache || {}))[title] || {};
         var setScores = BAND_MEMBERS_ORDERED.map(function(m) { return scores[m.key]; }).filter(function(s) { return s && s > 0; });
         var avgReadiness = setScores.length ? (setScores.reduce(function(a, b) { return a + b; }, 0) / setScores.length) : 0;
 
@@ -635,7 +689,7 @@ async function rhGenerateSuggestions(eventId) {
             if (s.avgReadiness > 0) {
                 out += '<div style="display:flex;gap:2px;margin-top:4px;align-items:center">';
                 BAND_MEMBERS_ORDERED.forEach(function(m) {
-                    var sc = (readinessCache[s.title] || {})[m.key] || 0;
+                    var rc2 = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : (readinessCache || {}); var sc = (rc2[s.title] || {})[m.key] || 0;
                     var c = sc ? readinessColor(sc) : 'rgba(255,255,255,0.08)';
                     out += '<span title="' + m.name + ': ' + (sc?sc+'/5':'?') + '" style="display:inline-block;width:18px;height:4px;border-radius:2px;background:' + c + '"></span>';
                 });
@@ -844,7 +898,7 @@ async function renderPracticePlanForDate(dateStr, statusMap) {
     var displayDate = formatPracticeDate(dateStr);
 
     // ── Ranked suggestions ────────────────────────────────────────────────────
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     var THRESH = 3, now2 = Date.now(), actLog2 = [], lastSeen2 = {};
     try { actLog2 = await window.loadMasterFile('_master_activity_log.json') || []; } catch(e) {}
     var ACTS = {practice_track:1,readiness_set:1,rehearsal_note:1,harmony_add:1,harmony_edit:1,part_notes:1};
@@ -1334,4 +1388,681 @@ window.practicePlanEditMeta      = practicePlanEditMeta;
 window.practicePlanSaveMeta      = practicePlanSaveMeta;
 window.practicePlanNew           = practicePlanNew;
 window.practicePlanExport        = practicePlanExport;
+
+
+// =============================================================================
+// REHEARSAL INTELLIGENCE  —  renderRehearsalIntel + helpers
+// =============================================================================
+
+// ── Tab shim ──────────────────────────────────────────────────────────────────
+async function rhShowIntelTab(container) {
+    container.innerHTML = '<div style="color:var(--text-dim);padding:40px;text-align:center">Loading intelligence...</div>';
+    await renderRehearsalIntel(container, true);
+}
+
+// ── Page / tab entry point ────────────────────────────────────────────────────
+async function renderRehearsalIntel(el, isTab) {
+    var header = isTab ? '' :
+        '<div class="page-header"><h1>Rehearsal Intelligence</h1><p>Your band coach — what to rehearse, why, and how long</p></div>';
+
+    el.innerHTML = header + '<div style="color:var(--text-dim);padding:32px;text-align:center">Loading...</div>';
+
+    var ctx = await buildRiContext();
+    var focusSongs  = deriveRiFocusSongs(ctx);
+    var plan        = deriveRiAutoPlan(ctx, focusSongs);
+    var improvement = deriveRiImprovementSummary(ctx);
+
+    // Cache for live mode (advanceRiSong needs these)
+    window._riLastCtx         = ctx;
+    window._riLastFocusSongs  = focusSongs;
+
+    el.innerHTML = header
+        + renderRiHero(ctx, focusSongs, plan)
+        + renderRiCTA(ctx)
+        + renderRiRehearsalFocus(focusSongs, ctx)
+        + renderRiAutoPlan(plan, ctx)
+        + renderRiReadinessBreakdown(ctx)
+        + renderRiImprovementTracking(improvement, ctx)
+        + renderRiGrooveInsight(ctx)
+        + _riStyles();
+}
+window.renderRehearsalIntel = renderRehearsalIntel;
+
+// ── Data context builder ──────────────────────────────────────────────────────
+async function buildRiContext() {
+    var rc = (typeof GLStore !== 'undefined' && GLStore.getAllReadiness)
+        ? GLStore.getAllReadiness()
+        : (typeof readinessCache !== 'undefined' ? readinessCache : {});
+
+    var events = [];
+    try { events = await rhGetAllEvents(); } catch(e) {}
+
+    var today = new Date(); today.setHours(0,0,0,0);
+    var upcoming = events
+        .filter(function(e) { return new Date(e.date + 'T00:00:00') >= today; })
+        .sort(function(a, b) { return a.date.localeCompare(b.date); });
+    var past = events
+        .filter(function(e) { return new Date(e.date + 'T00:00:00') < today; })
+        .sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+    var nextEvent = upcoming[0] || null;
+    var lastEvent = past[0] || null;
+
+    // Songs in upcoming rehearsal plan
+    var planSongs = new Set();
+    if (nextEvent && nextEvent.plan && Array.isArray(nextEvent.plan.songs)) {
+        nextEvent.plan.songs.forEach(function(s) {
+            planSongs.add(typeof s === 'string' ? s : (s.title || ''));
+        });
+    }
+
+    // Overall readiness pct
+    var rcVals = Object.values(rc).filter(function(r) {
+        return r && typeof r === 'object' && Object.keys(r).length > 0;
+    });
+    var readyCount = rcVals.filter(function(r) { return _riBandAvg(r) >= 3; }).length;
+    var bandPct = rcVals.length ? Math.round((readyCount / rcVals.length) * 100) : null;
+
+    // Groove analysis from last event (optional, non-blocking)
+    var grooveData = null;
+    if (lastEvent && lastEvent.id && typeof firebaseDB !== 'undefined') {
+        try {
+            var snap = await firebaseDB.ref(bandPath('rehearsals/' + lastEvent.id + '/grooveAnalysis')).once('value');
+            grooveData = snap.val();
+        } catch(e) {}
+    }
+
+    return { rc: rc, events: events, upcoming: upcoming, past: past,
+             nextEvent: nextEvent, lastEvent: lastEvent,
+             planSongs: planSongs, bandPct: bandPct, grooveData: grooveData };
+}
+
+// ── Derivation: Focus Songs ───────────────────────────────────────────────────
+function deriveRiFocusSongs(ctx) {
+    var rc       = ctx.rc || {};
+    var planSongs = ctx.planSongs || new Set();
+    var candidates = [];
+
+    var grooveLow = ctx.grooveData && ctx.grooveData.stabilityScore !== undefined
+        && ctx.grooveData.stabilityScore < 60;
+
+    Object.entries(rc).forEach(function(entry) {
+        var title   = entry[0];
+        var ratings = entry[1] || {};
+        var keys = Object.keys(ratings).filter(function(k) {
+            return typeof ratings[k] === 'number' && ratings[k] > 0;
+        });
+        if (!keys.length) return;
+        var avg = keys.reduce(function(s, k) { return s + ratings[k]; }, 0) / keys.length;
+        if (avg >= 4.5) return; // already excellent
+
+        var reasons = [];
+        if (avg < 2)      reasons.push('Critical');
+        else if (avg < 3) reasons.push('Low readiness');
+        else if (avg < 4) reasons.push('Needs polish');
+        if (planSongs.has(title)) reasons.push('Upcoming setlist song');
+        if (grooveLow && planSongs.has(title)) reasons.push('Groove drift detected');
+        var vals = keys.map(function(k) { return ratings[k]; });
+        if (vals.length >= 2) {
+            var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+            if (mx - mn >= 2) reasons.push('Harmony instability');
+        }
+        var score = (5 - avg) * 10 + (planSongs.has(title) ? 15 : 0);
+        if (reasons.indexOf('Harmony instability') !== -1) score += 5;
+        candidates.push({ title: title, avg: avg, reasons: reasons, score: score });
+    });
+
+    candidates.sort(function(a, b) { return b.score - a.score; });
+    return candidates.slice(0, 5);
+}
+
+// ── Derivation: Auto Plan ────────────────────────────────────────────────────
+function deriveRiAutoPlan(ctx, focusSongs) {
+    var WARMUP = 10;
+    var items = [{ type: 'warmup', label: 'Warmup / Tuning Jam', mins: WARMUP, goal: 'Get loose, tune up' }];
+    focusSongs.forEach(function(s) {
+        var mins = s.avg < 2 ? 20 : s.avg < 3 ? 15 : s.avg < 4 ? 10 : 8;
+        var goal = s.avg < 2 ? 'Rebuild from scratch'
+                 : s.avg < 3 ? 'Stabilize arrangement'
+                 : s.avg < 4 ? 'Tighten transitions'
+                 : 'Final polish';
+        items.push({ type: 'song', title: s.title, avg: s.avg, mins: mins, goal: goal });
+    });
+    var total = items.reduce(function(s, i) { return s + i.mins; }, 0);
+    return { items: items, totalMins: total, nextEvent: ctx.nextEvent };
+}
+
+// ── Derivation: Improvement Summary ─────────────────────────────────────────
+function deriveRiImprovementSummary(ctx) {
+    var past = ctx.past || [];
+    if (past.length < 2) return { mode: 'empty', past: past };
+
+    // Compare last two events that have readiness snapshots
+    // We don't have true historical readiness snapshots — use grooveAnalysis as proxy
+    var last = ctx.lastEvent;
+    var groove = ctx.grooveData;
+
+    // Build what we can: just show last rehearsal songs + current readiness
+    var songs = [];
+    if (last && last.plan && Array.isArray(last.plan.songs)) {
+        last.plan.songs.forEach(function(s) {
+            var title = typeof s === 'string' ? s : (s.title || '');
+            var rc = ctx.rc || {};
+            var ratings = rc[title];
+            if (ratings) {
+                var avg = _riFullBandAvg(ratings);
+                songs.push({ title: title, current: avg });
+            }
+        });
+    }
+
+    if (!songs.length) return { mode: 'empty', past: past };
+    return { mode: 'data', songs: songs, last: last, groove: groove, past: past };
+}
+
+// ── Render: Hero — Rehearsal Cockpit ─────────────────────────────────────────
+function renderRiHero(ctx, focusSongs, plan) {
+    var pct  = ctx.bandPct;
+    var conf = deriveRiConfidenceLabel(pct);
+    var goal = deriveRiSessionGoal(ctx, focusSongs);
+
+    var next = ctx.nextEvent;
+    var metaLine = next
+        ? (next.date || '') + (next.location ? ' · ' + next.location : '')
+        : 'No rehearsal scheduled';
+
+    var stats = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
+        + _riStatPill(focusSongs.length + ' focus songs', '#667eea')
+        + _riStatPill(plan.totalMins + ' min est.', '#f59e0b')
+        + (conf ? _riStatPill('Confidence: ' + conf.label, conf.color) : '')
+        + '</div>';
+
+    return '<div class="ri-hero">'
+        + '<div style="font-size:9px;font-weight:800;letter-spacing:0.18em;color:rgba(255,255,255,0.35);text-transform:uppercase;margin-bottom:8px">🎛 Rehearsal Cockpit</div>'
+        + '<div style="font-size:1.05em;font-weight:900;color:var(--text);line-height:1.3;margin-bottom:2px">' + goal + '</div>'
+        + '<div style="font-size:0.75em;color:var(--text-dim);margin-top:3px">' + metaLine + '</div>'
+        + stats
+        + '</div>';
+}
+
+function _riStatPill(text, color) {
+    return '<div style="font-size:0.72em;font-weight:700;padding:3px 10px;border-radius:20px;'
+        + 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:' + color + ';white-space:nowrap">'
+        + text + '</div>';
+}
+
+function deriveRiSessionGoal(ctx, focusSongs) {
+    var pct = ctx.bandPct;
+    if (!focusSongs || !focusSongs.length) return 'Maintain peak readiness — band is solid';
+    if (pct !== null && pct < 50) return 'Critical session — rebuild weak songs before next gig';
+    var topSong = focusSongs[0].title;
+    if (focusSongs.length === 1) return 'Lock in ' + topSong + ' this session';
+    return 'Focus on ' + topSong + ' + ' + (focusSongs.length - 1) + ' more weak songs';
+}
+
+// ── Render: Section 1 — Rehearsal Focus ──────────────────────────────────────
+function renderRiRehearsalFocus(focusSongs, ctx) {
+    var inner = '';
+    if (!focusSongs.length) {
+        inner = '<div style="color:var(--text-dim);font-style:italic;padding:10px 0">Band readiness is strong — no critical songs right now.</div>';
+    } else {
+        inner = focusSongs.map(function(s, i) {
+            var bar = _riBar(s.avg, 5);
+            var severity = s.avg < 2 ? { label: 'Critical',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   }
+                         : s.avg < 3 ? { label: 'Needs work',    color: '#f97316', bg: 'rgba(249,115,22,0.12)'  }
+                         : s.avg < 4 ? { label: 'Needs polish',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  }
+                         :             { label: 'Final pass',     color: '#34d399', bg: 'rgba(52,211,153,0.10)'  };
+            var tags = s.reasons.map(function(r) {
+                return '<span class="ri-tag">' + r + '</span>';
+            }).join('');
+            var safeTitle = s.title.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+            return '<div class="ri-song-row">'
+                + '<div style="display:flex;align-items:center;gap:10px">'
+                + '<span style="font-size:11px;font-weight:900;color:var(--text-dim);width:18px;flex-shrink:0;text-align:right">' + (i+1) + '</span>'
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="font-weight:700;font-size:0.9em">' + s.title + '</div>'
+                + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:1px">avg ' + s.avg.toFixed(1) + ' / 5</div>'
+                + '</div>'
+                + '<span style="font-size:0.65em;font-weight:800;padding:2px 8px;border-radius:20px;'
+                + 'background:' + severity.bg + ';color:' + severity.color + ';border:1px solid ' + severity.color + '44;flex-shrink:0">'
+                + severity.label + '</span>'
+                + '</div>'
+                + '<div style="margin:6px 0 4px 28px">' + bar + '</div>'
+                + (tags ? '<div style="margin-left:28px;display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">' + tags + '</div>' : '')
+                + '<div style="margin-left:28px;display:flex;gap:6px;margin-top:4px">'
+                + '<button onclick="selectSong(\'' + safeTitle + '\');showPage(\'songs\')" '
+                + 'style="font-size:11px;padding:4px 10px;border-radius:7px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.3);color:#818cf8;cursor:pointer">Open</button>'
+                + '<button onclick="showPage(\'practice\')" '
+                + 'style="font-size:11px;padding:4px 10px;border-radius:7px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);cursor:pointer">Practice</button>'
+                + '</div>'
+                + '</div>';
+        }).join('');
+    }
+    return '<div class="ri-section">'
+        + _riSectionHead('🎯', 'PRIORITY QUEUE')
+        + inner + '</div>';
+}
+
+// ── Render: Section 2 — Auto Plan ────────────────────────────────────────────
+function renderRiAutoPlan(plan, ctx) {
+    var rows = plan.items.map(function(item) {
+        var icon = item.type === 'warmup' ? '~' : '*';
+        var title = item.type === 'warmup' ? item.label : item.title;
+        var avgStr = item.avg !== undefined ? ' · ' + item.avg.toFixed(1) + '/5' : '';
+        return '<div class="ri-plan-row">'
+            + '<span style="font-size:16px;flex-shrink:0">' + icon + '</span>'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-weight:600;font-size:0.88em">' + title + avgStr + '</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:1px">Goal: ' + item.goal + '</div>'
+            + '</div>'
+            + '<div style="font-size:0.8em;font-weight:700;color:var(--text-dim);flex-shrink:0;text-align:right">'
+            + item.mins + ' min</div>'
+            + '</div>';
+    }).join('');
+
+    var saveBtn = '';
+    if (ctx.nextEvent && ctx.nextEvent.id) {
+        var eventId = ctx.nextEvent.id;
+        var songList = JSON.stringify(plan.items.filter(function(i){return i.type==='song';}).map(function(i){return i.title;}));
+        saveBtn = '<button onclick="_riSavePlan(' + songList + ',\'' + eventId + '\')" '
+            + 'style="margin-top:12px;padding:9px 16px;border-radius:10px;background:linear-gradient(135deg,#166534,#14532d);color:var(--green);border:1px solid rgba(74,222,128,0.25);font-weight:700;font-size:12px;cursor:pointer;touch-action:manipulation">Use This Plan →</button>';
+    }
+
+    return '<div class="ri-section">'
+        + _riSectionHead('📋', 'SESSION PLAN')
+        + '<div style="background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.85em">Estimated rehearsal time: <strong style="color:var(--accent-light);font-size:1.1em">' + plan.totalMins + ' min</strong></div>'
+        + rows
+        + saveBtn
+        + '</div>';
+}
+
+// ── Render: Section 3 — Readiness Breakdown ───────────────────────────────────
+function renderRiReadinessBreakdown(ctx) {
+    var rc  = ctx.rc || {};
+    var pct = ctx.bandPct;
+
+    var label = pct === null ? '' :
+                pct >= 90 ? 'Gig Ready' :
+                pct >= 70 ? 'Minor rehearsal recommended' :
+                pct >= 50 ? 'Needs rehearsal' : 'Critical';
+    var color = pct === null ? 'var(--text-dim)' :
+                pct >= 90 ? 'var(--green)' :
+                pct >= 70 ? '#fbbf24' :
+                pct >= 50 ? '#f97316' : '#ef4444';
+
+    // Show top 8 weakest songs
+    var songs = Object.entries(rc)
+        .map(function(e) { return { title: e[0], avg: _riFullBandAvg(e[1]) }; })
+        .filter(function(s) { return s.avg > 0; })
+        .sort(function(a, b) { return a.avg - b.avg; })
+        .slice(0, 8);
+
+    var songRows = songs.map(function(s) {
+        var c = s.avg >= 4 ? 'var(--green)' : s.avg >= 3 ? '#fbbf24' : '#ef4444';
+        return '<div style="margin-bottom:8px">'
+            + '<div style="display:flex;justify-content:space-between;font-size:0.8em;margin-bottom:3px">'
+            + '<span style="color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">' + s.title + '</span>'
+            + '<span style="color:' + c + ';font-weight:700;flex-shrink:0">' + s.avg.toFixed(1) + '</span>'
+            + '</div>'
+            + _riBar(s.avg, 5)
+            + '</div>';
+    }).join('');
+
+    var overall = pct !== null
+        ? '<div style="margin-bottom:14px">'
+          + '<div style="display:flex;justify-content:space-between;font-size:0.82em;margin-bottom:4px">'
+          + '<span style="font-weight:700;color:var(--text)">Overall Band Readiness</span>'
+          + '<span style="color:' + color + ';font-weight:800">' + pct + '% — ' + label + '</span>'
+          + '</div>'
+          + _riBar(pct, 100)
+          + '</div>'
+        : '';
+
+    return '<div class="ri-section">'
+        + _riSectionHead('📊', 'BAND READINESS BREAKDOWN')
+        + overall
+        + (songs.length
+            ? '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px">Weakest Songs</div>' + songRows
+            : '<div style="color:var(--text-dim);font-style:italic">No readiness data yet. Set ratings in the song library.</div>')
+        + '</div>';
+}
+
+// ── Render: Section 4 — Improvement Tracking ─────────────────────────────────
+function renderRiImprovementTracking(summary, ctx) {
+    var inner = '';
+    if (summary.mode === 'empty') {
+        var pastCount = (summary.past || []).length;
+        inner = '<div style="color:var(--text-dim);font-style:italic;padding:10px 0">'
+            + (pastCount === 0
+                ? 'No past rehearsals recorded yet. Complete a session to start tracking improvement.'
+                : 'Complete a few more rehearsals with readiness updates to unlock improvement tracking.')
+            + '</div>';
+    } else {
+        var last = summary.last;
+        var dateStr = last && last.date ? last.date : 'Last session';
+        inner = '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px">Based on songs from: <strong style="color:var(--text)">' + dateStr + '</strong></div>';
+
+        inner += summary.songs.map(function(s) {
+            var c = s.current >= 4 ? 'var(--green)' : s.current >= 3 ? '#fbbf24' : '#ef4444';
+            var deltaHtml = '';
+            if (typeof s.prev === 'number' && s.prev > 0) {
+                var delta = s.current - s.prev;
+                var dSign = delta >= 0 ? '+' : '';
+                var dColor = delta > 0 ? 'var(--green)' : delta < 0 ? '#ef4444' : 'var(--text-dim)';
+                deltaHtml = ' <span style="font-size:0.72em;color:' + dColor + ';font-weight:700">' + dSign + delta.toFixed(1) + ' readiness improvement</span>';
+            }
+            return '<div class="ri-song-row">'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.85em;flex-wrap:wrap;gap:4px">'
+                + '<span style="font-weight:600">' + s.title + '</span>'
+                + '<span style="display:flex;align-items:center;gap:6px"><span style="color:' + c + ';font-weight:700">' + s.current.toFixed(1) + ' / 5</span>' + deltaHtml + '</span>'
+                + '</div>'
+                + '<div style="margin-top:4px">' + _riBar(s.current, 5) + '</div>'
+                + '</div>';
+        }).join('');
+
+        if (summary.groove) {
+            var gs = summary.groove;
+            inner += '<div style="margin-top:12px;padding:10px;background:rgba(200,255,0,0.04);border-left:2px solid #c8ff00;border-radius:0 8px 8px 0">'
+                + '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;color:#c8ff00;text-transform:uppercase;margin-bottom:4px">Pocket Meter</div>'
+                + (gs.tempoStabilityScore !== undefined
+                    ? '<div style="font-size:0.82em;color:var(--text)">Tempo stability: <strong>' + Math.round(gs.tempoStabilityScore) + '%</strong></div>'
+                    : '<div style="font-size:0.82em;color:var(--text-dim)">Groove data recorded</div>')
+                + '</div>';
+        }
+    }
+
+    return '<div class="ri-section">'
+        + _riSectionHead('📈', 'SESSION IMPACT')
+        + inner + '</div>';
+}
+
+// ── Save plan to existing rehearsal event ────────────────────────────────────
+
+// ── Render: Groove Insight (optional) ────────────────────────────────────────
+function renderRiGrooveInsight(ctx) {
+    var ga = ctx.grooveData;
+    if (!ga || ga.stabilityScore === undefined) return '';
+    var score = Math.round(ga.stabilityScore);
+    var scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? '#fbbf24' : '#ef4444';
+    var trendHtml = '';
+    if (typeof ga.prevStabilityScore === 'number') {
+        var delta = score - Math.round(ga.prevStabilityScore);
+        var dStr = (delta >= 0 ? '+' : '') + delta + '%';
+        var dColor = delta > 0 ? 'var(--green)' : '#ef4444';
+        trendHtml = ' <span style="font-size:0.82em;font-weight:700;color:' + dColor + '">' + dStr + '</span>';
+    }
+    return '<div class="ri-section">'
+        + _riSectionHead('🎚️', 'GROOVE INSIGHT')
+        + '<div style="display:flex;align-items:center;gap:12px">'
+        + '<div style="font-size:2em;font-weight:900;color:' + scoreColor + ';line-height:1">' + score + '</div>'
+        + '<div>'
+        + '<div style="font-size:0.82em;font-weight:700;color:var(--text)">/100 groove stability' + trendHtml + '</div>'
+        + (ga.pocketLabel ? '<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px">Pocket: ' + ga.pocketLabel + '</div>' : '')
+        + (ga.pctInPocket ? '<div style="font-size:0.75em;color:var(--text-dim)">In pocket: ' + Math.round(ga.pctInPocket) + '%</div>' : '')
+        + '</div>'
+        + '</div>'
+        + '</div>';
+}
+
+// ── Render: Start Rehearsal Mode CTA ─────────────────────────────────────────
+function renderRiCTA(ctx) {
+    var hasEvent = !!(ctx.nextEvent && ctx.nextEvent.id);
+    var eventId  = hasEvent ? ctx.nextEvent.id : '';
+    var label    = hasEvent ? 'Start Rehearsal Mode' : 'Schedule a Rehearsal';
+    var sublabel = hasEvent
+        ? (ctx.nextEvent.date || '') + (ctx.nextEvent.location ? ' · ' + ctx.nextEvent.location : '')
+        : 'No rehearsal scheduled yet';
+    var pmBtn = hasEvent
+        ? '<button onclick="rhOpenPocketMeter(\'' + eventId + '\')" '
+          + 'style="width:100%;margin-top:8px;padding:10px 16px;border-radius:10px;'
+          + 'background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);'
+          + 'color:#34d399;font-weight:700;font-size:0.88em;cursor:pointer;'
+          + 'touch-action:manipulation">🎚️ Open Pocket Meter</button>'
+        : '';
+    return '<div style="margin:16px 0 8px">'
+        + '<button onclick="rhStartRehearsalMode(\'' + eventId + '\')" '
+        + 'style="width:100%;padding:14px 20px;border-radius:14px;'
+        + 'background:linear-gradient(135deg,#667eea,#764ba2);'
+        + 'color:white;border:none;font-weight:800;font-size:1em;cursor:pointer;'
+        + 'letter-spacing:0.02em;touch-action:manipulation;'
+        + 'box-shadow:0 4px 20px rgba(102,126,234,0.35)">'
+        + label
+        + '</button>'
+        + pmBtn
+        + (sublabel ? '<div style="text-align:center;font-size:0.72em;color:var(--text-dim);margin-top:6px">' + sublabel + '</div>' : '')
+        + '</div>';
+}
+
+// BUG FIX: navigate to Sessions tab first so rhEventList DOM exists,
+// OR enter live cockpit mode if Intel context is already loaded
+function rhStartRehearsalMode(eventId) {
+    if (window._riLastCtx && window._riLastFocusSongs && window._riLastFocusSongs.length) {
+        enterLiveRehearsalMode(window._riLastCtx, window._riLastFocusSongs);
+        return;
+    }
+    if (!eventId) { rhShowTab('events'); return; }
+    rhShowTab('events');
+    setTimeout(function() { rhOpenEvent(eventId); }, 120);
+}
+window.rhStartRehearsalMode = rhStartRehearsalMode;
+
+async function _riSavePlan(songTitles, eventId) {
+    if (!requireSignIn()) return;
+    try {
+        var events = await rhGetAllEvents();
+        var ev = events.find(function(e) { return e.id === eventId; });
+        if (!ev) { showToast('Event not found'); return; }
+        var plan = ev.plan || { songs: [], focusSections: {}, notes: '' };
+        // Merge without duplicates
+        var existing = plan.songs || [];
+        songTitles.forEach(function(t) {
+            if (existing.indexOf(t) === -1) existing.push(t);
+        });
+        plan.songs = existing;
+        await rhSavePlanData(eventId, plan);
+        showToast('✅ Plan saved to rehearsal');
+    } catch(e) { showToast('Could not save plan'); }
+}
+window._riSavePlan = _riSavePlan;
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function _riFullBandAvg(ratings) {
+    if (!ratings || typeof ratings !== 'object') return 0;
+    var keys = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
+    if (!keys.length) return 0;
+    return keys.reduce(function(s, k) { return s + ratings[k]; }, 0) / keys.length;
+}
+function _riBandAvg(ratings) { return _riFullBandAvg(ratings); }
+
+function _riBar(val, max) {
+    var pct = Math.min(100, Math.round((val / max) * 100));
+    var color = pct >= 80 ? 'var(--green)' : pct >= 60 ? '#fbbf24' : pct >= 40 ? '#f97316' : '#ef4444';
+    return '<div style="height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden">'
+        + '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.4s"></div>'
+        + '</div>';
+}
+
+function _riSectionHead(icon, title) {
+    return '<div class="ri-section__header"><span class="ri-section__icon">' + icon + '</span><span class="ri-section__title">' + title + '</span></div>';
+}
+
+function deriveRiBandStatus(ctx) {
+    var pct = ctx.bandPct;
+    if (pct === null || pct === undefined) return 'No data yet';
+    if (pct >= 90) return 'Gig Ready';
+    if (pct >= 70) return 'Minor rehearsal recommended';
+    if (pct >= 50) return 'Needs rehearsal';
+    return 'Critical';
+}
+
+function deriveRiConfidenceLabel(pct) {
+    if (pct === null || pct === undefined) return null;
+    if (pct >= 90) return { label: 'Strong', detail: 'band is gig ready', color: 'var(--green)' };
+    if (pct >= 70) return { label: 'Moderate', detail: 'minor rehearsal recommended', color: '#fbbf24' };
+    if (pct >= 50) return { label: 'Weak', detail: 'rehearsal required', color: '#f97316' };
+    return { label: 'Critical', detail: 'significant work needed', color: '#ef4444' };
+}
+
+
+// ── Groove Radar ─────────────────────────────────────────────────────────────
+function deriveRiGrooveRadar(ga) {
+    if (!ga || ga.stabilityScore === undefined) return null;
+    var score  = Math.round(ga.stabilityScore || 0);
+    var offset = ga.pocketPositionMs || 0;
+    var label, color;
+    if (score >= 85)      { label = 'Locked In';              color = '#10b981'; }
+    else if (score >= 70) { label = offset > 10 ? 'Slight rush' : offset < -10 ? 'Slight drag' : 'Solid pocket'; color = '#34d399'; }
+    else if (score >= 55) { label = offset > 15 ? 'Rushing — slow down' : offset < -15 ? 'Dragging — push it' : 'Unsteady pocket'; color = '#f59e0b'; }
+    else                  { label = 'Needs another pass';     color = '#ef4444'; }
+    var trendLabel = '';
+    if (typeof ga.prevStabilityScore === 'number') {
+        var delta = score - Math.round(ga.prevStabilityScore);
+        trendLabel = delta > 3 ? 'Improving' : delta < -3 ? 'Declining' : 'Steady';
+    }
+    return { score: score, label: label, color: color, trendLabel: trendLabel };
+}
+
+// ── Live Rehearsal Mode ───────────────────────────────────────────────────────
+var _riLive = { active: false, songIdx: 0, songs: [], eventId: null, startTime: null, songStartTime: null, timerTick: null };
+
+function enterLiveRehearsalMode(ctx, focusSongs) {
+    _riLive.active        = true;
+    _riLive.songs         = (focusSongs || []).map(function(s) { return s.title; });
+    _riLive.songIdx       = 0;
+    _riLive.eventId       = ctx.nextEvent ? ctx.nextEvent.id : null;
+    _riLive.startTime     = Date.now();
+    _riLive.songStartTime = Date.now();
+    var container = document.getElementById('rhTabContent');
+    if (!container) return;
+    renderRiLiveMode(ctx, focusSongs, container);
+    if (_riLive.timerTick) clearInterval(_riLive.timerTick);
+    _riLive.timerTick = setInterval(function() {
+        var el = document.getElementById('ri-live-elapsed');
+        if (!el) { clearInterval(_riLive.timerTick); return; }
+        var s = Math.floor((Date.now() - _riLive.songStartTime) / 1000);
+        el.textContent = Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
+    }, 1000);
+}
+window.enterLiveRehearsalMode = enterLiveRehearsalMode;
+
+function renderRiLiveMode(ctx, focusSongs, container) {
+    var cur   = _riLive.songs[_riLive.songIdx] || 'No songs';
+    var next  = _riLive.songs[_riLive.songIdx + 1] || null;
+    var done  = _riLive.songIdx;
+    var total = _riLive.songs.length;
+    var pct   = total ? Math.round((done / total) * 100) : 0;
+
+    var grHtml = '';
+    if (ctx.grooveData) {
+        var gr = deriveRiGrooveRadar(ctx.grooveData);
+        if (gr) {
+            grHtml = '<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:10px">'
+                + '<span style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.4);text-transform:uppercase">Groove Radar</span>'
+                + '<span style="font-size:0.82em;font-weight:800;color:' + gr.color + '">' + gr.label + '</span>'
+                + (gr.trendLabel ? '<span style="font-size:0.7em;color:var(--text-dim)">· ' + gr.trendLabel + '</span>' : '')
+                + '<span style="margin-left:auto;font-size:0.75em;font-weight:700;color:' + gr.color + '">' + gr.score + '/100</span>'
+                + '</div>';
+        }
+    }
+
+    var queueRows = _riLive.songs.map(function(title, i) {
+        var st = i < done ? 'done' : i === done ? 'current' : 'upcoming';
+        var bg     = st === 'current' ? 'rgba(102,126,234,0.15)' : 'rgba(255,255,255,0.02)';
+        var border = st === 'current' ? '1px solid rgba(102,126,234,0.4)' : '1px solid rgba(255,255,255,0.05)';
+        var icon   = st === 'done' ? 'v' : st === 'current' ? '>' : '-';
+        var col    = st === 'done' ? '#34d399' : st === 'current' ? '#818cf8' : 'var(--text-dim)';
+        var weight = st === 'current' ? '700' : '500';
+        var textCol = st === 'current' ? 'var(--text)' : 'var(--text-dim)';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:' + bg + ';border:' + border + ';margin-bottom:4px">'
+            + '<span style="font-size:0.82em;color:' + col + ';flex-shrink:0">' + icon + '</span>'
+            + '<span style="font-size:0.85em;font-weight:' + weight + ';color:' + textCol + ';flex:1">' + title + '</span>'
+            + '</div>';
+    }).join('');
+
+    var eventId = _riLive.eventId || '';
+    var pmBtnHtml = eventId
+        ? '<button onclick="rhOpenPocketMeter(\'' + eventId + '\')" style="flex:1;padding:10px;border-radius:10px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#34d399;font-size:0.82em;cursor:pointer">Meter</button>'
+        : '';
+
+    container.innerHTML =
+        '<div style="padding:4px 0">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        + '<div style="font-size:9px;font-weight:800;letter-spacing:0.18em;color:rgba(255,255,255,0.4);text-transform:uppercase">Live Rehearsal Mode</div>'
+        + '<button onclick="endRiSession()" style="font-size:11px;padding:4px 10px;border-radius:7px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#f87171;cursor:pointer">End Session</button>'
+        + '</div>'
+        + '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid rgba(102,126,234,0.3);border-radius:16px;padding:16px;margin-bottom:10px">'
+        + '<div style="font-size:9px;font-weight:800;letter-spacing:0.14em;color:rgba(255,255,255,0.35);text-transform:uppercase;margin-bottom:8px">Now Rehearsing</div>'
+        + '<div style="font-size:1.4em;font-weight:900;color:var(--text);line-height:1.2;margin-bottom:4px">' + cur + '</div>'
+        + '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">'
+        + '<span id="ri-live-elapsed">0:00</span> elapsed'
+        + (next ? ' &nbsp;·&nbsp; Next: <strong style="color:var(--text-muted)">' + next + '</strong>' : ' &nbsp;·&nbsp; Last song')
+        + '</div>'
+        + grHtml
+        + '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'
+        + '<button onclick="advanceRiSong()" style="flex:2;padding:10px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.85em;cursor:pointer;touch-action:manipulation">Next Song</button>'
+        + '<button onclick="repeatRiSong()" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.82em;cursor:pointer">Repeat</button>'
+        + pmBtnHtml
+        + '</div>'
+        + '</div>'
+        + '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:12px;margin-bottom:10px">'
+        + '<div style="display:flex;justify-content:space-between;font-size:0.75em;color:var(--text-dim);margin-bottom:6px">'
+        + '<span>Session Progress</span><span>' + done + ' / ' + total + ' songs</span>'
+        + '</div>'
+        + '<div style="height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">'
+        + '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:3px;transition:width 0.4s"></div>'
+        + '</div>'
+        + '</div>'
+        + '<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:10px">'
+        + '<div style="font-size:9px;font-weight:800;letter-spacing:0.12em;color:rgba(255,255,255,0.35);text-transform:uppercase;margin-bottom:8px">Session Queue</div>'
+        + queueRows
+        + '</div>'
+        + '</div>';
+}
+
+function advanceRiSong() {
+    if (_riLive.songIdx < _riLive.songs.length - 1) {
+        _riLive.songIdx++;
+        _riLive.songStartTime = Date.now();
+        var container = document.getElementById('rhTabContent');
+        if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
+    } else {
+        endRiSession();
+    }
+}
+window.advanceRiSong = advanceRiSong;
+
+function repeatRiSong() {
+    _riLive.songStartTime = Date.now();
+    var el = document.getElementById('ri-live-elapsed');
+    if (el) el.textContent = '0:00';
+}
+window.repeatRiSong = repeatRiSong;
+
+function endRiSession() {
+    _riLive.active = false;
+    if (_riLive.timerTick) { clearInterval(_riLive.timerTick); _riLive.timerTick = null; }
+    showToast('Session ended');
+    rhShowTab('intel');
+}
+window.endRiSession = endRiSession;
+
+function _riStyles() {
+    if (document.getElementById('ri-styles')) return '';
+    var s = document.createElement('style');
+    s.id = 'ri-styles';
+    s.textContent = [
+        '.ri-hero{background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:16px;padding:18px 16px;border:1px solid rgba(255,255,255,0.08);margin-bottom:12px}',
+        '.ri-section{background:rgba(255,255,255,0.03);border-radius:14px;padding:14px 14px 12px;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px}',
+        '.ri-section__header{display:flex;align-items:center;gap:6px;margin-bottom:12px}',
+        '.ri-section__icon{font-size:14px}',
+        '.ri-section__title{font-size:10px;font-weight:800;letter-spacing:0.13em;color:var(--text-dim);text-transform:uppercase}',
+        '.ri-song-row{padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)}',
+        '.ri-song-row:last-child{border-bottom:none}',
+        '.ri-plan-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)}',
+        '.ri-plan-row:last-child{border-bottom:none}',
+        '.ri-tag{font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.25);white-space:nowrap}'
+    ].join('');
+    document.head.appendChild(s);
+    return '';
+}
 

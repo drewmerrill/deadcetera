@@ -88,15 +88,14 @@ window.refreshHomeDashboard = function refreshHomeDashboard() {
 window.invalidateHomeCache = function invalidateHomeCache() {
     _homeBundle   = null;
     _homeCacheTime = 0;
+    var hp = document.getElementById('page-home');
+    if (hp && hp.style.display !== 'none' && typeof window.renderHomeDashboard === 'function') {
+        window.renderHomeDashboard();
+    }
 };
 
 // ── CTA event handlers (must be on window for inline onclick) ────────────────
 
-/**
- * Go Live — launch gig mode via the linked setlist name.
- * Uses gigLaunchLinkedSetlist(setlistName) from gigs.js.
- * Falls back to navigating to the Gigs page.
- */
 window.homeGoLive = function homeGoLive(linkedSetlist) {
     if (!linkedSetlist) {
         if (typeof window.showPage === 'function') window.showPage('gigs');
@@ -110,10 +109,6 @@ window.homeGoLive = function homeGoLive(linkedSetlist) {
     }
 };
 
-/**
- * Care Package — open the care package flow.
- * Uses carePackageSend('gig') from gigs.js / notifications.js.
- */
 window.homeCarePackage = function homeCarePackage() {
     if (typeof window.carePackageSend === 'function') {
         window.carePackageSend('gig');
@@ -122,19 +117,11 @@ window.homeCarePackage = function homeCarePackage() {
     }
 };
 
-/**
- * Dismiss the context banner for this session.
- */
 window.homeDismissBanner = function homeDismissBanner() {
     try { sessionStorage.setItem(_BANNER_DISMISS_KEY, '1'); } catch(e) {}
     window.refreshHomeDashboard();
 };
 
-/**
- * Navigate to view a setlist by name.
- * Uses gigLaunchLinkedSetlist(name) from gigs.js to open it in gig mode,
- * or falls back to the Setlists page.
- */
 window.homeViewSetlist = function homeViewSetlist(linkedSetlist) {
     if (linkedSetlist && typeof window.gigLaunchLinkedSetlist === 'function') {
         window.gigLaunchLinkedSetlist(linkedSetlist);
@@ -145,23 +132,16 @@ window.homeViewSetlist = function homeViewSetlist(linkedSetlist) {
 
 // ── Data loading ─────────────────────────────────────────────────────────────
 
-/**
- * Orchestrates all Firebase reads in parallel.
- * Returns a homeDataBundle object regardless of partial failures.
- * Uses module-level cache — won't re-read within TTL.
- */
 async function _homeDataLoad() {
-    // Return cache if fresh
     if (_homeBundle && (Date.now() - _homeCacheTime < _HOME_CACHE_TTL)) {
         return _homeBundle;
     }
 
-    // All reads fire simultaneously
     var results = await Promise.allSettled([
-        _loadUpcomingGigs(3),          // [0]
-        _loadUpcomingPlans(2),         // [1] — stubbed in Phase 1
-        _loadSetlistSummaries(),       // [2] — stubbed in Phase 1
-        _loadRecentGigHistory()        // [3] — stubbed in Phase 1
+        _loadUpcomingGigs(3),
+        _loadUpcomingPlans(2),
+        _loadSetlistSummaries(),
+        _loadRecentGigHistory()
     ]);
 
     var bundle = {
@@ -169,8 +149,6 @@ async function _homeDataLoad() {
         plans:         results[1].status === 'fulfilled' ? results[1].value : [],
         setlists:      results[2].status === 'fulfilled' ? results[2].value : [],
         recentSongs:   results[3].status === 'fulfilled' ? results[3].value : [],
-        // Readiness: use the already-loaded in-memory cache from app.js
-        // (preloadReadinessCache() runs on app init — no extra read needed here)
         readinessCache: (typeof readinessCache !== 'undefined') ? readinessCache : {},
         memberKey:     _getMemberKey()
     };
@@ -180,11 +158,6 @@ async function _homeDataLoad() {
     return bundle;
 }
 
-/**
- * Load upcoming gigs ordered by date ascending, limit n.
- * Gigs are stored via loadBandDataFromDrive('_band','gigs') — same as gigs.js.
- * Returns array of gig objects: { date, venue, linkedSetlist, startTime, arrivalTime, ... }
- */
 async function _loadUpcomingGigs(n) {
     if (typeof window.loadBandDataFromDrive !== 'function') return [];
     var today = _todayStr();
@@ -201,10 +174,6 @@ async function _loadUpcomingGigs(n) {
     }
 }
 
-/**
- * Load upcoming rehearsal events from Firebase (same source as rehearsal.js).
- * Each event: { id, date, time, location, plan: { songs: [...] }, rsvps: {...} }
- */
 async function _loadUpcomingPlans(n) {
     if (typeof firebaseDB === 'undefined' || !firebaseDB) return [];
     var today = _todayStr();
@@ -222,8 +191,6 @@ async function _loadUpcomingPlans(n) {
     }
 }
 
-/** Load all setlists. Returns array of { name, date, venue, sets, songCount }.
- */
 async function _loadSetlistSummaries() {
     if (typeof window.loadBandDataFromDrive !== 'function') return [];
     try {
@@ -239,9 +206,6 @@ async function _loadSetlistSummaries() {
     }
 }
 
-/**
- * Load recent gig history — gigs in the past 90 days.
- */
 async function _loadRecentGigHistory() {
     if (typeof window.loadBandDataFromDrive !== 'function') return [];
     try {
@@ -256,15 +220,8 @@ async function _loadRecentGigHistory() {
     } catch(e) { return []; }
 }
 
-// ── Context computation (pure, synchronous) ──────────────────────────────────
+// ── Context computation ──────────────────────────────────────────────────────
 
-/**
- * Compute the home screen context from loaded data.
- * Returns: { bannerType, bannerData, cardOrder }
- *
- * Phase 1: banner logic fully implemented; card scoring returns 0 for
- * cards not yet built (Rehearse, Practice, Setlist). Play Show scoring active.
- */
 function _computeHomeContext(bundle) {
     var bannerType = _resolveBannerType(bundle);
     var bannerData = _resolveBannerData(bannerType, bundle);
@@ -281,16 +238,7 @@ function _computeHomeContext(bundle) {
     return { bannerType: bannerType, bannerData: bannerData, cardOrder: cardOrder };
 }
 
-/**
- * Determine which banner type to show, if any.
- *
- * Priority 1: gig_today     — a gig is scheduled today
- * Priority 2: rehearsal_today — a practice plan is today (Phase 2)
- * Priority 3: gig_soon      — a gig is within 48 hours
- * null: no banner
- */
 function _resolveBannerType(bundle) {
-    // Check dismiss flag
     try { if (sessionStorage.getItem(_BANNER_DISMISS_KEY) === '1') return null; } catch(e) {}
 
     var today = _todayStr();
@@ -300,7 +248,6 @@ function _resolveBannerType(bundle) {
 
     if (nextGig && nextGig.date === today) return 'gig_today';
 
-    // rehearsal today takes priority over gig_soon
     var nextPlan = bundle.plans && bundle.plans[0];
     if (nextPlan && nextPlan.date === today) return 'rehearsal_today';
 
@@ -309,7 +256,6 @@ function _resolveBannerType(bundle) {
         if (diff >= 0 && diff <= 2) return 'gig_soon';
     }
 
-    // rehearsal_today handled in Phase 2 when plans load
     return null;
 }
 
@@ -321,10 +267,6 @@ function _resolveBannerData(bannerType, bundle) {
     };
 }
 
-/**
- * Order cards by score descending.
- * Forced orders apply on gig_today and rehearsal_today.
- */
 function _computeCardOrder(scores, bannerType) {
     if (bannerType === 'gig_today') {
         return ['playShow', 'rehearse', 'practice', 'setlist'];
@@ -337,7 +279,6 @@ function _computeCardOrder(scores, bannerType) {
         .map(function(pair) { return pair[0]; });
 }
 
-/** Play Show card context score */
 function _scorePlayShowCard(bundle) {
     var gig = bundle.gigs && bundle.gigs[0];
     if (!gig) return 0;
@@ -352,26 +293,212 @@ function _scorePlayShowCard(bundle) {
 
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
-
-    var bannerHTML = context.bannerType
-        ? _renderContextBanner(context.bannerType, context.bannerData, isStoner)
-        : '';
-
-    var cardsHTML   = _renderCardGrid(context.cardOrder, bundle, isStoner);
-    var readinessHTML = _renderBandReadinessScore(bundle);
-    var activityHTML  = _renderActivityFeed(bundle);
-
+    var activityHTML = _renderActivityFeed(bundle);
     return [
-        '<div class="home-dashboard">',
-        readinessHTML ? readinessHTML.replace('class="home-readiness-widget"', 'class="home-readiness-widget home-anim-header"') : '',
-        bannerHTML    ? bannerHTML.replace('class="home-banner', 'class="home-banner home-anim-header') : '',
-        '<div class="home-card-grid home-anim-cards">',
-        cardsHTML,
+        '<div class="home-dashboard hd-mission-board">',
+        renderHdHeroNextUp(bundle, isStoner),
+        '<div class="hd-buckets home-anim-cards">',
+        renderHdYourPrep(bundle),
+        renderHdBandStatus(bundle),
+        renderHdNextRehearsalGoal(bundle),
+        renderHdSongsNeedingWork(bundle),
         '</div>',
-        '<div id="home-weak-songs"></div>',
-        activityHTML  ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" style="opacity:0"') : activityHTML,
+        activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
     ].join('');
+}
+
+// ── Mission Board Helpers ────────────────────────────────────────────────────
+
+function deriveHdReadinessLabel(pct) {
+    if (pct === null || pct === undefined) return null;
+    if (pct >= 85) return { short: 'GIG READY',            long: 'Gig Ready',           color: 'var(--green)', tone: 'ready'   };
+    if (pct >= 68) return { short: 'MINOR TUNE-UP NEEDED', long: 'Minor tune-up needed', color: '#fbbf24',      tone: 'caution' };
+    if (pct >= 50) return { short: 'NEEDS REHEARSAL',      long: 'Needs rehearsal',      color: '#f97316',      tone: 'warning' };
+    return             { short: 'CRITICAL PREP',           long: 'Critical prep needed', color: '#ef4444',      tone: 'critical'};
+}
+
+function deriveHdConfidenceTone(bundle) {
+    return deriveHdReadinessLabel(_computeBandReadinessPct(bundle));
+}
+
+function deriveHdMissionSummary(bundle) {
+    var pct=_computeBandReadinessPct(bundle),rc=bundle.readinessCache||{},nextGig=bundle.gigs&&bundle.gigs[0],nextPlan=bundle.plans&&bundle.plans[0],rl=deriveHdReadinessLabel(pct);
+    var we=Object.entries(rc).filter(function(e){return e[1]&&_bandAvgForSong(e[1])<3;}),wc=we.length,tw=we.sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];
+    var line1='',line2='';
+    if(nextGig){var diff=nextGig.date?_dayDiff(_todayStr(),nextGig.date):null,when=diff===0?'Tonight':diff===1?'Tomorrow':(nextGig.date?_formatDateShort(nextGig.date):'');line1=_escHtml(nextGig.venue||'Your next show')+' is next.';if(rl&&wc===0)line1+=' Your band is '+rl.long.toLowerCase()+'.';else if(rl)line1+=' Your band is '+rl.long.toLowerCase()+', but '+wc+' song'+(wc!==1?'s':'')+' need'+(wc===1?'s':'')+' work.';var d2=[];if(when)d2.push(when);if(nextGig.startTime)d2.push('Set '+_escHtml(nextGig.startTime));if(tw)d2.push('Focus: '+_escHtml(tw[0]));if(nextGig.linkedSetlist)d2.push('Setlist: '+_escHtml(nextGig.linkedSetlist));line2=d2.join(' \xb7 ');
+    }else if(nextPlan){var diff2=nextPlan.date?_dayDiff(_todayStr(),nextPlan.date):null,when2=diff2===0?'Tonight':diff2===1?'Tomorrow':(nextPlan.date?_formatDateShort(nextPlan.date):'');line1='Rehearsal '+(when2?when2.toLowerCase():'coming up')+'.';if(rl&&wc>0)line1+=' '+wc+' song'+(wc!==1?'s':'')+' need'+(wc===1?'s':'')+' work before then.';else if(rl)line1+=' Band is '+rl.long.toLowerCase()+'.';if(tw)line2='Focus: '+_escHtml(tw[0]);
+    }else{line1=rl?'Band is '+rl.long.toLowerCase()+'.':'No upcoming events scheduled.';if(wc>0)line1+=' '+wc+' song'+(wc!==1?'s':'')+' need'+(wc===1?'s':'')+' work.';}
+    return {line1:line1,line2:line2,rl:rl,weakCount:wc,topWeak:tw};
+}
+
+function deriveHdPrepFocus(bundle) {
+    var rc=bundle.readinessCache||{},myKey=bundle.memberKey,nextGig=bundle.gigs&&bundle.gigs[0];
+    if(!myKey)return null;
+    var weak=[];
+    Object.entries(rc).forEach(function(e){var t=e[0],r=e[1]||{},m=r[myKey];if(typeof m==='number'&&m>0&&m<3){var rs=m<=1?['Low readiness']:['Needs work'];if(_bandAvgForSong(r)<3)rs.push('Band also needs work');weak.push({title:t,score:m,reasons:rs});}});
+    weak.sort(function(a,b){return a.score-b.score;});
+    if(!weak.length)return{empty:true};
+    return{top:weak[0],rest:weak.slice(1),total:weak.length,eventTie:nextGig?('Needed for '+_escHtml(nextGig.venue||'your next show')):null};
+}
+
+function deriveHdBandIntel(bundle) {
+    var pct=_computeBandReadinessPct(bundle),rc=bundle.readinessCache||{},rl=deriveHdReadinessLabel(pct),nextPlan=bundle.plans&&bundle.plans[0],nextGig=bundle.gigs&&bundle.gigs[0],lines=[];
+    if(pct!==null&&rl)lines.push({label:'Readiness',icon:'\ud83d\udcca',value:pct+'% \u2014 '+rl.long,color:rl.color});
+    if(nextPlan){var diff=nextPlan.date?_dayDiff(_todayStr(),nextPlan.date):null,dl=diff===0?'Tonight':diff===1?'Tomorrow':_formatDateShort(nextPlan.date),ps=(nextPlan.plan&&Array.isArray(nextPlan.plan.songs))?nextPlan.plan.songs.length:0;lines.push({label:'Next rehearsal',icon:'\ud83d\udcc5',value:dl+(ps?' \xb7 '+ps+' songs planned':'')}); }
+    if(nextGig&&nextGig.linkedSetlist){var slR=_computeSetlistReadiness(nextGig,rc);lines.push({label:'Setlist',icon:'\ud83c\udfb6',value:_escHtml(nextGig.linkedSetlist)+(slR?' \xb7 '+slR:'')});}
+    var we=Object.entries(rc).filter(function(e){return e[1]&&_bandAvgForSong(e[1])<3;});
+    if(we.length){var top=we.sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];lines.push({label:'Biggest risk',value:_escHtml(top[0]),color:'#f97316'});}
+    return lines.slice(0,4);
+}
+
+function renderHdHeroNextUp(bundle, isStoner) {
+    var nextGig  = bundle.gigs  && bundle.gigs[0];
+    var nextPlan = bundle.plans && bundle.plans[0];
+    if (nextGig)  return _renderHdHeroGig(nextGig, bundle, isStoner);
+    if (nextPlan) return _renderHdHeroRehearsal(nextPlan, bundle);
+    return [
+        '<div class="hd-hero hd-hero--empty home-anim-header">',
+        '<div class="hd-hero__eyebrow">NEXT UP</div>',
+        '<div class="hd-hero__title">Nothing Scheduled Yet</div>',
+        '<div class="hd-hero__sub">Add a gig or rehearsal to get started.</div>',
+        '<div class="hd-hero__actions">',
+        '<button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Add Gig</button>',
+        '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'rehearsal\')">Plan Rehearsal</button>',
+        '</div></div>'
+    ].join('');
+}
+
+function _renderHdHeroGig(gig, bundle, isStoner) {
+    var ls      = gig.linkedSetlist || null;
+    var lsEsc   = ls ? _escHtml(ls) : '';
+    var venue   = _escHtml(gig.venue || 'Upcoming Show');
+    var diff    = gig.date ? _dayDiff(_todayStr(), gig.date) : null;
+    var isToday = diff === 0;
+    var isSoon  = diff !== null && diff <= 2;
+    var dateLbl = isToday ? 'Tonight' : diff === 1 ? 'Tomorrow' : _formatDateShort(gig.date);
+    var timeLbl = '';
+    if (gig.doorsTime) timeLbl = 'Doors ' + _escHtml(gig.doorsTime);
+    if (gig.startTime) timeLbl = (timeLbl ? timeLbl + ' \xb7 ' : '') + 'Set ' + _escHtml(gig.startTime);
+    var urgency = isToday ? 'hd-hero--gig hd-hero--urgent' : isSoon ? 'hd-hero--gig hd-hero--soon' : 'hd-hero--gig';
+    var badge   = isToday ? '<span class="hd-hero__badge hd-hero__badge--live">TONIGHT</span>'
+                : diff === 1 ? '<span class="hd-hero__badge hd-hero__badge--soon">TOMORROW</span>'
+                : isSoon ? '<span class="hd-hero__badge hd-hero__badge--soon">IN ' + diff + ' DAYS</span>' : '';
+    var readHTML = isStoner ? '' : _renderSetlistReadinessBars(gig, bundle.readinessCache);
+    var warnHTML = isStoner ? '' : _renderReadinessWarnings(gig, bundle.readinessCache);
+    var slLine   = ls ? '<div class="hd-hero__setlist">Setlist: ' + lsEsc + '</div>' : '';
+    var pct=_computeBandReadinessPct(bundle),rl=deriveHdReadinessLabel(pct);
+    var rb=rl?'<span class="hd-hero__ready-badge" style="background:'+rl.color+'22;color:'+rl.color+';border-color:'+rl.color+'55">'+rl.short+'</span>':'' ;
+    var ms4=deriveHdMissionSummary(bundle),coach='';
+    if(rl&&rl.tone==='ready')coach=ms4.topWeak?'Locked in. Tighten '+_escHtml(ms4.topWeak[0])+' and you\'re golden.':'Band is locked in. Go get \'em.';
+    else if(rl&&rl.tone==='caution')coach=ms4.topWeak?'Almost there. Lock in '+_escHtml(ms4.topWeak[0])+' and the set is solid.':'One more run-through and you\'re ready.';
+    else if(rl)coach='Get a rehearsal in before this one.';
+    var cd='';
+    var cdInline=diff!==null&&diff>1?' · <span class="hd-hero__days-away">'+diff+'d away</span>':diff===1?' · <span class="hd-hero__days-away">Tomorrow</span>':'';
+    // Readiness progress bar
+    var pctColor = pct >= 85 ? 'var(--green)' : pct >= 68 ? '#fbbf24' : pct >= 50 ? '#f97316' : '#ef4444';
+    var rlLabel = rl ? rl.long : '';
+    var pctBar = pct !== null ? '<div class="hd-hero__pct-row">' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
+    // Biggest risk song
+    var rc2 = bundle.readinessCache || {};
+    var riskEntry = Object.entries(rc2).filter(function(e){return e[1]&&_bandAvgForSong(e[1])<3;}).sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];
+    var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
+    var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
+    var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gig \u2192</button>';
+    var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="homeViewSetlist(\''+lsEsc+'\')">View Setlist</button>':'';
+    var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
+    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'',readHTML?'<div class="hd-hero__readiness">'+readHTML+'</div>':'',warnHTML?'<div class="hd-hero__warnings">'+warnHTML+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+'</div>',tertiaryCTA,'</div>'].join('');
+}
+
+function _renderHdHeroRehearsal(plan, bundle) {
+    var today   = _todayStr();
+    var isToday = plan.date === today;
+    var diff    = plan.date ? _dayDiff(today, plan.date) : null;
+    var dateLbl = isToday ? 'Tonight' : diff === 1 ? 'Tomorrow' : _formatDateShort(plan.date);
+    var time    = plan.time ? ' at ' + _escHtml(plan.time) : '';
+    var loc     = plan.location ? _escHtml(plan.location) : 'Location TBD';
+    var songs   = (plan.plan && Array.isArray(plan.plan.songs)) ? plan.plan.songs : [];
+    var badge   = isToday ? '<span class="hd-hero__badge hd-hero__badge--rehearse">TONIGHT</span>' : '';
+    return [
+        '<div class="hd-hero hd-hero--rehearse' + (isToday ? ' hd-hero--urgent' : '') + ' home-anim-header">',
+        '<div class="hd-hero__eyebrow">NEXT UP ' + badge + '</div>',
+        '<div class="hd-hero__title">Rehearsal \u2014 ' + dateLbl + time + '</div>',
+        '<div class="hd-hero__sub">' + loc + ' \xb7 ' + (songs.length ? songs.length + ' songs planned' : 'No songs planned yet') + '</div>',
+        '<div class="hd-hero__actions"><button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'rehearsal\')">Open Plan \u2192</button></div>',
+        '</div>'
+    ].join('');
+}
+
+function renderHdYourPrep(bundle) {
+    var pf=deriveHdPrepFocus(bundle);
+    if(!pf)return '<div class="hd-bucket hd-bucket--prep"><div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83C\uDFB8</span><span class="hd-bucket__title">YOUR PREP</span></div><div class="hd-bucket__empty">Sign in to see your queue</div><button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'practice\')">Song Library</button></div>';
+    if(pf.empty)return '<div class="hd-bucket hd-bucket--prep hd-bucket--ok"><div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83C\uDFB8</span><span class="hd-bucket__title">YOUR PREP</span></div><div class="hd-bucket__ok">All caught up \u2014 no songs below threshold</div><button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'practice\')">Song Library</button></div>';
+    var top=pf.top,rs=top.reasons.slice(0,2).join(' \xb7 ');
+    var scoreColor=top.score<=1?'#ef4444':top.score<=2?'#f97316':'#fbbf24';
+    var scoreChip='<span style="font-size:10px;font-weight:700;color:'+scoreColor+';background:'+scoreColor+'22;border-radius:4px;padding:1px 6px;margin-left:6px">'+top.score+'/5</span>';
+    var mh=pf.total>1?'<div class="hd-bucket__more">+'+(pf.total-1)+' more need your attention</div>':'' ;
+    var tl=pf.eventTie?'<div class="hd-bucket__event-tie" style="font-size:11px;color:var(--text-dim)">'+pf.eventTie+'</div>':'' ;
+    return ['<div class="hd-bucket hd-bucket--prep">','<div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83C\uDFB8</span><span class="hd-bucket__title">YOUR PREP</span><span class="hd-bucket__count">'+pf.total+' song'+(pf.total!==1?'s':'')+'</span></div>','<div class="hd-bucket__focus-song" style="font-size:13px;font-weight:700;color:var(--text)">'+_escHtml(top.title)+scoreChip+'</div>','<div class="hd-bucket__reason-line" style="font-size:11px;color:var(--text-dim);margin-top:2px">'+rs+'</div>',tl,mh,'<button class="hd-bucket__cta hd-bucket__cta--primary" onclick="showPage(\'practice\')">Practice Now →</button>','</div>'].join('');
+}
+
+function renderHdBandStatus(bundle) {
+    var intel=deriveHdBandIntel(bundle),rows=intel.map(function(l){var vs=l.color?' style="color:'+l.color+'"':'';var ic=l.icon?'<span style="margin-right:4px">'+l.icon+'</span>':'';return '<div class="hd-intel__row"><span class="hd-intel__label">'+ic+l.label+'</span><span class="hd-intel__value"'+vs+'>'+l.value+'</span></div>';}).join('');
+    return ['<div class="hd-bucket hd-bucket--status">','<div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83D\uDEA8</span><span class="hd-bucket__title">BAND STRATEGY</span></div>',rows?'<div class="hd-intel__rows">'+rows+'</div>':'<div class="hd-bucket__empty">No intel yet \u2014 add readiness scores to get started</div>','<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'rehearsal\')">View Band Status \u2192</button>','</div>'].join('');
+}
+
+function renderHdNextRehearsalGoal(bundle) {
+    var plan = bundle.plans && bundle.plans[0];
+    if (!plan) return '<div class="hd-bucket"><div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83C\uDFAF</span><span class="hd-bucket__title">NEXT REHEARSAL GOAL</span></div><div class="hd-bucket__empty">No rehearsal scheduled \u2014 plan one to stay sharp</div><button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'rehearsal\')">Plan Rehearsal \u2192</button></div>';
+    var today = _todayStr();
+    var diff = plan.date ? _dayDiff(today, plan.date) : null;
+    var when = diff === 0 ? 'Tonight' : diff === 1 ? 'Tomorrow' : (plan.date ? _formatDateShort(plan.date) : 'Upcoming');
+    var songs = (plan.plan && Array.isArray(plan.plan.songs)) ? plan.plan.songs : [];
+    var rc = bundle.readinessCache || {};
+    var targets = songs.filter(function(t){ var r=rc[t]; return r && _bandAvgForSong(r)<3; }).slice(0,3);
+    if (!targets.length) targets = songs.slice(0,3);
+    var songRows = targets.map(function(t){
+        var avg = rc[t] ? _bandAvgForSong(rc[t]) : null;
+        var chip = avg !== null ? '<span style="font-size:10px;color:'+(avg<2?'#ef4444':avg<3?'#f97316':'#fbbf24')+';font-weight:700;margin-left:4px">'+avg.toFixed(1)+'</span>' : '';
+        var avgVal = rc[t] ? _bandAvgForSong(rc[t]) : null;
+        var barPct = avgVal !== null ? Math.round((avgVal/5)*100) : 0;
+        var barColor = avgVal < 2 ? '#ef4444' : avgVal < 3 ? '#f97316' : '#fbbf24';
+        var miniBar = avgVal !== null ? '<div class="hd-bucket__mini-bar"><div class="hd-bucket__mini-fill" style="width:'+barPct+'%;background:'+barColor+'"></div></div>' : '';
+        return '<div class="hd-bucket__song-row" style="flex-direction:column;align-items:stretch;gap:3px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="hd-bucket__song-title">'+_escHtml(t)+'</span>'+chip+'</div>'+miniBar+'</div>';
+    }).join('');
+    var more = songs.length > 3 ? '<div class="hd-bucket__more">+' + (songs.length-3) + ' more in plan</div>' : '';
+    return ['<div class="hd-bucket">',
+        '<div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83C\uDFAF</span><span class="hd-bucket__title">NEXT REHEARSAL GOAL</span></div>',
+        '<div style="font-size:12px;color:var(--text);font-weight:700;margin-bottom:4px">'+when+(plan.location?' \xb7 '+_escHtml(plan.location):'')+'</div>',
+        songs.length ? '<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Focus songs:</div>' : '',
+        songRows, more,
+        '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'rehearsal\')">Open Plan \u2192</button>',
+        '</div>'].join('');
+}
+
+function renderHdSongsNeedingWork(bundle) {
+    var rc = bundle.readinessCache || {};
+    var weak = Object.entries(rc).filter(function(e){
+        var keys = Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;});
+        return keys.length && _bandAvgForSong(e[1]) < 3;
+    }).sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);}).slice(0,4);
+    if (!weak.length) return '<div class="hd-bucket hd-bucket--ok" style="grid-column:1/-1"><div class="hd-bucket__header"><span class="hd-bucket__icon">\u2705</span><span class="hd-bucket__title">SONGS NEEDING WORK</span></div><div class="hd-bucket__ok">All songs above readiness threshold \u2014 you\'re in good shape</div></div>';
+    var rows = weak.map(function(e){
+        var avg = _bandAvgForSong(e[1]);
+        var color = avg < 2 ? '#ef4444' : avg < 2.5 ? '#f97316' : '#fbbf24';
+        var urgLabel = avg < 2 ? '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--critical">CRITICAL</span>' : avg < 2.5 ? '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--warn">NEEDS WORK</span>' : '';
+        return '<div class="hd-bucket__song-row" onclick="homeGoWeakSongs([\''+ e[0].replace(/'/g,"\\'") +'\'])" style="cursor:pointer">'+
+            '<span class="hd-bucket__song-title">'+_escHtml(e[0])+' '+urgLabel+'</span>'+
+            '<span style="font-size:11px;font-weight:700;color:'+color+'">'+avg.toFixed(1)+'/5</span>'+
+            '</div>';
+    }).join('');
+    var total = Object.entries(rc).filter(function(e){ var k=Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;}); return k.length&&_bandAvgForSong(e[1])<3; }).length;
+    var more = total > 4 ? '<div class="hd-bucket__more">+'+(total-4)+' more below threshold</div>' : '';
+    return ['<div class="hd-bucket hd-bucket--weak" style="grid-column:1/-1">',
+        '<div class="hd-bucket__header"><span class="hd-bucket__icon">\u26a0\ufe0f</span><span class="hd-bucket__title">SONGS NEEDING WORK</span><span class="hd-bucket__count">'+total+'</span></div>',
+        '<div class="hd-bucket__list">'+rows+'</div>',
+        more,
+        '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'songs\')">View All Songs \u2192</button>',
+        '</div>'].join('');
 }
 
 // ── Context Banner ────────────────────────────────────────────────────────────
@@ -385,20 +512,20 @@ function _renderContextBanner(bannerType, bannerData, isStoner) {
     var linkedSetlistEsc = linkedSetlist ? _escHtml(linkedSetlist) : '';
 
     if (bannerType === 'rehearsal_today') {
-        var loc = plan && plan.location ? ' · 📍 ' + _escHtml(plan.location) : '';
+        var loc = plan && plan.location ? ' \xb7 \uD83D\uDCCD ' + _escHtml(plan.location) : '';
         var time = plan && plan.time ? ' at ' + _escHtml(plan.time) : '';
         var planSongs = plan && plan.plan && Array.isArray(plan.plan.songs) ? plan.plan.songs.length : 0;
         var songsLine = planSongs ? planSongs + ' song' + (planSongs > 1 ? 's' : '') + ' planned' : 'No songs planned yet';
         return [
             '<div class="home-banner home-banner--rehearse">',
             '  <div class="home-banner__body">',
-            '    <span class="home-banner__icon">🎸</span>',
+            '    <span class="home-banner__icon">\uD83C\uDFB8</span>',
             '    <div class="home-banner__text">',
             '      <strong>Rehearsal Tonight' + time + '</strong>' + loc,
             '      <div class="home-banner__sub">' + songsLine + '</div>',
             '    </div>',
-            '    <button class="home-banner__cta home-banner__cta--primary" onclick="showPage(\'rehearsal\')">Open Plan →</button>',
-            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">✕</button>',
+            '    <button class="home-banner__cta home-banner__cta--primary" onclick="showPage(\'rehearsal\')">Open Plan \u2192</button>',
+            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">\u2715</button>',
             '  </div>',
             '</div>'
         ].join('');
@@ -406,23 +533,22 @@ function _renderContextBanner(bannerType, bannerData, isStoner) {
 
     if (!gig) return '';
 
-    var venueName    = _escHtml(gig.venue || 'Tonight\'s Show');
-    var linkedSetlist = gig.linkedSetlist || null;
-    var linkedSetlistEsc = linkedSetlist ? _escHtml(linkedSetlist) : '';
-    var gigId        = '';  // gigs stored by Drive array index — no stable _id; use linkedSetlist for go-live
+    venueName    = _escHtml(gig.venue || 'Tonight\'s Show');
+    linkedSetlist = gig.linkedSetlist || null;
+    linkedSetlistEsc = linkedSetlist ? _escHtml(linkedSetlist) : '';
 
     if (bannerType === 'gig_today') {
-        var doorsLine = gig.doorsTime ? ' · Doors ' + _escHtml(gig.doorsTime) : '';
+        var doorsLine = gig.doorsTime ? ' \xb7 Doors ' + _escHtml(gig.doorsTime) : '';
         if (isStoner) {
             return [
                 '<div class="home-banner home-banner--gig">',
                 '  <div class="home-banner__body">',
-                '    <span class="home-banner__icon">🎤</span>',
+                '    <span class="home-banner__icon">\uD83C\uDFA4</span>',
                 '    <div class="home-banner__text">',
                 '      <strong>' + venueName + '</strong>' + doorsLine,
                 '    </div>',
-                '    <button class="home-banner__cta home-banner__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">Go Live →</button>',
-                '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">✕</button>',
+                '    <button class="home-banner__cta home-banner__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">Go Live \u2192</button>',
+                '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">\u2715</button>',
                 '  </div>',
                 '</div>'
             ].join('');
@@ -434,16 +560,16 @@ function _renderContextBanner(bannerType, bannerData, isStoner) {
         return [
             '<div class="home-banner home-banner--gig">',
             '  <div class="home-banner__body">',
-            '    <span class="home-banner__icon">🎤</span>',
+            '    <span class="home-banner__icon">\uD83C\uDFA4</span>',
             '    <div class="home-banner__text">',
             '      <strong>Tonight: ' + venueName + '</strong>' + doorsLine,
             readinessLine,
             '    </div>',
             '    <div class="home-banner__actions">',
-            '      <button class="home-banner__cta home-banner__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">Go Live →</button>',
+            '      <button class="home-banner__cta home-banner__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">Go Live \u2192</button>',
             linkedSetlist ? '      <button class="home-banner__cta home-banner__cta--secondary" onclick="homeViewSetlist(\'' + linkedSetlistEsc + '\')">Setlist</button>' : '',
             '    </div>',
-            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">✕</button>',
+            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">\u2715</button>',
             '  </div>',
             '</div>'
         ].join('');
@@ -456,13 +582,13 @@ function _renderContextBanner(bannerType, bannerData, isStoner) {
         return [
             '<div class="home-banner home-banner--soon">',
             '  <div class="home-banner__body">',
-            '    <span class="home-banner__icon">📅</span>',
+            '    <span class="home-banner__icon">\uD83D\uDCC5</span>',
             '    <div class="home-banner__text">',
             '      <strong>' + daysText + ': ' + venueName + '</strong>',
-            '      <div class="home-banner__sub">' + friendlyDate + ' · Get ready</div>',
+            '      <div class="home-banner__sub">' + friendlyDate + ' \xb7 Get ready</div>',
             '    </div>',
-            '    <button class="home-banner__cta home-banner__cta--secondary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">Prep →</button>',
-            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">✕</button>',
+            '    <button class="home-banner__cta home-banner__cta--secondary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">Prep \u2192</button>',
+            '    <button class="home-banner__dismiss" onclick="homeDismissBanner()" title="Dismiss">\u2715</button>',
             '  </div>',
             '</div>'
         ].join('');
@@ -486,7 +612,7 @@ function _renderCardGrid(cardOrder, bundle, isStoner) {
     }).join('');
 }
 
-// ── Play Show Card (Phase 1 — fully implemented) ─────────────────────────────
+// ── Play Show Card ────────────────────────────────────────────────────────────
 
 function _renderPlayShowCard(bundle, isStoner) {
     var nextGig = bundle.gigs && bundle.gigs[0];
@@ -495,7 +621,6 @@ function _renderPlayShowCard(bundle, isStoner) {
         return _renderCardEmptyState('playShow');
     }
 
-    var gigId          = '';  // no stable ID — Drive array; not used for go-live
     var venueName      = nextGig.venue || 'Upcoming Show';
     var gigDate        = nextGig.date  || '';
     var linkedSetlist  = nextGig.linkedSetlist || null;
@@ -505,46 +630,42 @@ function _renderPlayShowCard(bundle, isStoner) {
     var isToday    = daysUntil === 0;
     var dateLabel  = _formatDateShort(gigDate);
     var timeLabel  = nextGig.doorsTime ? 'Doors ' + nextGig.doorsTime : '';
-    if (nextGig.startTime) timeLabel = (timeLabel ? timeLabel + ' · ' : '') + 'Set ' + nextGig.startTime;
+    if (nextGig.startTime) timeLabel = (timeLabel ? timeLabel + ' \xb7 ' : '') + 'Set ' + nextGig.startTime;
 
-    // ── Stoner Mode ──
     if (isStoner) {
         return [
             '<div class="home-card home-card--playshow">',
-            '  <div class="home-card__icon">🎤</div>',
+            '  <div class="home-card__icon">\uD83C\uDFA4</div>',
             '  <div class="home-card__label">Go Live</div>',
             '  <div class="home-card__title">' + _escHtml(venueName) + '</div>',
-            '  <div class="home-card__sub">' + (isToday ? 'Tonight' : dateLabel) + (timeLabel ? ' · ' + _escHtml(timeLabel) : '') + '</div>',
-            '  <button class="home-card__cta home-card__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">' + (isToday ? "I'm Ready →" : "View Show →") + '</button>',
+            '  <div class="home-card__sub">' + (isToday ? 'Tonight' : dateLabel) + (timeLabel ? ' \xb7 ' + _escHtml(timeLabel) : '') + '</div>',
+            '  <button class="home-card__cta home-card__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">' + (isToday ? "I\'m Ready \u2192" : "View Show \u2192") + '</button>',
             '</div>'
         ].join('');
     }
 
-    // ── Full Mode ──
-    var readinessSummary = _computeSetlistReadiness(nextGig, bundle.readinessCache);
     var readinessHTML    = _renderSetlistReadinessBars(nextGig, bundle.readinessCache);
     var warningsHTML     = _renderReadinessWarnings(nextGig, bundle.readinessCache);
-
     var urgencyClass = isToday ? 'home-card--playshow home-card--urgent' : 'home-card--playshow';
 
     var ctaGoLive = '<button class="home-card__cta home-card__cta--primary" onclick="homeGoLive(\'' + linkedSetlistEsc + '\')">'
-        + (isToday ? '🎤 Go Live →' : '🎤 Activate Show') + '</button>';
+        + (isToday ? '\uD83C\uDFA4 Go Live \u2192' : '\uD83C\uDFA4 Activate Show') + '</button>';
 
     var ctaSetlist = linkedSetlist
         ? '<button class="home-card__cta home-card__cta--secondary" onclick="homeViewSetlist(\'' + linkedSetlistEsc + '\')">View Setlist</button>'
-        : '<button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'gigs\')">Open Gigs</button>';
+        : '<button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'gigs\')">Open Gig</button>';
 
-    var ctaCare = '<button class="home-card__cta home-card__cta--ghost" onclick="homeCarePackage()">📦 Care Package</button>';
+    var ctaCare = '<button class="home-card__cta home-card__cta--ghost" onclick="homeCarePackage()">\uD83D\uDCE6 Care Package</button>';
 
     return [
         '<div class="home-card ' + urgencyClass + '">',
         '  <div class="home-card__header">',
-        '    <span class="home-card__icon">🎤</span>',
+        '    <span class="home-card__icon">\uD83C\uDFA4</span>',
         '    <span class="home-card__label">Go Live</span>',
         '    ' + (isToday ? '<span class="home-card__badge home-card__badge--live">TONIGHT</span>' : (daysUntil !== null && daysUntil <= 2 ? '<span class="home-card__badge home-card__badge--soon">' + (daysUntil === 1 ? 'TOMORROW' : 'IN ' + daysUntil + ' DAYS') + '</span>' : '')),
         '  </div>',
         '  <div class="home-card__title">' + _escHtml(venueName) + '</div>',
-        '  <div class="home-card__sub">' + dateLabel + (timeLabel ? ' · ' + _escHtml(timeLabel) : '') + '</div>',
+        '  <div class="home-card__sub">' + dateLabel + (timeLabel ? ' \xb7 ' + _escHtml(timeLabel) : '') + '</div>',
         readinessHTML ? ('  <div class="home-card__readiness">' + readinessHTML + '</div>') : '',
         warningsHTML  ? ('  <div class="home-card__warnings">' + warningsHTML + '</div>') : '',
         '  <div class="home-card__actions">',
@@ -556,7 +677,7 @@ function _renderPlayShowCard(bundle, isStoner) {
     ].join('');
 }
 
-// ── Phase 2: Rehearse Card ───────────────────────────────────────────────────
+// ── Rehearse Card ─────────────────────────────────────────────────────────────
 
 function _scoreRehearseCard(bundle) {
     var plans = bundle.plans || [];
@@ -576,7 +697,7 @@ function _renderRehearseCard(bundle, isStoner) {
     if (!plans.length) {
         return [
             '<div class="home-card home-card--rehearse home-card--empty">',
-            '  <div class="home-card__header"><span class="home-card__icon">🎼</span><span class="home-card__label">Rehearse</span></div>',
+            '  <div class="home-card__header"><span class="home-card__icon">\uD83C\uDFBC</span><span class="home-card__label">Rehearse</span></div>',
             '  <div class="home-card__title">No Rehearsals Scheduled</div>',
             '  <div class="home-card__empty-msg">Add a rehearsal to build a practice plan.</div>',
             '  <button class="home-card__cta home-card__cta--secondary" onclick="showPage(\'rehearsal\')">Open Rehearsals</button>',
@@ -626,7 +747,7 @@ function _renderRehearseCard(bundle, isStoner) {
     ].join('');
 }
 
-// ── Phase 2: Practice Card ───────────────────────────────────────────────────
+// ── Practice Card ─────────────────────────────────────────────────────────────
 
 function _scorePracticeCard(bundle) {
     var rc = bundle.readinessCache || {};
@@ -699,13 +820,12 @@ function _renderPracticeCard(bundle, isStoner) {
     ].join('');
 }
 
-// ── Phase 3: Setlist Card ────────────────────────────────────────────────────
+// ── Setlist Card ──────────────────────────────────────────────────────────────
 
 function _scoreSetlistCard(bundle) {
     var setlists = bundle.setlists || [];
     var gigs = bundle.gigs || [];
     if (!setlists.length) return 0;
-    // Check if upcoming gig has no linked setlist
     var nextGig = gigs[0];
     if (nextGig && !nextGig.linkedSetlist) return 2;
     if (nextGig && nextGig.linkedSetlist) return 1;
@@ -729,13 +849,11 @@ function _renderSetlistCard(bundle, isStoner) {
         ].join('');
     }
 
-    // Find the most relevant setlist: linked to next gig first, else most recent
     var featured = null;
     if (nextGig && nextGig.linkedSetlist) {
         featured = setlists.find(function(sl) { return sl.name === nextGig.linkedSetlist; }) || null;
     }
     if (!featured) {
-        // Most recently dated setlist
         featured = setlists.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); })[0];
     }
 
@@ -743,7 +861,6 @@ function _renderSetlistCard(bundle, isStoner) {
     var totalSongs = featured.songCount || 0;
     var setCount = (featured.sets || []).length;
 
-    // Readiness summary: count songs with band avg >= 3
     var allTitles = [];
     (featured.sets || []).forEach(function(s) {
         (s.songs || []).forEach(function(sg) {
@@ -758,7 +875,7 @@ function _renderSetlistCard(bundle, isStoner) {
 
     var subtitle = isLinked
         ? '\uD83C\uDFAF Linked to ' + _escHtml(nextGig.venue || nextGig.date || 'next gig')
-        : (featured.date ? '\uD83D\uDCC5 ' + _escHtml(featured.date) + (featured.venue ? ' \u00B7 ' + _escHtml(featured.venue) : '') : '');
+        : (featured.date ? '\uD83D\uDCC5 ' + _escHtml(featured.date) + (featured.venue ? ' \xb7 ' + _escHtml(featured.venue) : '') : '');
 
     var readinessHtml = allTitles.length ? [
         '<div class="home-readiness-row" style="margin:8px 0 10px">',
@@ -768,7 +885,7 @@ function _renderSetlistCard(bundle, isStoner) {
         '</div>'
     ].join('') : '';
 
-    var statLine = setCount + ' set' + (setCount !== 1 ? 's' : '') + ' \u00B7 ' + totalSongs + ' songs';
+    var statLine = setCount + ' set' + (setCount !== 1 ? 's' : '') + ' \xb7 ' + totalSongs + ' songs';
 
     return [
         '<div class="home-card home-card--setlist' + (isLinked ? ' home-card--urgent' : '') + '">',
@@ -782,18 +899,11 @@ function _renderSetlistCard(bundle, isStoner) {
     ].join('');
 }
 
-// ── Readiness computation (MVP in-memory) ─────────────────────────────────────
+// ── Readiness computation ─────────────────────────────────────────────────────
 
-/**
- * Compute a one-line readiness summary for a gig's linked setlist.
- * Returns a string like "Set 1: 5/6 ready · Set 2: 3/5 ready" or null.
- * MVP: uses in-memory readinessCache keyed by song title.
- */
 function _computeSetlistReadiness(gig, rc) {
     if (!gig || !gig._setlistSongs) return null;
     rc = rc || {};
-    // _setlistSongs expected shape: { set1: ['Song A', 'Song B'], set2: [...] }
-    // If not present, skip
     var sets = gig._setlistSongs;
     if (!sets || typeof sets !== 'object') return null;
     var parts = [];
@@ -806,13 +916,9 @@ function _computeSetlistReadiness(gig, rc) {
         var label = setKey === 'encore' ? 'Encore' : 'Set ' + setKey.replace('set', '');
         parts.push(label + ': ' + ready + '/' + songs.length + ' ready');
     });
-    return parts.length ? parts.join(' · ') : null;
+    return parts.length ? parts.join(' \xb7 ') : null;
 }
 
-/**
- * Render per-set readiness bars for a gig, using in-memory readinessCache.
- * Returns HTML string or ''.
- */
 function _renderSetlistReadinessBars(gig, rc) {
     if (!gig || !gig._setlistSongs) return '';
     rc = rc || {};
@@ -836,9 +942,6 @@ function _renderSetlistReadinessBars(gig, rc) {
     return html;
 }
 
-/**
- * Render warning lines for songs where 2+ members are below score 2.
- */
 function _renderReadinessWarnings(gig, rc) {
     if (!gig || !gig._setlistSongs) return '';
     rc = rc || {};
@@ -854,7 +957,7 @@ function _renderReadinessWarnings(gig, rc) {
         return lowCount >= 2;
     });
     if (!warnings.length) return '';
-    return '<div class="home-card__warning-list">⚠ Needs work: '
+    return '<div class="home-card__warning-list">\u26a0 Needs work: '
         + warnings.map(function(t) { return _escHtml(t); }).join(', ')
         + '</div>';
 }
@@ -863,10 +966,10 @@ function _renderReadinessWarnings(gig, rc) {
 
 function _renderCardEmptyState(cardKey) {
     var configs = {
-        playShow: { icon: '🎤', label: 'Go Live',   msg: 'No upcoming shows',   cta: 'Add a Gig', action: "showPage('gigs')" },
-        rehearse: { icon: '🎼', label: 'Rehearse',  msg: 'No rehearsal scheduled', cta: 'Open Rehearsals', action: "showPage('rehearsal')" },
-        practice: { icon: '🎧', label: 'Practice',  msg: 'Sign in to see your practice queue', cta: 'Open Practice', action: "showPage('practice')" },
-        setlist:  { icon: '📋', label: 'Setlists',      msg: 'No setlists yet', cta: 'Create Setlist', action: "showPage('setlists')" }
+        playShow: { icon: '\uD83C\uDFA4', label: 'Go Live',   msg: 'No upcoming shows',   cta: 'Add a Gig', action: "showPage('gigs')" },
+        rehearse: { icon: '\uD83C\uDFBC', label: 'Rehearse',  msg: 'No rehearsal scheduled', cta: 'Open Rehearsals', action: "showPage('rehearsal')" },
+        practice: { icon: '\uD83C\uDFA7', label: 'Practice',  msg: 'Sign in to see your practice queue', cta: 'Open Practice', action: "showPage('practice')" },
+        setlist:  { icon: '\uD83D\uDCCB', label: 'Setlists',  msg: 'No setlists yet', cta: 'Create Setlist', action: "showPage('setlists')" }
     };
     var cfg = configs[cardKey] || configs.playShow;
     return [
@@ -882,13 +985,13 @@ function _renderCardEmptyState(cardKey) {
 function _renderErrorState() {
     return '<div class="home-dashboard home-dashboard--error">'
         + '<div style="text-align:center;padding:40px;color:var(--text-dim)">'
-        + '<div style="font-size:2em;margin-bottom:12px">⚠️</div>'
+        + '<div style="font-size:2em;margin-bottom:12px">\u26a0\ufe0f</div>'
         + '<div>Could not load dashboard. Check connection.</div>'
         + '<button class="btn btn-ghost" style="margin-top:16px" onclick="renderHomeDashboard()">Retry</button>'
         + '</div></div>';
 }
 
-// ── Skeleton ─────────────────────────────────────────────────────────────────
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
 function _renderSkeletonHTML() {
     var pulse = 'background:rgba(255,255,255,0.06);border-radius:6px;animation:homeSkeletonPulse 1.4s ease-in-out infinite;';
@@ -912,7 +1015,6 @@ function _renderSkeletonHTML() {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-/** Returns YYYY-MM-DD for today in local time */
 function _todayStr() {
     var d = new Date();
     var y = d.getFullYear();
@@ -921,10 +1023,6 @@ function _todayStr() {
     return y + '-' + m + '-' + day;
 }
 
-/**
- * Days from dateStrA to dateStrB (positive = B is in the future).
- * Handles YYYY-MM-DD strings. Appends T12:00 to avoid UTC offset issues.
- */
 function _dayDiff(dateStrA, dateStrB) {
     if (!dateStrA || !dateStrB) return null;
     try {
@@ -934,7 +1032,6 @@ function _dayDiff(dateStrA, dateStrB) {
     } catch(e) { return null; }
 }
 
-/** Format YYYY-MM-DD as "Sat Apr 12" */
 function _formatDateShort(dateStr) {
     if (!dateStr) return '';
     try {
@@ -943,7 +1040,6 @@ function _formatDateShort(dateStr) {
     } catch(e) { return dateStr; }
 }
 
-/** Average the numeric values in a score object { drew:3, chris:4, ... } */
 function _bandAvgForSong(scoreObj) {
     if (!scoreObj || typeof scoreObj !== 'object') return 0;
     var vals = Object.values(scoreObj).filter(function(v) { return typeof v === 'number' && v > 0; });
@@ -951,7 +1047,6 @@ function _bandAvgForSong(scoreObj) {
     return vals.reduce(function(sum, v) { return sum + v; }, 0) / vals.length;
 }
 
-/** Escape string for safe HTML insertion */
 function _escHtml(str) {
     if (typeof window.escHtml === 'function') return window.escHtml(str);
     if (!str) return '';
@@ -961,35 +1056,24 @@ function _escHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
-/** Resolve whether current user should see Stoner Mode */
 function _resolveIsStoner() {
-    // Phase 1: simple non-signed-in check; Phase 2 will add member preference
-    // Bandleader (drew) always gets full mode
     var key = _getMemberKey();
-    if (!key) return true;                  // not signed in → simplified view
-    // Could check a preference in Firebase later — for now always full for signed-in users
+    if (!key) return true;
     return false;
 }
 
-/** Get the current member key using the same logic as app.js */
 function _getMemberKey() {
     if (typeof window.getCurrentMemberKey === 'function') return window.getCurrentMemberKey();
     if (typeof window.getCurrentMemberReadinessKey === 'function') return window.getCurrentMemberReadinessKey();
     return null;
 }
 
-/** Reference to the global readinessCache from app.js */
 function bundle_readinessRef() {
     return (typeof readinessCache !== 'undefined') ? readinessCache : {};
 }
 
-// ── Band Readiness Score ─────────────────────────────────────────────────────
+// ── Band Readiness Score ──────────────────────────────────────────────────────
 
-/**
- * Compute overall band readiness as a percentage.
- * Uses in-memory readinessCache: avg all songs where at least one member has rated.
- * A song "counts" if band avg >= 3.
- */
 function _computeBandReadinessPct(bundle) {
     var rc = bundle.readinessCache || {};
     var entries = Object.values(rc).filter(function(ratings) {
@@ -1014,9 +1098,8 @@ function _renderBandReadinessScore(bundle) {
     var onclickVal = weakTitles.length
         ? 'homeGoWeakSongs(' + JSON.stringify(weakTitles) + ')'
         : "showPage('songs')";
-    var tipText = weakTitles.length ? 'View songs needing work' : 'View all songs';
     return [
-        '<div class="home-readiness-widget" onclick="' + onclickVal + '" style="cursor:pointer" title="' + tipText + '">',
+        '<div class="home-readiness-widget" onclick="' + onclickVal + '" style="cursor:pointer">',
         '  <div class="home-readiness-widget__header">',
         '    <span class="home-readiness-widget__title">Band Readiness</span>',
         '    <span class="home-readiness-widget__pct" style="color:' + color + '">' + pct + '%</span>',
@@ -1033,23 +1116,24 @@ function _renderBandReadinessScore(bundle) {
 
 var _activityFeedCache = null;
 var _activityFeedTime  = 0;
-var _ACTIVITY_TTL      = 120000; // 2 min
+var _ACTIVITY_TTL      = 120000;
 
-/**
- * Load the activity log from the master file and return the last 5 entries.
- * Called lazily — result cached for 2 minutes.
- */
 async function _loadActivityFeed() {
     if (_activityFeedCache && (Date.now() - _activityFeedTime < _ACTIVITY_TTL)) {
         return _activityFeedCache;
     }
     try {
         var log = await window.loadMasterFile('_master_activity_log.json') || [];
+        var SKIP_ACTIONS = ['join', 'login', 'signin', 'sign_in', 'joined', 'session_start', 'connected'];
         var entries = (Array.isArray(log) ? log : Object.values(log))
-            .filter(function(e) { return e && e.action && e.time; })
+            .filter(function(e) {
+                if (!e || !e.action || !e.time) return false;
+                var a = (e.action || '').toLowerCase();
+                return !SKIP_ACTIONS.some(function(s) { return a.indexOf(s) !== -1; });
+            })
             .slice(-20)
             .reverse()
-            .slice(0, 5);
+            .slice(0, 3);
         _activityFeedCache = entries;
         _activityFeedTime  = Date.now();
         return entries;
@@ -1080,13 +1164,13 @@ var _ACTION_LABELS = {
     harmony_add:      function(e) { return _displayName(e.user) + ' added harmony to ' + (e.song || 'a song'); },
     harmony_edit:     function(e) { return _displayName(e.user) + ' edited harmony on ' + (e.song || 'a song'); },
     part_notes:       function(e) { return _displayName(e.user) + ' added part notes to ' + (e.song || 'a song'); },
-    sign_in:          function(e) { return _displayName(e.user) + ' joined the session'; },
+    sign_in:          function(e) { return _displayName(e.user) + ' joined the session'; }
 };
 
 function _activityLabel(e) {
     var fn = _ACTION_LABELS[e.action];
     if (fn) return fn(e);
-    return _displayName(e.user) + ' ' + e.action.replace(/_/g, ' ') + (e.song ? ' · ' + e.song : '');
+    return _displayName(e.user) + ' ' + e.action.replace(/_/g, ' ') + (e.song ? ' \xb7 ' + e.song : '');
 }
 
 function _activityTimeAgo(isoStr) {
@@ -1102,8 +1186,6 @@ function _activityTimeAgo(isoStr) {
 }
 
 function _renderActivityFeed(bundle) {
-    // Feed loads async — render a placeholder and fill in after load
-    // Uses a post-render async fill pattern
     setTimeout(function() {
         var el = document.getElementById('home-activity-feed');
         if (!el) return;
@@ -1127,16 +1209,14 @@ function _renderActivityFeed(bundle) {
     return '<div id="home-activity-feed" class="home-activity"></div>';
 }
 
-// ── Register with navigation system ─────────────────────────────────────────
+// ── Register with navigation system ──────────────────────────────────────────
 
-// Attach to pageRenderers so showPage('home') triggers the render
 if (typeof pageRenderers !== 'undefined') {
     pageRenderers.home = function(el) {
         window.renderHomeDashboard();
     };
 }
 
-// visibilitychange: refresh banner check when user returns to tab
 document.addEventListener('visibilitychange', function() {
     if (!document.hidden) {
         var container = document.getElementById('page-home');
@@ -1146,14 +1226,12 @@ document.addEventListener('visibilitychange', function() {
     }
 });
 
-console.log('🏠 home-dashboard.js loaded');
+console.log('\uD83C\uDFE0 home-dashboard.js loaded');
+try { if (typeof invalidateHomeCache === 'function') invalidateHomeCache(); } catch(e) {}
 
-// ============================================================================
-// CSS — injected into <head> at runtime to keep all home-dashboard code in one file
 // ── Entrance Animation ────────────────────────────────────────────────────────
 
 function _triggerDashboardEntrance() {
-    // Readiness bar fill: start from 0 on load
     requestAnimationFrame(function() {
         var fill = document.querySelector('.home-readiness-widget__fill');
         if (fill) {
@@ -1165,8 +1243,6 @@ function _triggerDashboardEntrance() {
                 fill.style.width = target;
             });
         }
-
-        // Activity feed: fade in after cards settle
         var feed = document.getElementById('home-activity-feed');
         if (feed) {
             setTimeout(function() {
@@ -1177,71 +1253,42 @@ function _triggerDashboardEntrance() {
     });
 }
 
-// ============================================================================
+// ── CSS ───────────────────────────────────────────────────────────────────────
 
 (function _injectHomeDashboardCSS() {
-    if (document.getElementById('home-dashboard-css')) return;
+    var _hdCssId2 = 'home-dashboard-css-' + (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'v3');
+    document.querySelectorAll('style[id^="home-dashboard-css"]').forEach(function(el){el.remove();});
+    if (document.getElementById(_hdCssId2)) return;
     var style = document.createElement('style');
-    style.id = 'home-dashboard-css';
+    style.id = _hdCssId2;
     style.textContent = [
-
-        /* ── Entrance animation keyframes ── */
         '@keyframes glFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }',
         '@keyframes glFadeIn { from { opacity: 0; } to { opacity: 1; } }',
         '@keyframes glBarFill { from { width: 0 !important; } to { } }',
-
-        /* ── Animation classes ── */
         '.home-anim-header { animation: glFadeIn 180ms ease-out both; }',
         '.home-anim-cards  { animation: glFadeUp 180ms ease-out both; }',
         '.home-anim-feed   { animation: glFadeIn 180ms ease-out both; animation-delay: 180ms; }',
         '.home-anim-bar    { animation: glBarFill 600ms ease-out both; }',
-
-        /* ── Layout ── */
         '.home-dashboard { padding: 12px; max-width: 680px; margin: 0 auto; }',
         '.home-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }',
         '@media (max-width: 420px) { .home-card-grid { grid-template-columns: 1fr; } }',
-
-        /* ── Base card ── */
-        '.home-card {',
-        '  background: rgba(255,255,255,0.04);',
-        '  border: 1px solid rgba(255,255,255,0.12);',
-        '  border-radius: var(--radius);',
-        '  padding: 14px;',
-        '  display: flex;',
-        '  flex-direction: column;',
-        '  gap: 6px;',
-        '  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;',
-        '}',
+        '.home-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 6px; transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; }',
         '.home-card:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }',
-
-        /* ── Card header row ── */
         '.home-card__header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }',
         '.home-card__icon { font-size: 1.4em; flex-shrink: 0; }',
         '.home-card__label { font-size: 0.68em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); flex: 1; }',
-
-        /* ── Card content ── */
         '.home-card__title { font-size: 0.98em; font-weight: 800; color: var(--text); line-height: 1.2; }',
         '.home-card__sub   { font-size: 0.76em; color: var(--text-muted); }',
-
-        /* ── Badges ── */
         '.home-card__badge { font-size: 0.6em; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.04em; }',
         '.home-card__badge--live { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.35); }',
         '.home-card__badge--soon { background: rgba(245,158,11,0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.35); }',
-
-        /* ── Urgent card accent ── */
         '.home-card--urgent { border-color: rgba(102,126,234,0.4); background: linear-gradient(160deg, var(--bg-card) 60%, rgba(102,126,234,0.06)); }',
-
-        /* ── Readiness bars ── */
         '.home-readiness-row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }',
         '.home-readiness-row__label { font-size: 0.7em; color: var(--text-dim); min-width: 36px; }',
         '.home-readiness-row__bar { flex: 1; height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }',
         '.home-readiness-row__fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }',
         '.home-readiness-row__count { font-size: 0.7em; font-weight: 700; min-width: 28px; text-align: right; }',
-
-        /* ── Warnings ── */
         '.home-card__warning-list { font-size: 0.72em; color: var(--yellow); border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px; }',
-
-        /* ── CTA buttons ── */
         '.home-card__actions { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }',
         '.home-card__cta { width: 100%; padding: 9px 12px; border-radius: 8px; font-size: 0.82em; font-weight: 700; cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; text-align: center; }',
         '.home-card__cta--primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; box-shadow: 0 2px 12px rgba(102,126,234,0.35); }',
@@ -1250,8 +1297,6 @@ function _triggerDashboardEntrance() {
         '.home-card__cta--secondary:hover { background: rgba(255,255,255,0.1); color: var(--text); }',
         '.home-card__cta--ghost { background: transparent; color: var(--text-dim); border: 1px solid rgba(255,255,255,0.05); font-size: 0.75em; }',
         '.home-card__cta--ghost:hover { background: rgba(255,255,255,0.04); color: var(--text-muted); }',
-
-        /* ── Band Readiness widget ── */
         '.home-readiness-widget { margin-bottom: 24px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }',
         '.home-readiness-widget__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }',
         '.home-readiness-widget__title { font-size: 0.78em; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }',
@@ -1259,8 +1304,6 @@ function _triggerDashboardEntrance() {
         '.home-readiness-widget__bar { height: 10px; background: rgba(255,255,255,0.07); border-radius: 5px; overflow: hidden; margin-bottom: 4px; }',
         '.home-readiness-widget__fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }',
         '.home-readiness-widget__label { font-size: 0.72em; color: var(--text-dim); }',
-
-        /* ── Activity feed ── */
         '.home-activity { margin-top: 12px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; min-height: 0; }',
         '.home-activity:empty { display: none; }',
         '.home-activity__title { font-size: 0.72em; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }',
@@ -1268,21 +1311,15 @@ function _triggerDashboardEntrance() {
         '.home-activity__item:last-child { border-bottom: none; }',
         '.home-activity__text { font-size: 0.8em; color: var(--text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
         '.home-activity__time { font-size: 0.7em; color: var(--text-dim); flex-shrink: 0; }',
-
-        /* ── Empty / stub states ── */
         '.home-card--stub { opacity: 0.75; }',
         '.home-card--stub .home-card__icon { font-size: 1.1em; }',
         '.home-card__stub-msg { font-size: 0.72em; color: var(--text-dim); padding: 4px 0 8px 0; }',
         '.home-card--empty { border-style: dashed; }',
         '.home-card__empty-msg { font-size: 0.78em; color: var(--text-dim); padding: 8px 0; }',
-
-        /* ── Context banner ── */
         '.home-banner { border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; position: relative; }',
         '.home-banner--gig  { background: linear-gradient(135deg, rgba(102,126,234,0.18), rgba(118,75,162,0.12)); border: 1px solid rgba(102,126,234,0.3); }',
         '.home-banner--soon { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); }',
         '.home-banner--rehearse { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25); }',
-
-        /* ── Card list (song previews) ── */
         '.home-card__list { margin: 6px 0 10px 0; display: flex; flex-direction: column; gap: 3px; }',
         '.home-card__list-item { font-size: 0.78em; color: var(--text-muted); padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
         '.home-banner__body { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }',
@@ -1296,8 +1333,6 @@ function _triggerDashboardEntrance() {
         '.home-banner__cta--secondary { background: rgba(255,255,255,0.08); color: var(--text-muted); border: 1px solid var(--border); }',
         '.home-banner__dismiss { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 0.75em; padding: 4px; line-height: 1; }',
         '.home-banner__dismiss:hover { color: var(--text-muted); }',
-
-        /* ── Weak Songs widget ── */
         '.home-weak { margin: 0 0 16px; padding: 12px 14px; background: var(--bg-card); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; }',
         '.home-weak__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }',
         '.home-weak__title-label { font-size: 0.78em; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }',
@@ -1313,37 +1348,24 @@ function _triggerDashboardEntrance() {
         '.home-weak__cta { width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 0.82em; font-weight: 700; cursor: pointer; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: #fca5a5; font-family: inherit; transition: all 0.15s; text-align: center; }',
         '.home-weak__cta:hover { background: rgba(239,68,68,0.15); color: #fecaca; }',
         '.home-weak__gig-badge { display: inline-block; font-size: 0.6em; font-weight: 700; color: #a78bfa; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3); border-radius: 4px; padding: 0 5px; margin-left: 5px; vertical-align: middle; line-height: 1.6; }',
-
     ].join('\n');
     document.head.appendChild(style);
 }());
 
-// ============================================================================
-// WEAK SONGS DETECTION
-// Surfaces songs needing practice based on band readiness + recency.
-// Renders async into #home-weak-songs after dashboard paint.
-// ============================================================================
+// ── Weak Songs ────────────────────────────────────────────────────────────────
 
-// Cache to avoid reloading activity log every render
 var _weakSongsCache    = null;
 var _weakSongsTime     = 0;
-var _WEAK_SONGS_TTL    = 120000; // 2 min
+var _WEAK_SONGS_TTL    = 120000;
+var _RECENCY_DAYS      = 21;
+var _READINESS_THRESH  = 3;
+var _WEAK_DISPLAY      = 3;
 
-var _RECENCY_DAYS      = 21;   // days without activity = stale
-var _READINESS_THRESH  = 3;    // band avg below this = weak
-var _WEAK_DISPLAY      = 3;    // songs to show in widget
-
-/**
- * Score a song's weakness. Higher = more urgent to practice.
- *   readiness gap: (threshold - bandAvg) * 2   — max ~6 for avg=0
- *   recency penalty: 0–3 based on days since last activity
- *   never-touched bonus: +2 if no activity ever logged
- */
 function _weakScore(bandAvg, daysSinceActivity, inGig) {
     var readinessGap = Math.max(0, _READINESS_THRESH - bandAvg) * 2;
     var recencyPenalty = 0;
     if (daysSinceActivity === null) {
-        recencyPenalty = 3; // never touched
+        recencyPenalty = 3;
     } else if (daysSinceActivity > _RECENCY_DAYS) {
         recencyPenalty = Math.min(3, Math.floor(daysSinceActivity / 7));
     }
@@ -1351,10 +1373,6 @@ function _weakScore(bandAvg, daysSinceActivity, inGig) {
     return readinessGap + recencyPenalty + gigBoost;
 }
 
-/**
- * Build a map of { songTitle -> daysSinceLastActivity } from the activity log.
- * Only counts actions that indicate actual practice engagement.
- */
 function _buildRecencyMap(activityLog) {
     var PRACTICE_ACTIONS = {
         practice_track: true, readiness_set: true,
@@ -1362,7 +1380,7 @@ function _buildRecencyMap(activityLog) {
         harmony_edit: true,   harmony_recording: true,
         song_structure: true, part_notes: true
     };
-    var lastSeen = {}; // songTitle -> Date ms
+    var lastSeen = {};
     var now = Date.now();
     (Array.isArray(activityLog) ? activityLog : []).forEach(function(e) {
         if (!e || !e.song || !e.time || !PRACTICE_ACTIONS[e.action]) return;
@@ -1378,10 +1396,6 @@ function _buildRecencyMap(activityLog) {
     return result;
 }
 
-/**
- * Compute the top N weakest songs from readinessCache + recency map.
- * Returns array of { title, bandAvg, daysSince, score }.
- */
 function _computeWeakSongs(readinessCache, recencyMap, limit, gigTitles) {
     var rc = readinessCache || {};
     var gigSet = gigTitles || new Set();
@@ -1391,10 +1405,10 @@ function _computeWeakSongs(readinessCache, recencyMap, limit, gigTitles) {
         var title   = entry[0];
         var ratings = entry[1] || {};
         var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
-        if (!keys.length) return; // no ratings at all — skip (avoids polluting with unrated songs)
+        if (!keys.length) return;
 
         var bandAvg = keys.reduce(function(sum, k) { return sum + ratings[k]; }, 0) / keys.length;
-        if (bandAvg >= _READINESS_THRESH) return; // already strong enough
+        if (bandAvg >= _READINESS_THRESH) return;
 
         var daysSince = (recencyMap && recencyMap[title] !== undefined) ? recencyMap[title] : null;
         var inGig     = gigSet.has(title);
@@ -1406,11 +1420,6 @@ function _computeWeakSongs(readinessCache, recencyMap, limit, gigTitles) {
     return candidates.slice(0, limit || _WEAK_DISPLAY);
 }
 
-/**
- * Navigate to Songs page and highlight weak songs via search.
- * Shows first weak song name in search — user can clear to see all.
- * If only one song, select it directly.
- */
 window.homeGoWeakSongs = function homeGoWeakSongs(titles) {
     if (!titles || !titles.length) { showPage('songs'); return; }
     showPage('songs');
@@ -1418,33 +1427,26 @@ window.homeGoWeakSongs = function homeGoWeakSongs(titles) {
         var searchEl = document.getElementById('songSearch');
         if (!searchEl) return;
         if (titles.length === 1) {
-            // Single song — select it directly
             searchEl.value = titles[0];
             if (typeof renderSongs === 'function') renderSongs(
                 (typeof currentFilter !== 'undefined' ? currentFilter : 'all'), titles[0]
             );
-            // Auto-select after brief delay so row is rendered
             setTimeout(function() {
                 if (typeof selectSong === 'function') selectSong(titles[0]);
             }, 150);
         } else {
-            // Multiple — clear search so all songs show, scroll list to top
             searchEl.value = '';
             if (typeof renderSongs === 'function') renderSongs('all', '');
             searchEl.focus();
-            showToast('📋 ' + titles.length + ' weak songs — check readiness chains on each');
+            showToast('\uD83D\uDCCB ' + titles.length + ' weak songs \u2014 check readiness chains on each');
         }
     }, 200);
 };
 
-/**
- * Async renderer — fills #home-weak-songs after dashboard paint.
- */
 async function _fillWeakSongs(bundle) {
     var el = document.getElementById('home-weak-songs');
     if (!el) return;
 
-    // Load activity log (cached)
     var activityLog = [];
     try {
         if (_weakSongsCache && (Date.now() - _weakSongsTime < _WEAK_SONGS_TTL)) {
@@ -1458,12 +1460,11 @@ async function _fillWeakSongs(bundle) {
 
     var recencyMap = _buildRecencyMap(activityLog);
 
-    // Extract song titles from next upcoming gig setlist for gig boost
     var gigTitles = new Set();
     try {
         var upcomingGigs = bundle.gigs || [];
         if (upcomingGigs.length) {
-            var nextGig = upcomingGigs[0]; // sorted asc by _loadUpcomingGigs
+            var nextGig = upcomingGigs[0];
             var setlistName = nextGig.linkedSetlist || nextGig.setlist || '';
             if (setlistName && typeof window.loadBandDataFromDrive === 'function') {
                 if (!window._homeSetlistCache) {
@@ -1484,11 +1485,11 @@ async function _fillWeakSongs(bundle) {
                 }
             }
         }
-    } catch(e) { /* non-fatal — gig boost just won't apply */ }
+    } catch(e) {}
 
     var weak = _computeWeakSongs(bundle.readinessCache, recencyMap, _WEAK_DISPLAY, gigTitles);
 
-    if (!weak.length) return; // nothing to show — widget stays hidden
+    if (!weak.length) return;
 
     var titles    = weak.map(function(s) { return s.title; });
     var titlesEsc = JSON.stringify(titles).replace(/'/g, "\\'");
@@ -1497,14 +1498,14 @@ async function _fillWeakSongs(bundle) {
     var rows = weak.map(function(s) {
         var avg    = s.bandAvg.toFixed(1);
         var color  = s.bandAvg < 2.0 ? 'var(--red,#ef4444)' : 'var(--yellow,#f59e0b)';
-        var dot    = s.bandAvg < 2.0 ? '🔴' : '🟡';
+        var dot    = s.bandAvg < 2.0 ? '\uD83D\uDD34' : '\uD83D\uDFE1';
         var age    = s.daysSince === null ? 'Never practiced'
                    : s.daysSince === 0   ? 'Today'
                    : s.daysSince === 1   ? 'Yesterday'
                    : s.daysSince + 'd ago';
         return '<div class="home-weak__row" onclick="homeGoWeakSongs([\'' + s.title.replace(/'/g, "\\'") + '\'])" title="Practice this song">'
             + '<span class="home-weak__dot">' + dot + '</span>'
-            + '<span class="home-weak__title">' + _escHtml(s.title) + (s.inGig ? '<span class="home-weak__gig-badge">🎤 Next Gig</span>' : '') + '</span>'
+            + '<span class="home-weak__title">' + _escHtml(s.title) + (s.inGig ? '<span class="home-weak__gig-badge">\uD83C\uDFA4 Next Gig</span>' : '') + '</span>'
             + '<span class="home-weak__meta">'
             +   '<span style="color:' + color + ';font-weight:700">' + avg + '/5</span>'
             +   '<span class="home-weak__age">' + age + '</span>'
@@ -1527,23 +1528,128 @@ async function _fillWeakSongs(bundle) {
     el.innerHTML = [
         '<div class="home-weak home-anim-feed">',
         '  <div class="home-weak__header">',
-        '    <span class="home-weak__title-label">' + (hasGigSongs ? '🎤 Needs Work Before Next Gig' : '⚠️ Needs Work') + '</span>',
+        '    <span class="home-weak__title-label">' + (hasGigSongs ? '\uD83C\uDFA4 Needs Work Before Next Gig' : '\u26a0\ufe0f Needs Work') + '</span>',
         '    <span class="home-weak__count">' + totalWeak + ' below readiness threshold</span>',
         '  </div>',
         '  <div class="home-weak__list">' + rows + '</div>',
         moreLabel,
-        '  <button class="home-weak__cta" onclick="homeGoWeakSongs(' + titlesEsc + ')">Practice Now →</button>',
+        '  <button class="home-weak__cta" onclick="homeGoWeakSongs(' + titlesEsc + ')">Practice \u2192</button>',
         '</div>'
     ].join('');
 }
 
-/**
- * Trigger weak songs fill after dashboard renders.
- * Called from _renderDashboard via setTimeout.
- */
 function _scheduleWeakSongsFill(bundle) {
     setTimeout(function() { _fillWeakSongs(bundle); }, 220);
 }
 
-// Weak songs fill is hooked directly into renderHomeDashboard and refreshHomeDashboard above.
-
+// ── Mission Board CSS ─────────────────────────────────────────────────────────
+(function() {
+  var _hdCssId = 'hd-mission-css-' + (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'v4');
+  document.querySelectorAll('style[id^="hd-mission-css"]').forEach(function(el){el.remove();});
+  if (document.getElementById(_hdCssId)) return;
+  var s = document.createElement('style');
+  s.id = _hdCssId;
+  s.textContent = [
+    '.hd-mission-board{display:flex;flex-direction:column;gap:20px;padding:12px 0 32px}',
+    '.hd-strip{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);margin-bottom:2px}',
+    '.hd-strip__chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}',
+    '.hd-strip__chip--gig{background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25)}',
+    '.hd-strip__chip--rehearse{background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.25)}',
+    '.hd-strip__chip--ready{background:rgba(74,222,128,0.1);color:var(--green);border:1px solid rgba(74,222,128,0.2)}',
+    '.hd-strip__chip--weak{background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)}',
+    '.hd-strip__chip--ok{background:rgba(74,222,128,0.08);color:var(--green);border:1px solid rgba(74,222,128,0.15)}',
+    '.hd-hero{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);border-radius:16px;padding:20px 18px 16px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.4);position:relative;overflow:hidden;margin-bottom:4px}',
+    '.hd-hero--gig{background:linear-gradient(135deg,#1b2a4a 0%,#141e35 60%,#0e1628 100%);border-color:rgba(102,126,234,0.25)}',
+    '.hd-hero--rehearse{background:linear-gradient(135deg,#0f1a2e 0%,#1a2744 60%,#0a1628 100%);border-color:rgba(99,102,241,0.2)}',
+    '.hd-hero--urgent{border-color:rgba(239,68,68,0.4)!important;box-shadow:0 4px 32px rgba(239,68,68,0.15)}',
+    '.hd-hero--soon{border-color:rgba(251,191,36,0.3)!important}',
+    '.hd-hero--empty{background:rgba(255,255,255,0.02);border-style:dashed}',
+    '.hd-hero__eyebrow{font-size:10px;font-weight:800;letter-spacing:0.14em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:8px}',
+    '.hd-hero__badge{font-size:9px;font-weight:800;letter-spacing:0.1em;padding:2px 7px;border-radius:4px;text-transform:uppercase}',
+    '.hd-hero__badge--live{background:#ef4444;color:#fff}',
+    '.hd-hero__badge--soon{background:rgba(251,191,36,0.2);color:var(--yellow);border:1px solid rgba(251,191,36,0.4)}',
+    '.hd-hero__badge--rehearse{background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.4)}',
+    '.hd-hero__title{font-size:1.35em;font-weight:800;color:var(--text);line-height:1.2;margin-bottom:4px}',
+    '.hd-hero__title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}',
+    '.hd-hero__ready-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid}',
+    '.hd-hero__sub{font-size:0.78em;color:var(--text-dim);margin-bottom:6px}',
+    '.hd-hero__setlist{font-size:0.75em;color:var(--text-dim);margin-bottom:8px}',
+    '.hd-hero__countdown{font-size:0.75em;color:var(--text-dim);margin-bottom:6px}',
+    '.hd-hero__coach{font-size:12px;color:var(--text-dim);font-style:italic;margin:4px 0 2px;border-left:2px solid rgba(255,255,255,0.1);padding-left:8px}',
+    '.hd-hero__pct-row{display:flex;align-items:center;gap:8px;margin:10px 0 4px}',
+    '.hd-hero__pct-label{font-size:10px;color:var(--text-dim);white-space:nowrap}',
+    '.hd-hero__pct-track{width:100%;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden}',
+    '.hd-hero__pct-fill{height:100%;border-radius:3px;transition:width 0.6s ease}',
+    '.hd-hero__pct-val{font-size:11px;font-weight:700;white-space:nowrap}',
+    '.hd-hero__risk{font-size:12px;color:var(--text-dim);margin-bottom:4px}',
+    '.hd-hero__risk strong{color:var(--yellow)}',
+    '.hd-hero__days-away{font-size:0.85em;font-weight:700;color:var(--yellow);background:rgba(251,191,36,0.12);border-radius:4px;padding:1px 6px;margin-left:2px}',
+    '.hd-hero__risk-avg{font-size:10px;font-weight:800;margin-left:6px;background:rgba(239,68,68,0.15);padding:1px 5px;border-radius:3px}',
+    '.hd-hero__readiness{margin:8px 0 4px}',
+    '.hd-hero__warnings{margin-bottom:8px}',
+    '.hd-hero__actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}',
+    '.hd-hero__cta{padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;white-space:nowrap;transition:all 0.15s;touch-action:manipulation}',
+    '.hd-hero__cta--primary{background:linear-gradient(135deg,#6d28d9,#4f46e5);color:#fff;box-shadow:0 2px 12px rgba(99,102,241,0.35)}',
+    '.hd-hero__cta--primary:hover{filter:brightness(1.1)}',
+    '.hd-hero__cta--golive{background:linear-gradient(135deg,#dc2626,#b91c1c)!important;box-shadow:0 2px 12px rgba(239,68,68,0.4)!important}',
+    '.hd-hero__cta--secondary{background:rgba(255,255,255,0.06);color:var(--text-dim);border:1px solid rgba(255,255,255,0.12)}',
+    '.hd-hero__cta--secondary:hover{background:rgba(255,255,255,0.1);color:var(--text)}',
+    '.hd-hero__cta--tertiary{background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.08);font-size:12px}',
+    '.hd-buckets{display:grid;grid-template-columns:1fr 1fr;gap:20px}',
+    '@media(max-width:480px){.hd-buckets{grid-template-columns:1fr}}',
+    '.hd-bucket{background:rgba(255,255,255,0.03);border-radius:14px;padding:14px 14px 12px;border:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;gap:8px}',
+    '.hd-bucket--weak{border-color:rgba(239,68,68,0.3)!important;box-shadow:0 4px 20px rgba(239,68,68,0.08),inset 0 0 14px rgba(255,80,80,0.08)!important}',
+    '.hd-bucket--ok{border-color:rgba(74,222,128,0.2)!important}',
+    '.hd-bucket__header{display:flex;align-items:center;gap:6px;margin-bottom:2px}',
+    '.hd-bucket__icon{font-size:14px}',
+    '@keyframes hdGlowPulse{0%{text-shadow:0 0 10px currentColor,0 0 20px rgba(34,197,94,0.2)}50%{text-shadow:0 0 18px currentColor,0 0 35px rgba(34,197,94,0.5)}100%{text-shadow:0 0 10px currentColor,0 0 20px rgba(34,197,94,0.2)}}',
+    '.hd-score-pulse{animation:hdGlowPulse 3s ease-in-out infinite}',
+    '.hd-bucket__title{font-size:10px;font-weight:800;letter-spacing:0.13em;color:var(--text-dim);text-transform:uppercase;flex:1}',
+    '.hd-bucket__count{font-size:10px;font-weight:700;color:var(--yellow);background:rgba(251,191,36,0.12);padding:2px 7px;border-radius:20px}',
+    '.hd-bucket__empty{font-size:12px;color:var(--text-dim);font-style:italic}',
+    '.hd-bucket__ok{font-size:12px;color:var(--green)}',
+    '.hd-bucket__more{font-size:11px;color:var(--text-dim);margin-top:3px}',
+    '.hd-bucket__song-row{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--text);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}',
+    '.hd-bucket__song-row:last-child{border-bottom:none}',
+    '.hd-bucket__song-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.hd-bucket__list{display:flex;flex-direction:column;gap:2px;margin:4px 0 8px}',
+    '.hd-bucket__cta{padding:8px 12px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all 0.15s;touch-action:manipulation;margin-top:auto}',
+    '.hd-bucket__cta--primary{background:linear-gradient(135deg,#15803d,#166534);color:#4ade80;border:1px solid rgba(74,222,128,0.35);box-shadow:0 2px 16px rgba(74,222,128,0.35),0 0 0 1px rgba(74,222,128,0.1)}',
+    '.hd-bucket__cta--primary:hover{filter:brightness(1.15)}',
+    '.hd-bucket__cta--ghost{background:transparent;color:var(--text-dim);border:1px solid rgba(255,255,255,0.1)}',
+    '.hd-bucket__cta--ghost:hover{background:rgba(255,255,255,0.05);color:var(--text)}',
+    '.hd-intel__row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}',
+    '.hd-intel__row:last-child{border-bottom:none}',
+    '.hd-intel__label{color:var(--text-dim);flex-shrink:0}',
+    '.hd-intel__value{color:var(--text);text-align:right;font-weight:600;min-width:0;font-size:11px}',
+    '.hd-activity-demoted{opacity:0.75}',
+    /* Pct bar enhancements — stacked: number, bar, label */
+    '.hd-hero__pct-row{display:flex;flex-direction:column;gap:0;margin:12px 0 8px;width:100%}',
+    '.hd-hero__pct-track{width:100%;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;margin-bottom:5px}',
+    '.hd-hero__pct-fill{height:100%;border-radius:4px;transition:width 0.6s ease}',
+    '.hd-hero__pct-val{font-size:32px;font-weight:900;line-height:1;margin-bottom:6px;letter-spacing:-0.02em}',
+    '.hd-hero__pct-state{font-size:11px;font-weight:700}',
+    /* Risk pill */
+    '.hd-hero__risk-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.3);border-radius:20px;padding:4px 10px;margin:4px 0 8px}',
+    '.hd-hero__risk-song{font-size:12px;font-weight:700;color:#f97316}',
+    '.hd-hero__risk-label{font-size:9px;font-weight:800;letter-spacing:0.1em;color:rgba(249,115,22,0.7);text-transform:uppercase}',
+    /* Urgency badges */
+    '.hd-bucket__urgency-badge{font-size:9px;font-weight:800;letter-spacing:0.06em;padding:1px 5px;border-radius:3px;vertical-align:middle;margin-left:4px}',
+    '.hd-bucket__urgency-badge--critical{background:rgba(239,68,68,0.2);color:#ef4444;border:1px solid rgba(239,68,68,0.3)}',
+    '.hd-bucket__urgency-badge--warn{background:rgba(249,115,22,0.15);color:#f97316;border:1px solid rgba(249,115,22,0.25)}',
+    /* Mini readiness bar in rehearsal goal */
+    '.hd-bucket__mini-bar{height:5px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden}',
+    '.hd-bucket__mini-fill{height:100%;border-radius:2px}',
+    /* Reduced border opacity + deeper shadow on buckets */
+    '.hd-bucket{background:rgba(255,255,255,0.025);border-radius:14px;padding:14px 14px 12px;border:1px solid rgba(255,255,255,0.05);display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2)}',
+    /* Hero padding increase */
+    '.hd-hero{background:linear-gradient(145deg,#0d0d1a 0%,#12172e 40%,#0c1f3f 100%);border-radius:16px;padding:24px 20px 18px;border:1px solid rgba(255,255,255,0.09);box-shadow:0 8px 40px rgba(0,0,0,0.65);position:relative;overflow:hidden;margin-bottom:4px}',
+    '.hd-hero__title{font-size:1.55em;font-weight:800;color:var(--text);line-height:1.15;margin-bottom:4px}',
+    /* Intel row spacing */
+    '.hd-intel__row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;gap:6px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06)}',
+    '.hd-intel__rows{display:flex;flex-direction:column}',
+    '.hd-mission-board .home-readiness-widget{display:none!important}',
+    '.hd-mission-board .home-banner{display:none!important}'
+  ].join('');
+  document.head.appendChild(s);
+})();

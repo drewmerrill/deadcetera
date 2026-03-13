@@ -60,6 +60,10 @@ Never rely on stale local SHA cache after an `app.js` SHA mismatch.
 ## File Safety Rules
 
 - Prefer `patch.py` with file inputs over quote-heavy shell patches.
+- **Canonical patch workflow:** Claude writes patch logic as a `.py` file, presents it as a downloadable artifact. Drew downloads and runs `python3 ~/Downloads/patch.py`. Verify output shows all patches ok before deploying.
+- **File wipe risk:** If a patch script errors mid-write, the file will be 0 bytes on disk AND on GitHub (next deploy pushes the empty file). Recovery: Claude regenerates the file as a downloadable `.js` artifact → `cp ~/Downloads/file.js repo/path/file.js` → verify char count → `gldeploy`.
+- **Never use `python3 -c`** with multiline strings containing emoji, unicode escapes, or nested quotes — write to `/tmp` file via `cat << 'PYEOF'` heredoc and present via `present_files` instead.
+- Verify char count before deploying any restored file: `python3 -c "print(len(open('path').read()),'chars')"`
 - Prefer simple one-line shell commands over heredocs.
 - Never patch from a stale upload without verifying provenance.
 - For new files, immediately update deployment/install lists so they ship correctly.
@@ -112,3 +116,21 @@ These should not remain as standalone top-level source-of-truth documents once m
 - `notes/claude_gems_extract.md` → keep only as temporary source archive
 
 After review and adoption into canonical docs, archive or move them to an `archive/` folder.
+
+## Smoke Test Checklist
+
+Run after every deploy at http://localhost:8000
+
+**Auth:** Sign in completes · Signed-out shows prompt not band data
+
+**Songs:** List loads · Status badge visible · Song detail opens with readiness bars
+
+**Setlists:** List loads · New setlist add-song dropdown works · Save shows toast
+
+**Rehearsal:** Sessions tab loads · Create event saves
+
+**Gigs:** List loads · Gig Map renders · Directions link opens Google Maps
+
+**Tools:** Metronome starts/stops · Tuner mic starts + ref tone no crackle · Pocket Meter shows signal
+
+**Settings:** Band Members renders · Edit member inline form saves

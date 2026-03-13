@@ -865,6 +865,7 @@
           btn.classList.add('pm-sig--active');
           if (btn.classList.contains('pm-sig--3')) this._timeSig = 3;
           else if (btn.classList.contains('pm-sig--6')) this._timeSig = 6;
+          else if (btn.classList.contains('pm-sig--7')) this._timeSig = 7;
           else this._timeSig = 4;
         });
       });
@@ -927,6 +928,11 @@
         });
       });
 
+      // ── Help panel toggle ───────────────────────────────────────────────────
+      this.el._pmShowHelp = () => {
+        const hp = this.el.querySelector('.pm-help-panel');
+        if (hp) hp.classList.toggle('pm-hidden');
+      };
       // ── Drag support for float + mini modes ────────────────────────────────
       this._initDrag();
 
@@ -1104,7 +1110,7 @@
       if (this.listening) { this._stopListening(); return; }
       const bpm = this.tapTarget || this.targetBPM;
       const interval = 60000 / bpm;
-      const beats = this._timeSig === 6 ? 6 : this._timeSig === 3 ? 3 : 4;
+      const beats = this._timeSig === 6 ? 6 : this._timeSig === 3 ? 3 : this._timeSig === 7 ? 7 : 4;
       let count = 0;
       const btn = this.el.querySelector('.pm-countin-btn');
       const lbl = this.el.querySelector('.pm-status-label');
@@ -1143,7 +1149,7 @@
       if (now - this._lastFlashBeat < Math.max(interval * 0.9, 300)) return;
       this._lastFlashBeat = now;
       const delta = this.liveBPM ? Math.abs(this.liveBPM - this.targetBPM) : 0;
-      const color = delta <= 2 ? 'rgba(0,255,136,0.10)' : delta <= 5 ? 'rgba(255,204,0,0.10)' : 'rgba(255,59,59,0.10)';
+      const color = delta <= 2 ? 'rgba(0,255,136,0.40)' : delta <= 5 ? 'rgba(255,204,0,0.35)' : 'rgba(255,59,59,0.35)';
       overlay.style.background = color;
       overlay.style.opacity = '1';
       clearTimeout(this._flashTimer);
@@ -1386,6 +1392,7 @@
       div.innerHTML = `
         <div class="pm-banner"></div>
         <div class="pm-flash-overlay"></div>
+        <div class="pm-nameplate"><div class="pm-nameplate-inner"><span>Pocket Meter</span></div></div>
 
         <!-- Header row: target BPM + gear + view controls -->
         <div class="pm-header">
@@ -1400,25 +1407,56 @@
           </div>
           <div class="pm-header-right">
             <button class="pm-settings-btn" title="Calibration">⚙</button>
+            <button class="pm-help-btn" title="Help" onclick="this.closest('.pm-root')._pmShowHelp && this.closest('.pm-root')._pmShowHelp()" style="width:36px;height:36px;border-radius:8px;background:linear-gradient(180deg,#2e2e2e,#1a1a1a);border:1px solid #555;color:#aaa;font-size:15px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 6px rgba(0,0,0,0.4);flex-shrink:0;touch-action:manipulation">?</button>
           </div>
         </div>
 
         <!-- Toolbar: multiplier + time sig + flash -->
         <div class="pm-toolbar">
-          <button class="pm-mult-btn pm-mult--half">½x</button>
-          <button class="pm-mult-btn pm-mult--1x pm-mult--active">1x</button>
-          <button class="pm-mult-btn pm-mult--2x">2x</button>
+          <button class="pm-mult-btn pm-mult--half" title="Half speed: detected BPM x0.5 — use if meter reads double your actual tempo">½x</button>
+          <button class="pm-mult-btn pm-mult--1x pm-mult--active" title="Normal speed: BPM as detected">1x</button>
+          <button class="pm-mult-btn pm-mult--2x" title="Double speed: detected BPM x2 — use if meter reads half your actual tempo">2x</button>
           <div class="pm-toolbar-divider"></div>
-          <button class="pm-sig-btn pm-sig--3">3/4</button>
-          <button class="pm-sig-btn pm-sig--4 pm-sig--active">4/4</button>
-          <button class="pm-sig-btn pm-sig--6">6/8</button>
+          <button class="pm-sig-btn pm-sig--3" title="3/4 time">3/4</button>
+          <button class="pm-sig-btn pm-sig--4 pm-sig--active" title="4/4 time">4/4</button>
+          <button class="pm-sig-btn pm-sig--6" title="6/8 time">6/8</button>
+          <button class="pm-sig-btn pm-sig--7" title="7/8 time">7/8</button>
           <div class="pm-toolbar-divider"></div>
-          <button class="pm-flash-btn" title="Screen flash on beat">⚡</button>
+          <button class="pm-flash-btn" title="Screen flash: the display flashes green on each downbeat — useful in loud environments where you can't hear the click">⚡</button>
           <div class="pm-toolbar-divider"></div>
           <button class="pm-view-btn" data-view="float" title="Float over other pages">⧉</button>
           <button class="pm-view-btn" data-view="mini" title="Mini pill">▾</button>
+          <button class="pm-view-btn" data-view="full" title="Exit float / dock">✕</button>
         </div>
 
+        <!-- Help panel (hidden by default) -->
+        <div class="pm-help-panel pm-hidden" style="background:#0a0a0a;border:1px solid #333;border-radius:10px;padding:14px 16px;font-size:12px;line-height:1.6;color:#ccc;box-shadow:inset 0 2px 8px rgba(0,0,0,0.6)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:800;color:#c8ff00;text-transform:uppercase;letter-spacing:0.12em">How to Use Pocket Meter</div>
+            <button onclick="this.closest('.pm-root').querySelector('.pm-help-panel').classList.add('pm-hidden')" style="background:transparent;border:none;color:#666;font-size:16px;cursor:pointer;padding:0;line-height:1">×</button>
+          </div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:8px">What It Does</div>
+          <div>Pocket Meter listens to your band in real time and tells you whether you&apos;re rushing, dragging, or locked in. Set a target BPM, hit Listen, and watch the needle and live readout respond to your actual playing.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">&#xbd;x / 1x / 2x Multiplier</div>
+          <div>If the meter reads <em>double</em> your real tempo (e.g. 240 when you&apos;re playing 120), tap <strong>&#xbd;x</strong>. If it reads <em>half</em>, tap <strong>2x</strong>. Use <strong>1x</strong> for normal detection. This is common with busy drum patterns.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Tap Tempo</div>
+          <div>Tap the <strong>Tap</strong> button in time with the music to set the target BPM manually. Useful before a song starts or when the auto-detect hasn&apos;t locked in yet. Tap at least 4 times for accuracy.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Broadcast</div>
+          <div>Sends your detected or tapped BPM to all band members currently in the app, so everyone sees the same target. Requires all members to be signed in.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Count In</div>
+          <div>Plays 2 bars of clicks at the target BPM before you start — helpful for getting in the pocket before the song begins. The second bar is louder so you know recording or playing is about to begin.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Tempo History</div>
+          <div>The graph shows how your live BPM drifted over the last ~30 seconds. Flat line = locked in. Spikes = rushing or dragging moments. Use it after a run-through to identify problem spots.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Save to Song</div>
+          <div>Saves the detected BPM to the current song&apos;s profile in GrooveLinx. It&apos;ll pre-fill the target next time you open this song.</div>
+          <div style="color:#c8ff00;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">&#x2699; Calibration — Most Important</div>
+          <div style="color:#e0e0e0">If the meter feels unresponsive or triggers on everything, calibration is your fix:</div>
+          <div style="margin-top:6px;padding:8px 10px;background:rgba(200,255,0,0.04);border-left:2px solid #c8ff00;border-radius:0 6px 6px 0;font-size:11px">
+            <strong style="color:#c8ff00">Sensitivity</strong> — controls how loud a sound needs to be to register as a beat. In a loud rehearsal room, go <em>lower</em> so only the kick drum triggers it. In a quiet setting, go <em>higher</em> to catch subtle playing.<br><br>
+            <strong style="color:#c8ff00">Reactivity</strong> — controls how quickly the displayed BPM updates. <em>Smooth</em> averages more beats so the number stays stable but reacts slower. <em>Snappy</em> reacts to each beat immediately but can jump around more.<br><br>
+            <strong>Recommended starting point:</strong> Sensitivity 3, Reactivity 3. If the number is jumping wildly, lower reactivity. If it&apos;s not picking up your playing, raise sensitivity.
+          </div>
+        </div>
         <!-- Calibration panel (hidden by default) -->
         <div class="pm-settings-panel pm-hidden">
           <div class="pm-settings-title">Calibration</div>
@@ -1451,7 +1489,7 @@
               <filter id="pm-glow-red"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
             </defs>
             <!-- Track -->
-            <path class="pm-arc-track" d="M 38.7 131.4 A 80 80 0 1 1 161.3 131.4" fill="none" stroke="#1e1e2e" stroke-width="14" stroke-linecap="round"/>
+            <path class="pm-arc-track" d="M 38.7 131.4 A 80 80 0 1 1 161.3 131.4" fill="none" stroke="#0d0d0d" stroke-width="14" stroke-linecap="round"/>
             <!-- Green pocket zone -->
             <path class="pm-arc-zone-green" d="M 38.7 131.4 A 80 80 0 1 1 161.3 131.4" fill="none" stroke="#4ade80" stroke-width="4" stroke-linecap="round" stroke-dasharray="72.6 999" stroke-dashoffset="-145.2" opacity="0.5"/>
             <!-- Active fill right (rushing) -->
@@ -1499,7 +1537,7 @@
         <!-- Main controls (live mic) -->
         <div class="pm-controls pm-controls--mic">
           <button class="pm-listen-btn">🎙 Listen</button>
-          <button class="pm-tap-btn">Tap</button>
+          <button class="pm-tap-btn" title="Tap in time with the music to set target BPM manually — tap at least 4 times for accuracy">Tap</button>
         </div>
 
         <!-- File controls (recording / stem) -->
@@ -1521,15 +1559,15 @@
         <div class="pm-tap-zone">
           <div class="pm-tap-readout">Tap Tempo</div>
           <div class="pm-action-row">
-            <button class="pm-broadcast-btn pm-hidden">📡 Broadcast</button>
+            <button class="pm-broadcast-btn pm-hidden" title="Send this BPM to all band members in the app">📡 Broadcast</button>
             <button class="pm-lock-btn pm-hidden">💾 Save to Song</button>
           </div>
-          <button class="pm-countin-btn">Count In</button>
+          <button class="pm-countin-btn" title="Plays 2 bars of click at target BPM before you start — second bar is louder as your cue">Count In</button>
         </div>
 
         <!-- Tempo history graph -->
         <div class="pm-graph-section">
-          <div class="pm-graph-label">Tempo History</div>
+          <div class="pm-graph-label" title="Shows how your live BPM drifted over the last ~30 seconds. Flat = locked in. Spikes = rushing or dragging.">Tempo History &#x24D8;</div>
           <svg class="pm-history-graph" viewBox="0 0 280 50" preserveAspectRatio="none">
             <line class="pm-graph-target-line" x1="0" y1="25" x2="280" y2="25" stroke="#4ade80" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
             <polyline class="pm-graph-line" points="" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linejoin="round"/>
@@ -1547,7 +1585,7 @@
         <div class="pm-bpm-prompt pm-hidden">
           <div class="pm-bpm-prompt-msg">Save <span class="pm-bpm-prompt-val"></span> BPM to this song?</div>
           <div class="pm-bpm-prompt-btns">
-            <button class="pm-bpm-save-yes">Save to Song</button>
+            <button class="pm-bpm-save-yes" title="Save this BPM to the song profile — it will pre-fill as the target next time">Save to Song</button>
             <button class="pm-bpm-save-no">Just for Now</button>
           </div>
         </div>
@@ -1574,22 +1612,33 @@
       s.textContent = `
         /* ── Root ──────────────────────────────────────────────────────────── */
         .pm-root {
-          --pm-bg:        #0f0f1a;
-          --pm-surface:   #1a1a2e;
-          --pm-border:    #2a2a3e;
-          --pm-green:     #4ade80;
+          --pm-bg:        #161616;
+          --pm-surface:   #1e1e1e;
+          --pm-border:    #3a3a3a;
+          --pm-green:     #c8ff00;
           --pm-yellow:    #fbbf24;
-          --pm-red:       #f87171;
+          --pm-red:       #ff4444;
           --pm-blue:      #818cf8;
-          --pm-text:      #e2e8f0;
-          --pm-muted:     #64748b;
+          --pm-text:      #e0e0e0;
+          --pm-muted:     #666;
           --pm-radius:    12px;
           --pm-font:      system-ui, -apple-system, sans-serif;
+          --pm-gold:      #d4a843;
+          --pm-led:       #c8ff00;
 
-          background: var(--pm-bg);
-          border: 1px solid var(--pm-border);
-          border-radius: 16px;
-          padding: 16px;
+          /* Pedal body */
+          background:
+            repeating-linear-gradient(
+              90deg,
+              rgba(255,255,255,0.012) 0px,
+              rgba(255,255,255,0.012) 1px,
+              transparent 1px,
+              transparent 4px
+            ),
+            linear-gradient(160deg, #2e2e2e 0%, #1c1c1c 50%, #111 100%);
+          border: 2px solid #555;
+          border-radius: 18px;
+          padding: 18px 16px 16px;
           display: flex;
           flex-direction: column;
           align-items: stretch;
@@ -1600,10 +1649,56 @@
           max-width: 400px;
           width: 100%;
           margin: 0 auto;
-          /* Scrollable so it never overflows the page */
           max-height: calc(100vh - 120px);
           overflow-y: auto;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+          -webkit-overflow-scrolling: touch;
+          box-shadow:
+            0 12px 40px rgba(0,0,0,0.8),
+            inset 0 1px 0 rgba(255,255,255,0.1),
+            inset 0 -3px 6px rgba(0,0,0,0.5);
+          box-sizing: border-box;
+        }
+
+        /* Corner bolts */
+        .pm-root::before, .pm-root::after {
+          content: '';
+          position: absolute;
+          width: 13px; height: 13px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 35% 30%, #888, #333);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.8);
+          z-index: 2;
+          pointer-events: none;
+        }
+        .pm-root::before { top: 9px; left: 9px; }
+        .pm-root::after  { top: 9px; right: 9px; }
+
+        /* Gold nameplate injected via banner repurpose */
+        .pm-nameplate {
+          text-align: center;
+          margin-bottom: 4px;
+          position: relative;
+          z-index: 1;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .pm-nameplate-inner {
+          display: inline-block;
+          background: linear-gradient(180deg, #d4a843 0%, #8b6010 50%, #c8922a 100%);
+          border-radius: 4px;
+          padding: 3px 18px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .pm-nameplate-inner span {
+          font-size: 0.62em;
+          font-weight: 900;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+          color: #1a0e00;
+          line-height: 1;
+          display: block;
+          padding-top: 1px;
         }
         .pm-root::-webkit-scrollbar { width: 4px; }
         .pm-root::-webkit-scrollbar-track { background: transparent; }
@@ -1626,32 +1721,38 @@
         /* ── Header ─────────────────────────────────────────────────────────── */
         .pm-header {
           display: flex; align-items: center; justify-content: space-between;
-          padding: 0 2px;
+          padding: 0 2px; position: relative;
         }
-        .pm-header-left { display: flex; align-items: baseline; gap: 6px; }
+        .pm-header-left { display: flex; align-items: baseline; gap: 6px; flex: 1; justify-content: center; }
         .pm-header-label { font-size: 10px; color: var(--pm-muted); letter-spacing: 0.1em; text-transform: uppercase; }
         .pm-target-row { display: flex; align-items: center; gap: 4px; }
         .pm-target-bpm {
-          font-size: 32px; font-weight: 700; color: var(--pm-text);
+          font-size: 32px; font-weight: 900; color: var(--pm-led);
           letter-spacing: -0.03em; min-width: 56px; text-align: center; line-height: 1;
+          font-family: monospace;
+          text-shadow: 0 0 8px rgba(200,255,0,0.8), 0 0 16px rgba(200,255,0,0.4);
         }
         .pm-mode-gig .pm-target-bpm { font-size: 40px; }
         .pm-bpm-adj {
-          width: 28px; height: 28px; border-radius: 8px;
-          background: var(--pm-surface); border: 1px solid var(--pm-border);
-          color: var(--pm-text); font-size: 16px; font-weight: 300;
+          width: 28px; height: 28px; border-radius: 50%;
+          background: linear-gradient(180deg, #3a3a3a, #222);
+          border: 1px solid #555;
+          color: #ccc; font-size: 16px; font-weight: 300;
           cursor: pointer; display: flex; align-items: center; justify-content: center;
           transition: all 0.15s; line-height: 1; padding: 0;
+          box-shadow: 0 3px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
         }
-        .pm-bpm-adj:hover { background: var(--pm-border); border-color: var(--pm-blue); color: var(--pm-blue); }
-        .pm-bpm-adj:active { transform: scale(0.92); }
+        .pm-bpm-adj:hover { border-color: var(--pm-led); color: var(--pm-led); }
+        .pm-bpm-adj:active { transform: scale(0.92) translateY(1px); box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
         .pm-header-right { display: flex; align-items: center; gap: 6px; }
         .pm-settings-btn {
-          width: 32px; height: 32px; border-radius: 8px;
-          background: var(--pm-surface); border: 1px solid var(--pm-border);
-          color: var(--pm-muted); font-size: 14px; cursor: pointer;
+          width: 36px; height: 36px; border-radius: 8px;
+          background: linear-gradient(180deg,#2e2e2e,#1a1a1a); border: 1px solid #555;
+          color: var(--pm-muted); font-size: 16px; cursor: pointer;
           display: flex; align-items: center; justify-content: center;
-          transition: all 0.15s;
+          transition: all 0.15s; touch-action: manipulation;
+          box-shadow: 0 3px 6px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.08);
+          flex-shrink: 0;
         }
         .pm-settings-btn:hover { color: var(--pm-text); border-color: var(--pm-blue); }
         .pm-settings-btn.pm-active { color: var(--pm-blue); border-color: var(--pm-blue); background: rgba(129,140,248,0.1); }
@@ -1659,39 +1760,56 @@
         /* ── Toolbar ────────────────────────────────────────────────────────── */
         .pm-toolbar {
           display: flex; align-items: center; gap: 2px;
-          background: var(--pm-surface); border: 1px solid var(--pm-border);
-          border-radius: 10px; padding: 4px 6px; flex-wrap: nowrap; overflow: hidden;
+          background: #0a0a0a;
+          border: 1px solid #333;
+          border-radius: 10px; padding: 4px 6px; flex-wrap: wrap; overflow: visible;
+          box-shadow: inset 0 2px 6px rgba(0,0,0,0.6); gap: 3px;
         }
         .pm-mult-btn, .pm-sig-btn {
-          background: transparent; border: 1px solid transparent;
+          background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
+          border: 1px solid #444;
           color: var(--pm-muted); font-family: var(--pm-font); font-size: 11px;
-          font-weight: 500; padding: 3px 5px; border-radius: 6px;
-          cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em;
+          font-weight: 700; padding: 4px 6px; border-radius: 6px;
+          cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+          min-width: 0;
         }
-        .pm-mult-btn:hover, .pm-sig-btn:hover { color: var(--pm-text); background: var(--pm-border); }
+        .pm-mult-btn:hover, .pm-sig-btn:hover { color: var(--pm-text); border-color: #666; }
         .pm-mult--active, .pm-sig--active {
-          background: rgba(129,140,248,0.15) !important;
-          border-color: var(--pm-blue) !important; color: var(--pm-blue) !important;
+          background: linear-gradient(180deg, #1a2a00, #0d1800) !important;
+          border-color: var(--pm-led) !important;
+          color: var(--pm-led) !important;
+          box-shadow: 0 0 6px rgba(200,255,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04) !important;
         }
-        .pm-toolbar-divider { width: 1px; height: 14px; background: var(--pm-border); margin: 0 2px; }
+        .pm-toolbar-divider { width: 1px; height: 14px; background: #333; margin: 0 2px; flex-shrink: 0; }
         .pm-flash-btn {
-          background: transparent; border: 1px solid transparent;
-          font-size: 13px; padding: 3px 5px; border-radius: 6px;
-          cursor: pointer; opacity: 0.4; transition: all 0.15s;
+          background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
+          border: 1px solid #444;
+          font-size: 13px; padding: 4px 6px; border-radius: 6px;
+          cursor: pointer; opacity: 0.5; transition: all 0.15s;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.4);
         }
-        .pm-flash-btn:hover { opacity: 0.8; }
-        .pm-flash-btn--active { opacity: 1 !important; border-color: var(--pm-yellow) !important; }
+        .pm-flash-btn:hover { opacity: 0.9; }
+        .pm-flash-btn--active {
+          opacity: 1 !important;
+          border-color: var(--pm-yellow) !important;
+          box-shadow: 0 0 6px rgba(251,191,36,0.4) !important;
+        }
         .pm-view-btn {
-          background: transparent; border: 1px solid transparent;
-          color: var(--pm-muted); font-size: 13px; padding: 3px 5px;
+          background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
+          border: 1px solid #444;
+          color: var(--pm-muted); font-size: 13px; padding: 4px 6px;
           border-radius: 6px; cursor: pointer; transition: all 0.15s;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+          min-width: 0;
         }
-        .pm-view-btn:hover { color: var(--pm-text); background: var(--pm-border); }
+        .pm-view-btn:hover { color: var(--pm-text); border-color: #666; }
 
         /* ── Settings panel ─────────────────────────────────────────────────── */
         .pm-settings-panel {
-          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          background: #0a0a0a; border: 1px solid #333;
           border-radius: 10px; padding: 12px 14px;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.6);
         }
         .pm-settings-title { font-size: 11px; font-weight: 600; color: var(--pm-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
         .pm-settings-row { margin-bottom: 10px; }
@@ -1735,7 +1853,11 @@
           width: 100%;
         }
         .pm-live-label { font-size: 9px; letter-spacing: 0.12em; color: var(--pm-muted); text-transform: uppercase; margin-bottom: 2px; }
-        .pm-live-bpm { font-size: 40px; font-weight: 700; color: var(--pm-text); letter-spacing: -0.04em; }
+        .pm-live-bpm {
+          font-size: 40px; font-weight: 900; color: var(--pm-led);
+          letter-spacing: -0.04em; font-family: monospace;
+          text-shadow: 0 0 10px rgba(200,255,0,0.9), 0 0 20px rgba(200,255,0,0.5), 0 0 40px rgba(200,255,0,0.2);
+        }
         .pm-mode-gig .pm-live-bpm { font-size: 52px; }
         .pm-delta { font-size: 13px; font-weight: 600; letter-spacing: 0.03em; margin-top: 2px; }
         .pm-delta--green   { color: var(--pm-green); }
@@ -1758,14 +1880,17 @@
         /* ── Controls ───────────────────────────────────────────────────────── */
         .pm-controls { display: flex; gap: 8px; }
         .pm-controls button {
-          flex: 1; padding: 10px 8px; border-radius: 10px;
-          font-family: var(--pm-font); font-size: 13px; font-weight: 600;
-          cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em;
-          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          flex: 1; min-width: 0; padding: 10px 8px; border-radius: 10px;
+          font-family: var(--pm-font); font-size: 13px; font-weight: 700;
+          cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
+          background: linear-gradient(180deg, #2e2e2e, #1a1a1a);
+          border: 1px solid #555;
           color: var(--pm-text);
+          box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+          -webkit-appearance: none; appearance: none;
         }
-        .pm-controls button:hover { border-color: var(--pm-blue); color: var(--pm-blue); background: rgba(129,140,248,0.08); }
-        .pm-controls button:active { transform: scale(0.97); }
+        .pm-controls button:hover { border-color: var(--pm-led); color: var(--pm-led); }
+        .pm-controls button:active { transform: scale(0.97) translateY(1px); box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
         .pm-listen-btn.pm-listen--active { border-color: var(--pm-red) !important; color: var(--pm-red) !important; background: rgba(248,113,113,0.08) !important; }
         .pm-tap-btn { touch-action: manipulation; }
         @keyframes pm-tap-f { 0% { background: rgba(74,222,128,0.15); } 100% { background: var(--pm-surface); } }
@@ -1797,16 +1922,18 @@
 
         /* ── Graph ──────────────────────────────────────────────────────────── */
         .pm-graph-section {
-          background: var(--pm-surface); border: 1px solid var(--pm-border);
+          background: #0a0a0a; border: 1px solid #333;
           border-radius: 10px; padding: 8px 10px;
+          box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
         }
         .pm-graph-label { font-size: 10px; color: var(--pm-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
         .pm-history-graph { width: 100%; height: 50px; display: block; }
 
         /* ── Drift report ───────────────────────────────────────────────────── */
         .pm-drift-report {
-          background: var(--pm-surface); border: 1px solid rgba(74,222,128,0.2);
+          background: #0a0a0a; border: 1px solid rgba(200,255,0,0.2);
           border-radius: 10px; padding: 12px 14px;
+          box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
         }
         .pm-drift-title { font-size: 11px; font-weight: 700; color: var(--pm-green); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
         .pm-drift-stat { font-size: 12px; color: var(--pm-muted); padding: 4px 0; border-bottom: 1px solid var(--pm-border); display: flex; justify-content: space-between; }
@@ -1821,17 +1948,23 @@
 
         /* ── Source selector ────────────────────────────────────────────── */
         .pm-source-bar {
-          display: flex; gap: 4px; margin-bottom: 8px;
+          display: flex; gap: 0; margin-bottom: 8px;
+          background: #0a0a0a; border-radius: 8px; border: 1px solid #333;
+          overflow: hidden; box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
         }
         .pm-src-btn {
-          flex: 1; padding: 6px 4px; font-size: 10px; font-weight: 600;
-          letter-spacing: 0.04em; border-radius: 6px; cursor: pointer;
-          border: 1px solid var(--pm-border); background: rgba(255,255,255,0.03);
+          flex: 1; min-width: 0; padding: 7px 4px; font-size: 10px; font-weight: 700;
+          letter-spacing: 0.05em; cursor: pointer;
+          border: none; border-right: 1px solid #333;
+          background: linear-gradient(180deg, #1e1e1e, #141414);
           color: var(--pm-muted); transition: all 0.15s; white-space: nowrap;
+          overflow: hidden; text-overflow: ellipsis; text-transform: uppercase;
         }
+        .pm-src-btn:last-child { border-right: none; }
         .pm-src-btn.pm-src--active {
-          background: rgba(129,140,248,0.15); border-color: var(--pm-blue);
-          color: var(--pm-blue);
+          background: linear-gradient(180deg, #1a2a00, #0d1800);
+          color: var(--pm-led);
+          box-shadow: inset 0 0 8px rgba(200,255,0,0.15);
         }
 
         /* ── File controls ──────────────────────────────────────────────── */
@@ -1893,9 +2026,11 @@
           width: auto; max-width: none; max-height: none; overflow: visible;
           padding: 8px 12px; border-radius: 40px; cursor: move;
           flex-direction: row; align-items: center; gap: 8px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(74,222,128,0.15);
-          background: rgba(15,15,26,0.95); backdrop-filter: blur(12px);
+          box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(200,255,0,0.2);
+          background: rgba(15,15,15,0.95); backdrop-filter: blur(12px);
+          border: 1px solid #444;
         }
+        .pm-root.pm-mini::before, .pm-root.pm-mini::after { display: none !important; }
         /* In mini mode: hide everything except the mini pill */
         .pm-root.pm-mini > *:not(.pm-mini-pill) { display: none !important; }
         .pm-root.pm-mini .pm-mini-pill {

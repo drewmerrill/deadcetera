@@ -209,6 +209,28 @@ _Last updated: 2026-03-11 — Session 20260311-S4_
 
 ---
 
+## UAT-101 — Song Drawer system
+**Status:** 🟢 Closed — deployed 20260312
+**Area:** Songs List | **Module:** js/features/song-drawer.js (NEW) | **Severity:** Feature
+**Fix:** New `song-drawer.js` module. Global `openSongDrawer(title)` slides in 420px drawer from right. Reuses `renderSongDetail(title, containerOverride)`. Triggers: S-key on hover, ⚡ View hover button on song row. Closes: ESC, backdrop click, close button. Scroll position preserved via body position:fixed trick. Added to push.py DEPLOY_FILES and index.html.
+
+## UAT-102 — Song detail containerOverride scoping
+**Status:** 🟢 Closed — deployed 20260312
+**Area:** Song Detail | **Module:** js/features/song-detail.js | **Severity:** Medium
+**Fix:** `renderSongDetail(songTitle, containerOverride)` — all `document.querySelector` and `document.getElementById` calls scoped to `_sdContainer || document`. `.sd-entered` selector decoupled from `#page-songdetail`. Enables drawer hosting without UI duplication.
+
+## UAT-103 — Song row hover button overlaps badge (muddy overlap)
+**Status:** 🟢 Closed — deployed 20260312
+**Area:** Songs List | **Module:** app-shell.css, app.js | **Severity:** Low
+**Fix:** `.song-drawer-btn` set to `opacity:0` default, `position:absolute; right:4px; top:50%; transform:translateY(-50%)`. Background `#0f172a` (fully opaque) so it cleanly covers band badge on hover with no muddy bleed. Label changed from SVG icon to `⚡ View`. Appears only on `.song-item:hover`.
+
+## UAT-104 — Scrollbar white/thick on songs page
+**Status:** 🟢 Closed — deployed 20260312
+**Area:** Global | **Module:** app-shell.css | **Severity:** Low
+**Fix:** `::-webkit-scrollbar` rules set to 4px. Added `html` and `body` `scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.15) transparent` for Firefox/cross-browser coverage.
+
+---
+
 _End of log_
 
 ---
@@ -1207,3 +1229,33 @@ Status: Open | Medium | app.js
 **Status:** 🟢 Deployed 20260312-004735
 **Changes:** `home-dashboard.js` — chip strip replaced with narrative mission strip. Hero upgraded to Command Card (readiness badge, coaching sentence, countdown, "Open Gig →", "Start Rehearsal Prep" tertiary). YOUR PREP shows top weak song + event tie-in + "+N more". BAND STATUS → BAND INTELLIGENCE (3-4 interpreted lines, "Open Command Center →"). Quick Actions demoted to compact utility strip (emoji icons, no header). Activity feed capped at 3 items. 5 new derivation helpers added.
 **Pending:** CSS styling pass for all new BEM classes (see HANDOFF for full list).
+
+---
+## UAT-097 — Heatmap name color not rendering (CSS specificity / var() battle)
+**Status:** 🟢 Closed — deployed 20260312-162750
+**Area:** Songs List | **Module:** app.js | **Severity:** Medium
+**Root cause:** `app-shell.css` rule `.song-item .song-name { color: rgb(241,245,249) }` has equal specificity to injected `.song-item .song-name--heatmap { color:var(--hm-color) }`. External stylesheet loads after injected style, wins on equal specificity. Even doubling class specificity failed because app-shell.css also uses `!important` in some rules.
+**Fix:** Abandoned CSS var() approach. `renderHeatmapOverlay()` now calls `nameEl.style.setProperty('color', 'hsl(...)')` and `nameEl.style.setProperty('font-weight','600')` directly as inline styles. Cleanup in `clearHeatmapOverlay()` calls `removeProperty('color')` and `removeProperty('font-weight')`.
+
+---
+## UAT-098 — Song detail page restore on refresh goes to home or songs instead of detail
+**Status:** 🟢 Closed — deployed 20260312-163500
+**Area:** Navigation | **Module:** js/ui/navigation.js | **Severity:** High
+**Root cause:** Restore poll called `showPage('songdetail')` which triggers `pageRenderers.songdetail` = `window.renderSongDetail()` with no argument. No arg → no title → bails to `showPage('songs')`.
+**Fix:** Restore poll manually hides all `.app-page` divs, unhides `#page-songdetail`, sets `glLastPage='songdetail'` in localStorage, then calls `renderSongDetail(lastSong)` directly. Never calls `showPage('songdetail')`.
+**Also fixed:** `app.js` always shows home at 50ms regardless of `glLastPage`. Restore runs in parallel, overtops home after `allSongs` is populated (~100ms poll).
+
+---
+## UAT-099 — Readiness progress bar not rendering (flex:1 in column context)
+**Status:** 🟢 Closed — deployed 20260312-165000
+**Area:** Home Dashboard | **Module:** js/features/home-dashboard.js | **Severity:** Medium
+**Root cause:** `.hd-hero__pct-track` had `flex:1` which distributes space along main axis. In `flex-direction:column` context, `flex:1` sets height not width — track rendered at `width:0`.
+**Fix:** Both CSS definitions of `.hd-hero__pct-track` changed from `flex:1` to `width:100%`. `.hd-hero__pct-row` given `width:100%` explicitly.
+
+---
+## UAT-100 — CSS inject blocks serving stale styles across deploys
+**Status:** 🟢 Closed — deployed 20260312-154905
+**Area:** Global | **Module:** app.js, js/features/home-dashboard.js | **Severity:** High
+**Root cause:** CSS inject IIFEs used hardcoded IDs (`deadcetera-responsive-css`, `home-dashboard-css-v2`, `hd-mission-css-v3`). Permanent guard `if (getElementById(id)) return` prevented re-injection after content changed.
+**Fix:** All three blocks now use `BUILD_VERSION`-suffixed IDs with `querySelectorAll('[id^="prefix"]').forEach(el=>el.remove())` sweep before guard. Every deploy gets a new ID, auto-busting all cached stylesheets.
+**Note:** `home-dashboard.js` IIFEs fall back to `v3`/`v4` because `BUILD_VERSION` (declared in `app.js` line 10) is undefined at module load time. Open item: fix init order or pass BUILD_VERSION as module param.

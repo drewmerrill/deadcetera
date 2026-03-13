@@ -51,6 +51,8 @@ window.showPage = function showPage(page) {
     });
 
     currentPage = page;
+    window.scrollTo(0, 0);
+    try { localStorage.setItem('glLastPage', page); } catch(e) {}
 
     // Run renderer (songs page is rendered by selectSong / renderSongs, not here)
     if (el && page !== 'songs') {
@@ -87,9 +89,11 @@ window.toggleMenu = function toggleMenu() {
  */
 var pageRenderers = window.pageRenderers = {
     setlists:      function(el) { if (typeof renderSetlistsPage      === 'function') renderSetlistsPage(el);      },
+    // live-gig is a full-screen overlay — launched via launchLiveGig() directly
     playlists:     function(el) { if (typeof renderPlaylistsPage     === 'function') renderPlaylistsPage(el);     },
     practice:      function(el) { if (typeof renderPracticePage      === 'function') renderPracticePage(el);      },
     rehearsal:     function(el) { if (typeof renderRehearsalPage     === 'function') renderRehearsalPage(el);     },
+    'rehearsal-intel': function(el) { if (typeof renderRehearsalIntel === 'function') renderRehearsalIntel(el); },
     calendar:      function(el) { if (typeof renderCalendarPage      === 'function') renderCalendarPage(el);      },
     gigs:          function(el) { if (typeof renderGigsPage          === 'function') renderGigsPage(el);          },
     venues:        function(el) { if (typeof renderVenuesPage        === 'function') renderVenuesPage(el);        },
@@ -108,3 +112,45 @@ var pageRenderers = window.pageRenderers = {
 };
 
 console.log('✅ navigation.js loaded');
+
+// ── Restore last page on load ─────────────────────────────────────────────
+(function() {
+    var SKIP = ['songs', 'songdetail'];  // songs renders on load; songdetail needs song context
+    var VALID = ['setlists','playlists','practice','rehearsal','calendar','gigs',
+                 'venues','finances','tuner','metronome','bestshot','admin',
+                 'social','notifications','pocketmeter','help','equipment','contacts'];
+    document.addEventListener('DOMContentLoaded', function() {
+        try {
+            var last = localStorage.getItem('glLastPage');
+            if (last && VALID.indexOf(last) !== -1) {
+                // Defer so app.js auth + data init runs first
+                setTimeout(function() {
+                    if (typeof showPage === 'function') showPage(last);
+                }, 800);
+            } else if (last === 'songdetail') {
+                var lastSong = localStorage.getItem('glLastSong');
+                if (!lastSong) return;
+                // Poll until allSongs is populated (auth + Firebase load takes variable time)
+                // Home renders first, then restore overtops it
+                var attempts = 0;
+                var maxAttempts = 40; // 4 seconds max
+                var interval = setInterval(function() {
+                    attempts++;
+                    var songsReady = typeof allSongs !== 'undefined' && Array.isArray(allSongs) && allSongs.length > 0;
+                    if (songsReady || attempts >= maxAttempts) {
+                        clearInterval(interval);
+                        if (songsReady && typeof renderSongDetail === 'function') {
+                            // Manually show/hide pages to avoid pageRenderers.songdetail
+                            // firing renderSongDetail() with no arg (which bails to songs)
+                            document.querySelectorAll('.app-page').forEach(function(p){p.classList.add('hidden');});
+                            var sdDiv = document.getElementById('page-songdetail');
+                            if (sdDiv) { sdDiv.classList.remove('hidden'); sdDiv.classList.add('fade-in'); }
+                            try { localStorage.setItem('glLastPage','songdetail'); } catch(e){}
+                            renderSongDetail(lastSong);
+                        }
+                    }
+                }, 100);
+            }
+        } catch(e) {}
+    });
+})();

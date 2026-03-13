@@ -8,6 +8,7 @@
 var _sdCurrentLens   = 'band';
 var _sdCurrentSong   = null;
 var _sdLensPopulated = {};
+var _sdContainer     = null;
 
 var SD_LENSES = [
     { id:'band',    icon:'🎸', label:'Band'    },
@@ -18,14 +19,16 @@ var SD_LENSES = [
 ];
 
 // ── Entry ────────────────────────────────────────────────────────────────────
-window.renderSongDetail = function renderSongDetail(songTitle) {
+window.renderSongDetail = function renderSongDetail(songTitle, containerOverride) {
     var title = songTitle || (selectedSong && (selectedSong.title || selectedSong));
     if (!title) { if (typeof showPage==='function') showPage('songs'); return; }
     _sdCurrentSong   = title;
     _sdLensPopulated = {};
     _sdCurrentLens   = 'band';
-    var container = document.getElementById('page-songdetail');
+    try { localStorage.setItem('glLastPage', 'songdetail'); localStorage.setItem('glLastSong', title); } catch(e) {}
+    var container = containerOverride || document.getElementById('page-songdetail');
     if (!container) return;
+    _sdContainer = container;
     container.innerHTML = _sdShellHTML(title);
     _sdInjectStyles();
     _sdActivateTab('band');
@@ -51,10 +54,11 @@ window.glSongDetailBack = function glSongDetailBack() {
 };
 
 function _sdActivateTab(lens) {
-    document.querySelectorAll('.sd-tab-btn').forEach(function(btn) {
+    var _sdRoot = _sdContainer || document;
+    _sdRoot.querySelectorAll('.sd-tab-btn').forEach(function(btn) {
         btn.classList.toggle('sd-tab-btn--active', btn.dataset.lens===lens);
     });
-    document.querySelectorAll('.sd-lens-panel').forEach(function(panel) {
+    _sdRoot.querySelectorAll('.sd-lens-panel').forEach(function(panel) {
         panel.style.display = (panel.dataset.lens===lens) ? 'block' : 'none';
     });
 }
@@ -63,9 +67,7 @@ function _sdActivateTab(lens) {
 function _sdShellHTML(title) {
     var song = (typeof allSongs!=='undefined') ? allSongs.find(function(s){return s.title===title;}) : null;
     var band=song?(song.band||''):'', key=song?(song.key||''):'', bpm=song?(song.bpm||''):'';
-    var pills = (key?'<span class="sd-meta-pill">🔑 '+_sdEsc(key)+'</span>':'')+
-                (bpm?'<span class="sd-meta-pill">🥁 '+_sdEsc(String(bpm))+' BPM</span>':'')+
-                (band?'<span class="sd-meta-pill sd-band-pill '+band.toLowerCase()+'">'+_sdEsc(band)+'</span>':'');
+    var pills = (band?'<span class="sd-meta-pill sd-band-pill '+band.toLowerCase()+'">'+_sdEsc(band)+'</span>':'');
     var tabs = SD_LENSES.map(function(l) {
         return '<button class="sd-tab-btn" data-lens="'+l.id+'" onclick="switchLens(\''+l.id+'\')">'+
                '<span class="sd-tab-icon">'+l.icon+'</span>'+
@@ -98,7 +100,7 @@ function _sdSkeleton() {
 
 // ── Band Lens ─────────────────────────────────────────────────────────────────
 async function _sdPopulateBandLens(title) {
-    var panel = document.querySelector('.sd-lens-panel[data-lens="band"]');
+    var panel = (_sdContainer||document).querySelector('.sd-lens-panel[data-lens="band"]');
     if (!panel) return;
     panel.style.display = 'block';
     _sdBuildReadinessStrip(title);
@@ -144,53 +146,56 @@ async function _sdPopulateBandLens(title) {
         return '<option value="'+k+'"'+(metaKey===k?' selected':'')+'>'+(k||'—')+'</option>';
     }).join('');
 
+    var rc2=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
+    var members2=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
+    var songScores2=rc2[title]||{};
+    var allScores2=members2.map(function(m){return songScores2[m.key||m]||0;}).filter(function(v){return v>0;});
+    var avgReadiness=allScores2.length?Math.round((allScores2.reduce(function(a,b){return a+b;},0)/allScores2.length)*10)/10:0;
+    var gapMember=null,gapScore=99;
+    members2.forEach(function(m){var k=m.key||m,sc=songScores2[k]||0;if(sc>0&&sc<gapScore){gapScore=sc;gapMember=m.name||(k.charAt(0).toUpperCase()+k.slice(1));}});
+    var statusLabels={'prospect':'Prospect','wip':'Work in Progress','gig_ready':'Gig Ready','':'Not on Radar'};
+    var statusLabel=statusLabels[status]||status||'—';
+    var ytQuery=encodeURIComponent(title);
     panel.innerHTML =
         '<div class="sd-panel-inner">'+
-
-        // Song DNA
-        '<div class="sd-card">'+
-        '<div class="sd-card-title">🧬 Song DNA</div>'+
-        '<div class="sd-dna-grid">'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🎤 Lead</span>'+
-        '<select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select></label>'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🎯 Status</span>'+
-        '<select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select></label>'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🔑 Key</span>'+
-        '<select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select></label>'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🥁 BPM</span>'+
-        '<input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"></label>'+
-        '</div>'+
-        _sdSectionDots(sectionRatings)+
-        '</div>'+
-
-        // Practice Mode / Chart
-        '<div class="sd-card" style="cursor:pointer" onclick="openRehearsalMode(\'' + safeSong + '\')">' +
-        '<div class="sd-card-title">🧠 Practice Mode</div>' +
-        (chartText ? '<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 8px">' + _sdEsc(chartText.split('\n').slice(0,4).join('\n')) + '</pre>' : '') +
-        '<div style="display:flex;align-items:center;justify-content:space-between">' +
-        '<span style="font-size:0.82em;color:var(--text-muted)">' + (chartText ? 'Chart · Transpose · Brain Trainer' : 'Search charts · Paste · UG') + '</span>' +
-        '<span style="color:var(--accent-light);font-size:0.85em">→</span>' +
-        '</div></div>' +
-        // Readiness
+        '<div class="sd-card sd-intel-card">'+
+        '<div class="sd-card-title">🎯 Song Intelligence</div>'+
+        '<div class="sd-intel-grid">'+
+        '<div class="sd-intel-item"><div class="sd-intel-label">Band Readiness</div><div class="sd-intel-val">'+(avgReadiness||'—')+'<span class="sd-intel-unit"> / 5</span></div></div>'+
+        '<div class="sd-intel-item"><div class="sd-intel-label">Status</div><div class="sd-intel-val sd-intel-sm">'+_sdEsc(statusLabel)+'</div></div>'+
+        '<div class="sd-intel-item"><div class="sd-intel-label">Biggest Gap</div><div class="sd-intel-val sd-intel-sm">'+(gapMember?_sdEsc(gapMember)+' ('+gapScore+')':'—')+'</div></div>'+
+        '<div class="sd-intel-item"><div class="sd-intel-label">Last Played</div><div class="sd-intel-val sd-intel-sm" id="sd-last-played">—</div></div>'+
+        '</div></div>'+
         '<div class="sd-card">'+
         '<div class="sd-card-title">📊 Readiness</div>'+
         _sdRenderReadinessBlock(title,safeSong)+
         '</div>'+
-
-        // Crib Notes
-        '<div class="sd-card">'+
-        '<div class="sd-card-title">🎭 Stage Crib Notes</div>'+
-        _sdRenderCribNotes(cribData)+
+        '<div class="sd-card" style="padding:10px 14px">'+
+        '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song DNA</div>'+
+        '<div class="sd-dna-grid">'+
+        '<label class="sd-dna-item"><span class="sd-dna-label">🎤 Lead</span><select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select></label>'+
+        '<label class="sd-dna-item"><span class="sd-dna-label">🎯 Status</span><select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select></label>'+
+        '<label class="sd-dna-item"><span class="sd-dna-label">🔑 Key</span><select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select></label>'+
+        '<label class="sd-dna-item"><span class="sd-dna-label">🥁 BPM</span><input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"></label>'+
         '</div>'+
-
-        // Rehearsal Notes
+        _sdSectionDots(sectionRatings)+
+        '</div>'+
         '<div class="sd-card">'+
-        '<div class="sd-card-title">📝 Rehearsal Notes</div>'+
+        '<div class="sd-card-title">🧠 Practice Mode</div>'+
+        (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\\n').slice(0,4).join('\\n'))+'</pre>':'')+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Find Chart</button>'+
+        '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>'+
+        '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
+        '</div></div>'+
+        '<div class="sd-card">'+
+        '<div class="sd-card-title">📋 Band Notes</div>'+
+        '<div class="sd-notes-sub">Stage Crib Notes</div>'+
+        _sdRenderCribNotes(cribData)+
+        '<div class="sd-notes-sub" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">Rehearsal Notes</div>'+
         _sdRenderRehearsalNotes(rehearsalNotes)+
         '</div>'+
-
         '</div>';
-
     _sdBuildReadinessStrip(title);
 }
 
@@ -258,7 +263,7 @@ function _sdRenderRehearsalNotes(notesData) {
 }
 
 function _sdRenderReadinessBlock(title, safeSong) {
-    var rc=(typeof readinessCache!=='undefined')?readinessCache:{};
+    var rc=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
     var members=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
     var songScores=rc[title]||{};
     var myKey=typeof getCurrentMemberKey==='function'?getCurrentMemberKey():null;
@@ -268,23 +273,27 @@ function _sdRenderReadinessBlock(title, safeSong) {
         var score=songScores[key]||0, pct=score?Math.round((score/5)*100):0;
         var color=score>=4?'#10b981':score>=3?'#f59e0b':score>0?'#ef4444':'rgba(255,255,255,0.1)';
         var isMe=myKey&&key===myKey;
-        var slider=isMe?'<input type="range" min="1" max="5" step="1" value="'+(score||3)+'" '+
+        var barId='sd-bar-'+key, lblId='sd-lbl-'+key;
+        var RDEFS=['','🔴 Never played it','🟠 Know the basics','🟡 Getting there','🟢 Almost there','⭐ Gig ready'];
+        var tipTitle=RDEFS[score]||'Not rated — slide to set';
+        var slider=isMe?'<input type="range" min="0" max="5" step="1" value="'+(score!=null&&score!==''?score:0)+'" '+
                         'style="width:80px;accent-color:var(--accent)" '+
-                        'title="Set your readiness" '+
+                        'title="'+tipTitle+'" '+
+                        'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'\',\'🔴 Never played it\',\'🟠 Know the basics\',\'🟡 Getting there\',\'🟢 Almost there\',\'⭐ Gig ready\'];var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
                         'onchange="sdSaveReadiness(\''+safeSong+'\',\''+key+'\',this.value)">':'';
         return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
                '<span style="font-size:0.82em;font-weight:'+(isMe?'800':'600')+';color:var(--text);min-width:52px">'+_sdEsc(name)+'</span>'+
                '<div style="flex:1;height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">'+
-               '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:3px;transition:width 0.4s ease"></div></div>'+
-               '<span style="font-size:0.78em;font-weight:700;color:'+color+';min-width:22px;text-align:right">'+(score||'—')+'</span>'+
+               '<div id="'+barId+'" style="height:100%;width:'+pct+'%;background:'+color+';border-radius:3px;transition:width 0.4s ease"></div></div>'+
+               '<span id="'+lblId+'" style="font-size:0.78em;font-weight:700;color:'+color+';min-width:22px;text-align:right">'+(score||'—')+'</span>'+
                slider+'</div>';
     }).join('')+'</div>';
 }
 
 function _sdBuildReadinessStrip(title) {
-    var strip=document.getElementById('sd-readiness-strip');
+    var strip=(_sdContainer||document).querySelector('#sd-readiness-strip');
     if (!strip) return;
-    var rc=(typeof readinessCache!=='undefined')?readinessCache:{};
+    var rc=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
     var members=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
     var songScores=rc[title]||{};
     var pills=members.map(function(m){
@@ -292,7 +301,7 @@ function _sdBuildReadinessStrip(title) {
         var score=songScores[key];
         var color=score?(score>=4?'#10b981':score>=3?'#f59e0b':'#ef4444'):'rgba(255,255,255,0.1)';
         return '<span class="sd-readiness-pill" style="background:'+color+'" title="'+_sdEsc(name)+'">'+
-               name.charAt(0)+':'+(score||'—')+'</span>';
+               (function(n){var p=n.trim().split(/\s+/);return p.length>1?p[0].charAt(0)+p[p.length-1].charAt(0):p[0].charAt(0);})(name)+':'+(score||'—')+'</span>';
     }).join('');
     strip.innerHTML='<div class="sd-readiness-pills">'+pills+'</div>';
 }
@@ -310,7 +319,7 @@ window.sdUpdateSongStatus = function(v) {
     if (!_sdCurrentSong) return;
     if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'song_status', { status: v, updatedAt: new Date().toISOString() });
-        if (typeof statusCache !== 'undefined') statusCache[_sdCurrentSong] = v;
+        if (typeof GLStore !== 'undefined') { GLStore.getAllStatus()[_sdCurrentSong] = v; } else if (typeof statusCache !== 'undefined') { statusCache[_sdCurrentSong] = v; }
         if (typeof addStatusBadges === 'function') addStatusBadges();
         if (typeof showToast === 'function') showToast('Status saved');
     }
@@ -330,42 +339,16 @@ window.sdUpdateSongBpm = function(v) {
     }
 };
 window.sdSaveReadiness = function(songTitle, memberKey, val) {
-    var v = parseInt(val, 10);
-    if (isNaN(v) || v < 1 || v > 5) return;
-    var k = typeof sanitizeFirebasePath === 'function' ? sanitizeFirebasePath(songTitle) : songTitle;
-    var path = typeof bandPath === 'function' ? bandPath('songs/' + k + '/readiness/' + memberKey) : null;
-    if (!path || !firebaseDB) return;
-    firebaseDB.ref(path).set(v).then(function() {
-        // Update caches
-        if (typeof readinessCache !== 'undefined') {
-            if (!readinessCache[songTitle]) readinessCache[songTitle] = {};
-            readinessCache[songTitle][memberKey] = v;
-        }
-        // Persist to master file
-        if (typeof saveMasterFile === 'function' && typeof MASTER_READINESS_FILE !== 'undefined') {
-            saveMasterFile(MASTER_READINESS_FILE, readinessCache).catch(function(){});
-        }
-        // Update readiness index for home dashboard
-        try {
-            var indexPath = bandPath('meta/readinessIndex/' + k + '/' + memberKey);
-            firebaseDB.ref(indexPath).set(v);
-        } catch(ei) {}
-        // Invalidate home dashboard cache
-        if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
-        // Refresh chain links in song list
-        if (typeof requestAnimationFrame !== 'undefined' && typeof addReadinessChains === 'function') {
-            requestAnimationFrame(addReadinessChains);
-        }
+    if (typeof GLStore === 'undefined') { console.warn('[song-detail] GLStore not available'); return; }
+    GLStore.saveReadiness(songTitle, memberKey, val).then(function() {
         _sdBuildReadinessStrip(songTitle);
-        if (typeof showToast === 'function') showToast('Readiness saved');
-    }).catch(function() {
-        if (typeof showToast === 'function') showToast('Could not save readiness');
     });
 };
 
 // ── Listen Lens ───────────────────────────────────────────────────────────────
+window._sdPopulateListenLensPublic = function(title) { _sdPopulateListenLens(title); };
 async function _sdPopulateListenLens(title) {
-    var panel=document.querySelector('.sd-lens-panel[data-lens="listen"]');
+    var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="listen"]');
     if (!panel) return;
     var northStar=null, bestShot=null;
     try {
@@ -412,7 +395,7 @@ async function _sdPopulateListenLens(title) {
 
 // ── Learn Lens ────────────────────────────────────────────────────────────────
 async function _sdPopulateLearnLens(title) {
-    var panel=document.querySelector('.sd-lens-panel[data-lens="learn"]');
+    var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="learn"]');
     if (!panel) return;
     var tracks=null, tabs=null, covers=null;
     try {
@@ -449,7 +432,7 @@ function _sdLinkList(items, icon, emptyMsg) {
 
 // ── Sing Lens ─────────────────────────────────────────────────────────────────
 function _sdPopulateSingLens(title) {
-    var panel=document.querySelector('.sd-lens-panel[data-lens="sing"]');
+    var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="sing"]');
     if (!panel) return;
     if (typeof renderHarmonyLab==='function') {
         panel.innerHTML='<div class="sd-panel-inner"><div id="sd-harmony-lab-mount"></div></div>';
@@ -461,7 +444,7 @@ function _sdPopulateSingLens(title) {
 
 // ── Inspire Lens ──────────────────────────────────────────────────────────────
 function _sdPopulateInspireLens() {
-    var panel=document.querySelector('.sd-lens-panel[data-lens="inspire"]');
+    var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="inspire"]');
     if (!panel) return;
     panel.innerHTML='<div class="sd-panel-inner"><div class="sd-card sd-coming-soon"><div class="sd-cs-icon">✨</div><div class="sd-cs-title">Inspire</div><div class="sd-cs-desc">Mood clips, alternate interpretations, and creative references — coming soon.</div></div></div>';
 }
@@ -490,12 +473,12 @@ if (typeof pageRenderers!=='undefined') {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 function _sdInjectStyles(){
-    if(document.getElementById('sd-styles')) return;
+    if((_sdContainer||document).querySelector('#sd-styles')) return;
     var s=document.createElement('style');
     s.id='sd-styles';
     s.textContent='.song-detail-page{max-width:800px;margin:0 auto;padding:0 0 80px;opacity:0;transform:translateY(12px);transition:opacity 0.25s ease,transform 0.25s ease}'+
-    '#page-songdetail.sd-entered .song-detail-page{opacity:1;transform:none}'+
-    '.sd-header{padding:14px 16px 0;background:var(--bg-card,#1e293b);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));position:sticky;top:0;z-index:50;backdrop-filter:blur(12px)}'+
+    '.sd-entered .song-detail-page{opacity:1;transform:none}'+
+    '.sd-header{padding:14px 16px 0;background:var(--bg-card,#1e293b);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);border-radius:12px 12px 0 0}'+
     '.sd-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}'+
     '.sd-back-btn{background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--text-muted,#94a3b8);padding:5px 12px;border-radius:20px;font-size:0.82em;font-weight:600;cursor:pointer;transition:all 0.15s}'+
     '.sd-back-btn:hover{background:rgba(255,255,255,0.06);color:var(--text,#f1f5f9)}'+
@@ -511,9 +494,9 @@ function _sdInjectStyles(){
     '.sd-tab-btn:hover{color:var(--text,#f1f5f9);background:rgba(255,255,255,0.03)}'+
     '.sd-tab-btn--active{color:var(--accent,#667eea);border-bottom-color:var(--accent,#667eea)}'+
     '.sd-tab-icon{font-size:1.15em}.sd-tab-label{font-size:0.7em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}'+
-    '.sd-panels{padding:14px}.sd-lens-panel{min-height:200px}'+
+    '.sd-panels{padding:12px 0}.sd-lens-panel{min-height:200px}'+
     '.sd-panel-inner{display:flex;flex-direction:column;gap:12px}'+
-    '.sd-card{background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:12px;padding:16px}'+
+    '.sd-card{background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:12px;padding:16px;margin:0 0 12px}'+
     '.sd-card-title{font-size:0.82em;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted,#94a3b8);margin-bottom:12px;display:flex;align-items:center;gap:8px}'+
     '.sd-title-badge{font-size:0.78em;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(102,126,234,0.15);color:#818cf8;text-transform:none;letter-spacing:0}'+
     '.sd-title-badge--gold{background:rgba(251,191,36,0.15);color:#fbbf24}'+
@@ -527,7 +510,17 @@ function _sdInjectStyles(){
     '.sd-cs-title{font-size:1.1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:6px}'+
     '.sd-cs-desc{font-size:0.88em;color:var(--text-muted,#94a3b8);margin-bottom:10px}'+
     '.sd-skeleton-pulse{background:linear-gradient(90deg,rgba(255,255,255,0.06) 25%,rgba(255,255,255,0.1) 50%,rgba(255,255,255,0.06) 75%);background-size:200% 100%;animation:sdSkeletonPulse 1.4s infinite;border-radius:4px;margin-bottom:8px}'+
-    '@keyframes sdSkeletonPulse{0%{background-position:200% 0}100%{background-position:-200% 0}}';
+    '@keyframes sdSkeletonPulse{0%{background-position:200% 0}100%{background-position:-200% 0}}'+
+    '.sd-intel-card{background:linear-gradient(135deg,rgba(102,126,234,0.07),rgba(118,75,162,0.07));border-color:rgba(102,126,234,0.18)}'+
+    '.sd-intel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;padding:2px 0}'+
+    '.sd-intel-item{display:flex;flex-direction:column;gap:3px}'+
+    '.sd-intel-label{font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim,#475569)}'+
+    '.sd-intel-val{font-size:1.1em;font-weight:800;color:var(--text,#f1f5f9)}'+
+    '.sd-intel-sm{font-size:0.88em;font-weight:700}'+
+    '.sd-intel-unit{font-size:0.6em;font-weight:600;color:var(--text-muted)}'+
+    '.sd-pm-btn{padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;transition:all 0.15s;white-space:nowrap}'+
+    '.sd-pm-btn:hover{background:rgba(102,126,234,0.15);border-color:rgba(102,126,234,0.35);color:#818cf8}'+
+    '.sd-notes-sub{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim,#475569);margin-bottom:8px}';
     document.head.appendChild(s);
 }
 

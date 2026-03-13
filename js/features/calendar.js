@@ -398,6 +398,7 @@ async function calSaveEvent(editIdx) {
             : (document.getElementById('calVenueCustom')?.value || null),
     };
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
+    if (ev.type === 'gig' && !ev.venue) { alert('Gig events require a venue'); return; }
     let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     if (editIdx !== undefined) {
         // Find event by position in upcoming sorted list

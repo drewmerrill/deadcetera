@@ -201,12 +201,16 @@ setTimeout(function () { editGig(idx); }, 400);
 ### 1. Command Center / Home Dashboard
 Operational control panel rather than passive dashboard.
 
-As of build 20260312, the home dashboard renders a **Mission Board** layout:
-- `renderHdMissionStrip` — narrative sentence + readiness status badge (replaces chip strip)
-- `_renderHdHeroGig` — Command Card: readiness badge, coaching sentence, countdown, event-specific CTAs
-- `renderHdYourPrep` — Action Anchor: top weak song callout, event tie-in, "+N more need attention"
-- `renderHdBandStatus` — Band Intelligence: 3-4 interpreted lines (replaces table-style rows)
-- `renderHdQuickActions` — demoted compact utility strip
+`js/features/home-dashboard.js` (~93k, build 20260312-102803) — **Band Mission Dashboard**.
+
+Active render functions:
+- `_renderHdHeroGig` — Band Mission Card: large readiness % (32px glow), biggest risk pill with avg score, coaching sentence (band voice), countdown inline in date row, "Open Gig →" CTA
+- `renderHdYourPrep` — YOUR PREP: score chip, top weak song, "Practice Now →" button with green glow
+- `renderHdBandStatus` — BAND STRATEGY: 3-4 interpreted band state lines
+- `renderHdNextRehearsalGoal` — NEXT REHEARSAL GOAL: focus songs with mini readiness bars
+- `renderHdSongsNeedingWork` — SONGS NEEDING WORK: full-width grid, CRITICAL/NEEDS WORK urgency badges, clickable rows
+
+**Removed functions** (do not reference): `renderHdMissionStrip`, `renderHdQuickActions`
 
 Derivation helpers (all in `home-dashboard.js`):
 - `deriveHdReadinessLabel(pct)` — GIG READY / MINOR TUNE-UP NEEDED / NEEDS REHEARSAL / CRITICAL PREP
@@ -215,7 +219,8 @@ Derivation helpers (all in `home-dashboard.js`):
 - `deriveHdPrepFocus(bundle)` — top personal weak song + reason + event tie-in
 - `deriveHdBandIntel(bundle)` — 3-4 interpreted band state lines
 
-**CSS styling pass pending** for new BEM classes introduced in this layout.
+CSS injected via two IIFEs: `_injectHomeDashboardCSS` and `hd-mission-css` block.
+`home-dashboard-cc.js` patches `renderHomeDashboard` at load time — guard at top prevents crash if home-dashboard.js loads late.
 
 ### 2. Song Intelligence System
 Each song is the hub connecting:

@@ -39,7 +39,8 @@ function venueShortLabel(v) {
 async function deleteGig(idx) {
     if (!requireSignIn()) return;
     if (!confirm('Delete this gig? This cannot be undone.')) return;
-    const data = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const raw = window._cachedGigs || toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const data = [...raw];
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'gigs', data);
     showToast('🗑️ Gig deleted');
@@ -47,12 +48,11 @@ async function deleteGig(idx) {
 }
 
 async function editGig(idx) {
-    const gigData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const gigData = window._cachedGigs || toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const g = gigData[idx];
     if (!g) return;
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    window._cachedSetlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${venueShortLabel(v)}</option>`).join('');
     const el = document.getElementById('gigsList');
@@ -173,6 +173,7 @@ async function renderGigsMap() {
             {featureType:'poi',elementType:'geometry',stylers:[{color:'#263144'}]},
         ],
         disableDefaultUI: false,
+        gestureHandling: 'greedy',
         zoomControl: true,
         streetViewControl: false,
         mapTypeControl: false,
@@ -208,7 +209,7 @@ async function renderGigsMap() {
 
         // Build info window content
         var v = venueLookup[g.venue] || {};
-        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent((v.address||g.venue||''));
+        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent((v.address||v.name||g.venue||''));
         var statusBadge = isUpcoming
             ? '<span style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">Upcoming</span>'
             : '<span style="background:rgba(129,140,248,0.2);color:#818cf8;border:1px solid rgba(129,140,248,0.3);border-radius:4px;padding:1px 6px;font-size:11px">Past</span>';
@@ -278,19 +279,25 @@ function renderGigsPage(el) {
         <button class="btn btn-ghost" onclick="seedGigData()" title="Import past gigs, setlists, and venues from master spreadsheet">📥 Import Spreadsheet Data</button>
     </div>
     <div class="app-card" style="margin-bottom:16px;padding:0;overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;user-select:none" onclick="toggleGigsMap()">
             <span style="font-weight:700;font-size:0.9em">🗺 Gig Map</span>
-            <div style="display:flex;gap:4px">
-                <button id="gmfAll" onclick="gigsMapSetFilter('all',this)" style="background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">All</button>
-                <button id="gmfUpcoming" onclick="gigsMapSetFilter('upcoming',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Upcoming</button>
-                <button id="gmfPast" onclick="gigsMapSetFilter('past',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Past</button>
+            <div style="display:flex;align-items:center;gap:6px">
+                <div id="gmFilterBtns" style="display:none;gap:4px">
+                    <button id="gmfAll" onclick="event.stopPropagation();gigsMapSetFilter('all',this)" style="background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">All</button>
+                    <button id="gmfUpcoming" onclick="event.stopPropagation();gigsMapSetFilter('upcoming',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Upcoming</button>
+                    <button id="gmfPast" onclick="event.stopPropagation();gigsMapSetFilter('past',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Past</button>
+                </div>
+                <span id="gigsMapChevron" style="color:var(--text-dim);font-size:0.8em;transition:transform 0.2s">▼</span>
             </div>
         </div>
-        <div id="gigsMapContainer" style="height:360px;background:rgba(0,0,0,0.3)"></div>
+        <div id="gigsMapCollapsible" style="display:none">
+            <div style="height:1px;background:var(--border)"></div>
+            <div id="gigsMapContainer" style="height:320px;background:rgba(0,0,0,0.3)"></div>
+        </div>
     </div>
     <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
     loadGigs();
-    setTimeout(renderGigsMap, 300);
+    // Map renders on expand — see toggleGigsMap()
 }
 
 async function gigLaunchLinkedSetlist(setlistName) {
@@ -305,8 +312,9 @@ async function loadGigs() {
     const rawData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const el = document.getElementById('gigsList');
     if (!el || rawData.length === 0) return;
+    window._cachedGigs = rawData;
     const data = rawData.map((g, origIdx) => ({...g, _origIdx: origIdx})).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    el.innerHTML = data.map((g, i) => `<div class="app-card">
+    el.innerHTML = data.map((g, i) => `<div class="app-card" data-gig-idx="${g._origIdx}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="flex:1">
                 <h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
@@ -322,6 +330,7 @@ async function loadGigs() {
             </div>
             <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
                 <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+                <button class="btn btn-sm btn-ghost" onclick="gigShowDirections(${g._origIdx})" title="Directions" style="color:#60a5fa">📍</button>
                 <button class="btn btn-sm btn-ghost" onclick="editGig(${g._origIdx})" title="Edit">✏️</button>
                 <button class="btn btn-sm btn-ghost" onclick="loadGigPayouts(${g._origIdx})" title="Payout" style="color:#22c55e">💰</button>
                 <button class="btn btn-sm btn-ghost" onclick="carePackageSend('gig')" title="Send Care Package" style="color:#fbbf24">🪂</button>
@@ -341,7 +350,6 @@ async function addGig() {
     const el = document.getElementById('gigsList');
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    window._cachedSetlists.sort((a,b) => (b.date||''). localeCompare(a.date||''));
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
     const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}">${venueShortLabel(v)}</option>`).join('');
     el.innerHTML = `<div class="app-card">
@@ -716,6 +724,9 @@ function gmOpenPocket() {
 function closeGigMode() {
     var ov = document.getElementById('gmOverlay');
     if (ov) ov.classList.remove('gm-visible');
+    var gmSt = document.getElementById('gm-injected-style');
+    if (gmSt) gmSt.remove();
+    _gmOverlayBuilt = false;
     if (typeof closeGigPocketMeter === 'function') closeGigPocketMeter();
     var scrollY = document.body.dataset.scrollY || '0';
     document.body.style.position = '';
@@ -955,6 +966,7 @@ function _gmEnsureOverlay() {
     if (document.getElementById('gmOverlay')) return;
 
     var style = document.createElement('style');
+    style.id = 'gm-injected-style';
     style.textContent = [
         '#gmOverlay{display:none;position:fixed;inset:0;z-index:3000;background:#0a0f1e;flex-direction:column;overflow:hidden}',
         '#gmOverlay.gm-visible{display:flex!important}',

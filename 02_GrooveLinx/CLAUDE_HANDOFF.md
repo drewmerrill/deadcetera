@@ -104,7 +104,8 @@ The Command Center / Home Dashboard should answer:
 - `02_GrooveLinx/notes/page_file_map.md`
 
 ## Top Open Bugs (priority order)
-1. **UAT-088** — Share links open stale cached version → deferred, needs investigation
+1. **Rehearsal Cockpit smoke test** — navigate Rehearsal → Intel tab: verify Start Rehearsal Mode, Pocket Meter on Intel tab, Priority Queue severity badges (patched 20260312 but never confirmed)
+2. **UAT-088** — Share links open stale cached version → deferred, needs investigation
 2. **FEAT-075** — Sub musicians by instrument and availability → app.js (High)
 3. **FEAT-079** — Band Members single source of truth → app.js (architectural, High)
 4. **UAT-OPEN** — Pocket Meter gear panel open/close verification needed
@@ -158,7 +159,31 @@ The Command Center / Home Dashboard should answer:
 - Archive `claude_memory_audit.md` and `claude_gems_extract.md` after adoption into canonical docs.
 - Keep repo `02_GrooveLinx` as canonical and stop editing duplicate Command Center project docs.
 
-## Recently Closed (session 20260312)
+## Recently Closed (session 20260312-evening)
+- **Song Drawer system** — new `song-drawer.js`. `openSongDrawer(title)` global, 420px slide-in from right. Reuses `renderSongDetail(title, containerOverride)`. S-key + ⚡ View button triggers. ESC/backdrop/close button dismiss. Scroll lock via body position:fixed.
+- **song-detail.js containerOverride** — `_sdContainer` module var; all querySelector/getElementById scoped to active container. `.sd-entered` decoupled from `#page-songdetail`. Drawer can host full song detail with no duplication.
+- **⚡ View hover button** — `position:absolute; right:4px; top:50%`; fully opaque `#0f172a` background cleanly covers band badge on hover. Hidden by default, appears on `.song-item:hover`. song-item must have `position:relative !important`.
+- **app.js duplicate song renderer** — song rows rendered at app.js line ~971, NOT songs.js renderSongs(). Always patch BOTH files for song row changes.
+- **Glass UI** — `app-card` gets `backdrop-filter:blur(10px)`, inset highlight `rgba(255,255,255,0.08)`, drop shadow. Body radial gradient background.
+- **Readiness glow pulse** — `hdGlowPulse` keyframe animation on readiness % hero number in home dashboard.
+- **Thin scrollbar** — 4px webkit scrollbar + `scrollbar-width:thin` on html/body.
+- **UAT-101–104** — logged in uat_bug_log.md.
+
+## Recently Closed (session 20260312-afternoon)
+- UX audit session: heatmap name color, home dashboard visual polish, page restore on refresh.
+- **Heatmap name color** — CSS var()/specificity battle against app-shell.css unwinnable. Fix: set `el.style.setProperty('color', ...)` inline directly. Cleanup removes inline color+font-weight on toggle off. `app.js` lines ~13031/13046.
+- **Page restore on refresh** — `navigation.js` restore poll: do NOT call `showPage('songdetail')` — it triggers `pageRenderers.songdetail` which calls `renderSongDetail()` with no arg and bails to songs page. Fix: manually `querySelectorAll('.app-page').hidden`, unhide `#page-songdetail`, then call `renderSongDetail(lastSong)`. Always show home at 50ms first; restore overtops it after allSongs ready.
+- **CSS inject auto-bust** — All three main CSS inject IIFEs now use `BUILD_VERSION`-suffixed IDs with `querySelectorAll` sweep before guard. `home-dashboard.js` IIFEs fall back to `v3`/`v4` because `BUILD_VERSION` is undefined at module load time (declared in `app.js` line 10, but `home-dashboard.js` loads as separate module). Acceptable until global init order is fixed.
+- **Readiness progress bar** — HTML correct, CSS correct, but `hd-hero__pct-track` had `flex:1` in column flex context = `width:0`. Fix: `width:100%` on track. `js/features/home-dashboard.js` lines ~1621-1622.
+- **app-shell.css conflict** — `.song-item .song-name` in app-shell.css overrides injected styles at equal specificity. Always check app-shell.css before adding song-row CSS rules.
+
+## Recently Closed (session 20260312-morning)
+- Home dashboard fully rebuilt as Band Mission Dashboard. Wiped to 0 bytes during patch; recovered via Claude downloadable artifact. Safe recovery path: Claude presents restore `.js` as downloadable → Drew downloads + `cp` to repo → `gldeploy`. Never use heredoc or `python3 -c` with multiline JS containing emoji/escapes.
+- Band Mission Dashboard (build 20260312-102803): readiness % hero bar (32px bold, glow), biggest risk pill with avg score, coaching voice (band tone), Songs Needing Work (CRITICAL/NEEDS WORK urgency badges), Next Rehearsal Goal with mini readiness bars per song, Band Strategy card, days-away inline next to gig date, deeper mission card gradient, Practice Now button with green glow.
+- All patches delivered as downloadable `.py` artifacts and run via `python3 ~/Downloads/patch.py` — this is now the canonical patch workflow.
+- home-dashboard.js current state: 93k+ chars, build 20260312-102803. If wiped again: Claude can regenerate from session context as downloadable artifact.
+
+## Recently Closed (session 20260312-early)
 - Home Dashboard Mission Board upgrade (build 20260312-004735) — `home-dashboard.js` replaced chip strip with narrative mission strip, hero command card (readiness badge + coaching sentence + countdown + "Start Rehearsal Prep" tertiary CTA), YOUR PREP action anchor (top song callout + event tie-in + "+N more"), BAND INTELLIGENCE section (replaces BAND STATUS), compact utility Quick Actions strip, activity feed capped at 3 items. 5 new derivation helpers: `deriveHdReadinessLabel`, `deriveHdConfidenceTone`, `deriveHdMissionSummary`, `deriveHdPrepFocus`, `deriveHdBandIntel`.
 - **CSS styling pass pending:** New classes not yet styled: `hd-strip--narrative`, `hd-strip__line1/2`, `hd-strip__status-badge`, `hd-hero__ready-badge`, `hd-hero__coach`, `hd-hero__countdown`, `hd-hero__title-row`, `hd-intel__row/label/value`, `hd-bucket__focus-song`, `hd-bucket__reason-line`, `hd-bucket__event-tie`, `hd-quick__btn--compact`, `hd-quick__grid--compact`, `hd-bucket--utility`.
 - app.js modified warning — confirmed expected/harmless. `push.py` stamps build version into local `app.js` post-commit; local always diverges from HEAD. Not a bug.

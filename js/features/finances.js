@@ -52,8 +52,9 @@ async function loadFinances() {
     }
     if (data.length === 0) return;
     data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    var catLabels={gig_pay:'Gig Pay',merch:'Merch',tips:'Tips',equipment:'Equipment',rehearsal:'Rehearsal Space',promo:'Promotion',travel:'Travel',other:'Other'};
     el.innerHTML = '<div style="display:grid;grid-template-columns:90px 1fr 80px 70px;gap:6px;padding:6px 10px;font-size:0.7em;color:var(--text-dim);font-weight:600;text-transform:uppercase"><span>Date</span><span>Description</span><span>Amount</span><span></span></div>' +
-        data.map(function(t, idx) { return '<div style="display:grid;grid-template-columns:90px 1fr 80px 70px;gap:6px;padding:8px 10px;font-size:0.85em;border-bottom:1px solid var(--border);align-items:center"><span style="color:var(--text-dim)">' + (t.date || '') + '</span><span>' + (t.description || '') + '</span><span style="color:' + (t.type==='income'?'var(--green)':'var(--red)') + ';font-weight:600">' + (t.type==='income'?'+':'-') + '$' + parseFloat(t.amount||0).toFixed(2) + '</span><span style="display:flex;align-items:center;gap:4px"><span style="font-size:0.75em;color:var(--text-dim)">' + (t.category || '') + '</span><button onclick="deleteTransaction(' + idx + ')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85em;padding:2px" title="Delete">🗑️</button></span></div>'; }).join('');
+        data.map(function(t, idx) { return '<div style="display:grid;grid-template-columns:90px 1fr 80px 70px;gap:6px;padding:8px 10px;font-size:0.85em;border-bottom:1px solid var(--border);align-items:center"><span style="color:var(--text-dim)">' + (t.date || '') + '</span><span>' + (t.description || '') + '</span><span style="color:' + (t.type==='income'?'var(--green)':'var(--red)') + ';font-weight:600">' + (t.type==='income'?'+':'-') + '$' + parseFloat(t.amount||0).toFixed(2) + '</span><span style="display:flex;align-items:center;gap:4px"><span style="font-size:0.75em;color:var(--text-dim)">' + (catLabels[t.category] || t.category || '') + '</span><button onclick="deleteTransaction(' + idx + ')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85em;padding:2px" title="Delete">🗑️</button></span></div>'; }).join('');
 }
 
 async function setStartingBalance() {
@@ -78,8 +79,12 @@ async function saveStartingBalance() {
 
 async function deleteTransaction(index) {
     var existing = toArray(await loadBandDataFromDrive('_band', 'finances') || []);
-    if (index < 0 || index >= existing.length) return;
-    existing.splice(index, 1);
+    var sorted = existing.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+    var target = sorted[index];
+    if (!target) return;
+    var realIdx = existing.indexOf(target);
+    if (realIdx < 0) return;
+    existing.splice(realIdx, 1);
     await saveBandDataToDrive('_band', 'finances', existing);
     showToast('🗑️ Transaction deleted');
     loadFinances();

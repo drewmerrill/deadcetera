@@ -38,7 +38,7 @@ async function renderPracticePage(el) {
         '  <h1>🎯 Practice</h1>' +
         '  <p>Woodshed and your practice mixes</p>' +
         '</div>' +
-        '<div style="display:flex;gap:0;margin:0 0 16px;border-bottom:2px solid rgba(255,255,255,0.08)">' +
+        '<div class="pm-tab-strip">' +
         '  <button id="pm-tab-focus" class="pm-tab pm-tab--active" onclick="pmSwitchTab(\'focus\')">🎯 Focus</button>' +
         '  <button id="pm-tab-mixes" class="pm-tab" onclick="pmSwitchTab(\'mixes\')">🎵 Mixes</button>' +
         '</div>' +
@@ -79,12 +79,12 @@ async function _pmRenderFocusTab() {
     var thisWeek    = songList.filter(function(s){return statusMap[s.title]==='this_week';});
     var needsPolish = songList.filter(function(s){
         var st = statusMap[s.title];
-        return st === 'needs_polish' || st === 'wip';
+        return st === 'needs_polish' || st === 'wip' || st === 'needsPolish';
     });
     var gigReady    = songList.filter(function(s){return statusMap[s.title]==='gig_ready';});
     var onDeck      = songList.filter(function(s){
         var st = statusMap[s.title];
-        return st === 'on_deck' || st === 'prospect';
+        return st === 'on_deck' || st === 'prospect' || st === 'onDeck';
     });
 
     function songRow(s, badge) {
@@ -151,7 +151,7 @@ async function _pmRenderFocusTab() {
 async function _fillPracticeWeakSongs() {
     var el = document.getElementById('practice-weak-songs');
     if (!el) return;
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     if (!Object.keys(rc).length) return;
     var THRESH = 3, now = Date.now(), actLog = [], lastSeen = {};
     try { actLog = await window.loadMasterFile('_master_activity_log.json') || []; } catch(e) {}
@@ -189,7 +189,7 @@ async function _fillPracticeWeakSongs() {
 async function _fillPracticeReadiness() {
     var el = document.getElementById('practice-readiness-list');
     if (!el) return;
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     var myKey = typeof getCurrentMemberReadinessKey === 'function' ? getCurrentMemberReadinessKey() : null;
     if (!myKey) {
         el.innerHTML='<div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:8px">Sign in to see your readiness scores.</div>';
@@ -527,7 +527,7 @@ window.pmCancelEdit = function pmCancelEdit() {
 
 // ── Auto-generate weak mix ────────────────────────────────────────────────────
 window.pmGenerateWeakMix = async function pmGenerateWeakMix() {
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var weak = songs
         .map(function(s){
@@ -587,6 +587,22 @@ function _pmEsc(str) {
 // ── Status map ────────────────────────────────────────────────────────────────
 async function loadSongStatusMap() {
     try {
+        // Primary: read from GLStore.getAllStatus() (statusCache)
+        var cached = (window.GLStore && typeof GLStore.getAllStatus === 'function')
+            ? GLStore.getAllStatus() : null;
+        if (cached && typeof cached === 'object' && Object.keys(cached).length) {
+            var map = {};
+            Object.keys(cached).forEach(function(k) {
+                var raw = cached[k];
+                if (raw && typeof raw === 'string') {
+                    map[k] = raw.toLowerCase().replace(/\s+/g, '_');
+                } else if (raw && raw.status) {
+                    map[k] = raw.status.toLowerCase().replace(/\s+/g, '_');
+                }
+            });
+            return map;
+        }
+        // Fallback: try band-level key
         var allStatuses = await loadBandDataFromDrive('_band','song_statuses');
         if (!allStatuses||typeof allStatuses!=='object') return {};
         var map={};
@@ -606,9 +622,9 @@ function _pmInjectStyles(){
     s.id='pm-styles';
     s.textContent=
     /* Tab strip container */
-    '.pm-tab-strip{display:flex;gap:0;margin:0 0 16px;border-bottom:2px solid rgba(255,255,255,0.08);background:transparent;}'+
+    '.pm-tab-strip{display:flex;gap:0;margin:0 0 16px;border-bottom:2px solid rgba(255,255,255,0.08);background:transparent;width:100%;}'+
     /* Individual tab */
-    '.pm-tab{padding:10px 20px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--text-muted,#94a3b8);cursor:pointer;font-weight:700;font-size:0.88em;transition:all 0.15s;flex-shrink:0;font-family:inherit;-webkit-appearance:none;appearance:none;}'+
+    '.pm-tab{flex:1;padding:12px 8px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--text-muted,#94a3b8);cursor:pointer;font-weight:700;font-size:0.88em;transition:all 0.15s;font-family:inherit;-webkit-appearance:none;appearance:none;text-align:center;}'+
     '.pm-tab:hover{color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);}'+
     '.pm-tab--active{color:var(--accent,#667eea)!important;border-bottom-color:var(--accent,#667eea)!important;background:transparent!important;-webkit-text-fill-color:var(--accent,#667eea)!important;}';
     document.head.appendChild(s);

@@ -1433,7 +1433,7 @@ async function renderBestShotOverviewList() {
         var statusBadge = '';
         if (status === 'Gig Ready') statusBadge = '<span style="font-size:0.65em;background:rgba(16,185,129,0.15);color:#10b981;padding:1px 5px;border-radius:4px">✅</span>';
         else if (status === 'This Week') statusBadge = '<span style="font-size:0.65em;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:4px">🎯</span>';
-        html += '<div class="list-item" onclick="showPage(\'songs\');setTimeout(function(){selectSong({title:\'' + song.title.replace(/'/g, "\\'") + '\'});document.getElementById(\'step3bestshot\')?.scrollIntoView({behavior:\'smooth\'})},300)" style="cursor:pointer;padding:10px 12px">';
+        html += '<div class="list-item" onclick="showPage(\'songs\');setTimeout(function(){selectSong(\'' + song.title.replace(/'/g, "\\'") + '\');document.getElementById(\'step3bestshot\')?.scrollIntoView({behavior:\'smooth\'})},300)" style="cursor:pointer;padding:10px 12px">';
         html += '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.88em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + song.title + '</div>';
         html += '<div style="font-size:0.72em;color:var(--text-dim)">' + (song.artist || '') + '</div></div>';
         html += statusBadge + '</div></div>';
