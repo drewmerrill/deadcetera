@@ -218,7 +218,8 @@ window.setupSearchAndFilters = function setupSearchAndFilters() {
 
 /**
  * Select a song by title: updates selectedSong, highlights the row,
- * reveals song-detail sections, and scrolls to step 2.
+ * and opens the song in the right panel (index-dev.html) or falls back
+ * to full-page navigation (index.html / production).
  *
  * @param {string} songTitle  Exact title matching an entry in allSongs
  */
@@ -228,11 +229,6 @@ window.selectSong = function selectSong(songTitle) {
         title: songTitle,
         band: (allSongs.find(function(s) { return s.title === songTitle; }) || {}).band || 'GD'
     };
-
-    var songData = allSongs.find(function(s) { return s.title === songTitle; });
-    var bandAbbr = songData ? songData.band : 'GD';
-    // getFullBandName is in app.js — resolved at call time
-    // var bandName = typeof getFullBandName === 'function' ? getFullBandName(bandAbbr) : bandAbbr;
 
     // Highlight selected row
     document.querySelectorAll('.song-item').forEach(function(item) {
@@ -245,28 +241,30 @@ window.selectSong = function selectSong(songTitle) {
         setTimeout(function() { clickedItem.style.boxShadow = ''; }, 600);
     }
 
-    // ── Navigate to 5-lens Song Detail page (Phase 2) ────────────────────
-    // showBandResources() still runs in the background so the legacy step-cards
-    // in page-songs remain populated as a fallback during the transition period.
+    // showBandResources() populates legacy step-cards in page-songs as a
+    // background task during the transition period. Harmless in panel mode.
     if (typeof showBandResources === 'function') showBandResources(songTitle);
 
-    // Navigate to the new Song Detail page immediately
-    if (typeof showPage === 'function') {
-        showPage('songdetail');
+    // ── Routing: right-panel shell (index-dev.html) vs full-page (index.html) ─
+    //
+    // Guard is window.glRightPanel.open — set only when gl-right-panel.js has
+    // loaded AND initialised. gl-right-panel.js is NOT loaded by index.html,
+    // so this check is a precise proxy for "dev shell is active".
+    //
+    // GLStore also loads in index.html, so GLStore existence alone is NOT a
+    // safe guard — it would break production song navigation.
+
+    if (window.glRightPanel && typeof window.glRightPanel.open === 'function') {
+        // Dev / BCC shell path (index-dev.html only).
+        // Fires gl-song-selected → gl-right-panel.js subscriber handles render.
+        // Does NOT call showPage(). Does NOT write glLastPage.
+        GLStore.selectSong(songTitle);
     } else {
-        // Fallback: reveal legacy step-cards in page-songs
-        var toShow = ['stepVersionHub','step3ref','step3bestshot','step4ref','step4cover','step5ref'];
-        toShow.forEach(function(id) {
-            document.getElementById(id)?.classList.remove('hidden');
-        });
-        if (typeof renderBestShotVsNorthStar === 'function') renderBestShotVsNorthStar(songTitle);
-        ['step3','step4','step5'].forEach(function(id) {
-            document.getElementById(id)?.classList.add('hidden');
-        });
-        document.getElementById('resetContainer')?.classList.add('hidden');
-        setTimeout(function() {
-            document.getElementById('step2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 500);
+        // Production path (index.html) — gl-right-panel.js is not loaded here.
+        // Full-page navigation as before.
+        if (typeof showPage === 'function') {
+            showPage('songdetail');
+        }
     }
 };
 
