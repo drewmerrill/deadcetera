@@ -265,16 +265,17 @@ Before starting Phase F, run `glhot showPage` to find all remaining `showPage('s
 
 ## RESTART PROMPT
 
-Read these files first, in order:
+Continue GrooveLinx development from the current handoff.
+Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
 
-Then:
-- Ask Drew to run `sync.py` and paste the output.
-- Continue exactly from the **Next Single Step** above.
+Then resume exactly from the **Next Single Step**.
+
 - Do not re-plan the project.
 - Do not broaden scope.
-- Resume Milestone 1 at the current phase only.
+- Resume Milestone 1 at Phase F only.
+- Before touching `navigation.js`, run `glhot showPage` to find all remaining `showPage('songdetail')` call sites.
 
 
