@@ -57,6 +57,25 @@ gldeploy "message"
 
 Never rely on stale local SHA cache after an `app.js` SHA mismatch.
 
+## Expected `git status` After Deploy
+
+After every `gldeploy`, these files will always show as **unstaged / modified** — this is normal and expected, not drift or a problem:
+
+```
+app.js
+app-dev.js
+index.html
+index-dev.html
+service-worker.js
+version.json
+help.js
+rehearsal-mode.js
+```
+
+`push.py` stamps a new `BUILD_VERSION` timestamp into each of these files on every deploy. Git sees them as modified because the stamp changed. They are not tracked changes that need committing — the stamped versions are already live on GitHub Pages.
+
+If you see **other** files in `git status` after a deploy, those are real uncommitted changes worth investigating.
+
 ## File Safety Rules
 
 - Prefer `patch.py` with file inputs over quote-heavy shell patches.
