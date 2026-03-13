@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260312-235531', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260313-214321', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260312-235531';
+var BUILD_VERSION = '20260313-214321';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -1024,34 +1024,12 @@ function setupSearchAndFilters() {
 }
 
 // ============================================================================
-// SONG SELECTION
+// SONG SELECTION — Phase E
+// selectSong() is owned by js/features/songs.js which loads before app-dev.js.
+// Removed from app-dev.js to prevent overwriting the canonical window.selectSong.
+// songs.js routes through GLStore → right panel in index-dev.html,
+// and falls back to showPage('songdetail') in index.html.
 // ============================================================================
-
-function selectSong(songTitle) {
-    // Update shared state
-    selectedSong = {
-        title: songTitle,
-        band: allSongs.find(s => s.title === songTitle)?.band || 'GD'
-    };
-
-    // Highlight selected row in song list
-    document.querySelectorAll('.song-item').forEach(item => {
-        item.classList.remove('selected');
-    });
-    const clickedItem = event?.target?.closest('.song-item');
-    if (clickedItem) {
-        clickedItem.classList.add('selected');
-        clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
-        setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
-    }
-
-    // Run showBandResources in background so legacy step-cards stay populated
-    // as a fallback during the Phase 2 transition period.
-    showBandResources(songTitle);
-
-    // Navigate to 5-lens Song Detail page
-    showPage('songdetail');
-}
 
 
 // ============================================================================

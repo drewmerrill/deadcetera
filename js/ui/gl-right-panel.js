@@ -122,6 +122,13 @@
 
     // Reset panel state
     _currentSong = null;
+
+    // Restore glSongDetailBack to its original navigation behaviour
+    // (panel override is only valid while a song is open in the panel).
+    window.glSongDetailBack = function () {
+      if (typeof showPage === 'function') showPage('songs');
+    };
+
     renderBandSnapshot();
   }
 
@@ -140,6 +147,17 @@
     // renderSongDetail — the workspace page has NOT changed.
     if (typeof renderSongDetail === 'function') {
       renderSongDetail(title, _content, { panelMode: true });
+
+      // TEMPORARY PANEL-MODE COMPATIBILITY PATCH
+      // song-detail.js exposes glSongDetailBack() which calls showPage('songs').
+      // In panel mode that would navigate the workspace away — wrong behaviour.
+      // We override it here, scoped only to this panel flow, so the ← Songs
+      // button closes the panel instead. close() restores the original below.
+      // This patch should be removed when song-detail.js gains native panel-mode
+      // awareness (future milestone).
+      window.glSongDetailBack = function () {
+        close();
+      };
     } else {
       // renderSongDetail not yet loaded — show a loading placeholder
       _content.innerHTML = [

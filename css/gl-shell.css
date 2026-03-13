@@ -64,6 +64,8 @@
   flex-shrink: 0;
   background: rgba(0, 0, 0, 0.15);
   min-height: 44px;
+  position: relative;   /* establish stacking context */
+  z-index: 60;          /* above sd-header z-index:50 — keeps ✕ always clickable */
 }
 
 .gl-rp-title {
@@ -103,6 +105,9 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Isolate stacking context so sd-header sticky positioning cannot
+     escape this container and paint over .gl-rp-header above it. */
+  isolation: isolate;
   /* Thin scrollbar consistent with app-shell.css */
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
@@ -120,11 +125,11 @@
   #gl-right-panel {
     position: fixed;
     right: 0;
-    top: 0;
+    top: 0;              /* full-screen overlay — intentionally covers topbar */
     bottom: 0;
     height: 100%;
     width: 0;
-    z-index: 500;          /* above topbar (z=1000 would cover it, 500 sits below) */
+    z-index: 1100;       /* above topbar (z≈1000) — panel is a true full-screen sheet on mobile */
     box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
   }
 
@@ -136,6 +141,22 @@
   /* On mobile the center workspace does NOT compress — panel overlays */
   #gl-shell > .main-content {
     transition: none;
+  }
+
+  /* Larger tap target for close button on mobile */
+  .gl-rp-close-btn {
+    padding: 8px 16px;
+    font-size: 1em;
+  }
+
+  /* DEV-ONLY: #gl-dev-banner is position:fixed z:99999 and 32px tall.
+     On mobile the panel starts at top:0 and the banner covers the header.
+     Shift the panel down by the banner height so the ✕ is always visible.
+     :has() scopes this to pages that actually have the banner (index-dev.html).
+     In production index.html the banner never exists so :has() never matches. */
+  body:has(#gl-dev-banner) #gl-right-panel {
+    top: 32px;
+    height: calc(100% - 32px);
   }
 }
 
