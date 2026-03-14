@@ -154,24 +154,25 @@ _Last updated: 2026-03-13_
 
 **Milestone 2 — Song Intelligence Engine** (started 2026-03-13)
 
-Phases A + B complete. Phase C (practice recommendations) next.
+All three phases (A + B + C) implemented. Phase C awaiting verification.
 
 ## WHAT MILESTONE 2 IS
 
 Pure computation layer that analyzes existing readiness + status data. No UI changes. Three phases:
-- A: Band readiness aggregation (DONE)
-- B: Gap detection (DONE)
-- C: Practice recommendation generation
+- A: Band readiness aggregation (DONE + verified)
+- B: Gap detection (DONE + verified)
+- C: Practice recommendation generation (DONE — awaiting verification)
 
-## WHAT WAS COMPLETED THIS SESSION (20260313)
+## WHAT WAS COMPLETED THIS SESSION (20260313–14)
 
-- **Milestone 2 Phase A** — `js/core/song-intelligence.js` created with `computeSongIntelligence()` and `computeCatalogIntelligence()`
-- **Milestone 2 Phase B** — `detectSongGaps()` added with 3 gap types: `member-below-avg`, `missing-score`, `status-mismatch`. Wired as `GLStore.getSongGaps(songId)`.
-- **Both phases verified** — 594 songs, 18 rated. Gap detection returns correct results for rated and unrated songs.
+- **Phase A** — `js/core/song-intelligence.js` created with `computeSongIntelligence()` and `computeCatalogIntelligence()`
+- **Phase B** — `detectSongGaps()` added with 3 gap types: `member-below-avg`, `missing-score`, `status-mismatch`. Wired as `GLStore.getSongGaps(songId)`.
+- **Phase C** — `generatePracticeRecommendations()` added. Scores rated songs by low readiness (3x), gap count (2x high / 1x medium), status mismatch (5pt flat). Supports `{ memberKey, limit }` opts. Wired as `GLStore.getPracticeRecommendations(opts)`.
+- **Phases A + B verified** — 594 songs, 18 rated. Gap detection and catalog intelligence return correct results.
 
 ## RISKS / WATCHOUTS
 
-1. **Sparse data** — Only 18/594 songs have readiness scores. Recommendations must handle this gracefully (short lists, not errors).
+1. **Sparse data** — Only 18/594 songs have readiness scores. Recommendations return short lists, not errors.
 2. **Status values** — `statusCache` values are freeform strings. Matched case-insensitively.
 3. **Auth timing** — Milestone 1 flags (`_glPanelRestorePending` / `_glPageRestorePending`) still active and must not be disturbed.
 4. **Deferred: stale-score** — Gap type excluded from Phase B because it requires Firebase reads. Can be added later.
@@ -180,7 +181,7 @@ Pure computation layer that analyzes existing readiness + status data. No UI cha
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development from Milestone 2 Phase C.
+Continue GrooveLinx development. Milestone 2 (Song Intelligence Engine) computation layer is complete.
 
 Please read these files first:
 1. `CLAUDE.md`
@@ -189,4 +190,4 @@ Please read these files first:
 4. `js/core/song-intelligence.js`
 5. `js/core/groovelinx_store.js`
 
-Phases A + B verified and complete. Phase C is practice recommendation generation — propose before coding.
+All three phases implemented. Phase C needs verification. After verification, Milestone 2 is complete — ask Drew for next direction.

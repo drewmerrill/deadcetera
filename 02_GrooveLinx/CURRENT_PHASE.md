@@ -22,7 +22,7 @@ Scope: band readiness aggregation, gap detection, practice recommendation genera
 |-------|-------------|--------|
 | A | `SongIntelligence` module + `GLStore.getSongIntelligence()` / `getCatalogIntelligence()` | ✅ DONE |
 | B | Gap detection — `GLStore.getSongGaps(songId)` | ✅ DONE |
-| C | Practice recommendation generation — `getPracticeRecommendations(opts)` | NOT STARTED |
+| C | Practice recommendation generation — `GLStore.getPracticeRecommendations(opts)` | ✅ DONE |
 
 ### Phase A Verification Results (20260313)
 
@@ -39,12 +39,21 @@ Scope: band readiness aggregation, gap detection, practice recommendation genera
 - Unrated songs return 5 `missing-score` gaps (one per member)
 - `stale-score` gap type deferred (requires Firebase read)
 
+### Phase C Implementation (20260314)
+
+- `generatePracticeRecommendations()` added to `song-intelligence.js`
+- Scoring: low readiness (3x), high gaps (2x), medium gaps (1x), status mismatch (5pt flat)
+- Supports `{ memberKey, limit }` opts for per-member filtering
+- Wired as `GLStore.getPracticeRecommendations(opts)`
+- Excludes unrated songs (no data to rank)
+- Awaiting verification
+
 ### Files Changed (Milestone 2)
 
 | File | Change |
 |------|--------|
-| `js/core/song-intelligence.js` | **New** — pure computation IIFE. `computeSongIntelligence()`, `computeCatalogIntelligence()`, `detectSongGaps()` |
-| `js/core/groovelinx_store.js` | `getSongIntelligence()`, `getCatalogIntelligence()`, `getSongGaps()`, intelligence cache + auto-invalidation |
+| `js/core/song-intelligence.js` | **New** — pure computation IIFE. `computeSongIntelligence()`, `computeCatalogIntelligence()`, `detectSongGaps()`, `generatePracticeRecommendations()` |
+| `js/core/groovelinx_store.js` | `getSongIntelligence()`, `getCatalogIntelligence()`, `getSongGaps()`, `getPracticeRecommendations()`, intelligence cache + auto-invalidation |
 | `index.html` | Script tag for `song-intelligence.js` |
 | `index-dev.html` | Script tag for `song-intelligence.js` |
 
