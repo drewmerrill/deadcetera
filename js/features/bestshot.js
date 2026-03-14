@@ -783,10 +783,52 @@ var chopDraggingMarker = -1; // index of marker being dragged (-1 = none)
 var chopSelectedSegment = -1; // which segment is selected for boundary editing
 var chopSettingBoundary = null; // 'start' or 'end'
 
+/**
+ * Try to rehydrate Chopper state from a stored corrected timeline.
+ * Returns true if successful, false if no matching timeline found.
+ */
+function _chopTryRehydrate(audioDuration) {
+    if (typeof GLStore === 'undefined' || !GLStore.getLatestTimeline) return false;
+    var tl = GLStore.getLatestTimeline();
+    if (!tl || !tl.segments || !tl.segments.length) return false;
+
+    // Duration match check: within 2 seconds tolerance (same recording)
+    if (Math.abs(tl.durationSec - audioDuration) > 2) return false;
+
+    _chopLoadFromTimeline(tl);
+    return true;
+}
+
+/**
+ * Load Chopper state from a canonical timeline object.
+ * Used by both rehydration and fresh AI segmentation.
+ */
+function _chopLoadFromTimeline(tl) {
+    chopMarkers = [];
+    chopExcluded = {};
+    chopSegmentMeta = {};
+
+    for (var i = 0; i < tl.segments.length; i++) {
+        var seg = tl.segments[i];
+        if (seg.startSec > 0.5) chopMarkers.push(seg.startSec);
+        if (seg.kind === 'silence' || seg.kind === 'speech' || seg.kind === 'excluded') {
+            chopExcluded[i] = true;
+        }
+        chopSegmentMeta[i] = {
+            kind: seg.kind || 'unknown',
+            confidence: seg.confidence || 0,
+            likelyIntent: seg.likelyIntent || 'unknown',
+            likelySongTitle: seg.likelySongTitle || null,
+        };
+    }
+    chopMarkers.sort(function(a, b) { return a - b; });
+}
+
 async function chopLoadFile(file) {
     chopFile = file;
     chopMarkers = [];
     chopExcluded = {};
+    chopSegmentMeta = {};
     var dropZone = document.getElementById('chopDropZone');
     if (dropZone) dropZone.innerHTML = '<div style="color:#10b981">✅ ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)</div>';
 
@@ -812,28 +854,18 @@ async function chopLoadFile(file) {
         chopWireCanvasEvents();
         chopStartPlayheadTracker();
 
-        // M8: Auto-segment via engine if available
-        if (typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio) {
+        // M8 Phase 2.5: Try rehydrating from stored corrected timeline first
+        var rehydrated = _chopTryRehydrate(chopAudioBuffer.duration);
+        if (rehydrated) {
+            chopDrawWaveform();
+            chopRenderSegments();
+            showToast('Restored ' + chopMarkers.length + ' saved segment boundaries');
+        }
+        // If no stored timeline, run fresh AI segmentation
+        else if (typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio) {
             var timeline = GLStore.segmentRehearsalAudio(chopAudioBuffer);
             if (timeline && timeline.segments && timeline.segments.length > 1) {
-                chopMarkers = [];
-                chopExcluded = {};
-                chopSegmentMeta = {};
-                for (var si = 0; si < timeline.segments.length; si++) {
-                    var seg = timeline.segments[si];
-                    if (seg.startSec > 0.5) chopMarkers.push(seg.startSec);
-                    if (seg.kind === 'silence' || seg.kind === 'speech') {
-                        chopExcluded[si] = true;
-                    }
-                    // Store engine metadata per segment
-                    chopSegmentMeta[si] = {
-                        kind: seg.kind,
-                        confidence: seg.confidence,
-                        likelyIntent: seg.likelyIntent,
-                        likelySongTitle: seg.likelySongTitle || null,
-                    };
-                }
-                chopMarkers.sort(function(a,b) { return a - b; });
+                _chopLoadFromTimeline(timeline);
                 chopDrawWaveform();
                 chopRenderSegments();
                 showToast('AI detected ' + timeline.summary.segmentCount + ' segments (' + timeline.summary.musicSegments + ' music, ' + timeline.summary.likelyRestarts + ' restarts)');
@@ -1059,6 +1091,7 @@ function chopDetectSilence() {
     var silenceStart = -1;
     chopMarkers = [];
     chopExcluded = {};
+    chopSegmentMeta = {};
 
     for (var i = 0; i < data.length; i += windowSize) {
         var sum = 0;
@@ -1088,22 +1121,48 @@ function chopAddMarker() {
     var time = audio?.currentTime || chopAudioBuffer.duration / 2;
     chopMarkers.push(time);
     chopMarkers.sort(function(a, b) { return a - b; });
+    // Find where the new marker landed and shift meta indices
+    var newIdx = chopMarkers.indexOf(time);
+    var newMeta = {};
+    var newExcluded = {};
+    Object.keys(chopSegmentMeta).forEach(function(k) {
+        var ki = parseInt(k);
+        if (ki > newIdx) newMeta[ki + 1] = chopSegmentMeta[ki];
+        else newMeta[ki] = chopSegmentMeta[ki];
+    });
+    // New segment gets unknown metadata
+    newMeta[newIdx + 1] = { kind: 'unknown', confidence: 0, likelyIntent: 'unknown', likelySongTitle: null };
+    Object.keys(chopExcluded).forEach(function(k) {
+        var ki = parseInt(k);
+        if (ki > newIdx) newExcluded[ki + 1] = true;
+        else newExcluded[ki] = true;
+    });
+    chopSegmentMeta = newMeta;
+    chopExcluded = newExcluded;
     chopDrawWaveform();
     chopRenderSegments();
 }
 
 function chopRemoveMarker(index) {
-    // When removing a marker, merge excluded state
+    // When removing a marker, merge excluded and meta state
     if (chopExcluded[index + 1]) delete chopExcluded[index + 1];
     chopMarkers.splice(index, 1);
-    // Rebuild excluded map with shifted indices
+    // Rebuild excluded + meta maps with shifted indices
     var newExcluded = {};
+    var newMeta = {};
     Object.keys(chopExcluded).forEach(function(k) {
         var ki = parseInt(k);
         if (ki > index + 1) newExcluded[ki - 1] = true;
         else if (ki <= index) newExcluded[ki] = true;
     });
+    Object.keys(chopSegmentMeta).forEach(function(k) {
+        var ki = parseInt(k);
+        if (ki > index + 1) newMeta[ki - 1] = chopSegmentMeta[ki];
+        else if (ki <= index) newMeta[ki] = chopSegmentMeta[ki];
+        // index+1 is merged into index — keep index's metadata
+    });
     chopExcluded = newExcluded;
+    chopSegmentMeta = newMeta;
     chopDrawWaveform();
     chopRenderSegments();
 }
