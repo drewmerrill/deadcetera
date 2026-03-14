@@ -1578,7 +1578,7 @@ function renderRiHero(ctx, focusSongs, plan) {
         : 'No rehearsal scheduled';
 
     var stats = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
-        + _riStatPill(focusSongs.length + ' focus songs', '#667eea')
+        + _riStatPill(focusSongs.length ? focusSongs.length + ' focus songs' : 'No songs need extra work', '#667eea')
         + _riStatPill(plan.totalMins + ' min est.', '#f59e0b')
         + (conf ? _riStatPill('Confidence: ' + conf.label, conf.color) : '')
         + '</div>';
