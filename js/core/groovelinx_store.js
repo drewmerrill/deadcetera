@@ -601,6 +601,50 @@
     window.scrollTo(0, _navScrollCache[key] || 0);
   }
 
+  // ── Song Intelligence (Milestone 2 Phase A) ─────────────────────────────
+
+  var _intelligenceCache = null;
+  var _intelligenceCacheTs = 0;
+  var INTEL_CACHE_TTL = 5000; // 5 seconds — recompute is cheap but avoids thrash
+
+  function _members() {
+    return (typeof bandMembers !== 'undefined') ? bandMembers : {};
+  }
+
+  function _invalidateIntelligence() {
+    _intelligenceCache = null;
+  }
+
+  // Auto-invalidate when readiness changes
+  subscribe('readinessChanged', _invalidateIntelligence);
+
+  /**
+   * Get intelligence for a single song.
+   * @param {string} songId
+   * @returns {object|null} songIntel or null if SongIntelligence not loaded
+   */
+  function getSongIntelligence(songId) {
+    if (typeof SongIntelligence === 'undefined') return null;
+    return SongIntelligence.computeSongIntelligence(songId, getAllReadiness(), _members());
+  }
+
+  /**
+   * Get catalog-wide intelligence. Cached for INTEL_CACHE_TTL ms.
+   * @returns {object|null} catalogIntel or null if SongIntelligence not loaded
+   */
+  function getCatalogIntelligence() {
+    if (typeof SongIntelligence === 'undefined') return null;
+    var now = Date.now();
+    if (_intelligenceCache && (now - _intelligenceCacheTs) < INTEL_CACHE_TTL) {
+      return _intelligenceCache;
+    }
+    _intelligenceCache = SongIntelligence.computeCatalogIntelligence(
+      getAllReadiness(), getAllStatus(), _members(), getSongs()
+    );
+    _intelligenceCacheTs = now;
+    return _intelligenceCache;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.GLStore = {
@@ -646,6 +690,10 @@
     // Event bus
     subscribe:         subscribe,
     emit:              emit,
+
+    // Song Intelligence (Milestone 2 Phase A)
+    getSongIntelligence:    getSongIntelligence,
+    getCatalogIntelligence: getCatalogIntelligence,
 
     // Debug
     getState:          getState,
