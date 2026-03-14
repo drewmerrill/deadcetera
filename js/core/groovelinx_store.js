@@ -770,6 +770,75 @@
     return _attentionCache.slice(0, returnLimit);
   }
 
+  // ── Rehearsal Agenda (Milestone 6 Phase 1) ───────────────────────────────
+
+  var _agendaCache = null;
+
+  // Auto-invalidate on readiness changes
+  subscribe('readinessChanged', function () { _agendaCache = null; });
+
+  /**
+   * Build normalized input for the Rehearsal Agenda Engine.
+   * Exposes agenda-ready data, not scattered raw page data.
+   */
+  function getRehearsalAgendaInput() {
+    var allReadiness = getAllReadiness();
+    var allStatus = getAllStatus();
+    var songs = getSongs();
+    var activityIndex = _buildActivityIndex();
+    var memberKeys = _memberKeys();
+
+    // Build attention lookup by songId
+    var attentionBySongId = {};
+    var attentionList = (typeof SongIntelligence !== 'undefined')
+      ? SongIntelligence.computePracticeAttention(
+          allReadiness, allStatus, _members(), songs,
+          activityIndex, _buildUpcomingSongs(), { limit: 200 }
+        )
+      : [];
+    for (var i = 0; i < attentionList.length; i++) {
+      attentionBySongId[attentionList[i].songId] = attentionList[i];
+    }
+
+    return {
+      songs: songs,
+      readinessBySongId: allReadiness,
+      attentionBySongId: attentionBySongId,
+      recentActivityBySongId: activityIndex,
+      memberKeys: memberKeys,
+      currentSongId: getSelectedSong(),
+      nowPlayingSongId: _state.nowPlayingSongId,
+      lastUpdatedAt: new Date().toISOString(),
+    };
+  }
+
+  function _memberKeys() {
+    var m = _members();
+    return m ? Object.keys(m) : [];
+  }
+
+  /**
+   * Generate a rehearsal agenda from current state.
+   * @param {object} [options]
+   * @returns {object} agenda
+   */
+  function generateRehearsalAgenda(options) {
+    if (typeof RehearsalAgendaEngine === 'undefined') return null;
+    if (!_agendaCache) {
+      var input = getRehearsalAgendaInput();
+      _agendaCache = RehearsalAgendaEngine.generateRehearsalAgenda(input, options);
+    }
+    return _agendaCache;
+  }
+
+  /**
+   * Force-regenerate (bust cache).
+   */
+  function regenerateRehearsalAgenda(options) {
+    _agendaCache = null;
+    return generateRehearsalAgenda(options);
+  }
+
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
   /**
@@ -1045,6 +1114,11 @@
     getSongGaps:            getSongGaps,
     getPracticeRecommendations: getPracticeRecommendations,
     getPracticeAttention:       getPracticeAttention,
+
+    // Rehearsal Agenda (Milestone 6)
+    getRehearsalAgendaInput:    getRehearsalAgendaInput,
+    generateRehearsalAgenda:    generateRehearsalAgenda,
+    regenerateRehearsalAgenda:  regenerateRehearsalAgenda,
 
     // Shell State (Milestone 4)
     setActivePage:          setActivePage,

@@ -303,6 +303,7 @@ function _renderDashboard(bundle, context) {
         renderHdNextRehearsalGoal(bundle),
         renderHdSongsNeedingWork(bundle),
         renderPracticeRadar(),
+        renderRehearsalAgenda(),
         '</div>',
         activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
@@ -577,6 +578,72 @@ function _prUrgencyTier(item) {
         badge: '',
         color: '#22c55e'
     };
+}
+
+// ── Rehearsal Agenda (Milestone 6 Phase 1) ───────────────────────────────────
+
+function renderRehearsalAgenda() {
+    if (typeof GLStore === 'undefined' || !GLStore.generateRehearsalAgenda) return '';
+    var agenda = GLStore.generateRehearsalAgenda();
+    if (!agenda) return '';
+
+    if (agenda.empty) {
+        return '<div class="hd-bucket" style="grid-column:1/-1">'
+            + '<div class="hd-bucket__header"><span class="hd-bucket__icon">📋</span>'
+            + '<span class="hd-bucket__title">SUGGESTED REHEARSAL AGENDA</span></div>'
+            + '<div class="hd-bucket__ok">' + _escHtml(agenda.emptyReason) + '</div>'
+            + '</div>';
+    }
+
+    var typeColors = {
+        warmup:  '#22c55e',
+        repair:  '#f59e0b',
+        learn:   '#818cf8',
+        closer:  '#60a5fa',
+    };
+    var typeIcons = {
+        warmup:  '🔥',
+        repair:  '🔧',
+        learn:   '📖',
+        closer:  '🎯',
+    };
+
+    var rows = agenda.items.map(function(item) {
+        var color = typeColors[item.type] || '#94a3b8';
+        var icon = typeIcons[item.type] || '🎵';
+        var safeTitle = item.songId.replace(/'/g, "\\'");
+        var meta = item.metadata;
+        var readinessChip = meta.avgReadiness > 0
+            ? '<span style="font-size:0.68em;font-weight:700;color:' + color + '">' + meta.avgReadiness + '/5</span>'
+            : '<span style="font-size:0.68em;color:var(--text-dim,#475569)">unrated</span>';
+
+        return '<div onclick="showPage(\'songs\');setTimeout(function(){GLStore.selectSong(\'' + safeTitle + '\');if(typeof highlightSelectedSongRow===\'function\')highlightSelectedSongRow(\'' + safeTitle + '\');},200)" style="cursor:pointer;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
+            + '<div style="display:flex;align-items:center;gap:8px">'
+            + '<div style="width:36px;height:36px;border-radius:8px;background:' + color + '15;border:1px solid ' + color + '33;display:flex;align-items:center;justify-content:center;font-size:1em;flex-shrink:0">' + icon + '</div>'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">'
+            + '<span style="font-weight:700;font-size:0.88em;color:var(--text,#f1f5f9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _escHtml(item.title) + '</span>'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
+            + readinessChip
+            + '<span style="font-size:0.65em;font-weight:700;color:' + color + ';background:' + color + '18;padding:1px 6px;border-radius:4px;text-transform:uppercase">' + item.minutes + 'min</span>'
+            + '</div></div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-top:1px">' + _escHtml(item.reason) + '</div>'
+            + '<div style="font-size:0.68em;color:var(--text-muted,#64748b);margin-top:1px">Focus: ' + _escHtml(item.focus) + '</div>'
+            + '</div></div></div>';
+    }).join('');
+
+    return '<div class="hd-bucket" style="grid-column:1/-1">'
+        + '<div class="hd-bucket__header">'
+        + '<span class="hd-bucket__icon">📋</span>'
+        + '<span class="hd-bucket__title">SUGGESTED REHEARSAL AGENDA</span>'
+        + '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim,#475569)">' + agenda.totalMinutes + ' min</span>'
+        + '</div>'
+        + (agenda.summary ? '<div style="font-size:0.78em;color:var(--text-muted,#94a3b8);margin-bottom:8px;padding:0 2px">' + _escHtml(agenda.summary) + '</div>' : '')
+        + '<div>' + rows + '</div>'
+        + '<div style="display:flex;gap:8px;margin-top:10px">'
+        + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄 Regenerate</button>'
+        + '</div>'
+        + '</div>';
 }
 
 // ── Context Banner ────────────────────────────────────────────────────────────

@@ -247,6 +247,42 @@ Goal: Scoring model that determines which songs deserve rehearsal attention, pow
 
 ---
 
+## Milestone 6 — Rehearsal Agenda Engine
+
+Goal: Deterministic, explainable engine that converts Practice Intelligence into a suggested 47-minute rehearsal plan.
+
+### Phase Completion Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Rehearsal Agenda Engine + dashboard card | ✅ DONE |
+
+### Phase 1 — Rehearsal Agenda Engine (20260314)
+
+- `js/core/rehearsal_agenda_engine.js` — pure computation module
+  - Signal normalization: readinessDeficit, attentionSeverity, neglectScore, gapScore, learnScore, stabilityScore, confidenceScore, familiarityScore, overRehearsedPenalty
+  - Role-specific scoring: warmup, repair, learn, closer
+  - 5-slot 47-minute template: Warm Up (5m), Repair (12m), Targeted/Learn (10m), Repair (12m), Closer (8m)
+  - Deterministic selection with dedup
+  - Human-readable reason and focus text
+  - Empty state handling for no data, sparse data, all-healthy catalog
+- `GLStore.getRehearsalAgendaInput()` — normalized agenda-ready data selector
+- `GLStore.generateRehearsalAgenda()` / `regenerateRehearsalAgenda()` — cached wrappers
+- Dashboard: "Suggested Rehearsal Agenda" card with 5 song blocks, reasons, focus, and Regenerate button
+- Click any song → drills to Songs page + right panel
+
+### Files Changed (Milestone 6)
+
+| File | Change |
+|------|--------|
+| `js/core/rehearsal_agenda_engine.js` | **New** — pure computation engine |
+| `js/core/groovelinx_store.js` | `getRehearsalAgendaInput()`, `generateRehearsalAgenda()`, `regenerateRehearsalAgenda()` |
+| `js/features/home-dashboard.js` | `renderRehearsalAgenda()` card |
+| `index.html` | Script tag for `rehearsal_agenda_engine.js` |
+| `index-dev.html` | Script tag for `rehearsal_agenda_engine.js` |
+
+---
+
 ## Remaining Tech Debt
 
 1. **`glSongDetailBack` override** — Temporary patch in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js`.
