@@ -525,18 +525,17 @@ function renderPracticeRadar() {
             ? '<span style="font-size:0.65em;color:var(--text-dim,#475569);margin-left:6px;font-weight:600">'
               + (item.confidence === 'partial' ? 'partial' : 'needs rating') + '</span>'
             : '';
-        return '<div class="hd-bucket__song-row" onclick="showPage(\'songs\');setTimeout(function(){GLStore.selectSong(\'' + safeTitle + '\');if(typeof highlightSelectedSongRow===\'function\')highlightSelectedSongRow(\'' + safeTitle + '\');},200)" style="cursor:pointer;padding:6px 0">'
-            + '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">'
+        return '<div class="hd-bucket__song-row" onclick="showPage(\'songs\');setTimeout(function(){GLStore.selectSong(\'' + safeTitle + '\');if(typeof highlightSelectedSongRow===\'function\')highlightSelectedSongRow(\'' + safeTitle + '\');},200)" style="cursor:pointer;padding:6px 0;display:flex;align-items:center;gap:8px">'
             + '<span style="font-size:0.72em;font-weight:800;color:var(--text-dim,#475569);width:18px;text-align:center;flex-shrink:0">' + (i + 1) + '</span>'
             + '<div style="min-width:0;flex:1">'
-            + '<div style="display:flex;align-items:center;gap:6px">'
-            + '<span class="hd-bucket__song-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _escHtml(item.songId) + '</span>'
-            + urgency.badge + confLabel
-            + '</div>'
+            + '<div class="hd-bucket__song-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _escHtml(item.songId) + '</div>'
             + '<div style="font-size:0.7em;color:var(--text-dim,#475569);margin-top:1px">' + _escHtml(item.topReason) + '</div>'
             + '</div>'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
+            + urgency.badge
+            + confLabel
+            + '<span style="font-size:0.78em;font-weight:700;color:' + urgency.color + ';min-width:32px;text-align:right">' + item.score + '</span>'
             + '</div>'
-            + '<span style="font-size:0.78em;font-weight:700;color:' + urgency.color + ';flex-shrink:0">' + item.score + '</span>'
             + '</div>';
     }).join('');
 
