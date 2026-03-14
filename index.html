@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="app-shell.css">
     <link rel="stylesheet" href="rehearsal-mode.css">
     <link rel="stylesheet" href="version-hub.css">
+    <link rel="stylesheet" href="css/gl-shell.css">
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBDADFjoqqLvkmJgevpkIZxf-GTwc9RxI0&libraries=places&loading=async" defer></script>
     <style>
         /* ⓘ Section help tooltip icons */
@@ -121,6 +122,7 @@
     </nav>
 
     <!-- MAIN CONTENT AREA -->
+    <div id="gl-shell">
     <div class="main-content" id="mainContent">
         <!-- PAGE: Songs (existing app content) -->
         <div id="page-songs" class="app-page hidden">
@@ -642,8 +644,19 @@
         <div id="page-bestshot" class="app-page hidden"></div>
         <div id="page-stoner" class="app-page hidden"></div>
         <div id="page-help" class="app-page hidden"></div>
-        <div id="page-songdetail" class="app-page hidden"></div>
     </div>
+
+    <!-- Right context panel — sibling of #mainContent inside #gl-shell -->
+    <aside id="gl-right-panel" aria-label="Song context panel">
+        <div class="gl-rp-header">
+            <span id="gl-rp-title" class="gl-rp-title"></span>
+            <button class="gl-rp-close-btn" id="gl-rp-close" title="Close panel">✕</button>
+        </div>
+        <div id="gl-right-panel-content" class="gl-rp-content">
+        </div>
+    </aside>
+
+    </div><!-- /#gl-shell -->
 
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
         <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
@@ -655,6 +668,7 @@
     <script src="js/core/groovelinx_store.js"></script>
     <script src="js/core/worker-api.js"></script>
     <script src="js/ui/navigation.js"></script>
+    <script src="js/ui/gl-right-panel.js"></script>
     <script src="js/features/songs.js"></script>
     <script src="data.js"></script>
     <script src="js/features/gigs.js"></script>
@@ -699,6 +713,9 @@
         var hero = document.getElementById('page-hero');
         if (isSignedIn) {
             if (hero) hero.classList.add('hidden');
+            // If a page or panel restore is pending, don't navigate to home —
+            // the restore handler will call the correct showPage() when ready.
+            if (window._glPanelRestorePending || window._glPageRestorePending) return;
             if (typeof showPage === 'function') showPage('home');
         } else {
             var allPages = document.querySelectorAll('.app-page');

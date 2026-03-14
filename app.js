@@ -621,7 +621,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Show Home Dashboard as the default landing screen for signed-in users.
     // For signed-out users, glHeroCheck(false) will show the hero instead.
     if (typeof showPage === 'function' && localStorage.getItem('deadcetera_google_email')) {
-        setTimeout(function() { showPage('home'); }, 50);
+        setTimeout(function() {
+            // Skip if a page or panel restore is pending (Milestone 1)
+            if (window._glPanelRestorePending || window._glPageRestorePending) return;
+            showPage('home');
+        }, 50);
     }
 
     // Then init Firebase and reload everything that depends on it
