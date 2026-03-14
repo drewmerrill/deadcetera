@@ -1927,6 +1927,12 @@ var _riLive = { active: false, songIdx: 0, songs: [], eventId: null, startTime: 
 
 function enterLiveRehearsalMode(ctx, focusSongs) {
     _riLive.active        = true;
+    // Milestone 4: notify shell we're entering performance mode
+    if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
+    if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) {
+        var firstSong = (focusSongs && focusSongs[0]) ? focusSongs[0].title : null;
+        GLStore.setLiveRehearsalSong(firstSong);
+    }
     _riLive.songs         = (focusSongs || []).map(function(s) { return s.title; });
     _riLive.songIdx       = 0;
     _riLive.eventId       = ctx.nextEvent ? ctx.nextEvent.id : null;
@@ -2041,6 +2047,9 @@ window.repeatRiSong = repeatRiSong;
 function endRiSession() {
     _riLive.active = false;
     if (_riLive.timerTick) { clearInterval(_riLive.timerTick); _riLive.timerTick = null; }
+    // Milestone 4: restore workspace mode
+    if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
+    if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(null);
     showToast('Session ended');
     rhShowTab('intel');
 }

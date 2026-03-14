@@ -159,6 +159,7 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 ### Phase 4 — Performance Mode Shell Integration (20260314)
 
 - Rehearsal Mode (`rehearsal-mode.js`): `GLStore.setAppMode('performance')` on enter, `setAppMode('workspace')` on exit. Sets/clears `liveRehearsalSongId`.
+- Live Rehearsal Mode (`rehearsal.js` `enterLiveRehearsalMode`/`endRiSession`): same `setAppMode` + `setLiveRehearsalSong` integration
 - Live Gig (`live-gig.js`): same `setAppMode` on enter/exit
 - Left rail hides during performance mode (subscribes to `appModeChanged`)
 - Now Playing bar (overlay root) hides during performance mode
@@ -177,6 +178,7 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 | `index-dev.html` | `#gl-overlay-root` + `#gl-now-playing` DOM, `#gl-left-rail`, script tags |
 | `app-dev.js` | PWA install banner auto-show disabled |
 | `rehearsal-mode.js` | `setAppMode('performance'/'workspace')` + `setLiveRehearsalSong()` on enter/exit |
+| `js/features/rehearsal.js` | `enterLiveRehearsalMode`/`endRiSession` — same shell integration |
 | `js/features/live-gig.js` | `setAppMode('performance'/'workspace')` on enter/exit |
 
 ---
