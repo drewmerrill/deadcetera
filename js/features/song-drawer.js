@@ -88,6 +88,7 @@ function openSongDrawer(title) {
     if (window.innerWidth >= 900 && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
         if (typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
             GLStore.selectSong(title);
+            if (typeof highlightSelectedSongRow === 'function') highlightSelectedSongRow(title);
         }
         return;
     }

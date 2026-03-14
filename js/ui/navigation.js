@@ -62,9 +62,22 @@ window.showPage = function showPage(page) {
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');
 
-    // Close right panel when navigating away from songs
-    if (page !== 'songs' && window.glRightPanel && typeof window.glRightPanel.close === 'function') {
-        window.glRightPanel.close();
+    // Hide right panel when navigating away from songs (preserve selection)
+    if (page !== 'songs' && window.glRightPanel && typeof window.glRightPanel.hide === 'function') {
+        window.glRightPanel.hide();
+    }
+
+    // Restore right panel when entering songs (skip if a reload restore is pending)
+    if (page === 'songs' && window.glRightPanel && typeof window.glRightPanel.open === 'function'
+        && !window._glPanelRestorePending) {
+        var _savedSong = (typeof GLStore !== 'undefined' && GLStore.getSelectedSong) ? GLStore.getSelectedSong() : null;
+        if (_savedSong) {
+            if (typeof highlightSelectedSongRow === 'function') highlightSelectedSongRow(_savedSong);
+            window.glRightPanel.open();
+        } else {
+            window.glRightPanel.renderBandSnapshot();
+            window.glRightPanel.open();
+        }
     }
 
     // Hide all pages
@@ -149,8 +162,8 @@ console.log('✅ navigation.js loaded');
 
 // ── Restore last page on load ─────────────────────────────────────────────
 (function() {
-    var SKIP = ['songs', 'songdetail'];  // songs renders on load; songdetail needs song context
-    var VALID = ['setlists','playlists','practice','rehearsal','calendar','gigs',
+    var SKIP = ['songdetail'];  // songdetail needs song context
+    var VALID = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
                  'venues','finances','tuner','metronome','bestshot','admin',
                  'social','notifications','pocketmeter','help','equipment','contacts'];
     document.addEventListener('DOMContentLoaded', function() {
@@ -161,6 +174,11 @@ console.log('✅ navigation.js loaded');
                 // Set flag so glHeroCheck(true) / 50ms showPage('home') don't
                 // override the restored page (same pattern as _glPanelRestorePending).
                 window._glPageRestorePending = true;
+                // Hide default songs page immediately to prevent flash
+                if (last !== 'songs') {
+                    var _sp = document.getElementById('page-songs');
+                    if (_sp) _sp.classList.add('hidden');
+                }
                 setTimeout(function() {
                     if (typeof showPage === 'function') showPage(last);
                 }, 800);
@@ -210,9 +228,11 @@ console.log('✅ navigation.js loaded');
                             if (typeof showPage === 'function') showPage('songs');
                             GLStore.selectSong(panelSong);
                         }
-                        // Flag stays set for the page lifetime — auth callbacks
-                        // (glHeroCheck, 50ms showPage('home')) fire well after this
-                        // poll completes, so clearing here would let them through.
+                        // Clear flag after auth callbacks have had time to fire.
+                        // 50ms showPage('home') and glHeroCheck typically complete
+                        // within 3s of page load. Clearing unblocks the songs-entry
+                        // panel logic for normal navigation.
+                        setTimeout(function() { window._glPanelRestorePending = false; }, 3000);
                     }
                 }, 100);
             }

@@ -184,6 +184,7 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-intel-item"><div class="sd-intel-label">Top Gap</div><div class="sd-intel-val sd-intel-sm">'+topGapText+'</div>'+(gapCount>1?'<div class="sd-intel-sub">+' + (gapCount - 1) + ' more high</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Last Played</div><div class="sd-intel-val sd-intel-sm" id="sd-last-played">—</div></div>'+
         '</div></div>'+
+        _sdRenderGapsCard(_siGaps)+
         '<div class="sd-card">'+
         '<div class="sd-card-title">📊 Readiness</div>'+
         _sdRenderReadinessBlock(title,safeSong)+
@@ -278,6 +279,27 @@ function _sdRenderRehearsalNotes(notesData) {
                ((author||date)?'<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px">'+
                (author?_sdEsc(author)+' ':'')+(date?'· '+date:'')+'</div>':'')+'</div>';
     }).join('');
+}
+
+// ── Gaps Card (Milestone 3 Phase B) ──────────────────────────────────────────
+function _sdRenderGapsCard(gaps) {
+    if (!gaps || !gaps.length) return '';
+    var high = gaps.filter(function(g) { return g.severity === 'high'; });
+    if (!high.length) return '';
+    var medCount = gaps.filter(function(g) { return g.severity === 'medium'; }).length;
+    var rows = high.map(function(g) {
+        return '<div style="display:flex;align-items:baseline;gap:6px;padding:3px 0">'
+            + '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0;margin-top:3px"></span>'
+            + '<span style="font-size:0.82em;color:var(--text,#f1f5f9)">' + _sdEsc(g.detail) + '</span>'
+            + '</div>';
+    }).join('');
+    var medLine = medCount > 0
+        ? '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-top:4px;padding-left:13px">'
+            + medCount + ' unrated member' + (medCount > 1 ? 's' : '') + '</div>'
+        : '';
+    return '<div class="sd-card" style="padding:10px 14px">'
+        + '<div class="sd-card-title" style="margin-bottom:6px">⚠ Gaps</div>'
+        + rows + medLine + '</div>';
 }
 
 function _sdRenderReadinessBlock(title, safeSong) {

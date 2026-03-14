@@ -152,46 +152,39 @@ _Last updated: 2026-03-14_
 
 ## CURRENT OBJECTIVE
 
-**Milestone 3 — Song Intelligence UI (Right Panel)** (started 2026-03-14)
+**Milestone 3 — Song Intelligence UI (Right Panel) — COMPLETE** (2026-03-14)
 
-Phase A (Song Intelligence card upgrade) complete. Phase B (gap list card) next.
+All three phases + stabilization pass verified.
 
-## WHAT MILESTONE 2 IS
+## WHAT MILESTONE 3 DELIVERED
 
-Pure computation layer that analyzes existing readiness + status data. No UI changes. Three phases:
-- A: Band readiness aggregation (DONE + verified)
-- B: Gap detection (DONE + verified)
-- C: Practice recommendation generation (DONE + verified)
-
-## WHAT MILESTONE 3 IS
-
-Wire Milestone 2 computation into the right panel UI. Three phases:
-- A: Song Intelligence card upgrade in Band lens (DONE)
-- B: Gap list card in Band lens
-- C: Band snapshot upgrade with catalog intelligence
+- A: Song Intelligence card in Band lens — GLStore.getSongIntelligence() / getSongGaps()
+- B: Gap list card — high-severity gaps with red dots, medium gaps summarized
+- C: Band snapshot — catalog readiness, tier pills, top 3 practice recommendations
+- STAB: Panel hide/restore, page restore, auth cache-only silent reconnect
 
 ## WHAT WAS COMPLETED THIS SESSION (20260314)
 
-- **Milestone 2 complete** — all 3 phases of Song Intelligence Engine verified
-- **Milestone 3 Phase A** — replaced manual readiness/gap computation in `_sdPopulateBandLens()` with `GLStore.getSongIntelligence()` / `getSongGaps()`. Added tier label, tie-aware bottleneck display ("Name + N more at X"), and "No scores yet" for fully unrated songs.
+- **Milestone 2** — Song Intelligence Engine (3 phases, all verified)
+- **Milestone 3 Phases A-C** — right panel intelligence UI
+- **Stabilization** — panel state management (hide vs close), page restore for all pages including songs, highlight sync, auth flow (cache-only silent reconnect, no GIS iframe flash, Event-as-silent guard, sign-out cleanup, deferred home navigation)
 
 ## RISKS / WATCHOUTS
 
-1. **Sparse data** — 576/594 songs are unrated. UI must handle gracefully (shows "No scores yet", not a random member name).
-2. **Auth timing** — Milestone 1 flags still active and must not be disturbed.
-3. **Deferred: stale-score** — Gap type excluded from M2 Phase B. Can be added later.
+1. **Sparse data** — 576/594 songs unrated. UI shows "No scores yet" gracefully.
+2. **Home dashboard loading** — brief black card flash on refresh before Firebase data loads. Needs loading skeleton in home-dashboard.js (not yet addressed).
+3. **Cache-only auth** — silent reconnect restores identity from localStorage without a fresh access token. API calls requiring the token will fail until user clicks Connect. Firebase data loads independently.
+4. **Deferred: stale-score** — Gap type excluded from M2 Phase B (requires Firebase read).
 
 ---
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development from Milestone 3 Phase B.
+Continue GrooveLinx development. Milestones 1-3 complete.
 
 Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
-4. `js/features/song-detail.js` (lines 153–185 for Phase A context)
-5. `js/ui/gl-right-panel.js`
 
-Phase A (Song Intelligence card) is verified. Phase B is a gap list card in the Band lens — propose before coding.
+Milestone 4 not yet defined. Ask Drew for direction before starting new work.

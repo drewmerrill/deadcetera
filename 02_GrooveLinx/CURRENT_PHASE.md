@@ -66,8 +66,9 @@ Goal: Wire Milestone 2 computation outputs into the right panel. Same panel, sam
 | Phase | Description | Status |
 |-------|-------------|--------|
 | A | Song Intelligence card upgrade — replace manual readiness/gap calc with GLStore calls | ✅ DONE |
-| B | Gap list card in Band lens | NOT STARTED |
-| C | Band snapshot upgrade with catalog intelligence | NOT STARTED |
+| B | Gap list card in Band lens | ✅ DONE |
+| C | Band snapshot upgrade with catalog intelligence | ✅ DONE |
+| STAB | Panel hide/restore, page restore, auth stabilization | ✅ DONE |
 
 ### Phase A Verification Results (20260314)
 
@@ -75,11 +76,38 @@ Goal: Wire Milestone 2 computation outputs into the right panel. Same panel, sam
 - Tie handling: unrated songs show "No scores yet", tied lowest members show "Name + N more at X"
 - No console errors on rated or unrated songs
 
+### Phase B Verification Results (20260314)
+
+- Gaps card renders below Song Intelligence card when high-severity gaps exist
+- Medium gaps summarized as "N unrated members"
+- Unrated songs (no high gaps) show no Gaps card
+
+### Phase C Verification Results (20260314)
+
+- Band snapshot shows catalog avg, tier pills, top 3 practice recommendations
+- Clicking a recommendation opens that song in the panel
+- Fallback to "Select a song" when data not yet loaded
+
+### Stabilization (20260314)
+
+- `glRightPanel.hide()` — visual-only panel close preserving GLStore selection
+- Page restore: songs added to VALID, return-to-songs reopens panel or snapshot
+- Highlight sync on drawer "View" button path
+- Auth: silent reconnect uses localStorage cache only (no GIS iframe flash)
+- Auth: `handleGoogleDriveAuth` guards against Event-as-silent from onclick handlers
+- Auth: early hero hide without premature `showPage('home')`
+- Auth: sign-out clears all cached identity + `glLastPage`
+- Home rendering deferred to after Firebase init (reduces black card flash)
+
 ### Files Changed (Milestone 3)
 
 | File | Change |
 |------|--------|
-| `js/features/song-detail.js` | Replaced manual readiness/gap calc in `_sdPopulateBandLens()` with `GLStore.getSongIntelligence()` / `getSongGaps()`. Added tie-aware bottleneck display. Added `.sd-intel-sub` style. |
+| `js/features/song-detail.js` | Phase A: GLStore intel/gaps in Song Intelligence card. Phase B: `_sdRenderGapsCard()`. Tie-aware bottleneck. `.sd-intel-sub` style. |
+| `js/ui/gl-right-panel.js` | Phase C: `renderBandSnapshot()` with catalog intelligence. `hide()` method for visual-only close. `_esc()` helper. |
+| `js/ui/navigation.js` | Songs-entry panel open/restore. `hide()` on non-songs nav. `songs` + `home` in VALID. Early songs-page hide for non-songs restore. `_glPanelRestorePending` cleardown. Highlight sync. |
+| `js/features/song-drawer.js` | `highlightSelectedSongRow()` call in desktop drawer path. |
+| `app-dev.js` | Cache-only silent auth (no GIS `requestAccessToken` on load). `handleGoogleDriveAuth` boolean guard. Early hero hide. Conditional `showPage('home')` respecting `glLastPage`. Sign-out clears name/picture/glLastPage. |
 
 ---
 
@@ -87,3 +115,4 @@ Goal: Wire Milestone 2 computation outputs into the right panel. Same panel, sam
 
 1. **`glSongDetailBack` override** — Temporary patch in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js`.
 2. **`app-dev.js` duplicate `selectSong()`** — `push.py` copies from `app.js` which still has the original. Harmless — `songs.js` overwrites at load time.
+3. **Home dashboard loading state** — `showPage('home')` renders dashboard before async Firebase data loads, causing brief black card flash. Needs a loading skeleton in `home-dashboard.js`.
