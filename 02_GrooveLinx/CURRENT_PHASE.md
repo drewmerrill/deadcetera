@@ -39,14 +39,12 @@ Scope: band readiness aggregation, gap detection, practice recommendation genera
 - Unrated songs return 5 `missing-score` gaps (one per member)
 - `stale-score` gap type deferred (requires Firebase read)
 
-### Phase C Implementation (20260314)
+### Phase C Verification Results (20260314)
 
-- `generatePracticeRecommendations()` added to `song-intelligence.js`
-- Scoring: low readiness (3x), high gaps (2x), medium gaps (1x), status mismatch (5pt flat)
-- Supports `{ memberKey, limit }` opts for per-member filtering
-- Wired as `GLStore.getPracticeRecommendations(opts)`
-- Excludes unrated songs (no data to rank)
-- Awaiting verification
+- `GLStore.getPracticeRecommendations()` returns sorted results
+- `GLStore.getPracticeRecommendations({ memberKey: 'drew', limit: 5 })` filters correctly
+- Scoring formula produces expected priority ordering
+- Unrated songs excluded as designed
 
 ### Files Changed (Milestone 2)
 
