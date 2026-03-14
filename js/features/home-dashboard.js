@@ -640,6 +640,7 @@ function renderRehearsalAgenda() {
         + '</div>'
         + (agenda.summary ? '<div style="font-size:0.78em;color:var(--text-muted,#94a3b8);margin-bottom:8px;padding:0 2px">' + _escHtml(agenda.summary) + '</div>' : '')
         + '<div>' + rows + '</div>'
+        + (agenda.isSameAsPrevious ? '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin:8px 0 2px;text-align:center">Best agenda for current data — no stronger alternates available.</div>' : '')
         + '<div style="display:flex;gap:8px;margin-top:10px">'
         + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄 Regenerate</button>'
         + '</div>'

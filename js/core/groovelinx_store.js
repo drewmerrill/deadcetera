@@ -832,11 +832,20 @@
   }
 
   /**
-   * Force-regenerate (bust cache).
+   * Force-regenerate with variety. Passes previous agenda's song IDs
+   * as an avoid list so the engine picks different candidates where possible.
    */
   function regenerateRehearsalAgenda(options) {
+    var previousSongIds = null;
+    if (_agendaCache && _agendaCache.items && _agendaCache.items.length) {
+      previousSongIds = _agendaCache.items.map(function (i) { return i.songId; });
+    }
     _agendaCache = null;
-    return generateRehearsalAgenda(options);
+    if (typeof RehearsalAgendaEngine === 'undefined') return null;
+    var input = getRehearsalAgendaInput();
+    var opts = Object.assign({}, options || {}, { previousSongIds: previousSongIds });
+    _agendaCache = RehearsalAgendaEngine.generateRehearsalAgenda(input, opts);
+    return _agendaCache;
   }
 
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────

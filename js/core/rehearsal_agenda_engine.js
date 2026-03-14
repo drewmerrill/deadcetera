@@ -254,13 +254,30 @@
 
   // ── Slot Selection ─────────────────────────────────────────────────────────
 
-  function selectCandidate(candidates, usedSongIds, scoreKey) {
+  /**
+   * Select the best candidate for a slot.
+   * @param {Array} candidates
+   * @param {object} usedSongIds   Songs already assigned in this agenda
+   * @param {string} scoreKey      Which role score to sort by
+   * @param {object} [avoidSongIds] Songs from previous agenda — deprioritized but not excluded
+   */
+  function selectCandidate(candidates, usedSongIds, scoreKey, avoidSongIds) {
     var ranked = candidates.slice().sort(function (a, b) {
       return (b[scoreKey] || 0) - (a[scoreKey] || 0);
     });
-    for (var i = 0; i < ranked.length; i++) {
-      if (!usedSongIds[ranked[i].songId]) return ranked[i];
+
+    // First pass: find a candidate not used AND not in avoid list
+    if (avoidSongIds) {
+      for (var i = 0; i < ranked.length; i++) {
+        if (!usedSongIds[ranked[i].songId] && !avoidSongIds[ranked[i].songId]) return ranked[i];
+      }
     }
+
+    // Second pass: allow avoided songs but still skip used
+    for (var j = 0; j < ranked.length; j++) {
+      if (!usedSongIds[ranked[j].songId]) return ranked[j];
+    }
+
     // All used — return top anyway if available
     return ranked.length ? ranked[0] : null;
   }
@@ -304,9 +321,27 @@
 
   // ── Agenda Generation ──────────────────────────────────────────────────────
 
+  /**
+   * Generate a rehearsal agenda.
+   * @param {object} input  From GLStore.getRehearsalAgendaInput()
+   * @param {object} [options]
+   * @param {Array}  [options.previousSongIds]  Song IDs from prior agenda — deprioritized for variety
+   * @param {Array}  [options.template]         Override slot template
+   * @returns {object} agenda
+   */
   function generateRehearsalAgenda(input, options) {
     options = options || {};
     var template = options.template || DEFAULT_TEMPLATE;
+    var previousSongIds = options.previousSongIds || null;
+
+    // Build avoid map from previous agenda
+    var avoidSongIds = null;
+    if (previousSongIds && previousSongIds.length) {
+      avoidSongIds = {};
+      for (var p = 0; p < previousSongIds.length; p++) {
+        avoidSongIds[previousSongIds[p]] = true;
+      }
+    }
 
     // Empty state checks
     if (!input || !input.songs || !input.songs.length) {
@@ -332,28 +367,26 @@
       var candidate = null;
       var itemType = slot.role;
 
-      // Select based on role
+      // Select based on role — pass avoidSongIds for variety on regenerate
       if (slot.role === 'warmup') {
-        candidate = selectCandidate(candidates, usedSongIds, 'warmupScore');
+        candidate = selectCandidate(candidates, usedSongIds, 'warmupScore', avoidSongIds);
       } else if (slot.role === 'repair' || slot.role === 'repair2') {
-        candidate = selectCandidate(candidates, usedSongIds, 'repairScore');
+        candidate = selectCandidate(candidates, usedSongIds, 'repairScore', avoidSongIds);
         itemType = 'repair';
       } else if (slot.role === 'learn') {
-        // Try learn candidates first, fall back to repair if no good learn songs
-        var learnCandidate = selectCandidate(candidates, usedSongIds, 'learnScore_role');
+        var learnCandidate = selectCandidate(candidates, usedSongIds, 'learnScore_role', avoidSongIds);
         if (learnCandidate && learnCandidate.learnScore >= 30) {
           candidate = learnCandidate;
         } else {
-          candidate = selectCandidate(candidates, usedSongIds, 'repairScore');
+          candidate = selectCandidate(candidates, usedSongIds, 'repairScore', avoidSongIds);
           itemType = 'repair';
         }
       } else if (slot.role === 'closer') {
-        candidate = selectCandidate(candidates, usedSongIds, 'closerScore');
+        candidate = selectCandidate(candidates, usedSongIds, 'closerScore', avoidSongIds);
       }
 
       if (!candidate) {
-        // Fallback: pick highest general priority not yet used
-        candidate = selectCandidate(candidates, usedSongIds, 'priorityScore');
+        candidate = selectCandidate(candidates, usedSongIds, 'priorityScore', avoidSongIds);
       }
 
       if (!candidate) continue;
@@ -391,12 +424,20 @@
       return createEmptyAgendaState('Could not fill any agenda slots from available data.');
     }
 
+    // Check if this agenda is identical to the previous one
+    var isSameAsPrevious = false;
+    if (previousSongIds && previousSongIds.length === items.length) {
+      var newIds = items.map(function (i) { return i.songId; });
+      isSameAsPrevious = previousSongIds.every(function (id, idx) { return id === newIds[idx]; });
+    }
+
     return {
       items: items,
       totalMinutes: totalMinutes,
       slotCount: items.length,
       generatedAt: new Date().toISOString(),
       empty: false,
+      isSameAsPrevious: isSameAsPrevious,
       summary: buildAgendaSummary(items),
     };
   }
