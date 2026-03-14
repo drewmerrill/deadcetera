@@ -830,6 +830,7 @@
       // Store as latestGenerated (immutable reference for session use)
       if (_agendaCache && !_agendaCache.empty) {
         _rehearsalAgenda.latestGenerated = _agendaCache;
+        _persistAgenda();
       }
     }
     return _agendaCache;
@@ -864,6 +865,35 @@
   };
 
   var _agendaIdCounter = 0;
+
+  // ── Persistence helpers ──
+
+  var _AGENDA_STORAGE_KEY = 'glRehearsalAgenda';
+
+  function _persistAgenda() {
+    try {
+      localStorage.setItem(_AGENDA_STORAGE_KEY, JSON.stringify(_rehearsalAgenda));
+    } catch (e) { /* storage full or unavailable — silent fail */ }
+  }
+
+  // Hydrate on load — defensive against malformed data
+  try {
+    var _savedAgenda = localStorage.getItem(_AGENDA_STORAGE_KEY);
+    if (_savedAgenda) {
+      var _parsed = JSON.parse(_savedAgenda);
+      if (_parsed && typeof _parsed === 'object') {
+        if (_parsed.latestGenerated && _parsed.latestGenerated.items) {
+          _rehearsalAgenda.latestGenerated = _parsed.latestGenerated;
+        }
+        if (_parsed.activeSession && _parsed.activeSession.items && _parsed.activeSession.sessionId) {
+          // Only restore if session was active — completed/abandoned sessions don't need resume
+          if (_parsed.activeSession.status === 'active') {
+            _rehearsalAgenda.activeSession = _parsed.activeSession;
+          }
+        }
+      }
+    }
+  } catch (e) { /* malformed data — start fresh */ }
 
   function _genId(prefix) { return prefix + '_' + Date.now() + '_' + (++_agendaIdCounter); }
 
@@ -941,6 +971,7 @@
 
     var firstItem = sessionItems[startIdx];
     setLiveRehearsalSong(firstItem.songId);
+    _persistAgenda();
     emit('agendaSessionStarted', { session: _rehearsalAgenda.activeSession, item: firstItem });
 
     // Launch live rehearsal mode
@@ -1001,6 +1032,7 @@
     nextItem.enteredLiveAt = now;
 
     setLiveRehearsalSong(nextItem.songId);
+    _persistAgenda();
     emit('agendaSlotAdvanced', { session: s, index: nextIdx, item: nextItem });
     return nextItem;
   }
@@ -1023,6 +1055,7 @@
     target.enteredLiveAt = now;
 
     setLiveRehearsalSong(target.songId);
+    _persistAgenda();
     emit('agendaSlotAdvanced', { session: s, index: index, item: target });
     return target;
   }
@@ -1034,6 +1067,7 @@
     s.status = 'completed';
     s.updatedAt = new Date().toISOString();
     setLiveRehearsalSong(null);
+    _persistAgenda();
     emit('agendaSessionCompleted', { session: s });
   }
 
@@ -1044,6 +1078,7 @@
     s.status = 'abandoned';
     s.updatedAt = new Date().toISOString();
     setLiveRehearsalSong(null);
+    _persistAgenda();
     emit('agendaSessionAbandoned', { session: s });
   }
 
