@@ -45,6 +45,10 @@
     mixCache:          null,   // array of practice_mix objects or null (unloaded)
     mixCacheTs:        0,      // timestamp of last mix load
 
+    // Song practice stats (Milestone 6 Phase 4C)
+    // { [songId]: { lastPracticedAt, practiceCount, totalPracticeMinutes, lastPracticeType } }
+    songPracticeStats: {},
+
     // UI state
     songDetailLens:    'band', // 'band'|'listen'|'learn'|'sing'|'inspire'
 
@@ -1079,6 +1083,9 @@
     // Build completion summary from session items
     _rehearsalAgenda.latestCompletedSummary = _buildCompletionSummary(s);
 
+    // Update per-song practice stats from completed songs
+    _applyCompletionSummaryToSongStats(_rehearsalAgenda.latestCompletedSummary);
+
     // Prepend to history, cap at 25
     if (!_rehearsalAgenda.completionHistory) _rehearsalAgenda.completionHistory = [];
     _rehearsalAgenda.completionHistory.unshift(_rehearsalAgenda.latestCompletedSummary);
@@ -1149,6 +1156,54 @@
   /** Get completion history (newest first, max 25). */
   function getCompletionHistory() {
     return _rehearsalAgenda.completionHistory || [];
+  }
+
+  /**
+   * Update per-song practice stats from a completion summary.
+   * Only completed songs are counted — skipped songs are not.
+   */
+  function _applyCompletionSummaryToSongStats(summary) {
+    if (!summary || !summary.completedSongs || !summary.completedSongs.length) return;
+    var ts = summary.completedAt || new Date().toISOString();
+
+    for (var i = 0; i < summary.completedSongs.length; i++) {
+      var song = summary.completedSongs[i];
+      var id = song.songId;
+      if (!id) continue;
+
+      if (!_state.songPracticeStats[id]) {
+        _state.songPracticeStats[id] = {
+          lastPracticedAt: null,
+          practiceCount: 0,
+          totalPracticeMinutes: 0,
+          lastPracticeType: null,
+        };
+      }
+      var stat = _state.songPracticeStats[id];
+      stat.lastPracticedAt = ts;
+      stat.practiceCount = (stat.practiceCount || 0) + 1;
+      stat.totalPracticeMinutes = (stat.totalPracticeMinutes || 0) + (song.minutes || 0);
+      if (song.type) stat.lastPracticeType = song.type;
+    }
+
+    _persistSongPracticeStats();
+  }
+
+  /**
+   * Get practice stats for a song.
+   * @param {string} songId
+   * @returns {object|null} { lastPracticedAt, practiceCount, totalPracticeMinutes, lastPracticeType }
+   */
+  function getSongPracticeStats(songId) {
+    return _state.songPracticeStats[songId] || null;
+  }
+
+  /**
+   * Get all song practice stats (for bulk reads).
+   * @returns {object} { [songId]: stats }
+   */
+  function getAllSongPracticeStats() {
+    return _state.songPracticeStats;
   }
 
   /** Mark session as abandoned (user quit early). */
@@ -1312,6 +1367,22 @@
     if (_savedNP) _state.nowPlayingSongId = _savedNP;
   } catch(e) {}
 
+  // Restore song practice stats from localStorage
+  var _SONG_STATS_KEY = 'glSongPracticeStats';
+  try {
+    var _savedStats = localStorage.getItem(_SONG_STATS_KEY);
+    if (_savedStats) {
+      var _parsedStats = JSON.parse(_savedStats);
+      if (_parsedStats && typeof _parsedStats === 'object') {
+        _state.songPracticeStats = _parsedStats;
+      }
+    }
+  } catch(e) {}
+
+  function _persistSongPracticeStats() {
+    try { localStorage.setItem(_SONG_STATS_KEY, JSON.stringify(_state.songPracticeStats)); } catch(e) {}
+  }
+
   /**
    * Set the live rehearsal song — the song currently active in rehearsal/performance mode.
    * Separate from selectedSongId and nowPlayingSongId.
@@ -1471,6 +1542,8 @@
     getNextRehearsalAgendaItem:        getNextRehearsalAgendaItem,
     getLatestCompletedSummary:         getLatestCompletedSummary,
     getCompletionHistory:              getCompletionHistory,
+    getSongPracticeStats:              getSongPracticeStats,
+    getAllSongPracticeStats:           getAllSongPracticeStats,
     clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)
