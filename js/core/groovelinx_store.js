@@ -684,6 +684,92 @@
     );
   }
 
+  // ── Practice Attention (Milestone 5 Phase 2) ─────────────────────────────
+
+  var _attentionCache = null;
+  var _attentionCacheTs = 0;
+  var ATTENTION_CACHE_TTL = 10000; // 10 seconds
+
+  // Auto-invalidate on readiness changes
+  subscribe('readinessChanged', function () { _attentionCache = null; });
+
+  /**
+   * Build activity index: { songTitle: lastActivityISO } from the activity log.
+   * Falls back to empty object if log not loaded.
+   */
+  function _buildActivityIndex() {
+    var log = (typeof activityLogCache !== 'undefined' && Array.isArray(activityLogCache))
+      ? activityLogCache : [];
+    var index = {};
+    for (var i = 0; i < log.length; i++) {
+      var entry = log[i];
+      if (!entry.song || !entry.time) continue;
+      // Keep the most recent activity per song
+      if (!index[entry.song] || entry.time > index[entry.song]) {
+        index[entry.song] = entry.time;
+      }
+    }
+    return index;
+  }
+
+  /**
+   * Build upcoming songs set: { songTitle: 'setlist'|'plan' }
+   * Scans cached setlists for future dates and rehearsal events.
+   */
+  function _buildUpcomingSongs() {
+    var upcoming = {};
+    var today = new Date().toISOString().slice(0, 10);
+
+    // Upcoming setlists (strongest signal)
+    var setlists = (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists))
+      ? window._cachedSetlists : [];
+    for (var s = 0; s < setlists.length; s++) {
+      var sl = setlists[s];
+      if (!sl.date || sl.date < today) continue;
+      var sets = sl.sets || [];
+      for (var si = 0; si < sets.length; si++) {
+        var songs = sets[si].songs || [];
+        for (var so = 0; so < songs.length; so++) {
+          var title = songs[so].title || songs[so];
+          if (title && !upcoming[title]) upcoming[title] = 'setlist';
+        }
+      }
+    }
+
+    // Rehearsal plan songs (weaker signal — don't overwrite setlist)
+    if (typeof window._riLastFocusSongs !== 'undefined' && Array.isArray(window._riLastFocusSongs)) {
+      for (var r = 0; r < window._riLastFocusSongs.length; r++) {
+        var rt = window._riLastFocusSongs[r].title || window._riLastFocusSongs[r];
+        if (rt && !upcoming[rt]) upcoming[rt] = 'plan';
+      }
+    }
+
+    return upcoming;
+  }
+
+  /**
+   * Get Practice Attention scores. Cached for ATTENTION_CACHE_TTL ms.
+   * @param {object} [opts]  { limit: number }
+   * @returns {Array|null}
+   */
+  function getPracticeAttention(opts) {
+    if (typeof SongIntelligence === 'undefined') return null;
+    var now = Date.now();
+    if (_attentionCache && (now - _attentionCacheTs) < ATTENTION_CACHE_TTL) {
+      var limit = (opts && opts.limit) || 20;
+      return _attentionCache.slice(0, limit);
+    }
+    // Build with a high limit for caching, slice on return
+    _attentionCache = SongIntelligence.computePracticeAttention(
+      getAllReadiness(), getAllStatus(), _members(), getSongs(),
+      _buildActivityIndex(), _buildUpcomingSongs(),
+      { limit: 50 }
+    );
+    _attentionCacheTs = now;
+    var returnLimit = (opts && opts.limit) || 20;
+    return _attentionCache.slice(0, returnLimit);
+  }
+
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
   /**
@@ -958,6 +1044,7 @@
     getCatalogIntelligence: getCatalogIntelligence,
     getSongGaps:            getSongGaps,
     getPracticeRecommendations: getPracticeRecommendations,
+    getPracticeAttention:       getPracticeAttention,
 
     // Shell State (Milestone 4)
     setActivePage:          setActivePage,

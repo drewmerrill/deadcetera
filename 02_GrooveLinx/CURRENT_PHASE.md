@@ -192,6 +192,38 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 
 ---
 
+## Milestone 5 — Practice Intelligence
+
+Goal: Scoring model that determines which songs deserve rehearsal attention, powering Practice Radar and rehearsal agenda automation.
+
+### Phase Completion Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Intelligence model design | ✅ DONE |
+| 2 | `computePracticeAttention()` + `GLStore.getPracticeAttention()` | ✅ DONE |
+| 3 | Practice Radar visualization | NOT STARTED |
+
+### Phase 2 — Practice Attention Computation (20260314)
+
+- `computePracticeAttention()` in `song-intelligence.js` — 6-dimension scoring:
+  - Readiness deficit (0–15, anchor), member variance (0–4.5), practice decay risk (0–10), status modifier (0–4), upcoming exposure (0–10), unrated nudge (0–3)
+- `GLStore.getPracticeAttention(opts)` — cached 10s, auto-invalidated on `readinessChanged`
+- Activity index built from `activityLogCache` (last activity date per song)
+- Upcoming songs detected from `_cachedSetlists` (future dates) + `_riLastFocusSongs` (rehearsal plan)
+- Confidence labels: `rated` / `partial` / `needs-rating`
+- Unrated songs included when they have external context (setlist/plan/status)
+- "No activity ever" decay risk set to 6 (calibrated per review)
+
+### Files Changed (Milestone 5)
+
+| File | Change |
+|------|--------|
+| `js/core/song-intelligence.js` | `computePracticeAttention()` — 6-dimension scoring model |
+| `js/core/groovelinx_store.js` | `getPracticeAttention(opts)`, activity index builder, upcoming songs builder, cache |
+
+---
+
 ## Remaining Tech Debt
 
 1. **`glSongDetailBack` override** — Temporary patch in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js`.

@@ -353,6 +353,127 @@
     return results.slice(0, limit);
   }
 
+  // ── Practice Attention (Milestone 5 Phase 2) ───────────────────────────────
+
+  /**
+   * Compute Practice Attention scores for the full catalog.
+   * Pure computation — all data passed in, no async, no Firebase.
+   *
+   * Scoring dimensions:
+   *   Readiness deficit:    (5 - avg) * 3                   → 0–15 pts (anchor)
+   *   Member variance:      spread * 1.0                    → 0–4.5 pts
+   *   Practice decay risk:  min(10, daysSince / 7)           → 0–10 pts
+   *   Status modifier:      gig_ready mismatch +4, wip +2   → 0–4 pts
+   *   Upcoming exposure:    setlist +8, plan +4 (max one)    → 0–10 pts
+   *   Unrated nudge:        setlist +3, plan +2, wip +1      → 0–3 pts
+   *
+   * @param {object} allReadiness
+   * @param {object} allStatus
+   * @param {object} members
+   * @param {Array}  songs         allSongs array
+   * @param {object} activityIndex { songTitle: lastActivityDateISO } — pre-built by caller
+   * @param {object} upcomingSongs { songTitle: 'setlist'|'plan' } — pre-built by caller
+   * @param {object} [opts]
+   * @param {number} [opts.limit]  Max results (default 20)
+   * @returns {Array} sorted by score descending
+   */
+  function computePracticeAttention(allReadiness, allStatus, members, songs, activityIndex, upcomingSongs, opts) {
+    opts = opts || {};
+    var limit = opts.limit || 20;
+    var now = Date.now();
+    var results = [];
+
+    for (var i = 0; i < songs.length; i++) {
+      var title = songs[i].title;
+      if (!title) continue;
+
+      var intel = computeSongIntelligence(title, allReadiness, members);
+      var isRated = intel.avg > 0;
+      var ratedCount = intel.ratedCount;
+      var totalMembers = intel.totalMembers;
+
+      // ── Confidence label ──
+      var confidence = 'needs-rating';
+      if (ratedCount >= totalMembers) confidence = 'rated';
+      else if (ratedCount > 0) confidence = 'partial';
+
+      // ── 1. Readiness deficit (0–15, anchor) ──
+      var readinessDeficit = isRated ? (5 - intel.avg) * 3 : 0;
+
+      // ── 2. Member variance (0–4.5) ──
+      var variancePenalty = isRated ? intel.spread * 1.0 : 0;
+
+      // ── 3. Practice decay risk (0–10) ──
+      var decayRisk = 6; // default: no activity ever (calibrated per user note)
+      var lastActivity = activityIndex ? activityIndex[title] : null;
+      if (lastActivity) {
+        var daysSince = Math.max(0, (now - new Date(lastActivity).getTime()) / 86400000);
+        decayRisk = Math.min(10, daysSince / 7);
+      }
+
+      // ── 4. Status modifier (0–4) ──
+      var status = (allStatus && allStatus[title]) || '';
+      var statusLower = (typeof status === 'string') ? status.toLowerCase() : '';
+      var statusModifier = 1; // unset default
+      if (statusLower === 'gig_ready' || statusLower === 'gig ready') {
+        statusModifier = (isRated && intel.avg < 4) ? 4 : 0;
+      } else if (statusLower === 'wip' || statusLower === 'work in progress') {
+        statusModifier = 2;
+      } else if (statusLower === 'prospect') {
+        statusModifier = 0;
+      }
+
+      // ── 5. Upcoming exposure (0–10) ──
+      var exposure = upcomingSongs ? upcomingSongs[title] : null;
+      var exposureBoost = 0;
+      if (exposure === 'setlist') exposureBoost = 8;
+      else if (exposure === 'plan') exposureBoost = 4;
+
+      // ── 6. Unrated nudge (0–3) ──
+      var unratedNudge = 0;
+      if (!isRated) {
+        if (exposure === 'setlist') unratedNudge = 3;
+        else if (exposure === 'plan') unratedNudge = 2;
+        else if (statusLower === 'wip' || statusLower === 'work in progress') unratedNudge = 1;
+      }
+
+      var score = readinessDeficit + variancePenalty + decayRisk + statusModifier + exposureBoost + unratedNudge;
+      score = Math.round(score * 10) / 10;
+
+      // ── Top reason ──
+      var reasons = [];
+      if (exposureBoost >= 8) reasons.push('On upcoming setlist');
+      if (statusModifier >= 4) reasons.push('Gig Ready but avg ' + intel.avg + '/5');
+      if (decayRisk >= 6) reasons.push(lastActivity ? Math.round(daysSince) + ' days since last practice' : 'Never practiced');
+      if (readinessDeficit >= 6) reasons.push('Band avg ' + intel.avg + '/5');
+      if (variancePenalty >= 2) reasons.push('Uneven readiness (spread ' + intel.spread + ')');
+      if (unratedNudge > 0) reasons.push('Needs rating');
+      if (reasons.length === 0 && isRated) reasons.push('Avg ' + intel.avg + '/5');
+      if (reasons.length === 0) reasons.push('No data yet');
+
+      results.push({
+        songId: title,
+        score: score,
+        confidence: confidence,
+        breakdown: {
+          readinessDeficit: Math.round(readinessDeficit * 10) / 10,
+          variancePenalty: Math.round(variancePenalty * 10) / 10,
+          decayRisk: Math.round(decayRisk * 10) / 10,
+          statusModifier: statusModifier,
+          exposureBoost: exposureBoost,
+          unratedNudge: unratedNudge,
+        },
+        topReason: reasons[0],
+        reasons: reasons,
+        tier: intel.tier,
+        avg: intel.avg,
+      });
+    }
+
+    results.sort(function (a, b) { return b.score - a.score; });
+    return results.slice(0, limit);
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.SongIntelligence = {
@@ -360,6 +481,7 @@
     computeCatalogIntelligence: computeCatalogIntelligence,
     detectSongGaps: detectSongGaps,
     generatePracticeRecommendations: generatePracticeRecommendations,
+    computePracticeAttention: computePracticeAttention,
     READINESS_TIERS: READINESS_TIERS,
   };
 
