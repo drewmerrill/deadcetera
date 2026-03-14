@@ -62,6 +62,8 @@
     _renderStage();
     _attachInputListeners();
     _preloadLinksBackground();
+    // Milestone 4: notify shell we're entering performance mode
+    if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -118,6 +120,8 @@
     if (_rmMonkey) _rmMonkey.style.display = '';
     var _rmCapture = document.getElementById('rmCaptureMomentBtn');
     if (_rmCapture) _rmCapture.style.display = '';
+    // Milestone 4: restore workspace mode
+    if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
     // Return to setlists
     if (typeof showPage === 'function') showPage('setlists');
   }

@@ -233,6 +233,9 @@ function rmShow() {
     rmEnsureOverlay();
     const overlay = document.getElementById('rmOverlay');
     overlay.classList.add('rm-visible');
+    // Milestone 4: notify shell we're entering performance mode
+    if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
+    if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(rmQueue[rmIndex] ? rmQueue[rmIndex].title : null);
     document.body.dataset.scrollY = window.scrollY;
     document.body.style.position = 'fixed';
     document.body.style.top = `-${window.scrollY}px`;
@@ -255,6 +258,9 @@ function closeRehearsalMode() {
     const overlay = document.getElementById('rmOverlay');
     if (!overlay) return;
     overlay.classList.remove('rm-visible');
+    // Milestone 4: restore workspace mode
+    if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
+    if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(null);
     const scrollY = document.body.dataset.scrollY || '0';
     document.body.style.position = '';
     document.body.style.top = '';

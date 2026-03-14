@@ -122,7 +122,7 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 | 1 | GLStore shell state contract | ✅ DONE |
 | 2 | Persistent left rail | ✅ DONE |
 | 3 | Now Playing bar | ✅ DONE |
-| 4 | Performance mode shell integration | NOT STARTED |
+| 4 | Performance mode shell integration | ✅ DONE |
 | 5 | Responsive polish | NOT STARTED |
 
 ### Phase 1 — GLStore Shell State (20260314)
@@ -156,6 +156,14 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 - Shows song title + lightweight metadata (readiness/key/BPM from existing data)
 - PWA install banner auto-show disabled on dev
 
+### Phase 4 — Performance Mode Shell Integration (20260314)
+
+- Rehearsal Mode (`rehearsal-mode.js`): `GLStore.setAppMode('performance')` on enter, `setAppMode('workspace')` on exit. Sets/clears `liveRehearsalSongId`.
+- Live Gig (`live-gig.js`): same `setAppMode` on enter/exit
+- Left rail hides during performance mode (subscribes to `appModeChanged`)
+- Now Playing bar (overlay root) hides during performance mode
+- `setAppMode('performance')` auto-snapshots workspace context; available via `GLStore.getRestoreState()` on exit
+
 ### Files Changed (Milestone 4)
 
 | File | Change |
@@ -168,6 +176,8 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 | `js/features/song-detail.js` | "🎵 Now Playing" pin button in Song Intelligence card |
 | `index-dev.html` | `#gl-overlay-root` + `#gl-now-playing` DOM, `#gl-left-rail`, script tags |
 | `app-dev.js` | PWA install banner auto-show disabled |
+| `rehearsal-mode.js` | `setAppMode('performance'/'workspace')` + `setLiveRehearsalSong()` on enter/exit |
+| `js/features/live-gig.js` | `setAppMode('performance'/'workspace')` on enter/exit |
 
 ---
 

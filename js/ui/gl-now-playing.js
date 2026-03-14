@@ -36,6 +36,10 @@
       GLStore.subscribe('nowPlayingChanged', function () {
         refresh();
       });
+      GLStore.subscribe('appModeChanged', function (payload) {
+        var root = document.getElementById('gl-overlay-root');
+        if (root) root.style.display = (payload.mode === 'performance') ? 'none' : '';
+      });
       // Initial render from persisted state
       refresh();
     }

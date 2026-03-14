@@ -154,7 +154,7 @@ _Last updated: 2026-03-14_
 
 **Milestone 4 — App Shell Foundation** (started 2026-03-14)
 
-Phases 1–3 complete. Phase 4 (performance mode shell integration) next.
+Phases 1–4 complete. Phase 5 (responsive polish) next.
 
 ## WHAT MILESTONE 4 IS
 
@@ -162,7 +162,7 @@ Formalize the app shell before adding Practice Radar. Five phases:
 - 1: GLStore shell state contract (DONE)
 - 2: Persistent left rail (DONE)
 - 3: Now Playing bar (DONE)
-- 4: Performance mode shell integration
+- 4: Performance mode shell integration (DONE)
 - 5: Responsive polish
 
 ## WHAT WAS COMPLETED THIS SESSION (20260314)
@@ -172,6 +172,7 @@ Formalize the app shell before adding Practice Radar. Five phases:
 - **Milestone 4 Phase 1** — GLStore shell state (22 new methods, performance mode snapshot/restore)
 - **Milestone 4 Phase 2** — persistent left rail (responsive collapse: ≥1200px expanded, 901–1199px locked, ≤900px hidden)
 - **Milestone 4 Phase 3** — Now Playing bar (overlay root architecture, explicit set/clear only, persists across pages + refresh)
+- **Milestone 4 Phase 4** — Performance mode integration: Rehearsal Mode + Live Gig emit `setAppMode('performance'/'workspace')`. Left rail + Now Playing bar hide during performance. Workspace context auto-snapshots on enter.
 
 ## KEY DESIGN DECISIONS (Milestone 4)
 
@@ -191,7 +192,7 @@ Formalize the app shell before adding Practice Radar. Five phases:
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development from Milestone 4 Phase 4.
+Continue GrooveLinx development from Milestone 4 Phase 5.
 
 Please read these files first:
 1. `CLAUDE.md`
@@ -201,4 +202,4 @@ Please read these files first:
 5. `js/ui/gl-now-playing.js`
 6. `rehearsal-mode.js` (for Phase 4 integration)
 
-Phases 1–3 verified. Phase 4 is performance mode shell integration — propose before coding.
+Phases 1–4 verified. Phase 5 is responsive polish — propose before coding.

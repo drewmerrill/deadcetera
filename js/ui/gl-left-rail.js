@@ -67,6 +67,9 @@
       GLStore.subscribe('navCollapsedChanged', function () {
         _applyCollapsedState();
       });
+      GLStore.subscribe('appModeChanged', function (payload) {
+        if (_rail) _rail.style.display = (payload.mode === 'performance') ? 'none' : '';
+      });
       // Set initial active from current page
       var current = GLStore.getActivePage();
       if (current) updateActive(current);
