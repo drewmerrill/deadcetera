@@ -74,8 +74,10 @@
     var readiness = input.readinessBySongId[songId] || {};
     var attention = input.attentionBySongId[songId] || null;
     var activity = input.recentActivityBySongId[songId] || null;
+    var pStats = (input.practiceStatsBySongId || {})[songId] || null;
     var members = input.memberKeys || [];
     var totalMembers = members.length || 5;
+    var now = Date.now();
 
     // Readiness score (0-100)
     var scores = [];
@@ -84,8 +86,8 @@
       if (s && s >= 1 && s <= 5) scores.push(s);
     }
     var avgReadiness = scores.length ? scores.reduce(function(a, b) { return a + b; }, 0) / scores.length : 0;
-    var readinessScore = avgReadiness * 20; // 1-5 → 20-100, 0 if unrated
-    var readinessDeficit = readinessScore > 0 ? (100 - readinessScore) : 60; // unrated = moderate deficit
+    var readinessScore = avgReadiness * 20;
+    var readinessDeficit = readinessScore > 0 ? (100 - readinessScore) : 60;
 
     // Variance / stability
     var minScore = scores.length ? Math.min.apply(null, scores) : 0;
@@ -103,24 +105,44 @@
       attentionSeverity = clampScore((attention.score / 46.5) * 100);
     }
 
-    // Neglect / recency (0-100)
-    var neglectScore = normalizeRecencyScore(activity, Date.now());
+    // Neglect / recency (0-100) — use practice stats lastPracticedAt if available, else activity log
+    var practiceRecencySource = (pStats && pStats.lastPracticedAt) ? pStats.lastPracticedAt : activity;
+    var neglectScore = normalizeRecencyScore(practiceRecencySource, now);
 
-    // Learn score — high for new/unfamiliar songs
+    // Learn score
     var ratedCount = scores.length;
     var learnScore = clampScore(((totalMembers - ratedCount) / totalMembers) * 60 + (readinessDeficit * 0.4));
 
-    // Over-rehearsed penalty — if practiced in last 2 days
+    // Over-rehearsed penalty — use practice stats for more accurate recency
     var overRehearsedPenalty = 0;
-    if (activity) {
-      var daysSince = (Date.now() - new Date(activity).getTime()) / 86400000;
-      if (daysSince < 2) overRehearsedPenalty = clampScore((2 - daysSince) * 50);
+    var daysSincePractice = null;
+    if (pStats && pStats.lastPracticedAt) {
+      daysSincePractice = (now - new Date(pStats.lastPracticedAt).getTime()) / 86400000;
+      // Stronger penalty if practiced recently AND readiness is already good
+      if (daysSincePractice < 2) {
+        var base = clampScore((2 - daysSincePractice) * 50);
+        overRehearsedPenalty = readinessDeficit < 30 ? base : Math.round(base * 0.5); // half penalty if still needs work
+      }
+    } else if (activity) {
+      var daysSinceActivity = (now - new Date(activity).getTime()) / 86400000;
+      if (daysSinceActivity < 2) overRehearsedPenalty = clampScore((2 - daysSinceActivity) * 50);
     }
 
-    // Confidence score — high if well-rated by many members
+    // Under-practiced boost — songs with low total practice exposure get a bump
+    var underPracticedBoost = 0;
+    if (pStats) {
+      var totalMins = pStats.totalPracticeMinutes || 0;
+      if (totalMins < 5) underPracticedBoost = 15;
+      else if (totalMins < 15) underPracticedBoost = 10;
+      else if (totalMins < 30) underPracticedBoost = 5;
+    } else {
+      underPracticedBoost = 12; // never practiced at all
+    }
+
+    // Confidence score
     var confidenceScore = clampScore((ratedCount / totalMembers) * 50 + readinessScore * 0.5);
 
-    // Familiarity — proxy from readiness + rated count
+    // Familiarity
     var familiarityScore = clampScore(readinessScore * 0.6 + (ratedCount / totalMembers) * 40);
 
     // Stage classification
@@ -140,6 +162,7 @@
       learnScore: Math.round(learnScore),
       gapScore: Math.round(gapScore),
       overRehearsedPenalty: Math.round(overRehearsedPenalty),
+      underPracticedBoost: underPracticedBoost,
       stabilityScore: Math.round(stabilityScore),
       confidenceScore: Math.round(confidenceScore),
       familiarityScore: Math.round(familiarityScore),
@@ -148,6 +171,9 @@
       totalMembers: totalMembers,
       spread: spread,
       stage: stage,
+      practiceCount: pStats ? (pStats.practiceCount || 0) : 0,
+      totalPracticeMinutes: pStats ? (pStats.totalPracticeMinutes || 0) : 0,
+      daysSincePractice: daysSincePractice !== null ? Math.round(daysSincePractice) : null,
     };
   }
 
@@ -179,7 +205,8 @@
       sig.attentionSeverity * w.attentionSeverity +
       sig.neglectScore * w.neglectScore +
       sig.gapScore * w.gapScore +
-      sig.learnScore * w.learnScore -
+      sig.learnScore * w.learnScore +
+      sig.underPracticedBoost -
       sig.overRehearsedPenalty * w.overRehearsedPenalty
     );
   }
@@ -285,28 +312,45 @@
   // ── Reason & Focus Text ────────────────────────────────────────────────────
 
   function buildReasonText(sig, itemType) {
+    // Practice-aware context fragments
+    var practiceCtx = '';
+    if (sig.totalPracticeMinutes === 0 && sig.practiceCount === 0) {
+      practiceCtx = 'Never rehearsed in an agenda session.';
+    } else if (sig.daysSincePractice !== null && sig.daysSincePractice <= 1) {
+      practiceCtx = 'Recently rehearsed, so lower priority today.';
+    } else if (sig.daysSincePractice !== null && sig.daysSincePractice >= 14) {
+      practiceCtx = sig.daysSincePractice + ' days since last rehearsal.';
+    } else if (sig.totalPracticeMinutes > 0 && sig.totalPracticeMinutes < 10) {
+      practiceCtx = 'Low total practice exposure (' + sig.totalPracticeMinutes + ' min).';
+    }
+
     if (itemType === 'warmup') {
       if (sig.stabilityScore >= 60) return 'Familiar and stable enough to open rehearsal cleanly.';
+      if (sig.practiceCount >= 2) return 'Practiced ' + sig.practiceCount + ' times — solid warm-up choice.';
       return 'Moderate familiarity — good warm-up to get in the zone.';
     }
     if (itemType === 'repair' || itemType === 'repair2') {
       if (sig.attentionSeverity >= 60 && sig.readinessDeficit >= 40) {
-        return 'Low readiness and high attention score make this the top repair priority.';
+        return 'Low readiness and high attention score make this the top repair priority.' + (practiceCtx ? ' ' + practiceCtx : '');
       }
+      if (sig.neglectScore >= 60 && sig.totalPracticeMinutes < 10) return 'Not practiced recently and still below target. ' + practiceCtx;
       if (sig.neglectScore >= 60) return 'Not practiced recently and still below target.';
       if (sig.gapScore >= 40) return 'Uneven readiness across members — needs focused alignment.';
+      if (practiceCtx && sig.readinessDeficit >= 30) return practiceCtx + ' Still needs work.';
       return 'Below target readiness — focused repetition will lock it in.';
     }
     if (itemType === 'learn') {
+      if (sig.ratedCount === 0 && sig.practiceCount === 0) return 'New song — never practiced. Time to learn the structure.';
       if (sig.ratedCount === 0) return 'New song — no ratings yet. Time to learn the structure.';
       if (sig.learnScore >= 50) return 'Still in early learning phase — needs dedicated attention.';
       return 'Partially learned — building toward full band readiness.';
     }
     if (itemType === 'closer') {
       if (sig.confidenceScore >= 70) return 'Strong confidence song to end on momentum.';
+      if (sig.practiceCount >= 3) return 'Well-practiced (' + sig.practiceCount + ' sessions) — confident closer.';
       return 'Familiar enough for a confident run-through to close rehearsal.';
     }
-    return 'Selected based on current practice intelligence.';
+    return practiceCtx || 'Selected based on current practice intelligence.';
   }
 
   function buildFocusText(sig, itemType) {

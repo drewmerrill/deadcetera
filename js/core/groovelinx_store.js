@@ -809,6 +809,7 @@
       readinessBySongId: allReadiness,
       attentionBySongId: attentionBySongId,
       recentActivityBySongId: activityIndex,
+      practiceStatsBySongId: _state.songPracticeStats || {},
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,
