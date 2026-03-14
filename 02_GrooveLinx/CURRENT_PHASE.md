@@ -121,7 +121,7 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 |-------|-------------|--------|
 | 1 | GLStore shell state contract | ✅ DONE |
 | 2 | Persistent left rail | ✅ DONE |
-| 3 | Now Playing bar | NOT STARTED |
+| 3 | Now Playing bar | ✅ DONE |
 | 4 | Performance mode shell integration | NOT STARTED |
 | 5 | Responsive polish | NOT STARTED |
 
@@ -145,15 +145,29 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 - Hamburger hidden on desktop ≥901px
 - User preference (`glNavCollapsed`) only written by explicit toggle click, never by responsive auto-collapse
 
+### Phase 3 — Now Playing Bar (20260314)
+
+- `js/ui/gl-now-playing.js` — new controller: renders bar content, subscribes to `nowPlayingChanged`, click opens song in panel, ✕ clears
+- Overlay root architecture: `#gl-overlay-root` (fixed, z-index 99999, pointer-events none) contains `#gl-now-playing` (absolute bottom, pointer-events auto) — avoids shell stacking context conflicts
+- All critical styles inline on HTML elements for stacking reliability
+- `nowPlayingSongId` set only by explicit "🎵 Now Playing" button in Song Intelligence card
+- `nowPlayingSongId` cleared only by ✕ on the bar — not by panel close, page nav, or song selection
+- Persists across pages and refresh (localStorage-backed via GLStore)
+- Shows song title + lightweight metadata (readiness/key/BPM from existing data)
+- PWA install banner auto-show disabled on dev
+
 ### Files Changed (Milestone 4)
 
 | File | Change |
 |------|--------|
 | `js/core/groovelinx_store.js` | Shell state properties, 22 new methods, `_setNavCollapsedInternal`, performance mode snapshot/restore |
 | `js/ui/gl-left-rail.js` | **New** — persistent left rail controller |
-| `css/gl-shell.css` | Left rail styles, responsive breakpoints, hamburger/toggle media queries |
+| `js/ui/gl-now-playing.js` | **New** — Now Playing bar controller |
+| `css/gl-shell.css` | Left rail styles, overlay root + now-playing bar styles, responsive breakpoints |
 | `js/ui/navigation.js` | `GLStore.setActivePage(page)` mirror in `showPage()` |
-| `index-dev.html` | `#gl-left-rail` DOM element, `gl-left-rail.js` script tag |
+| `js/features/song-detail.js` | "🎵 Now Playing" pin button in Song Intelligence card |
+| `index-dev.html` | `#gl-overlay-root` + `#gl-now-playing` DOM, `#gl-left-rail`, script tags |
+| `app-dev.js` | PWA install banner auto-show disabled |
 
 ---
 

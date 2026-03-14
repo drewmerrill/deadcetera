@@ -177,7 +177,12 @@ async function _sdPopulateBandLens(title) {
     panel.innerHTML =
         '<div class="sd-panel-inner">'+
         '<div class="sd-card sd-intel-card">'+
-        '<div class="sd-card-title">🎯 Song Intelligence</div>'+
+        '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between">'+
+          '<span>🎯 Song Intelligence</span>'+
+          '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.setNowPlaying(\''+safeSong+'\')" '+
+            'style="background:none;border:1px solid rgba(255,255,255,0.1);color:var(--text-dim,#475569);font-size:0.65em;padding:2px 8px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap" '+
+            'title="Set as Now Playing">🎵 Now Playing</button>'+
+        '</div>'+
         '<div class="sd-intel-grid">'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Band Readiness</div><div class="sd-intel-val">'+(avgReadiness||'—')+'<span class="sd-intel-unit"> / 5</span></div>'+(tierLabel?'<div class="sd-intel-sub">'+_sdEsc(tierLabel)+'</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Status</div><div class="sd-intel-val sd-intel-sm">'+_sdEsc(statusLabel)+'</div></div>'+

@@ -546,8 +546,8 @@ let pwaInstalled = false;
 window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
     pwaInstallPrompt = e;
-    // Show banner after a 3s delay so it doesn't pop up immediately
-    setTimeout(showPWAInstallBanner, 3000);
+    // Install banner disabled — user prefers not to see it on dev
+    // To re-enable: setTimeout(showPWAInstallBanner, 3000);
 });
 
 window.addEventListener('appinstalled', () => {

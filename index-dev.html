@@ -69,6 +69,11 @@
 
     <!-- DEV MODE BANNER removed — Phase H -->
 
+    <!-- Overlay root — top-level stacking context for persistent UI (Now Playing bar) -->
+    <div id="gl-overlay-root" style="position:fixed;inset:0;pointer-events:none;z-index:99999">
+        <div id="gl-now-playing" style="position:absolute;bottom:0;left:0;right:0;height:48px;background:linear-gradient(135deg,#1e293b 0%,#252d4a 100%);border-top:1px solid rgba(99,102,241,0.3);pointer-events:auto;align-items:center;padding:0 16px;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.5)"></div>
+    </div>
+
     <!-- TOP BAR -->
     <div class="topbar">
         <div class="topbar-left">
@@ -667,6 +672,7 @@
 
     </div><!-- /#gl-shell -->
 
+
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
         <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
@@ -680,6 +686,7 @@
     <script src="js/ui/navigation.js"></script>
     <script src="js/ui/gl-right-panel.js"></script><!-- Phase C: right panel controller — dev only -->
     <script src="js/ui/gl-left-rail.js"></script><!-- Milestone 4: persistent left rail -->
+    <script src="js/ui/gl-now-playing.js"></script><!-- Milestone 4: now playing bar -->
     <script src="js/features/songs.js"></script>
     <script src="data.js"></script>
     <script src="js/features/gigs.js"></script>

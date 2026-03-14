@@ -279,6 +279,117 @@
 
 }
 
+/* ── Overlay root — top-level stacking context for persistent UI ──────────── */
+#gl-overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99999;
+}
+
+/* ── Now Playing bar (Milestone 4 Phase 3) ────────────────────────────────── */
+#gl-now-playing {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: auto;
+  display: none; /* hidden until nowPlayingSongId is set */
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+#gl-now-playing.gl-np--visible {
+  display: flex;
+}
+
+.gl-np-song {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.gl-np-song:hover .gl-np-title {
+  color: var(--text, #f1f5f9);
+}
+
+.gl-np-icon {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+
+.gl-np-title {
+  font-weight: 700;
+  font-size: 0.85em;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+
+.gl-np-meta {
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--text-dim, #475569);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.gl-np-action {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #818cf8;
+  font-size: 0.72em;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.gl-np-action:hover {
+  background: rgba(99, 102, 241, 0.25);
+}
+
+.gl-np-close {
+  background: none;
+  border: none;
+  color: var(--text-dim, #475569);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 1em;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.gl-np-close:hover {
+  color: var(--text, #f1f5f9);
+}
+
+/* Offset shell content so it doesn't sit behind the bar */
+#gl-shell.gl-shell--now-playing {
+  padding-bottom: 48px;
+}
+
+/* Mobile: compact bar */
+@media (max-width: 900px) {
+  #gl-now-playing {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .gl-np-meta { display: none; }
+  .gl-np-action { padding: 4px 10px; font-size: 0.68em; }
+}
+
 /* ── Dev-only: outline to confirm shell boundary during Phase B ─────────────
    Remove this block when Phase C is wired and visually confirmed.          */
 #gl-shell[data-dev-outline="true"] {
