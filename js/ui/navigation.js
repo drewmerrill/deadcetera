@@ -98,6 +98,10 @@ window.showPage = function showPage(page) {
     });
 
     currentPage = page;
+    // Mirror into GLStore (Milestone 4) — currentPage global stays for compat
+    if (typeof GLStore !== 'undefined' && typeof GLStore.setActivePage === 'function') {
+        GLStore.setActivePage(page);
+    }
     window.scrollTo(0, 0);
     try { localStorage.setItem('glLastPage', page); } catch(e) {}
 

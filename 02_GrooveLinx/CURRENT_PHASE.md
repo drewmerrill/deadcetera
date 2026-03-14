@@ -111,6 +111,52 @@ Goal: Wire Milestone 2 computation outputs into the right panel. Same panel, sam
 
 ---
 
+## Milestone 4 — App Shell Foundation
+
+Goal: Formalize the app shell — persistent left rail, shared shell state in GLStore, responsive layout contract — before adding more analytics widgets.
+
+### Phase Completion Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | GLStore shell state contract | ✅ DONE |
+| 2 | Persistent left rail | ✅ DONE |
+| 3 | Now Playing bar | NOT STARTED |
+| 4 | Performance mode shell integration | NOT STARTED |
+| 5 | Responsive polish | NOT STARTED |
+
+### Phase 1 — GLStore Shell State (20260314)
+
+- Extended `_state` with: `activePage`, `rightPanelMode`, `currentBandId`, `navCollapsed`, `mobilePanelState`, `appMode`, `nowPlayingSongId`, `liveRehearsalSongId`, `currentSnapshotRange`, `restoreState`
+- 22 new public methods: setters/getters/events for all shell state + derived selectors (`isPerformanceMode`, `hasNowPlaying`, `getShellState`, `getActiveContext`)
+- `setAppMode('performance')` auto-snapshots context; `getRestoreState()` / `clearRestoreState()` for safe exit
+- `nowPlayingSongId` persists to localStorage; `navCollapsed` persists as explicit user preference
+- `showPage()` mirrors page into `GLStore.setActivePage()` without removing `currentPage` global
+
+### Phase 2 — Persistent Left Rail (20260314)
+
+- `js/ui/gl-left-rail.js` — new controller: renders nav sections (Music/Gigs/Tools), subscribes to `pageChanged` for active state, handles collapse toggle
+- `css/gl-shell.css` — rail styles: 200px expanded, 56px collapsed, responsive rules
+- `index-dev.html` — `<nav id="gl-left-rail">` as first child of `#gl-shell`, script tag
+- Responsive behavior:
+  - ≥1200px: expanded by default, toggle visible, user preference persisted
+  - 901–1199px: locked collapsed, toggle hidden (protects center workspace layout)
+  - ≤900px: rail hidden, hamburger menu handles nav
+- Hamburger hidden on desktop ≥901px
+- User preference (`glNavCollapsed`) only written by explicit toggle click, never by responsive auto-collapse
+
+### Files Changed (Milestone 4)
+
+| File | Change |
+|------|--------|
+| `js/core/groovelinx_store.js` | Shell state properties, 22 new methods, `_setNavCollapsedInternal`, performance mode snapshot/restore |
+| `js/ui/gl-left-rail.js` | **New** — persistent left rail controller |
+| `css/gl-shell.css` | Left rail styles, responsive breakpoints, hamburger/toggle media queries |
+| `js/ui/navigation.js` | `GLStore.setActivePage(page)` mirror in `showPage()` |
+| `index-dev.html` | `#gl-left-rail` DOM element, `gl-left-rail.js` script tag |
+
+---
+
 ## Remaining Tech Debt
 
 1. **`glSongDetailBack` override** — Temporary patch in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js`.

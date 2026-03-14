@@ -14,6 +14,118 @@
   position: relative;
 }
 
+/* ── Left rail (Milestone 4 Phase 2) ───────────────────────────────────────── */
+#gl-left-rail {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--bg-card, #1e293b);
+  border-right: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.2s ease;
+  scrollbar-width: none;
+}
+#gl-left-rail::-webkit-scrollbar { width: 0; }
+
+/* Collapsed state */
+#gl-shell.gl-shell--nav-collapsed #gl-left-rail {
+  width: 56px;
+}
+
+/* Toggle button */
+.gl-rail-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 8px;
+  background: none;
+  border: none;
+  color: var(--text-dim, #475569);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.gl-rail-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #f1f5f9);
+}
+
+/* Section */
+.gl-rail-section {
+  margin-bottom: 4px;
+}
+.gl-rail-section-title {
+  font-size: 0.62em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim, #475569);
+  padding: 8px 16px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+#gl-shell.gl-shell--nav-collapsed .gl-rail-section-title {
+  opacity: 0;
+  height: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Nav item */
+.gl-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 12px);
+  margin: 1px 6px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.82em;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background 0.15s, color 0.15s;
+}
+.gl-rail-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #f1f5f9);
+}
+.gl-rail-item--active {
+  background: var(--accent-glow, rgba(99, 102, 241, 0.15));
+  color: var(--accent-light, #818cf8);
+}
+
+/* Icon */
+.gl-rail-icon {
+  font-size: 1.15em;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Label — hidden when collapsed */
+.gl-rail-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.15s;
+}
+#gl-shell.gl-shell--nav-collapsed .gl-rail-label {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+
 /* ── Center workspace inside the shell ─────────────────────────────────────── */
 /*
    .main-content normally has max-width:960px; margin:0 auto (from app-shell.css).
@@ -120,8 +232,24 @@
   border-radius: 2px;
 }
 
-/* ── Mobile: panel overlays instead of pushing ─────────────────────────────── */
+/* ── Desktop: hide hamburger when rail is visible ─────────────────────────── */
+@media (min-width: 901px) {
+  .hamburger { display: none; }
+}
+
+/* ── Medium screens: hide rail toggle (rail is locked collapsed) ──────────── */
+@media (max-width: 1199px) and (min-width: 901px) {
+  .gl-rail-toggle { display: none; }
+}
+
+/* Medium-screen auto-collapse is handled by JS (gl-left-rail.js) via
+   gl-shell--nav-collapsed class, not a media query — so the toggle works. */
+
+/* ── Mobile: hide left rail, panel overlays instead of pushing ────────────── */
 @media (max-width: 900px) {
+  #gl-left-rail {
+    display: none;
+  }
   #gl-right-panel {
     position: fixed;
     right: 0;

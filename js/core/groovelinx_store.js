@@ -1,6 +1,6 @@
 /**
  * groovelinx_store.js
- * GrooveLinx Shared State & Data Layer — Phase 3 Stabilizer
+ * GrooveLinx Shared State & Data Layer — Milestone 4 App Shell Foundation
  *
  * Single source of truth for cross-feature data and UI state.
  * Plain JS module — no framework, no build step.
@@ -47,6 +47,23 @@
 
     // UI state
     songDetailLens:    'band', // 'band'|'listen'|'learn'|'sing'|'inspire'
+
+    // ── Shell state (Milestone 4) ──────────────────────────────────────────
+    // activePage mirrors the currentPage global. showPage() writes both.
+    // selectedSongId is activeSongId above (already exists).
+    // nowPlayingSongId and liveRehearsalSongId are intentionally separate.
+    activePage:           null,        // 'songs'|'home'|'gigs'|... — mirrors currentPage
+    rightPanelMode:       'closed',    // 'closed'|'song'|'snapshot'
+    currentBandId:        null,        // 'deadcetera'
+    navCollapsed:         false,       // left rail collapsed state
+    mobilePanelState:     'closed',    // 'closed'|'panel'|'drawer'
+    appMode:              'workspace', // 'workspace'|'performance'
+    nowPlayingSongId:     null,        // persistent song context across pages
+    liveRehearsalSongId:  null,        // active song inside rehearsal/performance mode
+    currentSnapshotRange: '7d',        // readiness/activity time window
+
+    // Performance mode restore snapshot — captured on enter, applied on exit
+    restoreState:         null,        // { page, songId, panelMode, scrollY } or null
   };
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -667,6 +684,229 @@
     );
   }
 
+  // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
+
+  /**
+   * Set the active page. Called by showPage() to mirror currentPage.
+   * Does NOT call showPage() — avoids circular dependency.
+   * @param {string} page
+   */
+  function setActivePage(page) {
+    var prev = _state.activePage;
+    _state.activePage = page;
+    if (prev !== page) {
+      emit('pageChanged', { page: page, previousPage: prev });
+    }
+  }
+
+  function getActivePage() {
+    // Fall back to currentPage global during migration
+    return _state.activePage || (typeof currentPage !== 'undefined' ? currentPage : null);
+  }
+
+  /**
+   * Set right panel mode. Called by gl-right-panel.js on open/close/hide.
+   * @param {string} mode  'closed'|'song'|'snapshot'
+   */
+  function setRightPanelMode(mode) {
+    var prev = _state.rightPanelMode;
+    _state.rightPanelMode = mode;
+    if (prev !== mode) {
+      emit('panelModeChanged', { mode: mode, previousMode: prev });
+    }
+  }
+
+  function getRightPanelMode() {
+    return _state.rightPanelMode;
+  }
+
+  /**
+   * Set left rail collapsed state. Persisted to localStorage.
+   * @param {boolean} collapsed
+   */
+  /**
+   * Set left rail collapsed — explicit user preference. Persists to localStorage.
+   * Only called by the toggle button click. Responsive auto-collapse uses
+   * _setNavCollapsedInternal() which does NOT persist.
+   * @param {boolean} collapsed
+   */
+  function setNavCollapsed(collapsed) {
+    _state.navCollapsed = !!collapsed;
+    try { localStorage.setItem('glNavCollapsed', _state.navCollapsed ? '1' : '0'); } catch(e) {}
+    emit('navCollapsedChanged', { collapsed: _state.navCollapsed });
+  }
+
+  /**
+   * Internal: update in-memory collapsed state without persisting.
+   * Used by gl-left-rail.js responsive logic so auto-collapse at 901-1199px
+   * does not overwrite the user's desktop preference.
+   */
+  function _setNavCollapsedInternal(collapsed) {
+    _state.navCollapsed = !!collapsed;
+  }
+
+  function getNavCollapsed() {
+    return _state.navCollapsed;
+  }
+
+  /**
+   * Set app mode. Snapshots context on entering performance mode.
+   * @param {string} mode  'workspace'|'performance'
+   */
+  function setAppMode(mode) {
+    var prev = _state.appMode;
+    if (prev === mode) return;
+
+    // Snapshot current context when entering performance mode
+    if (mode === 'performance' && prev === 'workspace') {
+      _state.restoreState = {
+        page:      _state.activePage,
+        songId:    _state.activeSongId,
+        panelMode: _state.rightPanelMode,
+        scrollY:   window.scrollY,
+      };
+    }
+
+    _state.appMode = mode;
+    emit('appModeChanged', { mode: mode, previousMode: prev });
+  }
+
+  function getAppMode() {
+    return _state.appMode;
+  }
+
+  /**
+   * Get the snapshot captured when entering performance mode.
+   * Returns null if not in performance mode or no snapshot exists.
+   */
+  function getRestoreState() {
+    return _state.restoreState ? Object.assign({}, _state.restoreState) : null;
+  }
+
+  /**
+   * Clear the restore snapshot (called after successful restore on exit).
+   */
+  function clearRestoreState() {
+    _state.restoreState = null;
+  }
+
+  /**
+   * Set the persistent "now playing" song — survives page navigation.
+   * Separate from selectedSongId (panel selection) and liveRehearsalSongId.
+   * @param {string|null} songId
+   */
+  function setNowPlaying(songId) {
+    var prev = _state.nowPlayingSongId;
+    _state.nowPlayingSongId = songId || null;
+    if (prev !== _state.nowPlayingSongId) {
+      try {
+        if (_state.nowPlayingSongId) {
+          localStorage.setItem('glNowPlaying', _state.nowPlayingSongId);
+        } else {
+          localStorage.removeItem('glNowPlaying');
+        }
+      } catch(e) {}
+      emit('nowPlayingChanged', { songId: _state.nowPlayingSongId, previousSongId: prev });
+    }
+  }
+
+  function getNowPlaying() {
+    return _state.nowPlayingSongId;
+  }
+
+  // Restore nowPlaying from localStorage on load
+  try {
+    var _savedNP = localStorage.getItem('glNowPlaying');
+    if (_savedNP) _state.nowPlayingSongId = _savedNP;
+  } catch(e) {}
+
+  /**
+   * Set the live rehearsal song — the song currently active in rehearsal/performance mode.
+   * Separate from selectedSongId and nowPlayingSongId.
+   * @param {string|null} songId
+   */
+  function setLiveRehearsalSong(songId) {
+    var prev = _state.liveRehearsalSongId;
+    _state.liveRehearsalSongId = songId || null;
+    if (prev !== _state.liveRehearsalSongId) {
+      emit('liveRehearsalSongChanged', { songId: _state.liveRehearsalSongId });
+    }
+  }
+
+  function getLiveRehearsalSong() {
+    return _state.liveRehearsalSongId;
+  }
+
+  /**
+   * Set the current band id.
+   * @param {string} bandId
+   */
+  function setCurrentBand(bandId) {
+    _state.currentBandId = bandId;
+    emit('bandChanged', { bandId: bandId });
+  }
+
+  function getCurrentBand() {
+    // Fall back to localStorage during migration
+    return _state.currentBandId
+      || (typeof localStorage !== 'undefined' ? localStorage.getItem('deadcetera_current_band') : null)
+      || 'deadcetera';
+  }
+
+  /**
+   * Set the snapshot time range for readiness/activity views.
+   * @param {string} range  '7d'|'14d'|'30d'|'all'
+   */
+  function setSnapshotRange(range) {
+    _state.currentSnapshotRange = range;
+    emit('snapshotRangeChanged', { range: range });
+  }
+
+  function getSnapshotRange() {
+    return _state.currentSnapshotRange;
+  }
+
+  // ── Derived selectors ──────────────────────────────────────────────────
+
+  function isPerformanceMode() {
+    return _state.appMode === 'performance';
+  }
+
+  function hasNowPlaying() {
+    return _state.nowPlayingSongId !== null;
+  }
+
+  /**
+   * Full shell state snapshot for debugging and restore.
+   */
+  function getShellState() {
+    return {
+      activePage:           _state.activePage,
+      selectedSongId:       _state.activeSongId,
+      rightPanelMode:       _state.rightPanelMode,
+      currentBandId:        getCurrentBand(),
+      navCollapsed:         _state.navCollapsed,
+      mobilePanelState:     _state.mobilePanelState,
+      appMode:              _state.appMode,
+      nowPlayingSongId:     _state.nowPlayingSongId,
+      liveRehearsalSongId:  _state.liveRehearsalSongId,
+      currentSnapshotRange: _state.currentSnapshotRange,
+      restoreState:         _state.restoreState,
+    };
+  }
+
+  /**
+   * Active context snapshot — used for restore and debugging.
+   */
+  function getActiveContext() {
+    return {
+      page:      _state.activePage,
+      songId:    _state.activeSongId,
+      panelMode: _state.rightPanelMode,
+      appMode:   _state.appMode,
+    };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.GLStore = {
@@ -718,6 +958,33 @@
     getCatalogIntelligence: getCatalogIntelligence,
     getSongGaps:            getSongGaps,
     getPracticeRecommendations: getPracticeRecommendations,
+
+    // Shell State (Milestone 4)
+    setActivePage:          setActivePage,
+    getActivePage:          getActivePage,
+    setRightPanelMode:      setRightPanelMode,
+    getRightPanelMode:      getRightPanelMode,
+    setNavCollapsed:        setNavCollapsed,
+    getNavCollapsed:        getNavCollapsed,
+    _setNavCollapsedInternal: _setNavCollapsedInternal,
+    setAppMode:             setAppMode,
+    getAppMode:             getAppMode,
+    getRestoreState:        getRestoreState,
+    clearRestoreState:      clearRestoreState,
+    setNowPlaying:          setNowPlaying,
+    getNowPlaying:          getNowPlaying,
+    setLiveRehearsalSong:   setLiveRehearsalSong,
+    getLiveRehearsalSong:   getLiveRehearsalSong,
+    setCurrentBand:         setCurrentBand,
+    getCurrentBand:         getCurrentBand,
+    setSnapshotRange:       setSnapshotRange,
+    getSnapshotRange:       getSnapshotRange,
+
+    // Derived selectors
+    isPerformanceMode:      isPerformanceMode,
+    hasNowPlaying:          hasNowPlaying,
+    getShellState:          getShellState,
+    getActiveContext:        getActiveContext,
 
     // Debug
     getState:          getState,

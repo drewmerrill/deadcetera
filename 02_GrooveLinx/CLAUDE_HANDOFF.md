@@ -152,39 +152,45 @@ _Last updated: 2026-03-14_
 
 ## CURRENT OBJECTIVE
 
-**Milestone 3 — Song Intelligence UI (Right Panel) — COMPLETE** (2026-03-14)
+**Milestone 4 — App Shell Foundation** (started 2026-03-14)
 
-All three phases + stabilization pass verified.
+Phases 1 (GLStore shell state) + 2 (persistent left rail) complete. Phase 3 (Now Playing bar) next.
 
-## WHAT MILESTONE 3 DELIVERED
+## WHAT MILESTONE 4 IS
 
-- A: Song Intelligence card in Band lens — GLStore.getSongIntelligence() / getSongGaps()
-- B: Gap list card — high-severity gaps with red dots, medium gaps summarized
-- C: Band snapshot — catalog readiness, tier pills, top 3 practice recommendations
-- STAB: Panel hide/restore, page restore, auth cache-only silent reconnect
+Formalize the app shell before adding Practice Radar. Five phases:
+- 1: GLStore shell state contract (DONE)
+- 2: Persistent left rail (DONE)
+- 3: Now Playing bar
+- 4: Performance mode shell integration
+- 5: Responsive polish
 
 ## WHAT WAS COMPLETED THIS SESSION (20260314)
 
-- **Milestone 2** — Song Intelligence Engine (3 phases, all verified)
-- **Milestone 3 Phases A-C** — right panel intelligence UI
-- **Stabilization** — panel state management (hide vs close), page restore for all pages including songs, highlight sync, auth flow (cache-only silent reconnect, no GIS iframe flash, Event-as-silent guard, sign-out cleanup, deferred home navigation)
+- **Milestones 2 + 3** — Song Intelligence Engine + UI (all verified)
+- **Milestone 3 stabilization** — panel hide/restore, page restore, auth cache-only silent reconnect
+- **Milestone 4 Phase 1** — GLStore extended with shell state (activePage, rightPanelMode, appMode, nowPlayingSongId, liveRehearsalSongId, navCollapsed, restoreState + 22 new methods)
+- **Milestone 4 Phase 2** — persistent left rail with responsive collapse rules (≥1200px expanded, 901–1199px locked collapsed, ≤900px hidden)
 
 ## RISKS / WATCHOUTS
 
-1. **Sparse data** — 576/594 songs unrated. UI shows "No scores yet" gracefully.
-2. **Home dashboard loading** — brief black card flash on refresh before Firebase data loads. Needs loading skeleton in home-dashboard.js (not yet addressed).
-3. **Cache-only auth** — silent reconnect restores identity from localStorage without a fresh access token. API calls requiring the token will fail until user clicks Connect. Firebase data loads independently.
-4. **Deferred: stale-score** — Gap type excluded from M2 Phase B (requires Firebase read).
+1. **Home dashboard loading** — brief black card flash on refresh. Needs loading skeleton (not yet addressed).
+2. **Cache-only auth** — silent reconnect from localStorage, no fresh token. Firebase loads independently.
+3. **Rail collapse preference** — `glNavCollapsed` in localStorage is only written by explicit user toggle, never by responsive auto-collapse. Clear stale values with `localStorage.removeItem('glNavCollapsed')` if testing.
+4. **currentPage global still active** — `GLStore.setActivePage()` mirrors it but does not replace it yet.
 
 ---
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development. Milestones 1-3 complete.
+Continue GrooveLinx development from Milestone 4 Phase 3.
 
 Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
+4. `js/core/groovelinx_store.js` (shell state section)
+5. `js/ui/gl-left-rail.js`
+6. `js/ui/gl-right-panel.js`
 
-Milestone 4 not yet defined. Ask Drew for direction before starting new work.
+Phases 1 + 2 verified. Phase 3 is Now Playing bar — propose before coding.
