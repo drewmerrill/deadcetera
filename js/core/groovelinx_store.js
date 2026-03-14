@@ -860,8 +860,9 @@
   //   activeSession   — mutable execution state with per-item status tracking
 
   var _rehearsalAgenda = {
-    latestGenerated: null,   // output of generateRehearsalAgenda(), immutable during session
-    activeSession: null,     // execution snapshot, mutable
+    latestGenerated: null,          // output of generateRehearsalAgenda(), immutable during session
+    activeSession: null,            // execution snapshot, mutable
+    latestCompletedSummary: null,   // summary from last completed session
   };
 
   var _agendaIdCounter = 0;
@@ -890,6 +891,9 @@
           if (_parsed.activeSession.status === 'active') {
             _rehearsalAgenda.activeSession = _parsed.activeSession;
           }
+        }
+        if (_parsed.latestCompletedSummary && _parsed.latestCompletedSummary.sessionId) {
+          _rehearsalAgenda.latestCompletedSummary = _parsed.latestCompletedSummary;
         }
       }
     }
@@ -1060,15 +1064,56 @@
     return target;
   }
 
-  /** Mark session as completed. */
+  /** Mark session as completed and build summary. */
   function completeRehearsalAgendaSession() {
     var s = _rehearsalAgenda.activeSession;
     if (!s) return;
     s.status = 'completed';
     s.updatedAt = new Date().toISOString();
     setLiveRehearsalSong(null);
+
+    // Build completion summary from session items
+    _rehearsalAgenda.latestCompletedSummary = _buildCompletionSummary(s);
+
     _persistAgenda();
-    emit('agendaSessionCompleted', { session: s });
+    emit('agendaSessionCompleted', { session: s, summary: _rehearsalAgenda.latestCompletedSummary });
+  }
+
+  function _buildCompletionSummary(session) {
+    var completed = [];
+    var skipped = [];
+    var completedMinutes = 0;
+    var skippedMinutes = 0;
+
+    for (var i = 0; i < session.items.length; i++) {
+      var item = session.items[i];
+      if (item.status === 'done') {
+        completed.push({ songId: item.songId, title: item.title, type: item.type, minutes: item.minutes });
+        completedMinutes += item.minutes;
+      } else if (item.status === 'skipped') {
+        skipped.push({ songId: item.songId, title: item.title, type: item.type, minutes: item.minutes });
+        skippedMinutes += item.minutes;
+      }
+    }
+
+    return {
+      sessionId: session.sessionId,
+      completedAt: session.updatedAt,
+      startedAt: session.startedAt,
+      totalItems: session.items.length,
+      completedCount: completed.length,
+      skippedCount: skipped.length,
+      completedMinutes: completedMinutes,
+      skippedMinutes: skippedMinutes,
+      totalPlannedMinutes: completedMinutes + skippedMinutes,
+      completedSongs: completed,
+      skippedSongs: skipped,
+    };
+  }
+
+  /** Get the latest completion summary. */
+  function getLatestCompletedSummary() {
+    return _rehearsalAgenda.latestCompletedSummary || null;
   }
 
   /** Mark session as abandoned (user quit early). */
@@ -1389,6 +1434,7 @@
     getCurrentRehearsalAgendaItem:     getCurrentRehearsalAgendaItem,
     hasNextRehearsalAgendaItem:        hasNextRehearsalAgendaItem,
     getNextRehearsalAgendaItem:        getNextRehearsalAgendaItem,
+    getLatestCompletedSummary:         getLatestCompletedSummary,
     clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)

@@ -2034,11 +2034,61 @@ function _renderAgendaOverlay() {
 }
 
 function _renderAgendaComplete() {
-    return '<div style="margin-top:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:10px 12px;text-align:center">'
-        + '<div style="font-size:1.2em;margin-bottom:4px">✅</div>'
-        + '<div style="font-size:0.82em;font-weight:700;color:#86efac">Agenda Complete</div>'
-        + '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-top:2px">All slots finished. Nice work.</div>'
-        + '</div>';
+    var summary = (typeof GLStore !== 'undefined' && GLStore.getLatestCompletedSummary)
+        ? GLStore.getLatestCompletedSummary() : null;
+
+    var h = '<div style="margin-top:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:12px 14px">';
+    h += '<div style="text-align:center;margin-bottom:10px">';
+    h += '<div style="font-size:1.4em;margin-bottom:4px">✅</div>';
+    h += '<div style="font-size:0.92em;font-weight:800;color:#86efac">Agenda Complete</div>';
+    h += '</div>';
+
+    if (summary) {
+        // Stats row
+        h += '<div style="display:flex;gap:8px;justify-content:center;margin-bottom:10px;flex-wrap:wrap">';
+        h += '<span style="font-size:0.72em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#86efac">'
+            + summary.completedCount + ' completed · ' + summary.completedMinutes + ' min</span>';
+        if (summary.skippedCount > 0) {
+            h += '<span style="font-size:0.72em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.12);color:#fbbf24">'
+                + summary.skippedCount + ' skipped · ' + summary.skippedMinutes + ' min</span>';
+        }
+        h += '</div>';
+
+        // Completed songs
+        if (summary.completedSongs.length) {
+            h += '<div style="margin-bottom:8px">';
+            h += '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:4px">Completed</div>';
+            for (var c = 0; c < summary.completedSongs.length; c++) {
+                var cs = summary.completedSongs[c];
+                h += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.8em">';
+                h += '<span style="color:#34d399">✓</span>';
+                h += '<span style="color:var(--text,#f1f5f9);flex:1">' + cs.title + '</span>';
+                h += '<span style="font-size:0.75em;color:var(--text-dim,#475569)">' + cs.minutes + 'min</span>';
+                h += '</div>';
+            }
+            h += '</div>';
+        }
+
+        // Skipped songs
+        if (summary.skippedSongs.length) {
+            h += '<div>';
+            h += '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:4px">Skipped</div>';
+            for (var sk = 0; sk < summary.skippedSongs.length; sk++) {
+                var ss = summary.skippedSongs[sk];
+                h += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.8em">';
+                h += '<span style="color:#fbbf24">–</span>';
+                h += '<span style="color:var(--text-dim,#475569);flex:1">' + ss.title + '</span>';
+                h += '<span style="font-size:0.75em;color:var(--text-dim,#475569)">' + ss.minutes + 'min</span>';
+                h += '</div>';
+            }
+            h += '</div>';
+        }
+    } else {
+        h += '<div style="font-size:0.72em;color:var(--text-dim,#475569);text-align:center">All slots finished. Nice work.</div>';
+    }
+
+    h += '</div>';
+    return h;
 }
 
 window.agendaCompleteAndNext = function() {
