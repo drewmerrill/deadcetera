@@ -152,44 +152,41 @@ _Last updated: 2026-03-13_
 
 ## CURRENT OBJECTIVE
 
-**Milestone 1 — COMPLETE + PRODUCTION PROMOTED** (2026-03-13)
+**Milestone 2 — Song Intelligence Engine** (started 2026-03-13)
 
-Milestone 2 not yet defined. Awaiting direction.
+Phases A + B complete. Phase C (practice recommendations) next.
 
-## WHAT MILESTONE 1 DELIVERED
+## WHAT MILESTONE 2 IS
 
-Songs 3-Pane Shell replacing full-page `showPage('songdetail')` navigation:
-
-1. `GLStore.selectSong()` / `clearSong()` — canonical state layer
-2. Right panel on desktop (>=900px), slide-in drawer on mobile (<900px)
-3. Song row highlight survives async DOM rebuilds
-4. Reload restores song + page with auth-timing protection
-5. `showPage('songdetail')` shimmed — legacy calls redirect to panel
-6. ESC closes panel; navigating away from songs closes panel
-7. Production (`index.html` + `app.js`) updated and UAT passed
+Pure computation layer that analyzes existing readiness + status data. No UI changes. Three phases:
+- A: Band readiness aggregation (DONE)
+- B: Gap detection (DONE)
+- C: Practice recommendation generation
 
 ## WHAT WAS COMPLETED THIS SESSION (20260313)
 
-- **Phases G + H** — reload restore, song drawer mobile gate, highlight fix
-- **Production promotion** — `index.html` updated (shell markup, scripts, glHeroCheck guard). `app.js` updated (restore-pending guard).
-- **Stabilization fixes** — ESC handler for panel, panel closes on page navigation, drawer/panel isolation on mobile (GLStore.selectSong only on desktop path in song-drawer.js)
-- **UAT passed** — all 9 checklist items green on production
+- **Milestone 2 Phase A** — `js/core/song-intelligence.js` created with `computeSongIntelligence()` and `computeCatalogIntelligence()`
+- **Milestone 2 Phase B** — `detectSongGaps()` added with 3 gap types: `member-below-avg`, `missing-score`, `status-mismatch`. Wired as `GLStore.getSongGaps(songId)`.
+- **Both phases verified** — 594 songs, 18 rated. Gap detection returns correct results for rated and unrated songs.
 
 ## RISKS / WATCHOUTS
 
-1. **Auth timing** — `_glPanelRestorePending` / `_glPageRestorePending` flags must stay set for the full page lifetime. If cleared too early, `glHeroCheck(true)` overrides the restored page.
-2. **Mobile drawer vs panel** — On mobile, `openSongDrawer()` deliberately does NOT call `GLStore.selectSong()` to avoid opening the right panel behind the drawer. If future work adds mobile panel triggers, these need reconciling.
-3. **`push.py`** — `stamp_version()` mirrors `app.js` → `app-dev.js`. Now that `app.js` has the restore guard, this propagates correctly.
+1. **Sparse data** — Only 18/594 songs have readiness scores. Recommendations must handle this gracefully (short lists, not errors).
+2. **Status values** — `statusCache` values are freeform strings. Matched case-insensitively.
+3. **Auth timing** — Milestone 1 flags (`_glPanelRestorePending` / `_glPageRestorePending`) still active and must not be disturbed.
+4. **Deferred: stale-score** — Gap type excluded from Phase B because it requires Firebase reads. Can be added later.
 
 ---
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development. Milestone 1 (Songs 3-Pane Shell) is complete and production promoted.
+Continue GrooveLinx development from Milestone 2 Phase C.
 
 Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
+4. `js/core/song-intelligence.js`
+5. `js/core/groovelinx_store.js`
 
-Milestone 2 is not yet defined. Ask Drew for direction before starting new work.
+Phases A + B verified and complete. Phase C is practice recommendation generation — propose before coding.
