@@ -287,6 +287,12 @@ async function rhOpenEvent(eventId) {
     html += '</div>';
 
     if (planSongs.length) {
+        html += '<div style="margin-bottom:10px"><button onclick="rhStartRehearsalMode(\'' + eventId + '\')" '
+            + 'style="width:100%;padding:12px 16px;border-radius:10px;'
+            + 'background:linear-gradient(135deg,#667eea,#764ba2);'
+            + 'color:white;border:none;font-weight:700;font-size:0.9em;cursor:pointer;'
+            + 'letter-spacing:0.02em;box-shadow:0 2px 12px rgba(102,126,234,0.3)">'
+            + '🎸 Start Rehearsal Mode</button></div>';
         html += '<div id="rhTimerWidget"></div>';
         html += '<div id="rhScoreboard"></div>';
         html += '<div id="rhPlanList" style="margin-bottom:10px">';

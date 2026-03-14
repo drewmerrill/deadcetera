@@ -161,6 +161,7 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 - Rehearsal Mode (`rehearsal-mode.js`): `GLStore.setAppMode('performance')` on enter, `setAppMode('workspace')` on exit. Sets/clears `liveRehearsalSongId`.
 - Live Rehearsal Mode (`rehearsal.js` `enterLiveRehearsalMode`/`endRiSession`): same `setAppMode` + `setLiveRehearsalSong` integration
 - Live Gig (`live-gig.js`): same `setAppMode` on enter/exit
+- Sessions event view: "Start Rehearsal Mode" button added above timer, launches performance mode directly from session
 - Left rail hides during performance mode (subscribes to `appModeChanged`)
 - Now Playing bar (overlay root) hides during performance mode
 - `setAppMode('performance')` auto-snapshots workspace context; available via `GLStore.getRestoreState()` on exit
