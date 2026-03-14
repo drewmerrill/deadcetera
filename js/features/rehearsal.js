@@ -1826,7 +1826,7 @@ function renderRiCTA(ctx) {
           + 'touch-action:manipulation">🎚️ Open Pocket Meter</button>'
         : '';
     return '<div style="margin:16px 0 8px">'
-        + '<button onclick="rhStartRehearsalMode(\'' + eventId + '\')" '
+        + '<button onclick="rhLaunchFromSession(\'' + eventId + '\')" '
         + 'style="width:100%;padding:14px 20px;border-radius:14px;'
         + 'background:linear-gradient(135deg,#667eea,#764ba2);'
         + 'color:white;border:none;font-weight:800;font-size:1em;cursor:pointer;'
