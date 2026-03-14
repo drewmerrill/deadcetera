@@ -154,7 +154,7 @@ _Last updated: 2026-03-14_
 
 **Milestone 4 — App Shell Foundation** (started 2026-03-14)
 
-Phases 1–4 complete. Phase 5 (responsive polish) next.
+**Milestone 4 — COMPLETE** (all 5 phases verified 2026-03-14).
 
 ## WHAT MILESTONE 4 IS
 
@@ -163,7 +163,7 @@ Formalize the app shell before adding Practice Radar. Five phases:
 - 2: Persistent left rail (DONE)
 - 3: Now Playing bar (DONE)
 - 4: Performance mode shell integration (DONE)
-- 5: Responsive polish
+- 5: Responsive polish (DONE)
 
 ## WHAT WAS COMPLETED THIS SESSION (20260314)
 
@@ -192,7 +192,7 @@ Formalize the app shell before adding Practice Radar. Five phases:
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development from Milestone 4 Phase 5.
+Continue GrooveLinx development. Milestones 1–4 complete.
 
 Please read these files first:
 1. `CLAUDE.md`
@@ -202,4 +202,4 @@ Please read these files first:
 5. `js/ui/gl-now-playing.js`
 6. `rehearsal-mode.js` (for Phase 4 integration)
 
-Phases 1–4 verified. Phase 5 is responsive polish — propose before coding.
+Milestone 4 complete. Milestone 5 not yet defined. Ask Drew for direction.

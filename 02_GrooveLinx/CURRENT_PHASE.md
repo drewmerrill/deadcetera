@@ -123,7 +123,7 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 | 2 | Persistent left rail | ✅ DONE |
 | 3 | Now Playing bar | ✅ DONE |
 | 4 | Performance mode shell integration | ✅ DONE |
-| 5 | Responsive polish | NOT STARTED |
+| 5 | Responsive polish | ✅ DONE |
 
 ### Phase 1 — GLStore Shell State (20260314)
 
@@ -165,6 +165,14 @@ Goal: Formalize the app shell — persistent left rail, shared shell state in GL
 - Left rail hides during performance mode (subscribes to `appModeChanged`)
 - Now Playing bar (overlay root) hides during performance mode
 - `setAppMode('performance')` auto-snapshots workspace context; available via `GLStore.getRestoreState()` on exit
+
+### Phase 5 — Responsive Polish (20260314)
+
+- Panel width capped at 360px on medium screens (901–1199px) to protect center workspace
+- Collapsed rail icons centered with adjusted padding
+- Now Playing bar: consolidated CSS with inline-style-safe `!important` overrides for show/hide and mobile
+- Mobile Now Playing: larger touch target on close button
+- Removed dev outline block (Phase B artifact)
 
 ### Files Changed (Milestone 4)
 

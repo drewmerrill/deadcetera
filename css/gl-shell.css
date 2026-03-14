@@ -34,6 +34,12 @@
 #gl-shell.gl-shell--nav-collapsed #gl-left-rail {
   width: 56px;
 }
+#gl-shell.gl-shell--nav-collapsed .gl-rail-item {
+  justify-content: center;
+  padding: 8px 0;
+  width: calc(100% - 8px);
+  margin: 1px 4px;
+}
 
 /* Toggle button */
 .gl-rail-toggle {
@@ -242,8 +248,12 @@
   .gl-rail-toggle { display: none; }
 }
 
-/* Medium-screen auto-collapse is handled by JS (gl-left-rail.js) via
-   gl-shell--nav-collapsed class, not a media query — so the toggle works. */
+/* ── Medium screens: cap panel width to protect center workspace ───────────── */
+@media (max-width: 1199px) and (min-width: 901px) {
+  #gl-shell.gl-shell--panel-open #gl-right-panel {
+    width: 360px; /* narrower than desktop 420px to give center workspace more room */
+  }
+}
 
 /* ── Mobile: hide left rail, panel overlays instead of pushing ────────────── */
 @media (max-width: 900px) {
@@ -288,23 +298,10 @@
 }
 
 /* ── Now Playing bar (Milestone 4 Phase 3) ────────────────────────────────── */
-#gl-now-playing {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 48px;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  pointer-events: auto;
-  display: none; /* hidden until nowPlayingSongId is set */
-  align-items: center;
-  padding: 0 16px;
-  gap: 12px;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-}
+/* Critical layout styles are inline on the HTML element (stacking fix).
+   These rules handle show/hide and visual refinements only. */
 #gl-now-playing.gl-np--visible {
-  display: flex;
+  display: flex !important; /* override inline styles which don't set display */
 }
 
 .gl-np-song {
@@ -380,18 +377,14 @@
   padding-bottom: 48px;
 }
 
-/* Mobile: compact bar */
+/* Mobile: compact Now Playing bar */
 @media (max-width: 900px) {
   #gl-now-playing {
-    padding: 0 12px;
-    gap: 8px;
+    padding: 0 12px !important;
+    gap: 8px !important;
   }
   .gl-np-meta { display: none; }
   .gl-np-action { padding: 4px 10px; font-size: 0.68em; }
+  .gl-np-close { padding: 8px; font-size: 1.1em; } /* larger touch target */
 }
 
-/* ── Dev-only: outline to confirm shell boundary during Phase B ─────────────
-   Remove this block when Phase C is wired and visually confirmed.          */
-#gl-shell[data-dev-outline="true"] {
-  outline: 2px dashed rgba(245, 158, 11, 0.3);
-}
