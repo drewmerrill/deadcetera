@@ -437,8 +437,104 @@
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
+  // ── Repeated Weak-Spot Detection ─────────────────────────────────────────
+
+  /**
+   * Analyze recent scorecard history for recurring patterns.
+   * @param {Array} history  Scorecard history (newest first)
+   * @param {number} [depth] How many sessions to analyze (default 5)
+   * @returns {object} weakSpots
+   */
+  function analyzeWeakSpots(history, depth) {
+    depth = depth || 5;
+    var recent = (history || []).slice(0, depth);
+    if (recent.length < 2) {
+      return { hasEnoughData: false, sessionCount: recent.length, songs: [], patterns: [] };
+    }
+
+    // Tally per-song signals across sessions
+    var songData = {}; // { songId: { skipCount, completedCount, readinessDeltas[], lastType } }
+
+    for (var i = 0; i < recent.length; i++) {
+      var sc = recent[i];
+      var completed = sc.completedSongs || [];
+      var skipped = sc.skippedSongs || [];
+      var rdBySong = (sc.readiness && sc.readiness.bySong) || [];
+
+      for (var c = 0; c < completed.length; c++) {
+        var cId = completed[c].songId;
+        if (!songData[cId]) songData[cId] = { songId: cId, title: completed[c].title, skipCount: 0, completedCount: 0, readinessDeltas: [], lastType: null };
+        songData[cId].completedCount++;
+        songData[cId].lastType = completed[c].type;
+      }
+      for (var s = 0; s < skipped.length; s++) {
+        var sId = skipped[s].songId;
+        if (!songData[sId]) songData[sId] = { songId: sId, title: skipped[s].title, skipCount: 0, completedCount: 0, readinessDeltas: [], lastType: null };
+        songData[sId].skipCount++;
+      }
+      for (var r = 0; r < rdBySong.length; r++) {
+        var rd = rdBySong[r];
+        if (!songData[rd.songId]) songData[rd.songId] = { songId: rd.songId, title: rd.title, skipCount: 0, completedCount: 0, readinessDeltas: [], lastType: null };
+        songData[rd.songId].readinessDeltas.push(rd.delta);
+      }
+    }
+
+    // Classify patterns
+    var songs = [];
+    var patterns = [];
+
+    for (var id in songData) {
+      var d = songData[id];
+      var issue = null;
+
+      // Repeatedly skipped
+      if (d.skipCount >= 2) {
+        issue = { type: 'repeated-skip', severity: 'high', reason: 'Skipped ' + d.skipCount + ' of last ' + recent.length + ' sessions' };
+      }
+      // Rehearsed without improvement (2+ sessions with non-positive readiness delta)
+      else if (d.readinessDeltas.length >= 2) {
+        var nonPositive = d.readinessDeltas.filter(function(v) { return v <= 0; }).length;
+        if (nonPositive >= 2) {
+          issue = { type: 'stalled-readiness', severity: 'medium', reason: 'No readiness improvement in ' + nonPositive + ' sessions' };
+        }
+      }
+      // Completed but still below target (readiness after < 3.5 in most recent)
+      if (!issue && d.completedCount >= 2) {
+        var latestRd = (recent[0].readiness && recent[0].readiness.bySong || []).find(function(x) { return x.songId === id; });
+        if (latestRd && latestRd.after !== null && latestRd.after < 3.5) {
+          issue = { type: 'below-target', severity: 'medium', reason: 'Still at ' + latestRd.after + '/5 after ' + d.completedCount + ' rehearsals' };
+        }
+      }
+
+      if (issue) {
+        songs.push({ songId: d.songId, title: d.title, skipCount: d.skipCount, completedCount: d.completedCount, issue: issue });
+        patterns.push(issue.type);
+      }
+    }
+
+    // Sort: high severity first, then by skip count
+    songs.sort(function(a, b) {
+      var sev = { high: 0, medium: 1, low: 2 };
+      var diff = (sev[a.issue.severity] || 9) - (sev[b.issue.severity] || 9);
+      return diff !== 0 ? diff : b.skipCount - a.skipCount;
+    });
+
+    return {
+      hasEnoughData: true,
+      sessionCount: recent.length,
+      songs: songs.slice(0, 8),
+      patterns: _uniqueArray(patterns),
+    };
+  }
+
+  function _uniqueArray(arr) {
+    var seen = {};
+    return arr.filter(function(v) { if (seen[v]) return false; seen[v] = true; return true; });
+  }
+
   window.RehearsalScorecardEngine = {
     generateScorecard: generateScorecard,
+    analyzeWeakSpots: analyzeWeakSpots,
   };
 
   console.log('✅ RehearsalScorecardEngine loaded');

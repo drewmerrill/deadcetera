@@ -810,11 +810,22 @@
       attentionBySongId: attentionBySongId,
       recentActivityBySongId: activityIndex,
       practiceStatsBySongId: _state.songPracticeStats || {},
+      weakSpotsBySongId: _buildWeakSpotIndex(),
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,
       lastUpdatedAt: new Date().toISOString(),
     };
+  }
+
+  function _buildWeakSpotIndex() {
+    var ws = getRehearsalWeakSpots();
+    if (!ws || !ws.hasEnoughData || !ws.songs.length) return {};
+    var index = {};
+    for (var i = 0; i < ws.songs.length; i++) {
+      index[ws.songs[i].songId] = ws.songs[i];
+    }
+    return index;
   }
 
   function _memberKeys() {
@@ -1214,6 +1225,12 @@
   /** Get completion history (newest first, max 25). */
   function getCompletionHistory() {
     return _rehearsalAgenda.completionHistory || [];
+  }
+
+  /** Analyze repeated weak spots across recent scorecards. */
+  function getRehearsalWeakSpots() {
+    if (typeof RehearsalScorecardEngine === 'undefined' || !RehearsalScorecardEngine.analyzeWeakSpots) return null;
+    return RehearsalScorecardEngine.analyzeWeakSpots(_rehearsalAgenda.completionHistory || []);
   }
 
   /**
@@ -1659,6 +1676,8 @@
     getLatestCompletedSummary:         getLatestCompletedSummary,
     getCompletionHistory:              getCompletionHistory,
     getRehearsalScorecardData:         getRehearsalScorecardData,
+    getRehearsalScorecardHistory:      getCompletionHistory,
+    getRehearsalWeakSpots:             getRehearsalWeakSpots,
     getRecentRehearsalTrendSummary:    getRecentRehearsalTrendSummary,
     getSongPracticeStats:              getSongPracticeStats,
     getAllSongPracticeStats:           getAllSongPracticeStats,

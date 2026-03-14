@@ -75,6 +75,7 @@
     var attention = input.attentionBySongId[songId] || null;
     var activity = input.recentActivityBySongId[songId] || null;
     var pStats = (input.practiceStatsBySongId || {})[songId] || null;
+    var weakSpot = (input.weakSpotsBySongId || {})[songId] || null;
     var members = input.memberKeys || [];
     var totalMembers = members.length || 5;
     var now = Date.now();
@@ -174,6 +175,9 @@
       practiceCount: pStats ? (pStats.practiceCount || 0) : 0,
       totalPracticeMinutes: pStats ? (pStats.totalPracticeMinutes || 0) : 0,
       daysSincePractice: daysSincePractice !== null ? Math.round(daysSincePractice) : null,
+      weakSpotBoost: weakSpot ? (weakSpot.issue.severity === 'high' ? 12 : 8) : 0,
+      weakSpotType: weakSpot ? weakSpot.issue.type : null,
+      weakSpotReason: weakSpot ? weakSpot.issue.reason : null,
     };
   }
 
@@ -206,7 +210,8 @@
       sig.neglectScore * w.neglectScore +
       sig.gapScore * w.gapScore +
       sig.learnScore * w.learnScore +
-      sig.underPracticedBoost -
+      sig.underPracticedBoost +
+      sig.weakSpotBoost -
       sig.overRehearsedPenalty * w.overRehearsedPenalty
     );
   }
@@ -312,6 +317,11 @@
   // ── Reason & Focus Text ────────────────────────────────────────────────────
 
   function buildReasonText(sig, itemType) {
+    // Weak-spot context takes priority when available
+    if (sig.weakSpotReason && (itemType === 'repair' || itemType === 'repair2' || itemType === 'learn')) {
+      return sig.weakSpotReason + (sig.readinessDeficit >= 30 ? ' Still needs work.' : '');
+    }
+
     // Practice-aware context fragments
     var practiceCtx = '';
     if (sig.totalPracticeMinutes === 0 && sig.practiceCount === 0) {

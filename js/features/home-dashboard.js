@@ -305,6 +305,7 @@ function _renderDashboard(bundle, context) {
         renderPracticeRadar(),
         renderRehearsalAgenda(),
         renderLastRehearsal(),
+        renderRehearsalHistory(),
         '</div>',
         activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
@@ -779,6 +780,78 @@ function renderLastRehearsal() {
 
     h += '</div>';
     return h;
+}
+
+// ── Rehearsal History (M7 Phase 3) ────────────────────────────────────────────
+
+function renderRehearsalHistory() {
+    if (typeof GLStore === 'undefined' || !GLStore.getRehearsalScorecardHistory) return '';
+    var history = GLStore.getRehearsalScorecardHistory();
+    if (!history || history.length < 2) return ''; // need 2+ for history to be useful
+
+    var items = history.slice(0, 5);
+    var rows = items.map(function(sc) {
+        var scoreColor = sc.score >= 80 ? '#22c55e' : sc.score >= 50 ? '#f59e0b' : '#ef4444';
+        var ts = sc.createdAt || sc.completedAt || '';
+        var dateStr = '';
+        if (ts) {
+            var d = new Date(ts);
+            dateStr = (d.getMonth()+1) + '/' + d.getDate();
+        }
+        var ti = sc.trendInputs || sc;
+        var rd = sc.readiness || {};
+        var pk = sc.pocket || {};
+        var hl = sc.highlights || {};
+
+        var chips = '';
+        if (rd.hasEnoughData && rd.deltaAvg !== 0) {
+            var rdC = rd.deltaAvg > 0 ? '#22c55e' : '#ef4444';
+            chips += '<span style="font-size:0.62em;padding:1px 5px;border-radius:4px;background:'+rdC+'15;color:'+rdC+'">' + (rd.deltaAvg > 0 ? '+' : '') + rd.deltaAvg + '</span>';
+        }
+        if (pk.hasEnoughData) {
+            var pkC = pk.label === 'Tighter' || pk.label === 'Slightly tighter' ? '#22c55e' : pk.label === 'Looser' || pk.label === 'Slightly looser' ? '#ef4444' : '#94a3b8';
+            chips += '<span style="font-size:0.62em;padding:1px 5px;border-radius:4px;background:'+pkC+'15;color:'+pkC+'">'+_escHtml(pk.label)+'</span>';
+        }
+
+        return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+            + '<span style="font-size:0.72em;color:var(--text-dim,#475569);width:32px;flex-shrink:0">' + dateStr + '</span>'
+            + '<span style="font-size:1em;font-weight:800;color:' + scoreColor + ';width:28px;text-align:center;flex-shrink:0">' + sc.score + '</span>'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:0.72em;font-weight:600;color:var(--text-muted,#94a3b8)">' + _escHtml(sc.label || '') + '</div>'
+            + (hl.biggestWin ? '<div style="font-size:0.65em;color:var(--text-dim,#475569);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(hl.biggestWin) + '</div>' : '')
+            + '</div>'
+            + '<div style="display:flex;gap:4px;flex-shrink:0">' + chips + '</div>'
+            + '</div>';
+    }).join('');
+
+    // Weak spots summary
+    var wsHtml = '';
+    if (typeof GLStore.getRehearsalWeakSpots === 'function') {
+        var ws = GLStore.getRehearsalWeakSpots();
+        if (ws && ws.hasEnoughData && ws.songs.length) {
+            wsHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)">';
+            wsHtml += '<div style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:4px">Recurring Weak Spots</div>';
+            for (var w = 0; w < Math.min(3, ws.songs.length); w++) {
+                var wSong = ws.songs[w];
+                var wColor = wSong.issue.severity === 'high' ? '#ef4444' : '#f59e0b';
+                wsHtml += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">'
+                    + '<span style="font-size:0.72em;font-weight:700;color:' + wColor + '">' + _escHtml(wSong.title) + '</span>'
+                    + '<span style="font-size:0.65em;color:var(--text-dim,#475569)">' + _escHtml(wSong.issue.reason) + '</span>'
+                    + '</div>';
+            }
+            wsHtml += '</div>';
+        }
+    }
+
+    return '<div class="hd-bucket" style="grid-column:1/-1">'
+        + '<div class="hd-bucket__header">'
+        + '<span class="hd-bucket__icon">📊</span>'
+        + '<span class="hd-bucket__title">REHEARSAL HISTORY</span>'
+        + '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + items.length + ' sessions</span>'
+        + '</div>'
+        + rows
+        + wsHtml
+        + '</div>';
 }
 
 // ── Context Banner ────────────────────────────────────────────────────────────
