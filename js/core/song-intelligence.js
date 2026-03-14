@@ -1,6 +1,6 @@
 /**
  * song-intelligence.js
- * Song Intelligence Engine — Phase A: Band Readiness Aggregation
+ * Song Intelligence Engine — Phases A + B: Readiness Aggregation + Gap Detection
  *
  * Pure computation module. No DOM, no Firebase, no side effects.
  * Consumes readiness/status/member data and returns intelligence objects.
@@ -162,11 +162,91 @@
     };
   }
 
+  // ── Gap Detection (Phase B) ────────────────────────────────────────────────
+
+  /**
+   * Detect gaps for a single song. Pure computation — no Firebase, no DOM.
+   *
+   * Gap types:
+   *   member-below-avg  — member score 2+ points below the song's band avg (high)
+   *   missing-score     — member has no readiness rating (medium)
+   *   status-mismatch   — status is "Gig Ready" but band avg < 4 (high)
+   *
+   * @param {string} songId
+   * @param {object} allReadiness  Full readinessCache
+   * @param {object} allStatus     Full statusCache
+   * @param {object} members       bandMembers object
+   * @returns {Array} gaps — sorted by severity (high first)
+   */
+  function detectSongGaps(songId, allReadiness, allStatus, members) {
+    var gaps = [];
+    var scores = (allReadiness && allReadiness[songId]) || {};
+    var keys = _memberKeys(members);
+
+    // Compute avg from rated members only
+    var ratedValues = [];
+    for (var i = 0; i < keys.length; i++) {
+      var s = scores[keys[i]];
+      if (s && s >= 1 && s <= 5) ratedValues.push(s);
+    }
+    var avg = _avg(ratedValues);
+
+    // 1. missing-score — members with no rating
+    for (var j = 0; j < keys.length; j++) {
+      var k = keys[j];
+      var sc = scores[k];
+      if (!sc || sc < 1 || sc > 5) {
+        gaps.push({
+          type: 'missing-score',
+          severity: 'medium',
+          memberKey: k,
+          detail: (members[k].name || k) + ' has no readiness score',
+        });
+      }
+    }
+
+    // 2. member-below-avg — only meaningful if avg > 0 and there are 2+ rated members
+    if (avg > 0 && ratedValues.length >= 2) {
+      for (var m = 0; m < keys.length; m++) {
+        var mk = keys[m];
+        var ms = scores[mk];
+        if (ms && ms >= 1 && ms <= 5 && (avg - ms) >= 2) {
+          gaps.push({
+            type: 'member-below-avg',
+            severity: 'high',
+            memberKey: mk,
+            detail: (members[mk].name || mk) + ' scored ' + ms + ' vs band avg ' + avg,
+          });
+        }
+      }
+    }
+
+    // 3. status-mismatch — "Gig Ready" status but avg readiness < 4
+    var status = (allStatus && allStatus[songId]) || '';
+    if (status && typeof status === 'string' && status.toLowerCase() === 'gig ready' && avg > 0 && avg < 4) {
+      gaps.push({
+        type: 'status-mismatch',
+        severity: 'high',
+        memberKey: null,
+        detail: 'Status is "Gig Ready" but band avg is ' + avg + '/5',
+      });
+    }
+
+    // Sort: high before medium
+    var severityOrder = { high: 0, medium: 1, low: 2 };
+    gaps.sort(function (a, b) {
+      return (severityOrder[a.severity] || 9) - (severityOrder[b.severity] || 9);
+    });
+
+    return gaps;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.SongIntelligence = {
     computeSongIntelligence: computeSongIntelligence,
     computeCatalogIntelligence: computeCatalogIntelligence,
+    detectSongGaps: detectSongGaps,
     READINESS_TIERS: READINESS_TIERS,
   };
 

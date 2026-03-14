@@ -645,6 +645,16 @@
     return _intelligenceCache;
   }
 
+  /**
+   * Get gaps for a single song (Phase B).
+   * @param {string} songId
+   * @returns {Array|null} gaps array or null if SongIntelligence not loaded
+   */
+  function getSongGaps(songId) {
+    if (typeof SongIntelligence === 'undefined') return null;
+    return SongIntelligence.detectSongGaps(songId, getAllReadiness(), getAllStatus(), _members());
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.GLStore = {
@@ -691,9 +701,10 @@
     subscribe:         subscribe,
     emit:              emit,
 
-    // Song Intelligence (Milestone 2 Phase A)
+    // Song Intelligence (Milestone 2)
     getSongIntelligence:    getSongIntelligence,
     getCatalogIntelligence: getCatalogIntelligence,
+    getSongGaps:            getSongGaps,
 
     // Debug
     getState:          getState,
