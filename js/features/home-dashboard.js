@@ -304,6 +304,7 @@ function _renderDashboard(bundle, context) {
         renderHdSongsNeedingWork(bundle),
         renderPracticeRadar(),
         renderRehearsalAgenda(),
+        renderUploadRehearsal(),
         renderLastRehearsal(),
         renderRehearsalHistory(),
         '</div>',
@@ -659,6 +660,21 @@ function renderRehearsalAgenda() {
         + '<div style="display:flex;gap:8px;margin-top:10px">'
         + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.startRehearsalAgendaSession()" style="flex:1;padding:10px 16px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.88em;cursor:pointer;box-shadow:0 2px 12px rgba(102,126,234,0.3)">🎸 Start Rehearsal</button>'
         + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄</button>'
+        + '</div>'
+        + '</div>';
+}
+
+// ── Upload Rehearsal CTA ──────────────────────────────────────────────────────
+
+function renderUploadRehearsal() {
+    return '<div class="hd-bucket" style="grid-column:1/-1">'
+        + '<div style="display:flex;align-items:center;gap:12px;padding:4px 0">'
+        + '<div style="font-size:1.6em;flex-shrink:0">🎙️</div>'
+        + '<div style="flex:1">'
+        + '<div style="font-weight:700;font-size:0.9em;color:var(--text,#f1f5f9)">Analyze Rehearsal Recording</div>'
+        + '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-top:2px">Drop in a rehearsal recording to auto-segment takes, tag restarts, and feed scorecards.</div>'
+        + '</div>'
+        + '<button onclick="if(typeof openRehearsalChopper===\'function\')openRehearsalChopper()" style="padding:8px 16px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border:none;font-weight:700;font-size:0.82em;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(245,158,11,0.3)">✂️ Upload & Chop</button>'
         + '</div>'
         + '</div>';
 }
