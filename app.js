@@ -546,8 +546,8 @@ let pwaInstalled = false;
 window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
     pwaInstallPrompt = e;
-    // Show banner after a 3s delay so it doesn't pop up immediately
-    setTimeout(showPWAInstallBanner, 3000);
+    // Install banner disabled — user prefers not to see it on dev
+    // To re-enable: setTimeout(showPWAInstallBanner, 3000);
 });
 
 window.addEventListener('appinstalled', () => {
@@ -618,14 +618,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Render songs immediately from built-in data (fast, no Firebase needed)
     renderSongs();
 
-    // Show Home Dashboard as the default landing screen for signed-in users.
-    // For signed-out users, glHeroCheck(false) will show the hero instead.
-    if (typeof showPage === 'function' && localStorage.getItem('deadcetera_google_email')) {
-        setTimeout(function() {
-            // Skip if a page or panel restore is pending (Milestone 1)
-            if (window._glPanelRestorePending || window._glPageRestorePending) return;
-            showPage('home');
-        }, 50);
+    // Hide hero immediately if user was previously signed in (suppress flash).
+    // Only hides the element — does NOT call showPage('home'), because page/panel
+    // restore flags aren't set yet at this point in script execution.
+    // Home navigation is handled later by cache restore → glHeroCheck(true).
+    if (localStorage.getItem('deadcetera_google_email')) {
+        var _hero = document.getElementById('page-hero');
+        if (_hero) _hero.classList.add('hidden');
     }
 
     // Then init Firebase and reload everything that depends on it
@@ -640,7 +639,14 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadAllStatuses();
         preloadNorthStarCache();
         backgroundScanNorthStars();
-        preloadReadinessCache().then(function() { addReadinessChains(); });
+        preloadReadinessCache().then(function() {
+            addReadinessChains();
+            // Signal that bulk readiness data loaded — invalidates Practice Attention cache
+            if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
+            // Re-render dashboard now that readiness data is available (Practice Radar needs it)
+            if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
+            if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
+        });
 
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
@@ -5373,10 +5379,10 @@ async function initFirebase() {
                 accessToken = response.access_token;
                 updateSignInStatus(true);
                 console.log('✅ User signed in');
-                
+
                 // Get user email from Google
                 await getCurrentUserEmail();
-                
+
                 // No shared folder init needed - Firebase is always ready!
                 console.log('🔥 Firebase ready - no folder sharing needed!');
             }
@@ -5620,6 +5626,8 @@ function avatarClearCustom() {
 // ============================================================================
 
 async function handleGoogleDriveAuth(silent) {
+    // Guard: onclick handlers pass Event as first arg — treat non-boolean as interactive
+    if (typeof silent !== 'boolean') silent = false;
     if (!isGoogleDriveInitialized) {
         try {
             console.log('🔥 Loading Firebase...');
@@ -5638,7 +5646,12 @@ async function handleGoogleDriveAuth(silent) {
             console.log('👋 User signed out');
             accessToken = null;
             currentUserEmail = null;
+            currentUserName = null;
+            currentUserPicture = null;
             localStorage.removeItem('deadcetera_google_email');
+            localStorage.removeItem('deadcetera_google_name');
+            localStorage.removeItem('deadcetera_google_picture');
+            localStorage.removeItem('glLastPage');
             window._justSignedOut = true;
             updateSignInStatus(false);
         });
@@ -5647,30 +5660,32 @@ async function handleGoogleDriveAuth(silent) {
         try {
             console.log('🔑 Requesting sign-in...' + (silent ? ' (auto-reconnect)' : ''));
             if (silent) {
-                // Auto-reconnect: pass stored email as hint so GSI can use a hidden
-                // iframe/cookie flow instead of a popup (popup would be blocked anyway).
-                // Suppress GSI's "[GSI_LOGGER]: Failed to open popup" console noise —
-                // if silent re-auth fails we just stay signed out until the user taps Connect.
+                // Restore session from localStorage only — no GIS network call.
+                // This avoids the full-screen Google iframe flash on every refresh.
+                // The access token is not restored (it expires anyway), so API calls
+                // that need it will fail gracefully. User clicks Connect to get a
+                // fresh token when needed.
                 var savedEmail = localStorage.getItem('deadcetera_google_email') || '';
-                var origError = console.error.bind(console);
-                var origWarn  = console.warn.bind(console);
-                // Temporarily suppress GSI popup-blocked noise
-                console.error = function() {
-                    var msg = Array.prototype.join.call(arguments, ' ');
-                    if (msg.indexOf('GSI_LOGGER') !== -1 || msg.indexOf('popup') !== -1) return;
-                    origError.apply(console, arguments);
-                };
-                console.warn = function() {
-                    var msg = Array.prototype.join.call(arguments, ' ');
-                    if (msg.indexOf('GSI_LOGGER') !== -1 || msg.indexOf('popup') !== -1) return;
-                    origWarn.apply(console, arguments);
-                };
-                tokenClient.requestAccessToken({ prompt: 'none', hint: savedEmail });
-                // Restore after GSI has had a tick to fire its logs
-                setTimeout(function() {
-                    console.error = origError;
-                    console.warn  = origWarn;
-                }, 2000);
+                if (savedEmail) {
+                    currentUserEmail = savedEmail;
+                    currentUserName = localStorage.getItem('deadcetera_google_name') || '';
+                    currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
+                    updateSignInStatus(true);
+                    updateDriveAuthButton();
+                    injectAdminButton();
+                    // Hide hero without forcing showPage('home') — the user may be
+                    // on Songs or another restored page. Home nav only happens if
+                    // no other page claimed the screen (glLastPage not set).
+                    var _h = document.getElementById('page-hero');
+                    if (_h) _h.classList.add('hidden');
+                    var _lastP = localStorage.getItem('glLastPage');
+                    if ((!_lastP || _lastP === 'home') && !window._glPageRestorePending) {
+                        if (typeof showPage === 'function') showPage('home');
+                    }
+                    console.log('✅ Session restored from cache:', savedEmail);
+                } else {
+                    console.log('🔑 No cached session — user can click Connect');
+                }
             } else {
                 var prompt = window._justSignedOut ? 'select_account' : '';
                 window._justSignedOut = false;

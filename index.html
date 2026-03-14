@@ -64,6 +64,11 @@
 </style>
 </head>
 <body>
+    <!-- Overlay root — top-level stacking context for persistent UI (Now Playing bar) -->
+    <div id="gl-overlay-root" style="position:fixed;inset:0;pointer-events:none;z-index:99999">
+        <div id="gl-now-playing" style="position:absolute;bottom:0;left:0;right:0;height:48px;background:linear-gradient(135deg,#1e293b 0%,#252d4a 100%);border-top:1px solid rgba(99,102,241,0.3);pointer-events:auto;align-items:center;padding:0 16px;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.5)"></div>
+    </div>
+
     <!-- TOP BAR -->
     <div class="topbar">
         <div class="topbar-left">
@@ -123,6 +128,7 @@
 
     <!-- MAIN CONTENT AREA -->
     <div id="gl-shell">
+    <nav id="gl-left-rail"></nav>
     <div class="main-content" id="mainContent">
         <!-- PAGE: Songs (existing app content) -->
         <div id="page-songs" class="app-page hidden">
@@ -670,6 +676,8 @@
     <script src="js/core/worker-api.js"></script>
     <script src="js/ui/navigation.js"></script>
     <script src="js/ui/gl-right-panel.js"></script>
+    <script src="js/ui/gl-left-rail.js"></script>
+    <script src="js/ui/gl-now-playing.js"></script>
     <script src="js/features/songs.js"></script>
     <script src="data.js"></script>
     <script src="js/features/gigs.js"></script>
