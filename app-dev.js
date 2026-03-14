@@ -641,6 +641,8 @@ document.addEventListener('DOMContentLoaded', function() {
         backgroundScanNorthStars();
         preloadReadinessCache().then(function() {
             addReadinessChains();
+            // Signal that bulk readiness data loaded — invalidates Practice Attention cache
+            if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
             // Re-render dashboard now that readiness data is available (Practice Radar needs it)
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
