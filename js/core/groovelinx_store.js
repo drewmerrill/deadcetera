@@ -1047,6 +1047,16 @@
     emit('agendaSessionAbandoned', { session: s });
   }
 
+  /** Get the next pending item after current (for preview). */
+  function getNextRehearsalAgendaItem() {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s || s.status !== 'active') return null;
+    for (var i = s.currentIndex + 1; i < s.items.length; i++) {
+      if (s.items[i].status === 'pending') return s.items[i];
+    }
+    return null;
+  }
+
   // Alias for backward compat with dashboard button
   function startRehearsalFromAgenda() { return startRehearsalAgendaSession(); }
   function clearRehearsalAgenda() { abandonRehearsalAgendaSession(); }
@@ -1343,6 +1353,7 @@
     getActiveRehearsalAgendaSession:   getActiveRehearsalAgendaSession,
     getCurrentRehearsalAgendaItem:     getCurrentRehearsalAgendaItem,
     hasNextRehearsalAgendaItem:        hasNextRehearsalAgendaItem,
+    getNextRehearsalAgendaItem:        getNextRehearsalAgendaItem,
     clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)

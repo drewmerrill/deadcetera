@@ -1973,6 +1973,111 @@ function enterLiveRehearsalMode(ctx, focusSongs) {
 }
 window.enterLiveRehearsalMode = enterLiveRehearsalMode;
 
+// ── Agenda Overlay (Milestone 6 Phase 2B) ────────────────────────────────────
+
+function _renderAgendaOverlay() {
+    if (typeof GLStore === 'undefined' || !GLStore.getActiveRehearsalAgendaSession) return '';
+    var session = GLStore.getActiveRehearsalAgendaSession();
+    if (!session) return '';
+    if (session.status === 'completed') return _renderAgendaComplete();
+    if (session.status !== 'active') return '';
+
+    var item = GLStore.getCurrentRehearsalAgendaItem();
+    if (!item) return '';
+
+    var nextItem = GLStore.getNextRehearsalAgendaItem();
+    var slotNum = session.currentIndex + 1;
+    var totalSlots = session.items.length;
+
+    var typeColors = { warmup: '#22c55e', repair: '#f59e0b', learn: '#818cf8', closer: '#60a5fa' };
+    var typeIcons = { warmup: '🔥', repair: '🔧', learn: '📖', closer: '🎯' };
+    var color = typeColors[item.type] || '#94a3b8';
+    var icon = typeIcons[item.type] || '🎵';
+
+    var h = '<div style="margin-top:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:10px 12px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+    h += '<span style="font-size:0.65em;font-weight:800;letter-spacing:0.12em;color:rgba(99,102,241,0.6);text-transform:uppercase">Rehearsal Agenda</span>';
+    h += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim,#475569)">Slot ' + slotNum + ' of ' + totalSlots + '</span>';
+    h += '</div>';
+
+    // Current item context
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+    h += '<span style="font-size:1em">' + icon + '</span>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<span style="font-size:0.72em;font-weight:700;color:' + color + ';text-transform:uppercase">' + (item.type || '') + '</span>';
+    h += '<span style="font-size:0.68em;color:var(--text-dim,#475569);margin-left:6px">' + item.minutes + ' min</span>';
+    h += '</div>';
+    h += '</div>';
+
+    // Focus
+    if (item.focus) {
+        h += '<div style="font-size:0.75em;color:var(--text-muted,#94a3b8);margin-bottom:6px">Focus: ' + item.focus + '</div>';
+    }
+
+    // Next up preview
+    if (nextItem) {
+        h += '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-bottom:8px">Next: ' + nextItem.title + '</div>';
+    }
+
+    // Agenda controls
+    h += '<div style="display:flex;gap:6px">';
+    if (nextItem) {
+        h += '<button onclick="agendaCompleteAndNext()" style="flex:2;padding:7px;border-radius:8px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;font-size:0.78em;font-weight:700;cursor:pointer">✓ Complete & Next</button>';
+        h += '<button onclick="agendaSkip()" style="flex:1;padding:7px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim,#475569);font-size:0.78em;cursor:pointer">Skip</button>';
+    } else {
+        h += '<button onclick="agendaCompleteAndNext()" style="flex:1;padding:7px;border-radius:8px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;font-size:0.78em;font-weight:700;cursor:pointer">✓ Complete Agenda</button>';
+    }
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function _renderAgendaComplete() {
+    return '<div style="margin-top:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:10px 12px;text-align:center">'
+        + '<div style="font-size:1.2em;margin-bottom:4px">✅</div>'
+        + '<div style="font-size:0.82em;font-weight:700;color:#86efac">Agenda Complete</div>'
+        + '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-top:2px">All slots finished. Nice work.</div>'
+        + '</div>';
+}
+
+window.agendaCompleteAndNext = function() {
+    if (typeof GLStore === 'undefined') return;
+    var nextItem = GLStore.advanceRehearsalAgendaSession();
+    if (nextItem) {
+        // Load the new song into the live rehearsal view
+        _riLive.songIdx = _findSongIndex(nextItem.songId);
+        _riLive.songStartTime = Date.now();
+        var container = document.getElementById('rhTabContent');
+        if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
+    } else {
+        // Agenda complete — re-render to show completion state
+        var container = document.getElementById('rhTabContent');
+        if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
+    }
+};
+
+window.agendaSkip = function() {
+    if (typeof GLStore === 'undefined') return;
+    var nextItem = GLStore.skipCurrentRehearsalAgendaItem();
+    if (nextItem) {
+        _riLive.songIdx = _findSongIndex(nextItem.songId);
+        _riLive.songStartTime = Date.now();
+        var container = document.getElementById('rhTabContent');
+        if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
+    } else {
+        var container = document.getElementById('rhTabContent');
+        if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
+    }
+};
+
+function _findSongIndex(songId) {
+    for (var i = 0; i < _riLive.songs.length; i++) {
+        if (_riLive.songs[i] === songId) return i;
+    }
+    return _riLive.songIdx; // fallback: stay on current
+}
+
 function renderRiLiveMode(ctx, focusSongs, container) {
     var cur   = _riLive.songs[_riLive.songIdx] || 'No songs';
     var next  = _riLive.songs[_riLive.songIdx + 1] || null;
@@ -2026,6 +2131,7 @@ function renderRiLiveMode(ctx, focusSongs, container) {
         + (next ? ' &nbsp;·&nbsp; Next: <strong style="color:var(--text-muted)">' + next + '</strong>' : ' &nbsp;·&nbsp; Last song')
         + '</div>'
         + grHtml
+        + _renderAgendaOverlay()
         + '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'
         + '<button onclick="advanceRiSong()" style="flex:2;padding:10px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.85em;cursor:pointer;touch-action:manipulation">Next Song</button>'
         + '<button onclick="repeatRiSong()" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.82em;cursor:pointer">Repeat</button>'
