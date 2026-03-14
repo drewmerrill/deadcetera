@@ -1147,6 +1147,48 @@ function chopRenderSegments() {
     }
     html += '<button class="btn btn-success" onclick="chopSaveAll()" style="width:100%;margin-top:8px">💾 Save All Named Segments as Takes</button>';
     el.innerHTML = html;
+
+    // M8: Sync corrections back to store
+    _chopSyncToStore(allMarkers);
+}
+
+function _chopSyncToStore(allMarkers) {
+    if (typeof GLStore === 'undefined' || !GLStore.saveTimelineCorrections || !chopAudioBuffer) return;
+    var timeline = GLStore.getLatestTimeline();
+    if (!timeline) return;
+    // Rebuild segments from current chopper state
+    var segments = [];
+    for (var i = 0; i < allMarkers.length - 1; i++) {
+        var songSelect = document.getElementById('chopSong_' + i);
+        segments.push({
+            id: 'seg_' + i,
+            startSec: Math.round(allMarkers[i] * 10) / 10,
+            endSec: Math.round(allMarkers[i + 1] * 10) / 10,
+            durationSec: Math.round((allMarkers[i + 1] - allMarkers[i]) * 10) / 10,
+            kind: chopExcluded[i] ? 'excluded' : 'music',
+            confidence: 1.0, // user-corrected
+            likelyIntent: chopExcluded[i] ? 'excluded' : 'attempt',
+            likelySongId: null,
+            likelySongTitle: songSelect ? songSelect.value || null : null,
+            notes: [],
+        });
+    }
+    var corrected = {
+        id: timeline.id,
+        createdAt: timeline.createdAt,
+        correctedAt: new Date().toISOString(),
+        sourceType: 'user-corrected',
+        durationSec: timeline.durationSec,
+        segments: segments,
+        summary: {
+            segmentCount: segments.length,
+            musicSegments: segments.filter(function(s) { return s.kind === 'music'; }).length,
+            speechSegments: 0,
+            silenceSegments: 0,
+            likelyRestarts: 0,
+        },
+    };
+    GLStore.saveTimelineCorrections(corrected);
 }
 
 // Parse m:ss time string to seconds
