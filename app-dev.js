@@ -639,7 +639,15 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadAllStatuses();
         preloadNorthStarCache();
         backgroundScanNorthStars();
-        preloadReadinessCache().then(function() { addReadinessChains(); });
+        preloadReadinessCache().then(function() {
+            addReadinessChains();
+            // Re-render dashboard now that readiness data is available (Practice Radar needs it)
+            if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
+            if (typeof window.renderHomeDashboard === 'function') {
+                var hp = document.getElementById('page-home');
+                if (hp && !hp.classList.contains('hidden')) window.renderHomeDashboard();
+            }
+        });
 
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
