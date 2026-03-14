@@ -2072,6 +2072,8 @@ function endRiSession() {
     // Milestone 4: restore workspace mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
     if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(null);
+    // Milestone 6: clear active agenda if one was driving this session
+    if (typeof GLStore !== 'undefined' && GLStore.clearRehearsalAgenda) GLStore.clearRehearsalAgenda();
     showToast('Session ended');
     rhShowTab('intel');
 }

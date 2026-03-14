@@ -827,6 +827,10 @@
     if (!_agendaCache) {
       var input = getRehearsalAgendaInput();
       _agendaCache = RehearsalAgendaEngine.generateRehearsalAgenda(input, options);
+      // Store as latestGenerated (immutable reference for session use)
+      if (_agendaCache && !_agendaCache.empty) {
+        _rehearsalAgenda.latestGenerated = _agendaCache;
+      }
     }
     return _agendaCache;
   }
@@ -847,6 +851,205 @@
     _agendaCache = RehearsalAgendaEngine.generateRehearsalAgenda(input, opts);
     return _agendaCache;
   }
+
+  // ── Rehearsal Agenda Session (Milestone 6 Phase 2) ───────────────────────
+  //
+  // Two-layer model:
+  //   latestGenerated — immutable snapshot from the engine, never mutated during playback
+  //   activeSession   — mutable execution state with per-item status tracking
+
+  var _rehearsalAgenda = {
+    latestGenerated: null,   // output of generateRehearsalAgenda(), immutable during session
+    activeSession: null,     // execution snapshot, mutable
+  };
+
+  var _agendaIdCounter = 0;
+
+  function _genId(prefix) { return prefix + '_' + Date.now() + '_' + (++_agendaIdCounter); }
+
+  /** Get the immutable latest generated agenda. */
+  function getLatestRehearsalAgenda() {
+    return _rehearsalAgenda.latestGenerated;
+  }
+
+  /** Get the mutable active session. */
+  function getActiveRehearsalAgendaSession() {
+    return _rehearsalAgenda.activeSession;
+  }
+
+  /** Get the current live agenda item, or null. */
+  function getCurrentRehearsalAgendaItem() {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s || s.status !== 'active') return null;
+    return s.items[s.currentIndex] || null;
+  }
+
+  /** Check if there's a next item after current. */
+  function hasNextRehearsalAgendaItem() {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s || s.status !== 'active') return false;
+    for (var i = s.currentIndex + 1; i < s.items.length; i++) {
+      if (s.items[i].status === 'pending') return true;
+    }
+    return false;
+  }
+
+  /**
+   * Start a session from the latest generated agenda.
+   * @param {object} [options]
+   * @param {number} [options.startIndex] Start from a specific slot (default 0)
+   */
+  function startRehearsalAgendaSession(options) {
+    options = options || {};
+    var gen = _rehearsalAgenda.latestGenerated || generateRehearsalAgenda();
+    if (!gen || gen.empty || !gen.items.length) return null;
+
+    // Store as latestGenerated (immutable reference)
+    _rehearsalAgenda.latestGenerated = gen;
+
+    var startIdx = options.startIndex || 0;
+    if (startIdx < 0 || startIdx >= gen.items.length) startIdx = 0;
+    var now = new Date().toISOString();
+
+    // Clone items with execution status
+    var sessionItems = gen.items.map(function (item, idx) {
+      return {
+        slot: item.slot,
+        songId: item.songId,
+        title: item.title,
+        type: item.type,
+        minutes: item.minutes,
+        reason: item.reason,
+        focus: item.focus,
+        metadata: item.metadata,
+        status: idx < startIdx ? 'done' : idx === startIdx ? 'live' : 'pending',
+        enteredLiveAt: idx === startIdx ? now : null,
+        completedAt: null,
+      };
+    });
+
+    _rehearsalAgenda.activeSession = {
+      sessionId: _genId('ses'),
+      agendaId: gen.generatedAt,
+      startedAt: now,
+      updatedAt: now,
+      status: 'active',
+      currentIndex: startIdx,
+      startedFrom: startIdx,
+      items: sessionItems,
+    };
+
+    var firstItem = sessionItems[startIdx];
+    setLiveRehearsalSong(firstItem.songId);
+    emit('agendaSessionStarted', { session: _rehearsalAgenda.activeSession, item: firstItem });
+
+    // Launch live rehearsal mode
+    var focusSongs = gen.items.map(function (i) { return { title: i.songId }; });
+    if (typeof showPage === 'function') showPage('rehearsal');
+    setTimeout(function () {
+      if (typeof enterLiveRehearsalMode === 'function') {
+        enterLiveRehearsalMode({ nextEvent: null }, focusSongs);
+      }
+    }, 200);
+
+    return _rehearsalAgenda.activeSession;
+  }
+
+  /** Start at a specific agenda index. */
+  function startRehearsalAgendaAtIndex(index) {
+    return startRehearsalAgendaSession({ startIndex: index });
+  }
+
+  /** Complete current item and advance to next pending. */
+  function advanceRehearsalAgendaSession() {
+    return _transitionCurrentItem('done');
+  }
+
+  /** Skip current item and advance to next pending. */
+  function skipCurrentRehearsalAgendaItem() {
+    return _transitionCurrentItem('skipped');
+  }
+
+  /** Internal: transition current item and move to next pending. */
+  function _transitionCurrentItem(endStatus) {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s || s.status !== 'active') return null;
+
+    var now = new Date().toISOString();
+    var cur = s.items[s.currentIndex];
+    if (cur) {
+      cur.status = endStatus;
+      cur.completedAt = now;
+    }
+
+    // Find next pending
+    var nextIdx = -1;
+    for (var i = s.currentIndex + 1; i < s.items.length; i++) {
+      if (s.items[i].status === 'pending') { nextIdx = i; break; }
+    }
+
+    if (nextIdx === -1) {
+      // No more items — session complete
+      completeRehearsalAgendaSession();
+      return null;
+    }
+
+    s.currentIndex = nextIdx;
+    s.updatedAt = now;
+    var nextItem = s.items[nextIdx];
+    nextItem.status = 'live';
+    nextItem.enteredLiveAt = now;
+
+    setLiveRehearsalSong(nextItem.songId);
+    emit('agendaSlotAdvanced', { session: s, index: nextIdx, item: nextItem });
+    return nextItem;
+  }
+
+  /** Jump to a specific index (for manual reorder). */
+  function setCurrentRehearsalAgendaIndex(index) {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s || s.status !== 'active') return null;
+    if (index < 0 || index >= s.items.length) return null;
+
+    var now = new Date().toISOString();
+    // Mark current as done
+    var cur = s.items[s.currentIndex];
+    if (cur && cur.status === 'live') { cur.status = 'done'; cur.completedAt = now; }
+
+    s.currentIndex = index;
+    s.updatedAt = now;
+    var target = s.items[index];
+    target.status = 'live';
+    target.enteredLiveAt = now;
+
+    setLiveRehearsalSong(target.songId);
+    emit('agendaSlotAdvanced', { session: s, index: index, item: target });
+    return target;
+  }
+
+  /** Mark session as completed. */
+  function completeRehearsalAgendaSession() {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s) return;
+    s.status = 'completed';
+    s.updatedAt = new Date().toISOString();
+    setLiveRehearsalSong(null);
+    emit('agendaSessionCompleted', { session: s });
+  }
+
+  /** Mark session as abandoned (user quit early). */
+  function abandonRehearsalAgendaSession() {
+    var s = _rehearsalAgenda.activeSession;
+    if (!s) return;
+    s.status = 'abandoned';
+    s.updatedAt = new Date().toISOString();
+    setLiveRehearsalSong(null);
+    emit('agendaSessionAbandoned', { session: s });
+  }
+
+  // Alias for backward compat with dashboard button
+  function startRehearsalFromAgenda() { return startRehearsalAgendaSession(); }
+  function clearRehearsalAgenda() { abandonRehearsalAgendaSession(); }
 
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
@@ -1128,6 +1331,19 @@
     getRehearsalAgendaInput:    getRehearsalAgendaInput,
     generateRehearsalAgenda:    generateRehearsalAgenda,
     regenerateRehearsalAgenda:  regenerateRehearsalAgenda,
+    startRehearsalFromAgenda:          startRehearsalFromAgenda,
+    startRehearsalAgendaSession:       startRehearsalAgendaSession,
+    startRehearsalAgendaAtIndex:       startRehearsalAgendaAtIndex,
+    advanceRehearsalAgendaSession:     advanceRehearsalAgendaSession,
+    skipCurrentRehearsalAgendaItem:    skipCurrentRehearsalAgendaItem,
+    setCurrentRehearsalAgendaIndex:    setCurrentRehearsalAgendaIndex,
+    completeRehearsalAgendaSession:    completeRehearsalAgendaSession,
+    abandonRehearsalAgendaSession:     abandonRehearsalAgendaSession,
+    getLatestRehearsalAgenda:          getLatestRehearsalAgenda,
+    getActiveRehearsalAgendaSession:   getActiveRehearsalAgendaSession,
+    getCurrentRehearsalAgendaItem:     getCurrentRehearsalAgendaItem,
+    hasNextRehearsalAgendaItem:        hasNextRehearsalAgendaItem,
+    clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)
     setActivePage:          setActivePage,

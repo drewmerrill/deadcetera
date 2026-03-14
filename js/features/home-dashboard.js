@@ -608,7 +608,12 @@ function renderRehearsalAgenda() {
         closer:  '🎯',
     };
 
-    var rows = agenda.items.map(function(item) {
+    // Check for active session to show resume
+    var activeSession = (typeof GLStore !== 'undefined' && GLStore.getActiveRehearsalAgendaSession)
+        ? GLStore.getActiveRehearsalAgendaSession() : null;
+    var hasActiveSession = activeSession && activeSession.status === 'active';
+
+    var rows = agenda.items.map(function(item, idx) {
         var color = typeColors[item.type] || '#94a3b8';
         var icon = typeIcons[item.type] || '🎵';
         var safeTitle = item.songId.replace(/'/g, "\\'");
@@ -617,7 +622,7 @@ function renderRehearsalAgenda() {
             ? '<span style="font-size:0.68em;font-weight:700;color:' + color + '">' + meta.avgReadiness + '/5</span>'
             : '<span style="font-size:0.68em;color:var(--text-dim,#475569)">unrated</span>';
 
-        return '<div onclick="showPage(\'songs\');setTimeout(function(){GLStore.selectSong(\'' + safeTitle + '\');if(typeof highlightSelectedSongRow===\'function\')highlightSelectedSongRow(\'' + safeTitle + '\');},200)" style="cursor:pointer;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
+        return '<div onclick="if(typeof GLStore!==\'undefined\')GLStore.startRehearsalAgendaAtIndex(' + idx + ')" style="cursor:pointer;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
             + '<div style="display:flex;align-items:center;gap:8px">'
             + '<div style="width:36px;height:36px;border-radius:8px;background:' + color + '15;border:1px solid ' + color + '33;display:flex;align-items:center;justify-content:center;font-size:1em;flex-shrink:0">' + icon + '</div>'
             + '<div style="flex:1;min-width:0">'
@@ -641,8 +646,15 @@ function renderRehearsalAgenda() {
         + (agenda.summary ? '<div style="font-size:0.78em;color:var(--text-muted,#94a3b8);margin-bottom:8px;padding:0 2px">' + _escHtml(agenda.summary) + '</div>' : '')
         + '<div>' + rows + '</div>'
         + (agenda.isSameAsPrevious ? '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin:8px 0 2px;text-align:center">Best agenda for current data — no stronger alternates available.</div>' : '')
+        + (hasActiveSession
+            ? '<div style="background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.25);border-radius:10px;padding:8px 12px;margin:8px 0;display:flex;align-items:center;justify-content:space-between">'
+              + '<span style="font-size:0.78em;color:#818cf8;font-weight:700">Session in progress — slot ' + (activeSession.currentIndex + 1) + ' of ' + activeSession.items.length + '</span>'
+              + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.startRehearsalAgendaAtIndex(' + activeSession.currentIndex + ')" style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px;padding:5px 12px;font-size:0.75em;font-weight:700;cursor:pointer">Resume</button>'
+              + '</div>'
+            : '')
         + '<div style="display:flex;gap:8px;margin-top:10px">'
-        + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄 Regenerate</button>'
+        + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.startRehearsalAgendaSession()" style="flex:1;padding:10px 16px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.88em;cursor:pointer;box-shadow:0 2px 12px rgba(102,126,234,0.3)">🎸 Start Rehearsal</button>'
+        + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄</button>'
         + '</div>'
         + '</div>';
 }
