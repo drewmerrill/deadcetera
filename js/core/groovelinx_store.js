@@ -1364,6 +1364,58 @@
   function startRehearsalFromAgenda() { return startRehearsalAgendaSession(); }
   function clearRehearsalAgenda() { abandonRehearsalAgendaSession(); }
 
+  // ── Rehearsal Segmentation (Milestone 8 Phase 1) ────────────────────────
+
+  var _latestTimeline = null;
+  var _TIMELINE_KEY = 'glRehearsalTimeline';
+
+  // Hydrate
+  try {
+    var _savedTL = localStorage.getItem(_TIMELINE_KEY);
+    if (_savedTL) {
+      var _parsedTL = JSON.parse(_savedTL);
+      if (_parsedTL && _parsedTL.segments) _latestTimeline = _parsedTL;
+    }
+  } catch(e) {}
+
+  /**
+   * Segment a rehearsal audio buffer using the engine.
+   * @param {AudioBuffer} audioBuffer  From Web Audio API decodeAudioData
+   * @param {object} [opts]  Override thresholds
+   * @returns {object} canonical timeline
+   */
+  function segmentRehearsalAudio(audioBuffer, opts) {
+    if (typeof RehearsalSegmentationEngine === 'undefined') return null;
+    if (!audioBuffer) return null;
+
+    var features = {
+      channelData: audioBuffer.getChannelData(0),
+      sampleRate: audioBuffer.sampleRate,
+      duration: audioBuffer.duration,
+    };
+
+    _latestTimeline = RehearsalSegmentationEngine.segmentAudio(features, opts);
+    try { localStorage.setItem(_TIMELINE_KEY, JSON.stringify(_latestTimeline)); } catch(e) {}
+    emit('timelineGenerated', { timeline: _latestTimeline });
+    return _latestTimeline;
+  }
+
+  /** Get the latest segmented timeline. */
+  function getLatestTimeline() {
+    return _latestTimeline;
+  }
+
+  /**
+   * Save user corrections to the timeline.
+   * @param {object} correctedTimeline  Full timeline with user edits
+   */
+  function saveTimelineCorrections(correctedTimeline) {
+    if (!correctedTimeline) return;
+    _latestTimeline = correctedTimeline;
+    try { localStorage.setItem(_TIMELINE_KEY, JSON.stringify(_latestTimeline)); } catch(e) {}
+    emit('timelineCorrected', { timeline: _latestTimeline });
+  }
+
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
   /**
@@ -1681,6 +1733,11 @@
     getRecentRehearsalTrendSummary:    getRecentRehearsalTrendSummary,
     getSongPracticeStats:              getSongPracticeStats,
     getAllSongPracticeStats:           getAllSongPracticeStats,
+
+    // Rehearsal Segmentation (Milestone 8)
+    segmentRehearsalAudio:             segmentRehearsalAudio,
+    getLatestTimeline:                 getLatestTimeline,
+    saveTimelineCorrections:           saveTimelineCorrections,
     clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)

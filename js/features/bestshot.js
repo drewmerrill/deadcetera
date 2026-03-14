@@ -810,6 +810,28 @@ async function chopLoadFile(file) {
         chopDrawWaveform();
         chopWireCanvasEvents();
         chopStartPlayheadTracker();
+
+        // M8: Auto-segment via engine if available
+        if (typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio) {
+            var timeline = GLStore.segmentRehearsalAudio(chopAudioBuffer);
+            if (timeline && timeline.segments && timeline.segments.length > 1) {
+                // Feed engine segment boundaries into chopper markers
+                chopMarkers = [];
+                chopExcluded = {};
+                for (var si = 0; si < timeline.segments.length; si++) {
+                    var seg = timeline.segments[si];
+                    if (seg.startSec > 0.5) chopMarkers.push(seg.startSec);
+                    // Auto-exclude silence/speech segments
+                    if (seg.kind === 'silence' || seg.kind === 'speech') {
+                        chopExcluded[si] = true;
+                    }
+                }
+                chopMarkers.sort(function(a,b) { return a - b; });
+                chopDrawWaveform();
+                chopRenderSegments();
+                showToast('AI detected ' + timeline.summary.segmentCount + ' segments (' + timeline.summary.musicSegments + ' music, ' + timeline.summary.likelyRestarts + ' restarts)');
+            }
+        }
     } catch (err) {
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
