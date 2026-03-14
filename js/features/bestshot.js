@@ -776,6 +776,7 @@ var chopAudioBuffer = null;
 var chopAudioContext = null;
 var chopMarkers = [];    // array of seconds where splits happen
 var chopExcluded = {};   // index -> true for excluded segments
+var chopSegmentMeta = {}; // index -> { kind, confidence, likelyIntent, likelySongTitle }
 var chopFile = null;
 var chopPlayheadRAF = null;
 var chopDraggingMarker = -1; // index of marker being dragged (-1 = none)
@@ -815,16 +816,22 @@ async function chopLoadFile(file) {
         if (typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio) {
             var timeline = GLStore.segmentRehearsalAudio(chopAudioBuffer);
             if (timeline && timeline.segments && timeline.segments.length > 1) {
-                // Feed engine segment boundaries into chopper markers
                 chopMarkers = [];
                 chopExcluded = {};
+                chopSegmentMeta = {};
                 for (var si = 0; si < timeline.segments.length; si++) {
                     var seg = timeline.segments[si];
                     if (seg.startSec > 0.5) chopMarkers.push(seg.startSec);
-                    // Auto-exclude silence/speech segments
                     if (seg.kind === 'silence' || seg.kind === 'speech') {
                         chopExcluded[si] = true;
                     }
+                    // Store engine metadata per segment
+                    chopSegmentMeta[si] = {
+                        kind: seg.kind,
+                        confidence: seg.confidence,
+                        likelyIntent: seg.likelyIntent,
+                        likelySongTitle: seg.likelySongTitle || null,
+                    };
                 }
                 chopMarkers.sort(function(a,b) { return a - b; });
                 chopDrawWaveform();
@@ -1105,7 +1112,28 @@ function chopRenderSegments() {
     var dur = chopAudioBuffer.duration;
     var sorted = chopMarkers.slice().sort(function(a,b){return a-b});
     var allMarkers = [0].concat(sorted).concat([dur]);
-    var songOpts = typeof allSongs !== 'undefined' ? allSongs.map(function(s) { return '<option value="' + (s.title||'').replace(/"/g,'&quot;') + '">' + (s.title||'') + '</option>'; }).join('') : '';
+
+    // Build song picker options — prioritize agenda songs
+    var agendaSongs = [];
+    if (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) {
+        var agenda = GLStore.getLatestRehearsalAgenda();
+        if (agenda && agenda.items) agendaSongs = agenda.items.map(function(it) { return it.songId; });
+    }
+    var allSongsList = typeof allSongs !== 'undefined' ? allSongs : [];
+    var songOptsHtml = '<option value="">— Choose song —</option>';
+    if (agendaSongs.length) {
+        songOptsHtml += '<optgroup label="Agenda Songs">';
+        for (var ag = 0; ag < agendaSongs.length; ag++) {
+            songOptsHtml += '<option value="' + agendaSongs[ag].replace(/"/g,'&quot;') + '">' + agendaSongs[ag] + '</option>';
+        }
+        songOptsHtml += '</optgroup><optgroup label="All Songs">';
+    }
+    songOptsHtml += allSongsList.map(function(s) { return '<option value="' + (s.title||'').replace(/"/g,'&quot;') + '">' + (s.title||'') + '</option>'; }).join('');
+    if (agendaSongs.length) songOptsHtml += '</optgroup>';
+
+    var kindIcons = { music: '🎵', speech: '💬', silence: '⏸', unknown: '❓', excluded: '🚫' };
+    var intentLabels = { attempt: 'Attempt', restart: 'Restart', discussion: 'Discussion', tuning: 'Tuning', break: 'Break', pause: 'Pause', unknown: '—' };
+    var kindColors = { music: '#667eea', speech: '#f59e0b', silence: '#475569', unknown: '#64748b', excluded: '#666' };
 
     var activeCount = 0;
     for (var k = 0; k < allMarkers.length - 1; k++) { if (!chopExcluded[k]) activeCount++; }
@@ -1121,74 +1149,140 @@ function chopRenderSegments() {
         var segDuration = endSec - startSec;
         var isExcluded = !!chopExcluded[i];
         var isSel = chopSelectedSegment === i;
+        var meta = chopSegmentMeta[i] || { kind: 'unknown', confidence: 0, likelyIntent: 'unknown', likelySongTitle: null };
+        var borderColor = isSel ? '#f59e0b' : (isExcluded ? '#666' : (kindColors[meta.kind] || '#667eea'));
 
-        html += '<div class="app-card" style="margin-bottom:4px;padding:8px 10px;display:flex;align-items:center;gap:6px;opacity:' + (isExcluded ? '0.4' : '1') + ';border-left:3px solid ' + (isSel ? '#f59e0b' : (isExcluded ? '#666' : (i % 2 === 0 ? '#667eea' : '#34d399'))) + ';' + (isSel ? 'background:rgba(245,158,11,0.08)' : '') + '">';
+        html += '<div class="app-card" style="margin-bottom:4px;padding:8px 10px;opacity:' + (isExcluded ? '0.4' : '1') + ';border-left:3px solid ' + borderColor + ';' + (isSel ? 'background:rgba(245,158,11,0.08)' : '') + '">';
 
-        html += '<div style="font-size:0.7em;color:var(--text-dim);width:100px;flex-shrink:0">';
-        html += '<div style="display:flex;align-items:center;gap:2px">';
-        html += "<button onclick=\"chopSelectBoundary(" + i + ",'start')\" ondblclick=\"chopEditTime(event," + i + ",'start')\" style=\"background:none;border:1px solid " + (isSel && chopSettingBoundary === 'start' ? '#f59e0b' : 'transparent') + ";border-radius:3px;cursor:pointer;padding:1px 3px;color:var(--text);font-size:1em;font-family:monospace\" title=\"Click: set on waveform · Double-click: type time\">" + formatChopTime(startSec) + "</button>";
-        html += '<span> \u2013 </span>';
-        html += "<button onclick=\"chopSelectBoundary(" + i + ",'end')\" ondblclick=\"chopEditTime(event," + i + ",'end')\" style=\"background:none;border:1px solid " + (isSel && chopSettingBoundary === 'end' ? '#f59e0b' : 'transparent') + ";border-radius:3px;cursor:pointer;padding:1px 3px;color:var(--text);font-size:1em;font-family:monospace\" title=\"Click: set on waveform · Double-click: type time\">" + formatChopTime(endSec) + "</button>";
+        // Row 1: time + kind badge + intent + confidence + actions
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+        // Time
+        html += '<div style="font-size:0.7em;color:var(--text-dim);flex-shrink:0">';
+        html += "<button onclick=\"chopSelectBoundary(" + i + ",'start')\" ondblclick=\"chopEditTime(event," + i + ",'start')\" style=\"background:none;border:1px solid " + (isSel && chopSettingBoundary === 'start' ? '#f59e0b' : 'transparent') + ";border-radius:3px;cursor:pointer;padding:1px 3px;color:var(--text);font-size:1em;font-family:monospace\" title=\"Click: set on waveform\">" + formatChopTime(startSec) + "</button>";
+        html += '<span>\u2013</span>';
+        html += "<button onclick=\"chopSelectBoundary(" + i + ",'end')\" ondblclick=\"chopEditTime(event," + i + ",'end')\" style=\"background:none;border:1px solid " + (isSel && chopSettingBoundary === 'end' ? '#f59e0b' : 'transparent') + ";border-radius:3px;cursor:pointer;padding:1px 3px;color:var(--text);font-size:1em;font-family:monospace\" title=\"Click: set on waveform\">" + formatChopTime(endSec) + "</button>";
+        html += ' <span style="font-size:0.85em">(' + formatChopTime(segDuration) + ')</span>';
         html += '</div>';
-        html += '<div style="font-size:0.85em;margin-top:1px">(' + formatChopTime(segDuration) + ')</div>';
-        html += '</div>';
-
-        if (!isExcluded) {
-            html += '<select class="app-select" id="chopSong_' + i + '" style="flex:1;font-size:0.8em"><option value="">— Choose song —</option>' + songOpts + '</select>';
-        } else {
-            html += '<div style="flex:1;font-size:0.78em;color:#666;font-style:italic">Excluded</div>';
+        // Kind badge
+        html += '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:' + (kindColors[meta.kind]||'#64748b') + '22;color:' + (kindColors[meta.kind]||'#64748b') + '">' + (kindIcons[meta.kind]||'❓') + ' ' + (meta.kind||'?') + '</span>';
+        // Intent
+        if (meta.likelyIntent && meta.likelyIntent !== 'unknown') {
+            html += '<span style="font-size:0.62em;color:var(--text-dim,#475569)">' + (intentLabels[meta.likelyIntent]||meta.likelyIntent) + '</span>';
         }
-
-        html += '<div style="display:flex;gap:2px;flex-shrink:0">';
+        // Confidence
+        if (meta.confidence > 0) {
+            html += '<span style="font-size:0.58em;color:var(--text-dim,#475569);opacity:0.7">' + Math.round(meta.confidence * 100) + '%</span>';
+        }
+        // Spacer + actions
+        html += '<div style="margin-left:auto;display:flex;gap:2px;flex-shrink:0">';
         html += '<button onclick="chopPreviewSegment(' + startSec + ',' + endSec + ')" class="btn btn-sm btn-ghost" style="font-size:0.72em;padding:3px 6px" title="Preview">▶</button>';
         html += '<button onclick="chopToggleExclude(' + i + ')" style="background:none;border:none;cursor:pointer;font-size:0.8em;padding:2px" title="' + (isExcluded ? 'Include' : 'Exclude') + '">' + (isExcluded ? '➕' : '🚫') + '</button>';
         if (i > 0) html += '<button onclick="chopRemoveMarker(' + (i - 1) + ')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.8em;padding:2px" title="Merge with previous">✕</button>';
         html += '</div></div>';
+
+        // Row 2: song picker + kind/intent correction (only for non-excluded)
+        if (!isExcluded) {
+            html += '<div style="display:flex;gap:4px;align-items:center">';
+            // Song picker
+            html += '<select class="app-select" id="chopSong_' + i + '" onchange="chopUpdateMeta(' + i + ')" style="flex:1;font-size:0.78em">' + songOptsHtml + '</select>';
+            // Kind correction
+            html += '<select class="app-select" id="chopKind_' + i + '" onchange="chopUpdateMeta(' + i + ')" style="width:80px;font-size:0.72em">';
+            var kinds = ['music','speech','silence','unknown'];
+            for (var ki = 0; ki < kinds.length; ki++) {
+                html += '<option value="' + kinds[ki] + '"' + (meta.kind === kinds[ki] ? ' selected' : '') + '>' + (kindIcons[kinds[ki]]||'') + ' ' + kinds[ki] + '</option>';
+            }
+            html += '</select>';
+            // Intent correction
+            html += '<select class="app-select" id="chopIntent_' + i + '" onchange="chopUpdateMeta(' + i + ')" style="width:90px;font-size:0.72em">';
+            var intents = ['attempt','restart','discussion','tuning','break','pause','unknown'];
+            for (var ii = 0; ii < intents.length; ii++) {
+                html += '<option value="' + intents[ii] + '"' + (meta.likelyIntent === intents[ii] ? ' selected' : '') + '>' + (intentLabels[intents[ii]]||intents[ii]) + '</option>';
+            }
+            html += '</select>';
+            html += '</div>';
+        }
+
+        html += '</div>';
     }
     html += '<button class="btn btn-success" onclick="chopSaveAll()" style="width:100%;margin-top:8px">💾 Save All Named Segments as Takes</button>';
     el.innerHTML = html;
 
-    // M8: Sync corrections back to store
+    // Restore song selections from meta
+    for (var ri = 0; ri < allMarkers.length - 1; ri++) {
+        var rmeta = chopSegmentMeta[ri];
+        if (rmeta && rmeta.likelySongTitle) {
+            var sel = document.getElementById('chopSong_' + ri);
+            if (sel) sel.value = rmeta.likelySongTitle;
+        }
+    }
+
+    // Sync corrections back to store
     _chopSyncToStore(allMarkers);
 }
+
+// M8 Phase 2: Update metadata from UI correction dropdowns
+window.chopUpdateMeta = function(segIndex) {
+    var kindSel = document.getElementById('chopKind_' + segIndex);
+    var intentSel = document.getElementById('chopIntent_' + segIndex);
+    var songSel = document.getElementById('chopSong_' + segIndex);
+
+    if (!chopSegmentMeta[segIndex]) {
+        chopSegmentMeta[segIndex] = { kind: 'unknown', confidence: 0, likelyIntent: 'unknown', likelySongTitle: null };
+    }
+    var meta = chopSegmentMeta[segIndex];
+    if (kindSel) { meta.kind = kindSel.value; meta.confidence = 1.0; }
+    if (intentSel) meta.likelyIntent = intentSel.value;
+    if (songSel) meta.likelySongTitle = songSel.value || null;
+
+    // Re-sync to store without full re-render
+    var dur = chopAudioBuffer ? chopAudioBuffer.duration : 0;
+    var sorted = chopMarkers.slice().sort(function(a,b){return a-b});
+    var allM = [0].concat(sorted).concat([dur]);
+    _chopSyncToStore(allM);
+};
 
 function _chopSyncToStore(allMarkers) {
     if (typeof GLStore === 'undefined' || !GLStore.saveTimelineCorrections || !chopAudioBuffer) return;
     var timeline = GLStore.getLatestTimeline();
     if (!timeline) return;
-    // Rebuild segments from current chopper state
+
     var segments = [];
     for (var i = 0; i < allMarkers.length - 1; i++) {
-        var songSelect = document.getElementById('chopSong_' + i);
+        var meta = chopSegmentMeta[i] || {};
+        var songSel = document.getElementById('chopSong_' + i);
+        var songTitle = (songSel ? songSel.value : null) || meta.likelySongTitle || null;
+
         segments.push({
             id: 'seg_' + i,
             startSec: Math.round(allMarkers[i] * 10) / 10,
             endSec: Math.round(allMarkers[i + 1] * 10) / 10,
             durationSec: Math.round((allMarkers[i + 1] - allMarkers[i]) * 10) / 10,
-            kind: chopExcluded[i] ? 'excluded' : 'music',
-            confidence: 1.0, // user-corrected
-            likelyIntent: chopExcluded[i] ? 'excluded' : 'attempt',
+            kind: chopExcluded[i] ? 'excluded' : (meta.kind || 'music'),
+            confidence: meta.confidence || (chopExcluded[i] ? 1.0 : 0.5),
+            likelyIntent: chopExcluded[i] ? 'excluded' : (meta.likelyIntent || 'attempt'),
             likelySongId: null,
-            likelySongTitle: songSelect ? songSelect.value || null : null,
+            likelySongTitle: songTitle,
             notes: [],
         });
     }
-    var corrected = {
+
+    var music = 0, speech = 0, silence = 0, restarts = 0;
+    for (var j = 0; j < segments.length; j++) {
+        if (segments[j].kind === 'music') music++;
+        if (segments[j].kind === 'speech') speech++;
+        if (segments[j].kind === 'silence') silence++;
+        if (segments[j].likelyIntent === 'restart') restarts++;
+    }
+
+    GLStore.saveTimelineCorrections({
         id: timeline.id,
         createdAt: timeline.createdAt,
         correctedAt: new Date().toISOString(),
         sourceType: 'user-corrected',
         durationSec: timeline.durationSec,
         segments: segments,
-        summary: {
-            segmentCount: segments.length,
-            musicSegments: segments.filter(function(s) { return s.kind === 'music'; }).length,
-            speechSegments: 0,
-            silenceSegments: 0,
-            likelyRestarts: 0,
-        },
-    };
-    GLStore.saveTimelineCorrections(corrected);
+        summary: { segmentCount: segments.length, musicSegments: music, speechSegments: speech, silenceSegments: silence, likelyRestarts: restarts },
+    });
 }
 
 // Parse m:ss time string to seconds
