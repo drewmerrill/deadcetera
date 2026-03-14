@@ -304,6 +304,7 @@ function _renderDashboard(bundle, context) {
         renderHdSongsNeedingWork(bundle),
         renderPracticeRadar(),
         renderRehearsalAgenda(),
+        renderLastRehearsal(),
         '</div>',
         activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
@@ -655,6 +656,52 @@ function renderRehearsalAgenda() {
         + '<div style="display:flex;gap:8px;margin-top:10px">'
         + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.startRehearsalAgendaSession()" style="flex:1;padding:10px 16px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.88em;cursor:pointer;box-shadow:0 2px 12px rgba(102,126,234,0.3)">🎸 Start Rehearsal</button>'
         + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄</button>'
+        + '</div>'
+        + '</div>';
+}
+
+// ── Last Rehearsal Card (Milestone 6 Phase 4B) ───────────────────────────────
+
+function renderLastRehearsal() {
+    if (typeof GLStore === 'undefined' || !GLStore.getLatestCompletedSummary) return '';
+    var s = GLStore.getLatestCompletedSummary();
+    if (!s) return '';
+
+    // Friendly recency
+    var recency = '';
+    if (s.completedAt) {
+        var ms = Date.now() - new Date(s.completedAt).getTime();
+        var mins = Math.round(ms / 60000);
+        if (mins < 2) recency = 'Just now';
+        else if (mins < 60) recency = mins + ' min ago';
+        else if (mins < 1440) recency = Math.round(mins / 60) + 'h ago';
+        else recency = Math.round(mins / 1440) + 'd ago';
+    }
+
+    // Score color
+    var scoreColor = s.score >= 80 ? '#22c55e' : s.score >= 50 ? '#f59e0b' : '#ef4444';
+
+    return '<div class="hd-bucket" style="grid-column:1/-1">'
+        + '<div class="hd-bucket__header">'
+        + '<span class="hd-bucket__icon">🏁</span>'
+        + '<span class="hd-bucket__title">LAST REHEARSAL</span>'
+        + (recency ? '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + recency + '</span>' : '')
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:16px;padding:4px 0">'
+        + '<div style="text-align:center">'
+        + '<div style="font-size:1.6em;font-weight:900;color:' + scoreColor + '">' + s.score + '</div>'
+        + '<div style="font-size:0.62em;font-weight:700;color:var(--text-dim,#475569);text-transform:uppercase;letter-spacing:0.08em">Score</div>'
+        + '</div>'
+        + '<div style="flex:1;display:flex;gap:8px;flex-wrap:wrap">'
+        + '<span style="font-size:0.72em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#86efac">'
+        + s.completedCount + ' done · ' + s.completedMinutes + 'min</span>'
+        + (s.skippedCount > 0 ? '<span style="font-size:0.72em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.12);color:#fbbf24">'
+        + s.skippedCount + ' skipped</span>' : '')
+        + '<span style="font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
+        + s.completionRate + '% completion</span>'
+        + (s.durationElapsedMinutes > 0 ? '<span style="font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
+        + s.durationElapsedMinutes + 'min elapsed</span>' : '')
+        + '</div>'
         + '</div>'
         + '</div>';
 }

@@ -863,6 +863,7 @@
     latestGenerated: null,          // output of generateRehearsalAgenda(), immutable during session
     activeSession: null,            // execution snapshot, mutable
     latestCompletedSummary: null,   // summary from last completed session
+    completionHistory: [],          // newest first, capped at 25
   };
 
   var _agendaIdCounter = 0;
@@ -894,6 +895,9 @@
         }
         if (_parsed.latestCompletedSummary && _parsed.latestCompletedSummary.sessionId) {
           _rehearsalAgenda.latestCompletedSummary = _parsed.latestCompletedSummary;
+        }
+        if (Array.isArray(_parsed.completionHistory)) {
+          _rehearsalAgenda.completionHistory = _parsed.completionHistory.slice(0, 25);
         }
       }
     }
@@ -1075,6 +1079,13 @@
     // Build completion summary from session items
     _rehearsalAgenda.latestCompletedSummary = _buildCompletionSummary(s);
 
+    // Prepend to history, cap at 25
+    if (!_rehearsalAgenda.completionHistory) _rehearsalAgenda.completionHistory = [];
+    _rehearsalAgenda.completionHistory.unshift(_rehearsalAgenda.latestCompletedSummary);
+    if (_rehearsalAgenda.completionHistory.length > 25) {
+      _rehearsalAgenda.completionHistory = _rehearsalAgenda.completionHistory.slice(0, 25);
+    }
+
     _persistAgenda();
     emit('agendaSessionCompleted', { session: s, summary: _rehearsalAgenda.latestCompletedSummary });
   }
@@ -1096,6 +1107,21 @@
       }
     }
 
+    var totalPlanned = completedMinutes + skippedMinutes;
+    var completionRate = totalPlanned > 0 ? Math.round((completedMinutes / totalPlanned) * 100) : 0;
+
+    // Duration elapsed: time from session start to completion
+    var durationMs = 0;
+    if (session.startedAt && session.updatedAt) {
+      durationMs = new Date(session.updatedAt).getTime() - new Date(session.startedAt).getTime();
+    }
+    var durationElapsedMinutes = Math.round(durationMs / 60000);
+
+    // Score: weighted blend of completion rate and coverage
+    // 0-100 scale. Full completion with no skips = 100. All skipped = 0.
+    var coverageRatio = session.items.length > 0 ? completed.length / session.items.length : 0;
+    var score = Math.round(completionRate * 0.6 + coverageRatio * 100 * 0.4);
+
     return {
       sessionId: session.sessionId,
       completedAt: session.updatedAt,
@@ -1105,7 +1131,11 @@
       skippedCount: skipped.length,
       completedMinutes: completedMinutes,
       skippedMinutes: skippedMinutes,
-      totalPlannedMinutes: completedMinutes + skippedMinutes,
+      totalPlannedMinutes: totalPlanned,
+      minutesAttempted: completedMinutes,
+      durationElapsedMinutes: durationElapsedMinutes,
+      completionRate: completionRate,
+      score: score,
       completedSongs: completed,
       skippedSongs: skipped,
     };
@@ -1114,6 +1144,11 @@
   /** Get the latest completion summary. */
   function getLatestCompletedSummary() {
     return _rehearsalAgenda.latestCompletedSummary || null;
+  }
+
+  /** Get completion history (newest first, max 25). */
+  function getCompletionHistory() {
+    return _rehearsalAgenda.completionHistory || [];
   }
 
   /** Mark session as abandoned (user quit early). */
@@ -1435,6 +1470,7 @@
     hasNextRehearsalAgendaItem:        hasNextRehearsalAgendaItem,
     getNextRehearsalAgendaItem:        getNextRehearsalAgendaItem,
     getLatestCompletedSummary:         getLatestCompletedSummary,
+    getCompletionHistory:              getCompletionHistory,
     clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)
