@@ -224,6 +224,18 @@ Goal: Scoring model that determines which songs deserve rehearsal attention, pow
 - "View More →" expands to 10, "Show Less" collapses back
 - Uses existing `hd-bucket` CSS classes for visual consistency
 
+### Phase 4 — Practice Attention Drill-Down (20260314)
+
+- `_sdRenderAttentionCard()` in song-detail.js — Practice Attention card in Band lens
+- Shows score, urgency tier badge, confidence label, top 3 contributing reasons
+- Context-sensitive action buttons:
+  - Decay risk high → "Practice Mode" (opens rehearsal mode)
+  - Readiness deficit high or needs rating → "Update Readiness" (scrolls to readiness section)
+  - On upcoming setlist → "View Setlist"
+  - Fallback: always shows "Update Readiness"
+- Unrated songs show "Needs rating" guidance
+- Inserted between Song Intelligence card and Gaps card
+
 ### Files Changed (Milestone 5)
 
 | File | Change |
@@ -231,6 +243,7 @@ Goal: Scoring model that determines which songs deserve rehearsal attention, pow
 | `js/core/song-intelligence.js` | `computePracticeAttention()` — 6-dimension scoring model |
 | `js/core/groovelinx_store.js` | `getPracticeAttention(opts)`, activity index builder, upcoming songs builder, cache |
 | `js/features/home-dashboard.js` | `renderPracticeRadar()`, `_prUrgencyTier()`, wired into `_renderDashboard()` |
+| `js/features/song-detail.js` | `_sdRenderAttentionCard()` — Practice Attention drill-down + Learn tab empty-state forms |
 
 ---
 

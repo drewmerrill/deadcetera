@@ -189,6 +189,7 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-intel-item"><div class="sd-intel-label">Top Gap</div><div class="sd-intel-val sd-intel-sm">'+topGapText+'</div>'+(gapCount>1?'<div class="sd-intel-sub">+' + (gapCount - 1) + ' more high</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Last Played</div><div class="sd-intel-val sd-intel-sm" id="sd-last-played">—</div></div>'+
         '</div></div>'+
+        _sdRenderAttentionCard(title, safeSong)+
         _sdRenderGapsCard(_siGaps)+
         '<div class="sd-card">'+
         '<div class="sd-card-title">📊 Readiness</div>'+
@@ -284,6 +285,68 @@ function _sdRenderRehearsalNotes(notesData) {
                ((author||date)?'<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px">'+
                (author?_sdEsc(author)+' ':'')+(date?'· '+date:'')+'</div>':'')+'</div>';
     }).join('');
+}
+
+// ── Practice Attention Card (Milestone 5 Phase 4) ────────────────────────────
+
+function _sdRenderAttentionCard(title, safeSong) {
+    if (typeof GLStore === 'undefined' || !GLStore.getPracticeAttention) return '';
+    var all = GLStore.getPracticeAttention({ limit: 50 });
+    if (!all || !all.length) return '';
+    var item = null;
+    for (var i = 0; i < all.length; i++) {
+        if (all[i].songId === title) { item = all[i]; break; }
+    }
+    if (!item) return '';
+
+    // Urgency tier
+    var urgColor = '#22c55e';
+    var urgLabel = 'Keep Warm';
+    if (item.score >= 20) { urgColor = '#ef4444'; urgLabel = 'Needs Work'; }
+    else if (item.score >= 12) { urgColor = '#f59e0b'; urgLabel = 'Attention'; }
+
+    // Confidence
+    var confText = '';
+    if (item.confidence === 'needs-rating') confText = 'Needs rating — score your readiness to unlock full insights';
+    else if (item.confidence === 'partial') confText = 'Partial data — some members haven\'t rated yet';
+
+    // Breakdown reasons (top 3)
+    var reasonsHTML = item.reasons.slice(0, 3).map(function(r) {
+        return '<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0">'
+            + '<span style="color:' + urgColor + ';font-size:0.8em">•</span>'
+            + '<span style="font-size:0.82em;color:var(--text,#f1f5f9)">' + _sdEsc(r) + '</span>'
+            + '</div>';
+    }).join('');
+
+    // Context-sensitive actions
+    var actions = [];
+    var b = item.breakdown;
+    if (b.decayRisk >= 4) {
+        actions.push('<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📖 Practice Mode</button>');
+    }
+    if (b.readinessDeficit >= 4 || item.confidence !== 'rated') {
+        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-strip\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
+    }
+    if (b.exposureBoost >= 8) {
+        actions.push('<button onclick="showPage(\'setlists\')" style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);color:#fbbf24;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📋 View Setlist</button>');
+    }
+    // Fallback: always show at least one action
+    if (!actions.length) {
+        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-strip\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
+    }
+
+    return '<div class="sd-card" style="padding:10px 14px">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        + '<div class="sd-card-title" style="margin:0">🎯 Practice Attention</div>'
+        + '<div style="display:flex;align-items:center;gap:6px">'
+        + '<span style="font-size:0.72em;font-weight:700;padding:2px 8px;border-radius:10px;background:' + urgColor + '18;color:' + urgColor + ';border:1px solid ' + urgColor + '33">' + urgLabel + '</span>'
+        + '<span style="font-size:0.88em;font-weight:800;color:' + urgColor + '">' + item.score + '</span>'
+        + '</div>'
+        + '</div>'
+        + (confText ? '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-bottom:8px">' + confText + '</div>' : '')
+        + reasonsHTML
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' + actions.join('') + '</div>'
+        + '</div>';
 }
 
 // ── Gaps Card (Milestone 3 Phase B) ──────────────────────────────────────────
