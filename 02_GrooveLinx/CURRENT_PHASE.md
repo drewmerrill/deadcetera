@@ -1,18 +1,12 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-13_
+_Updated: 2026-03-13 (Milestone 1 complete)_
 
 ## Active Milestone
 
-**Milestone 1 — Songs 3-Pane Shell (Band Command Center)**
+**Milestone 1 — Songs 3-Pane Shell (Band Command Center) — COMPLETE**
 
 Full spec: `02_GrooveLinx/system_audit/groovelinx_milestone_1_songs_3pane.md`
-
----
-
-## Current Phase: Phase F — Deprecation shim for showPage('songdetail')
-
-Phases A–E complete and deployed. Panel fully working on desktop and mobile.
 
 ---
 
@@ -26,9 +20,9 @@ Phases A–E complete and deployed. Panel fully working on desktop and mobile.
 | C.5 | `renderSongDetail()` options param — `panelMode:true` suppresses `glLastPage` write | ✅ DONE |
 | D | `songs.js selectSong()` — guard on `window.glRightPanel.open`, routes to `GLStore.selectSong()` | ✅ DONE |
 | E | Duplicate `selectSong()` removed from `app-dev.js` | ✅ DONE |
-| F | Deprecation shim for `showPage('songdetail')` in `navigation.js`. Remove `#page-songdetail` from `index-dev.html` | ⏳ NEXT |
-| G | Replace polling restore loop in `navigation.js` — reload should restore song in right panel, not navigate to songdetail page | ⏳ PENDING |
-| H | `song-drawer.js` — gate DOM drawer to mobile (<900px), always call `GLStore.selectSong()` first | ⏳ PENDING |
+| F | Deprecation shim for `showPage('songdetail')` in `navigation.js`. Remove `#page-songdetail` from `index-dev.html` | ✅ DONE |
+| G | Replace polling restore loop in `navigation.js` — reload restores song in right panel | ✅ DONE |
+| H | `song-drawer.js` — gate DOM drawer to mobile (<900px), always call `GLStore.selectSong()` first | ✅ DONE |
 
 ---
 
@@ -45,125 +39,25 @@ Phases A–E complete and deployed. Panel fully working on desktop and mobile.
 
 ---
 
-## Architectural Correction (recorded 2026-03-13 — must be applied before Phase D)
-
-**Problem:** `song-detail.js` unconditionally writes `glLastPage:'songdetail'` on every `renderSongDetail()` call. The workaround in `gl-right-panel.js` (clearing `glLastPage` back after render) is a fragile post-hoc patch — it is not the right fix.
-
-**Correct fix:** Add a `panelMode` option to `renderSongDetail()`:
-
-```js
-// New signature:
-renderSongDetail(title, containerOverride, options)
-// options = { panelMode: true }  →  suppresses glLastPage write
-```
-
-In `song-detail.js`, at the `localStorage.setItem('glLastPage', 'songdetail')` line (~line 30):
-
-```js
-// BEFORE:
-try { localStorage.setItem('glLastPage', 'songdetail'); localStorage.setItem('glLastSong', title); } catch(e) {}
-
-// AFTER:
-var opts = options || {};
-try {
-  if (!opts.panelMode) { localStorage.setItem('glLastPage', 'songdetail'); }
-  localStorage.setItem('glLastSong', title);
-} catch(e) {}
-```
-
-Then in `gl-right-panel.js`, update the call:
-
-```js
-// BEFORE:
-renderSongDetail(title, _content);
-
-// AFTER:
-renderSongDetail(title, _content, { panelMode: true });
-```
-
-Also remove the post-hoc `glLastPage` cleanup block from `gl-right-panel.js` — it will no longer be needed.
-
-**This must be completed before Phase D.** It is a prerequisite, not an optional cleanup.
-
----
-
-## Phase D — What To Do
-
-**File to edit:** `js/features/songs.js`
-
-**What to find:**
-
-```js
-// The existing selectSong() in songs.js calls showPage('songdetail')
-// This needs to be redirected to GLStore.selectSong()
-```
-
-**Pre-flight before editing:**
-
-```bash
-glhot selectSong   # confirm songs.js has its own selectSong, separate from app-dev.js ~971
-```
-
-**The change:**
-
-In `songs.js`, find the `selectSong(songTitle)` function body. Remove the `showPage('songdetail')` call. Replace the body with:
-1. Row highlight update (keep existing highlight logic)
-2. `GLStore.selectSong(songTitle)` — that's the only new call needed
-
-**Do NOT touch `app-dev.js` ~971** — that duplicate is Phase E.
-
----
-
-## Smoke Test Checklist for Phases B + C (Drew to run before Phase D)
-
-```
-1. Open: https://drewmerrill.github.io/deadcetera/index-dev.html
-2. Open browser console — confirm:
-   ✅ "GLStore loaded"
-   ✅ "glRightPanel initialised"
-   (no errors on load)
-
-3. Panel DOM check (console):
-   document.getElementById('gl-right-panel')   // exists, not null
-   document.getElementById('gl-shell')          // exists, not null
-
-4. Manual trigger test (console):
-   GLStore.selectSong('Dark Star')
-   // → right panel slides open at 420px
-   // → header shows "Dark Star"
-   // → renderSongDetail renders inside panel
-   // → Songs workspace still visible to the left
-   // → glLastPage must NOT be 'songdetail':
-   localStorage.getItem('glLastPage')           // → 'songs' or 'home', NOT 'songdetail'
-
-5. Close test:
-   document.getElementById('gl-rp-close').click()
-   // → panel slides closed
-   // → GLStore.getSelectedSong() → null
-
-6. Production sanity:
-   Open index.html — no gl-shell visible, app works normally
-```
-
----
-
-## Key Risks Going Forward
-
-| Risk | Phase | Mitigation |
-|------|-------|------------|
-| `songs.js` has its own `selectSong()` AND `app-dev.js ~971` has a duplicate — both must be updated | D + E | Run `glhot selectSong` before touching either file |
-| `song-detail.js` writes `glLastPage:'songdetail'` on every render | C (handled), D | `gl-right-panel.js` clears it back after `renderSongDetail()` returns |
-| `#page-songdetail` still exists in DOM — removing it too early breaks Phase F shim | F | Only remove `#page-songdetail` after shim is confirmed working |
-| `push.py` `stamp_version()` overwrites `app-dev.js` with `app.js` on every `gldeploy` | All | Never deploy milestone work until it's complete — or it gets wiped |
-
----
-
-## Files Changed This Milestone So Far
+## Files Changed This Milestone
 
 | File | Phase | Change |
 |------|-------|--------|
 | `js/core/groovelinx_store.js` | A | Added `selectSong()`, `clearSong()`, `getSelectedSong()`, `saveScroll()`, `restoreScroll()`, `_navScrollCache` |
-| `css/gl-shell.css` | B | NEW — 3-pane shell layout CSS |
-| `index-dev.html` | B + C | `#gl-shell` wrapper, `#gl-right-panel` aside, `<link>` for gl-shell.css, script tags for gl-right-panel.js |
-| `js/ui/gl-right-panel.js` | C | NEW — right panel controller |
+| `css/gl-shell.css` | B, H | NEW — 3-pane shell layout CSS. Phase H: removed dev-banner offset rule |
+| `index-dev.html` | B, C, F.2, G, H | `#gl-shell` wrapper, `#gl-right-panel` aside, script tags. `#page-songdetail` removed. `glHeroCheck` respects `_glPanelRestorePending` flag. Dev banner removed |
+| `js/ui/gl-right-panel.js` | C, G | NEW — right panel controller. Phase G: `close()` clears `glLastSong` from localStorage |
 | `push.py` | B + C | Added `css/gl-shell.css` and `js/ui/gl-right-panel.js` to `DEPLOY_FILES` |
+| `js/features/song-detail.js` | C.5 | `options` param + `panelMode` guard on `glLastPage` write |
+| `js/features/songs.js` | D, H | `selectSong()` routes via `glRightPanel.open` guard. `highlightSelectedSongRow()` helper — data-title lookup, survives DOM rebuilds |
+| `app-dev.js` | E, G | Phase E: duplicate `selectSong()` removed (note: `push.py` restores from `app.js`). Phase G: 50ms `showPage('home')` respects `_glPanelRestorePending` flag |
+| `js/ui/navigation.js` | F, G | Phase F shim intercepts `showPage('songdetail')`. Phase G: independent `glLastSong` panel restore + `_glPanelRestorePending` flag (stays set for page lifetime) |
+| `js/features/song-drawer.js` | H | Desktop (>=900px): routes to `GLStore.selectSong()`, no drawer. Mobile (<900px): drawer opens with `panelMode:true`. `closeDrawer()` clears GLStore + `glLastSong` |
+
+---
+
+## Known Stabilization Items (pre-Milestone 2)
+
+1. **`app-dev.js` duplicate `selectSong()`** — Phase E removed it, but `push.py stamp_version()` restores it from `app.js` on every deploy. Harmless because `songs.js` overwrites `window.selectSong` at load time. Will be permanently resolved when Milestone 1 is promoted to production (`app.js` updated).
+2. **`glSongDetailBack` override** — TEMPORARY PANEL-MODE COMPATIBILITY PATCH in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js` (future milestone).
+3. **Production promotion** — `index.html` and `app.js` are untouched. Milestone 1 must be validated end-to-end in dev before promoting shell changes to production.

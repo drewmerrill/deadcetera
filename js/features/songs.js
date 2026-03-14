@@ -129,6 +129,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Inject badges and overlays after paint
     requestAnimationFrame(function() {
+        // Re-apply song row highlight after DOM rebuild
+        if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
+            highlightSelectedSongRow(selectedSong.title);
+        }
         if (typeof addHarmonyBadges         === 'function') addHarmonyBadges();
         if (typeof addNorthStarBadges       === 'function') addNorthStarBadges();
 
@@ -214,6 +218,23 @@ window.setupSearchAndFilters = function setupSearchAndFilters() {
     }
 };
 
+// ── Song row highlight ────────────────────────────────────────────────────────
+
+/**
+ * Highlight the song row matching `title` in the songs list.
+ * Clears any previous highlight first.  Uses data-title attribute lookup
+ * so it works from any call path (click, keyboard, GLStore restore).
+ */
+function highlightSelectedSongRow(title) {
+    document.querySelectorAll('.song-item.selected').forEach(function(item) {
+        item.classList.remove('selected');
+    });
+    if (!title) return;
+    var esc = title.replace(/"/g, '\\"');
+    var row = document.querySelector('.song-item[data-title="' + esc + '"]');
+    if (row) row.classList.add('selected');
+}
+
 // ── Song selection ────────────────────────────────────────────────────────────
 
 /**
@@ -230,16 +251,9 @@ window.selectSong = function selectSong(songTitle) {
         band: (allSongs.find(function(s) { return s.title === songTitle; }) || {}).band || 'GD'
     };
 
-    // Highlight selected row
-    document.querySelectorAll('.song-item').forEach(function(item) {
-        item.classList.remove('selected');
-    });
-    var clickedItem = event?.target?.closest('.song-item');
-    if (clickedItem) {
-        clickedItem.classList.add('selected');
-        clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
-        setTimeout(function() { clickedItem.style.boxShadow = ''; }, 600);
-    }
+    // Highlight selected row (by data-title, not event.target — works for
+    // all call paths: click, keyboard, GLStore restore, etc.)
+    highlightSelectedSongRow(songTitle);
 
     // showBandResources() populates legacy step-cards in page-songs as a
     // background task during the transition period. Harmless in panel mode.

@@ -29,6 +29,35 @@ var currentPage = 'songs';
  * @param {string} page  Matches the id of `#page-{page}` in the DOM.
  */
 window.showPage = function showPage(page) {
+    // ── Phase F: Deprecation shim ─────────────────────────────────────────
+    // Any showPage('songdetail') call — including legacy ones in app.js /
+    // app-dev.js selectSong() — is intercepted here when the BCC right-panel
+    // shell is active (gl-right-panel.js loaded, window.glRightPanel.open
+    // is a function).  The call is swallowed and re-routed to GLStore so the
+    // panel opens instead of a full-page navigation.
+    //
+    // Falls through to the original page-swap logic when:
+    //   · glRightPanel is not loaded (production index.html), OR
+    //   · no selectedSong is available to open
+    if (page === 'songdetail') {
+        if (window.glRightPanel && typeof window.glRightPanel.open === 'function') {
+            var _shimTitle = null;
+            if (typeof selectedSong !== 'undefined' && selectedSong) {
+                _shimTitle = (selectedSong && selectedSong.title)
+                    ? selectedSong.title
+                    : (typeof selectedSong === 'string' ? selectedSong : null);
+            }
+            if (_shimTitle) {
+                if (typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
+                    GLStore.selectSong(_shimTitle);
+                } else {
+                    window.glRightPanel.open(_shimTitle);
+                }
+                return; // swallow full-page nav -- panel handles it
+            }
+        }
+        // Fallthrough: no panel or no song -- let full-page nav proceed normally
+    }
     // Close slide-out menu
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');
@@ -123,15 +152,17 @@ console.log('✅ navigation.js loaded');
         try {
             var last = localStorage.getItem('glLastPage');
             if (last && VALID.indexOf(last) !== -1) {
-                // Defer so app.js auth + data init runs first
+                // Defer so app.js auth + data init runs first.
+                // Set flag so glHeroCheck(true) / 50ms showPage('home') don't
+                // override the restored page (same pattern as _glPanelRestorePending).
+                window._glPageRestorePending = true;
                 setTimeout(function() {
                     if (typeof showPage === 'function') showPage(last);
                 }, 800);
             } else if (last === 'songdetail') {
+                // Production only: restore full-page songdetail
                 var lastSong = localStorage.getItem('glLastSong');
                 if (!lastSong) return;
-                // Poll until allSongs is populated (auth + Firebase load takes variable time)
-                // Home renders first, then restore overtops it
                 var attempts = 0;
                 var maxAttempts = 40; // 4 seconds max
                 var interval = setInterval(function() {
@@ -139,15 +170,44 @@ console.log('✅ navigation.js loaded');
                     var songsReady = typeof allSongs !== 'undefined' && Array.isArray(allSongs) && allSongs.length > 0;
                     if (songsReady || attempts >= maxAttempts) {
                         clearInterval(interval);
-                        if (songsReady && typeof renderSongDetail === 'function') {
-                            // Manually show/hide pages to avoid pageRenderers.songdetail
-                            // firing renderSongDetail() with no arg (which bails to songs)
+                        if (!songsReady) return;
+                        if (typeof renderSongDetail === 'function') {
                             document.querySelectorAll('.app-page').forEach(function(p){p.classList.add('hidden');});
                             var sdDiv = document.getElementById('page-songdetail');
                             if (sdDiv) { sdDiv.classList.remove('hidden'); sdDiv.classList.add('fade-in'); }
                             try { localStorage.setItem('glLastPage','songdetail'); } catch(e){}
                             renderSongDetail(lastSong);
                         }
+                    }
+                }, 100);
+            }
+
+            // ── Phase G: dev-shell song panel restore ────────────────────────
+            // In panel mode, glLastPage is NOT 'songdetail' (panelMode suppresses
+            // that write). glLastSong IS written. So this block runs independently
+            // of the glLastPage branching above: if glLastSong is set and the
+            // right-panel shell is available, restore the song into the panel.
+            //
+            // Timing problem: auth completes async and glHeroCheck(true) calls
+            // showPage('home'), which blows away the Songs workspace. We set a
+            // flag (window._glPanelRestorePending) so glHeroCheck can defer to us.
+            var panelSong = localStorage.getItem('glLastSong');
+            if (panelSong && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
+                window._glPanelRestorePending = true;
+                var pAttempts = 0;
+                var pInterval = setInterval(function() {
+                    pAttempts++;
+                    var ready = typeof allSongs !== 'undefined' && Array.isArray(allSongs) && allSongs.length > 0;
+                    if (ready || pAttempts >= 40) {
+                        clearInterval(pInterval);
+                        if (ready && typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
+                            // Ensure Songs workspace is visible behind the panel
+                            if (typeof showPage === 'function') showPage('songs');
+                            GLStore.selectSong(panelSong);
+                        }
+                        // Flag stays set for the page lifetime — auth callbacks
+                        // (glHeroCheck, 50ms showPage('home')) fire well after this
+                        // poll completes, so clearing here would let them through.
                     }
                 }, 100);
             }

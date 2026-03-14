@@ -149,15 +149,6 @@
     font-size: 1em;
   }
 
-  /* DEV-ONLY: #gl-dev-banner is position:fixed z:99999 and 32px tall.
-     On mobile the panel starts at top:0 and the banner covers the header.
-     Shift the panel down by the banner height so the ✕ is always visible.
-     :has() scopes this to pages that actually have the banner (index-dev.html).
-     In production index.html the banner never exists so :has() never matches. */
-  body:has(#gl-dev-banner) #gl-right-panel {
-    top: 32px;
-    height: calc(100% - 32px);
-  }
 }
 
 /* ── Dev-only: outline to confirm shell boundary during Phase B ─────────────

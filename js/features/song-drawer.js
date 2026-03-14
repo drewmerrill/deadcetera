@@ -81,13 +81,27 @@ function _sdInit() {
 
 function openSongDrawer(title) {
     if (!title) return;
+
+    // ── Phase H: always update GLStore state first ──────────────────────
+    if (typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
+        GLStore.selectSong(title);
+    }
+
+    // ── Phase H: on desktop (>=900px), let the right panel handle it ───
+    // The GLStore.selectSong() call above already opens the panel via the
+    // gl-song-selected event subscription.  No drawer DOM needed.
+    if (window.innerWidth >= 900 && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
+        return;
+    }
+
+    // ── Mobile (<900px): open the slide-in drawer ──────────────────────
     _sdInit();
     var content = document.getElementById('gl-drawer-content');
     if (!content) return;
     content.innerHTML = '<div id="gl-drawer-sd-root" style="min-height:100%"></div>';
     var root = document.getElementById('gl-drawer-sd-root');
     if (typeof window.renderSongDetail === 'function') {
-        window.renderSongDetail(title, root);
+        window.renderSongDetail(title, root, { panelMode: true });
     } else {
         root.innerHTML = '<div style="padding:24px;color:#94a3b8">Song detail unavailable.</div>';
     }
@@ -116,6 +130,11 @@ window.closeDrawer = function() {
     document.body.style.top = '';
     document.body.style.width = '';
     window.scrollTo(0, scrollY);
+    // Phase H: clear GLStore selection + glLastSong on drawer close
+    if (typeof GLStore !== 'undefined' && typeof GLStore.clearSong === 'function') {
+        GLStore.clearSong();
+    }
+    try { localStorage.removeItem('glLastSong'); } catch(e) {}
 };
 
 window.openSongDrawer = openSongDrawer;

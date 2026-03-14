@@ -5,7 +5,7 @@ Fetches ALL live GitHub files to local repo + prints status snapshot for Claude
 
 Usage: python3 sync.py
 """
-import os, json, base64, re, datetime
+import os, json, base64, re, datetime, hashlib
 from urllib.request import urlopen, Request
 
 TOKEN = open(os.path.expanduser("~/.deadcetera_token")).read().strip()
@@ -41,7 +41,6 @@ FILES = [
     # Song Intelligence System
     "js/features/song-detail.js",
     "js/features/harmony-lab.js",
-
 ]
 
 def gh_get(path):
@@ -52,6 +51,12 @@ def gh_get(path):
     })
     with urlopen(req) as r:
         return json.load(r)
+
+def git_blob_sha(filepath):
+    """Compute git blob SHA1 — identical to what GitHub stores as content SHA."""
+    raw = open(filepath, 'rb').read()
+    header = f"blob {len(raw)}\0".encode()
+    return hashlib.sha1(header + raw).hexdigest()
 
 print("🔄 Syncing ALL files from GitHub...\n")
 manifest = {}
@@ -68,28 +73,35 @@ for f in FILES:
             dest = os.path.join(REPO, f)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             open(dest, 'wb').write(raw)
-            manifest[f] = {"sha": info["sha"][:8], "lines": -1, "size": len(raw)}
-            print(f"  ✅ {f:<30} (binary)  sha:{info['sha'][:8]}")
+            manifest[f] = {"sha": info["sha"][:8], "sha_full": info["sha"], "lines": -1, "size": len(raw)}
+            print(f"  ✅ {f:<40} (binary)  sha:{info['sha'][:8]}")
             continue
         dest = os.path.join(REPO, f)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         open(dest, 'w', encoding='utf-8').write(content)
         lines = content.count('\n')
-        manifest[f] = {"sha": info["sha"][:8], "lines": lines, "size": len(content)}
-        print(f"  ✅ {f:<30} {lines:>5} lines  sha:{info['sha'][:8]}")
+        manifest[f] = {"sha": info["sha"][:8], "sha_full": info["sha"], "lines": lines, "size": len(content)}
+        print(f"  ✅ {f:<40} {lines:>5} lines  sha:{info['sha'][:8]}")
     except Exception as e:
         errors.append(f)
         print(f"  ❌ {f}: {e}")
 
-# app.js safety checks
+# ── app.js safety checks ────────────────────────────────────────────────────
+# Use blob SHA comparison instead of `git status` — push.py uses the GitHub
+# Data API so the local git index is always stale. git status fires a false
+# MODIFIED warning every session. We compare local content SHA to GitHub SHA.
 appjs_path = os.path.join(REPO, "app.js")
 appjs_lines = open(appjs_path).read().count('\n') if os.path.exists(appjs_path) else 0
-import subprocess
-git_status = subprocess.run(["git", "status", "--short", "app.js"], capture_output=True, text=True, cwd=REPO).stdout.strip()
-if git_status:
-    print(f"\n🚨 WARNING: app.js is MODIFIED but not committed!")
-    print(f"   The file on disk may not match what is deployed.")
-    print(f"   If unexpected, find the correct app.js from a previous chat upload.")
+
+if "app.js" in manifest and os.path.exists(appjs_path):
+    local_sha = git_blob_sha(appjs_path)
+    github_sha = manifest["app.js"]["sha_full"]
+    if local_sha != github_sha:
+        print(f"\n🚨 WARNING: app.js local content differs from GitHub!")
+        print(f"   Local SHA:  {local_sha[:8]}  GitHub SHA: {github_sha[:8]}")
+        print(f"   This means un-deployed local edits exist.")
+        print(f"   If unexpected, re-run sync.py or push with: python3 push.py \"message\"")
+
 if appjs_lines < 10000:
     print(f"\n🚨 WARNING: app.js is only {appjs_lines} lines — looks wrong!")
     print(f"   Expected ~12000+ lines. Do not work on this file until resolved.")

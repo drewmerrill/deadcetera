@@ -120,6 +120,9 @@
       GLStore.clearSong();
     }
 
+    // Phase G: clear glLastSong so reload does not reopen the panel
+    try { localStorage.removeItem('glLastSong'); } catch(e) {}
+
     // Reset panel state
     _currentSong = null;
 
