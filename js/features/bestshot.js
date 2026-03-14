@@ -720,6 +720,7 @@ function openRehearsalChopper() {
         '<div id="chopDropZone" style="border:2px dashed rgba(245,158,11,0.3);border-radius:12px;padding:30px;text-align:center;cursor:pointer;margin-bottom:12px;transition:all 0.2s">' +
         '<div style="font-size:1.8em;margin-bottom:6px">🎵</div>' +
         '<div style="color:var(--text-muted);font-size:0.9em">Drag & drop rehearsal MP3 here</div>' +
+        '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;cursor:pointer" onclick="event.stopPropagation();if(typeof glInlineHelp!==\'undefined\')glInlineHelp.showPopover(this,\'Recording Setup\',\'📱 Phone is easiest — 8-10 ft from band, chest height.<br>🎙️ Portable recorder recommended for better quality.<br>🎛️ Board mix advanced but cleanest signal.<br>Real-time capture optional — upload after.\')">📋 Recording setup tips</div>' +
         '<div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">or click to browse</div>' +
         '<input type="file" id="chopFileInput" accept=".mp3,.m4a,.wav,.aac,.ogg,.flac,audio/*" style="display:none">' +
         '</div>' +
@@ -877,6 +878,13 @@ async function chopLoadFile(file) {
                     if (es) helpBanner.innerHTML = '<span style="font-size:1.2em">' + es.icon + '</span><div style="flex:1"><strong style="color:#818cf8">' + es.title + '</strong><br>' + es.text + '</div><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;flex-shrink:0">✕</button>';
                     var segEl = document.getElementById('chopSegments');
                     if (segEl && es) segEl.parentNode.insertBefore(helpBanner, segEl);
+                    // Add next-step workflow banner
+                    var nsBanner = glInlineHelp.renderNextStepBanner('after-segmentation', 'glHelp_afterSeg');
+                    if (nsBanner && segEl) {
+                        var nsDiv = document.createElement('div');
+                        nsDiv.innerHTML = nsBanner;
+                        segEl.parentNode.insertBefore(nsDiv.firstChild, segEl);
+                    }
                 }
             }
         }

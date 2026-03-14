@@ -118,6 +118,12 @@
       text: 'A composite score showing how much this song needs rehearsal right now. Based on band readiness, how recently it was practiced, whether it\'s on an upcoming setlist, and member score gaps.',
     },
 
+    // How GrooveLinx works
+    'how-it-works': {
+      title: 'How GrooveLinx Intelligence Works',
+      text: '🎵 Record → ✂️ AI segments → ✏️ You correct → 🏁 Scorecard → ⚠️ Weak spots detected → 📋 Next agenda built automatically. Each rehearsal makes the system smarter.',
+    },
+
     // Now Playing
     'now-playing': {
       title: 'Now Playing',
@@ -160,6 +166,56 @@
     },
   };
 
+  // ── Workflow Next Steps ──────────────────────────────────────────────────
+
+  var NEXT_STEPS = {
+    'after-segmentation': {
+      title: 'What to do next',
+      steps: [
+        'Review each segment — correct restart and discussion labels first.',
+        'Assign song names to music segments from the dropdown.',
+        'Exclude non-music sections (tuning, breaks) with 🚫.',
+        'Save named segments as takes for your Best Shot library.',
+      ],
+    },
+    'after-scorecard': {
+      title: 'How to use this scorecard',
+      steps: [
+        'Check the highlighted carry-forward songs — they need attention next session.',
+        'Recurring weak spots automatically boost songs in your next agenda.',
+        'Recommendations below suggest specific next actions.',
+      ],
+    },
+    'weak-spots-context': {
+      title: 'About weak spots',
+      steps: [
+        'Songs here are already being boosted in agenda generation.',
+        'To improve detection, keep readiness scores updated after each rehearsal.',
+        'Skipping a song twice flags it automatically — commit to it or remove it from rotation.',
+      ],
+    },
+    'pre-upload': {
+      title: 'Recording your rehearsal',
+      steps: [
+        '📱 Phone is easiest — voice memo app, 8–10 ft from band, chest height.',
+        '🎙️ Portable recorder is recommended — better stereo and dynamic range.',
+        '🎛️ Board mix is advanced — cleanest signal but more setup.',
+        'Real-time capture is optional. Upload after the fact is the primary workflow.',
+      ],
+    },
+    'how-groovelinx-works': {
+      title: 'How GrooveLinx intelligence works',
+      steps: [
+        '🎵 Record your rehearsal → upload the full file.',
+        '✂️ AI segments the recording into songs, breaks, and restarts.',
+        '✏️ You correct and confirm what the AI got wrong.',
+        '🏁 GrooveLinx scores the session and tracks progress.',
+        '⚠️ Recurring weak spots surface automatically across sessions.',
+        '📋 Your next rehearsal agenda is built from everything learned.',
+      ],
+    },
+  };
+
   // ── Public Helpers ─────────────────────────────────────────────────────────
 
   /**
@@ -194,6 +250,39 @@
    */
   function getRecordingTip() {
     return RECORDING_TIPS[Math.floor(Math.random() * RECORDING_TIPS.length)];
+  }
+
+  /**
+   * Get workflow next-step guidance by key.
+   * @param {string} key
+   * @returns {object|null} { title, steps[] }
+   */
+  function getNextSteps(key) {
+    return NEXT_STEPS[key] || null;
+  }
+
+  /**
+   * Render a compact next-step banner as HTML string.
+   * Dismissible. Shows numbered steps.
+   * @param {string} key  NEXT_STEPS key
+   * @param {string} [dismissId]  localStorage key to remember dismissal
+   * @returns {string} HTML or empty string
+   */
+  function renderNextStepBanner(key, dismissId) {
+    if (dismissId) {
+      try { if (localStorage.getItem(dismissId)) return ''; } catch(e) {}
+    }
+    var ns = NEXT_STEPS[key];
+    if (!ns || !ns.steps || !ns.steps.length) return '';
+    var dismissAttr = dismissId ? ' onclick="try{localStorage.setItem(\'' + dismissId + '\',\'1\')}catch(e){}this.parentElement.remove()"' : ' onclick="this.parentElement.remove()"';
+    var stepsHtml = ns.steps.map(function(s, i) {
+      return '<div style="display:flex;gap:6px;padding:2px 0"><span style="color:#818cf8;font-weight:700;flex-shrink:0">' + (i + 1) + '.</span><span>' + s + '</span></div>';
+    }).join('');
+    return '<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:0.78em;color:var(--text-muted,#94a3b8);position:relative">'
+      + '<div style="font-weight:700;color:#818cf8;margin-bottom:6px">' + ns.title + '</div>'
+      + stepsHtml
+      + '<button' + dismissAttr + ' style="position:absolute;top:6px;right:8px;background:none;border:none;color:#475569;cursor:pointer;font-size:0.9em">✕</button>'
+      + '</div>';
   }
 
   /**
@@ -252,11 +341,14 @@
     getEmptyState: getEmptyState,
     getRecordingSetup: getRecordingSetup,
     getRecordingTip: getRecordingTip,
+    getNextSteps: getNextSteps,
+    renderNextStepBanner: renderNextStepBanner,
     renderHelpTrigger: renderHelpTrigger,
     showPopover: showPopover,
     EXPLAINERS: EXPLAINERS,
     EMPTY_STATES: EMPTY_STATES,
     RECORDING_SETUP: RECORDING_SETUP,
+    NEXT_STEPS: NEXT_STEPS,
   };
 
   console.log('✅ glInlineHelp loaded');

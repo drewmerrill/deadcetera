@@ -644,6 +644,7 @@ function renderRehearsalAgenda() {
         + '<div class="hd-bucket__header">'
         + '<span class="hd-bucket__icon">📋</span>'
         + '<span class="hd-bucket__title">SUGGESTED REHEARSAL AGENDA</span>'
+        + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('how-it-works') : '')
         + '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim,#475569)">' + agenda.totalMinutes + ' min</span>'
         + '</div>'
         + (agenda.summary ? '<div style="font-size:0.78em;color:var(--text-muted,#94a3b8);margin-bottom:8px;padding:0 2px">' + _escHtml(agenda.summary) + '</div>' : '')
@@ -692,7 +693,8 @@ function renderLastRehearsal() {
         + '<span class="hd-bucket__title">REHEARSAL SCORECARD</span>'
         + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('scorecard-score') : '')
         + (recency ? '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + recency + '</span>' : '')
-        + '</div>';
+        + '</div>'
+        + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderNextStepBanner('after-scorecard', 'glHelp_afterScore') : '');
 
     // Score + label + headline
     h += '<div style="display:flex;align-items:center;gap:16px;padding:4px 0">'
