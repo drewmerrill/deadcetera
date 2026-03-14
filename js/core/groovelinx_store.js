@@ -655,6 +655,18 @@
     return SongIntelligence.detectSongGaps(songId, getAllReadiness(), getAllStatus(), _members());
   }
 
+  /**
+   * Get practice recommendations (Phase C).
+   * @param {object} [opts]  { memberKey: string, limit: number }
+   * @returns {Array|null} sorted recommendations or null if SongIntelligence not loaded
+   */
+  function getPracticeRecommendations(opts) {
+    if (typeof SongIntelligence === 'undefined') return null;
+    return SongIntelligence.generatePracticeRecommendations(
+      getAllReadiness(), getAllStatus(), _members(), getSongs(), opts
+    );
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.GLStore = {
@@ -705,6 +717,7 @@
     getSongIntelligence:    getSongIntelligence,
     getCatalogIntelligence: getCatalogIntelligence,
     getSongGaps:            getSongGaps,
+    getPracticeRecommendations: getPracticeRecommendations,
 
     // Debug
     getState:          getState,

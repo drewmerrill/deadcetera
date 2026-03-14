@@ -1,6 +1,6 @@
 /**
  * song-intelligence.js
- * Song Intelligence Engine — Phases A + B: Readiness Aggregation + Gap Detection
+ * Song Intelligence Engine — Phases A + B + C: Aggregation, Gaps, Recommendations
  *
  * Pure computation module. No DOM, no Firebase, no side effects.
  * Consumes readiness/status/member data and returns intelligence objects.
@@ -241,12 +241,125 @@
     return gaps;
   }
 
+  // ── Practice Recommendations (Phase C) ─────────────────────────────────────
+
+  /**
+   * Generate a prioritized practice list from readiness + gap data.
+   * Pure computation — composes Phase A and Phase B outputs.
+   *
+   * Scoring (per song):
+   *   Low readiness:    (5 - avg) * 3       →  0–12 pts
+   *   High-severity gaps: count * 2         →  0+ pts
+   *   Medium-severity gaps: count * 1       →  0+ pts
+   *   Status mismatch:  5 flat bonus        →  0 or 5 pts
+   *
+   * Unrated songs are excluded (no data to rank on).
+   *
+   * @param {object} allReadiness
+   * @param {object} allStatus
+   * @param {object} members
+   * @param {Array}  songs
+   * @param {object} [opts]
+   * @param {string} [opts.memberKey]  Filter to this member's weaknesses
+   * @param {number} [opts.limit]      Max results (default 10)
+   * @returns {Array} sorted recommendations, highest priority first
+   */
+  function generatePracticeRecommendations(allReadiness, allStatus, members, songs, opts) {
+    opts = opts || {};
+    var limit = opts.limit || 10;
+    var memberFilter = opts.memberKey || null;
+    var results = [];
+
+    for (var i = 0; i < songs.length; i++) {
+      var title = songs[i].title;
+      if (!title) continue;
+
+      var intel = computeSongIntelligence(title, allReadiness, members);
+      if (intel.avg <= 0) continue; // skip unrated
+
+      var gaps = detectSongGaps(title, allReadiness, allStatus, members);
+
+      // If filtering by member, skip songs where this member has no gap
+      if (memberFilter) {
+        var memberGaps = gaps.filter(function (g) { return g.memberKey === memberFilter; });
+        var memberScore = intel.scores[memberFilter];
+        // Skip if member has no gaps AND their score is >= 4
+        if (memberGaps.length === 0 && memberScore && memberScore >= 4) continue;
+      }
+
+      // Score the song
+      var score = 0;
+      var reasons = [];
+
+      // Low readiness weight
+      var readinessPts = (5 - intel.avg) * 3;
+      score += readinessPts;
+      if (intel.avg < 4) {
+        reasons.push('Band avg ' + intel.avg + '/5');
+      }
+
+      // Gap severity weights
+      var highGaps = 0;
+      var medGaps = 0;
+      var hasMismatch = false;
+      for (var g = 0; g < gaps.length; g++) {
+        if (gaps[g].severity === 'high') {
+          highGaps++;
+          if (gaps[g].type === 'status-mismatch') hasMismatch = true;
+        } else if (gaps[g].severity === 'medium') {
+          medGaps++;
+        }
+      }
+      score += highGaps * 2;
+      score += medGaps * 1;
+
+      // Status mismatch flat bonus
+      if (hasMismatch) {
+        score += 5;
+        reasons.push('Status mismatch');
+      }
+
+      // Member-specific reason
+      if (memberFilter) {
+        var ms = intel.scores[memberFilter];
+        if (ms && ms < 4) {
+          reasons.push((members[memberFilter].name || memberFilter) + ' scored ' + ms + '/5');
+        } else if (!ms) {
+          reasons.push((members[memberFilter].name || memberFilter) + ' not rated');
+        }
+      }
+
+      // Top gap as the primary reason if no specific reasons yet
+      if (reasons.length === 0 && gaps.length > 0) {
+        reasons.push(gaps[0].detail);
+      }
+
+      score = Math.round(score * 10) / 10;
+
+      results.push({
+        songId: title,
+        score: score,
+        avg: intel.avg,
+        tier: intel.tier,
+        gapCount: gaps.length,
+        topReason: reasons[0] || null,
+        reasons: reasons,
+      });
+    }
+
+    // Sort by score descending (highest priority first)
+    results.sort(function (a, b) { return b.score - a.score; });
+
+    return results.slice(0, limit);
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.SongIntelligence = {
     computeSongIntelligence: computeSongIntelligence,
     computeCatalogIntelligence: computeCatalogIntelligence,
     detectSongGaps: detectSongGaps,
+    generatePracticeRecommendations: generatePracticeRecommendations,
     READINESS_TIERS: READINESS_TIERS,
   };
 
