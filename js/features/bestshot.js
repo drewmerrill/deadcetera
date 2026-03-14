@@ -837,6 +837,15 @@ async function chopLoadFile(file) {
                 chopDrawWaveform();
                 chopRenderSegments();
                 showToast('AI detected ' + timeline.summary.segmentCount + ' segments (' + timeline.summary.musicSegments + ' music, ' + timeline.summary.likelyRestarts + ' restarts)');
+                // Show first-use help banner
+                if (typeof glInlineHelp !== 'undefined') {
+                    var helpBanner = document.createElement('div');
+                    helpBanner.style.cssText = 'background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:0.78em;color:var(--text-muted,#94a3b8)';
+                    var es = glInlineHelp.getEmptyState('first-segments');
+                    if (es) helpBanner.innerHTML = '<span style="font-size:1.2em">' + es.icon + '</span><div style="flex:1"><strong style="color:#818cf8">' + es.title + '</strong><br>' + es.text + '</div><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;flex-shrink:0">✕</button>';
+                    var segEl = document.getElementById('chopSegments');
+                    if (segEl && es) segEl.parentNode.insertBefore(helpBanner, segEl);
+                }
             }
         }
     } catch (err) {

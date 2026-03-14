@@ -337,7 +337,8 @@ function _sdRenderAttentionCard(title, safeSong) {
 
     return '<div class="sd-card" style="padding:10px 14px">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-        + '<div class="sd-card-title" style="margin:0">🎯 Practice Attention</div>'
+        + '<div style="display:flex;align-items:center;gap:4px"><div class="sd-card-title" style="margin:0">🎯 Practice Attention</div>'
+        + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('practice-attention') : '') + '</div>'
         + '<div style="display:flex;align-items:center;gap:6px">'
         + '<span style="font-size:0.72em;font-weight:700;padding:2px 8px;border-radius:10px;background:' + urgColor + '18;color:' + urgColor + ';border:1px solid ' + urgColor + '33">' + urgLabel + '</span>'
         + '<span style="font-size:0.88em;font-weight:800;color:' + urgColor + '">' + item.score + '</span>'

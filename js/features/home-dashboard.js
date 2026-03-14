@@ -553,6 +553,7 @@ function renderPracticeRadar() {
         + '<div class="hd-bucket__header">'
         + '<span class="hd-bucket__icon">\uD83C\uDFAF</span>'
         + '<span class="hd-bucket__title">PRACTICE RADAR</span>'
+        + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('practice-radar') : '')
         + '<span class="hd-bucket__count">' + items.length + '</span>'
         + '</div>'
         + '<div class="hd-bucket__list">' + rows + '</div>'
@@ -689,6 +690,7 @@ function renderLastRehearsal() {
         + '<div class="hd-bucket__header">'
         + '<span class="hd-bucket__icon">🏁</span>'
         + '<span class="hd-bucket__title">REHEARSAL SCORECARD</span>'
+        + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('scorecard-score') : '')
         + (recency ? '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + recency + '</span>' : '')
         + '</div>';
 
@@ -830,7 +832,7 @@ function renderRehearsalHistory() {
         var ws = GLStore.getRehearsalWeakSpots();
         if (ws && ws.hasEnoughData && ws.songs.length) {
             wsHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)">';
-            wsHtml += '<div style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:4px">Recurring Weak Spots</div>';
+            wsHtml += '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px"><span style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase">Recurring Weak Spots</span>' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('weak-spots') : '') + '</div>';
             for (var w = 0; w < Math.min(3, ws.songs.length); w++) {
                 var wSong = ws.songs[w];
                 var wColor = wSong.issue.severity === 'high' ? '#ef4444' : '#f59e0b';
