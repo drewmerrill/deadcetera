@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-13_
+_Updated: 2026-03-14_
 
 ## Milestone 1 — Songs 3-Pane Shell (Band Command Center) — COMPLETE + PROMOTED
 
@@ -54,6 +54,32 @@ Scope: band readiness aggregation, gap detection, practice recommendation genera
 | `js/core/groovelinx_store.js` | `getSongIntelligence()`, `getCatalogIntelligence()`, `getSongGaps()`, `getPracticeRecommendations()`, intelligence cache + auto-invalidation |
 | `index.html` | Script tag for `song-intelligence.js` |
 | `index-dev.html` | Script tag for `song-intelligence.js` |
+
+---
+
+## Milestone 3 — Song Intelligence UI (Right Panel)
+
+Goal: Wire Milestone 2 computation outputs into the right panel. Same panel, same layout, richer data. No new computation, no Firebase changes.
+
+### Phase Completion Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| A | Song Intelligence card upgrade — replace manual readiness/gap calc with GLStore calls | ✅ DONE |
+| B | Gap list card in Band lens | NOT STARTED |
+| C | Band snapshot upgrade with catalog intelligence | NOT STARTED |
+
+### Phase A Verification Results (20260314)
+
+- Song Intelligence card renders with GLStore data (avg, tier label, top gap, status)
+- Tie handling: unrated songs show "No scores yet", tied lowest members show "Name + N more at X"
+- No console errors on rated or unrated songs
+
+### Files Changed (Milestone 3)
+
+| File | Change |
+|------|--------|
+| `js/features/song-detail.js` | Replaced manual readiness/gap calc in `_sdPopulateBandLens()` with `GLStore.getSongIntelligence()` / `getSongGaps()`. Added tie-aware bottleneck display. Added `.sd-intel-sub` style. |
 
 ---
 

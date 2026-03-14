@@ -148,13 +148,13 @@ This document is the canonical session restart artifact for GrooveLinx.
 
 # GrooveLinx Claude Handoff
 
-_Last updated: 2026-03-13_
+_Last updated: 2026-03-14_
 
 ## CURRENT OBJECTIVE
 
-**Milestone 2 — Song Intelligence Engine** (started 2026-03-13)
+**Milestone 3 — Song Intelligence UI (Right Panel)** (started 2026-03-14)
 
-**Milestone 2 — COMPLETE** (all three phases verified 2026-03-14).
+Phase A (Song Intelligence card upgrade) complete. Phase B (gap list card) next.
 
 ## WHAT MILESTONE 2 IS
 
@@ -163,31 +163,35 @@ Pure computation layer that analyzes existing readiness + status data. No UI cha
 - B: Gap detection (DONE + verified)
 - C: Practice recommendation generation (DONE + verified)
 
-## WHAT WAS COMPLETED THIS SESSION (20260313–14)
+## WHAT MILESTONE 3 IS
 
-- **Phase A** — `js/core/song-intelligence.js` created with `computeSongIntelligence()` and `computeCatalogIntelligence()`
-- **Phase B** — `detectSongGaps()` added with 3 gap types: `member-below-avg`, `missing-score`, `status-mismatch`. Wired as `GLStore.getSongGaps(songId)`.
-- **Phase C** — `generatePracticeRecommendations()` added. Scores rated songs by low readiness (3x), gap count (2x high / 1x medium), status mismatch (5pt flat). Supports `{ memberKey, limit }` opts. Wired as `GLStore.getPracticeRecommendations(opts)`.
-- **Phases A + B verified** — 594 songs, 18 rated. Gap detection and catalog intelligence return correct results.
+Wire Milestone 2 computation into the right panel UI. Three phases:
+- A: Song Intelligence card upgrade in Band lens (DONE)
+- B: Gap list card in Band lens
+- C: Band snapshot upgrade with catalog intelligence
+
+## WHAT WAS COMPLETED THIS SESSION (20260314)
+
+- **Milestone 2 complete** — all 3 phases of Song Intelligence Engine verified
+- **Milestone 3 Phase A** — replaced manual readiness/gap computation in `_sdPopulateBandLens()` with `GLStore.getSongIntelligence()` / `getSongGaps()`. Added tier label, tie-aware bottleneck display ("Name + N more at X"), and "No scores yet" for fully unrated songs.
 
 ## RISKS / WATCHOUTS
 
-1. **Sparse data** — Only 18/594 songs have readiness scores. Recommendations return short lists, not errors.
-2. **Status values** — `statusCache` values are freeform strings. Matched case-insensitively.
-3. **Auth timing** — Milestone 1 flags (`_glPanelRestorePending` / `_glPageRestorePending`) still active and must not be disturbed.
-4. **Deferred: stale-score** — Gap type excluded from Phase B because it requires Firebase reads. Can be added later.
+1. **Sparse data** — 576/594 songs are unrated. UI must handle gracefully (shows "No scores yet", not a random member name).
+2. **Auth timing** — Milestone 1 flags still active and must not be disturbed.
+3. **Deferred: stale-score** — Gap type excluded from M2 Phase B. Can be added later.
 
 ---
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development. Milestone 2 (Song Intelligence Engine) computation layer is complete.
+Continue GrooveLinx development from Milestone 3 Phase B.
 
 Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
-4. `js/core/song-intelligence.js`
-5. `js/core/groovelinx_store.js`
+4. `js/features/song-detail.js` (lines 153–185 for Phase A context)
+5. `js/ui/gl-right-panel.js`
 
-Milestone 2 is complete. All three phases verified. Ask Drew for next direction.
+Phase A (Song Intelligence card) is verified. Phase B is a gap list card in the Band lens — propose before coding.
