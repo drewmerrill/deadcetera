@@ -150,13 +150,27 @@ async function _sdPopulateBandLens(title) {
         return '<option value="'+k+'"'+(metaKey===k?' selected':'')+'>'+(k||'—')+'</option>';
     }).join('');
 
-    var rc2=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
-    var members2=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
-    var songScores2=rc2[title]||{};
-    var allScores2=members2.map(function(m){return songScores2[m.key||m]||0;}).filter(function(v){return v>0;});
-    var avgReadiness=allScores2.length?Math.round((allScores2.reduce(function(a,b){return a+b;},0)/allScores2.length)*10)/10:0;
-    var gapMember=null,gapScore=99;
-    members2.forEach(function(m){var k=m.key||m,sc=songScores2[k]||0;if(sc>0&&sc<gapScore){gapScore=sc;gapMember=m.name||(k.charAt(0).toUpperCase()+k.slice(1));}});
+    // Song Intelligence Engine (Milestone 2 → Milestone 3 Phase A)
+    var _siIntel = (typeof GLStore !== 'undefined' && GLStore.getSongIntelligence) ? GLStore.getSongIntelligence(title) : null;
+    var _siGaps = (typeof GLStore !== 'undefined' && GLStore.getSongGaps) ? GLStore.getSongGaps(title) : null;
+    var avgReadiness = _siIntel ? _siIntel.avg : 0;
+    var tierLabel = _siIntel ? (SongIntelligence.READINESS_TIERS[_siIntel.tier] || {}).label || '' : '';
+    var topGap = (_siGaps && _siGaps.length > 0) ? _siGaps[0] : null;
+    var _siLowest = _siIntel ? _siIntel.lowestMembers : [];
+    var _siMin = _siIntel ? _siIntel.min : 0;
+    var topGapText = '—';
+    if (_siLowest.length === 1 && _siMin > 0) {
+        var _lm = (typeof bandMembers !== 'undefined' && bandMembers[_siLowest[0]]) ? bandMembers[_siLowest[0]].name : _siLowest[0];
+        topGapText = _sdEsc(_lm) + ' (' + _siMin + ')';
+    } else if (_siLowest.length > 1 && _siMin > 0) {
+        var _lm2 = (typeof bandMembers !== 'undefined' && bandMembers[_siLowest[0]]) ? bandMembers[_siLowest[0]].name : _siLowest[0];
+        topGapText = _sdEsc(_lm2) + ' + ' + (_siLowest.length - 1) + ' more at ' + _siMin;
+    } else if (_siIntel && _siIntel.ratedCount === 0) {
+        topGapText = 'No scores yet';
+    } else if (topGap) {
+        topGapText = _sdEsc(topGap.detail);
+    }
+    var gapCount = _siGaps ? _siGaps.filter(function(g) { return g.severity === 'high'; }).length : 0;
     var statusLabels={'prospect':'Prospect','wip':'Work in Progress','gig_ready':'Gig Ready','':'Not on Radar'};
     var statusLabel=statusLabels[status]||status||'—';
     var ytQuery=encodeURIComponent(title);
@@ -165,9 +179,9 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-card sd-intel-card">'+
         '<div class="sd-card-title">🎯 Song Intelligence</div>'+
         '<div class="sd-intel-grid">'+
-        '<div class="sd-intel-item"><div class="sd-intel-label">Band Readiness</div><div class="sd-intel-val">'+(avgReadiness||'—')+'<span class="sd-intel-unit"> / 5</span></div></div>'+
+        '<div class="sd-intel-item"><div class="sd-intel-label">Band Readiness</div><div class="sd-intel-val">'+(avgReadiness||'—')+'<span class="sd-intel-unit"> / 5</span></div>'+(tierLabel?'<div class="sd-intel-sub">'+_sdEsc(tierLabel)+'</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Status</div><div class="sd-intel-val sd-intel-sm">'+_sdEsc(statusLabel)+'</div></div>'+
-        '<div class="sd-intel-item"><div class="sd-intel-label">Biggest Gap</div><div class="sd-intel-val sd-intel-sm">'+(gapMember?_sdEsc(gapMember)+' ('+gapScore+')':'—')+'</div></div>'+
+        '<div class="sd-intel-item"><div class="sd-intel-label">Top Gap</div><div class="sd-intel-val sd-intel-sm">'+topGapText+'</div>'+(gapCount>1?'<div class="sd-intel-sub">+' + (gapCount - 1) + ' more high</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Last Played</div><div class="sd-intel-val sd-intel-sm" id="sd-last-played">—</div></div>'+
         '</div></div>'+
         '<div class="sd-card">'+
@@ -522,6 +536,7 @@ function _sdInjectStyles(){
     '.sd-intel-val{font-size:1.1em;font-weight:800;color:var(--text,#f1f5f9)}'+
     '.sd-intel-sm{font-size:0.88em;font-weight:700}'+
     '.sd-intel-unit{font-size:0.6em;font-weight:600;color:var(--text-muted)}'+
+    '.sd-intel-sub{font-size:0.62em;font-weight:600;color:var(--text-dim,#475569);margin-top:2px}'+
     '.sd-pm-btn{padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;transition:all 0.15s;white-space:nowrap}'+
     '.sd-pm-btn:hover{background:rgba(102,126,234,0.15);border-color:rgba(102,126,234,0.35);color:#818cf8}'+
     '.sd-notes-sub{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim,#475569);margin-bottom:8px}';
