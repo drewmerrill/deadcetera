@@ -711,7 +711,7 @@ function renderLastRehearsal() {
         + ti.skippedCount + ' skipped</span>' : '')
         + '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
         + (s.completionRate || 0) + '%</span>'
-        + ((s.elapsedMinutes || 0) > 0 ? '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
+        + ((s.elapsedMinutes || 0) >= 3 ? '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
         + s.elapsedMinutes + 'min</span>' : '')
         + '</div></div></div>';
 

@@ -1272,7 +1272,8 @@
       // Support both canonical (trendInputs) and legacy (flat) formats
       var ti = s.trendInputs || s;
       totalMins += (ti.completedMinutes || 0);
-      totalElapsed += (ti.elapsedMinutes || s.durationElapsedMinutes || 0);
+      var _elapsed = ti.elapsedMinutes || s.durationElapsedMinutes || 0;
+      if (_elapsed >= 3) totalElapsed += _elapsed; // skip unrealistic sub-3-min entries
       totalCompleted += (ti.completedCount || 0);
       totalSkipped += (ti.skippedCount || 0);
     }
