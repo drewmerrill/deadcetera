@@ -663,9 +663,11 @@ function renderRehearsalAgenda() {
 // ── Last Rehearsal Card (Milestone 6 Phase 4B) ───────────────────────────────
 
 function renderLastRehearsal() {
-    if (typeof GLStore === 'undefined' || !GLStore.getLatestCompletedSummary) return '';
-    var s = GLStore.getLatestCompletedSummary();
-    if (!s) return '';
+    if (typeof GLStore === 'undefined' || !GLStore.getRehearsalScorecardData) return '';
+    var data = GLStore.getRehearsalScorecardData();
+    if (!data) return '';
+    var s = data.latest;
+    var t = data.trend;
 
     // Friendly recency
     var recency = '';
@@ -678,32 +680,59 @@ function renderLastRehearsal() {
         else recency = Math.round(mins / 1440) + 'd ago';
     }
 
-    // Score color
     var scoreColor = s.score >= 80 ? '#22c55e' : s.score >= 50 ? '#f59e0b' : '#ef4444';
 
-    return '<div class="hd-bucket" style="grid-column:1/-1">'
+    var h = '<div class="hd-bucket" style="grid-column:1/-1">'
         + '<div class="hd-bucket__header">'
         + '<span class="hd-bucket__icon">🏁</span>'
-        + '<span class="hd-bucket__title">LAST REHEARSAL</span>'
+        + '<span class="hd-bucket__title">REHEARSAL SCORECARD</span>'
         + (recency ? '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + recency + '</span>' : '')
-        + '</div>'
-        + '<div style="display:flex;align-items:center;gap:16px;padding:4px 0">'
-        + '<div style="text-align:center">'
-        + '<div style="font-size:1.6em;font-weight:900;color:' + scoreColor + '">' + s.score + '</div>'
-        + '<div style="font-size:0.62em;font-weight:700;color:var(--text-dim,#475569);text-transform:uppercase;letter-spacing:0.08em">Score</div>'
-        + '</div>'
-        + '<div style="flex:1;display:flex;gap:8px;flex-wrap:wrap">'
-        + '<span style="font-size:0.72em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#86efac">'
-        + s.completedCount + ' done · ' + s.completedMinutes + 'min</span>'
-        + (s.skippedCount > 0 ? '<span style="font-size:0.72em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.12);color:#fbbf24">'
-        + s.skippedCount + ' skipped</span>' : '')
-        + '<span style="font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
-        + s.completionRate + '% completion</span>'
-        + (s.durationElapsedMinutes > 0 ? '<span style="font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
-        + s.durationElapsedMinutes + 'min elapsed</span>' : '')
-        + '</div>'
-        + '</div>'
         + '</div>';
+
+    // Score + latest stats
+    h += '<div style="display:flex;align-items:center;gap:16px;padding:4px 0">'
+        + '<div style="text-align:center;min-width:50px">'
+        + '<div style="font-size:1.8em;font-weight:900;color:' + scoreColor + '">' + s.score + '</div>'
+        + '<div style="font-size:0.58em;font-weight:700;color:var(--text-dim,#475569);text-transform:uppercase;letter-spacing:0.08em">Score</div>'
+        + '</div>'
+        + '<div style="flex:1;display:flex;gap:6px;flex-wrap:wrap">'
+        + '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#86efac">'
+        + s.completedCount + ' done · ' + s.completedMinutes + 'min</span>'
+        + (s.skippedCount > 0 ? '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.12);color:#fbbf24">'
+        + s.skippedCount + ' skipped</span>' : '')
+        + '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
+        + s.completionRate + '%</span>'
+        + (s.durationElapsedMinutes > 0 ? '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
+        + s.durationElapsedMinutes + 'min</span>' : '')
+        + '</div></div>';
+
+    // Song lists (compact)
+    if (s.completedSongs && s.completedSongs.length) {
+        h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)">';
+        h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+        for (var c = 0; c < s.completedSongs.length; c++) {
+            h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.1);color:#86efac">✓ ' + _escHtml(s.completedSongs[c].title) + '</span>';
+        }
+        for (var sk = 0; sk < (s.skippedSongs || []).length; sk++) {
+            h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.08);color:#fbbf24">– ' + _escHtml(s.skippedSongs[sk].title) + '</span>';
+        }
+        h += '</div></div>';
+    }
+
+    // Trend row (if 2+ sessions in history)
+    if (t && t.sessionCount >= 2) {
+        var trendColor = t.avgScore >= 80 ? '#22c55e' : t.avgScore >= 50 ? '#f59e0b' : '#ef4444';
+        h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+        h += '<span style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase">Last ' + t.sessionCount + '</span>';
+        h += '<span style="font-size:0.7em;font-weight:700;padding:2px 8px;border-radius:6px;background:' + trendColor + '15;color:' + trendColor + '">Avg ' + t.avgScore + '</span>';
+        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.avgCompletionRate + '% avg completion</span>';
+        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.totalCompletedMinutes + 'min total</span>';
+        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.totalSongsCompleted + ' songs</span>';
+        h += '</div>';
+    }
+
+    h += '</div>';
+    return h;
 }
 
 // ── Context Banner ────────────────────────────────────────────────────────────

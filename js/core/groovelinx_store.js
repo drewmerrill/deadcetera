@@ -1160,6 +1160,62 @@
   }
 
   /**
+   * Build scorecard data from latest summary + recent history.
+   * Returns null if no completed sessions exist.
+   */
+  function getRehearsalScorecardData() {
+    var latest = _rehearsalAgenda.latestCompletedSummary;
+    if (!latest) return null;
+
+    var trend = getRecentRehearsalTrendSummary();
+
+    return {
+      latest: latest,
+      trend: trend,
+    };
+  }
+
+  /**
+   * Compute trend summary from the last 5 completed rehearsals.
+   * Returns null if no history exists.
+   */
+  function getRecentRehearsalTrendSummary() {
+    var history = _rehearsalAgenda.completionHistory || [];
+    if (!history.length) return null;
+
+    var recent = history.slice(0, 5);
+    var totalScore = 0;
+    var totalRate = 0;
+    var totalMins = 0;
+    var totalElapsed = 0;
+    var totalCompleted = 0;
+    var totalSkipped = 0;
+
+    for (var i = 0; i < recent.length; i++) {
+      var s = recent[i];
+      totalScore += (s.score || 0);
+      totalRate += (s.completionRate || 0);
+      totalMins += (s.completedMinutes || 0);
+      totalElapsed += (s.durationElapsedMinutes || 0);
+      totalCompleted += (s.completedCount || 0);
+      totalSkipped += (s.skippedCount || 0);
+    }
+
+    var count = recent.length;
+    return {
+      sessionCount: count,
+      avgScore: Math.round(totalScore / count),
+      avgCompletionRate: Math.round(totalRate / count),
+      totalCompletedMinutes: totalMins,
+      totalElapsedMinutes: totalElapsed,
+      totalSongsCompleted: totalCompleted,
+      totalSongsSkipped: totalSkipped,
+      oldestSessionAt: recent[count - 1].completedAt || null,
+      newestSessionAt: recent[0].completedAt || null,
+    };
+  }
+
+  /**
    * Update per-song practice stats from a completion summary.
    * Only completed songs are counted — skipped songs are not.
    */
@@ -1543,6 +1599,8 @@
     getNextRehearsalAgendaItem:        getNextRehearsalAgendaItem,
     getLatestCompletedSummary:         getLatestCompletedSummary,
     getCompletionHistory:              getCompletionHistory,
+    getRehearsalScorecardData:         getRehearsalScorecardData,
+    getRecentRehearsalTrendSummary:    getRecentRehearsalTrendSummary,
     getSongPracticeStats:              getSongPracticeStats,
     getAllSongPracticeStats:           getAllSongPracticeStats,
     clearRehearsalAgenda:              clearRehearsalAgenda,
