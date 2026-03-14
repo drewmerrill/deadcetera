@@ -156,7 +156,7 @@ _Last updated: 2026-03-14_
 
 **Milestone 5 — Practice Intelligence** (started 2026-03-14)
 
-Phase 2 (computation) complete. Phase 3 (Practice Radar visualization) next.
+**Milestone 5 — COMPLETE** (all 3 phases 2026-03-14).
 
 ## WHAT MILESTONE 4 IS
 
@@ -194,7 +194,7 @@ Formalize the app shell before adding Practice Radar. Five phases:
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development from Milestone 5 Phase 3.
+Continue GrooveLinx development. Milestones 1–5 complete.
 
 Please read these files first:
 1. `CLAUDE.md`
@@ -204,4 +204,4 @@ Please read these files first:
 5. `js/ui/gl-now-playing.js`
 6. `rehearsal-mode.js` (for Phase 4 integration)
 
-Phases 1–2 complete. Phase 3 is Practice Radar visualization — propose before coding.
+Milestone 5 complete. Milestone 6 not yet defined. Ask Drew for direction.

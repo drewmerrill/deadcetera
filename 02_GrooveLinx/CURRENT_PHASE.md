@@ -202,7 +202,7 @@ Goal: Scoring model that determines which songs deserve rehearsal attention, pow
 |-------|-------------|--------|
 | 1 | Intelligence model design | ✅ DONE |
 | 2 | `computePracticeAttention()` + `GLStore.getPracticeAttention()` | ✅ DONE |
-| 3 | Practice Radar visualization | NOT STARTED |
+| 3 | Practice Radar visualization | ✅ DONE |
 
 ### Phase 2 — Practice Attention Computation (20260314)
 
@@ -215,12 +215,22 @@ Goal: Scoring model that determines which songs deserve rehearsal attention, pow
 - Unrated songs included when they have external context (setlist/plan/status)
 - "No activity ever" decay risk set to 6 (calibrated per review)
 
+### Phase 3 — Practice Radar Visualization (20260314)
+
+- `renderPracticeRadar()` added to home dashboard — shows top 5 songs by Practice Attention score
+- Urgency tiers: NEEDS WORK (≥20, red), ATTENTION (≥12, amber), Keep Warm (<12, green)
+- Confidence labels: 'partial' or 'needs rating' shown as small text, 'rated' hidden
+- Click a row → navigates to Songs + opens song in right panel
+- "View More →" expands to 10, "Show Less" collapses back
+- Uses existing `hd-bucket` CSS classes for visual consistency
+
 ### Files Changed (Milestone 5)
 
 | File | Change |
 |------|--------|
 | `js/core/song-intelligence.js` | `computePracticeAttention()` — 6-dimension scoring model |
 | `js/core/groovelinx_store.js` | `getPracticeAttention(opts)`, activity index builder, upcoming songs builder, cache |
+| `js/features/home-dashboard.js` | `renderPracticeRadar()`, `_prUrgencyTier()`, wired into `_renderDashboard()` |
 
 ---
 

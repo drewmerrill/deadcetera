@@ -302,6 +302,7 @@ function _renderDashboard(bundle, context) {
         renderHdBandStatus(bundle),
         renderHdNextRehearsalGoal(bundle),
         renderHdSongsNeedingWork(bundle),
+        renderPracticeRadar(),
         '</div>',
         activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
@@ -499,6 +500,84 @@ function renderHdSongsNeedingWork(bundle) {
         more,
         '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="showPage(\'songs\')">View All Songs \u2192</button>',
         '</div>'].join('');
+}
+
+// ── Practice Radar (Milestone 5 Phase 3) ─────────────────────────────────────
+
+var _prExpanded = false;
+
+function renderPracticeRadar() {
+    if (typeof GLStore === 'undefined' || !GLStore.getPracticeAttention) return '';
+    var limit = _prExpanded ? 10 : 5;
+    var items = GLStore.getPracticeAttention({ limit: limit });
+    if (!items || !items.length) {
+        return '<div class="hd-bucket" style="grid-column:1/-1">'
+            + '<div class="hd-bucket__header"><span class="hd-bucket__icon">\uD83C\uDFAF</span>'
+            + '<span class="hd-bucket__title">PRACTICE RADAR</span></div>'
+            + '<div class="hd-bucket__ok">No practice data yet \u2014 add readiness scores to get started</div>'
+            + '</div>';
+    }
+
+    var rows = items.map(function(item, i) {
+        var urgency = _prUrgencyTier(item);
+        var safeTitle = item.songId.replace(/'/g, "\\'");
+        var confLabel = item.confidence !== 'rated'
+            ? '<span style="font-size:0.65em;color:var(--text-dim,#475569);margin-left:6px;font-weight:600">'
+              + (item.confidence === 'partial' ? 'partial' : 'needs rating') + '</span>'
+            : '';
+        return '<div class="hd-bucket__song-row" onclick="showPage(\'songs\');setTimeout(function(){GLStore.selectSong(\'' + safeTitle + '\');if(typeof highlightSelectedSongRow===\'function\')highlightSelectedSongRow(\'' + safeTitle + '\');},200)" style="cursor:pointer;padding:6px 0">'
+            + '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">'
+            + '<span style="font-size:0.72em;font-weight:800;color:var(--text-dim,#475569);width:18px;text-align:center;flex-shrink:0">' + (i + 1) + '</span>'
+            + '<div style="min-width:0;flex:1">'
+            + '<div style="display:flex;align-items:center;gap:6px">'
+            + '<span class="hd-bucket__song-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _escHtml(item.songId) + '</span>'
+            + urgency.badge + confLabel
+            + '</div>'
+            + '<div style="font-size:0.7em;color:var(--text-dim,#475569);margin-top:1px">' + _escHtml(item.topReason) + '</div>'
+            + '</div>'
+            + '</div>'
+            + '<span style="font-size:0.78em;font-weight:700;color:' + urgency.color + ';flex-shrink:0">' + item.score + '</span>'
+            + '</div>';
+    }).join('');
+
+    var expandBtn = '';
+    if (!_prExpanded) {
+        expandBtn = '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="_prExpanded=true;if(typeof renderHomeDashboard===\'function\')renderHomeDashboard()">View More \u2192</button>';
+    } else {
+        expandBtn = '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="_prExpanded=false;if(typeof renderHomeDashboard===\'function\')renderHomeDashboard()">Show Less</button>';
+    }
+
+    return '<div class="hd-bucket" style="grid-column:1/-1">'
+        + '<div class="hd-bucket__header">'
+        + '<span class="hd-bucket__icon">\uD83C\uDFAF</span>'
+        + '<span class="hd-bucket__title">PRACTICE RADAR</span>'
+        + '<span class="hd-bucket__count">' + items.length + '</span>'
+        + '</div>'
+        + '<div class="hd-bucket__list">' + rows + '</div>'
+        + expandBtn
+        + '</div>';
+}
+
+/**
+ * Map a Practice Attention item to an urgency tier.
+ * @returns {{ label, badge, color }}
+ */
+function _prUrgencyTier(item) {
+    if (item.score >= 20) return {
+        label: 'Needs Work',
+        badge: '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--critical">NEEDS WORK</span>',
+        color: '#ef4444'
+    };
+    if (item.score >= 12) return {
+        label: 'Attention',
+        badge: '<span class="hd-bucket__urgency-badge hd-bucket__urgency-badge--warn">ATTENTION</span>',
+        color: '#f59e0b'
+    };
+    return {
+        label: 'Keep Warm',
+        badge: '',
+        color: '#22c55e'
+    };
 }
 
 // ── Context Banner ────────────────────────────────────────────────────────────
