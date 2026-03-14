@@ -287,7 +287,7 @@ async function rhOpenEvent(eventId) {
     html += '</div>';
 
     if (planSongs.length) {
-        html += '<div style="margin-bottom:10px"><button onclick="rhStartRehearsalMode(\'' + eventId + '\')" '
+        html += '<div style="margin-bottom:10px"><button onclick="rhLaunchFromSession(\'' + eventId + '\')" '
             + 'style="width:100%;padding:12px 16px;border-radius:10px;'
             + 'background:linear-gradient(135deg,#667eea,#764ba2);'
             + 'color:white;border:none;font-weight:700;font-size:0.9em;cursor:pointer;'
@@ -1841,6 +1841,22 @@ function renderRiCTA(ctx) {
 
 // BUG FIX: navigate to Sessions tab first so rhEventList DOM exists,
 // OR enter live cockpit mode if Intel context is already loaded
+// Launch Live Rehearsal Mode directly from Sessions event view.
+// Builds context from the event's plan songs without requiring Intel tab visit.
+async function rhLaunchFromSession(eventId) {
+    if (!eventId) { showToast('No event selected'); return; }
+    var events = await rhGetAllEvents();
+    var ev = events.find(function(e) { return e.id === eventId; });
+    if (!ev || !ev.plan || !ev.plan.songs || !ev.plan.songs.length) {
+        showToast('No songs in rehearsal plan');
+        return;
+    }
+    var focusSongs = ev.plan.songs.map(function(s) { return { title: s.title || s, band: s.band || '' }; });
+    var ctx = { nextEvent: ev };
+    enterLiveRehearsalMode(ctx, focusSongs);
+}
+window.rhLaunchFromSession = rhLaunchFromSession;
+
 function rhStartRehearsalMode(eventId) {
     if (window._riLastCtx && window._riLastFocusSongs && window._riLastFocusSongs.length) {
         enterLiveRehearsalMode(window._riLastCtx, window._riLastFocusSongs);
