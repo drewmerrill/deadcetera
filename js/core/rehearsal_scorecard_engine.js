@@ -27,7 +27,12 @@
    * @param {object} session  The completed activeSession from GLStore
    * @returns {object} scorecard
    */
-  function generateScorecard(session) {
+  /**
+   * @param {object} session     Completed activeSession
+   * @param {object} [enrichment] Optional: { readinessBefore, readinessAfter, pocketBefore, pocketAfter, completionHistory }
+   */
+  function generateScorecard(session, enrichment) {
+    enrichment = enrichment || {};
     if (!session || !session.items || !session.items.length) {
       return _emptyScorecard('No session data available.');
     }
@@ -127,6 +132,19 @@
       return { songId: it.songId, title: it.title, type: it.type, minutes: it.minutes };
     });
 
+    // ── Readiness delta ──
+    var readinessSection = _computeReadinessDelta(enrichment.readinessBefore, enrichment.readinessAfter, completedSongs);
+
+    // ── Pocket delta ──
+    var pocketSection = _computePocketDelta(enrichment.pocketBefore, enrichment.pocketAfter);
+
+    // ── Trend direction ──
+    var trendSection = _computeTrendDirection(enrichment.completionHistory || [], score);
+
+    // ── Enhanced recommendations ──
+    var enhancedRecs = _deriveEnhancedRecommendations(completed, skipped, readinessSection, pocketSection, enrichment.completionHistory || []);
+    if (enhancedRecs.length) recommendations = enhancedRecs;
+
     return {
       id: 'sc_' + Date.now(),
       createdAt: new Date().toISOString(),
@@ -143,6 +161,9 @@
         biggestRisk: biggestRisk,
       },
       recommendations: recommendations,
+      readiness: readinessSection,
+      pocket: pocketSection,
+      trend: trendSection,
       trendInputs: {
         completedCount: completed.length,
         skippedCount: skipped.length,
@@ -215,6 +236,181 @@
     return recs.slice(0, 4);
   }
 
+  // ── Readiness delta ─────────────────────────────────────────────────────────
+
+  function _computeReadinessDelta(before, after, completedSongs) {
+    if (!before || !after || !completedSongs || !completedSongs.length) {
+      return { hasEnoughData: false };
+    }
+
+    var bySong = [];
+    var improved = 0, unchanged = 0, declined = 0;
+    var beforeAvgs = [], afterAvgs = [];
+
+    for (var i = 0; i < completedSongs.length; i++) {
+      var id = completedSongs[i].songId;
+      var b = before[id];
+      var a = after[id];
+      if (!b || b.avg === null || !a || a.avg === null) continue;
+
+      var delta = Math.round((a.avg - b.avg) * 10) / 10;
+      bySong.push({ songId: id, title: completedSongs[i].title, before: b.avg, after: a.avg, delta: delta });
+      beforeAvgs.push(b.avg);
+      afterAvgs.push(a.avg);
+
+      if (delta > 0) improved++;
+      else if (delta < 0) declined++;
+      else unchanged++;
+    }
+
+    if (!bySong.length) return { hasEnoughData: false };
+
+    var beforeAvg = Math.round((beforeAvgs.reduce(function(a,b){return a+b;},0) / beforeAvgs.length) * 10) / 10;
+    var afterAvg = Math.round((afterAvgs.reduce(function(a,b){return a+b;},0) / afterAvgs.length) * 10) / 10;
+
+    return {
+      hasEnoughData: true,
+      beforeAvg: beforeAvg,
+      afterAvg: afterAvg,
+      deltaAvg: Math.round((afterAvg - beforeAvg) * 10) / 10,
+      improvedCount: improved,
+      unchangedCount: unchanged,
+      declinedCount: declined,
+      bySong: bySong,
+    };
+  }
+
+  // ── Pocket delta ───────────────────────────────────────────────────────────
+
+  function _computePocketDelta(pocketBefore, pocketAfter) {
+    if (pocketBefore === null && pocketAfter === null) {
+      return { hasEnoughData: false, label: 'No groove data this session' };
+    }
+    if (pocketBefore === null || pocketAfter === null) {
+      return {
+        hasEnoughData: false,
+        label: 'Insufficient groove data',
+        beforeAvg: pocketBefore,
+        afterAvg: pocketAfter,
+      };
+    }
+
+    var delta = Math.round(pocketAfter - pocketBefore);
+    var label;
+    if (delta > 3) label = 'Tighter';
+    else if (delta > 0) label = 'Slightly tighter';
+    else if (delta === 0) label = 'No clear change';
+    else if (delta > -4) label = 'Slightly looser';
+    else label = 'Looser';
+
+    return {
+      hasEnoughData: true,
+      beforeAvg: pocketBefore,
+      afterAvg: pocketAfter,
+      deltaAvg: delta,
+      label: label,
+    };
+  }
+
+  // ── Trend direction ────────────────────────────────────────────────────────
+
+  function _computeTrendDirection(history, currentScore) {
+    if (!history || history.length < 2) {
+      return { direction: null, basis: 'Not enough sessions for trend' };
+    }
+
+    var recent = history.slice(0, Math.min(5, history.length));
+    var scores = recent.map(function(h) { return h.score || 0; });
+
+    // Simple: compare first half avg to second half avg
+    var mid = Math.ceil(scores.length / 2);
+    var olderAvg = 0, newerAvg = 0;
+    for (var i = 0; i < mid; i++) olderAvg += scores[i];
+    olderAvg = olderAvg / mid;
+    for (var j = mid; j < scores.length; j++) newerAvg += scores[j];
+    newerAvg = newerAvg / (scores.length - mid);
+
+    // Note: history is newest-first, so scores[0] is most recent
+    // olderAvg = avg of newer sessions, newerAvg = avg of older sessions
+    // We need to reverse the logic
+    var recentAvg = olderAvg; // newer sessions
+    var olderSessionAvg = newerAvg; // older sessions
+
+    var diff = recentAvg - olderSessionAvg;
+    var direction;
+    if (diff > 5) direction = 'improving';
+    else if (diff < -5) direction = 'slipping';
+    else direction = 'flat';
+
+    return {
+      direction: direction,
+      basis: 'Last ' + scores.length + ' sessions',
+      recentAvg: Math.round(recentAvg),
+      olderAvg: Math.round(olderSessionAvg),
+    };
+  }
+
+  // ── Enhanced recommendations ───────────────────────────────────────────────
+
+  function _deriveEnhancedRecommendations(completed, skipped, readiness, pocket, history) {
+    var recs = [];
+
+    // Repair: skipped or still-weak songs
+    if (skipped.length === 1) {
+      recs.push('Revisit ' + skipped[0].title + ' next session — it was skipped.');
+    } else if (skipped.length >= 2) {
+      recs.push('Prioritize ' + skipped.map(function(s){return s.title;}).join(', ') + ' — all skipped.');
+    }
+
+    // Readiness-informed
+    if (readiness && readiness.hasEnoughData) {
+      if (readiness.declinedCount > 0) {
+        var declined = readiness.bySong.filter(function(s){return s.delta < 0;});
+        recs.push('Readiness dropped for ' + declined.map(function(s){return s.title;}).join(', ') + ' — needs extra attention.');
+      }
+      if (readiness.improvedCount > 0 && readiness.deltaAvg > 0) {
+        recs.push('Readiness improved by ' + readiness.deltaAvg + ' avg — keep the momentum.');
+      }
+    }
+
+    // Polish: songs close to ready (readiness after >= 4.0)
+    if (readiness && readiness.bySong) {
+      var nearReady = readiness.bySong.filter(function(s){return s.after >= 4.0 && s.after < 5.0;});
+      if (nearReady.length) {
+        recs.push(nearReady[0].title + ' is almost locked (' + nearReady[0].after + '/5) — one more pass could seal it.');
+      }
+    }
+
+    // Pocket/groove
+    if (pocket && pocket.hasEnoughData && pocket.deltaAvg < -3) {
+      recs.push('Groove got looser during the session — consider a tighter warm-up tempo next time.');
+    }
+
+    // Repeatedly skipped across sessions
+    if (history && history.length >= 2) {
+      var skipCounts = {};
+      for (var h = 0; h < Math.min(3, history.length); h++) {
+        var hs = history[h].skippedSongs || [];
+        for (var hsi = 0; hsi < hs.length; hsi++) {
+          skipCounts[hs[hsi].songId] = (skipCounts[hs[hsi].songId] || 0) + 1;
+        }
+      }
+      for (var sk in skipCounts) {
+        if (skipCounts[sk] >= 2) {
+          recs.push(sk + ' has been skipped in ' + skipCounts[sk] + ' recent sessions — consider committing to it or removing it from rotation.');
+          break; // one is enough
+        }
+      }
+    }
+
+    // Encouragement if nothing else
+    if (!recs.length && completed.length >= 3) {
+      recs.push('Solid session — keep this rhythm going.');
+    }
+
+    return recs.slice(0, 4);
+  }
+
   function _emptyScorecard(reason) {
     return {
       id: 'sc_' + Date.now(),
@@ -229,6 +425,9 @@
       skippedSongs: [],
       highlights: { biggestWin: null, biggestRisk: null },
       recommendations: [],
+      readiness: { hasEnoughData: false },
+      pocket: { hasEnoughData: false, label: 'No data' },
+      trend: { direction: null, basis: 'No data' },
       trendInputs: { completedCount: 0, skippedCount: 0, plannedMinutes: 0, completedMinutes: 0, skippedMinutes: 0, elapsedMinutes: 0 },
       _sub: { completionQuality: 0, planAdherence: 0, focusQuality: 0, efficiency: 0 },
     };

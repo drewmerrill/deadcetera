@@ -719,6 +719,30 @@ function renderLastRehearsal() {
         h += '</div>';
     }
 
+    // Readiness + pocket + trend row
+    var rd = s.readiness || {};
+    var pk = s.pocket || {};
+    var tr = s.trend || {};
+    var hasInsight = (rd.hasEnoughData || pk.hasEnoughData || tr.direction);
+    if (hasInsight) {
+        h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;flex-wrap:wrap">';
+        if (rd.hasEnoughData) {
+            var rdColor = rd.deltaAvg > 0 ? '#22c55e' : rd.deltaAvg < 0 ? '#ef4444' : '#94a3b8';
+            var rdSign = rd.deltaAvg > 0 ? '+' : '';
+            h += '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:' + rdColor + '15;color:' + rdColor + '">Readiness ' + rdSign + rd.deltaAvg + '</span>';
+        }
+        if (pk.hasEnoughData) {
+            var pkColor = pk.label === 'Tighter' || pk.label === 'Slightly tighter' ? '#22c55e' : pk.label === 'Looser' || pk.label === 'Slightly looser' ? '#ef4444' : '#94a3b8';
+            h += '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:' + pkColor + '15;color:' + pkColor + '">Groove: ' + _escHtml(pk.label) + '</span>';
+        }
+        if (tr.direction) {
+            var trColor = tr.direction === 'improving' ? '#22c55e' : tr.direction === 'slipping' ? '#ef4444' : '#94a3b8';
+            var trLabel = tr.direction.charAt(0).toUpperCase() + tr.direction.slice(1);
+            h += '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:' + trColor + '15;color:' + trColor + '">Trend: ' + trLabel + '</span>';
+        }
+        h += '</div>';
+    }
+
     // Recommendations
     var recs = s.recommendations || [];
     if (recs.length) {

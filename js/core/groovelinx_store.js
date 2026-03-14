@@ -971,12 +971,35 @@
       };
     });
 
+    // Snapshot readiness for agenda songs at start (for delta comparison)
+    var allReadiness = getAllReadiness();
+    var readinessSnapshot = {};
+    for (var rs = 0; rs < gen.items.length; rs++) {
+      var rsId = gen.items[rs].songId;
+      var songR = allReadiness[rsId] || {};
+      var vals = [];
+      var keys = _memberKeys();
+      for (var rk = 0; rk < keys.length; rk++) {
+        var rv = songR[keys[rk]];
+        if (rv && rv >= 1 && rv <= 5) vals.push(rv);
+      }
+      readinessSnapshot[rsId] = {
+        scores: Object.assign({}, songR),
+        avg: vals.length ? Math.round((vals.reduce(function(a,b){return a+b;},0) / vals.length) * 10) / 10 : null,
+      };
+    }
+
+    // Snapshot pocket score at start
+    var pocketAtStart = (typeof window._lastPocketScore !== 'undefined') ? window._lastPocketScore : null;
+
     _rehearsalAgenda.activeSession = {
       sessionId: _genId('ses'),
       agendaId: gen.generatedAt,
       startedAt: now,
       updatedAt: now,
       status: 'active',
+      readinessSnapshot: readinessSnapshot,
+      pocketAtStart: pocketAtStart,
       currentIndex: startIdx,
       startedFrom: startIdx,
       items: sessionItems,
@@ -1081,9 +1104,39 @@
     s.updatedAt = new Date().toISOString();
     setLiveRehearsalSong(null);
 
+    // Build current readiness snapshot for delta comparison
+    var currentReadiness = {};
+    var allR = getAllReadiness();
+    var mKeys = _memberKeys();
+    for (var cr = 0; cr < s.items.length; cr++) {
+      var crId = s.items[cr].songId;
+      var crScores = allR[crId] || {};
+      var crVals = [];
+      for (var ck = 0; ck < mKeys.length; ck++) {
+        var cv = crScores[mKeys[ck]];
+        if (cv && cv >= 1 && cv <= 5) crVals.push(cv);
+      }
+      currentReadiness[crId] = {
+        scores: Object.assign({}, crScores),
+        avg: crVals.length ? Math.round((crVals.reduce(function(a,b){return a+b;},0) / crVals.length) * 10) / 10 : null,
+      };
+    }
+
+    // Current pocket score
+    var pocketAtEnd = (typeof window._lastPocketScore !== 'undefined') ? window._lastPocketScore : null;
+
+    // Build enrichment context for the engine
+    var enrichment = {
+      readinessBefore: s.readinessSnapshot || {},
+      readinessAfter: currentReadiness,
+      pocketBefore: s.pocketAtStart || null,
+      pocketAfter: pocketAtEnd,
+      completionHistory: _rehearsalAgenda.completionHistory || [],
+    };
+
     // Build canonical scorecard from session via engine (or fallback to inline builder)
     if (typeof RehearsalScorecardEngine !== 'undefined' && RehearsalScorecardEngine.generateScorecard) {
-      _rehearsalAgenda.latestCompletedSummary = RehearsalScorecardEngine.generateScorecard(s);
+      _rehearsalAgenda.latestCompletedSummary = RehearsalScorecardEngine.generateScorecard(s, enrichment);
     } else {
       _rehearsalAgenda.latestCompletedSummary = _buildCompletionSummary(s);
     }
