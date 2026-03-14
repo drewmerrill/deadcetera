@@ -66,6 +66,11 @@
       _closeBtn.addEventListener('click', function () { close(); });
     }
 
+    // ESC closes the panel
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && _isOpen) { close(); }
+    });
+
     // Subscribe to GLStore events
     if (typeof GLStore !== 'undefined' && typeof GLStore.subscribe === 'function') {
       GLStore.subscribe('gl-song-selected', function (payload) {

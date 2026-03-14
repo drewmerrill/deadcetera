@@ -1,12 +1,12 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-13 (Milestone 1 complete)_
+_Updated: 2026-03-13 (Milestone 1 complete + production promoted)_
 
-## Active Milestone
-
-**Milestone 1 — Songs 3-Pane Shell (Band Command Center) — COMPLETE**
+## Milestone 1 — Songs 3-Pane Shell (Band Command Center) — COMPLETE + PROMOTED
 
 Full spec: `02_GrooveLinx/system_audit/groovelinx_milestone_1_songs_3pane.md`
+
+Production promoted and UAT passed 2026-03-13. Both `index.html` and `app.js` are updated.
 
 ---
 
@@ -15,49 +15,44 @@ Full spec: `02_GrooveLinx/system_audit/groovelinx_milestone_1_songs_3pane.md`
 | Phase | Description | Status |
 |-------|-------------|--------|
 | A | `GLStore.selectSong()` + `clearSong()` + `getSelectedSong()` + scroll cache | ✅ DONE |
-| B | `#gl-shell` wrapper + `#gl-right-panel` DOM shell in `index-dev.html`. `css/gl-shell.css` | ✅ DONE |
+| B | `#gl-shell` wrapper + `#gl-right-panel` DOM shell | ✅ DONE |
 | C | `js/ui/gl-right-panel.js` — event subscriber, panel open/close, `renderSongDetail()` dispatch | ✅ DONE |
 | C.5 | `renderSongDetail()` options param — `panelMode:true` suppresses `glLastPage` write | ✅ DONE |
 | D | `songs.js selectSong()` — guard on `window.glRightPanel.open`, routes to `GLStore.selectSong()` | ✅ DONE |
 | E | Duplicate `selectSong()` removed from `app-dev.js` | ✅ DONE |
-| F | Deprecation shim for `showPage('songdetail')` in `navigation.js`. Remove `#page-songdetail` from `index-dev.html` | ✅ DONE |
-| G | Replace polling restore loop in `navigation.js` — reload restores song in right panel | ✅ DONE |
-| H | `song-drawer.js` — gate DOM drawer to mobile (<900px), always call `GLStore.selectSong()` first | ✅ DONE |
+| F | Deprecation shim for `showPage('songdetail')` in `navigation.js`. `#page-songdetail` removed | ✅ DONE |
+| G | Reload restore — song panel + page restore with auth-timing protection | ✅ DONE |
+| H | Song drawer gated to mobile (<900px), desktop routes to right panel | ✅ DONE |
+| PROMO | Production promotion — `index.html` + `app.js` updated, UAT passed | ✅ DONE |
+| STAB | ESC closes panel, panel closes on page nav, drawer/panel isolation on mobile | ✅ DONE |
 
 ---
 
-## Dev/Prod Isolation Rule (LOCKED)
+## Files Changed (Final State)
 
-| File | Role |
-|------|------|
-| `index.html` | Production — **never touch until milestone validation** |
-| `app.js` | Production — **never touch until milestone validation** |
-| `index-dev.html` | Dev entrypoint — all shell wiring goes here |
-| `app-dev.js` | Dev JS entrypoint — mirrors `app.js` between deploys |
-| `js/ui/gl-right-panel.js` | New module — dev only for now |
-| `css/gl-shell.css` | New CSS — dev only for now |
-
----
-
-## Files Changed This Milestone
-
-| File | Phase | Change |
-|------|-------|--------|
-| `js/core/groovelinx_store.js` | A | Added `selectSong()`, `clearSong()`, `getSelectedSong()`, `saveScroll()`, `restoreScroll()`, `_navScrollCache` |
-| `css/gl-shell.css` | B, H | NEW — 3-pane shell layout CSS. Phase H: removed dev-banner offset rule |
-| `index-dev.html` | B, C, F.2, G, H | `#gl-shell` wrapper, `#gl-right-panel` aside, script tags. `#page-songdetail` removed. `glHeroCheck` respects `_glPanelRestorePending` flag. Dev banner removed |
-| `js/ui/gl-right-panel.js` | C, G | NEW — right panel controller. Phase G: `close()` clears `glLastSong` from localStorage |
-| `push.py` | B + C | Added `css/gl-shell.css` and `js/ui/gl-right-panel.js` to `DEPLOY_FILES` |
-| `js/features/song-detail.js` | C.5 | `options` param + `panelMode` guard on `glLastPage` write |
-| `js/features/songs.js` | D, H | `selectSong()` routes via `glRightPanel.open` guard. `highlightSelectedSongRow()` helper — data-title lookup, survives DOM rebuilds |
-| `app-dev.js` | E, G | Phase E: duplicate `selectSong()` removed (note: `push.py` restores from `app.js`). Phase G: 50ms `showPage('home')` respects `_glPanelRestorePending` flag |
-| `js/ui/navigation.js` | F, G | Phase F shim intercepts `showPage('songdetail')`. Phase G: independent `glLastSong` panel restore + `_glPanelRestorePending` flag (stays set for page lifetime) |
-| `js/features/song-drawer.js` | H | Desktop (>=900px): routes to `GLStore.selectSong()`, no drawer. Mobile (<900px): drawer opens with `panelMode:true`. `closeDrawer()` clears GLStore + `glLastSong` |
+| File | Change |
+|------|--------|
+| `index.html` | `gl-shell.css` link, `#gl-shell` wrapper, `#gl-right-panel` aside, `gl-right-panel.js` script, `#page-songdetail` removed, restore-pending guard in `glHeroCheck` |
+| `app.js` | Restore-pending guard in 50ms `showPage('home')` |
+| `js/core/groovelinx_store.js` | `selectSong()`, `clearSong()`, `getSelectedSong()`, scroll cache |
+| `css/gl-shell.css` | 3-pane shell layout |
+| `js/ui/gl-right-panel.js` | Right panel controller — open/close, ESC handler, GLStore subscriber, `glLastSong` cleanup on close |
+| `js/ui/navigation.js` | Phase F shim, Phase G panel + page restore, panel close on non-songs nav |
+| `js/features/song-detail.js` | `panelMode` option suppresses `glLastPage` write |
+| `js/features/songs.js` | `selectSong()` routes via GLStore, `highlightSelectedSongRow()` helper |
+| `js/features/song-drawer.js` | Desktop: GLStore only. Mobile: drawer only (no panel behind). `closeDrawer()` clears state |
+| `index-dev.html` | Mirrors `index.html` shell changes. Dev banner removed. |
+| `app-dev.js` | Mirrors `app.js` restore guard. `push.py` now propagates correctly. |
 
 ---
 
-## Known Stabilization Items (pre-Milestone 2)
+## Remaining Tech Debt
 
-1. **`app-dev.js` duplicate `selectSong()`** — Phase E removed it, but `push.py stamp_version()` restores it from `app.js` on every deploy. Harmless because `songs.js` overwrites `window.selectSong` at load time. Will be permanently resolved when Milestone 1 is promoted to production (`app.js` updated).
-2. **`glSongDetailBack` override** — TEMPORARY PANEL-MODE COMPATIBILITY PATCH in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js` (future milestone).
-3. **Production promotion** — `index.html` and `app.js` are untouched. Milestone 1 must be validated end-to-end in dev before promoting shell changes to production.
+1. **`glSongDetailBack` override** — Temporary patch in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js`.
+2. **`app-dev.js` duplicate `selectSong()`** — `push.py` copies from `app.js` which still has the original. Harmless — `songs.js` overwrites at load time.
+
+---
+
+## Next Milestone
+
+Not yet defined. Awaiting direction.

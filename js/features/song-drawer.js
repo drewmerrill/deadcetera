@@ -82,15 +82,13 @@ function _sdInit() {
 function openSongDrawer(title) {
     if (!title) return;
 
-    // ── Phase H: always update GLStore state first ──────────────────────
-    if (typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
-        GLStore.selectSong(title);
-    }
-
-    // ── Phase H: on desktop (>=900px), let the right panel handle it ───
-    // The GLStore.selectSong() call above already opens the panel via the
-    // gl-song-selected event subscription.  No drawer DOM needed.
+    // ── Phase H: on desktop (>=900px), route to right panel via GLStore ─
+    // GLStore.selectSong() fires gl-song-selected → panel opens.
+    // On mobile, skip GLStore to avoid opening the panel behind the drawer.
     if (window.innerWidth >= 900 && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
+        if (typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
+            GLStore.selectSong(title);
+        }
         return;
     }
 
