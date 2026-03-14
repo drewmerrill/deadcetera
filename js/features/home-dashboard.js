@@ -668,11 +668,13 @@ function renderLastRehearsal() {
     if (!data) return '';
     var s = data.latest;
     var t = data.trend;
+    var ti = s.trendInputs || s; // support canonical and legacy
 
     // Friendly recency
     var recency = '';
-    if (s.completedAt) {
-        var ms = Date.now() - new Date(s.completedAt).getTime();
+    var tsField = s.createdAt || s.completedAt;
+    if (tsField) {
+        var ms = Date.now() - new Date(tsField).getTime();
         var mins = Math.round(ms / 60000);
         if (mins < 2) recency = 'Just now';
         else if (mins < 60) recency = mins + ' min ago';
@@ -689,44 +691,64 @@ function renderLastRehearsal() {
         + (recency ? '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + recency + '</span>' : '')
         + '</div>';
 
-    // Score + latest stats
+    // Score + label + headline
     h += '<div style="display:flex;align-items:center;gap:16px;padding:4px 0">'
         + '<div style="text-align:center;min-width:50px">'
         + '<div style="font-size:1.8em;font-weight:900;color:' + scoreColor + '">' + s.score + '</div>'
-        + '<div style="font-size:0.58em;font-weight:700;color:var(--text-dim,#475569);text-transform:uppercase;letter-spacing:0.08em">Score</div>'
+        + (s.label ? '<div style="font-size:0.58em;font-weight:700;color:' + scoreColor + ';text-transform:uppercase;letter-spacing:0.06em">' + _escHtml(s.label) + '</div>' : '')
         + '</div>'
-        + '<div style="flex:1;display:flex;gap:6px;flex-wrap:wrap">'
+        + '<div style="flex:1">'
+        + (s.headline ? '<div style="font-size:0.82em;font-weight:700;color:var(--text,#f1f5f9);margin-bottom:4px">' + _escHtml(s.headline) + '</div>' : '')
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
         + '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#86efac">'
-        + s.completedCount + ' done · ' + s.completedMinutes + 'min</span>'
-        + (s.skippedCount > 0 ? '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.12);color:#fbbf24">'
-        + s.skippedCount + ' skipped</span>' : '')
+        + (ti.completedCount || 0) + ' done · ' + (ti.completedMinutes || 0) + 'min</span>'
+        + ((ti.skippedCount || 0) > 0 ? '<span style="font-size:0.7em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.12);color:#fbbf24">'
+        + ti.skippedCount + ' skipped</span>' : '')
         + '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
-        + s.completionRate + '%</span>'
-        + (s.durationElapsedMinutes > 0 ? '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
-        + s.durationElapsedMinutes + 'min</span>' : '')
-        + '</div></div>';
+        + (s.completionRate || 0) + '%</span>'
+        + ((s.elapsedMinutes || 0) > 0 ? '<span style="font-size:0.7em;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim,#475569)">'
+        + s.elapsedMinutes + 'min</span>' : '')
+        + '</div></div></div>';
 
-    // Song lists (compact)
-    if (s.completedSongs && s.completedSongs.length) {
+    // Highlights
+    var hl = s.highlights || {};
+    if (hl.biggestWin || hl.biggestRisk) {
         h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)">';
-        h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+        if (hl.biggestWin) h += '<div style="font-size:0.75em;color:#86efac;margin-bottom:2px">🏆 ' + _escHtml(hl.biggestWin) + '</div>';
+        if (hl.biggestRisk) h += '<div style="font-size:0.75em;color:#fbbf24">⚠️ ' + _escHtml(hl.biggestRisk) + '</div>';
+        h += '</div>';
+    }
+
+    // Recommendations
+    var recs = s.recommendations || [];
+    if (recs.length) {
+        h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)">';
+        for (var r = 0; r < recs.length; r++) {
+            h += '<div style="font-size:0.72em;color:var(--text-muted,#94a3b8);padding:1px 0">→ ' + _escHtml(recs[r]) + '</div>';
+        }
+        h += '</div>';
+    }
+
+    // Song chips
+    if (s.completedSongs && s.completedSongs.length) {
+        h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-wrap:wrap;gap:4px">';
         for (var c = 0; c < s.completedSongs.length; c++) {
             h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.1);color:#86efac">✓ ' + _escHtml(s.completedSongs[c].title) + '</span>';
         }
         for (var sk = 0; sk < (s.skippedSongs || []).length; sk++) {
             h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.08);color:#fbbf24">– ' + _escHtml(s.skippedSongs[sk].title) + '</span>';
         }
-        h += '</div></div>';
+        h += '</div>';
     }
 
-    // Trend row (if 2+ sessions in history)
+    // Trend row
     if (t && t.sessionCount >= 2) {
         var trendColor = t.avgScore >= 80 ? '#22c55e' : t.avgScore >= 50 ? '#f59e0b' : '#ef4444';
         h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
         h += '<span style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase">Last ' + t.sessionCount + '</span>';
         h += '<span style="font-size:0.7em;font-weight:700;padding:2px 8px;border-radius:6px;background:' + trendColor + '15;color:' + trendColor + '">Avg ' + t.avgScore + '</span>';
-        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.avgCompletionRate + '% avg completion</span>';
-        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.totalCompletedMinutes + 'min total</span>';
+        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.avgCompletionRate + '% avg</span>';
+        h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.totalCompletedMinutes + 'min</span>';
         h += '<span style="font-size:0.7em;font-weight:600;color:var(--text-dim,#475569)">' + t.totalSongsCompleted + ' songs</span>';
         h += '</div>';
     }

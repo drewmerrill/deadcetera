@@ -1081,8 +1081,12 @@
     s.updatedAt = new Date().toISOString();
     setLiveRehearsalSong(null);
 
-    // Build completion summary from session items
-    _rehearsalAgenda.latestCompletedSummary = _buildCompletionSummary(s);
+    // Build canonical scorecard from session via engine (or fallback to inline builder)
+    if (typeof RehearsalScorecardEngine !== 'undefined' && RehearsalScorecardEngine.generateScorecard) {
+      _rehearsalAgenda.latestCompletedSummary = RehearsalScorecardEngine.generateScorecard(s);
+    } else {
+      _rehearsalAgenda.latestCompletedSummary = _buildCompletionSummary(s);
+    }
 
     // Update per-song practice stats from completed songs
     _applyCompletionSummaryToSongStats(_rehearsalAgenda.latestCompletedSummary);
@@ -1195,10 +1199,12 @@
       var s = recent[i];
       totalScore += (s.score || 0);
       totalRate += (s.completionRate || 0);
-      totalMins += (s.completedMinutes || 0);
-      totalElapsed += (s.durationElapsedMinutes || 0);
-      totalCompleted += (s.completedCount || 0);
-      totalSkipped += (s.skippedCount || 0);
+      // Support both canonical (trendInputs) and legacy (flat) formats
+      var ti = s.trendInputs || s;
+      totalMins += (ti.completedMinutes || 0);
+      totalElapsed += (ti.elapsedMinutes || s.durationElapsedMinutes || 0);
+      totalCompleted += (ti.completedCount || 0);
+      totalSkipped += (ti.skippedCount || 0);
     }
 
     var count = recent.length;
