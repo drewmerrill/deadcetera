@@ -451,13 +451,110 @@ async function _sdPopulateLearnLens(title) {
         ]);
         tracks=_sdArr(res[0]); tabs=_sdArr(res[1]); covers=_sdArr(res[2]);
     } catch(e){}
+    var safeSong = title.replace(/'/g,"\\'");
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
-        '<div class="sd-card"><div class="sd-card-title">🎧 Practice Tracks</div>'+_sdLinkList(tracks,'🎧','No practice tracks yet.')+'</div>'+
-        '<div class="sd-card"><div class="sd-card-title">📄 Tabs &amp; Charts</div>'+_sdLinkList(tabs,'📄','No tabs or charts yet.')+'</div>'+
-        '<div class="sd-card"><div class="sd-card-title">🎵 Cover Versions to Study</div>'+_sdLinkList(covers,'🎵','No cover versions added yet.')+'</div>'+
+        '<div class="sd-card"><div class="sd-card-title">🎧 Practice Tracks</div>'+
+            _sdLinkList(tracks,'🎧','')+
+            ((!tracks||!tracks.length)?_sdEmptyAdd('No practice tracks yet','_sdAddTrackForm',''+safeSong+''):'')+
+            '<div id="sd-learn-track-form"></div>'+
+        '</div>'+
+        '<div class="sd-card"><div class="sd-card-title">📄 Tabs &amp; Charts</div>'+
+            _sdLinkList(tabs,'📄','')+
+            ((!tabs||!tabs.length)?_sdEmptyAdd('No tabs or charts yet','_sdAddTabForm',''+safeSong+''):'')+
+            '<div id="sd-learn-tab-form"></div>'+
+        '</div>'+
+        '<div class="sd-card"><div class="sd-card-title">🎵 Cover Versions to Study</div>'+
+            _sdLinkList(covers,'🎵','')+
+            ((!covers||!covers.length)?_sdEmptyAdd('No cover versions yet','_sdAddCoverForm',''+safeSong+''):'')+
+            '<div id="sd-learn-cover-form"></div>'+
+        '</div>'+
         '</div>';
 }
+
+function _sdEmptyAdd(msg, fn, safeSong) {
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">'
+        + '<span style="color:var(--text-dim,#475569);font-size:0.85em">' + msg + '</span>'
+        + '<button onclick="' + fn + '(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.75em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;white-space:nowrap">+ Add</button>'
+        + '</div>';
+}
+
+window._sdAddTrackForm = function(songTitle) {
+    var el = (_sdContainer||document).querySelector('#sd-learn-track-form');
+    if (!el || el.innerHTML) return;
+    el.innerHTML = '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;margin-top:8px">'
+        + '<input id="sd-track-url" class="app-input" placeholder="Paste YouTube / URL" style="margin-bottom:6px;font-size:0.82em">'
+        + '<input id="sd-track-label" class="app-input" placeholder="Label (optional)" style="margin-bottom:6px;font-size:0.82em">'
+        + '<div style="display:flex;gap:6px">'
+        + '<button onclick="_sdSaveTrack(\'' + songTitle.replace(/'/g,"\\'") + '\')" class="btn btn-primary" style="font-size:0.78em;padding:5px 12px">Save</button>'
+        + '<button onclick="this.closest(\'#sd-learn-track-form\').innerHTML=\'\'" class="btn btn-ghost" style="font-size:0.78em;padding:5px 12px">Cancel</button>'
+        + '</div></div>';
+    el.querySelector('#sd-track-url').focus();
+};
+
+window._sdAddTabForm = function(songTitle) {
+    var el = (_sdContainer||document).querySelector('#sd-learn-tab-form');
+    if (!el || el.innerHTML) return;
+    el.innerHTML = '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;margin-top:8px">'
+        + '<input id="sd-tab-url" class="app-input" placeholder="Paste tab / chart URL" style="margin-bottom:6px;font-size:0.82em">'
+        + '<input id="sd-tab-label" class="app-input" placeholder="Label (e.g. Ultimate Guitar)" style="margin-bottom:6px;font-size:0.82em">'
+        + '<div style="display:flex;gap:6px">'
+        + '<button onclick="_sdSaveTab(\'' + songTitle.replace(/'/g,"\\'") + '\')" class="btn btn-primary" style="font-size:0.78em;padding:5px 12px">Save</button>'
+        + '<button onclick="this.closest(\'#sd-learn-tab-form\').innerHTML=\'\'" class="btn btn-ghost" style="font-size:0.78em;padding:5px 12px">Cancel</button>'
+        + '</div></div>';
+    el.querySelector('#sd-tab-url').focus();
+};
+
+window._sdAddCoverForm = function(songTitle) {
+    var el = (_sdContainer||document).querySelector('#sd-learn-cover-form');
+    if (!el || el.innerHTML) return;
+    el.innerHTML = '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;margin-top:8px">'
+        + '<input id="sd-cover-artist" class="app-input" placeholder="Artist / Band name *" style="margin-bottom:6px;font-size:0.82em">'
+        + '<input id="sd-cover-url" class="app-input" placeholder="YouTube / Spotify link (optional)" style="margin-bottom:6px;font-size:0.82em">'
+        + '<input id="sd-cover-notes" class="app-input" placeholder="Why — e.g. listen to the bass outro (optional)" style="margin-bottom:6px;font-size:0.82em">'
+        + '<div style="display:flex;gap:6px">'
+        + '<button onclick="_sdSaveCover(\'' + songTitle.replace(/'/g,"\\'") + '\')" class="btn btn-primary" style="font-size:0.78em;padding:5px 12px">Save</button>'
+        + '<button onclick="this.closest(\'#sd-learn-cover-form\').innerHTML=\'\'" class="btn btn-ghost" style="font-size:0.78em;padding:5px 12px">Cancel</button>'
+        + '</div></div>';
+    el.querySelector('#sd-cover-artist').focus();
+};
+
+window._sdSaveTrack = async function(songTitle) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    var url = ((_sdContainer||document).querySelector('#sd-track-url')||{}).value || '';
+    var label = ((_sdContainer||document).querySelector('#sd-track-label')||{}).value || '';
+    if (!url.trim()) { if (typeof showToast==='function') showToast('Enter a URL'); return; }
+    var tracks = _sdArr(await loadBandDataFromDrive(songTitle,'practice_tracks').catch(function(){return null;}));
+    tracks.push({ url: url.trim(), label: label.trim() || url.trim(), addedBy: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
+    await saveBandDataToDrive(songTitle,'practice_tracks',tracks);
+    if (typeof showToast==='function') showToast('Track saved');
+    _sdPopulateLearnLens(songTitle);
+};
+
+window._sdSaveTab = async function(songTitle) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    var url = ((_sdContainer||document).querySelector('#sd-tab-url')||{}).value || '';
+    var label = ((_sdContainer||document).querySelector('#sd-tab-label')||{}).value || '';
+    if (!url.trim()) { if (typeof showToast==='function') showToast('Enter a URL'); return; }
+    var tabs = _sdArr(await loadBandDataFromDrive(songTitle,'personal_tabs').catch(function(){return null;}));
+    tabs.push({ url: url.trim(), label: label.trim() || url.trim(), memberKey: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
+    await saveBandDataToDrive(songTitle,'personal_tabs',tabs);
+    if (typeof showToast==='function') showToast('Tab saved');
+    _sdPopulateLearnLens(songTitle);
+};
+
+window._sdSaveCover = async function(songTitle) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    var artist = ((_sdContainer||document).querySelector('#sd-cover-artist')||{}).value || '';
+    if (!artist.trim()) { if (typeof showToast==='function') showToast('Enter an artist name'); return; }
+    var url = ((_sdContainer||document).querySelector('#sd-cover-url')||{}).value || '';
+    var notes = ((_sdContainer||document).querySelector('#sd-cover-notes')||{}).value || '';
+    var covers = _sdArr(await loadBandDataFromDrive(songTitle,'cover_me').catch(function(){return null;}));
+    covers.push({ name: artist.trim(), url: url.trim(), notes: notes.trim(), addedBy: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
+    await saveBandDataToDrive(songTitle,'cover_me',covers);
+    if (typeof showToast==='function') showToast('Cover saved');
+    _sdPopulateLearnLens(songTitle);
+};
 
 function _sdLinkList(items, icon, emptyMsg) {
     if (!items||!items.length) return '<div style="color:var(--text-dim);font-size:0.85em">'+emptyMsg+'</div>';
