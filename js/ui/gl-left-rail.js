@@ -52,22 +52,35 @@
 
   // ── Init ────────────────────────────────────────────────────────────────
 
+  var _subscribed = false; // prevent duplicate GLStore subscriptions
+
   function init() {
     _rail = document.getElementById('gl-left-rail');
-    if (!_rail) return;
+    if (!_rail) {
+      // Defensive: retry once after a short delay in case DOM isn't ready yet
+      setTimeout(function () {
+        _rail = document.getElementById('gl-left-rail');
+        if (_rail) init();
+      }, 200);
+      return;
+    }
 
     _renderNav();
     _applyCollapsedState();
 
-    // Subscribe to GLStore events
-    if (typeof GLStore !== 'undefined') {
+    // Subscribe to GLStore events (once only)
+    if (!_subscribed && typeof GLStore !== 'undefined') {
+      _subscribed = true;
       GLStore.subscribe('pageChanged', function (payload) {
+        _ensureRail();
         updateActive(payload.page);
       });
       GLStore.subscribe('navCollapsedChanged', function () {
+        _ensureRail();
         _applyCollapsedState();
       });
       GLStore.subscribe('appModeChanged', function (payload) {
+        _ensureRail();
         if (_rail) _rail.style.display = (payload.mode === 'performance') ? 'none' : '';
       });
       // Set initial active from current page
@@ -79,9 +92,9 @@
     var toggle = _rail.querySelector('.gl-rail-toggle');
     if (toggle) {
       toggle.addEventListener('click', function () {
-        if (window.innerWidth >= 901 && window.innerWidth < 1200) return; // forced collapsed, toggle disabled
+        if (window.innerWidth >= 901 && window.innerWidth < 1200) return;
         var userPref = localStorage.getItem('glNavCollapsed');
-        var collapsed = userPref === '1' ? false : true; // flip the persisted preference
+        var collapsed = userPref === '1' ? false : true;
         GLStore.setNavCollapsed(collapsed);
         _applyCollapsedState();
       });
@@ -90,9 +103,31 @@
     console.log('✅ glLeftRail initialised');
   }
 
+  /**
+   * Defensive: re-acquire rail reference if it became detached.
+   * If the live DOM element exists but _rail points to a stale node,
+   * re-render into the live element.
+   */
+  function _ensureRail() {
+    if (_rail && _rail.isConnected) return; // still live in DOM — no action needed
+    var liveRail = document.getElementById('gl-left-rail');
+    if (!liveRail) return;
+    if (liveRail !== _rail) {
+      // _rail was stale — re-acquire and re-render
+      _rail = liveRail;
+      _renderNav();
+      _applyCollapsedState();
+      var current = (typeof GLStore !== 'undefined' && GLStore.getActivePage) ? GLStore.getActivePage() : null;
+      if (current) updateActive(current);
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   function _renderNav() {
+    if (!_rail || !_rail.isConnected) {
+      _rail = document.getElementById('gl-left-rail');
+    }
     if (!_rail) return;
 
     var html = '<button class="gl-rail-toggle" title="Collapse navigation">'
