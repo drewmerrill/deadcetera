@@ -62,6 +62,11 @@ window.showPage = function showPage(page) {
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');
 
+    // Close right panel when navigating away from songs
+    if (page !== 'songs' && window.glRightPanel && typeof window.glRightPanel.close === 'function') {
+        window.glRightPanel.close();
+    }
+
     // Hide all pages
     document.querySelectorAll('.app-page').forEach(function(p) {
         p.classList.add('hidden');
