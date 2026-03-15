@@ -6332,6 +6332,8 @@ async function updateSongStatus(status) {
 }
 
 async function loadSongStatus(songTitle) {
+    // Prefer statusCache (master file, migrated) over per-song Drive record
+    if (statusCacheLoaded && statusCache[songTitle]) return statusCache[songTitle];
     const data = await loadBandDataFromDrive(songTitle, 'song_status');
     return data ? data.status : '';
 }
@@ -6470,9 +6472,14 @@ async function populateSongMetadata(songTitle) {
     const keySelect = document.getElementById('songKeySelect');
     if (keySelect) keySelect.value = songKey || '';
     
-    // Load song structure summary
+    // Load song structure summary — check Firebase metadata first (same as Song Detail)
     try {
-        const structure = await loadBandDataFromDrive(songTitle, 'song_structure');
+        var structure = null;
+        if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof sanitizeFirebasePath === 'function') {
+            var structSnap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/metadata/structure')).once('value');
+            if (structSnap.val()) structure = structSnap.val();
+        }
+        if (!structure) structure = await loadBandDataFromDrive(songTitle, 'song_structure');
         updateSongStructureSummary(structure);
     } catch(e) { updateSongStructureSummary(null); }
 }
@@ -6486,6 +6493,11 @@ async function updateSongKey(key) {
 
 async function loadSongKey(songTitle) {
     try {
+        // Check Firebase metadata first (same source Song Detail uses)
+        if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof sanitizeFirebasePath === 'function') {
+            var snap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/metadata/key')).once('value');
+            if (snap.val()) return snap.val();
+        }
         const data = await loadBandDataFromDrive(songTitle, 'key');
         return (data && typeof data === 'object') ? (data.key || '') : (data || '');
     } catch(e) { return ''; }

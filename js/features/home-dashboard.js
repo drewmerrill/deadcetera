@@ -1097,30 +1097,30 @@ function _computeGigConfidence(opts) {
     //   - 40% ready + issues = Cautious (~25+)
     //   - Below that = At Risk
     var score = 0;
-    var reasons = [];
+    // Collect all candidate reasons with priority weights.
+    // After scoring, sort by weight and take top 2.
+    var _rc = []; // { w: weight, t: text }
 
     // Setlist readiness — smooth curve, biggest contributor (0-50 pts)
     if (pct >= 85) {
         score += 50;
-        if (riskCount === 0) reasons.push('Most setlist songs are gig-ready');
+        if (riskCount === 0) _rc.push({ w: 50, t: 'Most setlist songs are gig-ready' });
     } else if (pct >= 70) {
-        score += 35 + Math.round((pct - 70) / 15 * 15); // 35-50 scaled
+        score += 35 + Math.round((pct - 70) / 15 * 15);
     } else if (pct >= 50) {
-        score += 20 + Math.round((pct - 50) / 20 * 15); // 20-35 scaled
+        score += 20 + Math.round((pct - 50) / 20 * 15);
     } else if (pct >= 30) {
         score += 10;
     }
-    // else: no readiness credit
 
-    // Risk songs penalty (capped, proportional to setlist size)
+    // Risk songs penalty
     if (riskCount > 0) {
         var _riskPenalty = Math.min(15, riskCount * 4);
         score -= _riskPenalty;
-        if (riskCount >= 3) {
-            reasons.push(riskCount + ' songs still need work before the gig');
-        } else {
-            reasons.push(riskCount + ' song' + (riskCount !== 1 ? 's' : '') + ' still need' + (riskCount === 1 ? 's' : '') + ' work');
-        }
+        var _riskText = riskCount >= 3
+            ? riskCount + ' songs still need work before the gig'
+            : riskCount + ' song' + (riskCount !== 1 ? 's' : '') + ' still need' + (riskCount === 1 ? 's' : '') + ' work';
+        _rc.push({ w: 40 + riskCount * 5, t: _riskText });
     }
 
     // Rehearsal recency (14-day window)
@@ -1128,29 +1128,31 @@ function _computeGigConfidence(opts) {
         score += 10;
     } else {
         score -= 8;
-        reasons.push('No recent rehearsal on record');
+        _rc.push({ w: 35, t: 'No rehearsal recorded in the past 2 weeks' });
     }
 
     // Rehearsal improved readiness
     if (rehearsalImproved) {
         score += 10;
-        reasons.push('Last rehearsal improved readiness');
+        _rc.push({ w: 30, t: 'Last rehearsal improved readiness' });
     }
 
     // Pocket trend
     if (pocketDelta > 3) {
         score += 5;
-        if (reasons.length < 2) reasons.push('Groove getting tighter');
+        _rc.push({ w: 10, t: 'Groove getting tighter' });
     } else if (pocketDelta < -5) {
         score -= 5;
+        _rc.push({ w: 15, t: 'Groove has loosened since last session' });
     }
 
     // Scorecard trend
     if (scorecardTrend === 'improving') {
         score += 10;
+        _rc.push({ w: 20, t: 'Rehearsal trend is improving' });
     } else if (scorecardTrend === 'slipping') {
         score -= 8;
-        if (reasons.length < 2) reasons.push('Rehearsal scores have been slipping');
+        _rc.push({ w: 25, t: 'Rehearsal scores have been slipping' });
     }
 
     // Clamp
@@ -1171,11 +1173,15 @@ function _computeGigConfidence(opts) {
         level = 'atrisk'; label = 'At Risk'; color = '#ef4444';
     }
 
+    // Sort reasons by weight (strongest signal first), take top 2
+    _rc.sort(function(a, b) { return b.w - a.w; });
+    var reasons = _rc.slice(0, 2).map(function(r) { return r.t; });
+
     return {
         level: level,
         label: label,
         color: color,
-        reasons: reasons.slice(0, 2),
+        reasons: reasons,
         _score: score
     };
 }
