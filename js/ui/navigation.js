@@ -102,6 +102,13 @@ window.showPage = function showPage(page) {
     if (typeof GLStore !== 'undefined' && typeof GLStore.setActivePage === 'function') {
         GLStore.setActivePage(page);
     }
+    // Release wake locks for utility pages when navigating away
+    if (typeof glWakeLock !== 'undefined') {
+        var _wlPages = { pocketmeter: 'pocket-meter', tuner: 'tuner', metronome: 'metronome' };
+        Object.keys(_wlPages).forEach(function(p) {
+            if (p !== page) glWakeLock.release(_wlPages[p]);
+        });
+    }
     // Update browser URL hash for back/forward navigation
     // Skip push when navigating to the same page (prevents duplicate history entries
     // that make browser Back appear to do nothing).

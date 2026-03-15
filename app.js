@@ -386,12 +386,19 @@ console.log('🔗 GrooveLinx v5.4 — Firebase · Playlists · Harmonies · Stag
 
 let selectedSong = null;
 let selectedVersion = null;
+// Restore last-used Songs filter from localStorage for faster repeated access
 let currentFilter = 'all';
+let activeStatusFilter = null;
+let activeHarmonyFilter = null;
+try {
+    var _savedFilter = localStorage.getItem('gl_songs_filter');
+    if (_savedFilter) currentFilter = _savedFilter;
+    var _savedStatus = localStorage.getItem('gl_songs_status_filter');
+    if (_savedStatus && _savedStatus !== 'null') activeStatusFilter = _savedStatus;
+} catch(e) {}
 let currentInstrument = 'bass'; // Default instrument
 let currentResourceType = null; // For modal state
 let currentResourceIndex = null; // For editing resources
-let activeStatusFilter = null; // Tracks which status filter is active
-let activeHarmonyFilter = null; // Tracks which harmony filter is active
 
 // Helper: get play button label based on URL/platform
 function getPlayButtonLabel(version) {
@@ -1015,6 +1022,7 @@ function setupSearchAndFilters() {
             filterBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentFilter = btn.dataset.filter;
+            try { localStorage.setItem('gl_songs_filter', currentFilter); } catch(e) {}
             renderSongs(currentFilter, searchInput.value);
         });
     });
@@ -6349,6 +6357,7 @@ async function filterByStatus(status) {
     }
     
     activeStatusFilter = (status === 'all') ? null : status;
+    try { localStorage.setItem('gl_songs_status_filter', activeStatusFilter || ''); } catch(e) {}
     const searchTerm = document.getElementById('songSearch')?.value || '';
     renderSongs(currentFilter, searchTerm);
 }
@@ -9397,6 +9406,7 @@ var _pmInstance = null;      // standalone page instance
 var _pmGigInstance = null;   // gig mode floating instance
 
 function renderPocketMeterPage(el) {
+    if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('pocket-meter');
     el.innerHTML =
         '<div class="page-header"><h1>🎯 Pocket Meter</h1><p>Real-time BPM detection — stay locked in with the band</p></div>' +
         '<div id="pmPageContainer" style="max-width:420px;margin:0 auto;padding:8px 0">' +
@@ -9479,6 +9489,7 @@ function closeGigPocketMeter() {
 }
 
 function renderTunerPage(el) {
+    if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('tuner');
     el.innerHTML = `
     <div class="page-header"><h1>🎸 Guitar Tuner</h1><p>Chromatic tuner using your microphone</p></div>
     <div class="app-card" style="text-align:center;padding:30px">
@@ -9574,6 +9585,7 @@ async function tunerPlayRef(freq) {
 // STANDALONE METRONOME
 // ============================================================================
 function renderMetronomePage(el) {
+    if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('metronome');
     var si = 9999;
     try {
         var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : 'deadcetera';

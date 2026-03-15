@@ -235,6 +235,7 @@ function rmShow() {
     overlay.classList.add('rm-visible');
     // Milestone 4: notify shell we're entering performance mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
+    if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('rehearsal-mode');
     if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(rmQueue[rmIndex] ? rmQueue[rmIndex].title : null);
     document.body.dataset.scrollY = window.scrollY;
     document.body.style.position = 'fixed';
@@ -260,6 +261,7 @@ function closeRehearsalMode() {
     overlay.classList.remove('rm-visible');
     // Milestone 4: restore workspace mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
+    if (typeof glWakeLock !== 'undefined') glWakeLock.release('rehearsal-mode');
     if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(null);
     const scrollY = document.body.dataset.scrollY || '0';
     document.body.style.position = '';

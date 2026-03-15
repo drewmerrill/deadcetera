@@ -64,6 +64,7 @@
     _preloadLinksBackground();
     // Milestone 4: notify shell we're entering performance mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
+    if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('live-gig');
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -122,6 +123,7 @@
     if (_rmCapture) _rmCapture.style.display = '';
     // Milestone 4: restore workspace mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
+    if (typeof glWakeLock !== 'undefined') glWakeLock.release('live-gig');
     // Return to setlists
     if (typeof showPage === 'function') showPage('setlists');
   }

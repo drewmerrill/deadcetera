@@ -1951,6 +1951,7 @@ function enterLiveRehearsalMode(ctx, focusSongs) {
     _riLive.active        = true;
     // Milestone 4: notify shell we're entering performance mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
+    if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('live-rehearsal');
     if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) {
         var firstSong = (focusSongs && focusSongs[0]) ? focusSongs[0].title : null;
         GLStore.setLiveRehearsalSong(firstSong);
@@ -2227,6 +2228,7 @@ function endRiSession() {
     if (_riLive.timerTick) { clearInterval(_riLive.timerTick); _riLive.timerTick = null; }
     // Milestone 4: restore workspace mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
+    if (typeof glWakeLock !== 'undefined') glWakeLock.release('live-rehearsal');
     if (typeof GLStore !== 'undefined' && GLStore.setLiveRehearsalSong) GLStore.setLiveRehearsalSong(null);
     // Milestone 6: clear active agenda if one was driving this session
     if (typeof GLStore !== 'undefined' && GLStore.clearRehearsalAgenda) GLStore.clearRehearsalAgenda();
