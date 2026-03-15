@@ -349,6 +349,7 @@ function _renderDashboard(bundle, context) {
         '<div class="home-dashboard hd-command-center">',
         _renderCommandCenterHeader(bundle),
         _renderHeroNextBestStep(bundle, wf, isStoner),
+        _renderSetupGuidance(bundle, wf),
         _renderBandHealthRow(bundle),
         _renderPriorityQueue(bundle),
         _renderRecentChanges(bundle),
@@ -372,6 +373,64 @@ function _renderCommandCenterHeader(bundle) {
         + '</div>'
         + chip
         + '</div>';
+}
+
+// ── Command Center: Setup Guidance (Progressive Discovery) ────────────────────
+// Shows lightweight unlock prompts when foundational data is missing.
+// Disappears naturally as users complete each step — no dismiss needed.
+
+function _renderSetupGuidance(bundle, wf) {
+    var steps = [];
+    var rc = bundle.readinessCache || {};
+    var ratedCount = Object.keys(rc).filter(function(k) {
+        var vals = Object.values(rc[k] || {}).filter(function(v) { return typeof v === 'number' && v > 0; });
+        return vals.length > 0;
+    }).length;
+    var hasGig = bundle.gigs && bundle.gigs.length > 0;
+    var hasRecording = wf && wf.hasRecording;
+
+    // Step 1: Rate songs (most foundational)
+    if (ratedCount < 5) {
+        steps.push({
+            icon: '&#x2B50;',
+            text: ratedCount === 0
+                ? 'Rate readiness on a few songs to unlock practice guidance and band health.'
+                : ratedCount + ' song' + (ratedCount !== 1 ? 's' : '') + ' rated \u2014 rate ' + (5 - ratedCount) + ' more to unlock full practice radar.',
+            cta: 'Rate Songs', onclick: "showPage('songs')"
+        });
+    }
+
+    // Step 2: Add a gig (unlocks scoping and risk)
+    if (!hasGig && ratedCount >= 3) {
+        steps.push({
+            icon: '&#x1F3A4;',
+            text: 'Add your next gig to unlock gig-specific risk analysis and setlist prep.',
+            cta: 'Add Gig', onclick: "showPage('gigs')"
+        });
+    }
+
+    // Step 3: Upload a recording (unlocks advanced features)
+    if (!hasRecording && ratedCount >= 5 && hasGig) {
+        steps.push({
+            icon: '&#x1F399;',
+            text: 'Upload a rehearsal recording to unlock scorecards, segmentation, and song attempt tracking.',
+            cta: 'Upload', onclick: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
+        });
+    }
+
+    if (!steps.length) return '';
+
+    var html = '<div class="hd-setup-guidance home-anim-cards">';
+    for (var i = 0; i < steps.length; i++) {
+        var s = steps[i];
+        html += '<div class="hd-setup-step">'
+            + '<span class="hd-setup-step__icon">' + s.icon + '</span>'
+            + '<span class="hd-setup-step__text">' + s.text + '</span>'
+            + '<button class="hd-setup-step__cta" onclick="' + s.onclick + '">' + s.cta + ' &#x2192;</button>'
+            + '</div>';
+    }
+    html += '</div>';
+    return html;
 }
 
 // ── Command Center: Hero + Next Best Step ─────────────────────────────────────
@@ -482,7 +541,13 @@ function _renderBandHealthRow(bundle) {
     // Need at least 2 tiles for the row to feel useful — a single tile looks odd
     if (tiles.length < 2) return '';
 
-    var html = '<div class="hd-health-row home-anim-cards">';
+    // Attribution line — helps users understand what unlocked these metrics
+    var _healthAttrib = '';
+    if (tiles.length === 2) _healthAttrib = '<div class="hd-health-attrib">Based on your readiness ratings</div>';
+    else if (tiles.length === 3) _healthAttrib = '<div class="hd-health-attrib">Based on your ratings and rehearsal data</div>';
+    else if (tiles.length >= 4) _healthAttrib = '<div class="hd-health-attrib">Full band intelligence active</div>';
+
+    var html = '<div class="hd-health-row-wrap home-anim-cards">' + _healthAttrib + '<div class="hd-health-row">';
     for (var i = 0; i < tiles.length; i++) {
         var t = tiles[i];
         html += '<div class="hd-health-tile" onclick="' + t.onclick + '">'
@@ -492,7 +557,7 @@ function _renderBandHealthRow(bundle) {
             + (t.sub ? '<div class="hd-health-tile__sub" style="color:' + t.color + '">' + t.sub + '</div>' : '')
             + '</div>';
     }
-    html += '</div>';
+    html += '</div></div>';
     return html;
 }
 
@@ -688,9 +753,23 @@ function _renderPriorityQueue(bundle) {
     items = items.slice(0, 5);
 
     if (!items.length) {
+        // Context-specific empty state based on data maturity
+        var _pqEmptyMsg = 'The queue populates as you add songs and rate readiness.';
+        var _pqEmptyCta = '<button class="hd-setup-step__cta" style="margin-top:8px" onclick="showPage(\'songs\')">Go to Songs &#x2192;</button>';
+        var _rcKeys = Object.keys(bundle.readinessCache || {});
+        var _ratedN = _rcKeys.filter(function(k) { var v = Object.values(bundle.readinessCache[k] || {}).filter(function(v){return typeof v==='number'&&v>0;}); return v.length; }).length;
+        if (_ratedN === 0) {
+            _pqEmptyMsg = 'Rate readiness on a few songs to see what the band should work on next.';
+        } else if (_ratedN < 5) {
+            _pqEmptyMsg = _ratedN + ' song' + (_ratedN !== 1 ? 's' : '') + ' rated. Rate a few more to unlock prioritized practice suggestions.';
+        } else if (!(bundle.gigs && bundle.gigs.length)) {
+            _pqEmptyMsg = 'Readiness looks good. Add a gig to unlock gig-specific prep recommendations.';
+            _pqEmptyCta = '<button class="hd-setup-step__cta" style="margin-top:8px" onclick="showPage(\'gigs\')">Add Gig &#x2192;</button>';
+        }
         return '<div class="hd-pq home-anim-cards">'
             + '<div class="hd-pq__header">Priority Queue</div>'
-            + '<div class="hd-pq__empty">No actions right now. Add songs and rate readiness to get started.</div>'
+            + '<div class="hd-pq__empty">' + _pqEmptyMsg + '</div>'
+            + _pqEmptyCta
             + '</div>';
     }
 
@@ -3012,6 +3091,16 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-health-tile__label{font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase;margin-top:2px}',
     '.hd-health-tile__sub{font-size:0.65em;font-weight:600;margin-top:1px}',
     '@media(max-width:480px){.hd-health-row{flex-wrap:wrap}.hd-health-tile{min-width:calc(50% - 6px)}}',
+    /* Health row wrapper + attribution */
+    '.hd-health-row-wrap{display:flex;flex-direction:column;gap:4px}',
+    '.hd-health-attrib{font-size:0.62em;font-weight:600;color:var(--text-dim,#475569);letter-spacing:0.04em;padding:0 2px}',
+    /* Setup guidance (progressive discovery) */
+    '.hd-setup-guidance{display:flex;flex-direction:column;gap:6px}',
+    '.hd-setup-step{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px}',
+    '.hd-setup-step__icon{font-size:1.1em;flex-shrink:0}',
+    '.hd-setup-step__text{flex:1;font-size:0.78em;color:var(--text-muted,#94a3b8);line-height:1.3}',
+    '.hd-setup-step__cta{padding:5px 12px;border-radius:7px;background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.2);font-weight:700;font-size:0.72em;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.15s}',
+    '.hd-setup-step__cta:hover{background:rgba(99,102,241,0.2);color:#a5b4fc}',
     /* Priority Queue */
     '.hd-pq{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px}',
     '.hd-pq__header{font-size:10px;font-weight:800;letter-spacing:0.14em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:10px}',
