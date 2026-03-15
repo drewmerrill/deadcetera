@@ -1042,9 +1042,9 @@ input[type="time"].app-input {
 
 /* Song Drawer trigger button */
 /* View button — pill-shaped overlay that exactly covers the band pill (col 5) */
-.song-drawer-btn{opacity:0;position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:10;background:#1e293b;border:1px solid rgba(99,102,241,0.6);color:#a5b4fc;border-radius:20px;padding:3px 0;width:48px;cursor:pointer;transition:opacity 0.15s,background 0.15s;display:flex;align-items:center;justify-content:center;font-size:0.6em;font-weight:800;white-space:nowrap;letter-spacing:0.02em;box-sizing:border-box}
-.song-item:hover .song-drawer-btn{opacity:1!important}
-.song-drawer-btn:hover{background:rgba(99,102,241,0.35)!important;border-color:rgba(99,102,241,0.8)!important;color:#c7d2fe!important}
+/* View button — hidden by default, shown on hover/focus. No transform to avoid GPU layer per row */
+.song-drawer-btn{display:none;position:absolute;right:12px;top:4px;bottom:4px;z-index:10;background:#1e293b;border:1px solid rgba(99,102,241,0.6);color:#a5b4fc;border-radius:20px;padding:0;width:48px;cursor:pointer;align-items:center;justify-content:center;font-size:0.6em;font-weight:800;white-space:nowrap;letter-spacing:0.02em;box-sizing:border-box}
+.song-item:hover .song-drawer-btn{display:flex!important}
 
 /* Scrollbar styling */
 ::-webkit-scrollbar{width:4px;height:4px}

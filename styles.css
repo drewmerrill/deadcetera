@@ -162,22 +162,14 @@ h1 {
 .song-item {
     /* Layout controlled by inline CSS in app.js — do not add display/grid rules here */
     cursor: pointer;
-    transition: all 0.2s ease;
+    /* NO transition — causes severe scroll lag on iPad with 600+ rows */
 }
 
 .song-item:last-child {
     border-bottom: none;
 }
 
-.song-item:hover {
-    background: #263248;
-}
-
-.song-item.selected {
-    /* Dark theme anchor — subtle accent, not a bright block */
-    background: rgba(99,102,241,0.06);
-    border-left: 2px solid #667eea;
-}
+/* .song-item.selected is handled by app-shell.css with !important */
 
 .song-name {
     font-weight: 600;
