@@ -1641,6 +1641,142 @@
     };
   }
 
+  // ── Attempt Intelligence ────────────────────────────────────────────────
+
+  /**
+   * Derive per-song attempt intelligence from the latest timeline.
+   *
+   * Clustering rules:
+   *   1. Segments are grouped by likelySongTitle (named segments only)
+   *   2. Within a song group, consecutive segments are merged into one attempt
+   *      if they are within 60 seconds of each other (allowing for brief gaps)
+   *   3. A segment with likelyIntent='restart' marks the END of an attempt
+   *      and the start of a new one for that song
+   *   4. User restart timestamp markers within an attempt's time range
+   *      confirm restart status
+   *   5. The longest non-restart attempt for each song is marked as bestRun
+   *
+   * @returns {object|null} { songs: [], hasData: bool }
+   */
+  function getAttemptIntelligence() {
+    var tl = _latestTimeline;
+    if (!tl || !tl.segments || !tl.segments.length) {
+      return { hasData: false, songs: [] };
+    }
+
+    // Gather user restart markers for cross-reference
+    var userRestartSecs = {};
+    if (tl.timestampMarkers) {
+      for (var um = 0; um < tl.timestampMarkers.length; um++) {
+        if (tl.timestampMarkers[um].type === 'restart') {
+          userRestartSecs[Math.round(tl.timestampMarkers[um].sec)] = true;
+        }
+      }
+    }
+
+    // Phase 1: collect named music segments grouped by song
+    var songSegments = {}; // { title: [{ seg, index }] }
+    for (var i = 0; i < tl.segments.length; i++) {
+      var seg = tl.segments[i];
+      if (seg.kind !== 'music' || !seg.likelySongTitle) continue;
+      var title = seg.likelySongTitle;
+      if (!songSegments[title]) songSegments[title] = [];
+      songSegments[title].push({ seg: seg, index: i });
+    }
+
+    // Phase 2: cluster segments into attempts per song
+    var MAX_GAP_SEC = 60; // segments within 60s are the same attempt
+    var songs = [];
+
+    for (var t in songSegments) {
+      var segs = songSegments[t];
+      var attempts = [];
+      var currentAttempt = _newAttempt(segs[0].seg);
+
+      for (var s = 0; s < segs.length; s++) {
+        var sg = segs[s].seg;
+        var isRestart = sg.likelyIntent === 'restart';
+
+        if (s === 0) {
+          // First segment starts first attempt
+          if (isRestart) currentAttempt.endedInRestart = true;
+          currentAttempt.endSec = sg.endSec;
+          currentAttempt.durationSec = _r1(sg.endSec - currentAttempt.startSec);
+          continue;
+        }
+
+        var gap = sg.startSec - currentAttempt.endSec;
+
+        // New attempt if: restart ended previous, or large gap
+        if (currentAttempt.endedInRestart || gap > MAX_GAP_SEC) {
+          attempts.push(currentAttempt);
+          currentAttempt = _newAttempt(sg);
+        }
+
+        // Extend current attempt
+        currentAttempt.endSec = sg.endSec;
+        currentAttempt.durationSec = _r1(sg.endSec - currentAttempt.startSec);
+        if (isRestart) {
+          currentAttempt.endedInRestart = true;
+          currentAttempt.restartCount++;
+        }
+      }
+      attempts.push(currentAttempt);
+
+      // Check user restart markers
+      for (var a = 0; a < attempts.length; a++) {
+        var att = attempts[a];
+        for (var sec = Math.round(att.startSec); sec <= Math.round(att.endSec); sec++) {
+          if (userRestartSecs[sec]) { att.hadUserRestartMarker = true; break; }
+        }
+      }
+
+      // Find best run (longest non-restart attempt)
+      var bestIdx = -1;
+      var bestDur = 0;
+      var totalWorkSec = 0;
+      var totalRestarts = 0;
+      for (var b = 0; b < attempts.length; b++) {
+        totalWorkSec += attempts[b].durationSec;
+        totalRestarts += attempts[b].restartCount + (attempts[b].endedInRestart ? 1 : 0);
+        if (!attempts[b].endedInRestart && attempts[b].durationSec > bestDur) {
+          bestDur = attempts[b].durationSec;
+          bestIdx = b;
+        }
+      }
+      if (bestIdx >= 0) attempts[bestIdx].isBestRun = true;
+
+      songs.push({
+        title: t,
+        attemptCount: attempts.length,
+        totalWorkSec: _r1(totalWorkSec),
+        totalWorkMin: Math.round(totalWorkSec / 60 * 10) / 10,
+        bestRun: bestIdx >= 0 ? { durationSec: attempts[bestIdx].durationSec, index: bestIdx } : null,
+        restartCount: totalRestarts,
+        attempts: attempts,
+      });
+    }
+
+    // Sort by total work time descending
+    songs.sort(function(a, b) { return b.totalWorkSec - a.totalWorkSec; });
+
+    return { hasData: songs.length > 0, songs: songs };
+  }
+
+  function _newAttempt(seg) {
+    return {
+      startSec: seg.startSec,
+      endSec: seg.endSec,
+      durationSec: _r1(seg.endSec - seg.startSec),
+      endedInRestart: false,
+      hadUserRestartMarker: false,
+      isBestRun: false,
+      restartCount: 0,
+    };
+  }
+
+  function _r1(v) { return Math.round(v * 10) / 10; }
+
   // ── Pocket Time Metric ──────────────────────────────────────────────────
 
   /**
@@ -2121,6 +2257,7 @@
 
     // Rehearsal Segmentation (Milestone 8)
     getRehearsalIntelligence:          getRehearsalIntelligence,
+    getAttemptIntelligence:            getAttemptIntelligence,
     getPocketTimeMetrics:              getPocketTimeMetrics,
     getRecentRehearsalPocketHistory:   getRecentRehearsalPocketHistory,
     segmentRehearsalAudio:             segmentRehearsalAudio,

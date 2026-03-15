@@ -311,8 +311,9 @@ function _renderDashboard(bundle, context) {
         renderHdNextRehearsalGoal(bundle),
         renderRehearsalInsights(),
 
-        // Section 3b: Rehearsal Timeline preview (visual evidence)
+        // Section 3b: Rehearsal Timeline preview + Attempt Intelligence
         renderRehearsalTimelinePreview(),
+        renderAttemptIntelligence(),
 
         // Section 4: Practice Radar + Songs Needing Work (radar elevated above warnings)
         '<div style="grid-column:1/-1;height:8px"></div>',
@@ -880,6 +881,69 @@ function renderRehearsalTimelinePreview() {
         h += '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04)">';
         h += '💡 Name more segments in the Chopper for richer insights (' + ri.metadataCompleteness + '% labeled).';
         h += '</div>';
+    }
+
+    h += '</div>';
+    return h;
+}
+
+// ── Attempt Intelligence Card ─────────────────────────────────────────────────
+
+function renderAttemptIntelligence() {
+    if (typeof GLStore === 'undefined' || !GLStore.getAttemptIntelligence) return '';
+    var ai = GLStore.getAttemptIntelligence();
+    if (!ai || !ai.hasData) return '';
+
+    var h = '<div class="hd-bucket" style="grid-column:1/-1">';
+    h += '<div class="hd-bucket__header">';
+    h += '<span class="hd-bucket__icon">🎯</span>';
+    h += '<span class="hd-bucket__title">SONG ATTEMPTS</span>';
+    h += '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + ai.songs.length + ' songs</span>';
+    h += '</div>';
+
+    // Top songs (max 5)
+    var show = ai.songs.slice(0, 5);
+    for (var i = 0; i < show.length; i++) {
+        var song = show[i];
+        var hasRestart = song.restartCount > 0;
+        var hasBest = !!song.bestRun;
+
+        h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
+        // Title row
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+        h += '<span style="font-weight:700;font-size:0.85em;color:var(--text,#f1f5f9)">' + _escHtml(song.title) + '</span>';
+        h += '<div style="display:flex;gap:4px">';
+        h += '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.12);color:#818cf8">' + song.attemptCount + ' attempt' + (song.attemptCount > 1 ? 's' : '') + '</span>';
+        if (hasRestart) h += '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(239,68,68,0.12);color:#f87171">' + song.restartCount + ' restart' + (song.restartCount > 1 ? 's' : '') + '</span>';
+        h += '</div></div>';
+
+        // Attempt strip — visual mini-bars for each attempt
+        h += '<div style="display:flex;gap:2px;align-items:flex-end;height:20px">';
+        var maxDur = 0;
+        for (var m = 0; m < song.attempts.length; m++) { if (song.attempts[m].durationSec > maxDur) maxDur = song.attempts[m].durationSec; }
+        maxDur = Math.max(maxDur, 10);
+
+        for (var a = 0; a < song.attempts.length; a++) {
+            var att = song.attempts[a];
+            var barH = Math.max(4, Math.round((att.durationSec / maxDur) * 18));
+            var barColor = att.isBestRun ? '#22c55e' : att.endedInRestart ? '#ef4444' : '#667eea';
+            var barBorder = att.hadUserRestartMarker ? '1px solid rgba(239,68,68,0.5)' : 'none';
+            var tip = Math.round(att.durationSec) + 's' + (att.endedInRestart ? ' (restart)' : '') + (att.isBestRun ? ' ★ best' : '');
+            h += '<div title="' + tip + '" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + '"></div>';
+        }
+        h += '</div>';
+
+        // Stats row
+        h += '<div style="display:flex;gap:6px;margin-top:3px">';
+        h += '<span style="font-size:0.62em;color:var(--text-dim,#475569)">' + song.totalWorkMin + 'min total</span>';
+        if (hasBest) h += '<span style="font-size:0.62em;color:#22c55e">Best: ' + Math.round(song.bestRun.durationSec) + 's</span>';
+        h += '</div>';
+
+        h += '</div>';
+    }
+
+    if (ai.songs.length > 5) {
+        h += '<div style="font-size:0.68em;color:var(--text-dim,#475569);padding:4px 0;text-align:center">+' + (ai.songs.length - 5) + ' more song' + (ai.songs.length - 5 > 1 ? 's' : '') + '</div>';
     }
 
     h += '</div>';
