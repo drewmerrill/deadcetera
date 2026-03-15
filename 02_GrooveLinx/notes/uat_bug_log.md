@@ -1,6 +1,6 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-15 — Build 20260315-111038_
+_Last updated: 2026-03-15 — Build 20260315-121626_
 
 ---
 
@@ -11,7 +11,63 @@ _Last updated: 2026-03-15 — Build 20260315-111038_
 
 ---
 
-## Bugs Fixed — 20260315
+## Bugs Fixed — 20260315 (Build 121626)
+
+### BUG-106 · 🟢 Closed · High
+**Hero gig render crash: riskEntry referenced before definition**
+- **Source:** internal · 2026-03-15
+- **Root cause:** `_coachSong = riskEntry ? ...` at line 1255 referenced `riskEntry` which wasn't defined until line 1271. Threw ReferenceError caught by try/catch, causing hero to render minimal fallback. Likely caused Pocket Time and Last Score tiles to not render by degrading the overall dashboard render.
+- **Fix:** Moved `riskEntries`/`riskEntry` computation above coach text block.
+- **Files:** `js/features/home-dashboard.js`
+
+---
+
+### BUG-107 · 🟢 Closed · Medium
+**Hero shows 100% "Gig Ready" but health tile shows 89% readiness**
+- **Source:** drew · 2026-03-15
+- **Root cause:** Hero readiness % is scoped to gig's linked setlist. Health tile readiness uses global catalog. Different denominators = different numbers. No label distinguished them.
+- **Fix:** Added "Setlist Readiness" label above hero percentage. Health tile remains "Readiness" (global).
+- **Files:** `js/features/home-dashboard.js`
+
+---
+
+### BUG-108 · 🟢 Closed · High
+**Bertha shows WIP on Songs list but "Gig Ready" in Song Detail**
+- **Source:** drew · 2026-03-15
+- **Root cause:** Song Detail read status from per-song Firebase record (not migrated) instead of statusCache (migrated master file). The legacy migration only updated the master file, not per-song records.
+- **Fix:** Song Detail now prefers statusCache over per-song Firebase. Migration function now also writes to per-song Firebase records.
+- **Files:** `js/features/song-detail.js`, `js/core/groovelinx_store.js`
+
+---
+
+### BUG-109 · 🟢 Closed · Medium
+**Big River, Don't Let Go, Lovelight, Green-Eyed Lady, No Quarter show "on_deck" in Song Detail**
+- **Source:** drew · 2026-03-15
+- **Root cause:** Same as BUG-108 — per-song Firebase records still had pre-migration legacy values.
+- **Fix:** Same as BUG-108. Re-run `GLStore.migrateLegacyStatuses({ dryRun: false })` to sync per-song records.
+- **Files:** `js/features/song-detail.js`, `js/core/groovelinx_store.js`
+
+---
+
+### BUG-110 · 🟢 Closed · Low
+**Prospect badge text "👀 PROSPECT" overflows purple border**
+- **Source:** drew · 2026-03-15
+- **Root cause:** `.status-badge` had `max-width:68px` — too narrow for emoji + 8 characters.
+- **Fix:** Increased `max-width` to 82px, reduced font-size from 0.52em to 0.48em.
+- **Files:** `app.js`, `app-dev.js`
+
+---
+
+### BUG-111 · 🟢 Closed · Low
+**North Star icon overlaps chain links and harmony badge**
+- **Source:** drew · 2026-03-15
+- **Root cause:** `.northstar-slot` was 12px wide, star emoji rendered wider. `.song-badges` container gap was 2px.
+- **Fix:** Widened northstar slot to 16px, badges container to 40px, gap to 4px.
+- **Files:** `app.js`, `app-dev.js`
+
+---
+
+## Bugs Fixed — 20260315 (Build 111038)
 
 ### BUG-100 · 🟢 Closed · High
 **Song status inconsistency: Practice shows "Needs Polish" but Song Detail shows "Gig Ready"**
