@@ -1417,6 +1417,156 @@
     emit('timelineCorrected', { timeline: _latestTimeline });
   }
 
+  // ── Rehearsal Intelligence Model ─────────────────────────────────────────
+
+  /**
+   * Build a normalized rehearsal intelligence model from the latest timeline.
+   * Dashboard-ready: all analytics pre-computed, UI just renders.
+   * @returns {object|null}
+   */
+  function getRehearsalIntelligence() {
+    var tl = _latestTimeline;
+    if (!tl || !tl.segments || !tl.segments.length) {
+      return { hasData: false, reason: 'No rehearsal recording analyzed yet.' };
+    }
+
+    var segs = tl.segments;
+    var totalDur = tl.durationSec || 0;
+
+    // Classify segments
+    var musicSegs = [];
+    var speechSegs = [];
+    var silenceSegs = [];
+    var restartSegs = [];
+    var allNamed = {};    // songTitle -> { attempts: [], restarts: [], totalSec }
+
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (s.kind === 'music') musicSegs.push(s);
+      if (s.kind === 'speech') speechSegs.push(s);
+      if (s.kind === 'silence') silenceSegs.push(s);
+      if (s.likelyIntent === 'restart') restartSegs.push(s);
+
+      var title = s.likelySongTitle;
+      if (title && s.kind === 'music') {
+        if (!allNamed[title]) allNamed[title] = { title: title, attempts: [], restarts: [], totalSec: 0 };
+        if (s.likelyIntent === 'restart') {
+          allNamed[title].restarts.push(s);
+        } else {
+          allNamed[title].attempts.push(s);
+        }
+        allNamed[title].totalSec += s.durationSec || 0;
+      }
+    }
+
+    // Song clusters / passes
+    var songPasses = [];
+    for (var t in allNamed) {
+      songPasses.push(allNamed[t]);
+    }
+    songPasses.sort(function(a, b) { return b.totalSec - a.totalSec; });
+
+    // Most restarted
+    var mostRestarted = null;
+    var topRestartCount = 0;
+    for (var mr in allNamed) {
+      if (allNamed[mr].restarts.length > topRestartCount) {
+        mostRestarted = { title: mr, count: allNamed[mr].restarts.length };
+        topRestartCount = allNamed[mr].restarts.length;
+      }
+    }
+
+    // Longest uninterrupted music run
+    var longestRun = null;
+    for (var lr = 0; lr < musicSegs.length; lr++) {
+      if (musicSegs[lr].likelyIntent !== 'restart') {
+        if (!longestRun || musicSegs[lr].durationSec > longestRun.durationSec) {
+          longestRun = musicSegs[lr];
+        }
+      }
+    }
+
+    // Most worked song (most total time)
+    var mostWorked = songPasses.length ? songPasses[0] : null;
+
+    // Best run = longest clean attempt (not a restart) with a song name
+    var bestRun = null;
+    for (var br = 0; br < musicSegs.length; br++) {
+      var brs = musicSegs[br];
+      if (brs.likelyIntent !== 'restart' && brs.likelySongTitle) {
+        if (!bestRun || brs.durationSec > bestRun.durationSec) bestRun = brs;
+      }
+    }
+
+    // Music vs non-music time
+    var musicSec = 0, speechSec = 0, silenceSec = 0;
+    for (var ms = 0; ms < musicSegs.length; ms++) musicSec += (musicSegs[ms].durationSec || 0);
+    for (var ss = 0; ss < speechSegs.length; ss++) speechSec += (speechSegs[ss].durationSec || 0);
+    for (var sl = 0; sl < silenceSegs.length; sl++) silenceSec += (silenceSegs[sl].durationSec || 0);
+
+    // Metadata completeness
+    var namedCount = 0;
+    for (var nc = 0; nc < segs.length; nc++) {
+      if (segs[nc].likelySongTitle && segs[nc].kind === 'music') namedCount++;
+    }
+    var metadataCompleteness = musicSegs.length > 0 ? Math.round((namedCount / musicSegs.length) * 100) : 0;
+
+    // Intelligence takeaways (2-4 plain-English lines)
+    var takeaways = [];
+    if (musicSec > 0 && totalDur > 0) {
+      var musicPct = Math.round((musicSec / totalDur) * 100);
+      takeaways.push(musicPct + '% of the session was active playing.');
+    }
+    if (restartSegs.length > 0) {
+      takeaways.push(restartSegs.length + ' restart' + (restartSegs.length > 1 ? 's' : '') + ' detected — ' + (restartSegs.length > 3 ? 'consider running more complete takes.' : 'normal for a working session.'));
+    }
+    if (mostWorked && mostWorked.totalSec > 60) {
+      takeaways.push('Most time spent on ' + mostWorked.title + ' (' + Math.round(mostWorked.totalSec / 60) + ' min).');
+    }
+    if (bestRun && bestRun.durationSec > 120) {
+      takeaways.push('Best uninterrupted run: ' + bestRun.likelySongTitle + ' (' + Math.round(bestRun.durationSec / 60) + ' min).');
+    }
+    if (!takeaways.length) {
+      takeaways.push('Recording analyzed — name segments in the Chopper for deeper insights.');
+    }
+
+    // Normalized segment strip data (for visual rendering)
+    var stripSegments = segs.map(function(seg) {
+      return {
+        startPct: totalDur > 0 ? (seg.startSec / totalDur) * 100 : 0,
+        widthPct: totalDur > 0 ? (seg.durationSec / totalDur) * 100 : 0,
+        kind: seg.kind,
+        intent: seg.likelyIntent,
+        title: seg.likelySongTitle || null,
+        durationSec: seg.durationSec,
+      };
+    });
+
+    return {
+      hasData: true,
+      id: tl.id,
+      totalDurationSec: totalDur,
+      totalDurationMin: Math.round(totalDur / 60),
+      segmentCount: segs.length,
+      musicSegments: musicSegs.length,
+      speechSegments: speechSegs.length,
+      silenceSegments: silenceSegs.length,
+      restartCount: restartSegs.length,
+      musicSec: Math.round(musicSec),
+      speechSec: Math.round(speechSec),
+      silenceSec: Math.round(silenceSec),
+      songPasses: songPasses,
+      mostRestarted: mostRestarted,
+      longestRun: longestRun ? { title: longestRun.likelySongTitle, durationSec: longestRun.durationSec } : null,
+      mostWorked: mostWorked ? { title: mostWorked.title, totalSec: mostWorked.totalSec } : null,
+      bestRun: bestRun ? { title: bestRun.likelySongTitle, durationSec: bestRun.durationSec } : null,
+      metadataCompleteness: metadataCompleteness,
+      takeaways: takeaways,
+      stripSegments: stripSegments,
+      sourceType: tl.sourceType || 'unknown',
+    };
+  }
+
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
   /**
@@ -1736,6 +1886,7 @@
     getAllSongPracticeStats:           getAllSongPracticeStats,
 
     // Rehearsal Segmentation (Milestone 8)
+    getRehearsalIntelligence:          getRehearsalIntelligence,
     segmentRehearsalAudio:             segmentRehearsalAudio,
     getLatestTimeline:                 getLatestTimeline,
     saveTimelineCorrections:           saveTimelineCorrections,

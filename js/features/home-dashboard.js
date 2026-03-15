@@ -311,6 +311,9 @@ function _renderDashboard(bundle, context) {
         renderHdNextRehearsalGoal(bundle),
         renderRehearsalInsights(),
 
+        // Section 3b: Rehearsal Timeline preview (visual evidence)
+        renderRehearsalTimelinePreview(),
+
         // Section 4: Practice Radar + Songs Needing Work (radar elevated above warnings)
         '<div style="grid-column:1/-1;height:8px"></div>',
         renderPracticeRadar(),
@@ -755,6 +758,75 @@ function renderRehearsalInsights() {
             }
             h += '</div>';
         }
+    }
+
+    h += '</div>';
+    return h;
+}
+
+// ── Rehearsal Timeline Preview ────────────────────────────────────────────────
+
+function renderRehearsalTimelinePreview() {
+    if (typeof GLStore === 'undefined' || !GLStore.getRehearsalIntelligence) return '';
+    var ri = GLStore.getRehearsalIntelligence();
+    if (!ri || !ri.hasData) return '';
+
+    var h = '<div class="hd-bucket" style="grid-column:1/-1">';
+    h += '<div class="hd-bucket__header">';
+    h += '<span class="hd-bucket__icon">📊</span>';
+    h += '<span class="hd-bucket__title">REHEARSAL TIMELINE</span>';
+    h += '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim,#475569)">' + ri.totalDurationMin + ' min</span>';
+    h += '</div>';
+
+    // Compact horizontal segmented strip
+    var kindColors = { music: '#667eea', speech: '#f59e0b', silence: '#334155', unknown: '#1e293b', excluded: '#1e293b' };
+    var intentMarkers = { restart: '#ef4444' };
+    h += '<div style="position:relative;height:28px;background:#0f172a;border-radius:6px;overflow:hidden;margin-bottom:8px;border:1px solid rgba(255,255,255,0.06)">';
+    for (var i = 0; i < ri.stripSegments.length; i++) {
+        var seg = ri.stripSegments[i];
+        var color = kindColors[seg.kind] || '#1e293b';
+        var opacity = seg.kind === 'silence' ? '0.3' : '0.8';
+        h += '<div title="' + _escHtml((seg.title || seg.kind) + ' · ' + Math.round(seg.durationSec) + 's') + '" style="position:absolute;left:' + seg.startPct.toFixed(2) + '%;width:' + Math.max(seg.widthPct, 0.3).toFixed(2) + '%;height:100%;background:' + color + ';opacity:' + opacity + '"></div>';
+        // Restart marker
+        if (seg.intent === 'restart') {
+            h += '<div style="position:absolute;left:' + seg.startPct.toFixed(2) + '%;top:0;width:2px;height:100%;background:#ef4444;opacity:0.9" title="Restart detected"></div>';
+        }
+    }
+    // Best run highlight
+    if (ri.bestRun && ri.totalDurationSec > 0) {
+        // Find the matching strip segment for a subtle highlight
+        for (var br = 0; br < ri.stripSegments.length; br++) {
+            var brs = ri.stripSegments[br];
+            if (brs.title === ri.bestRun.title && Math.abs(brs.durationSec - ri.bestRun.durationSec) < 2) {
+                h += '<div style="position:absolute;left:' + brs.startPct.toFixed(2) + '%;width:' + brs.widthPct.toFixed(2) + '%;bottom:0;height:3px;background:#22c55e;border-radius:0 0 2px 2px" title="Best run: ' + _escHtml(ri.bestRun.title) + '"></div>';
+                break;
+            }
+        }
+    }
+    h += '</div>';
+
+    // Legend
+    h += '<div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap">';
+    h += '<span style="font-size:0.62em;color:var(--text-dim);display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#667eea;display:inline-block"></span>Music</span>';
+    h += '<span style="font-size:0.62em;color:var(--text-dim);display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#f59e0b;display:inline-block"></span>Speech</span>';
+    h += '<span style="font-size:0.62em;color:var(--text-dim);display:flex;align-items:center;gap:3px"><span style="width:8px;height:2px;background:#ef4444;display:inline-block"></span>Restart</span>';
+    if (ri.bestRun) h += '<span style="font-size:0.62em;color:var(--text-dim);display:flex;align-items:center;gap:3px"><span style="width:8px;height:3px;background:#22c55e;border-radius:1px;display:inline-block"></span>Best run</span>';
+    h += '</div>';
+
+    // Takeaways
+    if (ri.takeaways && ri.takeaways.length) {
+        h += '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:6px">';
+        for (var t = 0; t < ri.takeaways.length; t++) {
+            h += '<div style="font-size:0.75em;color:var(--text-muted,#94a3b8);padding:1px 0">→ ' + _escHtml(ri.takeaways[t]) + '</div>';
+        }
+        h += '</div>';
+    }
+
+    // Metadata completeness
+    if (ri.metadataCompleteness < 50 && ri.musicSegments > 0) {
+        h += '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04)">';
+        h += '💡 Name more segments in the Chopper for richer insights (' + ri.metadataCompleteness + '% labeled).';
+        h += '</div>';
     }
 
     h += '</div>';
