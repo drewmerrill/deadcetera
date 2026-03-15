@@ -929,7 +929,8 @@ function renderAttemptIntelligence() {
             var barColor = att.isBestRun ? '#22c55e' : att.endedInRestart ? '#ef4444' : '#667eea';
             var barBorder = att.hadUserRestartMarker ? '1px solid rgba(239,68,68,0.5)' : 'none';
             var tip = Math.round(att.durationSec) + 's' + (att.endedInRestart ? ' (restart)' : '') + (att.isBestRun ? ' ★ best' : '');
-            h += '<div title="' + tip + '" onclick="if(typeof openRehearsalChopper===\'function\'){openRehearsalChopper();setTimeout(function(){var a=document.getElementById(\'chopAudio\');if(a){a.currentTime=' + att.startSec + ';a.play();}if(typeof chopSetZoom===\'function\')chopSetZoom(' + Math.max(0, att.startSec - 5) + ',' + (att.endSec + 10) + ');},500)}" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + ';cursor:pointer"></div>';
+            var attLabel = att.isBestRun ? 'best run' : att.endedInRestart ? 'restart' : 'attempt';
+            h += '<div title="' + tip + '" onclick="_hdJumpToAttempt(' + att.startSec + ',' + att.endSec + ',\'' + attLabel + '\')" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + ';cursor:pointer"></div>';
         }
         h += '</div>';
 
@@ -949,6 +950,31 @@ function renderAttemptIntelligence() {
     h += '</div>';
     return h;
 }
+
+// ── Attempt Deep Link Helper ──────────────────────────────────────────────────
+
+window._hdJumpToAttempt = function(startSec, endSec, label) {
+    var chopperAlreadyOpen = !!document.getElementById('rehearsalChopperModal');
+    if (!chopperAlreadyOpen && typeof openRehearsalChopper === 'function') {
+        openRehearsalChopper();
+    }
+    var delay = chopperAlreadyOpen ? 50 : 600; // less delay if already open
+    setTimeout(function() {
+        var audio = document.getElementById('chopAudio');
+        if (audio) { audio.currentTime = startSec; audio.play(); }
+        if (typeof chopSetZoom === 'function') chopSetZoom(Math.max(0, startSec - 5), endSec + 10);
+        // Brief region highlight
+        if (typeof chopRegion !== 'undefined') {
+            window.chopRegion = { startSec: startSec, endSec: endSec };
+            if (typeof chopUpdateRegionHighlight === 'function') chopUpdateRegionHighlight();
+            setTimeout(function() { window.chopRegion = null; if (typeof chopUpdateRegionHighlight === 'function') chopUpdateRegionHighlight(); }, 3000);
+        }
+        if (typeof showToast === 'function') {
+            var dur = Math.round(endSec - startSec);
+            showToast('🎯 Jumped to ' + label + ' · ' + dur + 's at ' + (typeof formatChopTime === 'function' ? formatChopTime(startSec) : Math.round(startSec) + 's'));
+        }
+    }, delay);
+};
 
 // ── Upload Rehearsal CTA ──────────────────────────────────────────────────────
 
