@@ -105,15 +105,89 @@ var _STONER_SUBS = [
     'One song at a time.',
 ];
 
+var _stonerSubMode = null; // 'practice' | 'rehearsal' | 'gig'
+
 function _stonerRender() {
     var content = document.getElementById('stonerContent');
     if (!content) return;
     _stonerResetSession();
-    // Build the queue from Priority Queue → Agenda → Library
-    _stonerBuildQueue();
-    _stonerCurrentSong = _stonerQueue[_stonerQueueIdx] || null;
+    _stonerSubMode = null;
     content.innerHTML = '<div id="stonerHome"></div>';
-    _stonerRenderCockpit();
+    _stonerRenderGreeting();
+}
+
+function _stonerRenderGreeting() {
+    var home = document.getElementById('stonerHome');
+    if (!home) return;
+    var sub = _STONER_SUBS[Math.floor(Math.random() * _STONER_SUBS.length)];
+    home.innerHTML = [
+        '<div style="padding:40px 20px;max-width:380px;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:16px">',
+        '<div style="font-size:2em;margin-bottom:-8px">\uD83C\uDF3F</div>',
+        '<div style="font-size:1.3em;font-weight:800;color:#c084fc">Stoner Mode</div>',
+        '<div style="font-size:0.8em;color:#475569;font-style:italic;margin-bottom:12px">' + sub + '</div>',
+        '<div style="font-size:0.72em;font-weight:700;color:#64748b;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">What do you need right now?</div>',
+        '<button class="stoner-big-btn" onclick="_stonerStartMode(\'practice\')" style="background:rgba(99,102,241,0.12);border-color:rgba(99,102,241,0.3);color:#a5b4fc"><span style="font-size:1.2em">\uD83C\uDFB8</span> Practice a song</button>',
+        '<button class="stoner-big-btn" onclick="_stonerStartMode(\'rehearsal\')" style="background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.25);color:#86efac"><span style="font-size:1.2em">\uD83C\uDFBC</span> Run rehearsal</button>',
+        '<button class="stoner-big-btn" onclick="_stonerStartMode(\'gig\')" style="background:rgba(245,158,11,0.1);border-color:rgba(245,158,11,0.25);color:#fbbf24"><span style="font-size:1.2em">\uD83C\uDFA4</span> We\'re at the gig</button>',
+        '<div style="margin-top:8px"><button onclick="_stonerStartMode(\'practice\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.78em;text-decoration:underline">Just grab a chart \u2192</button></div>',
+        '</div>'
+    ].join('');
+}
+
+function _stonerStartMode(mode) {
+    _stonerSubMode = mode;
+    var home = document.getElementById('stonerHome');
+    if (!home) return;
+
+    if (mode === 'practice') {
+        // Simple search → chart
+        home.innerHTML = [
+            '<div style="padding:24px 20px;max-width:420px;margin:0 auto">',
+            '<button onclick="_stonerRenderGreeting()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.8em;margin-bottom:12px">\u2190 Back</button>',
+            '<div style="font-size:0.72em;font-weight:700;color:#64748b;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;text-align:center">Find a song</div>',
+            '<input class="stoner-search" id="stonerPracticeSearch" placeholder="\uD83D\uDD0D Type a song name..." oninput="_stonerQuickFilter(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">',
+            '<div id="stonerQuickResults" style="margin-top:4px;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);display:none"></div>',
+            '</div>'
+        ].join('');
+        setTimeout(function() { var inp = document.getElementById('stonerPracticeSearch'); if (inp) inp.focus(); }, 100);
+    } else if (mode === 'rehearsal') {
+        // Full cockpit
+        _stonerBuildQueue();
+        _stonerCurrentSong = _stonerQueue[_stonerQueueIdx] || null;
+        _stonerRenderCockpit();
+    } else if (mode === 'gig') {
+        // Setlist chart access
+        _stonerRenderGigMode();
+    }
+}
+
+function _stonerRenderGigMode() {
+    var home = document.getElementById('stonerHome');
+    if (!home) return;
+    home.innerHTML = '<div style="padding:24px 20px;max-width:420px;margin:0 auto"><button onclick="_stonerRenderGreeting()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.8em;margin-bottom:12px">\u2190 Back</button><div style="font-size:0.72em;font-weight:700;color:#64748b;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;text-align:center">Gig Setlist</div><div id="stonerGigList" style="text-align:center;color:#64748b">Loading...</div></div>';
+    // Load setlists
+    if (typeof loadBandDataFromDrive === 'function') {
+        loadBandDataFromDrive('_band', 'setlists').then(function(raw) {
+            var setlists = (typeof toArray === 'function') ? toArray(raw || []) : Object.values(raw || {});
+            var list = document.getElementById('stonerGigList');
+            if (!list) return;
+            if (!setlists.length) { list.innerHTML = '<div style="padding:20px;color:#64748b">No setlists found</div>'; return; }
+            // Show songs from first setlist (or most recent)
+            setlists.sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
+            var sl = setlists[0];
+            var songs = [];
+            (sl.sets || []).forEach(function(set) { (set.songs || []).forEach(function(s) { songs.push(typeof s === 'string' ? s : (s.title || s)); }); });
+            if (!songs.length) { list.innerHTML = '<div style="padding:20px;color:#64748b">Setlist is empty</div>'; return; }
+            list.innerHTML = '<div style="font-weight:700;color:#f1f5f9;margin-bottom:12px">' + _stonerEsc(sl.name || 'Setlist') + '</div>' +
+                songs.map(function(title, i) {
+                    return '<div onclick="_stonerQuickOpen(\'' + title.replace(/'/g, "\\'") + '\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:4px;cursor:pointer;transition:background 0.1s" onmouseover="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.03)\'">'
+                        + '<span style="color:#64748b;font-size:0.75em;font-weight:700;width:20px">' + (i+1) + '</span>'
+                        + '<span style="flex:1;color:#f1f5f9;font-weight:600;font-size:0.9em;text-align:left">' + _stonerEsc(title) + '</span>'
+                        + '<span style="color:#818cf8;font-size:0.7em;font-weight:700">CHART \u276F</span>'
+                        + '</div>';
+                }).join('');
+        });
+    }
 }
 
 function _stonerBuildQueue() {
@@ -318,10 +392,50 @@ function _stonerShowSummary() {
         s.bestStreak > 0 ? '<div style="font-size:0.9em;color:' + (s.bestStreak >= 3 ? '#22c55e' : '#94a3b8') + ';font-weight:700;margin-bottom:16px">&#x1F525; Best streak: ' + s.bestStreak + '</div>' : '',
         // Highlights
         highlightsHTML ? '<div style="text-align:left;padding:12px 16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;margin-bottom:20px">' + highlightsHTML + '</div>' : '',
+        // Practice Impact
+        _stonerBuildImpactSection(s),
+        // Post-rehearsal checklist
+        '<div style="text-align:left;padding:12px 16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;margin-bottom:20px">',
+        '<div style="font-size:0.65em;font-weight:700;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;margin-bottom:8px">Next Steps</div>',
+        '<div onclick="_stonerDismissSummary();setTimeout(function(){if(typeof openRehearsalChopper===\'function\')openRehearsalChopper();},300)" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;color:#94a3b8;font-size:0.82em"><span style="color:#64748b">\u25CB</span> Upload rehearsal recording</div>',
+        '<div onclick="_stonerDismissSummary();setTimeout(function(){showPage(\'songs\');},300)" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;color:#94a3b8;font-size:0.82em"><span style="color:#64748b">\u25CB</span> Rate songs you practiced</div>',
+        '<div onclick="_stonerDismissSummary()" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;color:#94a3b8;font-size:0.82em"><span style="color:#64748b">\u25CB</span> Review the Priority Queue</div>',
+        '</div>',
         // CTA
         '<button class="stoner-big-btn" onclick="_stonerDismissSummary()" style="background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.35);color:#a5b4fc;max-width:280px;margin:0 auto">Back to Command Center</button>',
         '</div>'
     ].join('');
+}
+
+function _stonerBuildImpactSection(s) {
+    var lines = [];
+    // Songs that moved up in practice queue (trainwreck or multiple needswork)
+    Object.entries(s.songs).forEach(function(e) {
+        var title = e[0], stats = e[1];
+        if (stats.trainwreck > 0 || stats.needswork >= 2) {
+            lines.push({ icon: '\u2191', color: '#f59e0b', text: _stonerEsc(title) + ' moved up in the practice queue' });
+        }
+    });
+    // Songs that crossed readiness threshold
+    if (typeof readinessCache !== 'undefined') {
+        Object.entries(s.songs).forEach(function(e) {
+            var title = e[0], stats = e[1];
+            if (stats.good >= 2) {
+                var scores = readinessCache[title] || {};
+                var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+                var avg = vals.length ? vals.reduce(function(a,b) { return a+b; },0) / vals.length : 0;
+                if (avg >= 4) lines.push({ icon: '\u2713', color: '#22c55e', text: _stonerEsc(title) + ' is now rehearsal ready' });
+            }
+        });
+    }
+    if (!lines.length) return '';
+    var html = '<div style="text-align:left;padding:12px 16px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:10px;margin-bottom:16px">';
+    html += '<div style="font-size:0.65em;font-weight:700;letter-spacing:0.1em;color:#818cf8;text-transform:uppercase;margin-bottom:6px">Practice Impact</div>';
+    lines.slice(0, 2).forEach(function(l) {
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.82em"><span style="color:' + l.color + ';font-weight:800">' + l.icon + '</span><span style="color:#e2e8f0">' + l.text + '</span></div>';
+    });
+    html += '</div>';
+    return html;
 }
 
 function _stonerDismissSummary() {
@@ -673,3 +787,6 @@ window._stonerNextSong = _stonerNextSong;
 window._stonerDismissSummary = _stonerDismissSummary;
 window._stonerQuickFilter = _stonerQuickFilter;
 window._stonerQuickOpen = _stonerQuickOpen;
+window._stonerStartMode = _stonerStartMode;
+window._stonerRenderGreeting = _stonerRenderGreeting;
+window._stonerRenderGigMode = _stonerRenderGigMode;
