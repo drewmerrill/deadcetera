@@ -1,6 +1,6 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-11 — Session 20260311-S4_
+_Last updated: 2026-03-15 — Build 20260315-111038_
 
 ---
 
@@ -8,6 +8,62 @@ _Last updated: 2026-03-11 — Session 20260311-S4_
 - **Priority:** High / Medium / Low
 - **Status:** 🔴 Open · 🟡 In Progress · 🟢 Closed · ⬜ Deferred
 - **Source:** pierce / drew / internal
+
+---
+
+## Bugs Fixed — 20260315
+
+### BUG-100 · 🟢 Closed · High
+**Song status inconsistency: Practice shows "Needs Polish" but Song Detail shows "Gig Ready"**
+- **Source:** drew · 2026-03-15
+- **Root cause:** `sdUpdateSongStatus()` in song-detail.js wrote to per-song Firebase record + in-memory cache but NOT to `_master_song_statuses.json`. Practice page reads from master file. Legacy status values (`needs_polish`, `on_deck`) survived in master file from before the status model was simplified.
+- **Fix:** Added `saveMasterFile()` call to `sdUpdateSongStatus()`. Added `GLStore.auditLegacyStatuses()` and `GLStore.migrateLegacyStatuses()` diagnostic tools. Migration normalized 7 legacy songs.
+- **Files:** `js/features/song-detail.js`, `js/core/groovelinx_store.js`
+
+---
+
+### BUG-101 · 🟢 Closed · High
+**Readiness score 0 reverts to old value on page reload**
+- **Source:** drew · 2026-03-15
+- **Root cause:** `GLStore.saveReadiness()` with `v=0` removed the score from Firebase and in-memory cache but did NOT persist the deletion to the master readiness file. On reload, `preloadReadinessCache()` read the stale master file.
+- **Fix:** Added `saveMasterFile()` call in the `v=0` branch. Also cleans up empty song entries from cache.
+- **Files:** `js/core/groovelinx_store.js`
+
+---
+
+### BUG-102 · 🟢 Closed · High
+**Hero "Biggest Risk" and coach text reference songs not on gig setlist**
+- **Source:** drew · 2026-03-15 (reported as "555 Biggest Risk 1.0" showing despite not being on setlist)
+- **Root cause:** Two issues: (1) `deriveHdMissionSummary()` computed `topWeak` from global readiness cache, not scoped to setlist. (2) `_gigSongScope` was built only from `window._cachedSetlists` which is null until Gigs/Setlists page is visited.
+- **Fix:** (1) Coach text now uses gig-scoped `riskEntry` instead of global `topWeak`. (2) Setlist scoping now checks both `bundle.setlists` (always loaded by dashboard) and `_cachedSetlists`.
+- **Files:** `js/features/home-dashboard.js`
+
+---
+
+### BUG-103 · 🟢 Closed · Medium
+**Hero buttons (Open Gig / View Setlist / Start Rehearsal Prep) stacked vertically**
+- **Source:** drew · 2026-03-15
+- **Root cause:** Tertiary CTA was rendered outside the `.hd-hero__actions` flex container as a loose sibling element.
+- **Fix:** Moved tertiary CTA inside the actions div.
+- **Files:** `js/features/home-dashboard.js`
+
+---
+
+### BUG-104 · 🟢 Closed · Medium
+**Browser Back button creates duplicate history entries / appears stuck**
+- **Source:** internal · 2026-03-15
+- **Root cause:** `showPage()` called `pushState` on every invocation, even when navigating to the same page.
+- **Fix:** Added same-page hash check before `pushState`. Added `_sanitizeHashPage()` for invalid hash validation. Added `_glHashRestorePending` for hash-vs-localStorage arbitration.
+- **Files:** `js/ui/navigation.js`
+
+---
+
+### BUG-105 · 🟢 Closed · Low
+**Legacy cc.js strips injected on top of Command Center layout**
+- **Source:** internal · 2026-03-15
+- **Root cause:** `home-dashboard-cc.js` monkey-patch guard only checked for `hd-mission-board` class, not `hd-command-center`.
+- **Fix:** Added `hd-command-center` to guard condition in both render and refresh paths.
+- **Files:** `js/features/home-dashboard-cc.js`
 
 ---
 

@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last consolidated: 2026-03-13_
+_Last updated: 2026-03-15_
 
 ## Read This First
 
@@ -39,169 +39,100 @@ It is not just a collection of music tools. The UX should guide each band member
 - Startup commands: `gl`, `gldev`
 - Environment: tmux + iTerm2 + Rectangle
 
+## Current State (20260315)
+
+**Build:** 20260315-111038
+**Active work:** Live band UAT on Command Center dashboard
+**Milestones 1-8:** Complete (Songs shell, Song Intelligence, App Shell, Practice Intelligence, Rehearsal Agenda, Scorecard, Segmentation)
+**Milestone 9:** Command Center dashboard — deployed, in UAT
+
+## Deploy Workflow (CRITICAL)
+
+Dev and production move together immediately. Every accepted change must be:
+1. Committed to main
+2. Pushed to origin
+3. Deployed via `python3 push.py "message"`
+4. Documented (CURRENT_PHASE.md, CLAUDE_HANDOFF.md, bug log)
+
+`push.py` auto-discovers runtime assets (.js/.css/.html/.json/.png) from repo root + js/ + css/. Python tooling files are NOT auto-discovered — only `push.py` and `sync.py` explicitly included.
+
+**After every deploy, provide:**
+- Build number
+- Files changed
+- Runtime coverage status
+- Dev/Prod sync status
+- Cache note
+- Smoke tests
+- One-line tester message for the band
+
 ## Core Architectural Truths
 
 - All band data is namespaced under `/bands/{slug}/`.
 - `bandPath()` is the only correct path helper for Firebase refs.
 - `showPage()` is the navigation function. `navigateTo()` is wrong.
 - `showPage()` closes the right panel when navigating away from songs.
+- `showPage()` pushes browser history via `pushState` with hash validation.
 - `loadBandDataFromDrive()` / `saveBandDataToDrive()` are the main browser-side data helpers.
-- Arrays are effectively last-write-wins in Firebase; concurrent saves can clobber.
+- `saveMasterFile()` / `loadMasterFile()` are for bulk-cached data (readiness, statuses, activity log).
+- **Both per-song AND master file must be updated** when saving readiness or status.
 - `window._cachedSetlists` must be invalidated after setlist writes.
-- Venue schema: `{ name, city, address, created }`.
-- Calendar events live under `calendar_events` and GrooveLinx is the source of truth; Google/Apple/Outlook are downstream views.
+- Song status canonical values: `''`, `'prospect'`, `'wip'`, `'gig_ready'`
+
+## Command Center Dashboard (Milestone 9)
+
+Home page layout — 5 sections:
+1. `_renderCommandCenterHeader()` — title + date + readiness chip
+2. `_renderHeroNextBestStep()` — gig/rehearsal hero + docked next-step strip
+3. `_renderBandHealthRow()` — metric tiles (readiness, pocket time, score, weak songs)
+4. `_renderPriorityQueue()` — ranked actionable items
+5. `_renderRecentChanges()` — scorecard + timeline + activity
+
+Legacy `home-dashboard-cc.js` strips suppressed via `hd-command-center` class guard.
 
 ## Auth Truths
 
 - Auth for local/prod browser flows uses `google.accounts.oauth2.initTokenClient`.
-- Scope should remain `email profile` unless there is a very deliberate change.
-- Local OAuth must allow `http://localhost:8000` as an authorized JavaScript origin.
-- Silent re-auth should be used on load when possible.
+- Silent re-auth uses localStorage cache only (no GIS iframe flash).
+- Scope should remain `email profile`.
+- Sign-out clears all cached identity + `glLastPage`.
 
-## Worker Truths
+## Key Design Patterns
 
-- Worker deploy command:
-  `wrangler deploy worker.js --name deadcetera-proxy --compatibility-date 2024-01-01`
-- No `wrangler.toml` should be assumed.
-- Worker handles proxy duties for external services and protected API usage.
-- Do not call Google Routes REST directly from browser code; use `google.maps.DirectionsService` from the loaded JS SDK.
-
-## Product Direction
-
-GrooveLinx should organize around **moments**, not just objects:
-- Practice
-- Rehearse
-- Build Setlist
-- Play Show
-
-The Command Center / Home Dashboard should answer:
-1. What should I work on today?
-2. What does the band need next?
-3. Where are we weakest right now?
-
-## Current Key Design Themes
-
-- Song Intelligence System
-- Band Readiness + member readiness loops
-- Harmony Lab as a first-class preparation workflow
-- Pocket Meter as rehearsal/live groove feedback
-- Setlist builder enriched with readiness, key, BPM, and segue context
-- Care Packages / mobile-safe gig delivery
-
-## Band Command Center Architecture (Milestone 1 — shipped)
-
-The app uses a 3-pane layout for the Songs workspace:
-
-- **Left rail** — slide-out navigation (hamburger menu)
-- **Center workspace** — active page (songs list, rehearsals, etc.)
-- **Right context panel** — song detail (slides in from right on desktop, drawer on mobile)
-
-Key components:
-- `GLStore.selectSong()` / `clearSong()` — canonical state for song selection
-- `js/ui/gl-right-panel.js` — event-driven panel controller
-- `js/ui/navigation.js` — `showPage()` shim intercepts `songdetail`, closes panel on nav
-- `js/features/song-drawer.js` — mobile (<900px) slide-in drawer
-- `css/gl-shell.css` — 3-pane layout styles
-- `_glPanelRestorePending` / `_glPageRestorePending` — auth-timing protection for page/panel restore on reload
-
-## Workflow Rules for AI
-
-- Prefer simple shell commands over heredocs with plain text content only.
-- Use `cat << 'EOF' > /tmp/file` then run separately — EOF must be alone on its own line with no leading spaces.
-- Every command needing output back must end with `> /tmp/out.txt && cat /tmp/out.txt | pbcopy && echo "copied!"`.
-- Avoid zsh-hostile quoting — never python3 -c with nested quotes.
-- Verify file provenance before patching.
-- Update repo docs when durable rules change.
-- Do not store session notes in memory.
-- Memory should only keep durable cross-session rules.
-
-## Primary Docs To Review Next
-
-- `02_GrooveLinx/DEV_WORKFLOW.md`
-- `02_GrooveLinx/specs/groovelinx-architecture.md`
-- `02_GrooveLinx/notes/uat_bug_log.md`
-- `02_GrooveLinx/notes/page_file_map.md`
+- **Three song contexts:** `selectedSongId` (panel), `nowPlayingSongId` (persistent bar), `liveRehearsalSongId` (performance mode)
+- **GLStore is the single source of truth** — engines compute, store owns state/persistence, UI renders only
+- **Two-layer agenda model:** `latestGenerated` (immutable) + `activeSession` (mutable execution)
+- **Overlay root:** `#gl-overlay-root` for persistent UI that escapes shell stacking contexts
 
 ## Top Open Bugs (priority order)
-1. **Rehearsal Cockpit smoke test** — navigate Rehearsal → Intel tab: verify Start Rehearsal Mode, Pocket Meter on Intel tab, Priority Queue severity badges (patched 20260312 but never confirmed)
-2. **UAT-088** — Share links open stale cached version → deferred, needs investigation
+
+1. **UAT-088** — Share links open stale cached version → deferred
 2. **FEAT-075** — Sub musicians by instrument and availability → app.js (High)
 3. **FEAT-079** — Band Members single source of truth → app.js (architectural, High)
 4. **UAT-OPEN** — Pocket Meter gear panel open/close verification needed
-5. **UAT-OPEN** — Pocket Meter float mode exit button verification needed
-6. **UAT-OPEN** — Song title edit flow — no edit button found
-
-## GLStore Migration Status
-
-- **Phase 1 complete** — readinessCache and statusCache migrated across all 7 priority feature files
-- **Phase 2 complete** — direct firebaseDB.ref() calls audited; notifications.js publicPath bug fixed; sdSaveReadiness delegates to GLStore.saveReadiness()
-- **Phase 3 (future)** — harmony_assets, setlist_votes, care_packages could be wrapped in GLStore methods if cross-feature sharing is needed
+5. **BUG-001** — Rehearsal Plan autocomplete not connected to song DB
 
 ## Remaining Tech Debt
 
-1. **`glSongDetailBack` override** — Temporary patch in `gl-right-panel.js`. Should be replaced with native panel-mode awareness in `song-detail.js`.
-2. **`app-dev.js` duplicate `selectSong()`** — `push.py` copies from `app.js` which still has the original. Harmless — `songs.js` overwrites at load time.
+1. `glSongDetailBack` override in gl-right-panel.js — temporary patch
+2. `app-dev.js` duplicate `selectSong()` — harmless, overwritten at load
+3. Practice page checks legacy status values — works after migration but should normalize
+4. `deriveHdMissionSummary()` line1 text still uses global weak-song data (coach text fixed)
 
----
-This document is the canonical session restart artifact for GrooveLinx.
----
+## Primary Docs To Review Next
 
-# GrooveLinx Claude Handoff
-
-_Last updated: 2026-03-14_
-
-## CURRENT OBJECTIVE
-
-**Milestone 4 — App Shell Foundation** (started 2026-03-14)
-
-**Milestone 5 — Practice Intelligence** (started 2026-03-14)
-
-**Milestone 5 — COMPLETE** (all 3 phases 2026-03-14).
-
-## WHAT MILESTONE 4 IS
-
-Formalize the app shell before adding Practice Radar. Five phases:
-- 1: GLStore shell state contract (DONE)
-- 2: Persistent left rail (DONE)
-- 3: Now Playing bar (DONE)
-- 4: Performance mode shell integration (DONE)
-- 5: Responsive polish (DONE)
-
-## WHAT WAS COMPLETED THIS SESSION (20260314)
-
-- **Milestones 2 + 3** — Song Intelligence Engine + UI (all verified)
-- **Milestone 3 stabilization** — panel hide/restore, page restore, auth cache-only silent reconnect
-- **Milestone 4 Phase 1** — GLStore shell state (22 new methods, performance mode snapshot/restore)
-- **Milestone 4 Phase 2** — persistent left rail (responsive collapse: ≥1200px expanded, 901–1199px locked, ≤900px hidden)
-- **Milestone 4 Phase 3** — Now Playing bar (overlay root architecture, explicit set/clear only, persists across pages + refresh)
-- **Milestone 4 Phase 4** — Performance mode integration: Rehearsal Mode + Live Gig emit `setAppMode('performance'/'workspace')`. Left rail + Now Playing bar hide during performance. Workspace context auto-snapshots on enter.
-
-## KEY DESIGN DECISIONS (Milestone 4)
-
-- **Three song contexts:** `selectedSongId` (panel), `nowPlayingSongId` (persistent bar), `liveRehearsalSongId` (performance mode) — never conflated
-- **Now Playing set/clear:** Only by explicit user action (pin button / ✕ button). Panel close, page nav, song selection do NOT affect it.
-- **Overlay root:** `#gl-overlay-root` at top of body with `position:fixed; z-index:99999; pointer-events:none` — avoids shell stacking context conflicts
-- **Rail collapse:** User preference persisted separately from responsive auto-collapse
-
-## RISKS / WATCHOUTS
-
-1. **Home dashboard loading** — brief black card flash on refresh. Needs loading skeleton (not yet addressed).
-2. **Cache-only auth** — silent reconnect from localStorage, no fresh token. Firebase loads independently.
-3. **currentPage global still active** — `GLStore.setActivePage()` mirrors it but does not replace it yet.
-4. **PWA install banner** — auto-show disabled on dev. Re-enable in app-dev.js line 550 if needed.
-
----
+- `02_GrooveLinx/CURRENT_PHASE.md` — detailed phase tracking
+- `02_GrooveLinx/notes/uat_bug_log.md` — open bugs
+- `02_GrooveLinx/specs/groovelinx-architecture.md` — system architecture
+- `02_GrooveLinx/notes/page_file_map.md` — page → file mapping
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development. Milestones 1–5 complete.
+Continue GrooveLinx development. Milestones 1-9 deployed. Live band UAT in progress.
 
 Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
-4. `js/core/groovelinx_store.js` (shell state section)
-5. `js/ui/gl-now-playing.js`
-6. `rehearsal-mode.js` (for Phase 4 integration)
+4. `02_GrooveLinx/notes/uat_bug_log.md`
 
-Milestone 5 complete. Milestone 6 not yet defined. Ask Drew for direction.
+Current build: 20260315-111038. Dev and production are synced. Ask Drew for next priority.

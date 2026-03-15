@@ -1,115 +1,73 @@
-# GrooveLinx Home Dashboard
+# GrooveLinx Home Dashboard — Command Center
+
+_Updated: 2026-03-15_
 
 ## Overview
 
-The Home Dashboard provides a **moment-driven entry point** for GrooveLinx.
+The Home Dashboard is the **Command Center** — an operational brain that answers:
+1. What should I work on today?
+2. What does the band need next?
+3. Where are we weakest right now?
 
-Instead of organizing around data structures (songs, gigs, etc.), the dashboard organizes the experience around what band members are trying to do right now.
+## Current Layout (Milestone 9)
 
-Primary user moments:
+Five sections, rendered top-to-bottom:
 
-• Practice
-• Rehearse
-• Build Setlist
-• Play Show
+### 1. Command Center Header
+- "Command Center" title + current date
+- Readiness status chip (GIG READY / NEEDS REHEARSAL / etc.)
+- Function: `_renderCommandCenterHeader(bundle)`
 
----
+### 2. Hero + Next Best Step
+- When gig/rehearsal scheduled: event hero card (venue, date, readiness %, risk pill, CTAs) with docked next-step workflow strip underneath
+- When nothing scheduled: workflow hero with "Get Started" + Add Gig / Plan Rehearsal buttons
+- Hero scoped to gig's linked setlist for risk/coach text
+- Function: `_renderHeroNextBestStep(bundle, wf, isStoner)`
 
-## Dashboard Components
+### 3. Band Health Row
+- Compact horizontal metric tiles: Readiness %, Pocket Time, Last Score, Weak Songs
+- Each tile clickable — navigates to relevant page
+- Requires 2+ tiles to render (sparse-data resilience)
+- Function: `_renderBandHealthRow(bundle)`
 
-### Context Banner
+### 4. Priority Work Queue
+- 3-5 ranked actionable items with verb CTAs
+- Sources: active rehearsal session, rehearsal agenda, upload CTA, practice radar
+- Practice items capped at 2 when other items exist
+- Upload CTA gated on having readiness data (not shown for brand-new users)
+- Function: `_renderPriorityQueue(bundle)`
 
-Displayed when:
+### 5. Recent Changes
+- Scorecard headline with "Last rehearsal" prefix
+- Compact timeline strip (from rehearsal intelligence)
+- Activity feed (async, only when meaningful anchor content exists)
+- Function: `_renderRecentChanges(bundle)`
 
-• gig today
-• rehearsal today
-• gig within 48 hours
+## Data Sources
 
-Banner provides a single CTA:
+| Section | GLStore Selectors |
+|---------|------------------|
+| Header | `deriveHdConfidenceTone(bundle)` |
+| Hero | `renderHdHeroNextUp()`, `getDashboardWorkflowState()` |
+| Health | `_computeBandReadinessPct()`, `getPocketTimeMetrics()`, `getRehearsalScorecardData()` |
+| Queue | `getActiveRehearsalAgendaSession()`, `generateRehearsalAgenda()`, `getPracticeAttention()`, `getLatestTimeline()` |
+| Changes | `getRehearsalScorecardData()`, `getRehearsalIntelligence()`, `_loadActivityFeed()` |
 
-• Go Live
-• Enter Rehearsal
-• Prep for Show
+## Implementation
 
----
+- Primary file: `js/features/home-dashboard.js` (~2800 lines)
+- Legacy extension: `js/features/home-dashboard-cc.js` (suppressed for Command Center layout)
+- CSS injected via IIFE at bottom of home-dashboard.js
+- 5-minute bundle cache with invalidation on readiness changes
 
-### Dashboard Cards
+## Legacy Dashboard Suppression
 
-1. Practice
-2. Rehearse
-3. Build Setlist
-4. Play Show
+`home-dashboard-cc.js` monkey-patches `renderHomeDashboard` and `refreshHomeDashboard`. Both paths check `dashboard.classList.contains('hd-command-center')` and early-return, preventing injection of legacy `.cc-strip`, Readiness Radar, Pocket Snapshot, and Quick Actions cards.
 
-Cards reorder dynamically based on contextual scoring.
+## Song Status Model
 
----
+Canonical values: `''` (Not on Radar), `'prospect'`, `'wip'`, `'gig_ready'`
 
-## Readiness Index
-
-Readiness scores are aggregated into:
-
-`/bands/{slug}/meta/readinessIndex`
-
-Structure:
-
-```
-songId:
-  memberKey: score
-```
-
-Purpose:
-
-• avoid heavy Firebase reads
-• allow instant dashboard aggregation
-• compute band readiness locally
-
----
-
-## Stoner Mode
-
-Simplified UI for band members.
-
-Removes:
-
-• readiness pips
-• rotation warnings
-• suggestions
-• secondary controls
-
-Bandleaders automatically see full mode.
-
----
-
-## Implementation Location
-
-Dashboard implemented in:
-
-`js/features/home-dashboard.js`
-
-Target file size: ~600 lines.
-
----
-
-## Performance Design
-
-• minimal Firebase reads
-• readiness index caching
-• 5-minute dashboard cache
-• skeleton loading
-
----
-
-## Deployment Phases
-
-Phase 1
-Skeleton + Play Show card
-
-Phase 2
-Practice + Rehearse cards
-
-Phase 3
-Setlist card + dynamic ordering
-
----
-
-The dashboard becomes the **default landing screen** for GrooveLinx.
+Legacy values (`needs_polish`, `on_deck`, etc.) may exist in Firebase. Diagnostic tools available:
+- `GLStore.auditLegacyStatuses()` — report
+- `GLStore.migrateLegacyStatuses({ dryRun: false })` — normalize + persist
