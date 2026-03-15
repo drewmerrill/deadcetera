@@ -53,6 +53,14 @@ var _loadedVersion = BUILD_VERSION;
         .song-item { transition:background 0.12s,border-color 0.12s; }
         .song-item:hover { background:#232f45 !important; border-color:rgba(255,255,255,0.1) !important; }
         .song-item:hover .song-drawer-btn { opacity:1 !important; }
+        /* Priority hierarchy — needs-work rows slightly surfaced */
+        .song-item.song--needs-work { border-left:2px solid rgba(239,68,68,0.4); }
+        .song-item.song--needs-work .song-name { color:#fca5a5 !important; }
+        /* Ready rows slightly recede */
+        .song-item.song--ready { opacity:0.82; }
+        .song-item.song--ready:hover { opacity:1; }
+        /* Unrated rows — neutral, slightly dimmer title */
+        .song-item.song--unrated .song-name { color:#94a3b8 !important; font-weight:500; }
         /* Hover: quiet the secondary signals, let title + status dominate */
         .song-item:hover .song-badges { opacity:0.5; }
         .song-item:hover .song-chain-strip { opacity:0.6; }
@@ -12807,6 +12815,19 @@ function addReadinessChains() {
             return '<span style="display:inline-block;line-height:0">' + chainLinkSVG(color, label) + '</span>';
         }).join('');
         el.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:1px;height:12px;overflow:hidden;';
+        // Priority hierarchy: add state class to song-item based on band avg
+        var row = el.closest('.song-item');
+        if (row) {
+            row.classList.remove('song--needs-work','song--ready','song--unrated');
+            var vals = Object.values(scores).filter(function(v){return typeof v==='number'&&v>0;});
+            if (!vals.length) {
+                row.classList.add('song--unrated');
+            } else {
+                var avg = vals.reduce(function(a,b){return a+b;},0)/vals.length;
+                if (avg < 3) row.classList.add('song--needs-work');
+                else if (avg >= 4) row.classList.add('song--ready');
+            }
+        }
     });
 }
 
