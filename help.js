@@ -481,6 +481,41 @@ var GL_HELP_REGISTRY = {
         videoUrl: null,
     },
 
+    stageplot: {
+        icon: '🎭',
+        title: 'Stage Plot',
+        subtitle: 'Visual stage layout, channel list, and monitor mixes — ready to send to any venue.',
+        bullets: [
+            '🎛️ Drag elements from the palette onto the grid to build your stage layout',
+            '🔄 Click any placed element to move, rotate, set input number, or remove it',
+            '📋 Channel List auto-populates from placed elements — edit names and input numbers',
+            '🔊 Monitor Mixes — define what each musician hears in their wedge or IEM',
+            '📝 Tech Rider Notes — PA requirements, power needs, backline requests',
+            '👤 Contact Info — sound person name, email, and phone for the venue',
+            '🏟️ Venue Presets — save and switch between layouts for different stages',
+            '🏷️ Toggle Labels to show/hide element names on the grid',
+            '🧭 Toggle Directions to show stage left/right/front/back orientation',
+            '🖨️ Export — generates a clean printable view to PDF or send to venue',
+        ],
+        helpSectionId: 'stage-plot',
+        videoUrl: null,
+    },
+
+    ideas: {
+        icon: '💡',
+        title: 'Ideas Board',
+        subtitle: 'Song ideas, jam concepts, and band polls — the creative inbox.',
+        bullets: [
+            '💡 Post song ideas, cover suggestions, or jam concepts',
+            '🔗 Links to YouTube, Spotify, and Archive.org are auto-detected',
+            '📊 Create polls to let the band vote on ideas',
+            '💬 Comment and react to ideas with emoji',
+            '📌 Pin important items to keep them visible',
+        ],
+        helpSectionId: 'ideas-board',
+        videoUrl: null,
+    },
+
 };
 
 // ============================================================================

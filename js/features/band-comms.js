@@ -119,6 +119,7 @@ window._bcPostComment = async function(songTitle) {
 // Band-wide idea sharing. Accessed from a dedicated page.
 
 function renderIdeasBoardPage(el) {
+  if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'ideas');
   el.innerHTML = '<div class="page-header"><h1>💡 Ideas Board</h1><p>Song ideas, jam concepts, setlist suggestions, polls</p></div>'
     + '<div style="max-width:600px;margin:0 auto">'
     + '<div id="bcIdeasContainer"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>'

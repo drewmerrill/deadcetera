@@ -82,6 +82,7 @@ var _spShowDirections = true; // stage direction markers
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
 function renderStagePlotPage(el) {
+  if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'stageplot');
   el.innerHTML = '<div class="page-header"><h1>🎭 Stage Plot</h1><p>Build stage layouts, channel lists, and monitor mixes</p></div>'
     + '<div id="spContainer" style="max-width:800px;margin:0 auto"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>';
   _spLoadPlots();
