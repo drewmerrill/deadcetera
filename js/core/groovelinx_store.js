@@ -652,6 +652,18 @@
           console.error('Failed to save master file:', e);
         });
       }
+      // Also write migrated statuses to per-song Firebase records so
+      // song-detail.js (which reads per-song) stays in sync with master file
+      if (typeof saveBandDataToDrive === 'function') {
+        for (var w = 0; w < audit.legacy.length; w++) {
+          var _mItem = audit.legacy[w];
+          if (_mItem.wouldMapTo.indexOf('UNKNOWN') >= 0) continue;
+          try {
+            saveBandDataToDrive(_mItem.title, 'song_status', { status: _mItem.wouldMapTo, updatedAt: new Date().toISOString(), migratedFrom: _mItem.current });
+          } catch(e2) {}
+        }
+        console.log('%cPer-song Firebase records synced.', 'color:#22c55e');
+      }
       console.log('%cMigrated ' + migrated + ' songs. Skipped ' + skipped + '.', 'font-weight:bold;color:#22c55e');
     } else if (dryRun) {
       console.log('%c[DRY RUN] Would migrate ' + (audit.legacy.length - skipped) + ' songs. Run GLStore.migrateLegacyStatuses({ dryRun: false }) to apply.', 'font-weight:bold;color:#f59e0b');

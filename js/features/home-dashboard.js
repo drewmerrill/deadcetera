@@ -1250,7 +1250,14 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var _hasScope = Object.keys(_gigSongScope).length > 0;
     var pct=_computeBandReadinessPct(bundle, _hasScope ? _gigSongScope : null),rl=deriveHdReadinessLabel(pct);
     var rb=rl?'<span class="hd-hero__ready-badge" style="background:'+rl.color+'22;color:'+rl.color+';border-color:'+rl.color+'55">'+rl.short+'</span>':'' ;
-    // Coach text — use gig-scoped weak song (riskEntry) instead of global topWeak
+    // Biggest risk song — scoped to this gig's setlist. Must be computed
+    // BEFORE coach text which references riskEntry.
+    var rc2 = bundle.readinessCache || {};
+    var riskEntries = Object.entries(rc2)
+        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!_hasScope || _gigSongScope[e[0]]); })
+        .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); });
+    var riskEntry = riskEntries[0];
+    // Coach text — uses gig-scoped riskEntry
     var coach='';
     var _coachSong = riskEntry ? _escHtml(riskEntry[0]) : null;
     if(rl&&rl.tone==='ready')coach=_coachSong?'Locked in. Tighten '+_coachSong+' and you\'re golden.':'Band is locked in. Go get \'em.';
@@ -1262,13 +1269,8 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var pctColor = pct >= 85 ? 'var(--green)' : pct >= 68 ? '#fbbf24' : pct >= 50 ? '#f97316' : '#ef4444';
     var rlLabel = rl ? rl.long : '';
     var pctClickAction = ls ? 'homeViewSetlist(\'' + lsEsc + '\')' : 'showPage(\'setlists\')';
-    var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
-    // Biggest risk song — scoped to this gig's setlist (reuses _gigSongScope from above)
-    var rc2 = bundle.readinessCache || {};
-    var riskEntries = Object.entries(rc2)
-        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!_hasScope || _gigSongScope[e[0]]); })
-        .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); });
-    var riskEntry = riskEntries[0];
+    var pctScopeLabel = _hasScope ? 'Setlist Readiness' : 'Band Readiness';
+    var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:3px">'+pctScopeLabel+'</div>' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
     var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
     var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
     // Gig Confidence Meter — executive summary

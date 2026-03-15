@@ -127,7 +127,11 @@ async function _sdPopulateBandLens(title) {
         ]);
         // lead_singer stored as { singer: 'drew' }, song_status as { status: 'gig_ready', ... }
         lead   = (res[0] && res[0].singer) ? res[0].singer : (typeof res[0]==='string' ? res[0] : '');
-        status = (res[1] && res[1].status) ? res[1].status : (typeof res[1]==='string' ? res[1] : '');
+        // Status: prefer statusCache (master file, migrated) over per-song Firebase
+        // to avoid stale legacy values. Fall back to Firebase if cache is empty.
+        var _fbStatus = (res[1] && res[1].status) ? res[1].status : (typeof res[1]==='string' ? res[1] : '');
+        var _cacheStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(title) || '') : ((typeof statusCache !== 'undefined' && statusCache[title]) ? statusCache[title] : '');
+        status = _cacheStatus || _fbStatus;
         songMeta=res[2]||{};
         cribData=res[3]; rehearsalNotes=res[4]; sectionRatings=res[5]||{};
         chartText=(res[6] && res[6].text && res[6].text.trim()) ? res[6].text : null;
