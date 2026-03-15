@@ -811,6 +811,7 @@
       recentActivityBySongId: activityIndex,
       practiceStatsBySongId: _state.songPracticeStats || {},
       weakSpotsBySongId: _buildWeakSpotIndex(),
+      rehearsalSignalsBySongId: _buildRehearsalSignalIndex(),
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,
@@ -824,6 +825,36 @@
     var index = {};
     for (var i = 0; i < ws.songs.length; i++) {
       index[ws.songs[i].songId] = ws.songs[i];
+    }
+    return index;
+  }
+
+  /**
+   * Build per-song rehearsal-derived signals from the latest timeline intelligence.
+   * Returns { songId: { restartCount, wasRestartHeavy, hadCleanRun, cleanRunSec, totalWorkSec } }
+   * Capped/guarded to avoid over-weighting one noisy recording.
+   */
+  function _buildRehearsalSignalIndex() {
+    var ri = getRehearsalIntelligence();
+    if (!ri || !ri.hasData || !ri.songPasses || !ri.songPasses.length) return {};
+
+    var index = {};
+    for (var i = 0; i < ri.songPasses.length; i++) {
+      var sp = ri.songPasses[i];
+      var restartCount = sp.restarts ? sp.restarts.length : 0;
+      var longestAttempt = 0;
+      if (sp.attempts) {
+        for (var a = 0; a < sp.attempts.length; a++) {
+          if (sp.attempts[a].durationSec > longestAttempt) longestAttempt = sp.attempts[a].durationSec;
+        }
+      }
+      index[sp.title] = {
+        restartCount: restartCount,
+        wasRestartHeavy: restartCount >= 2,
+        hadCleanRun: longestAttempt >= 60,
+        cleanRunSec: Math.round(longestAttempt),
+        totalWorkSec: Math.round(sp.totalSec || 0),
+      };
     }
     return index;
   }

@@ -76,6 +76,7 @@
     var activity = input.recentActivityBySongId[songId] || null;
     var pStats = (input.practiceStatsBySongId || {})[songId] || null;
     var weakSpot = (input.weakSpotsBySongId || {})[songId] || null;
+    var rehSig = (input.rehearsalSignalsBySongId || {})[songId] || null;
     var members = input.memberKeys || [];
     var totalMembers = members.length || 5;
     var now = Date.now();
@@ -178,6 +179,14 @@
       weakSpotBoost: weakSpot ? (weakSpot.issue.severity === 'high' ? 12 : 8) : 0,
       weakSpotType: weakSpot ? weakSpot.issue.type : null,
       weakSpotReason: weakSpot ? weakSpot.issue.reason : null,
+      // Rehearsal-derived signals (capped boost to prevent over-weighting one session)
+      rehRestartHeavy: rehSig ? rehSig.wasRestartHeavy : false,
+      rehRestartCount: rehSig ? rehSig.restartCount : 0,
+      rehHadCleanRun: rehSig ? rehSig.hadCleanRun : false,
+      rehCleanRunSec: rehSig ? rehSig.cleanRunSec : 0,
+      rehTotalWorkSec: rehSig ? rehSig.totalWorkSec : 0,
+      rehRepairBoost: rehSig && rehSig.wasRestartHeavy ? 8 : 0,
+      rehConfidenceBoost: rehSig && rehSig.hadCleanRun && rehSig.cleanRunSec >= 120 ? 6 : 0,
     };
   }
 
@@ -222,7 +231,8 @@
       sig.stabilityScore * w.stabilityScore +
       (100 - sig.attentionSeverity) * w.inverseAttention +
       (100 - sig.readinessDeficit) * w.inverseDeficit +
-      sig.familiarityScore * w.familiarityScore
+      sig.familiarityScore * w.familiarityScore +
+      sig.rehConfidenceBoost // clean run makes a good warm-up candidate
     );
   }
 
@@ -232,7 +242,8 @@
       sig.attentionSeverity * w.attentionSeverity +
       sig.readinessDeficit * w.readinessDeficit +
       sig.gapScore * w.gapScore +
-      sig.neglectScore * w.neglectScore
+      sig.neglectScore * w.neglectScore +
+      sig.rehRepairBoost // restart-heavy songs get repair priority boost
     );
   }
 
@@ -253,7 +264,8 @@
       sig.confidenceScore * w.confidenceScore +
       sig.stabilityScore * w.stabilityScore +
       sig.readinessScore * w.readinessScore +
-      (100 - sig.attentionSeverity) * w.inverseAttention
+      (100 - sig.attentionSeverity) * w.inverseAttention +
+      sig.rehConfidenceBoost // clean run in last rehearsal boosts closer candidacy
     );
   }
 
@@ -317,7 +329,20 @@
   // ── Reason & Focus Text ────────────────────────────────────────────────────
 
   function buildReasonText(sig, itemType) {
-    // Weak-spot context takes priority when available
+    // Rehearsal recording evidence takes priority for repair slots
+    if (sig.rehRestartHeavy && (itemType === 'repair' || itemType === 'repair2')) {
+      return 'Restarted ' + sig.rehRestartCount + ' times in the last rehearsal. Needs focused repair.';
+    }
+    // Clean run evidence for closer/warmup
+    if (sig.rehHadCleanRun && sig.rehCleanRunSec >= 120 && (itemType === 'closer' || itemType === 'warmup')) {
+      return 'Showed a strong ' + Math.round(sig.rehCleanRunSec / 60) + '-minute uninterrupted run. Ready for a confidence rep.';
+    }
+    // High repair time for repair slots
+    if (sig.rehTotalWorkSec >= 300 && (itemType === 'repair' || itemType === 'repair2')) {
+      return 'Consumed ' + Math.round(sig.rehTotalWorkSec / 60) + ' minutes of repair time in the most recent recording.';
+    }
+
+    // Weak-spot context
     if (sig.weakSpotReason && (itemType === 'repair' || itemType === 'repair2' || itemType === 'learn')) {
       return sig.weakSpotReason + (sig.readinessDeficit >= 30 ? ' Still needs work.' : '');
     }
