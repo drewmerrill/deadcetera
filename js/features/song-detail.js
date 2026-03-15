@@ -428,7 +428,12 @@ window.sdUpdateSongStatus = function(v) {
     if (!_sdCurrentSong) return;
     if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'song_status', { status: v, updatedAt: new Date().toISOString() });
+        // Update in-memory cache
         if (typeof GLStore !== 'undefined') { GLStore.getAllStatus()[_sdCurrentSong] = v; } else if (typeof statusCache !== 'undefined') { statusCache[_sdCurrentSong] = v; }
+        // Persist to master status file so Practice page stays in sync on next load
+        if (typeof statusCache !== 'undefined' && typeof saveMasterFile === 'function') {
+            saveMasterFile('_master_song_statuses.json', statusCache).catch(function(){});
+        }
         if (typeof addStatusBadges === 'function') addStatusBadges();
         if (typeof showToast === 'function') showToast('Status saved');
     }

@@ -763,9 +763,11 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var _hasScope = Object.keys(_gigSongScope).length > 0;
     var pct=_computeBandReadinessPct(bundle, _hasScope ? _gigSongScope : null),rl=deriveHdReadinessLabel(pct);
     var rb=rl?'<span class="hd-hero__ready-badge" style="background:'+rl.color+'22;color:'+rl.color+';border-color:'+rl.color+'55">'+rl.short+'</span>':'' ;
-    var ms4=deriveHdMissionSummary(bundle),coach='';
-    if(rl&&rl.tone==='ready')coach=ms4.topWeak?'Locked in. Tighten '+_escHtml(ms4.topWeak[0])+' and you\'re golden.':'Band is locked in. Go get \'em.';
-    else if(rl&&rl.tone==='caution')coach=ms4.topWeak?'Almost there. Lock in '+_escHtml(ms4.topWeak[0])+' and the set is solid.':'One more run-through and you\'re ready.';
+    // Coach text — use gig-scoped weak song (riskEntry) instead of global topWeak
+    var coach='';
+    var _coachSong = riskEntry ? _escHtml(riskEntry[0]) : null;
+    if(rl&&rl.tone==='ready')coach=_coachSong?'Locked in. Tighten '+_coachSong+' and you\'re golden.':'Band is locked in. Go get \'em.';
+    else if(rl&&rl.tone==='caution')coach=_coachSong?'Almost there. Lock in '+_coachSong+' and the set is solid.':'One more run-through and you\'re ready.';
     else if(rl)coach='Get a rehearsal in before this one.';
     var cd='';
     var cdInline=diff!==null&&diff>1?' · <span class="hd-hero__days-away">'+diff+'d away</span>':diff===1?' · <span class="hd-hero__days-away">Tomorrow</span>':'';
@@ -784,7 +786,7 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" title="Open gig details">Open Gig \u2192</button>';
     var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
     var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
-    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'',readHTML?'<div class="hd-hero__readiness">'+readHTML+'</div>':'',warnHTML?'<div class="hd-hero__warnings">'+warnHTML+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+'</div>',tertiaryCTA,'</div>'].join('');
+    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'',readHTML?'<div class="hd-hero__readiness">'+readHTML+'</div>':'',warnHTML?'<div class="hd-hero__warnings">'+warnHTML+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
   } catch(e) {
     console.warn('[Dashboard] Hero gig render error:', e.message);
     return '<div class="hd-hero home-anim-header"><div class="hd-hero__eyebrow">BAND MISSION</div><div class="hd-hero__title">' + _escHtml(gig.venue || 'Upcoming Gig') + '</div><div class="hd-hero__actions"><button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gigs \u2192</button></div></div>';
