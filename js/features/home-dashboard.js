@@ -294,9 +294,34 @@ function _scorePlayShowCard(bundle) {
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
     var activityHTML = _renderActivityFeed(bundle);
-    // Determine workflow state for phase activation
-    var hasTimeline = !!(typeof GLStore !== 'undefined' && GLStore.getLatestTimeline && GLStore.getLatestTimeline());
-    var hasScorecard = !!(typeof GLStore !== 'undefined' && GLStore.getLatestCompletedSummary && GLStore.getLatestCompletedSummary());
+
+    // Workflow state from GLStore
+    var wf = (typeof GLStore !== 'undefined' && GLStore.getDashboardWorkflowState)
+        ? GLStore.getDashboardWorkflowState()
+        : { phaseState: {}, currentPhase: 'plan', nextActionLabel: 'Get started', nextActionDescription: '', nextActionTarget: '' };
+    var ps = wf.phaseState || {};
+
+    var PHASE_HINTS = {
+        plan: 'Decide what the band should work on',
+        capture: 'Bring in a rehearsal recording',
+        analyze: 'See what happened across the session',
+        learn: 'Find the exact moments that broke down',
+        improve: 'Turn insights into the next plan',
+    };
+
+    function _phaseClass(key) {
+        var state = ps[key] || 'future';
+        if (state === 'completed') return ' hd-phase--active hd-phase--done';
+        if (state === 'current') return ' hd-phase--active hd-phase--current';
+        return '';
+    }
+
+    function _phaseLabel(key) {
+        var hint = PHASE_HINTS[key] || '';
+        return '<div class="hd-phase__label">' + key.charAt(0).toUpperCase() + key.slice(1)
+            + (hint ? ' <span style="font-weight:500;letter-spacing:0;text-transform:none;color:rgba(255,255,255,0.15);font-size:0.9em">— ' + hint + '</span>' : '')
+            + '</div>';
+    }
 
     return [
         '<div class="home-dashboard hd-mission-board">',
@@ -304,30 +329,30 @@ function _renderDashboard(bundle, context) {
         // Hero
         renderHdHeroNextUp(bundle, isStoner),
 
+        // Next Best Step banner
+        _renderNextStepBanner(wf),
+
         '<div class="hd-spine-container">',
 
-        // Phase: PLAN — what we intend to work on
-        // Always active: planning is always relevant
-        '<div class="hd-phase hd-phase--active" data-phase="Plan">',
-        '<div class="hd-phase__label">Plan</div>',
+        // PLAN
+        '<div class="hd-phase' + _phaseClass('plan') + '" data-phase="Plan">',
+        _phaseLabel('plan'),
         '<div class="hd-phase__cards hd-buckets home-anim-cards">',
         renderHdYourPrep(bundle),
         renderHdBandStatus(bundle),
         renderHdNextRehearsalGoal(bundle),
         '</div></div>',
 
-        // Phase: CAPTURE — getting rehearsal material into GrooveLinx
-        // Always active: upload CTA should never be muted
-        '<div class="hd-phase hd-phase--active" data-phase="Capture">',
-        '<div class="hd-phase__label">Capture</div>',
+        // CAPTURE
+        '<div class="hd-phase' + _phaseClass('capture') + '" data-phase="Capture">',
+        _phaseLabel('capture'),
         '<div class="hd-phase__cards hd-buckets">',
         renderUploadRehearsal(),
         '</div></div>',
 
-        // Phase: ANALYZE — what happened in the rehearsal
-        // Active when timeline exists (recording has been analyzed)
-        '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Analyze">',
-        '<div class="hd-phase__label">Analyze</div>',
+        // ANALYZE
+        '<div class="hd-phase' + _phaseClass('analyze') + '" data-phase="Analyze">',
+        _phaseLabel('analyze'),
         '<div class="hd-phase__cards hd-buckets">',
         renderRehearsalInsights(),
         renderRehearsalTimelinePreview(),
@@ -335,19 +360,17 @@ function _renderDashboard(bundle, context) {
         renderRehearsalHistory(),
         '</div></div>',
 
-        // Phase: LEARN — where trouble spots and patterns are
-        // Active when timeline exists (analysis feeds learning)
-        '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Learn">',
-        '<div class="hd-phase__label">Learn</div>',
+        // LEARN
+        '<div class="hd-phase' + _phaseClass('learn') + '" data-phase="Learn">',
+        _phaseLabel('learn'),
         '<div class="hd-phase__cards hd-buckets">',
         renderHdSongsNeedingWork(bundle),
         (typeof renderAttemptIntelligence === 'function' ? renderAttemptIntelligence() : ''),
         '</div></div>',
 
-        // Phase: IMPROVE — what to do next based on findings
-        // Active when timeline or scorecard exists (recommendations available)
-        '<div class="hd-phase' + ((hasTimeline || hasScorecard) ? ' hd-phase--active' : '') + '" data-phase="Improve">',
-        '<div class="hd-phase__label">Improve</div>',
+        // IMPROVE
+        '<div class="hd-phase' + _phaseClass('improve') + '" data-phase="Improve">',
+        _phaseLabel('improve'),
         '<div class="hd-phase__cards hd-buckets">',
         renderPracticeRadar(),
         renderRehearsalAgenda(),
@@ -902,6 +925,29 @@ function renderRehearsalTimelinePreview() {
 
     h += '</div>';
     return h;
+}
+
+// ── Next Best Step Banner ─────────────────────────────────────────────────────
+
+function _renderNextStepBanner(wf) {
+    if (!wf || !wf.nextActionLabel) return '';
+
+    var targetActions = {
+        agenda: "if(typeof GLStore!=='undefined'&&GLStore.regenerateRehearsalAgenda){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard==='function')renderHomeDashboard();}",
+        chopper: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()",
+        learn: "var el=document.querySelector('[data-phase=\"Learn\"]');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})",
+        improve: "var el=document.querySelector('[data-phase=\"Improve\"]');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})",
+    };
+    var onclick = targetActions[wf.nextActionTarget] || '';
+
+    return '<div style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(99,102,241,0.03));border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">'
+        + '<div style="font-size:1.4em;flex-shrink:0">🎯</div>'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-weight:700;font-size:0.88em;color:var(--text,#f1f5f9)">' + wf.nextActionLabel + '</div>'
+        + '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-top:2px">' + (wf.nextActionDescription || '') + '</div>'
+        + '</div>'
+        + (onclick ? '<button onclick="' + onclick + '" style="padding:7px 14px;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:700;font-size:0.78em;cursor:pointer;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 8px rgba(99,102,241,0.3)">Go →</button>' : '')
+        + '</div>';
 }
 
 // ── Attempt Intelligence Card ─────────────────────────────────────────────────
@@ -2387,6 +2433,9 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-phase--active{opacity:1}',
     '.hd-phase::before{content:"";position:absolute;left:-24px;top:6px;width:10px;height:10px;border-radius:50%;background:rgba(99,102,241,0.2);border:2px solid rgba(99,102,241,0.35)}',
     '.hd-phase--active::before{background:rgba(99,102,241,0.5);border-color:#667eea;box-shadow:0 0 8px rgba(99,102,241,0.3)}',
+    '.hd-phase--done::before{background:rgba(34,197,94,0.4);border-color:#22c55e;box-shadow:0 0 6px rgba(34,197,94,0.2)}',
+    '.hd-phase--current::before{background:#667eea;border-color:#818cf8;box-shadow:0 0 12px rgba(99,102,241,0.5)}',
+    '.hd-phase--current .hd-phase__label{color:rgba(99,102,241,0.9)}',
     '@media(max-width:480px){.hd-phase::before{display:none}}',
     '.hd-phase__label{font-size:9px;font-weight:800;letter-spacing:0.18em;color:rgba(99,102,241,0.4);text-transform:uppercase;margin-bottom:8px;margin-left:2px}',
     '.hd-phase--active .hd-phase__label{color:rgba(99,102,241,0.7)}',

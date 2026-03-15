@@ -1809,6 +1809,89 @@
 
   function _r1(v) { return Math.round(v * 10) / 10; }
 
+  // ── Dashboard Workflow State ─────────────────────────────────────────────
+
+  /**
+   * Determine the user's current workflow position and next best action.
+   * Deterministic rules based on data availability — no heavy logic.
+   * @returns {object}
+   */
+  function getDashboardWorkflowState() {
+    var hasAgenda = !!(_rehearsalAgenda.latestGenerated && !_rehearsalAgenda.latestGenerated.empty);
+    var hasRecording = !!_latestTimeline;
+    var hasAnalysis = !!(hasRecording && _latestTimeline.segments && _latestTimeline.segments.length > 0);
+    var hasAttempts = false;
+    try {
+      var ai = getAttemptIntelligence();
+      hasAttempts = !!(ai && ai.hasData);
+    } catch(e) {}
+    var hasScorecard = !!(_rehearsalAgenda.latestCompletedSummary);
+    var hasWeakSpots = false;
+    try {
+      var ws = typeof RehearsalScorecardEngine !== 'undefined' && RehearsalScorecardEngine.analyzeWeakSpots
+        ? RehearsalScorecardEngine.analyzeWeakSpots(_rehearsalAgenda.completionHistory || []) : null;
+      hasWeakSpots = !!(ws && ws.hasEnoughData && ws.songs && ws.songs.length);
+    } catch(e) {}
+
+    // Phase progression: completed / current / next / future
+    var phases = ['plan', 'capture', 'analyze', 'learn', 'improve'];
+    var phaseState = {};
+
+    // Determine completion
+    phaseState.plan = hasAgenda ? 'completed' : 'current';
+    phaseState.capture = hasRecording ? 'completed' : (hasAgenda ? 'current' : 'future');
+    phaseState.analyze = hasAnalysis ? 'completed' : (hasRecording ? 'current' : 'future');
+    phaseState.learn = hasAttempts ? 'completed' : (hasAnalysis ? 'current' : 'future');
+    phaseState.improve = hasWeakSpots || hasScorecard ? 'completed' : (hasAttempts ? 'current' : 'future');
+
+    // Find current and next phase
+    var currentPhase = 'plan';
+    var nextPhase = null;
+    for (var p = 0; p < phases.length; p++) {
+      if (phaseState[phases[p]] === 'current') {
+        currentPhase = phases[p];
+        nextPhase = phases[p + 1] || null;
+        break;
+      }
+    }
+    // If everything is completed, the loop restarts
+    if (!nextPhase && phaseState.improve === 'completed') {
+      currentPhase = 'improve';
+      nextPhase = 'plan';
+    }
+
+    // Next action determination
+    var action = { key: 'generate-agenda', label: 'Generate Rehearsal Agenda', description: 'Create a smart rehearsal plan based on your song readiness.', target: 'agenda' };
+
+    if (!hasAgenda) {
+      action = { key: 'generate-agenda', label: 'Generate Rehearsal Agenda', description: 'Create a smart rehearsal plan based on your song readiness.', target: 'agenda' };
+    } else if (!hasRecording) {
+      action = { key: 'upload-recording', label: 'Upload Rehearsal Recording', description: 'Drop in a rehearsal MP3 to auto-segment and analyze.', target: 'chopper' };
+    } else if (!hasAttempts) {
+      action = { key: 'review-analysis', label: 'Review Rehearsal Analysis', description: 'Check the timeline and name segments in the Chopper.', target: 'chopper' };
+    } else if (!hasScorecard && !hasWeakSpots) {
+      action = { key: 'inspect-attempts', label: 'Inspect Problem Songs', description: 'Drill into song attempts to find where restarts happen.', target: 'learn' };
+    } else {
+      action = { key: 'build-next-plan', label: 'Build Next Rehearsal Plan', description: 'Use findings to generate a smarter agenda for next time.', target: 'improve' };
+    }
+
+    return {
+      hasAgenda: hasAgenda,
+      hasRecording: hasRecording,
+      hasAnalysis: hasAnalysis,
+      hasAttempts: hasAttempts,
+      hasScorecard: hasScorecard,
+      hasWeakSpots: hasWeakSpots,
+      phaseState: phaseState,
+      currentPhase: currentPhase,
+      nextPhase: nextPhase,
+      nextActionKey: action.key,
+      nextActionLabel: action.label,
+      nextActionDescription: action.description,
+      nextActionTarget: action.target,
+    };
+  }
+
   // ── Pocket Time Metric ──────────────────────────────────────────────────
 
   /**
@@ -2290,6 +2373,7 @@
     // Rehearsal Segmentation (Milestone 8)
     getRehearsalIntelligence:          getRehearsalIntelligence,
     getAttemptIntelligence:            getAttemptIntelligence,
+    getDashboardWorkflowState:         getDashboardWorkflowState,
     getPocketTimeMetrics:              getPocketTimeMetrics,
     getRecentRehearsalPocketHistory:   getRecentRehearsalPocketHistory,
     segmentRehearsalAudio:             segmentRehearsalAudio,
