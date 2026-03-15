@@ -151,6 +151,10 @@
       title: 'What Changed',
       text: 'Improvements from your recent actions. Green = readiness or groove improved. Purple = new capability unlocked. Check here after rehearsals to see what moved.',
     },
+    'band-momentum': {
+      title: 'Band Momentum',
+      text: 'Overall direction of the band based on rehearsal scores, readiness trends, groove quality, and practice frequency. Keep rehearsing regularly and improving weak songs to push this up.',
+    },
     'setlist-readiness': {
       title: 'Setlist Readiness',
       text: 'What percentage of songs on the gig\'s linked setlist are at or above the gig-ready threshold. This is scoped to the setlist — the Band Health tile shows the full catalog number.',

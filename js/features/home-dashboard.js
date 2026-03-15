@@ -351,6 +351,7 @@ function _renderDashboard(bundle, context) {
         _renderHeroNextBestStep(bundle, wf, isStoner),
         _renderSetupGuidance(bundle, wf),
         _renderBandHealthRow(bundle),
+        _renderBandMomentum(),
         _renderPriorityQueue(bundle),
         _renderRecentChanges(bundle),
         '</div>'
@@ -561,6 +562,89 @@ function _renderBandHealthRow(bundle) {
     }
     html += '</div></div>';
     return html;
+}
+
+// ── Command Center: Band Momentum ──────────────────────────────────────────────
+// Unified directional signal: is the band improving, stable, or slipping?
+// Uses existing scorecard, pocket, and readiness data. No new data loading.
+
+function _computeBandMomentum() {
+    var signals = 0; // positive = improving, negative = slipping
+    var signalCount = 0;
+    var reasons = [];
+
+    // 1. Scorecard trend
+    var scData = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
+    if (scData && scData.latest) {
+        var tr = scData.latest.trend || {};
+        if (tr.direction === 'improving') { signals += 2; reasons.push('Rehearsal scores improving'); }
+        else if (tr.direction === 'slipping') { signals -= 2; reasons.push('Rehearsal scores slipping'); }
+        signalCount++;
+
+        // Readiness delta from last rehearsal
+        var rd = scData.latest.readiness || {};
+        if (rd.hasEnoughData) {
+            if (rd.deltaAvg > 0.3) { signals += 1; reasons.push('Readiness up after last rehearsal'); }
+            else if (rd.deltaAvg < -0.3) { signals -= 1; reasons.push('Readiness dipped after last rehearsal'); }
+            signalCount++;
+        }
+    }
+
+    // 2. Pocket time trend
+    var pth = (typeof GLStore !== 'undefined' && GLStore.getRecentRehearsalPocketHistory) ? GLStore.getRecentRehearsalPocketHistory(5) : null;
+    if (pth && pth.hasData && pth.count >= 2 && pth.entries[0].deltaPocketPct !== null) {
+        if (pth.entries[0].deltaPocketPct > 3) { signals += 1; reasons.push('Groove tightening'); }
+        else if (pth.entries[0].deltaPocketPct < -5) { signals -= 1; reasons.push('Groove loosening'); }
+        signalCount++;
+    }
+
+    // 3. Rehearsal frequency — check if there's been a session in last 14 days
+    if (scData && scData.latest) {
+        var ts = scData.latest.createdAt || scData.latest.completedAt;
+        if (ts) {
+            var daysSince = Math.round((Date.now() - new Date(ts).getTime()) / 86400000);
+            if (daysSince <= 7) { signals += 1; reasons.push('Rehearsed within the week'); }
+            else if (daysSince > 21) { signals -= 1; reasons.push('No rehearsal in 3+ weeks'); }
+            signalCount++;
+        }
+    }
+
+    if (signalCount === 0) return null; // not enough data
+
+    var direction, arrow, color, label;
+    if (signals >= 2) {
+        direction = 'improving'; arrow = '\u2191'; color = '#22c55e'; label = 'Improving';
+    } else if (signals <= -2) {
+        direction = 'slipping'; arrow = '\u2193'; color = '#ef4444'; label = 'Slipping';
+    } else if (signals > 0) {
+        direction = 'trending-up'; arrow = '\u2197'; color = '#60a5fa'; label = 'Trending Up';
+    } else if (signals < 0) {
+        direction = 'trending-down'; arrow = '\u2198'; color = '#f59e0b'; label = 'Drifting';
+    } else {
+        direction = 'stable'; arrow = '\u2192'; color = '#94a3b8'; label = 'Stable';
+    }
+
+    return {
+        direction: direction,
+        arrow: arrow,
+        color: color,
+        label: label,
+        reason: reasons[0] || '',
+        _signals: signals,
+        _signalCount: signalCount
+    };
+}
+
+function _renderBandMomentum() {
+    var m = _computeBandMomentum();
+    if (!m) return '';
+    var _mHelp = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('band-momentum') : '';
+    return '<div class="hd-momentum">'
+        + '<span class="hd-momentum__arrow" style="color:' + m.color + '">' + m.arrow + '</span>'
+        + '<span class="hd-momentum__label" style="color:' + m.color + '">' + m.label + '</span>'
+        + (m.reason ? '<span class="hd-momentum__reason">' + _escHtml(m.reason) + '</span>' : '')
+        + _mHelp
+        + '</div>';
 }
 
 // ── Command Center: Priority Work Queue ───────────────────────────────────────
@@ -3418,6 +3502,11 @@ function _scheduleWeakSongsFill(bundle) {
     /* Health row wrapper + attribution */
     '.hd-health-row-wrap{display:flex;flex-direction:column;gap:4px}',
     '.hd-health-attrib{font-size:0.62em;font-weight:600;color:var(--text-dim,#475569);letter-spacing:0.04em;padding:0 2px}',
+    /* Band Momentum */
+    '.hd-momentum{display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px}',
+    '.hd-momentum__arrow{font-size:1.2em;font-weight:800;line-height:1}',
+    '.hd-momentum__label{font-size:0.82em;font-weight:700}',
+    '.hd-momentum__reason{font-size:0.7em;color:var(--text-dim,#475569);flex:1}',
     /* Setup guidance (progressive discovery) */
     '.hd-setup-guidance{display:flex;flex-direction:column;gap:6px}',
     '.hd-setup-step{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px}',
