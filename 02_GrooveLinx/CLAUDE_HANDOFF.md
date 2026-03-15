@@ -41,7 +41,7 @@ It is not just a collection of music tools. The UX should guide each band member
 
 ## Current State (20260315)
 
-**Build:** 20260315-132249
+**Build:** 20260315-133014
 **Active work:** Live band UAT on Command Center dashboard
 **Milestones 1-8:** Complete (Songs shell, Song Intelligence, App Shell, Practice Intelligence, Rehearsal Agenda, Scorecard, Segmentation)
 **Milestone 9:** Command Center dashboard — deployed, in UAT
@@ -135,4 +135,4 @@ Please read these files first:
 3. `02_GrooveLinx/CURRENT_PHASE.md`
 4. `02_GrooveLinx/notes/uat_bug_log.md`
 
-Current build: 20260315-132249. Dev and production are synced. Ask Drew for next priority.
+Current build: 20260315-133014. Dev and production are synced. Ask Drew for next priority.
