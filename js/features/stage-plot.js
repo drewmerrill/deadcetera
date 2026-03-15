@@ -4,9 +4,9 @@
  * Grid-based stage layout with band member positions, gear icons,
  * channel list, and monitor mixes. Persists to Firebase.
  *
- * Phase 1: grid layout + data model + persistence
- * Phase 2: drag-and-drop canvas (future)
- * Phase 3: PDF export (future)
+ * Phase 1: grid layout + data model + persistence (shipped)
+ * Phase 2: export/print + rider notes + contact + duplicate/reset (this build)
+ * Phase 3: drag-and-drop canvas + richer rider builder (future)
  *
  * DEPENDS ON: firebase-service.js, data.js (bandMembers), navigation.js
  * EXPOSES: renderStagePlotPage
@@ -129,9 +129,13 @@ function _spRender() {
     html += '<option value="' + i + '"' + (i === _spCurrentIdx ? ' selected' : '') + '>' + _spEsc(p.name) + '</option>';
   });
   html += '</select>';
-  html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New Layout</button>';
-  html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700;margin-left:auto">Save</button>';
-  html += '</div>';
+  html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New</button>';
+  html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Duplicate</button>';
+  html += '<button onclick="_spResetToDefault()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Reset</button>';
+  html += '<div style="margin-left:auto;display:flex;gap:6px">';
+  html += '<button onclick="_spExportView()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">&#x1F4E4; Export</button>';
+  html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Save</button>';
+  html += '</div></div>';
 
   // Stage canvas (grid-based)
   html += _spRenderStage(plot);
@@ -152,6 +156,18 @@ function _spRender() {
 
   // Monitor mixes
   html += _spRenderMonitorMixes(plot);
+
+  // Tech rider notes
+  html += '<div style="margin-top:20px">';
+  html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Tech Rider Notes</div>';
+  html += '<textarea id="spRiderNotes" onchange="_spUpdateRiderNotes(this.value)" placeholder="Power requirements, IEM notes, backline needs, FOH instructions..." style="width:100%;min-height:80px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82em;font-family:inherit;resize:vertical;box-sizing:border-box">' + _spEsc(plot.riderNotes || '') + '</textarea>';
+  html += '</div>';
+
+  // Contact block
+  html += '<div style="margin-top:16px">';
+  html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Band Contact</div>';
+  html += '<input id="spContact" onchange="_spUpdateContact(this.value)" value="' + _spEsc(plot.contact || '') + '" placeholder="Name, phone, email for sound check coordination" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82em;box-sizing:border-box">';
+  html += '</div>';
 
   container.innerHTML = html;
 }
@@ -348,6 +364,49 @@ function _spSwitchPlot(idx) {
   _spRender();
 }
 
+function _spDuplicatePlot() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var copy = JSON.parse(JSON.stringify(plot));
+  copy.id = 'plot_' + Date.now();
+  copy.name = plot.name + ' (copy)';
+  copy.createdAt = new Date().toISOString();
+  copy.updatedAt = new Date().toISOString();
+  _spPlots.push(copy);
+  _spCurrentIdx = _spPlots.length - 1;
+  _spDirty = true;
+  _spRender();
+  if (typeof showToast === 'function') showToast('Layout duplicated');
+}
+
+function _spResetToDefault() {
+  if (!confirm('Reset this layout to band default positions?')) return;
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  plot.elements = [];
+  var col = 0;
+  if (typeof bandMembers !== 'undefined') {
+    Object.entries(bandMembers).forEach(function(e) {
+      var m = e[1];
+      var icon = m.role === 'Drums' ? '🥁' : m.role === 'Keyboard' ? '🎹' : '🎸';
+      plot.elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + m.role, x: col, y: 1 });
+      col++;
+    });
+  }
+  _spDirty = true;
+  _spRender();
+}
+
+function _spUpdateRiderNotes(val) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (plot) { plot.riderNotes = val; _spDirty = true; }
+}
+
+function _spUpdateContact(val) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (plot) { plot.contact = val; _spDirty = true; }
+}
+
 async function _spSave() {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
@@ -360,6 +419,82 @@ async function _spSave() {
     }
   } catch(e) {
     if (typeof showToast === 'function') showToast('❌ Save failed: ' + e.message);
+  }
+}
+
+// ── Export / Print View ──────────────────────────────────────────────────────
+
+function _spExportView() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var bandName = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
+  var date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Build printable HTML
+  var cols = Math.min(8, Math.max(4, plot.elements.length + 1));
+  var rows = 3;
+
+  var stageHTML = '<table style="width:100%;border-collapse:collapse;margin:12px 0">';
+  for (var r = 0; r < rows; r++) {
+    stageHTML += '<tr>';
+    for (var c = 0; c < cols; c++) {
+      var el = plot.elements.find(function(e) { return e.x === c && e.y === r; });
+      stageHTML += '<td style="border:1px solid #ddd;padding:12px 6px;text-align:center;min-width:80px;height:50px;vertical-align:middle">';
+      if (el) stageHTML += '<div style="font-size:1.2em">' + el.icon + '</div><div style="font-size:0.75em;font-weight:600">' + _spEsc(el.label) + '</div>';
+      stageHTML += '</td>';
+    }
+    stageHTML += '</tr>';
+  }
+  stageHTML += '</table>';
+
+  var channelHTML = '';
+  if (plot.channels && plot.channels.length) {
+    channelHTML = '<h3 style="margin:16px 0 8px;font-size:14px">Channel List</h3><table style="width:100%;border-collapse:collapse">';
+    plot.channels.forEach(function(ch, i) {
+      channelHTML += '<tr><td style="border:1px solid #ddd;padding:4px 8px;width:30px;text-align:right;font-weight:700">' + (i + 1) + '</td><td style="border:1px solid #ddd;padding:4px 8px">' + _spEsc(ch.label || '') + '</td></tr>';
+    });
+    channelHTML += '</table>';
+  }
+
+  var monitorHTML = '';
+  if (plot.monitors && plot.monitors.length) {
+    monitorHTML = '<h3 style="margin:16px 0 8px;font-size:14px">Monitor Mixes</h3><table style="width:100%;border-collapse:collapse">';
+    plot.monitors.forEach(function(mon, i) {
+      monitorHTML += '<tr><td style="border:1px solid #ddd;padding:4px 8px;width:50px;font-weight:700">Mix ' + (i + 1) + '</td><td style="border:1px solid #ddd;padding:4px 8px">' + _spEsc(mon.label || '') + '</td></tr>';
+    });
+    monitorHTML += '</table>';
+  }
+
+  var riderHTML = '';
+  if (plot.riderNotes) {
+    riderHTML = '<h3 style="margin:16px 0 8px;font-size:14px">Tech Rider Notes</h3><div style="white-space:pre-wrap;font-size:12px;border:1px solid #ddd;padding:10px;border-radius:4px">' + _spEsc(plot.riderNotes) + '</div>';
+  }
+
+  var contactHTML = '';
+  if (plot.contact) {
+    contactHTML = '<div style="margin-top:16px;font-size:12px;color:#666">Contact: ' + _spEsc(plot.contact) + '</div>';
+  }
+
+  var printHTML = '<!DOCTYPE html><html><head><title>' + _spEsc(bandName) + ' — ' + _spEsc(plot.name) + '</title>'
+    + '<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:800px;margin:0 auto;padding:20px;color:#1a1a1a}h1{font-size:20px;margin:0}h2{font-size:16px;color:#666;margin:4px 0 16px}@media print{button{display:none}}</style></head><body>'
+    + '<h1>' + _spEsc(bandName) + '</h1>'
+    + '<h2>' + _spEsc(plot.name) + ' — Stage Plot</h2>'
+    + '<div style="font-size:11px;color:#999;margin-bottom:12px">Stage: ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\' | Exported: ' + date + '</div>'
+    + stageHTML
+    + '<div style="text-align:center;font-size:11px;color:#999;margin-top:-8px">▼ AUDIENCE ▼</div>'
+    + channelHTML
+    + monitorHTML
+    + riderHTML
+    + contactHTML
+    + '<button onclick="window.print()" style="margin-top:20px;padding:8px 20px;background:#667eea;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">Print / Save as PDF</button>'
+    + '</body></html>';
+
+  var win = window.open('', '_blank');
+  if (win) {
+    win.document.write(printHTML);
+    win.document.close();
+  } else {
+    if (typeof showToast === 'function') showToast('Pop-up blocked — allow pop-ups to export');
   }
 }
 
@@ -387,5 +522,10 @@ window._spRemoveMonitor = _spRemoveMonitor;
 window._spAddPlot = _spAddPlot;
 window._spSwitchPlot = _spSwitchPlot;
 window._spSave = _spSave;
+window._spDuplicatePlot = _spDuplicatePlot;
+window._spResetToDefault = _spResetToDefault;
+window._spUpdateRiderNotes = _spUpdateRiderNotes;
+window._spUpdateContact = _spUpdateContact;
+window._spExportView = _spExportView;
 
 console.log('🎭 stage-plot.js loaded');
