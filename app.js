@@ -65,10 +65,18 @@ var _loadedVersion = BUILD_VERSION;
         .song-item:hover .song-badges { opacity:0.5; }
         .song-item:hover .song-chain-strip { opacity:0.6; }
         .song-item:hover .song-badge { opacity:0.4; }
-        .song-item.selected { background:#2d3a5c !important; border-color:#667eea !important; }
-        .song-item.selected * { color:inherit !important; }
-        .song-item.selected .song-name { color:#c7d2fe !important; }
-        .song-item.selected .song-badge { opacity:1 !important; }
+        /* Selected song anchor — subtle, works with priority hierarchy */
+        .song-item.selected { background:rgba(99,102,241,0.06) !important; border-left:2px solid #667eea !important; border-color:rgba(99,102,241,0.2) !important; border-left-color:#667eea !important; }
+        .song-item.selected .song-name { color:#e0e7ff !important; font-weight:700 !important; }
+        .song-item.selected .song-badges,
+        .song-item.selected .song-chain-strip,
+        .song-item.selected .song-badge,
+        .song-item.selected .status-badge { opacity:1 !important; }
+        /* Selection overrides ready/unrated receding */
+        .song-item.selected.song--ready { opacity:1 !important; }
+        .song-item.selected.song--unrated .song-name { color:#e0e7ff !important; font-weight:700 !important; }
+        /* Selected + needs-work: keep red border, add accent bottom */
+        .song-item.selected.song--needs-work { border-left-color:#667eea !important; }
         /* Title: visually first, slightly bolder than before */
         .song-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f1f5f9 !important; font-weight:600; font-size:0.9em; line-height:1.3; }
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
@@ -1072,8 +1080,6 @@ function selectSong(songTitle) {
     const clickedItem = event?.target?.closest('.song-item');
     if (clickedItem) {
         clickedItem.classList.add('selected');
-        clickedItem.style.boxShadow = '0 0 0 2px var(--accent, #667eea)';
-        setTimeout(() => { clickedItem.style.boxShadow = ''; }, 600);
     }
 
     // Run showBandResources in background so legacy step-cards stay populated

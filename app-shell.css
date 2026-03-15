@@ -104,9 +104,8 @@ a{color:var(--accent-light);}
     position:relative!important;
 }
 #songDropdown > div:hover{background:#232f45!important;border-color:rgba(255,255,255,0.1)!important;}
-#songDropdown > div.selected{background:#2d3a5c!important;border:1px solid #667eea!important;border-width:1px!important;}
-#songDropdown > div.selected *{color:inherit!important;}
-#songDropdown > div.selected .song-name{color:#c7d2fe!important;}
+#songDropdown > div.selected{background:rgba(99,102,241,0.06)!important;border:1px solid rgba(99,102,241,0.2)!important;border-left:2px solid #667eea!important;}
+#songDropdown > div.selected .song-name{color:#e0e7ff!important;font-weight:700!important;}
 #songDropdown > div:not(.song-item){display:block!important;grid-template-columns:none!important;background:transparent!important;border:none!important;margin:0!important;padding:0!important;}
 
 /* Song name text — MUST be visible */
