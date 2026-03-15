@@ -296,17 +296,43 @@ function _renderDashboard(bundle, context) {
     var activityHTML = _renderActivityFeed(bundle);
     return [
         '<div class="home-dashboard hd-mission-board">',
+
+        // Section 1: Band Mission
         renderHdHeroNextUp(bundle, isStoner),
+
         '<div class="hd-buckets home-anim-cards">',
+
+        // Section 2: Your Prep + Band Strategy
         renderHdYourPrep(bundle),
         renderHdBandStatus(bundle),
+
+        // Section 3: Next Rehearsal Goal + Rehearsal Insights
+        '<div style="grid-column:1/-1;height:8px"></div>', // section spacer
         renderHdNextRehearsalGoal(bundle),
-        renderHdSongsNeedingWork(bundle),
+        renderRehearsalInsights(),
+
+        // Section 4: Practice Radar + Songs Needing Work (radar elevated above warnings)
+        '<div style="grid-column:1/-1;height:8px"></div>',
         renderPracticeRadar(),
+        renderHdSongsNeedingWork(bundle),
+
+        // Section 5: Rehearsal Agenda + Upload
+        '<div style="grid-column:1/-1;height:8px"></div>',
         renderRehearsalAgenda(),
         renderUploadRehearsal(),
+
+        // Section 6: Scorecard + History
+        '<div style="grid-column:1/-1;height:8px"></div>',
         renderLastRehearsal(),
         renderRehearsalHistory(),
+
+        // Future progressive discovery modules
+        // Render after X rehearsals or X recordings:
+        // if (completionHistory.length >= 3) renderImprovementTrends()
+        // if (completionHistory.length >= 5) renderMostImprovedSongs()
+        // if (pocketDataAvailable) renderGrooveTrends()
+        // if (timelineCount >= 2) renderRecordingInsights()
+
         '</div>',
         activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
@@ -486,7 +512,7 @@ function renderHdSongsNeedingWork(bundle) {
         var keys = Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;});
         return keys.length && _bandAvgForSong(e[1]) < 3;
     }).sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);}).slice(0,4);
-    if (!weak.length) return '<div class="hd-bucket hd-bucket--ok" style="grid-column:1/-1"><div class="hd-bucket__header"><span class="hd-bucket__icon">\u2705</span><span class="hd-bucket__title">SONGS NEEDING WORK</span></div><div class="hd-bucket__ok">All songs above readiness threshold \u2014 you\'re in good shape</div></div>';
+    if (!weak.length) return '<div class="hd-bucket hd-bucket--ok"><div class="hd-bucket__header"><span class="hd-bucket__icon">\u2705</span><span class="hd-bucket__title">SONGS NEEDING WORK</span></div><div class="hd-bucket__ok">All songs above readiness threshold \u2014 you\'re in good shape</div></div>';
     var rows = weak.map(function(e){
         var avg = _bandAvgForSong(e[1]);
         var color = avg < 2 ? '#ef4444' : avg < 2.5 ? '#f97316' : '#fbbf24';
@@ -498,7 +524,7 @@ function renderHdSongsNeedingWork(bundle) {
     }).join('');
     var total = Object.entries(rc).filter(function(e){ var k=Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;}); return k.length&&_bandAvgForSong(e[1])<3; }).length;
     var more = total > 4 ? '<div class="hd-bucket__more">+'+(total-4)+' more below threshold</div>' : '';
-    return ['<div class="hd-bucket hd-bucket--weak" style="grid-column:1/-1">',
+    return ['<div class="hd-bucket hd-bucket--weak">',
         '<div class="hd-bucket__header"><span class="hd-bucket__icon">\u26a0\ufe0f</span><span class="hd-bucket__title">SONGS NEEDING WORK</span><span class="hd-bucket__count">'+total+'</span></div>',
         '<div class="hd-bucket__list">'+rows+'</div>',
         more,
@@ -550,7 +576,7 @@ function renderPracticeRadar() {
         expandBtn = '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="_prExpanded=false;if(typeof renderHomeDashboard===\'function\')renderHomeDashboard()">Show Less</button>';
     }
 
-    return '<div class="hd-bucket" style="grid-column:1/-1">'
+    return '<div class="hd-bucket">'
         + '<div class="hd-bucket__header">'
         + '<span class="hd-bucket__icon">\uD83C\uDFAF</span>'
         + '<span class="hd-bucket__title">PRACTICE RADAR</span>'
@@ -637,7 +663,7 @@ function renderRehearsalAgenda() {
             + '<span style="font-size:0.65em;font-weight:700;color:' + color + ';background:' + color + '18;padding:1px 6px;border-radius:4px;text-transform:uppercase">' + item.minutes + 'min</span>'
             + '</div></div>'
             + '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-top:1px">' + _escHtml(item.reason) + '</div>'
-            + '<div style="font-size:0.68em;color:var(--text-muted,#64748b);margin-top:1px">Focus: ' + _escHtml(item.focus) + '</div>'
+            + '<div style="font-size:0.7em;color:#818cf8;font-weight:600;margin-top:2px">🔥 Focus: ' + _escHtml(item.focus) + '</div>'
             + '</div></div></div>';
     }).join('');
 
@@ -662,6 +688,77 @@ function renderRehearsalAgenda() {
         + '<button class="hd-bucket__cta hd-bucket__cta--ghost" onclick="if(typeof GLStore!==\'undefined\'){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard===\'function\')renderHomeDashboard();}">🔄</button>'
         + '</div>'
         + '</div>';
+}
+
+// ── Rehearsal Insights Card ───────────────────────────────────────────────────
+
+function renderRehearsalInsights() {
+    var tl = (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) ? GLStore.getLatestTimeline() : null;
+
+    if (!tl || !tl.summary) {
+        return '<div class="hd-bucket">'
+            + '<div class="hd-bucket__header"><span class="hd-bucket__icon">🔬</span><span class="hd-bucket__title">REHEARSAL INSIGHTS</span></div>'
+            + '<div class="hd-bucket__empty">No rehearsal recordings analyzed yet. Upload one to unlock rehearsal insights.</div>'
+            + '</div>';
+    }
+
+    var sm = tl.summary;
+    var h = '<div class="hd-bucket">'
+        + '<div class="hd-bucket__header"><span class="hd-bucket__icon">🔬</span><span class="hd-bucket__title">REHEARSAL INSIGHTS</span></div>';
+
+    // Last Recording stats
+    h += '<div style="margin-bottom:8px">';
+    h += '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:4px">Last Recording</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    h += '<span style="font-size:0.72em;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(99,102,241,0.12);color:#818cf8">' + sm.segmentCount + ' segments</span>';
+    if (sm.musicSegments) h += '<span style="font-size:0.72em;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(34,197,94,0.1);color:#86efac">' + sm.musicSegments + ' music</span>';
+    if (sm.likelyRestarts) h += '<span style="font-size:0.72em;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(251,191,36,0.1);color:#fbbf24">' + sm.likelyRestarts + ' restart' + (sm.likelyRestarts > 1 ? 's' : '') + '</span>';
+    if (sm.speechSegments) h += '<span style="font-size:0.72em;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text-dim)">' + sm.speechSegments + ' discussion</span>';
+    h += '</div></div>';
+
+    // Most restarted / best run — derive from segments if available
+    if (tl.segments && tl.segments.length) {
+        var songAttempts = {};
+        var songRestarts = {};
+        for (var i = 0; i < tl.segments.length; i++) {
+            var seg = tl.segments[i];
+            var title = seg.likelySongTitle;
+            if (!title) continue;
+            if (seg.likelyIntent === 'restart') {
+                songRestarts[title] = (songRestarts[title] || 0) + 1;
+            } else if (seg.kind === 'music' && seg.likelyIntent === 'attempt') {
+                songAttempts[title] = (songAttempts[title] || 0) + 1;
+            }
+        }
+
+        // Most restarted
+        var topRestart = null, topRestartCount = 0;
+        for (var r in songRestarts) {
+            if (songRestarts[r] > topRestartCount) { topRestart = r; topRestartCount = songRestarts[r]; }
+        }
+
+        // Best run = song with attempts and no restarts (or fewest)
+        var bestRun = null;
+        for (var a in songAttempts) {
+            if (!songRestarts[a]) { bestRun = a; break; }
+        }
+
+        if (topRestart || bestRun) {
+            h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
+            if (topRestart) {
+                h += '<div style="flex:1;min-width:100px"><div style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:2px">Most Restarted</div>'
+                    + '<div style="font-size:0.82em;font-weight:700;color:#fbbf24">' + _escHtml(topRestart) + '</div></div>';
+            }
+            if (bestRun) {
+                h += '<div style="flex:1;min-width:100px"><div style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:2px">Best Run</div>'
+                    + '<div style="font-size:0.82em;font-weight:700;color:#86efac">' + _escHtml(bestRun) + '</div></div>';
+            }
+            h += '</div>';
+        }
+    }
+
+    h += '</div>';
+    return h;
 }
 
 // ── Upload Rehearsal CTA ──────────────────────────────────────────────────────
@@ -1971,7 +2068,7 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-buckets{display:grid;grid-template-columns:1fr 1fr;gap:20px}',
     '@media(max-width:480px){.hd-buckets{grid-template-columns:1fr}}',
     '.hd-bucket{background:rgba(255,255,255,0.03);border-radius:14px;padding:14px 14px 12px;border:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;gap:8px}',
-    '.hd-bucket--weak{border-color:rgba(239,68,68,0.3)!important;box-shadow:0 4px 20px rgba(239,68,68,0.08),inset 0 0 14px rgba(255,80,80,0.08)!important}',
+    '.hd-bucket--weak{border-color:rgba(239,68,68,0.15)!important;background:rgba(239,68,68,0.03)!important}',
     '.hd-bucket--ok{border-color:rgba(74,222,128,0.2)!important}',
     '.hd-bucket__header{display:flex;align-items:center;gap:6px;margin-bottom:2px}',
     '.hd-bucket__icon{font-size:14px}',
