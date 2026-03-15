@@ -173,6 +173,50 @@
       title: 'Band Readiness Score',
       text: 'Average of all band members\' ratings. 5 = locked in, 4 = almost there, 3 = getting there, 2 = knows the basics, 1 = never played it. Slide the bar below to rate yours.',
     },
+
+    // Stage Plot
+    'stage-plot': {
+      title: 'Stage Plot',
+      text: 'Visual stage layout showing where each musician and piece of gear goes. Add elements from the palette, set channel numbers, and export as a printable PDF to send to venues.',
+    },
+
+    // Ideas Board + Discussions
+    'ideas-board': {
+      title: 'Ideas Board',
+      text: 'Shared space for song suggestions, jam ideas, and cover proposals. Paste YouTube or Spotify links and they\'re auto-detected. Create polls to vote on decisions.',
+    },
+    'song-discussion': {
+      title: 'Song Discussion',
+      text: 'Per-song comment thread. Talk about arrangements, tempo, harmony, or rehearsal notes right on the song. Pin important messages so they stay at the top.',
+    },
+
+    // Stoner Mode
+    'stoner-mode': {
+      title: 'Stoner Mode',
+      text: 'Low-brain rehearsal cockpit. Choose Practice (search for charts), Rehearsal (outcomes + streak), or Gig (setlist chart access). Mark songs GOOD, NEEDS WORK, or TRAINWRECK.',
+    },
+
+    // Pocket Meter advanced
+    'pocket-meter': {
+      title: 'Pocket Meter',
+      text: 'Live tempo and groove analysis. LIVE TEMPO mode tracks BPM stability. IN THE POCKET mode measures beat timing precision. Shows groove score, variance, and microtiming deviation.',
+    },
+    'groove-score': {
+      title: 'Groove Score',
+      text: 'Composite groove quality metric (0-100). Combines tempo stability (40%), beat precision (40%), and timing variance (20%). Higher = tighter groove.',
+    },
+
+    // Coaching signal
+    'song-coaching': {
+      title: 'Coaching Signal',
+      text: 'One-line practice hint based on your rehearsal data. Tells you what to focus on: restart patterns, practice decay, readiness gaps, or upcoming gig exposure.',
+    },
+
+    // Rehearsal Brief
+    'rehearsal-brief': {
+      title: 'Rehearsal Brief',
+      text: 'Auto-generated pre-rehearsal summary showing which songs need work, practice focus areas, and discussion activity. Check this before each rehearsal.',
+    },
   };
 
   // ── Empty / First-Use States ───────────────────────────────────────────────

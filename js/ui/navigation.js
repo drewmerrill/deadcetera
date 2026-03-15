@@ -176,7 +176,9 @@ var pageRenderers = window.pageRenderers = {
     help:          function(el) {
         if      (typeof renderHelpPage === 'function') renderHelpPage(el);
         else el.innerHTML = '<p>Help loading…</p>';
-    }
+    },
+    ideas:         function(el) { if (typeof renderIdeasBoardPage   === 'function') renderIdeasBoardPage(el);   },
+    stageplot:     function(el) { if (typeof renderStagePlotPage    === 'function') renderStagePlotPage(el);    },
 };
 
 // ── Browser history support ───────────────────────────────────────────────
@@ -227,7 +229,8 @@ console.log('✅ navigation.js loaded');
     var SKIP = ['songdetail'];  // songdetail needs song context
     var VALID = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
                  'venues','finances','tuner','metronome','bestshot','admin',
-                 'social','notifications','pocketmeter','help','equipment','contacts'];
+                 'social','notifications','pocketmeter','help','equipment','contacts',
+                 'rehearsal-intel','stageplot','ideas'];
     document.addEventListener('DOMContentLoaded', function() {
         try {
             var last = localStorage.getItem('glLastPage');
