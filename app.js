@@ -61,8 +61,8 @@ var _loadedVersion = BUILD_VERSION;
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
         .song-status-cell { width:68px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
         /* Col 2: Icon badges — row layout so single badge stays vertically centered */
-        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:4px; width:44px; flex-shrink:0; overflow:hidden; }
-        .harmony-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
+        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:6px; width:48px; flex-shrink:0; overflow:hidden; }
+        .harmony-slot { display:flex; align-items:center; justify-content:center; width:20px; flex-shrink:0; }
         .northstar-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
         .harmony-badge { font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.35); padding:1px 2px; border-radius:3px; border:1px solid rgba(129,140,248,0.6); overflow:visible; flex-shrink:0; -webkit-font-smoothing:antialiased; }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
@@ -6408,9 +6408,9 @@ function addStatusBadges() {
         
         if (status) {
             const badges = {
-                'prospect': { text: '👀 PROSPECT', color: '#fff', bg: '#7c3aed' },
-                'wip': { text: '🔧 WIP', color: '#fff', bg: '#d97706' },
-                'gig_ready': { text: '✅ READY', color: '#fff', bg: '#059669' }
+                'prospect': { text: 'PROSPECT', color: '#fff', bg: '#7c3aed' },
+                'wip': { text: 'WIP', color: '#fff', bg: '#d97706' },
+                'gig_ready': { text: 'READY', color: '#fff', bg: '#059669' }
             };
             
             const badge = badges[status];

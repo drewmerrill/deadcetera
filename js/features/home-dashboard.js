@@ -369,13 +369,28 @@ function _renderCommandCenterHeader(bundle) {
         chip = '<span class="hd-cc-chip" style="background:' + tone.color + '18;color:' + tone.color + ';border-color:' + tone.color + '44">' + tone.short + '</span>';
     }
     var _helpIcon = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('command-center') : '';
+    // Orientation banner — shows once per device, dismissed to localStorage
+    var _orientKey = 'gl_cc_orient_dismissed';
+    var _orientDismissed = false;
+    try { _orientDismissed = localStorage.getItem(_orientKey) === '1'; } catch(e) {}
+    var _orientBanner = _orientDismissed ? '' :
+        '<div class="hd-cc-orient">'
+        + '<div class="hd-cc-orient__text">'
+        + 'GrooveLinx helps your band: '
+        + '<strong>know what to practice next</strong> \xb7 '
+        + '<strong>see if you\'re improving</strong> \xb7 '
+        + '<strong>know if you\'re ready for the gig</strong>'
+        + '</div>'
+        + '<button class="hd-cc-orient__dismiss" onclick="try{localStorage.setItem(\'' + _orientKey + '\',\'1\')}catch(e){}this.parentElement.remove()" title="Dismiss">Got it</button>'
+        + '</div>';
     return '<div class="hd-cc-header home-anim-header">'
         + '<div class="hd-cc-header__left">'
         + '<div class="hd-cc-header__title">Command Center ' + _helpIcon + '</div>'
         + '<div class="hd-cc-header__date">' + dateStr + '</div>'
         + '</div>'
         + chip
-        + '</div>';
+        + '</div>'
+        + _orientBanner;
 }
 
 // ── Command Center: Setup Guidance (Progressive Discovery) ────────────────────
@@ -3488,6 +3503,11 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-cc-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px}',
     '.hd-cc-header__title{font-size:1.2em;font-weight:800;color:var(--text,#f1f5f9);letter-spacing:-0.01em}',
     '.hd-cc-header__date{font-size:0.72em;font-weight:600;color:var(--text-dim,#475569);margin-top:1px}',
+    '.hd-cc-orient{display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.1);border-radius:8px;margin-top:8px}',
+    '.hd-cc-orient__text{flex:1;font-size:0.72em;color:var(--text-muted,#94a3b8);line-height:1.4}',
+    '.hd-cc-orient__text strong{color:var(--text,#f1f5f9);font-weight:700}',
+    '.hd-cc-orient__dismiss{flex-shrink:0;padding:4px 12px;border-radius:6px;background:rgba(99,102,241,0.12);color:#818cf8;border:none;font-weight:700;font-size:0.68em;cursor:pointer;white-space:nowrap}',
+    '.hd-cc-orient__dismiss:hover{background:rgba(99,102,241,0.2)}',
     '.hd-cc-chip{font-size:10px;font-weight:800;letter-spacing:0.06em;padding:3px 10px;border-radius:20px;border:1px solid;white-space:nowrap}',
     /* CC Next Step inline */
     '.hd-hero:has(+.hd-cc-nextstep){border-radius:16px 16px 0 0;margin-bottom:0}',
