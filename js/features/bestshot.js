@@ -898,6 +898,7 @@ async function chopLoadFile(file) {
             chopDrawWaveform();
             chopRenderSegments();
             chopRenderTimestampMarkerList();
+            chopComputeRestartHotspots();
             showToast('Restored ' + chopMarkers.length + ' saved segment boundaries');
         }
         // If no stored timeline, run fresh AI segmentation
@@ -906,6 +907,7 @@ async function chopLoadFile(file) {
             if (timeline && timeline.segments && timeline.segments.length > 1) {
                 _chopLoadFromTimeline(timeline);
                 chopTimestampMarkers = []; // fresh segmentation = clear old markers
+                chopComputeRestartHotspots();
                 chopDrawWaveform();
                 chopRenderSegments();
                 chopRenderTimestampMarkerList();
@@ -1074,6 +1076,10 @@ function chopWireCanvasEvents() {
     // ── Minimap events ──
     if (minimap) {
         minimap.addEventListener('mousedown', function(e) {
+            // Try hotspot click first
+            var rect = minimap.getBoundingClientRect();
+            var clickSec = ((e.clientX - rect.left) / rect.width) * chopAudioBuffer.duration;
+            if (_chopMinimapHotspotClick(clickSec)) return;
             chopMinimapDragging = true;
             _minimapSeek(e);
         });
@@ -1235,6 +1241,7 @@ function chopDrawMinimap() {
 
     // Draw timestamp markers on minimap
     _chopDrawMinimapEnvelope(ctx, canvas);
+    _chopDrawMinimapHeatmap(ctx, canvas, dur);
     _chopDrawMinimapTimestampMarkers(ctx, canvas, dur);
 }
 
@@ -1320,6 +1327,170 @@ function chopSnapToNearest(sec) {
     return Math.round(best * 100) / 100;
 }
 
+// ── Restart Hotspot Clustering ────────────────────────────────────────────────
+
+var chopRestartHotspots = []; // computed from segments + user markers
+
+/**
+ * Build restart hotspot clusters from timeline segments and user markers.
+ * Clusters nearby restart events within a time window.
+ * @param {number} [windowSec]  Clustering window (default 30s)
+ * @returns {Array} hotspots
+ */
+function chopComputeRestartHotspots(windowSec) {
+    windowSec = windowSec || 30;
+    var events = []; // { sec, source, songTitle }
+
+    // Gather from timeline segments
+    if (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) {
+        var tl = GLStore.getLatestTimeline();
+        if (tl && tl.segments) {
+            for (var i = 0; i < tl.segments.length; i++) {
+                var seg = tl.segments[i];
+                if (seg.likelyIntent === 'restart') {
+                    events.push({ sec: seg.startSec, source: 'ai', songTitle: seg.likelySongTitle || null });
+                }
+            }
+        }
+    }
+
+    // Gather from user timestamp markers
+    for (var m = 0; m < chopTimestampMarkers.length; m++) {
+        if (chopTimestampMarkers[m].type === 'restart') {
+            events.push({ sec: chopTimestampMarkers[m].sec, source: 'user', songTitle: null });
+        }
+    }
+
+    if (!events.length) { chopRestartHotspots = []; return []; }
+
+    // Sort by time
+    events.sort(function(a, b) { return a.sec - b.sec; });
+
+    // Cluster: merge events within windowSec of each other
+    var clusters = [];
+    var current = { events: [events[0]], startSec: events[0].sec, endSec: events[0].sec };
+
+    for (var e = 1; e < events.length; e++) {
+        if (events[e].sec - current.endSec <= windowSec) {
+            current.events.push(events[e]);
+            current.endSec = events[e].sec;
+        } else {
+            clusters.push(current);
+            current = { events: [events[e]], startSec: events[e].sec, endSec: events[e].sec };
+        }
+    }
+    clusters.push(current);
+
+    // Build hotspot objects
+    chopRestartHotspots = clusters.map(function(c) {
+        var center = (c.startSec + c.endSec) / 2;
+        var songTitle = null;
+        var userConfirmed = false;
+        for (var ev = 0; ev < c.events.length; ev++) {
+            if (c.events[ev].songTitle && !songTitle) songTitle = c.events[ev].songTitle;
+            if (c.events[ev].source === 'user') userConfirmed = true;
+        }
+        return {
+            startSec: c.startSec,
+            endSec: c.endSec,
+            centerSec: Math.round(center * 10) / 10,
+            restartCount: c.events.length,
+            songTitle: songTitle,
+            userConfirmed: userConfirmed,
+            intensity: Math.min(1, c.events.length / 4), // normalize 0-1 for visual
+        };
+    });
+
+    return chopRestartHotspots;
+}
+
+/**
+ * Draw restart heatmap on the minimap canvas.
+ */
+function _chopDrawMinimapHeatmap(ctx, canvas, totalDur) {
+    if (!chopRestartHotspots.length || totalDur <= 0) return;
+    for (var i = 0; i < chopRestartHotspots.length; i++) {
+        var h = chopRestartHotspots[i];
+        var startPx = (h.startSec / totalDur) * canvas.width;
+        var endPx = ((h.endSec + 10) / totalDur) * canvas.width; // pad for visibility
+        var width = Math.max(4, endPx - startPx);
+        var alpha = 0.15 + h.intensity * 0.35; // 0.15 - 0.50
+        ctx.fillStyle = 'rgba(239, 68, 68, ' + alpha + ')';
+        ctx.fillRect(startPx, 0, width, canvas.height);
+        // Tick mark at center
+        var cx = (h.centerSec / totalDur) * canvas.width;
+        ctx.fillStyle = 'rgba(239, 68, 68, ' + (0.5 + h.intensity * 0.4) + ')';
+        ctx.fillRect(cx - 1, 0, 2, canvas.height);
+    }
+}
+
+/**
+ * Draw restart heatmap overlay on the main waveform.
+ */
+function _chopDrawWaveformHeatmap(ctx, canvas, viewStart, viewDur) {
+    if (!chopRestartHotspots.length || viewDur <= 0) return;
+    for (var i = 0; i < chopRestartHotspots.length; i++) {
+        var h = chopRestartHotspots[i];
+        // Check if hotspot is in view
+        var hEnd = h.endSec + 10;
+        if (hEnd < viewStart || h.startSec > viewStart + viewDur) continue;
+
+        var startPx = ((h.startSec - viewStart) / viewDur) * canvas.width;
+        var endPx = ((hEnd - viewStart) / viewDur) * canvas.width;
+        var width = Math.max(6, endPx - startPx);
+        var alpha = 0.08 + h.intensity * 0.12; // subtle: 0.08 - 0.20
+
+        // Gradient band
+        ctx.fillStyle = 'rgba(239, 68, 68, ' + alpha + ')';
+        ctx.fillRect(startPx, 0, width, canvas.height);
+
+        // Intensity marker at center
+        var cx = ((h.centerSec - viewStart) / viewDur) * canvas.width;
+        if (cx >= 0 && cx <= canvas.width) {
+            ctx.fillStyle = 'rgba(239, 68, 68, ' + (0.4 + h.intensity * 0.3) + ')';
+            ctx.beginPath();
+            ctx.moveTo(cx, canvas.height - 2);
+            ctx.lineTo(cx - 4, canvas.height - 8);
+            ctx.lineTo(cx + 4, canvas.height - 8);
+            ctx.closePath();
+            ctx.fill();
+
+            // Count label
+            if (h.restartCount >= 2) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
+                ctx.font = 'bold 8px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(h.restartCount + '×', cx, canvas.height - 10);
+            }
+        }
+    }
+}
+
+/**
+ * Handle click on minimap to jump to nearest hotspot.
+ */
+function _chopMinimapHotspotClick(sec) {
+    if (!chopRestartHotspots.length) return false;
+    var bestDist = 15; // within 15 seconds
+    var bestHotspot = null;
+    for (var i = 0; i < chopRestartHotspots.length; i++) {
+        var dist = Math.abs(chopRestartHotspots[i].centerSec - sec);
+        if (dist < bestDist) { bestDist = dist; bestHotspot = chopRestartHotspots[i]; }
+    }
+    if (bestHotspot) {
+        var audio = document.getElementById('chopAudio');
+        if (audio) { audio.currentTime = bestHotspot.startSec; audio.play(); }
+        // Zoom to hotspot region
+        var pad = 15;
+        chopSetZoom(bestHotspot.startSec - pad, bestHotspot.endSec + pad + 10);
+        var info = bestHotspot.restartCount + ' restart' + (bestHotspot.restartCount > 1 ? 's' : '');
+        if (bestHotspot.songTitle) info += ' · ' + bestHotspot.songTitle;
+        showToast('🔴 ' + info + ' at ' + formatChopTime(bestHotspot.centerSec));
+        return true;
+    }
+    return false;
+}
+
 // ── Timestamp Markers ─────────────────────────────────────────────────────────
 
 var CHOP_MARKER_TYPES = {
@@ -1342,6 +1513,7 @@ window.chopAddTimestampMarker = function(type) {
         label: def.label,
     });
     chopTimestampMarkers.sort(function(a, b) { return a.sec - b.sec; });
+    if (type === 'restart') chopComputeRestartHotspots();
     chopDrawWaveform();
     chopDrawMinimap();
     _chopSyncTimestampMarkers();
@@ -1350,6 +1522,7 @@ window.chopAddTimestampMarker = function(type) {
 
 window.chopRemoveTimestampMarker = function(id) {
     chopTimestampMarkers = chopTimestampMarkers.filter(function(m) { return m.id !== id; });
+    chopComputeRestartHotspots();
     chopDrawWaveform();
     chopDrawMinimap();
     _chopSyncTimestampMarkers();
@@ -1627,6 +1800,9 @@ function chopDrawWaveform() {
 
     // Draw energy envelope overlay
     _chopDrawEnvelope(ctx, canvas, viewStart, viewDur);
+
+    // Draw restart heatmap overlay
+    _chopDrawWaveformHeatmap(ctx, canvas, viewStart, viewDur);
 
     // Draw split markers (only those in view)
     chopMarkers.forEach(function(sec) {
