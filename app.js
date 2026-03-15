@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260315-144806', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260315-150721', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260315-144806';
+var BUILD_VERSION = '20260315-150721';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -1097,12 +1097,14 @@ function setupSearchAndFilters() {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             var next = idx < rows.length - 1 ? idx + 1 : 0;
-            rows[next].click();
+            var nextTitle = rows[next].dataset.title;
+            if (nextTitle && typeof highlightSelectedSongRow === 'function') highlightSelectedSongRow(nextTitle);
             rows[next].scrollIntoView({ block: 'nearest' });
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             var prev = idx > 0 ? idx - 1 : rows.length - 1;
-            rows[prev].click();
+            var prevTitle = rows[prev].dataset.title;
+            if (prevTitle && typeof highlightSelectedSongRow === 'function') highlightSelectedSongRow(prevTitle);
             rows[prev].scrollIntoView({ block: 'nearest' });
         } else if (e.key === 'Enter' && sel) {
             e.preventDefault();
@@ -1121,9 +1123,8 @@ function setupSearchAndFilters() {
         }
     });
 
-    // Quick action bar for selected song row
-    function _songInjectQuickActions(row) {
-        // Remove any existing quick action bars
+    // Quick action bar for selected song row — injected on selection, not via observer
+    window._songInjectQuickActions = function(row) {
         document.querySelectorAll('.song-quick-actions').forEach(function(el) { el.remove(); });
         if (!row) return;
         var title = row.dataset.title;
@@ -1135,14 +1136,7 @@ function setupSearchAndFilters() {
         bar.innerHTML = '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + safeTitle + '\')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">CHART</button>'
             + '<button onclick="event.stopPropagation();_songQuickAddToAgenda(\'' + safeTitle + '\')" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">+ AGENDA</button>';
         row.appendChild(bar);
-    }
-
-    // Listen for selection changes to inject quick actions
-    var _songObserver = new MutationObserver(function() {
-        var sel = document.querySelector('#songDropdown .song-item.selected');
-        _songInjectQuickActions(sel);
-    });
-    if (_songDropdown) _songObserver.observe(_songDropdown, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    };
 
     // Inject heatmap toggle button
     if (!document.getElementById('heatmapToggleBtn')) {
@@ -1178,6 +1172,8 @@ function selectSong(songTitle) {
     if (clickedItem) {
         clickedItem.classList.add('selected');
     }
+    // Inject quick actions on the newly selected row
+    if (typeof _songInjectQuickActions === 'function') _songInjectQuickActions(clickedItem);
 
     // Run showBandResources in background so legacy step-cards stay populated
     // as a fallback during the Phase 2 transition period.

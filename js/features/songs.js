@@ -232,7 +232,10 @@ function highlightSelectedSongRow(title) {
     if (!title) return;
     var esc = title.replace(/"/g, '\\"');
     var row = document.querySelector('.song-item[data-title="' + esc + '"]');
-    if (row) row.classList.add('selected');
+    if (row) {
+        row.classList.add('selected');
+        if (typeof _songInjectQuickActions === 'function') _songInjectQuickActions(row);
+    }
 }
 
 // ── Song selection ────────────────────────────────────────────────────────────
