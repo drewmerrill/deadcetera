@@ -283,6 +283,9 @@
     // Bust cache so next loadSongDetail gets fresh data
     delete _state.songDetailCache[songId];
     emit('songFieldUpdated', { songId: songId, field: field, value: value });
+    // Sync all dependent UI surfaces immediately
+    if (typeof renderSongs === 'function') requestAnimationFrame(renderSongs);
+    if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
     if (typeof showToast === 'function') showToast(field.charAt(0).toUpperCase() + field.slice(1) + ' saved');
   }
 

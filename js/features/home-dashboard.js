@@ -130,6 +130,52 @@ window.homeViewSetlist = function homeViewSetlist(linkedSetlist) {
     }
 };
 
+// Deep-link: open the specific gig on the gigs page
+window._hdOpenGig = function(venueHint) {
+    showPage('gigs');
+    // After gigs page renders, try to find and highlight the specific gig
+    if (venueHint) {
+        setTimeout(function() {
+            var cards = document.querySelectorAll('#gigsList .app-card, #gigsList .list-item');
+            for (var i = 0; i < cards.length; i++) {
+                if (cards[i].textContent.indexOf(venueHint) >= 0) {
+                    cards[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    cards[i].style.boxShadow = '0 0 0 2px #667eea';
+                    setTimeout(function(c) { c.style.boxShadow = ''; }.bind(null, cards[i]), 3000);
+                    break;
+                }
+            }
+        }, 400);
+    }
+};
+
+// Deep-link: open the specific setlist on the setlists page (not live mode)
+window._hdViewSetlist = function(setlistName) {
+    showPage('setlists');
+    if (setlistName) {
+        setTimeout(function() {
+            // Find the setlist by name and open it for editing
+            var slCards = document.querySelectorAll('#page-setlists [onclick*="editSetlist"]');
+            for (var i = 0; i < slCards.length; i++) {
+                if (slCards[i].textContent.indexOf(setlistName) >= 0) {
+                    slCards[i].click();
+                    break;
+                }
+            }
+            if (!slCards.length) {
+                // Fallback: scroll to setlist by text match
+                var items = document.querySelectorAll('#page-setlists .app-card, #page-setlists .list-item');
+                for (var j = 0; j < items.length; j++) {
+                    if (items[j].textContent.indexOf(setlistName) >= 0) {
+                        items[j].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        break;
+                    }
+                }
+            }
+        }, 400);
+    }
+};
+
 // ── Data loading ─────────────────────────────────────────────────────────────
 
 async function _homeDataLoad() {
@@ -473,14 +519,31 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     // Readiness progress bar
     var pctColor = pct >= 85 ? 'var(--green)' : pct >= 68 ? '#fbbf24' : pct >= 50 ? '#f97316' : '#ef4444';
     var rlLabel = rl ? rl.long : '';
-    var pctBar = pct !== null ? '<div class="hd-hero__pct-row">' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
-    // Biggest risk song
+    var pctClickAction = ls ? 'homeViewSetlist(\'' + lsEsc + '\')' : 'showPage(\'setlists\')';
+    var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
+    // Biggest risk song — scoped to this gig's setlist only
     var rc2 = bundle.readinessCache || {};
-    var riskEntry = Object.entries(rc2).filter(function(e){return e[1]&&_bandAvgForSong(e[1])<3;}).sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];
+    var gigSetlistSongs = {};
+    if (ls && typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) {
+        var matchSl = window._cachedSetlists.find(function(sl) { return (sl.name||'') === ls; });
+        if (matchSl && matchSl.sets) {
+            for (var si2 = 0; si2 < matchSl.sets.length; si2++) {
+                var setSongs = matchSl.sets[si2].songs || [];
+                for (var sj = 0; sj < setSongs.length; sj++) {
+                    var st = setSongs[sj].title || setSongs[sj];
+                    if (st) gigSetlistSongs[st] = true;
+                }
+            }
+        }
+    }
+    var hasGigScope = Object.keys(gigSetlistSongs).length > 0;
+    var riskEntry = Object.entries(rc2)
+        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!hasGigScope || gigSetlistSongs[e[0]]); })
+        .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); })[0];
     var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
     var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
-    var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gig \u2192</button>';
-    var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="homeViewSetlist(\''+lsEsc+'\')">View Setlist</button>':'';
+    var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" title="Open gig details">Open Gig \u2192</button>';
+    var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
     var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
     return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'',readHTML?'<div class="hd-hero__readiness">'+readHTML+'</div>':'',warnHTML?'<div class="hd-hero__warnings">'+warnHTML+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+'</div>',tertiaryCTA,'</div>'].join('');
 }
