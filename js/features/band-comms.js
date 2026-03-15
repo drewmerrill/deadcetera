@@ -43,12 +43,23 @@ window.renderSongDiscussion = async function(songTitle, container) {
     html += '<div style="max-height:200px;overflow-y:auto;margin-bottom:8px">';
     messages.forEach(function(m) {
       var timeAgo = _bcTimeAgo(m.ts);
+      // Reaction counts
+      var reactions = m.reactions || {};
+      var rCounts = {};
+      Object.values(reactions).forEach(function(e) { rCounts[e] = (rCounts[e] || 0) + 1; });
+      var rHTML = ['👍','🔥','😂'].map(function(e) {
+        var count = rCounts[e] || 0;
+        var msgPath = 'discussions/' + songKey + '/messages/' + m._key;
+        return '<button onclick="_bcReact(\'' + msgPath + '\',\'' + e + '\')" style="background:' + (count ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.03)') + ';border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:1px 5px;cursor:pointer;font-size:0.7em">' + e + (count ? '<span style="font-size:0.85em;margin-left:2px;color:var(--text-dim)">' + count + '</span>' : '') + '</button>';
+      }).join('');
+
       html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
         + '<div style="display:flex;align-items:baseline;gap:6px">'
         + '<span style="font-size:0.78em;font-weight:700;color:var(--text)">' + _bcEsc(m.author || 'Anonymous') + '</span>'
         + '<span style="font-size:0.62em;color:var(--text-dim)">' + timeAgo + '</span>'
         + '</div>'
         + '<div style="font-size:0.82em;color:var(--text-muted);margin-top:2px">' + _bcEsc(m.text || '') + '</div>'
+        + '<div style="display:flex;gap:3px;margin-top:3px">' + rHTML + '</div>'
         + '</div>';
     });
     html += '</div>';
@@ -92,9 +103,16 @@ window._bcPostComment = async function(songTitle) {
 // Band-wide idea sharing. Accessed from a dedicated page.
 
 function renderIdeasBoardPage(el) {
-  el.innerHTML = '<div class="page-header"><h1>💡 Ideas Board</h1><p>Song ideas, jam concepts, setlist suggestions</p></div>'
-    + '<div id="bcIdeasContainer" style="max-width:600px;margin:0 auto"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>';
+  el.innerHTML = '<div class="page-header"><h1>💡 Ideas Board</h1><p>Song ideas, jam concepts, setlist suggestions, polls</p></div>'
+    + '<div style="max-width:600px;margin:0 auto">'
+    + '<div id="bcIdeasContainer"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>'
+    + '<div id="bcPollsContainer" style="margin-top:20px"></div>'
+    + '</div>';
   _bcLoadIdeas();
+  setTimeout(function() {
+    var pollContainer = document.getElementById('bcPollsContainer');
+    if (pollContainer && typeof renderPollWidget === 'function') renderPollWidget(pollContainer);
+  }, 100);
 }
 
 async function _bcLoadIdeas() {
@@ -203,6 +221,148 @@ function _bcTimeAgo(ts) {
 function _bcEsc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Event Comment Threads (Phase 2) ──────────────────────────────────────────
+// Attach comments to rehearsals or gigs by eventId.
+// Firebase: bands/{slug}/events/{eventId}/comments[]
+
+window.renderEventComments = async function(eventId, container, label) {
+  if (!container || !eventId) return;
+  container.innerHTML = '<div style="font-size:0.82em;color:var(--text-dim);padding:4px">Loading comments...</div>';
+
+  var messages = [];
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      var snap = await firebaseDB.ref(bandPath('events/' + eventId + '/comments')).orderByChild('ts').limitToLast(30).once('value');
+      var val = snap.val();
+      if (val) messages = Object.entries(val).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); });
+    }
+  } catch(e) {}
+  messages.sort(function(a, b) { return (a.ts || '').localeCompare(b.ts || ''); });
+
+  var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">' + _bcEsc(label || 'Comments') + '</div>';
+  if (!messages.length) {
+    html += '<div style="font-size:0.78em;color:var(--text-dim);font-style:italic;padding:4px 0">No comments yet.</div>';
+  } else {
+    html += '<div style="max-height:180px;overflow-y:auto;margin-bottom:6px">';
+    messages.forEach(function(m) {
+      html += '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+        + '<span style="font-size:0.75em;font-weight:700;color:var(--text)">' + _bcEsc(m.author || '') + '</span>'
+        + '<span style="font-size:0.6em;color:var(--text-dim);margin-left:6px">' + _bcTimeAgo(m.ts) + '</span>'
+        + '<div style="font-size:0.78em;color:var(--text-muted);margin-top:1px">' + _bcEsc(m.text || '') + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+  var safeId = eventId.replace(/'/g, "\\'");
+  html += '<div style="display:flex;gap:4px"><input id="bcEventInput_' + eventId + '" placeholder="Add comment..." style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit">';
+  html += '<button onclick="_bcPostEventComment(\'' + safeId + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:0.72em;font-weight:700">Send</button></div>';
+  container.innerHTML = html;
+};
+
+window._bcPostEventComment = async function(eventId) {
+  var input = document.getElementById('bcEventInput_' + eventId);
+  if (!input || !input.value.trim()) return;
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      await firebaseDB.ref(bandPath('events/' + eventId + '/comments')).push({
+        author: _bcGetName(), text: input.value.trim(), ts: new Date().toISOString()
+      });
+      input.value = '';
+      var container = input.closest('[id]') || input.parentElement.parentElement;
+      if (container) window.renderEventComments(eventId, container);
+    }
+  } catch(e) {}
+};
+
+// ── Polls (Phase 2) ──────────────────────────────────────────────────────────
+// Firebase: bands/{slug}/polls/{pollId}
+
+window.renderPollWidget = async function(container) {
+  if (!container) return;
+  var polls = [];
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      var snap = await firebaseDB.ref(bandPath('polls')).orderByChild('ts').limitToLast(5).once('value');
+      var val = snap.val();
+      if (val) polls = Object.entries(val).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); });
+    }
+  } catch(e) {}
+  polls.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+  var userId = _bcGetName();
+
+  var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Polls</div>';
+
+  // Create poll form
+  html += '<div style="margin-bottom:12px"><input id="bcPollQ" placeholder="Ask a question..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
+  html += '<input id="bcPollOpts" placeholder="Options (comma-separated)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
+  html += '<button onclick="_bcCreatePoll()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.72em;font-weight:700">Create Poll</button></div>';
+
+  // Existing polls
+  polls.forEach(function(p) {
+    html += '<div style="padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px">';
+    html += '<div style="font-weight:700;font-size:0.85em;color:var(--text);margin-bottom:6px">' + _bcEsc(p.question) + '</div>';
+    var votes = p.votes || {};
+    var myVote = votes[userId];
+    (p.options || []).forEach(function(opt, i) {
+      var count = Object.values(votes).filter(function(v) { return v === i; }).length;
+      var isMyVote = myVote === i;
+      html += '<div onclick="_bcVotePoll(\'' + p._key + '\',' + i + ')" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-bottom:3px;border-radius:4px;cursor:pointer;background:' + (isMyVote ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)') + ';border:1px solid ' + (isMyVote ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.04)') + '">';
+      html += '<span style="flex:1;font-size:0.8em;color:var(--text-muted)">' + _bcEsc(opt) + '</span>';
+      html += '<span style="font-size:0.72em;font-weight:700;color:' + (isMyVote ? '#a5b4fc' : 'var(--text-dim)') + '">' + count + '</span>';
+      html += '</div>';
+    });
+    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-top:4px">' + _bcEsc(p.author || '') + ' · ' + _bcTimeAgo(p.ts) + '</div>';
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+};
+
+window._bcCreatePoll = async function() {
+  var qEl = document.getElementById('bcPollQ');
+  var oEl = document.getElementById('bcPollOpts');
+  if (!qEl || !qEl.value.trim() || !oEl || !oEl.value.trim()) { if (typeof showToast === 'function') showToast('Enter question and options'); return; }
+  var options = oEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (options.length < 2) { if (typeof showToast === 'function') showToast('Need at least 2 options'); return; }
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      await firebaseDB.ref(bandPath('polls')).push({
+        question: qEl.value.trim(), options: options, votes: {}, author: _bcGetName(), ts: new Date().toISOString()
+      });
+      qEl.value = ''; oEl.value = '';
+      var container = qEl.closest('[id]') || qEl.parentElement.parentElement.parentElement;
+      if (container && typeof renderPollWidget === 'function') renderPollWidget(container);
+      if (typeof showToast === 'function') showToast('Poll created!');
+    }
+  } catch(e) {}
+};
+
+window._bcVotePoll = async function(pollKey, optionIdx) {
+  var userId = _bcGetName();
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      await firebaseDB.ref(bandPath('polls/' + pollKey + '/votes/' + userId)).set(optionIdx);
+      if (typeof showToast === 'function') showToast('Vote recorded');
+      // Refresh — find the poll container
+      var containers = document.querySelectorAll('[id]');
+      // Simple refresh: just reload ideas page if on it
+      if (typeof currentPage !== 'undefined' && currentPage === 'ideas') _bcLoadIdeas();
+    }
+  } catch(e) {}
+};
+
+// ── Reactions (Phase 2) ──────────────────────────────────────────────────────
+// Add reactions to song discussion comments.
+
+window._bcReact = async function(path, emoji) {
+  var userId = _bcGetName();
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      await firebaseDB.ref(bandPath(path + '/reactions/' + userId)).set(emoji);
+    }
+  } catch(e) {}
+};
 
 // ── Register ────────────────────────────────────────────────────────────────
 
