@@ -218,6 +218,7 @@ async function _sdPopulateBandLens(title) {
         '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>'+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
+        '<div class="sd-card" id="sd-discussion-mount"><div style="font-size:0.82em;color:var(--text-dim);padding:4px">Loading discussion...</div></div>'+
         '<div class="sd-card">'+
         '<div class="sd-card-title">📋 Band Notes</div>'+
         '<div class="sd-notes-sub">Stage Crib Notes</div>'+
@@ -227,6 +228,11 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         '</div>';
     _sdBuildReadinessStrip(title);
+    // Load song discussion
+    setTimeout(function() {
+        var discMount = document.getElementById('sd-discussion-mount');
+        if (discMount && typeof renderSongDiscussion === 'function') renderSongDiscussion(title, discMount);
+    }, 200);
 }
 
 function _sdSectionDots(sectionRatings) {

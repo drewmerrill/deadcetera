@@ -184,7 +184,7 @@ var pageRenderers = window.pageRenderers = {
 // Pages the hash router will accept. Anything else falls back to 'home'.
 var _HASH_VALID_PAGES = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
     'venues','finances','tuner','metronome','bestshot','admin',
-    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel','stageplot'];
+    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel','stageplot','ideas'];
 
 function _sanitizeHashPage(raw) {
     if (!raw) return 'home';

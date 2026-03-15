@@ -33,6 +33,7 @@
       { page: 'setlists',  icon: '📋', label: 'Setlists' },
       { page: 'practice',  icon: '🎯', label: 'Practice' },
       { page: 'rehearsal', icon: '📅', label: 'Rehearsals' },
+      { page: 'ideas',     icon: '💡', label: 'Ideas Board' },
     ]},
     { title: 'Gigs', sub: 'Shows, venues, stage plots', items: [
       { page: 'gigs',      icon: '🎤', label: 'Gigs' },
