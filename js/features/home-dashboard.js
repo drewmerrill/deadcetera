@@ -294,10 +294,9 @@ function _scorePlayShowCard(bundle) {
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
     var activityHTML = _renderActivityFeed(bundle);
-    // Determine workflow state for visual emphasis
+    // Determine workflow state for phase activation
     var hasTimeline = !!(typeof GLStore !== 'undefined' && GLStore.getLatestTimeline && GLStore.getLatestTimeline());
     var hasScorecard = !!(typeof GLStore !== 'undefined' && GLStore.getLatestCompletedSummary && GLStore.getLatestCompletedSummary());
-    var hasAttempts = !!(typeof GLStore !== 'undefined' && GLStore.getAttemptIntelligence && GLStore.getAttemptIntelligence() && GLStore.getAttemptIntelligence().hasData);
 
     return [
         '<div class="home-dashboard hd-mission-board">',
@@ -307,46 +306,51 @@ function _renderDashboard(bundle, context) {
 
         '<div class="hd-spine-container">',
 
-        // Phase: PLAN
-        '<div class="hd-phase' + (hasScorecard ? ' hd-phase--active' : '') + '" data-phase="Plan">',
+        // Phase: PLAN — what we intend to work on
+        // Always active: planning is always relevant
+        '<div class="hd-phase hd-phase--active" data-phase="Plan">',
         '<div class="hd-phase__label">Plan</div>',
         '<div class="hd-phase__cards hd-buckets home-anim-cards">',
         renderHdYourPrep(bundle),
         renderHdBandStatus(bundle),
         renderHdNextRehearsalGoal(bundle),
-        renderRehearsalAgenda(),
         '</div></div>',
 
-        // Phase: CAPTURE
-        '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Capture">',
+        // Phase: CAPTURE — getting rehearsal material into GrooveLinx
+        // Always active: upload CTA should never be muted
+        '<div class="hd-phase hd-phase--active" data-phase="Capture">',
         '<div class="hd-phase__label">Capture</div>',
         '<div class="hd-phase__cards hd-buckets">',
         renderUploadRehearsal(),
-        renderRehearsalInsights(),
         '</div></div>',
 
-        // Phase: ANALYZE
+        // Phase: ANALYZE — what happened in the rehearsal
+        // Active when timeline exists (recording has been analyzed)
         '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Analyze">',
         '<div class="hd-phase__label">Analyze</div>',
         '<div class="hd-phase__cards hd-buckets">',
+        renderRehearsalInsights(),
         renderRehearsalTimelinePreview(),
+        renderLastRehearsal(),
+        renderRehearsalHistory(),
+        '</div></div>',
+
+        // Phase: LEARN — where trouble spots and patterns are
+        // Active when timeline exists (analysis feeds learning)
+        '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Learn">',
+        '<div class="hd-phase__label">Learn</div>',
+        '<div class="hd-phase__cards hd-buckets">',
+        renderHdSongsNeedingWork(bundle),
         (typeof renderAttemptIntelligence === 'function' ? renderAttemptIntelligence() : ''),
         '</div></div>',
 
-        // Phase: LEARN
-        '<div class="hd-phase' + (hasAttempts ? ' hd-phase--active' : '') + '" data-phase="Learn">',
-        '<div class="hd-phase__label">Learn</div>',
-        '<div class="hd-phase__cards hd-buckets">',
-        renderPracticeRadar(),
-        renderHdSongsNeedingWork(bundle),
-        '</div></div>',
-
-        // Phase: IMPROVE
-        '<div class="hd-phase' + (hasScorecard ? ' hd-phase--active' : '') + '" data-phase="Improve">',
+        // Phase: IMPROVE — what to do next based on findings
+        // Active when timeline or scorecard exists (recommendations available)
+        '<div class="hd-phase' + ((hasTimeline || hasScorecard) ? ' hd-phase--active' : '') + '" data-phase="Improve">',
         '<div class="hd-phase__label">Improve</div>',
         '<div class="hd-phase__cards hd-buckets">',
-        renderLastRehearsal(),
-        renderRehearsalHistory(),
+        renderPracticeRadar(),
+        renderRehearsalAgenda(),
         '</div></div>',
 
         '</div>', // end spine-container
