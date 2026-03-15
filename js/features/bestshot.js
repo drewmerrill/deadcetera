@@ -806,6 +806,7 @@ var chopSelectedSegment = -1; // which segment is selected for boundary editing
 var chopSettingBoundary = null; // 'start' or 'end'
 var chopTimestampMarkers = []; // { sec, type, label } — user annotation markers (not segment boundaries)
 var chopEnergyEnvelope = null; // { rms: Float32Array, windowSec: number, totalSec: number } — computed once on load
+window._chopShowFiltered = false; // toggle for showing excluded/filtered segments
 
 // ── Zoom / Navigation State ──
 var chopZoom = { startSec: 0, endSec: 0 };   // visible window (0,0 = full view)
@@ -1972,8 +1973,11 @@ function chopRenderSegments() {
     for (var k = 0; k < allMarkers.length - 1; k++) { if (!chopExcluded[k]) activeCount++; }
 
     var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-    html += '<div style="font-weight:700;font-size:0.88em">🎵 Segments (' + activeCount + ' active / ' + (allMarkers.length - 1) + ' total)</div>';
-    html += '<div style="font-size:0.68em;color:var(--text-dim)">Click a time to set boundary on waveform</div>';
+    var excludedCount = (allMarkers.length - 1) - activeCount;
+    html += '<div style="font-weight:700;font-size:0.88em">🎵 Segments (' + activeCount + ' detected)</div>';
+    if (excludedCount > 0) {
+        html += '<button onclick="window._chopShowFiltered=!window._chopShowFiltered;chopRenderSegments()" style="font-size:0.65em;background:none;border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);border-radius:4px;padding:2px 8px;cursor:pointer">' + (window._chopShowFiltered ? 'Hide' : 'Show') + ' filtered (' + excludedCount + ')</button>';
+    }
     html += '</div>';
 
     for (var i = 0; i < allMarkers.length - 1; i++) {
@@ -1981,6 +1985,8 @@ function chopRenderSegments() {
         var endSec = allMarkers[i + 1];
         var segDuration = endSec - startSec;
         var isExcluded = !!chopExcluded[i];
+        // Hide excluded segments unless user toggled "Show filtered"
+        if (isExcluded && !window._chopShowFiltered) continue;
         var isSel = chopSelectedSegment === i;
         var meta = chopSegmentMeta[i] || { kind: 'unknown', confidence: 0, likelyIntent: 'unknown', likelySongTitle: null };
         var borderColor = isSel ? '#f59e0b' : (isExcluded ? '#666' : (kindColors[meta.kind] || '#667eea'));

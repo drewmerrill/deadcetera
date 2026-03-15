@@ -93,10 +93,16 @@
     // Step 9: Final micro-segment cleanup
     segments = _finalCleanup(segments, opts);
 
-    // Step 10: Restart detection
+    // Step 10: Consolidation pipeline
+    segments = _consolidateSegments(segments, opts);
+
+    // Step 11: Restart detection (runs on clean segments)
     _detectRestarts(segments);
 
-    // Step 11: Reindex
+    // Step 12: Flag song-length candidates
+    _flagSongCandidates(segments);
+
+    // Step 13: Reindex
     for (var ri = 0; ri < segments.length; ri++) segments[ri].id = 'seg_' + ri;
 
     return {
@@ -318,6 +324,85 @@
       }
     }
     return cleaned;
+  }
+
+  // ── Segment Consolidation Pipeline ──────────────────────────────────────────
+
+  var CONSOLIDATE_OPTS = {
+    mergeGapSec: 3,          // merge segments separated by < 3s gaps
+    microSegmentSec: 7,      // remove segments shorter than 7s
+    restartClusterSec: 8,    // collapse restart detections within 8s
+    songCandidateSec: 120,   // flag segments > 120s as song candidates
+  };
+
+  function _consolidateSegments(segments, opts) {
+    if (segments.length < 2) return segments;
+
+    // Step 1: Merge nearby segments (gap < 3s between end of one and start of next)
+    var merged = [segments[0]];
+    for (var i = 1; i < segments.length; i++) {
+      var prev = merged[merged.length - 1];
+      var cur = segments[i];
+      var gap = cur.startSec - prev.endSec;
+      if (gap < CONSOLIDATE_OPTS.mergeGapSec && gap >= 0) {
+        // Merge: extend previous to cover current
+        prev.endSec = cur.endSec;
+        prev.durationSec = _r1(prev.endSec - prev.startSec);
+        if (cur.confidence > prev.confidence) {
+          prev.confidence = cur.confidence;
+          prev.kind = cur.kind;
+          prev.likelyIntent = cur.likelyIntent;
+        }
+      } else {
+        merged.push(cur);
+      }
+    }
+
+    // Step 2: Remove micro-segments (< 7s) unless they look like meaningful restarts
+    var cleaned = [];
+    for (var j = 0; j < merged.length; j++) {
+      var seg = merged[j];
+      if (seg.durationSec < CONSOLIDATE_OPTS.microSegmentSec) {
+        // Keep if it's a classified restart with decent confidence
+        if (seg.likelyIntent === 'restart' && seg.confidence >= 0.5) {
+          cleaned.push(seg);
+          continue;
+        }
+        // Absorb into neighbor
+        if (cleaned.length > 0) {
+          cleaned[cleaned.length - 1].endSec = seg.endSec;
+          cleaned[cleaned.length - 1].durationSec = _r1(cleaned[cleaned.length - 1].endSec - cleaned[cleaned.length - 1].startSec);
+        }
+        continue;
+      }
+      cleaned.push(seg);
+    }
+
+    // Step 3: Collapse restart clusters (multiple restarts within 8s → one)
+    var collapsed = [];
+    for (var k = 0; k < cleaned.length; k++) {
+      var s = cleaned[k];
+      if (s.likelyIntent === 'restart' && collapsed.length > 0) {
+        var lastCollapsed = collapsed[collapsed.length - 1];
+        if (lastCollapsed.likelyIntent === 'restart' && (s.startSec - lastCollapsed.endSec) < CONSOLIDATE_OPTS.restartClusterSec) {
+          // Merge into previous restart
+          lastCollapsed.endSec = s.endSec;
+          lastCollapsed.durationSec = _r1(lastCollapsed.endSec - lastCollapsed.startSec);
+          continue;
+        }
+      }
+      collapsed.push(s);
+    }
+
+    return collapsed;
+  }
+
+  function _flagSongCandidates(segments) {
+    for (var i = 0; i < segments.length; i++) {
+      if (segments[i].kind === 'music' && segments[i].durationSec >= CONSOLIDATE_OPTS.songCandidateSec) {
+        segments[i]._isSongCandidate = true;
+      }
+    }
   }
 
   // ── Restart Detection ──────────────────────────────────────────────────────
