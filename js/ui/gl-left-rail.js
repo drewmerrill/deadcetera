@@ -23,6 +23,9 @@
   var _items = null; // NodeList of .gl-rail-item elements
 
   // Nav structure — mirrors the slide-out menu sections
+  // Full navigation schema — matches the hamburger slide-out menu in index.html.
+  // Both surfaces must stay in sync. If you add a page here, add it to
+  // the slide-out menu too (and vice versa).
   var NAV_SECTIONS = [
     { title: 'Music', items: [
       { page: 'home',      icon: '🏠', label: 'Home' },
@@ -37,9 +40,20 @@
       { page: 'venues',   icon: '🏛️', label: 'Venues' },
     ]},
     { title: 'Tools', items: [
+      { page: 'playlists',   icon: '🎧', label: 'Playlists' },
       { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter' },
       { page: 'tuner',       icon: '🎸', label: 'Tuner' },
       { page: 'metronome',   icon: '🥁', label: 'Metronome' },
+    ]},
+    { title: 'More', items: [
+      { page: 'bestshot',      icon: '🏆', label: 'Best Shot' },
+      { page: 'social',        icon: '📣', label: 'Social Media' },
+      { page: 'finances',      icon: '💰', label: 'Finances' },
+      { page: 'equipment',     icon: '🎛️', label: 'Equipment' },
+      { page: 'contacts',      icon: '👥', label: 'Contacts' },
+      { page: 'notifications', icon: '🔔', label: 'Notifications' },
+      { page: 'admin',         icon: '⚙️', label: 'Settings' },
+      { page: 'help',          icon: '❓', label: 'Help' },
     ]},
   ];
 
