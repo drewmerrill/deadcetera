@@ -3,7 +3,7 @@
 // =============================================================================
 // Contains:
 //   • Gig CRUD: venueShortLabel, deleteGig, editGig, saveGigEdit
-//   • Gig page: renderGigsPage, loadGigs, addGig, saveGig, gigVenueSelected,
+//   • Gig page: renderGigsPage, loadGigs, addGig, saveGig,
 //               _syncGigToCalendar, seedGigData, gigLaunchLinkedSetlist
 //   • Gig map:  renderGigsMap, gigsMapSetFilter, _gigsMapApplyFilter (state vars)
 //   • Gig history: loadGigHistory
@@ -51,22 +51,21 @@ async function editGig(idx) {
     const gigData = window._cachedGigs || toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const g = gigData[idx];
     if (!g) return;
-    const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const venues = await GLStore.getVenues();
     window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}" ${(g.venue||'')===(v.name||'')?'selected':''} >${venueShortLabel(v)}</option>`).join('');
+    window._gigSelectedVenueId = g.venueId || null;
+    window._gigSelectedVenueName = g.venue || null;
+    // Find pre-selected venue by venueId or name match
+    var preselected = null;
+    if (g.venueId) preselected = venues.find(function(v){ return v.venueId === g.venueId; });
+    if (!preselected && g.venue) preselected = venues.find(function(v){ return v.name === g.venue; });
     const el = document.getElementById('gigsList');
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Edit Gig</h3>
         <div class="form-grid">
             <div class="form-row" style="grid-column:1/-1">
                 <label class="form-label">Venue</label>
-                <select class="app-select" id="gigVenueSelect" onchange="gigVenueSelected(this)" style="margin-bottom:6px">
-                    <option value="">-- Select a venue --</option>
-                    ${venueOpts}
-                    <option value="__new__">➕ Add new venue…</option>
-                </select>
-                <input class="app-input" id="gigVenue" value="${(g.venue||'').replace(/"/g,'&quot;')}" placeholder="Venue name">
+                <div id="gigVenuePicker"></div>
             </div>
             <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date" value="${g.date||''}"></div>
             <div class="form-row"><label class="form-label">Pay / Guarantee</label><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
@@ -89,6 +88,7 @@ async function editGig(idx) {
             <button class="btn btn-ghost" onclick="loadGigs()">Cancel</button>
         </div>
     </div>`;
+    _gigInitVenuePicker(venues, preselected);
 }
 
 async function saveGigEdit(idx) {
@@ -100,7 +100,8 @@ async function saveGigEdit(idx) {
     gigData[idx] = {
         ...prev,
         gigId:         prev.gigId || generateShortId(12),
-        venue:         document.getElementById('gigVenue')?.value?.trim(),
+        venueId:       window._gigVenueTouched ? (window._gigSelectedVenueId || null) : (prev.venueId || null),
+        venue:         window._gigVenueTouched ? (window._gigSelectedVenueName || '') : (prev.venue || ''),
         date:          document.getElementById('gigDate')?.value,
         pay:           document.getElementById('gigPay')?.value,
         arrivalTime:   document.getElementById('gigArrival')?.value,
@@ -160,13 +161,17 @@ async function renderGigsMap() {
     var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     var venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
 
-    // Build venue lookup by name
-    var venueLookup = {};
-    venues.forEach(function(v) { venueLookup[v.name] = v; });
+    // Build venue lookups — venueId primary, name fallback
+    var venueByIdLookup = {};
+    var venueByNameLookup = {};
+    venues.forEach(function(v) {
+        if (v.venueId) venueByIdLookup[v.venueId] = v;
+        if (v.name) venueByNameLookup[v.name] = v;
+    });
 
     // Attach lat/lng from venues to gigs
     var gigsWithCoords = gigs.filter(function(g) {
-        var v = venueLookup[g.venue];
+        var v = (g.venueId && venueByIdLookup[g.venueId]) || venueByNameLookup[g.venue];
         if (v && v.lat && v.lng) { g._lat = parseFloat(v.lat); g._lng = parseFloat(v.lng); return true; }
         return false;
     });
@@ -379,21 +384,16 @@ async function loadGigs() {
 
 async function addGig() {
     const el = document.getElementById('gigsList');
-    const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
+    const venues = await GLStore.getVenues();
     window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    const venueOpts = venues.map(v => `<option value="${v.name||''}" title="${v.address||''}">${venueShortLabel(v)}</option>`).join('');
+    window._gigSelectedVenueId = null;
+    window._gigSelectedVenueName = null;
     el.innerHTML = `<div class="app-card">
         <h3>🎤 Add New Gig</h3>
         <div class="form-grid">
             <div class="form-row" style="grid-column:1/-1">
                 <label class="form-label">Venue</label>
-                <select class="app-select" id="gigVenueSelect" onchange="gigVenueSelected(this)" style="margin-bottom:6px">
-                    <option value="">-- Select a venue --</option>
-                    ${venueOpts}
-                    <option value="__new__">➕ Add new venue…</option>
-                </select>
-                <input class="app-input" id="gigVenue" placeholder="Venue name (or type a new one)">
+                <div id="gigVenuePicker"></div>
             </div>
             <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date"></div>
             <div class="form-row"><label class="form-label">Pay / Guarantee</label><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
@@ -414,57 +414,52 @@ async function addGig() {
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Parking, load-in door, set length, gear needed…"></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveGig()">💾 Save</button><button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>
     </div>` + el.innerHTML;
+    _gigInitVenuePicker(venues, null);
 }
 
-function gigVenueSelected(sel) {
-    var val = sel.value;
-    var input = document.getElementById('gigVenue');
-    if (!input) return;
-    if (val === '__new__') {
-        sel.value = '';
-        var ex = document.getElementById('gigAddVenueModal'); if (ex) ex.remove();
-        var m = document.createElement('div');
-        m.id = 'gigAddVenueModal';
-        m.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-        m.innerHTML = '<div style="background:#1e293b;border-radius:12px;padding:24px;width:100%;max-width:420px">'
-            + '<h3 style="margin:0 0 16px;color:#fff">🏛 Add New Venue</h3>'
-            + '<div class="form-row" style="margin-bottom:10px"><label class="form-label">Venue Name</label><input class="app-input" id="newVenueName" placeholder="e.g. The Earl"></div>'
-            + '<div class="form-row" style="margin-bottom:10px"><label class="form-label">City / Area</label><input class="app-input" id="newVenueCity" placeholder="e.g. Atlanta, GA"></div>'
-            + '<div class="form-row" style="margin-bottom:16px"><label class="form-label">Address (optional)</label><input class="app-input" id="newVenueAddress" placeholder="e.g. 488 Flat Shoals Ave"></div>'
-            + '<div style="display:flex;gap:8px">'
-            + '<button onclick="gigSaveNewVenue()" class="btn btn-success" style="flex:1">💾 Save Venue</button>'
-            + '<button onclick="document.getElementById(String.fromCharCode(103,105,103,65,100,100,86,101,110,117,101,77,111,100,97,108)).remove()" class="btn btn-ghost" style="flex:1">Cancel</button>'
-            + '</div></div>';
-        document.body.appendChild(m);
-        setTimeout(function(){ var n=document.getElementById('newVenueName'); if(n) n.focus(); },100);
-    } else if (val) {
-        input.value = val;
+// Shared venue picker initializer for gig add/edit forms
+function _gigInitVenuePicker(venues, preselected) {
+    window._gigVenueTouched = false;
+    function _onVenueSelect(v) {
+        window._gigVenueTouched = true;
+        if (v) {
+            window._gigSelectedVenueId = v.venueId || null;
+            window._gigSelectedVenueName = v.name || '';
+        } else {
+            window._gigSelectedVenueId = null;
+            window._gigSelectedVenueName = null;
+        }
     }
-}
-
-async function gigSaveNewVenue() {
-    var name = (document.getElementById("newVenueName")||{}).value||"";
-    var city = (document.getElementById("newVenueCity")||{}).value||"";
-    var addr = (document.getElementById("newVenueAddress")||{}).value||"";
-    var t = name.trim();
-    if (!t) { showToast("Please enter a venue name"); return; }
-    var venues = toArray(await loadBandDataFromDrive("_band", "venues") || []);
-    venues.push({ name: t, city: city, address: addr, created: new Date().toISOString() });
-    venues.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
-    await saveBandDataToDrive("_band", "venues", venues);
-    var modal = document.getElementById("gigAddVenueModal"); if (modal) modal.remove();
-    var sel = document.getElementById("gigVenueSelect");
-    if (sel) {
-        var opt = document.createElement("option");
-        opt.value = t;
-        opt.textContent = city ? t+" — "+city : t;
-        opt.selected = true;
-        sel.insertBefore(opt, sel.lastElementChild);
+    function _onCreateNew(text) {
+        glVenueCreateModal({
+            initialName: text,
+            onSave: function(venue) {
+                window._gigSelectedVenueId = venue.venueId;
+                window._gigSelectedVenueName = venue.name;
+                GLStore.getVenues().then(function(v) {
+                    if (window._gigVenuePicker) window._gigVenuePicker.refresh(v);
+                    if (window._gigVenuePicker) window._gigVenuePicker.setValue(venue.venueId);
+                });
+            },
+            onUseExisting: function(venue) {
+                window._gigSelectedVenueId = venue.venueId;
+                window._gigSelectedVenueName = venue.name;
+                if (window._gigVenuePicker) window._gigVenuePicker.setValue(venue.venueId);
+            }
+        });
     }
-    var inp = document.getElementById("gigVenue"); if (inp) inp.value = t;
-    showToast("🏛 Venue saved!");
+    window._gigVenuePicker = glEntityPicker({
+        containerId: 'gigVenuePicker',
+        items: venues,
+        labelFn: venueShortLabel,
+        subLabelFn: function(v) { return v.address || ''; },
+        onSelect: _onVenueSelect,
+        onCreateNew: _onCreateNew,
+        placeholder: 'Search venues...',
+        emptyText: 'No venues yet',
+        selectedItem: preselected || null
+    });
 }
-window.gigSaveNewVenue = gigSaveNewVenue;
 // Sync a gig record to calendar_events — match by gigId first, fallback venue+date
 async function _syncGigToCalendar(gig, createdKey) {
     if (!gig || !gig.date || !gig.venue) return;
@@ -481,6 +476,7 @@ async function _syncGigToCalendar(gig, createdKey) {
     const calRecord = {
         type: 'gig',
         gigId: gig.gigId || null,
+        venueId: gig.venueId || null,
         date: gig.date || '',
         title: gig.venue || '',
         time: gig.startTime || '',
@@ -512,7 +508,8 @@ async function saveGig() {
     var selectedSetlistId = document.getElementById('gigLinkedSetlist')?.value || null;
     const gig = {
         gigId:      generateShortId(12),
-        venue:      document.getElementById('gigVenue')?.value?.trim(),
+        venueId:    window._gigSelectedVenueId || null,
+        venue:      window._gigSelectedVenueName || '',
         date:       document.getElementById('gigDate')?.value,
         pay:        document.getElementById('gigPay')?.value,
         arrivalTime:   document.getElementById('gigArrival')?.value,
@@ -551,6 +548,7 @@ async function saveGig() {
             gigId: gig.gigId,
             name: (gig.venue || 'Gig') + ' ' + (gig.date || ''),
             date: gig.date || '',
+            venueId: gig.venueId || null,
             venue: gig.venue || '',
             notes: '',
             sets: [{ name: 'Set 1', songs: [] }],

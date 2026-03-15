@@ -161,16 +161,18 @@ async function exportSetlistToiPad(setlistIndex) {
     }
 }
 
-function createNewSetlist() {
+async function createNewSetlist() {
     if (!requireSignIn()) return;
     const container = document.getElementById('setlistsList');
     if (!container) return;
     window._slSets = [{ name: 'Set 1', songs: [] }];
+    window._slSelectedVenueId = null;
+    window._slSelectedVenueName = null;
     container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
         <div class="form-grid" style="margin-bottom:12px">
             <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" placeholder="e.g. Buckhead Theatre 3/15"></div>
             <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date"></div>
-            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" placeholder="Venue name"></div>
+            <div class="form-row"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
         </div>
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
@@ -180,6 +182,7 @@ function createNewSetlist() {
             <button class="btn btn-ghost" onclick="slAddSet('soundcheck')" style="color:var(--yellow)">🔊 Soundcheck</button>
             <button class="btn btn-success" onclick="slSaveSetlist()" style="margin-left:auto">💾 Save Setlist</button>
         </div></div>`;
+    _slInitVenuePicker(await GLStore.getVenues(), null);
 }
 
 var _slOnlyActive = false; // Pierce filter: show only prospect/wip/gig_ready songs
@@ -365,8 +368,9 @@ async function slEnrichKeyBpm() {
     if (!toFetch.length) return;
     await Promise.all(toFetch.map(async function(title) {
         try {
-            var keyData = await loadBandDataFromDrive(title, 'song_key');
-            var bpmData = await loadBandDataFromDrive(title, 'song_bpm');
+            var keyData = await loadBandDataFromDrive(title, 'key').catch(function(){return null;});
+            if (!keyData || !keyData.key) keyData = await loadBandDataFromDrive(title, 'song_key').catch(function(){return null;});
+            var bpmData = await loadBandDataFromDrive(title, 'song_bpm').catch(function(){return null;});
             var sd = allSongsList.find(function(s) { return s.title === title; });
             if (sd) {
                 if (keyData && keyData.key) sd.key = keyData.key;
@@ -431,7 +435,8 @@ async function slSaveSetlist() {
         gigId: null,
         name: document.getElementById('slName')?.value || 'Untitled',
         date: document.getElementById('slDate')?.value || '',
-        venue: document.getElementById('slVenue')?.value || '',
+        venueId: window._slSelectedVenueId || null,
+        venue: window._slSelectedVenueName || '',
         notes: document.getElementById('slNotes')?.value || '',
         sets: window._slSets || [],
         created: new Date().toISOString()
@@ -453,13 +458,15 @@ async function editSetlist(idx) {
     window._slSets = sl.sets || [{ name: 'Set 1', songs: [] }];
     window._slEditIndex = idx;
     _slSetCount = window._slSets.length;
-    
+    window._slSelectedVenueId = sl.venueId || null;
+    window._slSelectedVenueName = sl.venue || null;
+
     const container = document.getElementById('setlistsList');
     container.innerHTML = `<div class="app-card"><h3>Edit: ${sl.name||'Untitled'}</h3>
         <div class="form-grid" style="margin-bottom:12px">
             <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" value="${(sl.name||'').replace(/"/g,'&quot;')}"></div>
             <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${sl.date||''}" style="max-width:100%;box-sizing:border-box;padding-right:36px;"></div>
-            <div class="form-row"><label class="form-label">Venue</label><input class="app-input" id="slVenue" value="${(sl.venue||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" value="${(sl.notes||'').replace(/"/g,'&quot;')}"></div>
         </div>
         <div id="slLinkedGigRow" style="margin-bottom:8px"></div>
@@ -480,6 +487,13 @@ async function editSetlist(idx) {
             <button class="btn btn-ghost" onclick="loadSetlists()">Cancel</button>
         </div></div>`;
     
+    // Init venue picker for edit form
+    var slVenues = await GLStore.getVenues();
+    var slPreselected = null;
+    if (sl.venueId) slPreselected = slVenues.find(function(v){ return v.venueId === sl.venueId; });
+    if (!slPreselected && sl.venue) slPreselected = slVenues.find(function(v){ return v.name === sl.venue; });
+    _slInitVenuePicker(slVenues, slPreselected);
+
     // Render existing songs in each set
     window._slSets.forEach((set, si) => slRenderSetSongs(si));
     slEnrichKeyBpm();
@@ -825,7 +839,8 @@ async function slSaveSetlistEdit(idx) {
         gigId: prev.gigId || null,
         name: document.getElementById('slName')?.value || 'Untitled',
         date: document.getElementById('slDate')?.value || '',
-        venue: document.getElementById('slVenue')?.value || '',
+        venueId: window._slVenueTouched ? (window._slSelectedVenueId || null) : (prev.venueId || null),
+        venue: window._slVenueTouched ? (window._slSelectedVenueName || '') : (prev.venue || ''),
         notes: document.getElementById('slNotes')?.value || '',
         sets: window._slSets || [],
         updated: new Date().toISOString()
@@ -850,6 +865,51 @@ async function deleteSetlist(idx) {
 // Returns "Venue Name — City, ST" for dropdown display, falling back gracefully
 // venueShortLabel(), deleteGig(), editGig(), saveGigEdit()
 // → js/features/gigs.js
+
+// Venue picker init for setlist forms
+function _slInitVenuePicker(venues, preselected) {
+    if (!document.getElementById('slVenuePicker')) return;
+    window._slVenueTouched = false;
+    function _onSelect(v) {
+        window._slVenueTouched = true;
+        if (v) {
+            window._slSelectedVenueId = v.venueId || null;
+            window._slSelectedVenueName = v.name || '';
+        } else {
+            window._slSelectedVenueId = null;
+            window._slSelectedVenueName = null;
+        }
+    }
+    function _onCreateNew(text) {
+        glVenueCreateModal({
+            initialName: text,
+            onSave: function(venue) {
+                window._slSelectedVenueId = venue.venueId;
+                window._slSelectedVenueName = venue.name;
+                GLStore.getVenues().then(function(v) {
+                    if (window._slVenuePicker) window._slVenuePicker.refresh(v);
+                    if (window._slVenuePicker) window._slVenuePicker.setValue(venue.venueId);
+                });
+            },
+            onUseExisting: function(venue) {
+                window._slSelectedVenueId = venue.venueId;
+                window._slSelectedVenueName = venue.name;
+                if (window._slVenuePicker) window._slVenuePicker.setValue(venue.venueId);
+            }
+        });
+    }
+    window._slVenuePicker = glEntityPicker({
+        containerId: 'slVenuePicker',
+        items: venues,
+        labelFn: venueShortLabel,
+        subLabelFn: function(v) { return v.address || ''; },
+        onSelect: _onSelect,
+        onCreateNew: _onCreateNew,
+        placeholder: 'Search venues...',
+        emptyText: 'No venues yet',
+        selectedItem: preselected || null
+    });
+}
 
 // ── Window exports (called from inline HTML onclick handlers) ──────────────
 window.renderSetlistsPage = renderSetlistsPage;

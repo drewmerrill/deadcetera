@@ -296,17 +296,17 @@ async function calAddEvent(date, editIdx, existing) {
     if (!area) return;
     const isEdit = editIdx !== undefined;
     const ev = existing || {};
+    // Reset venue picker state
+    window._calVenuePicker = null;
     // Load setlists + venues for gig-type dropdowns
     const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     setlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     const setlistOpts = setlists.map(sl =>
         `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}" ${(sl.setlistId&&ev.setlistId===sl.setlistId)||(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
     ).join('');
-    const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
-    venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    const venueOptsCal = venues.map(v =>
-        `<option value="${(v.name||'').replace(/"/g,'&quot;')}" ${(ev.venue||'')===(v.name||'')?'selected':''}>${venueShortLabel(v)}</option>`
-    ).join('');
+    const venues = await GLStore.getVenues();
+    window._calSelectedVenueId = ev.venueId || null;
+    window._calSelectedVenueName = ev.venue || null;
     const showSetlist = ev.type === 'gig';
     const showVenue   = ev.type === 'gig';
     area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
@@ -319,13 +319,8 @@ async function calAddEvent(date, editIdx, existing) {
             <option value="other" ${ev.type==='other'?'selected':''}>&#128204; Other</option>
         </select></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
-            <label class="form-label">🏛️ Venue</label>
-            <select class="app-select" id="calVenue" onchange="calVenueSelected(this)" style="margin-bottom:6px">
-                <option value="">-- Select a venue --</option>
-                ${venueOptsCal}
-                <option value="__other__">➕ Other / New venue…</option>
-            </select>
-            <input class="app-input" id="calVenueCustom" placeholder="Or type venue name" value="${ev.venueCustom||''}" style="${(ev.venue&&!venues.find(v=>v.name===ev.venue))||ev.venueCustom?'':'display:none'}">
+            <label class="form-label">Venue</label>
+            <div id="calVenuePicker"></div>
         </div>
         <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's" value="${ev.title||''}"></div>
         <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}"></div>
@@ -342,6 +337,11 @@ async function calAddEvent(date, editIdx, existing) {
         <button class="btn btn-success" onclick="calSaveEvent(${isEdit?editIdx:'undefined'})">${isEdit?'\uD83D\uDCBE Update':'\uD83D\uDCBE Save Event'}</button>
         <button class="btn btn-ghost" onclick="document.getElementById('calEventFormArea').innerHTML=''">Cancel</button>
     </div>`;
+    // Init venue picker for gig events
+    var calPreselected = null;
+    if (ev.venueId) calPreselected = venues.find(function(v){ return v.venueId === ev.venueId; });
+    if (!calPreselected && ev.venue) calPreselected = venues.find(function(v){ return v.name === ev.venue; });
+    _calInitVenuePicker(venues, calPreselected);
     area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
@@ -351,18 +351,57 @@ function calTypeChanged(sel) {
     var isGig = sel.value === 'gig';
     if (slRow) slRow.style.display = isGig ? '' : 'none';
     if (vRow)  vRow.style.display  = isGig ? '' : 'none';
+    // Init venue picker if switching to gig and picker not yet initialized
+    if (isGig && !window._calVenuePicker && document.getElementById('calVenuePicker')) {
+        GLStore.getVenues().then(function(venues) {
+            _calInitVenuePicker(venues, null);
+        });
+    }
 }
 
-function calVenueSelected(sel) {
-    var custom = document.getElementById('calVenueCustom');
-    if (!custom) return;
-    if (sel.value === '__other__') {
-        custom.style.display = '';
-        custom.focus();
-        sel.value = '';
-    } else {
-        custom.style.display = 'none';
+// Venue picker init for calendar event forms
+function _calInitVenuePicker(venues, preselected) {
+    if (!document.getElementById('calVenuePicker')) return;
+    window._calVenueTouched = false;
+    function _onSelect(v) {
+        window._calVenueTouched = true;
+        if (v) {
+            window._calSelectedVenueId = v.venueId || null;
+            window._calSelectedVenueName = v.name || '';
+        } else {
+            window._calSelectedVenueId = null;
+            window._calSelectedVenueName = null;
+        }
     }
+    function _onCreateNew(text) {
+        glVenueCreateModal({
+            initialName: text,
+            onSave: function(venue) {
+                window._calSelectedVenueId = venue.venueId;
+                window._calSelectedVenueName = venue.name;
+                GLStore.getVenues().then(function(v) {
+                    if (window._calVenuePicker) window._calVenuePicker.refresh(v);
+                    if (window._calVenuePicker) window._calVenuePicker.setValue(venue.venueId);
+                });
+            },
+            onUseExisting: function(venue) {
+                window._calSelectedVenueId = venue.venueId;
+                window._calSelectedVenueName = venue.name;
+                if (window._calVenuePicker) window._calVenuePicker.setValue(venue.venueId);
+            }
+        });
+    }
+    window._calVenuePicker = glEntityPicker({
+        containerId: 'calVenuePicker',
+        items: venues,
+        labelFn: venueShortLabel,
+        subLabelFn: function(v) { return v.address || ''; },
+        onSelect: _onSelect,
+        onCreateNew: _onCreateNew,
+        placeholder: 'Search venues...',
+        emptyText: 'No venues yet',
+        selectedItem: preselected || null
+    });
 }
 
 
@@ -393,9 +432,8 @@ async function calSaveEvent(editIdx) {
         time: document.getElementById('calTime')?.value,
         notes: document.getElementById('calNotes')?.value,
         linkedSetlist: document.getElementById('calLinkedSetlist')?.value || null,
-        venue: (document.getElementById('calVenue')?.value && document.getElementById('calVenue')?.value !== '__other__')
-            ? document.getElementById('calVenue')?.value
-            : (document.getElementById('calVenueCustom')?.value || null),
+        venueId: window._calSelectedVenueId || null,
+        venue: window._calSelectedVenueName || null,
     };
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
     if (ev.type === 'gig' && !ev.venue) { alert('Gig events require a venue'); return; }
@@ -445,6 +483,7 @@ async function calSaveEvent(editIdx) {
             : null;
 
         const gigRecord = {
+            venueId: ev.venueId || null,
             venue: ev.venue || ev.title || '',
             date: ev.date || '',
             startTime: ev.time || '',
@@ -472,6 +511,7 @@ async function calSaveEvent(editIdx) {
                     gigId: gigRecord.gigId,
                     name: (gigRecord.venue || 'Gig') + ' ' + (gigRecord.date || ''),
                     date: gigRecord.date || '',
+                    venueId: gigRecord.venueId || null,
                     venue: gigRecord.venue || '',
                     notes: '',
                     sets: [{ name: 'Set 1', songs: [] }],
@@ -537,7 +577,7 @@ window.saveBlockedDatesEdit = saveBlockedDatesEdit;
 window.calDayClick = calDayClick;
 window.calAddEvent = calAddEvent;
 window.calTypeChanged = calTypeChanged;
-window.calVenueSelected = calVenueSelected;
+window._calInitVenuePicker = _calInitVenuePicker;
 window.calEditEvent = calEditEvent;
 window.calDeleteEvent = calDeleteEvent;
 window.calSaveEvent = calSaveEvent;

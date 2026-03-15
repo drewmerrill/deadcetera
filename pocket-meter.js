@@ -670,6 +670,13 @@
       this.db.ref(`${this.bandPath}/songs/${this.songKey}/liveBPM`).set(bpm);
     }
 
+    // NOTE: This writes to /songs/{songKey}/bpm — a SEPARATE Firebase path from
+    // the canonical song BPM at /assets/{title}/song_bpm. This is intentional:
+    // Pocket Meter's "Lock" saves a live session consensus BPM that band members
+    // can see in real time. The canonical song BPM (edited in Song DNA) lives in
+    // the asset store and is managed by GLStore.updateSongField('bpm').
+    // These two values may legitimately differ (e.g., song is 120 BPM but band
+    // played it at 118 tonight).
     _savePermanentBPM(bpm) {
       if (!this.db || !this.bandPath || !this.songKey) return;
       this.db.ref(`${this.bandPath}/songs/${this.songKey}/bpm`).set(bpm);

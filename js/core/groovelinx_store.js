@@ -255,6 +255,33 @@
 
   // ── Song detail writes ────────────────────────────────────────────────────
 
+  // ── Canonical song metadata validation ─────────────────────────────────
+  //
+  // BPM:
+  //   Canonical path:   saveBandDataToDrive(title, 'song_bpm', { bpm, updatedAt })
+  //   Firebase:         /bands/{slug}/assets/{title}/song_bpm
+  //   Valid range:      40–240 (musical BPM for permanent song record)
+  //   All permanent BPM edits should route through GLStore.updateSongField('bpm').
+  //   Pocket Meter's _savePermanentBPM writes to a SEPARATE path
+  //   (/bands/{slug}/songs/{key}/bpm) — that is a live session consensus value,
+  //   not the canonical song BPM. See pocket-meter.js header.
+  //
+  // Key:
+  //   Canonical path:   saveBandDataToDrive(title, 'key', { key, updatedAt })
+  //   Firebase:         /bands/{slug}/assets/{title}/key
+  //   Legacy path:      'song_key' — some older imports used this; readers should
+  //                     try 'key' first, fall back to 'song_key'.
+  //   All permanent Key edits should route through GLStore.updateSongField('key').
+  //
+  // Fallback read order (for both):
+  //   1. Firebase Drive asset (canonical)
+  //   2. allSongs[] in-memory cache
+  //   3. Firebase metadata path (legacy)
+  // ────────────────────────────────────────────────────────────────────────
+
+  var SONG_BPM_MIN = 40;
+  var SONG_BPM_MAX = 240;
+
   /**
    * Update a song detail field and invalidate the cache entry.
    * @param {string} songId
@@ -274,7 +301,7 @@
       key:        function () { return _sbdf(songId, 'key', { key: value, updatedAt: _now() }); },
       bpm:        function () {
         var n = parseInt(value, 10);
-        if (isNaN(n) || n < 20 || n > 320) return Promise.resolve();
+        if (isNaN(n) || n < SONG_BPM_MIN || n > SONG_BPM_MAX) return Promise.resolve();
         return _sbdf(songId, 'song_bpm', { bpm: n, updatedAt: _now() });
       },
     };
@@ -282,6 +309,13 @@
     await writes[field]();
     // Bust cache so next loadSongDetail gets fresh data
     delete _state.songDetailCache[songId];
+    // Sync allSongs in-memory cache so all UI surfaces see the update immediately
+    if (typeof allSongs !== 'undefined') {
+      var _idx = allSongs.findIndex(function(s) { return s.title === songId; });
+      if (_idx >= 0 && (field === 'key' || field === 'bpm')) {
+        allSongs[_idx][field] = value;
+      }
+    }
     emit('songFieldUpdated', { songId: songId, field: field, value: value });
     // Sync all dependent UI surfaces immediately
     if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
@@ -2647,13 +2681,163 @@
     migrateGigSetlistIds:  migrateGigSetlistIds,
     postMigrationAudit:    postMigrationAudit,
     repairBadLinks:        repairBadLinks,
+
+    // Venues (Phase 1: Canonical Entity Selection)
+    getVenues:             getVenues,
+    createVenue:           createVenue,
+    findDuplicateVenues:   findDuplicateVenues,
+    getVenueById:          getVenueById,
   };
+
+  // ── Venues (Phase 1: Canonical Entity Selection) ────────────────────────
+
+  var _venueCache = null;
+  var _venueCacheTime = 0;
+  var VENUE_CACHE_TTL = 30000; // 30s
+
+  /**
+   * Load and cache venues. Backfills venueId on any venue missing one.
+   * @returns {Promise<Array>}
+   */
+  async function getVenues() {
+    var now = Date.now();
+    if (_venueCache && (now - _venueCacheTime) < VENUE_CACHE_TTL) {
+      return _venueCache;
+    }
+    var venues = (typeof toArray !== 'undefined' ? toArray : function(x){return Array.isArray(x)?x:[];})(
+      await _lbdf('_band', 'venues') || []
+    );
+    // Backfill venueId on any venue missing one
+    var dirty = false;
+    venues.forEach(function(v) {
+      if (!v.venueId) {
+        v.venueId = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+        dirty = true;
+      }
+    });
+    if (dirty) {
+      await _sbdf('_band', 'venues', venues);
+    }
+    _venueCache = venues;
+    _venueCacheTime = Date.now();
+    return venues;
+  }
+
+  /**
+   * Create a new venue, stamp venueId, save, emit event.
+   * @param {{name:string, city?:string, address?:string}} data
+   * @returns {Promise<object>} the created venue
+   */
+  async function createVenue(data) {
+    var venue = {
+      venueId: (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      name: (data.name || '').trim(),
+      city: (data.city || '').trim(),
+      address: (data.address || '').trim(),
+      created: _now()
+    };
+    var venues = await getVenues();
+    venues.push(venue);
+    venues.sort(function(a,b) { return (a.name||'').localeCompare(b.name||''); });
+    await _sbdf('_band', 'venues', venues);
+    // Invalidate cache, then re-cache
+    _venueCache = venues;
+    _venueCacheTime = Date.now();
+    emit('venueCreated', { venue: venue });
+    return venue;
+  }
+
+  /**
+   * Find venues whose names are similar to the given name.
+   * @param {string} name
+   * @returns {Promise<Array<{venue:object, similarity:string, reason:string}>>}
+   */
+  async function findDuplicateVenues(name) {
+    var venues = await getVenues();
+    var norm = _normStr(name);
+    if (!norm) return [];
+    var results = [];
+    var normWords = norm.split(' ');
+    var firstWord = normWords[0] || '';
+
+    venues.forEach(function(v) {
+      var vNorm = _normStr(v.name);
+      if (!vNorm) return;
+
+      // Exact normalized match
+      if (vNorm === norm) {
+        results.push({ venue: v, similarity: 'exact', reason: 'Exact match: "' + v.name + '"' });
+        return;
+      }
+
+      // First-word match (core name likely the same)
+      var vWords = vNorm.split(' ');
+      if (firstWord.length >= 3 && vWords[0] === firstWord) {
+        results.push({ venue: v, similarity: 'likely', reason: 'Similar name: "' + v.name + '"' });
+        return;
+      }
+
+      // Substring containment (one contains the other)
+      if (norm.length >= 4 && (vNorm.indexOf(norm) >= 0 || norm.indexOf(vNorm) >= 0)) {
+        // Promote to "likely" if the shorter is >= 60% of the longer
+        var shortLen = Math.min(norm.length, vNorm.length);
+        var longLen = Math.max(norm.length, vNorm.length);
+        var conf = (shortLen / longLen) >= 0.6 ? 'likely' : 'possible';
+        results.push({ venue: v, similarity: conf, reason: 'Similar name: "' + v.name + '"' });
+        return;
+      }
+
+      // Word-set overlap (catches "Red Clay Music Foundry" vs "Red Clay Foundry")
+      if (normWords.length >= 2 && vWords.length >= 2) {
+        var wordSet = {};
+        normWords.forEach(function(w) { wordSet[w] = true; });
+        var intersection = 0;
+        vWords.forEach(function(w) { if (wordSet[w]) intersection++; });
+        var union = normWords.length + vWords.length - intersection;
+        if (union > 0 && (intersection / union) >= 0.6) {
+          results.push({ venue: v, similarity: 'possible', reason: 'Similar name: "' + v.name + '"' });
+          return;
+        }
+      }
+
+      // Character overlap ratio (catches typos / minor spelling differences)
+      if (norm.length >= 4 && vNorm.length >= 4) {
+        var shorter = norm.length < vNorm.length ? norm : vNorm;
+        var longer = norm.length < vNorm.length ? vNorm : norm;
+        var matches = 0;
+        for (var i = 0; i < shorter.length; i++) {
+          if (longer.indexOf(shorter[i]) >= 0) matches++;
+        }
+        var ratio = matches / longer.length;
+        if (ratio > 0.8 && Math.abs(norm.length - vNorm.length) <= 3) {
+          results.push({ venue: v, similarity: 'possible', reason: 'Similar name: "' + v.name + '"' });
+        }
+      }
+    });
+
+    return results;
+  }
+
+  /**
+   * Look up a venue by venueId from the cache.
+   * @param {string} id
+   * @returns {object|null}
+   */
+  function getVenueById(id) {
+    if (!id || !_venueCache) return null;
+    return _venueCache.find(function(v) { return v.venueId === id; }) || null;
+  }
 
   // ── Gig / Setlist / Calendar data model audit + migration ─────────────────
 
-  /** Normalize a string for fuzzy matching: lowercase, trim, strip punctuation */
+  /** Normalize a string for fuzzy matching: lowercase, trim, strip accents/punctuation */
   function _normStr(s) {
-    return (s || '').toLowerCase().trim().replace(/[''"".,!?&()]/g, '').replace(/\s+/g, ' ');
+    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().trim()
+      .replace(/['''\u2018\u2019""\u201C\u201D.,!?&()]/g, '')
+      .replace(/\btheatre\b/g, 'theater')
+      .replace(/\s+/g, ' ')
+      .replace(/^the /, '');
   }
 
   /** Count songs in a setlist */
@@ -2675,10 +2859,11 @@
    * Signals (in priority order):
    *  1. Exact gig.linkedSetlist name match → confidence 100
    *  2. Normalized name match → confidence 95
-   *  3. Date + exact venue match → confidence 90
-   *  4. Date + normalized venue match → confidence 85
-   *  5. Date-only match (single candidate with songs) → confidence 70
-   *  6. Date-only match (multiple candidates) → confidence 40 (review)
+   *  3. Date + venueId match → confidence 95
+   *  4. Date + exact venue text match → confidence 90
+   *  5. Date + normalized venue text match → confidence 85
+   *  6. Date-only match (single candidate with songs) → confidence 70
+   *  7. Date-only match (multiple candidates) → confidence 40 (review)
    */
   function _findBestSetlist(gig, setlists) {
     var candidates = [];
@@ -2697,35 +2882,43 @@
         return { setlist: sl, confidence: 95, reason: 'normalized name match: "' + sl.name + '"' };
       }
 
-      // Collect date-matching candidates for signals 3-6
+      // Collect date-matching candidates for signals 3-7
       if (sl.date && gig.date && sl.date === gig.date) {
         var venueScore = 0;
-        if (sl.venue && gig.venue) {
+        // Signal 3: venueId match (strongest canonical signal)
+        if (gig.venueId && sl.venueId && gig.venueId === sl.venueId) {
+          venueScore = 95;
+        }
+        // Signal 4/5: text-based venue match (fallback when venueId missing)
+        else if (sl.venue && gig.venue) {
           if (sl.venue === gig.venue) venueScore = 90;
           else if (_normStr(sl.venue) === _normStr(gig.venue)) venueScore = 85;
+        }
+        // Penalty: venueId exists on both but differs — actively penalize
+        if (gig.venueId && sl.venueId && gig.venueId !== sl.venueId && venueScore > 0) {
+          venueScore = Math.max(0, venueScore - 50);
         }
         candidates.push({ setlist: sl, venueScore: venueScore, hasSongs: hasSongs });
       }
     }
 
-    // Signal 3/4: date + venue match (prefer ones with songs)
+    // Signal 3/4/5: date + venue match (prefer ones with songs)
     var venueMatches = candidates.filter(function(c) { return c.venueScore > 0; });
     venueMatches.sort(function(a, b) {
       if (b.venueScore !== a.venueScore) return b.venueScore - a.venueScore;
-      return (_slSongCount(b.setlist) - _slSongCount(a.setlist)); // prefer fuller setlist
+      return (_slSongCount(b.setlist) - _slSongCount(a.setlist));
     });
     if (venueMatches.length > 0) {
       var best = venueMatches[0];
       return { setlist: best.setlist, confidence: best.venueScore, reason: 'date+venue: "' + best.setlist.name + '"' };
     }
 
-    // Signal 5/6: date-only match
+    // Signal 6/7: date-only match
     var withSongs = candidates.filter(function(c) { return c.hasSongs; });
     if (withSongs.length === 1) {
       return { setlist: withSongs[0].setlist, confidence: 70, reason: 'date-only (sole candidate with songs): "' + withSongs[0].setlist.name + '"' };
     }
     if (withSongs.length > 1) {
-      // Pick the one with most songs as best guess, but low confidence
       withSongs.sort(function(a, b) { return _slSongCount(b.setlist) - _slSongCount(a.setlist); });
       return { setlist: withSongs[0].setlist, confidence: 40, reason: 'date-only (ambiguous, ' + withSongs.length + ' candidates): "' + withSongs[0].setlist.name + '"' };
     }
@@ -2902,6 +3095,7 @@
           gigId: g.gigId,
           name: (g.venue || 'Gig') + ' ' + (g.date || ''),
           date: g.date || '',
+          venueId: g.venueId || null,
           venue: g.venue || '',
           notes: '',
           sets: [{ name: 'Set 1', songs: [] }],
@@ -2919,11 +3113,16 @@
     calEvts.forEach(function(e) {
       if (e.type !== 'gig') return;
       if (e.gigId) return;
-      // Try gigId match, then venue+date
-      var match = gigs.find(function(g) {
-        return (g.venue && e.venue && g.date && e.date &&
-          _normStr(g.venue) === _normStr(e.venue) && g.date === e.date);
-      });
+      // Try venueId+date first, then normalized venue text+date
+      var match = null;
+      if (e.venueId && e.date) {
+        match = gigs.find(function(g) { return g.venueId === e.venueId && g.date === e.date; });
+      }
+      if (!match && e.venue && e.date) {
+        match = gigs.find(function(g) {
+          return g.date === e.date && g.venue && _normStr(g.venue) === _normStr(e.venue);
+        });
+      }
       if (match) {
         e.gigId = match.gigId;
         log.push('CAL LINK: event ' + e.id + ' → gig ' + match.gigId);
@@ -2999,14 +3198,18 @@
         dominated = true;
       }
 
-      // Rule 2: Venue/name has zero overlap with gig venue (and dates also don't match)
-      if (g.venue && sl.name && g.date && sl.date && g.date !== sl.date) {
-        var nGig = _normStr(g.venue);
-        var nSl  = _normStr(sl.name);
-        var nSlV = _normStr(sl.venue || '');
-        var firstWord = nGig.split(' ')[0];
-        if (firstWord.length > 2 && nSl.indexOf(firstWord) < 0 && nSlV.indexOf(firstWord) < 0) {
-          reasons.push('VENUE: "' + g.venue + '" vs "' + sl.name + '"');
+      // Rule 2: Venue mismatch (only meaningful when dates also differ)
+      if (g.date && sl.date && g.date !== sl.date) {
+        // If venueId exists on both and matches, skip — venue is canonically correct
+        var venueIdMatch = g.venueId && sl.venueId && g.venueId === sl.venueId;
+        if (!venueIdMatch && g.venue && sl.name) {
+          var nGig = _normStr(g.venue);
+          var nSl  = _normStr(sl.name);
+          var nSlV = _normStr(sl.venue || '');
+          var firstWord = nGig.split(' ')[0];
+          if (firstWord.length > 2 && nSl.indexOf(firstWord) < 0 && nSlV.indexOf(firstWord) < 0) {
+            reasons.push('VENUE: "' + g.venue + '" vs "' + sl.name + '"');
+          }
         }
       }
 
@@ -3141,14 +3344,26 @@
         row.flags.push('DATE_MISMATCH: gig=' + g.date + ' sl=' + sl.date);
       }
 
-      // 2. Venue similarity weak
-      if (sl && sl.venue && g.venue) {
-        var nGigV = _normStr(g.venue);
-        var nSlV  = _normStr(sl.venue);
-        if (nGigV !== nSlV) {
-          // Check if one contains the other
-          if (nGigV.indexOf(nSlV) < 0 && nSlV.indexOf(nGigV) < 0) {
-            row.flags.push('VENUE_MISMATCH: gig="' + g.venue + '" sl="' + sl.venue + '"');
+      // 2. Venue check — venueId is the primary signal, text is fallback
+      if (sl) {
+        var hasGigVenueId = !!g.venueId;
+        var hasSlVenueId  = !!sl.venueId;
+        if (hasGigVenueId && hasSlVenueId) {
+          if (g.venueId === sl.venueId) {
+            // venueId matches — if text differs, note but don't flag as suspicious
+            if (g.venue && sl.venue && g.venue !== sl.venue) {
+              row.flags.push('VENUE_ID_MATCH_TEXT_DIFF: venueId ok, gig="' + g.venue + '" sl="' + sl.venue + '"');
+            }
+          } else {
+            // venueId conflict — real problem
+            row.flags.push('VENUE_ID_CONFLICT: gig.venueId=' + g.venueId + ' sl.venueId=' + sl.venueId);
+          }
+        } else if (g.venue && sl.venue) {
+          // One or both missing venueId — fall back to text comparison
+          var nGigV = _normStr(g.venue);
+          var nSlV  = _normStr(sl.venue);
+          if (nGigV !== nSlV && nGigV.indexOf(nSlV) < 0 && nSlV.indexOf(nGigV) < 0) {
+            row.flags.push('VENUE_TEXT_MISMATCH: gig="' + g.venue + '" sl="' + sl.venue + '" (no venueId' + (!hasGigVenueId ? ' on gig' : '') + (!hasSlVenueId ? ' on sl' : '') + ')');
           }
         }
       }

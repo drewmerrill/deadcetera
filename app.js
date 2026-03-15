@@ -930,21 +930,27 @@ async function songQuickFillSave(title) {
     var key = (document.getElementById('qfKey')?.value||''). trim();
     var bpm = (document.getElementById('qfBpm')?.value||''). trim();
     if (!key && !bpm) { showToast('Enter key or BPM'); return; }
+    // Route through GLStore for canonical persistence
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        if (key) await GLStore.updateSongField(title, 'key', key);
+        if (bpm) await GLStore.updateSongField(title, 'bpm', parseInt(bpm));
+    } else {
+        try {
+            if (key) await saveBandDataToDrive(title, 'key', { key: key, updatedAt: new Date().toISOString() });
+            if (bpm) await saveBandDataToDrive(title, 'song_bpm', { bpm: parseInt(bpm), updatedAt: new Date().toISOString() });
+        } catch(e) { showToast('Saved locally'); }
+    }
+    // Sync in-memory allSongs cache
     var songIdx = allSongs.findIndex(function(s){return s.title===title;});
     if (songIdx >= 0) {
         if (key) allSongs[songIdx].key = key;
         if (bpm) allSongs[songIdx].bpm = parseInt(bpm);
     }
-    try {
-        var path = bandPath('assets/' + sanitizeFirebasePath(title));
-        var update = {};
-        if (key) update.key = key;
-        if (bpm) update.bpm = parseInt(bpm);
-        await firebaseDB.ref(path).update(update);
-        showToast('🎵 Saved!');
-    } catch(e) { showToast('Saved locally'); }
+    // Sync topbar inputs
+    if (key) { var ks = document.getElementById('songKeySelect'); if (ks) ks.value = key; }
+    if (bpm) { var bi = document.getElementById('songBpmInput'); if (bi) bi.value = parseInt(bpm); }
     document.getElementById('quickFillPopup')?.remove();
-    renderSongs();
+    if (!GLStore || !GLStore.updateSongField) renderSongs(); // GLStore already triggers renderSongs
 }
 
 function renderSongs(filter = 'all', searchTerm = '') {
@@ -5170,7 +5176,7 @@ async function runFadrImport(songTitle) {
                 const songKey = assetData.key || 'C';
                 const songBpm = assetData.tempo || assetData.bpm || 120;
                 await saveBandDataToDrive(songTitle, 'song_bpm', { bpm: Math.round(songBpm) });
-                await saveBandDataToDrive(songTitle, 'song_key', { key: songKey });
+                await saveBandDataToDrive(songTitle, 'key', { key: songKey, updatedAt: new Date().toISOString() });
                 let combinedAbc = `X:1
 T:${songTitle} (Fadr)
 M:4/4
@@ -6532,15 +6538,26 @@ async function updateSongBpm(bpm) {
     if (!requireSignIn()) return;
     if (!selectedSong || !selectedSong.title) return;
     if (!isUserSignedIn) showSignInNudge();
-    
+
     const bpmNum = parseInt(bpm);
     if (isNaN(bpmNum) || bpmNum < 40 || bpmNum > 240) {
         console.warn('Invalid BPM:', bpm);
         return;
     }
-    
-    await saveBandDataToDrive(selectedSong.title, 'song_bpm', { bpm: bpmNum, updatedAt: new Date().toISOString() });
-    console.log(`🎵 Song BPM updated: ${bpmNum}`);
+
+    var songTitle = selectedSong.title;
+    // Route through GLStore for canonical persistence + cache invalidation
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        await GLStore.updateSongField(songTitle, 'bpm', bpmNum);
+    } else {
+        await saveBandDataToDrive(songTitle, 'song_bpm', { bpm: bpmNum, updatedAt: new Date().toISOString() });
+    }
+    // Sync in-memory allSongs cache
+    var idx = allSongs.findIndex(function(s) { return s.title === songTitle; });
+    if (idx >= 0) allSongs[idx].bpm = bpmNum;
+    // Sync panel overlay BPM input if open
+    var sdBpmInput = document.querySelector('.sd-bpm-input');
+    if (sdBpmInput) sdBpmInput.value = bpmNum;
 }
 
 async function loadSongBpm(songTitle) {
@@ -6595,8 +6612,20 @@ async function populateSongMetadata(songTitle) {
 async function updateSongKey(key) {
     if (!selectedSong) return;
     const songTitle = typeof selectedSong === 'string' ? selectedSong : selectedSong.title;
-    await saveBandDataToDrive(songTitle, 'key', { key, updatedAt: new Date().toISOString() });
-    console.log('🎵 Key updated:', key);
+    // Route through GLStore for canonical persistence + cache invalidation
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        await GLStore.updateSongField(songTitle, 'key', key);
+    } else {
+        await saveBandDataToDrive(songTitle, 'key', { key, updatedAt: new Date().toISOString() });
+    }
+    // Sync in-memory allSongs cache
+    var idx = allSongs.findIndex(function(s) { return s.title === songTitle; });
+    if (idx >= 0) allSongs[idx].key = key;
+    // Sync panel overlay key select if open
+    var sdKeySelects = document.querySelectorAll('.sd-lens-panel select');
+    sdKeySelects.forEach(function(sel) {
+        if (sel.onchange && String(sel.onchange).indexOf('sdUpdateSongKey') >= 0) sel.value = key || '';
+    });
 }
 
 async function loadSongKey(songTitle) {
@@ -9365,6 +9394,7 @@ async function saveVenueEdit(idx) {
         latLng.lng = data[idx].lng;
     }
     data[idx] = { ...data[idx],
+        venueId:     data[idx].venueId || ((typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36)),
         name:        document.getElementById('vName')?.value?.trim(),
         address:     document.getElementById('vAddress')?.value?.trim(),
         phone:       document.getElementById('vPhone')?.value,
@@ -9486,6 +9516,8 @@ async function saveVenue() {
         v.lng = parseFloat(vNameEl.dataset.lng);
     }
     if (!v.name) { alert('Venue name required'); return; }
+    v.venueId = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36);
+    v.created = new Date().toISOString();
     const existing = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     existing.push(v);
     await saveBandDataToDrive('_band', 'venues', existing);

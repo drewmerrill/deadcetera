@@ -140,8 +140,8 @@ async function _sdPopulateBandLens(title) {
     } catch(e) {}
 
     var songObj=(typeof allSongs!=='undefined')?allSongs.find(function(s){return s.title===title;}):null;
-    var metaKey=firebaseKey||(songObj&&songObj.key)||songMeta.key||'';
-    var metaBpm=firebaseBpm||(songObj&&songObj.bpm?String(songObj.bpm):'')||songMeta.bpm?String(songMeta.bpm):'';
+    var metaKey=firebaseKey||(songObj&&songObj.key?songObj.key:'')||(songMeta.key?songMeta.key:'')||'';
+    var metaBpm=firebaseBpm||(songObj&&songObj.bpm?String(songObj.bpm):'')||(songMeta.bpm?String(songMeta.bpm):'')||'';
 
     var leadOpts=['','drew','chris','brian','pierce','drew,chris'].map(function(v){
         var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v.charAt(0).toUpperCase()+v.slice(1);
@@ -430,39 +430,63 @@ function _sdBuildReadinessStrip(title) {
 // Delegate all writes to canonical app.js functions so data shape and paths stay consistent
 window.sdUpdateLeadSinger = function(v) {
     if (!_sdCurrentSong) return;
-    if (typeof saveBandDataToDrive === 'function') {
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        GLStore.updateSongField(_sdCurrentSong, 'leadSinger', v);
+    } else if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'lead_singer', { singer: v });
         if (typeof showToast === 'function') showToast('Lead singer saved');
     }
 };
 window.sdUpdateSongStatus = function(v) {
     if (!_sdCurrentSong) return;
-    if (typeof saveBandDataToDrive === 'function') {
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        GLStore.updateSongField(_sdCurrentSong, 'status', v);
+    } else if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'song_status', { status: v, updatedAt: new Date().toISOString() });
-        // Update in-memory cache
-        if (typeof GLStore !== 'undefined') { GLStore.getAllStatus()[_sdCurrentSong] = v; } else if (typeof statusCache !== 'undefined') { statusCache[_sdCurrentSong] = v; }
-        // Persist to master status file so Practice page stays in sync on next load
-        if (typeof statusCache !== 'undefined' && typeof saveMasterFile === 'function') {
-            saveMasterFile('_master_song_statuses.json', statusCache).catch(function(){});
-        }
-        if (typeof addStatusBadges === 'function') addStatusBadges();
-        if (typeof showToast === 'function') showToast('Status saved');
+    }
+    // Additional status-specific cache sync (GLStore.updateSongField handles statusCache for us,
+    // but master file persist needs explicit call)
+    if (typeof statusCache !== 'undefined') statusCache[_sdCurrentSong] = v;
+    if (typeof statusCache !== 'undefined' && typeof saveMasterFile === 'function') {
+        saveMasterFile('_master_song_statuses.json', statusCache).catch(function(){});
     }
 };
 window.sdUpdateSongKey = function(v) {
     if (!_sdCurrentSong) return;
-    if (typeof saveBandDataToDrive === 'function') {
+    // Route through GLStore for canonical persistence + cache invalidation
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        GLStore.updateSongField(_sdCurrentSong, 'key', v);
+    } else if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'key', { key: v, updatedAt: new Date().toISOString() });
     }
+    // Sync in-memory allSongs cache
+    _sdSyncAllSongsField(_sdCurrentSong, 'key', v);
+    // Sync topbar select if present
+    var topSel = document.getElementById('songKeySelect');
+    if (topSel) topSel.value = v || '';
 };
 window.sdUpdateSongBpm = function(v) {
     if (!_sdCurrentSong) return;
     var n = parseInt(v, 10);
     if (isNaN(n) || n < 20 || n > 320) return;
-    if (typeof saveBandDataToDrive === 'function') {
+    // Route through GLStore for canonical persistence + cache invalidation
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        GLStore.updateSongField(_sdCurrentSong, 'bpm', n);
+    } else if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'song_bpm', { bpm: n, updatedAt: new Date().toISOString() });
     }
+    // Sync in-memory allSongs cache
+    _sdSyncAllSongsField(_sdCurrentSong, 'bpm', n);
+    // Sync topbar input if present
+    var topInp = document.getElementById('songBpmInput');
+    if (topInp) topInp.value = n;
 };
+// Sync allSongs in-memory cache when a field is updated
+function _sdSyncAllSongsField(title, field, value) {
+    if (typeof allSongs === 'undefined') return;
+    var idx = allSongs.findIndex(function(s) { return s.title === title; });
+    if (idx >= 0) allSongs[idx][field] = value;
+}
 window.sdSaveReadiness = function(songTitle, memberKey, val) {
     if (typeof GLStore === 'undefined') { console.warn('[song-detail] GLStore not available'); return; }
     GLStore.saveReadiness(songTitle, memberKey, val).then(function() {

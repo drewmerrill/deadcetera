@@ -1222,7 +1222,7 @@ async function rmLoadSong() {
 }
 async function rmLoadMeta(st) {
     try {
-        const m=await loadBandDataFromDrive(st,'song_meta')||{}, b=await loadBandDataFromDrive(st,'song_bpm')||{}, k=await loadBandDataFromDrive(st,'song_key')||{};
+        const m=await loadBandDataFromDrive(st,'song_meta')||{}, b=await loadBandDataFromDrive(st,'song_bpm')||{}, k=(await loadBandDataFromDrive(st,'key'))||(await loadBandDataFromDrive(st,'song_key'))||{};
         const p=[]; if(k.key||m.key)p.push('🔑 '+(k.key||m.key)); if(b.bpm||m.bpm)p.push('🥁 '+(b.bpm||m.bpm)+' BPM'); if(m.leadSinger)p.push('🎤 '+m.leadSinger.charAt(0).toUpperCase()+m.leadSinger.slice(1));
         document.getElementById('rmSongMeta').textContent = p.join('  ·  ');
     } catch(e) {}
