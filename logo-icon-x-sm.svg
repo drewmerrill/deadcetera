@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- GrooveLinx icon — small size optimized -->
+  <!-- Simplified sticks: no taper detail at small sizes, just clean cross -->
+
+  <!-- Stick 1 -->
+  <line x1="5" y1="4" x2="27" y2="28" stroke="#f1f5f9" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Stick 2 -->
+  <line x1="27" y1="4" x2="5" y2="28" stroke="#f1f5f9" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Accent dot -->
+  <circle cx="16" cy="16" r="2" fill="#667eea" opacity="0.6"/>
+</svg>
