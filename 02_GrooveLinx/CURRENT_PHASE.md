@@ -4,7 +4,7 @@ _Updated: 2026-03-15_
 
 ## Active Phase: Live UAT + Command Center Stabilization
 
-Build: **20260315-113322**
+Build: **20260315-114029**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -26,6 +26,7 @@ Goal: Restructure Home dashboard from 5-phase workflow spine into a 5-section Co
 | 7 | Legacy status audit + migration tooling | ✅ DONE |
 | 8 | Priority Queue reason micro-explanations | ✅ DONE |
 | 9 | Priority Queue self-correcting telemetry + adaptive rules | ✅ DONE |
+| 10 | Progressive discovery (setup guidance, unlock attribution, smart empty states) | ✅ DONE |
 | UAT | Live band testing | 🟡 IN PROGRESS |
 
 ### Command Center Layout (5 sections)
