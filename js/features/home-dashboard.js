@@ -929,7 +929,7 @@ function renderAttemptIntelligence() {
             var barColor = att.isBestRun ? '#22c55e' : att.endedInRestart ? '#ef4444' : '#667eea';
             var barBorder = att.hadUserRestartMarker ? '1px solid rgba(239,68,68,0.5)' : 'none';
             var tip = Math.round(att.durationSec) + 's' + (att.endedInRestart ? ' (restart)' : '') + (att.isBestRun ? ' ★ best' : '');
-            h += '<div title="' + tip + '" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + '"></div>';
+            h += '<div title="' + tip + '" onclick="if(typeof openRehearsalChopper===\'function\'){openRehearsalChopper();setTimeout(function(){var a=document.getElementById(\'chopAudio\');if(a){a.currentTime=' + att.startSec + ';a.play();}if(typeof chopSetZoom===\'function\')chopSetZoom(' + Math.max(0, att.startSec - 5) + ',' + (att.endSec + 10) + ');},500)}" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + ';cursor:pointer"></div>';
         }
         h += '</div>';
 

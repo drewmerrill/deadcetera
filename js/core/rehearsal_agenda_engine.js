@@ -77,6 +77,7 @@
     var pStats = (input.practiceStatsBySongId || {})[songId] || null;
     var weakSpot = (input.weakSpotsBySongId || {})[songId] || null;
     var rehSig = (input.rehearsalSignalsBySongId || {})[songId] || null;
+    var attSig = (input.attemptSignalsBySongId || {})[songId] || null;
     var members = input.memberKeys || [];
     var totalMembers = members.length || 5;
     var now = Date.now();
@@ -187,6 +188,14 @@
       rehTotalWorkSec: rehSig ? rehSig.totalWorkSec : 0,
       rehRepairBoost: rehSig && rehSig.wasRestartHeavy ? 8 : 0,
       rehConfidenceBoost: rehSig && rehSig.hadCleanRun && rehSig.cleanRunSec >= 120 ? 6 : 0,
+      // Attempt-derived signals (capped)
+      attAttemptCount: attSig ? attSig.attemptCount : 0,
+      attRestartEndedCount: attSig ? attSig.restartEndedCount : 0,
+      attBestRunSec: attSig ? attSig.bestRunSec : 0,
+      attLowConfidence: attSig ? attSig.lowConfidence : false,
+      attImproving: attSig ? attSig.improving : false,
+      attRepairBoost: attSig && attSig.lowConfidence ? 6 : (attSig && attSig.restartEndedCount >= 3 ? 4 : 0),
+      attConfidenceBoost: attSig && attSig.improving ? 5 : 0,
     };
   }
 
@@ -243,7 +252,8 @@
       sig.readinessDeficit * w.readinessDeficit +
       sig.gapScore * w.gapScore +
       sig.neglectScore * w.neglectScore +
-      sig.rehRepairBoost // restart-heavy songs get repair priority boost
+      sig.rehRepairBoost + // restart-heavy songs get repair priority boost
+      sig.attRepairBoost   // attempt-derived repair boost
     );
   }
 
@@ -265,7 +275,8 @@
       sig.stabilityScore * w.stabilityScore +
       sig.readinessScore * w.readinessScore +
       (100 - sig.attentionSeverity) * w.inverseAttention +
-      sig.rehConfidenceBoost // clean run in last rehearsal boosts closer candidacy
+      sig.rehConfidenceBoost + // clean run in last rehearsal boosts closer candidacy
+      sig.attConfidenceBoost   // strong best run from attempts
     );
   }
 
@@ -340,6 +351,16 @@
     // High repair time for repair slots
     if (sig.rehTotalWorkSec >= 300 && (itemType === 'repair' || itemType === 'repair2')) {
       return 'Consumed ' + Math.round(sig.rehTotalWorkSec / 60) + ' minutes of repair time in the most recent recording.';
+    }
+    // Attempt-derived evidence
+    if (sig.attLowConfidence && (itemType === 'repair' || itemType === 'repair2')) {
+      return 'Needed ' + sig.attAttemptCount + ' attempts with ' + sig.attRestartEndedCount + ' restarts in the last rehearsal.';
+    }
+    if (sig.attImproving && (itemType === 'closer' || itemType === 'warmup')) {
+      return 'Best uninterrupted run was ' + Math.round(sig.attBestRunSec / 60 * 10) / 10 + ' min, suggesting growing confidence.';
+    }
+    if (sig.attRestartEndedCount >= 2 && (itemType === 'repair' || itemType === 'repair2')) {
+      return 'Restarted on ' + sig.attRestartEndedCount + ' of ' + sig.attAttemptCount + ' attempts in the latest rehearsal.';
     }
 
     // Weak-spot context

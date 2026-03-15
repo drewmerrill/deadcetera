@@ -813,6 +813,7 @@
       weakSpotsBySongId: _buildWeakSpotIndex(),
       rehearsalSignalsBySongId: _buildRehearsalSignalIndex(),
       rehearsalSessionSignals: _buildRehearsalSessionSignals(),
+      attemptSignalsBySongId: _buildAttemptSignalIndex(),
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,
@@ -898,6 +899,24 @@
       restartHeavySongCount: restartHeavySongCount,
       hasRecordingData: true,
     };
+  }
+
+  function _buildAttemptSignalIndex() {
+    var ai = getAttemptIntelligence();
+    if (!ai || !ai.hasData) return {};
+    var index = {};
+    for (var i = 0; i < ai.songs.length; i++) {
+      var s = ai.songs[i];
+      index[s.title] = {
+        attemptCount: s.attemptCount,
+        restartEndedCount: s.restartEndedCount,
+        bestRunSec: s.bestRun ? s.bestRun.durationSec : 0,
+        totalWorkSec: s.totalWorkSec,
+        lowConfidence: s.lowConfidence,
+        improving: s.improving,
+      };
+    }
+    return index;
   }
 
   function _memberKeys() {
@@ -1679,9 +1698,10 @@
     for (var i = 0; i < tl.segments.length; i++) {
       var seg = tl.segments[i];
       if (seg.kind !== 'music' || !seg.likelySongTitle) continue;
-      var title = seg.likelySongTitle;
-      if (!songSegments[title]) songSegments[title] = [];
-      songSegments[title].push({ seg: seg, index: i });
+      var rawTitle = seg.likelySongTitle;
+      var normKey = rawTitle.trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!songSegments[normKey]) songSegments[normKey] = { displayTitle: rawTitle, segs: [] };
+      songSegments[normKey].segs.push({ seg: seg, index: i });
     }
 
     // Phase 2: cluster segments into attempts per song
@@ -1689,7 +1709,9 @@
     var songs = [];
 
     for (var t in songSegments) {
-      var segs = songSegments[t];
+      var songGroup = songSegments[t];
+      var segs = songGroup.segs;
+      var displayTitle = songGroup.displayTitle;
       var attempts = [];
       var currentAttempt = _newAttempt(segs[0].seg);
 
@@ -1746,13 +1768,23 @@
       }
       if (bestIdx >= 0) attempts[bestIdx].isBestRun = true;
 
+      // Derive planning signals
+      var restartEndedCount = attempts.filter(function(a) { return a.endedInRestart; }).length;
+      var bestRunSec = bestIdx >= 0 ? attempts[bestIdx].durationSec : 0;
+      var lowConfidence = restartEndedCount >= 2 && bestRunSec < 60;
+      var improving = bestRunSec > 120 && attempts.length >= 2;
+
       songs.push({
-        title: t,
+        title: displayTitle,
+        normKey: t,
         attemptCount: attempts.length,
         totalWorkSec: _r1(totalWorkSec),
         totalWorkMin: Math.round(totalWorkSec / 60 * 10) / 10,
-        bestRun: bestIdx >= 0 ? { durationSec: attempts[bestIdx].durationSec, index: bestIdx } : null,
+        bestRun: bestIdx >= 0 ? { durationSec: bestRunSec, index: bestIdx } : null,
         restartCount: totalRestarts,
+        restartEndedCount: restartEndedCount,
+        lowConfidence: lowConfidence,
+        improving: improving,
         attempts: attempts,
       });
     }
