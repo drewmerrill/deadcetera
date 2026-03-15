@@ -812,6 +812,7 @@
       practiceStatsBySongId: _state.songPracticeStats || {},
       weakSpotsBySongId: _buildWeakSpotIndex(),
       rehearsalSignalsBySongId: _buildRehearsalSignalIndex(),
+      rehearsalSessionSignals: _buildRehearsalSessionSignals(),
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,
@@ -857,6 +858,46 @@
       };
     }
     return index;
+  }
+
+  /**
+   * Build session-level signals from the latest rehearsal intelligence.
+   * Shapes agenda composition, not individual song scoring.
+   */
+  function _buildRehearsalSessionSignals() {
+    var ri = getRehearsalIntelligence();
+    if (!ri || !ri.hasData) return null;
+
+    var musicPct = ri.totalDurationSec > 0 ? Math.round((ri.musicSec / ri.totalDurationSec) * 100) : 0;
+    var speechPct = ri.totalDurationSec > 0 ? Math.round((ri.speechSec / ri.totalDurationSec) * 100) : 0;
+    var silencePct = ri.totalDurationSec > 0 ? Math.round((ri.silenceSec / ri.totalDurationSec) * 100) : 0;
+
+    var restartHeavySongCount = 0;
+    var cleanRunSongCount = 0;
+    if (ri.songPasses) {
+      for (var i = 0; i < ri.songPasses.length; i++) {
+        var sp = ri.songPasses[i];
+        if (sp.restarts && sp.restarts.length >= 2) restartHeavySongCount++;
+        if (sp.attempts) {
+          for (var a = 0; a < sp.attempts.length; a++) {
+            if (sp.attempts[a].durationSec >= 60) { cleanRunSongCount++; break; }
+          }
+        }
+      }
+    }
+
+    return {
+      lowMusicDensity: musicPct < 50,
+      highRestartSession: ri.restartCount >= 4 || restartHeavySongCount >= 2,
+      strongConfidenceSession: cleanRunSongCount >= 3 && ri.restartCount <= 1,
+      lowMetadataCompleteness: ri.metadataCompleteness < 40,
+      musicPct: musicPct,
+      speechPct: speechPct,
+      silencePct: silencePct,
+      cleanRunSongCount: cleanRunSongCount,
+      restartHeavySongCount: restartHeavySongCount,
+      hasRecordingData: true,
+    };
   }
 
   function _memberKeys() {

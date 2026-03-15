@@ -428,6 +428,7 @@
     }
 
     var candidates = getAgendaCandidates(input);
+    var sessionSig = input.rehearsalSessionSignals || null;
 
     if (!candidates.length) {
       return createEmptyAgendaState('No songs with enough data to build an agenda. Add readiness scores to get started.');
@@ -453,8 +454,13 @@
         candidate = selectCandidate(candidates, usedSongIds, 'repairScore', avoidSongIds);
         itemType = 'repair';
       } else if (slot.role === 'learn') {
+        // Session-level shaping: highRestartSession or lowMusicDensity → prefer repair over learn
+        var learnThreshold = 30;
+        if (sessionSig && (sessionSig.highRestartSession || sessionSig.lowMusicDensity)) {
+          learnThreshold = 50; // raise bar for learn — bias toward more repair reps
+        }
         var learnCandidate = selectCandidate(candidates, usedSongIds, 'learnScore_role', avoidSongIds);
-        if (learnCandidate && learnCandidate.learnScore >= 30) {
+        if (learnCandidate && learnCandidate.learnScore >= learnThreshold) {
           candidate = learnCandidate;
         } else {
           candidate = selectCandidate(candidates, usedSongIds, 'repairScore', avoidSongIds);
@@ -510,6 +516,15 @@
       isSameAsPrevious = previousSongIds.every(function (id, idx) { return id === newIds[idx]; });
     }
 
+    // Session-level label
+    var recordingInformed = !!(sessionSig && sessionSig.hasRecordingData);
+    var sessionLabel = null;
+    if (sessionSig) {
+      if (sessionSig.highRestartSession) sessionLabel = 'Focused repair — recent rehearsal showed frequent stops.';
+      else if (sessionSig.lowMusicDensity) sessionLabel = 'More playing time — recent session had high discussion/transition time.';
+      else if (sessionSig.strongConfidenceSession) sessionLabel = 'Confidence-leaning — recent rehearsal had strong uninterrupted runs.';
+    }
+
     return {
       items: items,
       totalMinutes: totalMinutes,
@@ -517,16 +532,20 @@
       generatedAt: new Date().toISOString(),
       empty: false,
       isSameAsPrevious: isSameAsPrevious,
-      summary: buildAgendaSummary(items),
+      recordingInformed: recordingInformed,
+      sessionLabel: sessionLabel,
+      summary: buildAgendaSummary(items, sessionSig),
     };
   }
 
-  function buildAgendaSummary(items) {
+  function buildAgendaSummary(items, sessionSig) {
     var repairs = items.filter(function (i) { return i.type === 'repair'; }).length;
     var learns = items.filter(function (i) { return i.type === 'learn'; }).length;
-    if (repairs >= 2) return repairs + ' songs need tightening — focused repair session.';
-    if (learns >= 1) return 'Mix of repair and new material — balanced session.';
-    return 'Varied practice session across ' + items.length + ' songs.';
+    var base = '';
+    if (repairs >= 2) base = repairs + ' songs need tightening — focused repair session.';
+    else if (learns >= 1) base = 'Mix of repair and new material — balanced session.';
+    else base = 'Varied practice session across ' + items.length + ' songs.';
+    return base;
   }
 
   function createEmptyAgendaState(reason) {

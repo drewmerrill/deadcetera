@@ -677,7 +677,8 @@ function renderRehearsalAgenda() {
         + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('how-it-works') : '')
         + '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim,#475569)">' + agenda.totalMinutes + ' min</span>'
         + '</div>'
-        + (agenda.summary ? '<div style="font-size:0.78em;color:var(--text-muted,#94a3b8);margin-bottom:8px;padding:0 2px">' + _escHtml(agenda.summary) + '</div>' : '')
+        + (agenda.summary ? '<div style="font-size:0.78em;color:var(--text-muted,#94a3b8);margin-bottom:4px;padding:0 2px">' + _escHtml(agenda.summary) + '</div>' : '')
+        + (agenda.recordingInformed ? '<div style="font-size:0.68em;color:#818cf8;margin-bottom:8px;padding:0 2px;display:flex;align-items:center;gap:4px"><span style="font-size:0.9em">🎙️</span>' + _escHtml(agenda.sessionLabel || 'Informed by your latest rehearsal recording.') + '</div>' : '')
         + '<div>' + rows + '</div>'
         + (agenda.isSameAsPrevious ? '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin:8px 0 2px;text-align:center">Best agenda for current data — no stronger alternates available.</div>' : '')
         + (hasActiveSession
