@@ -157,7 +157,7 @@
     },
     'setlist-readiness': {
       title: 'Setlist Readiness',
-      text: 'What percentage of songs on the gig\'s linked setlist are at or above the gig-ready threshold. This is scoped to the setlist — the Band Health tile shows the full catalog number.',
+      text: 'What percentage of songs on the gig\'s linked setlist are at or above the gig-ready threshold. The "All Songs" tile in Band Health below shows the full catalog number.',
     },
     'rehearsal-timeline': {
       title: 'Rehearsal Timeline',

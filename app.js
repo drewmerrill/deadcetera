@@ -9849,17 +9849,23 @@ function settingsTab(tab, btn) {
                         <option value="">Select your name...</option>
                         ${Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(cu===k?' selected':'')+'>'+m.name+' — '+m.role+'</option>').join('')}
                     </select></div>
-                <div class="form-row"><label class="form-label">Primary Instrument</label>
-                    <select class="app-select" id="settingsInst" onchange="localStorage.setItem('deadcetera_instrument',this.value)">
-                        <option value="">Select...</option>
-                        ${['bass|🎸 Bass','leadGuitar|🎸 Lead Guitar','rhythmGuitar|🎸 Rhythm Guitar','keys|🎹 Keys','drums|🥁 Drums','vocals|🎤 Vocals'].map(o=>{const[v,l]=o.split('|');return'<option value="'+v+'"'+(ci===v?' selected':'')+'>'+l+'</option>';}).join('')}
-                    </select></div>
+                <div class="form-row"><label class="form-label">Your Role</label>
+                    <div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:0.88em;color:var(--text-muted)">
+                        ${(function(){var m=bandMembers[cu];if(!m)return'<span style="color:var(--text-dim)">Select your name above to see your role</span>';var parts=[m.role];if(m.leadVocals)parts.push('Lead Vocals');else if(m.sings)parts.push('Harmony Vocals');return parts.join(' · ');})()}
+                    </div>
+                    <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Instrument and vocal role are managed in the Band tab.</div>
+                </div>
                 <div class="form-row"><label class="form-label">🏠 Home Address</label>
-                    <div style="display:flex;gap:8px">
+                    ${localStorage.getItem('deadcetera_home_address') ? `
+                    <div id="savedAddressDisplay" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:6px">
+                        <span style="flex:1;font-size:0.85em;color:var(--text)">${localStorage.getItem('deadcetera_home_address')}</span>
+                        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('savedAddressDisplay').style.display='none';document.getElementById('addressEditRow').style.display='flex'">Edit</button>
+                    </div>
+                    <div id="addressEditRow" style="display:none;gap:8px">` : `
+                    <div id="addressEditRow" style="display:flex;gap:8px">`}
                         <input class="app-input" id="settingsHomeAddress" placeholder="Start typing your address..." style="flex:1"
-                            value="${localStorage.getItem('deadcetera_home_address')||''}"
-                            oninput="localStorage.setItem('deadcetera_home_address',this.value)">
-                        <button class="btn btn-sm btn-primary" onclick="saveHomeAddress()">Save</button>
+                            value="${localStorage.getItem('deadcetera_home_address')||''}">
+                        <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_home_address',document.getElementById('settingsHomeAddress').value);settingsTab('profile')">Save</button>
                     </div>
                     <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used as default starting point for gig directions & leave-time calculations.</div>
                 </div>
@@ -9882,14 +9888,15 @@ function settingsTab(tab, btn) {
         
     band: `
         <div class="app-card"><h3>🎸 Band Configuration</h3>
-            <div class="form-row"><label class="form-label">Band Name</label>
+            <div class="form-row"><label class="form-label">Band Display Name</label>
                 <div style="display:flex;gap:8px"><input class="app-input" id="setBandName" value="${bn}">
-                <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_band_name',document.getElementById('setBandName').value);alert('✅ Updated!')">Save</button></div></div>
+                <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_band_name',document.getElementById('setBandName').value);settingsTab('band')">Save</button></div>
+                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">This is your display name. Your band ID is <code style="color:var(--accent-light)">${currentBandSlug}</code>.</div></div>
             <div class="form-row" style="margin-top:12px"><label class="form-label">Band Logo</label>
                 <div style="display:flex;align-items:center;gap:12px">
                     <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
                     <div><input type="file" accept="image/*" class="app-input" style="padding:6px;font-size:0.82em">
-                    <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in header.</div></div>
+                    <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in the top navigation bar and metronome screen.</div></div>
                 </div></div>
         </div>
         <div class="app-card"><h3>👥 Band Members</h3>
@@ -9905,7 +9912,7 @@ function settingsTab(tab, btn) {
                 <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
                 <div class="form-grid">
                     <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="newMemberName" placeholder="First name"></div>
-                    <div class="form-row"><label class="form-label">Role</label><input class="app-input" id="newMemberRole" placeholder="e.g. Lead Guitar"></div>
+                    <div class="form-row"><label class="form-label">Role / Instrument</label><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Vocals">Vocals</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
                     <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
                     <div class="form-row"><label class="form-label">Sings?</label><select class="app-select" id="newMemberSings"><option value="no">No</option><option value="harmony">Harmony</option><option value="lead">Lead + Harmony</option></select></div>
                 </div>
@@ -9913,7 +9920,8 @@ function settingsTab(tab, btn) {
             </div>
         </div>
         <div class="app-card"><h3>&#127760; Multi-Band</h3>
-            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:12px">Current band: <strong style="color:var(--accent-light)">${currentBandSlug}</strong></div>
+            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong> <span style="font-size:0.8em;color:var(--text-dim)">(${currentBandSlug})</span></div>
+            <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:12px">All songs, readiness, setlists, and gigs are scoped to this band. To switch bands, select a different one below or create a new one.</div>
             <button class="btn btn-primary" onclick="showCreateBandModal()">+ Create New Band</button>
         </div>`,
         

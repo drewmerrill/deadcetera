@@ -518,7 +518,7 @@ function _renderBandHealthRow(bundle) {
     var rl = deriveHdReadinessLabel(pct);
     if (pct !== null && rl) {
         tiles.push({
-            icon: '&#x1F4CA;', label: 'Readiness', value: pct + '%', sub: rl.long, color: rl.color,
+            icon: '&#x1F4CA;', label: 'All Songs', value: pct + '%', sub: rl.long, color: rl.color,
             onclick: "showPage('songs')"
         });
     }
@@ -562,9 +562,7 @@ function _renderBandHealthRow(bundle) {
     // Attribution line — helps users understand what unlocked these metrics
     var _healthAttrib = '';
     var _bhHelp = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('band-health') : '';
-    if (tiles.length === 2) _healthAttrib = '<div class="hd-health-attrib">Based on your readiness ratings ' + _bhHelp + '</div>';
-    else if (tiles.length === 3) _healthAttrib = '<div class="hd-health-attrib">Based on your ratings and rehearsal data ' + _bhHelp + '</div>';
-    else if (tiles.length >= 4) _healthAttrib = '<div class="hd-health-attrib">Full band intelligence active ' + _bhHelp + '</div>';
+    _healthAttrib = '<div class="hd-health-attrib"><span class="hd-health-attrib__title">Band Health</span> ' + _bhHelp + '</div>';
 
     var html = '<div class="hd-health-row-wrap home-anim-cards">' + _healthAttrib + '<div class="hd-health-row">';
     for (var i = 0; i < tiles.length; i++) {
@@ -3534,7 +3532,8 @@ function _scheduleWeakSongsFill(bundle) {
     '@media(max-width:480px){.hd-health-row{flex-wrap:wrap}.hd-health-tile{min-width:calc(50% - 6px)}}',
     /* Health row wrapper + attribution */
     '.hd-health-row-wrap{display:flex;flex-direction:column;gap:4px}',
-    '.hd-health-attrib{font-size:0.62em;font-weight:600;color:var(--text-dim,#475569);letter-spacing:0.04em;padding:0 2px}',
+    '.hd-health-attrib{font-size:0.62em;font-weight:600;color:var(--text-dim,#475569);letter-spacing:0.04em;padding:0 2px;display:flex;align-items:center;gap:4px}',
+    '.hd-health-attrib__title{font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim,#475569)}',
     /* Band Momentum */
     '.hd-momentum{display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px}',
     '.hd-momentum__arrow{font-size:1.2em;font-weight:800;line-height:1}',
