@@ -4,7 +4,7 @@ _Updated: 2026-03-15_
 
 ## Active Phase: Live UAT + Command Center Stabilization
 
-Build: **20260315-112210**
+Build: **20260315-113322**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -25,6 +25,7 @@ Goal: Restructure Home dashboard from 5-phase workflow spine into a 5-section Co
 | 6 | Deploy workflow hardening (push.py auto-discovery) | ✅ DONE |
 | 7 | Legacy status audit + migration tooling | ✅ DONE |
 | 8 | Priority Queue reason micro-explanations | ✅ DONE |
+| 9 | Priority Queue self-correcting telemetry + adaptive rules | ✅ DONE |
 | UAT | Live band testing | 🟡 IN PROGRESS |
 
 ### Command Center Layout (5 sections)
@@ -74,7 +75,7 @@ Goal: Restructure Home dashboard from 5-phase workflow spine into a 5-section Co
 | `js/features/song-detail.js` | `sdUpdateSongStatus()` now persists to master status file |
 | `js/core/groovelinx_store.js` | `saveReadiness(v=0)` master file persistence, legacy status audit/migration tools |
 | `push.py` | Auto-discover runtime assets by extension, explicit infra only (.py excluded from auto-scan) |
-| `js/features/home-dashboard.js` | `_humanizePracticeReason()` — converts breakdown signals to human sentences for Priority Queue |
+| `js/features/home-dashboard.js` | `_humanizePracticeReason()`, PQ telemetry (`_pqRecordSurface/Click`), adaptive rules (`_pqApplyAdaptive`) |
 
 ---
 
