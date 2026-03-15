@@ -1030,6 +1030,31 @@ function renderSongs(filter = 'all', searchTerm = '') {
 // SEARCH AND FILTERS
 // ============================================================================
 
+// Quick add song to rehearsal agenda from Songs list
+window._songQuickAddToAgenda = function(title) {
+    if (!title) return;
+    // Check if agenda engine can add songs
+    if (typeof GLStore !== 'undefined' && GLStore.generateRehearsalAgenda) {
+        var agenda = GLStore.generateRehearsalAgenda();
+        if (agenda && agenda.items) {
+            var already = agenda.items.some(function(item) { return item.songId === title || item.title === title; });
+            if (already) {
+                if (typeof showToast === 'function') showToast('\uD83D\uDCCB Already in rehearsal agenda');
+                return;
+            }
+        }
+    }
+    // Add to agenda by boosting practice attention (temporary session signal)
+    if (!window._agendaBoosts) window._agendaBoosts = {};
+    window._agendaBoosts[title] = true;
+    // Invalidate agenda cache so next render picks it up
+    if (typeof GLStore !== 'undefined' && GLStore.regenerateRehearsalAgenda) {
+        GLStore.regenerateRehearsalAgenda();
+    }
+    if (typeof showToast === 'function') showToast('\u2705 ' + title + ' added to agenda priority');
+    if (typeof invalidateHomeCache === 'function') invalidateHomeCache();
+};
+
 function setupSearchAndFilters() {
     const searchInput = document.getElementById('songSearch');
     const filterBtns = document.querySelectorAll('.filter-btn');
@@ -1089,8 +1114,35 @@ function setupSearchAndFilters() {
             if (sTitle && typeof openRehearsalMode === 'function') openRehearsalMode(sTitle);
         } else if (e.key === 'Escape') {
             if (typeof glRightPanel !== 'undefined' && glRightPanel.close) glRightPanel.close();
+        } else if (e.key === 'a' && sel && !e.target.matches('input,textarea,select')) {
+            e.preventDefault();
+            var aTitle = sel.dataset.title;
+            if (aTitle) _songQuickAddToAgenda(aTitle);
         }
     });
+
+    // Quick action bar for selected song row
+    function _songInjectQuickActions(row) {
+        // Remove any existing quick action bars
+        document.querySelectorAll('.song-quick-actions').forEach(function(el) { el.remove(); });
+        if (!row) return;
+        var title = row.dataset.title;
+        if (!title) return;
+        var safeTitle = title.replace(/'/g, "\\'");
+        var bar = document.createElement('div');
+        bar.className = 'song-quick-actions';
+        bar.style.cssText = 'position:absolute;right:60px;top:50%;transform:translateY(-50%);display:flex;gap:4px;z-index:8';
+        bar.innerHTML = '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + safeTitle + '\')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">CHART</button>'
+            + '<button onclick="event.stopPropagation();_songQuickAddToAgenda(\'' + safeTitle + '\')" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">+ AGENDA</button>';
+        row.appendChild(bar);
+    }
+
+    // Listen for selection changes to inject quick actions
+    var _songObserver = new MutationObserver(function() {
+        var sel = document.querySelector('#songDropdown .song-item.selected');
+        _songInjectQuickActions(sel);
+    });
+    if (_songDropdown) _songObserver.observe(_songDropdown, { subtree: true, attributes: true, attributeFilter: ['class'] });
 
     // Inject heatmap toggle button
     if (!document.getElementById('heatmapToggleBtn')) {
