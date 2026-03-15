@@ -61,10 +61,10 @@ var _loadedVersion = BUILD_VERSION;
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
         .song-status-cell { width:68px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative; z-index:1; }
         /* Col 2: Icon badges — row layout so single badge stays vertically centered */
-        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:6px; width:48px; flex-shrink:0; overflow:hidden; margin-left:4px; position:relative; z-index:1; }
-        .harmony-slot { display:flex; align-items:center; justify-content:center; width:20px; flex-shrink:0; }
+        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:8px; width:50px; flex-shrink:0; overflow:hidden; margin-left:4px; position:relative; z-index:1; }
+        .harmony-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
         .northstar-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
-        .harmony-badge { font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.35); padding:1px 2px; border-radius:3px; border:1px solid rgba(129,140,248,0.6); overflow:visible; flex-shrink:0; -webkit-font-smoothing:antialiased; }
+        .harmony-badge { font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.35); padding:1px 1px; border-radius:3px; border:1px solid rgba(129,140,248,0.6); overflow:hidden; flex-shrink:0; max-width:18px; -webkit-font-smoothing:antialiased; }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
         /* Col 3: Chain strip */
         .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; position:relative; z-index:3; }

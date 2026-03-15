@@ -91,7 +91,7 @@ a{color:var(--accent-light);}
 /* EVERY child div in songDropdown = a song row */
 #songDropdown > div {
     display:grid!important;
-    grid-template-columns:1fr 48px 50px 68px 48px!important;
+    grid-template-columns:1fr 50px 50px 68px 48px!important;
     position:relative!important;
     align-items:center!important;
     gap:4px!important;
