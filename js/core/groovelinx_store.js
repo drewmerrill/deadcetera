@@ -317,6 +317,7 @@
         try { db.ref(_bp('meta/readinessIndex/' + k + '/' + memberKey)).remove(); } catch(ei) {}
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
+        if (typeof renderSongs === 'function') requestAnimationFrame(renderSongs);
         emit('readinessChanged', { songId: songId, memberKey: memberKey, value: 0 });
         if (typeof showToast === 'function') showToast('Readiness cleared');
         return;
@@ -340,6 +341,7 @@
       } catch (ei) {}
       if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
       if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
+      if (typeof renderSongs === 'function') requestAnimationFrame(renderSongs);
       // History
       try {
         db.ref(_bp('songs/' + k + '/readiness_history/' + memberKey))

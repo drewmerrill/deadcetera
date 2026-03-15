@@ -508,7 +508,19 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var readHTML = isStoner ? '' : _renderSetlistReadinessBars(gig, bundle.readinessCache);
     var warnHTML = isStoner ? '' : _renderReadinessWarnings(gig, bundle.readinessCache);
     var slLine   = ls ? '<div class="hd-hero__setlist">Setlist: ' + lsEsc + '</div>' : '';
-    var pct=_computeBandReadinessPct(bundle),rl=deriveHdReadinessLabel(pct);
+    // Build gig-scoped song set for readiness/risk computation
+    var _gigSongScope = {};
+    if (ls && typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) {
+        var _slMatch = window._cachedSetlists.find(function(sl) { return (sl.name||'') === ls; });
+        if (_slMatch && _slMatch.sets) {
+            for (var _si = 0; _si < _slMatch.sets.length; _si++) {
+                var _ss = _slMatch.sets[_si].songs || [];
+                for (var _sj = 0; _sj < _ss.length; _sj++) { var _st = _ss[_sj].title || _ss[_sj]; if (_st) _gigSongScope[_st] = true; }
+            }
+        }
+    }
+    var _hasScope = Object.keys(_gigSongScope).length > 0;
+    var pct=_computeBandReadinessPct(bundle, _hasScope ? _gigSongScope : null),rl=deriveHdReadinessLabel(pct);
     var rb=rl?'<span class="hd-hero__ready-badge" style="background:'+rl.color+'22;color:'+rl.color+';border-color:'+rl.color+'55">'+rl.short+'</span>':'' ;
     var ms4=deriveHdMissionSummary(bundle),coach='';
     if(rl&&rl.tone==='ready')coach=ms4.topWeak?'Locked in. Tighten '+_escHtml(ms4.topWeak[0])+' and you\'re golden.':'Band is locked in. Go get \'em.';
@@ -521,24 +533,10 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var rlLabel = rl ? rl.long : '';
     var pctClickAction = ls ? 'homeViewSetlist(\'' + lsEsc + '\')' : 'showPage(\'setlists\')';
     var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
-    // Biggest risk song — scoped to this gig's setlist only
+    // Biggest risk song — scoped to this gig's setlist (reuses _gigSongScope from above)
     var rc2 = bundle.readinessCache || {};
-    var gigSetlistSongs = {};
-    if (ls && typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) {
-        var matchSl = window._cachedSetlists.find(function(sl) { return (sl.name||'') === ls; });
-        if (matchSl && matchSl.sets) {
-            for (var si2 = 0; si2 < matchSl.sets.length; si2++) {
-                var setSongs = matchSl.sets[si2].songs || [];
-                for (var sj = 0; sj < setSongs.length; sj++) {
-                    var st = setSongs[sj].title || setSongs[sj];
-                    if (st) gigSetlistSongs[st] = true;
-                }
-            }
-        }
-    }
-    var hasGigScope = Object.keys(gigSetlistSongs).length > 0;
     var riskEntry = Object.entries(rc2)
-        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!hasGigScope || gigSetlistSongs[e[0]]); })
+        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!_hasScope || _gigSongScope[e[0]]); })
         .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); })[0];
     var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
     var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
@@ -1966,11 +1964,17 @@ function bundle_readinessRef() {
 
 // ── Band Readiness Score ──────────────────────────────────────────────────────
 
-function _computeBandReadinessPct(bundle) {
+function _computeBandReadinessPct(bundle, scopeSongSet) {
     var rc = bundle.readinessCache || {};
-    var entries = Object.values(rc).filter(function(ratings) {
-        return ratings && typeof ratings === 'object' && Object.keys(ratings).length > 0;
-    });
+    var entries = [];
+    var keys = Object.keys(rc);
+    for (var i = 0; i < keys.length; i++) {
+        if (scopeSongSet && !scopeSongSet[keys[i]]) continue; // skip songs not in scope
+        var ratings = rc[keys[i]];
+        if (ratings && typeof ratings === 'object' && Object.keys(ratings).length > 0) {
+            entries.push(ratings);
+        }
+    }
     if (!entries.length) return null;
     var ready = entries.filter(function(ratings) {
         return _bandAvgForSong(ratings) >= 3;
