@@ -498,6 +498,112 @@ function _renderBandHealthRow(bundle) {
 
 // ── Command Center: Priority Work Queue ───────────────────────────────────────
 
+// ── PQ Telemetry (localStorage-only, per-device) ─────────────────────────────
+// Tracks surfaces and clicks per queue item to power adaptive behavior.
+// Data model: { "practice:Bertha": { s: 5, ls: 1710..., c: 1, lc: 1710... }, ... }
+//   s  = surfaced count
+//   ls = last surfaced timestamp (ms)
+//   c  = clicked count
+//   lc = last clicked timestamp (ms)
+
+var _PQ_TELEMETRY_KEY = 'gl_pq_telemetry';
+var _PQ_TELEMETRY_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days — auto-expire stale entries
+
+function _pqLoadTelemetry() {
+    try {
+        var raw = localStorage.getItem(_PQ_TELEMETRY_KEY);
+        if (!raw) return {};
+        var data = JSON.parse(raw);
+        // Prune entries older than max age
+        var now = Date.now();
+        var pruned = false;
+        Object.keys(data).forEach(function(k) {
+            if (now - (data[k].ls || 0) > _PQ_TELEMETRY_MAX_AGE) {
+                delete data[k];
+                pruned = true;
+            }
+        });
+        if (pruned) localStorage.setItem(_PQ_TELEMETRY_KEY, JSON.stringify(data));
+        return data;
+    } catch(e) { return {}; }
+}
+
+function _pqSaveTelemetry(data) {
+    try { localStorage.setItem(_PQ_TELEMETRY_KEY, JSON.stringify(data)); } catch(e) {}
+}
+
+function _pqRecordSurface(key) {
+    var data = _pqLoadTelemetry();
+    if (!data[key]) data[key] = { s: 0, ls: 0, c: 0, lc: 0 };
+    data[key].s++;
+    data[key].ls = Date.now();
+    _pqSaveTelemetry(data);
+}
+
+function _pqRecordClick(key) {
+    var data = _pqLoadTelemetry();
+    if (!data[key]) data[key] = { s: 0, ls: 0, c: 0, lc: 0 };
+    data[key].c++;
+    data[key].lc = Date.now();
+    _pqSaveTelemetry(data);
+}
+
+// Expose click recorder on window for inline onclick handlers
+window._pqClick = function(key) { _pqRecordClick(key); };
+
+// ── PQ Adaptive Rules ─────────────────────────────────────────────────────────
+// Applied after item generation, before rendering.
+//
+// Rules:
+// 1. Surfaced 3+ times with 0 clicks → strengthen reason wording ("still")
+// 2. Clicked in last 2 hours → reduce urgency by 10 (recently acted on)
+// 3. Low-priority item surfaced 5+ times with 0 clicks → drop from queue
+// 4. Never suppress items with urgency >= 70 (agenda/session/gig-critical)
+
+var _PQ_RECENTLY_ACTED_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function _pqApplyAdaptive(items) {
+    var tel = _pqLoadTelemetry();
+    var now = Date.now();
+
+    for (var i = items.length - 1; i >= 0; i--) {
+        var item = items[i];
+        var key = item._pqKey;
+        if (!key) continue;
+        var t = tel[key];
+        if (!t) continue;
+
+        // Rule 2: recently acted on → reduce urgency
+        if (t.lc && (now - t.lc) < _PQ_RECENTLY_ACTED_MS) {
+            item.urgency = Math.max(0, item.urgency - 10);
+            continue; // skip further rules — user already engaged
+        }
+
+        // Rule 3: low-priority ignored → drop
+        // Never drop items with urgency >= 70 (session, agenda, gig-critical)
+        if (item.urgency < 70 && t.s >= 5 && t.c === 0) {
+            items.splice(i, 1);
+            continue;
+        }
+
+        // Rule 1: surfaced 3+ times with 0 clicks → strengthen wording
+        if (t.s >= 3 && t.c === 0) {
+            item.desc = _pqStrengthenReason(item.desc);
+        }
+    }
+    return items;
+}
+
+function _pqStrengthenReason(desc) {
+    if (!desc) return desc;
+    // Avoid double-strengthening
+    if (desc.indexOf('Still') === 0 || desc.indexOf('still') === 0) return desc;
+    // Prefix with "Still" for persistence emphasis
+    return 'Still: ' + desc.charAt(0).toLowerCase() + desc.slice(1);
+}
+
+// ── PQ Main Render ────────────────────────────────────────────────────────────
+
 function _renderPriorityQueue(bundle) {
     var items = [];
 
@@ -510,10 +616,11 @@ function _renderPriorityQueue(bundle) {
             ? 'Currently on: ' + (_curItem.title || _curItem.songId || 'song ' + (activeSession.currentIndex + 1))
             : 'Slot ' + (activeSession.currentIndex + 1) + ' of ' + activeSession.items.length;
         items.push({
+            _pqKey: 'session',
             urgency: 100, label: 'Resume Rehearsal Session',
             desc: _sessionDesc,
             badge: 'IN PROGRESS', badgeColor: '#22c55e',
-            cta: 'Resume', onclick: "if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaAtIndex(" + activeSession.currentIndex + ")"
+            cta: 'Resume', onclick: "_pqClick('session');if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaAtIndex(" + activeSession.currentIndex + ")"
         });
     }
 
@@ -522,10 +629,11 @@ function _renderPriorityQueue(bundle) {
     if (agenda && !agenda.empty && !(activeSession && activeSession.status === 'active')) {
         var _agendaDesc = agenda.summary || (agenda.items.length + ' songs \xb7 ' + agenda.totalMinutes + ' min plan ready');
         items.push({
+            _pqKey: 'agenda',
             urgency: 80, label: 'Start Rehearsal',
             desc: _agendaDesc,
             badge: '', badgeColor: '',
-            cta: 'Start', onclick: "if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaSession()"
+            cta: 'Start', onclick: "_pqClick('agenda');if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaSession()"
         });
     }
 
@@ -533,7 +641,6 @@ function _renderPriorityQueue(bundle) {
     var tl = (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) ? GLStore.getLatestTimeline() : null;
     var hasAnyReadiness = _computeBandReadinessPct(bundle) !== null;
     if ((!tl || !tl.summary) && hasAnyReadiness) {
-        // Build a contextual reason for why uploading matters now
         var _uploadReason = 'No rehearsal recording on file yet';
         var _weakCount = Object.entries(bundle.readinessCache || {}).filter(function(e) {
             var k = Object.keys(e[1] || {}).filter(function(k) { return typeof e[1][k] === 'number' && e[1][k] > 0; });
@@ -541,10 +648,11 @@ function _renderPriorityQueue(bundle) {
         }).length;
         if (_weakCount > 0) _uploadReason = _weakCount + ' weak song' + (_weakCount !== 1 ? 's' : '') + ' \u2014 a recording would show where breakdowns happen';
         items.push({
+            _pqKey: 'upload',
             urgency: 40, label: 'Analyze a Rehearsal Recording',
             desc: _uploadReason,
             badge: '', badgeColor: '',
-            cta: 'Upload', onclick: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
+            cta: 'Upload', onclick: "_pqClick('upload');if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
         });
     }
 
@@ -558,17 +666,22 @@ function _renderPriorityQueue(bundle) {
             var pr = prItems[p];
             var prTier = _prUrgencyTier(pr);
             var safeTitle = pr.songId.replace(/'/g, "\\'");
+            var _prKey = 'practice:' + pr.songId;
             items.push({
+                _pqKey: _prKey,
                 urgency: 50 - p,
                 label: 'Practice: ' + pr.songId,
                 desc: _humanizePracticeReason(pr),
                 badge: prTier.label !== 'Keep Warm' ? prTier.label.toUpperCase() : '',
                 badgeColor: prTier.color,
                 cta: 'Practice',
-                onclick: "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + safeTitle + "');if(typeof highlightSelectedSongRow==='function')highlightSelectedSongRow('" + safeTitle + "');},200)"
+                onclick: "_pqClick('" + _prKey.replace(/'/g, "\\'") + "');showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + safeTitle + "');if(typeof highlightSelectedSongRow==='function')highlightSelectedSongRow('" + safeTitle + "');},200)"
             });
         }
     }
+
+    // Apply adaptive rules before sorting
+    _pqApplyAdaptive(items);
 
     // Sort by urgency, cap at 5
     items.sort(function(a, b) { return b.urgency - a.urgency; });
@@ -579,6 +692,11 @@ function _renderPriorityQueue(bundle) {
             + '<div class="hd-pq__header">Priority Queue</div>'
             + '<div class="hd-pq__empty">No actions right now. Add songs and rate readiness to get started.</div>'
             + '</div>';
+    }
+
+    // Record surfaces for all rendered items
+    for (var s = 0; s < items.length; s++) {
+        if (items[s]._pqKey) _pqRecordSurface(items[s]._pqKey);
     }
 
     var html = '<div class="hd-pq home-anim-cards">'
