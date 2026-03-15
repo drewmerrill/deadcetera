@@ -1,16 +1,16 @@
 /**
  * rehearsal_segmentation_engine.js
- * Milestone 8 Phase 1.5 — Adaptive Rehearsal Segmentation Engine
+ * Rehearsal Segmentation Engine — Quality-Hardened
  *
- * Generates initial segment guesses from audio analysis data.
+ * Generates meaningful segment guesses from rehearsal audio.
  * Pure computation. No DOM, no Firebase, no AudioContext.
- * Receives pre-computed audio features (channel data + sample rate),
- * returns a canonical segmented timeline.
  *
- * Key improvements over Phase 1:
- *   - Adaptive silence threshold (rolling baseline, not fixed global)
- *   - Hysteresis (separate enter/exit thresholds, no boundary flicker)
- *   - Post-processing cleanup (merge blips, snap boundaries, discard noise)
+ * Key design principles:
+ *   - Rehearsal-aware: soft playing IS music, not speech
+ *   - Aggressive merge: prefer fewer, longer segments over micro-cuts
+ *   - Adaptive baseline + hysteresis for silence detection
+ *   - Post-classification merge pass collapses same-type adjacencies
+ *   - Confidence reflects actual certainty, not a flat fallback
  *
  * LOAD ORDER: before groovelinx_store.js consumers.
  */
@@ -18,19 +18,28 @@
 (function () {
   'use strict';
 
-  // ── Constants ──────────────────────────────────────────────────────────────
-
   var DEFAULT_OPTS = {
-    windowSizeSec:        0.1,    // RMS analysis window
-    baselineWindowSec:    8.0,    // rolling baseline window for adaptive threshold
-    silenceEnterRatio:    0.55,   // enter silence when RMS < baseline * this
-    silenceExitRatio:     0.80,   // exit silence when RMS > baseline * this
-    minGapSec:            1.5,    // minimum silence gap to become a boundary
-    minSegmentSec:        4.0,    // segments shorter than this get merged
-    mergeBlipSec:         0.6,    // silence blips shorter than this get absorbed
-    energyHighMultiplier: 3.0,    // segment avg > baseline * this = definite music
-    speechVarianceCap:    0.0005, // low variance + moderate energy = speech
-    fallbackThreshold:    0.012,  // absolute floor if baseline is near-zero
+    // Analysis
+    windowSizeSec:        0.1,     // 100ms RMS windows
+    baselineWindowSec:    10.0,    // rolling baseline window (longer = more stable)
+
+    // Silence detection
+    silenceEnterRatio:    0.40,    // enter silence at 40% of baseline (was 55% — less trigger-happy)
+    silenceExitRatio:     0.65,    // exit silence at 65% of baseline (was 80% — stickier silence)
+    minGapSec:            3.0,     // min silence gap to split (was 1.5 — no more micro-splits)
+    mergeBlipSec:         1.5,     // blips under 1.5s get absorbed (was 0.6)
+    fallbackThreshold:    0.008,   // absolute floor (lowered for quiet recordings)
+
+    // Segment building
+    minSegmentSec:        15.0,    // minimum segment duration (was 4 — the key fix for micro-segments)
+    minFinalSegmentSec:   8.0,     // final cleanup: merge anything under this
+
+    // Classification
+    silenceRmsMultiplier: 0.35,    // segment avg < baseline * this = silence
+    musicRmsMultiplier:   1.2,     // segment avg > baseline * this = definite music (was 3.0 — way too high)
+    speechRequiresLowVar: 0.00008, // variance must be VERY low for pure speech (was 0.0005 — 6x tighter)
+    speechMaxRmsRatio:    0.5,     // speech must be < 50% of baseline (prevents music misclassification)
+    speechMinDuration:    8.0,     // pure speech segments must be at least 8s
   };
 
   // ── Main Entry ─────────────────────────────────────────────────────────────
@@ -46,95 +55,87 @@
     var duration = audioFeatures.duration || (data.length / sr);
     var windowSize = Math.floor(sr * opts.windowSizeSec);
 
-    // ── Step 1: Compute RMS energy per window ──
+    // Step 1: RMS energy profile
     var energyProfile = [];
     for (var i = 0; i < data.length; i += windowSize) {
       var sum = 0;
       var end = Math.min(i + windowSize, data.length);
       for (var j = i; j < end; j++) sum += data[j] * data[j];
-      energyProfile.push({
-        startSec: i / sr,
-        endSec: end / sr,
-        rms: Math.sqrt(sum / (end - i)),
-      });
+      energyProfile.push({ startSec: i / sr, endSec: end / sr, rms: Math.sqrt(sum / (end - i)) });
     }
+    if (!energyProfile.length) return _emptyTimeline('Audio too short.');
 
-    if (!energyProfile.length) return _emptyTimeline('Audio too short to analyze.');
+    // Step 2: Rolling baseline (75th percentile)
+    var blCount = Math.max(1, Math.round(opts.baselineWindowSec / opts.windowSizeSec));
+    var baselines = _computeBaseline(energyProfile, blCount, opts.fallbackThreshold);
 
-    // ── Step 2: Compute rolling baseline ──
-    var baselineWindowCount = Math.max(1, Math.round(opts.baselineWindowSec / opts.windowSizeSec));
-    var baselines = _computeRollingBaseline(energyProfile, baselineWindowCount, opts.fallbackThreshold);
+    // Step 3: Silence detection with hysteresis
+    var silenceMap = _detectSilence(energyProfile, baselines, opts);
 
-    // ── Step 3: Adaptive silence detection with hysteresis ──
-    var silenceMap = _detectSilenceAdaptive(energyProfile, baselines, opts);
+    // Step 4: Blip cleanup (aggressive — 1.5s)
+    _cleanBlips(silenceMap, opts);
 
-    // ── Step 4: Clean up blips ──
-    _cleanBlips(silenceMap, energyProfile, opts);
-
-    // ── Step 5: Extract gaps from silence map ──
+    // Step 5: Extract gaps
     var gaps = _extractGaps(silenceMap, energyProfile, opts);
 
-    // ── Step 6: Build segments from gaps ──
+    // Step 6: Build segments (min 15s)
     var rawSegments = _buildSegments(gaps, duration, energyProfile, opts);
 
-    // ── Step 7: Classify each segment ──
+    // Step 7: Classify
     var segments = [];
     for (var s = 0; s < rawSegments.length; s++) {
       segments.push(_classifySegment(rawSegments[s], s, baselines, opts));
     }
 
-    // ── Step 8: Detect likely restarts ──
+    // Step 8: Post-classification merge (adjacent same-type)
+    segments = _mergeAdjacentSameType(segments, opts);
+
+    // Step 9: Final micro-segment cleanup
+    segments = _finalCleanup(segments, opts);
+
+    // Step 10: Restart detection
     _detectRestarts(segments);
 
-    // ── Step 9: Build summary ──
+    // Step 11: Reindex
+    for (var ri = 0; ri < segments.length; ri++) segments[ri].id = 'seg_' + ri;
+
     return {
       id: 'seg_' + Date.now(),
       createdAt: new Date().toISOString(),
       sourceType: 'audio-analysis',
-      durationSec: Math.round(duration * 10) / 10,
+      durationSec: _r1(duration),
       segments: segments,
       summary: _buildSummary(segments),
     };
   }
 
-  // ── Rolling Baseline ───────────────────────────────────────────────────────
+  // ── Baseline ───────────────────────────────────────────────────────────────
 
-  function _computeRollingBaseline(profile, windowCount, fallback) {
+  function _computeBaseline(profile, windowCount, fallback) {
     var baselines = new Array(profile.length);
-    // Use a ring buffer for the rolling median-ish baseline
-    // We use the 75th percentile of the trailing window to avoid
-    // silence frames pulling the baseline too low
     for (var i = 0; i < profile.length; i++) {
       var start = Math.max(0, i - windowCount);
-      var windowRms = [];
-      for (var w = start; w <= i; w++) windowRms.push(profile[w].rms);
-      windowRms.sort(function(a, b) { return a - b; });
-      // 75th percentile
-      var p75idx = Math.floor(windowRms.length * 0.75);
-      var baseline = windowRms[p75idx] || windowRms[windowRms.length - 1] || fallback;
-      baselines[i] = Math.max(baseline, fallback);
+      var vals = [];
+      for (var w = start; w <= i; w++) vals.push(profile[w].rms);
+      vals.sort(function(a, b) { return a - b; });
+      var p75 = vals[Math.floor(vals.length * 0.75)] || fallback;
+      baselines[i] = Math.max(p75, fallback);
     }
     return baselines;
   }
 
-  // ── Adaptive Silence Detection with Hysteresis ─────────────────────────────
+  // ── Silence Detection ──────────────────────────────────────────────────────
 
-  function _detectSilenceAdaptive(profile, baselines, opts) {
-    var map = new Array(profile.length); // true = silence
+  function _detectSilence(profile, baselines, opts) {
+    var map = new Array(profile.length);
     var inSilence = false;
-
     for (var i = 0; i < profile.length; i++) {
       var rms = profile[i].rms;
       var bl = baselines[i];
-      var enterThresh = bl * opts.silenceEnterRatio;
-      var exitThresh = bl * opts.silenceExitRatio;
-
       if (inSilence) {
-        // Stay in silence until energy exceeds exit threshold
-        inSilence = rms < exitThresh;
+        inSilence = rms < bl * opts.silenceExitRatio;
       } else {
-        // Enter silence when energy drops below enter threshold
-        inSilence = rms < enterThresh;
+        inSilence = rms < bl * opts.silenceEnterRatio;
       }
       map[i] = inSilence;
     }
@@ -143,33 +144,19 @@
 
   // ── Blip Cleanup ───────────────────────────────────────────────────────────
 
-  function _cleanBlips(silenceMap, profile, opts) {
-    var minBlipWindows = Math.max(1, Math.round(opts.mergeBlipSec / opts.windowSizeSec));
-
-    // Pass 1: fill in short non-silence blips inside silence (noise bursts)
-    var runStart = -1;
+  function _cleanBlips(silenceMap, opts) {
+    var minW = Math.max(1, Math.round(opts.mergeBlipSec / opts.windowSizeSec));
+    // Pass 1: fill short non-silence inside silence
+    var rs = -1;
     for (var i = 0; i < silenceMap.length; i++) {
-      if (!silenceMap[i]) {
-        if (runStart < 0) runStart = i;
-      } else {
-        if (runStart >= 0 && (i - runStart) < minBlipWindows) {
-          for (var f = runStart; f < i; f++) silenceMap[f] = true;
-        }
-        runStart = -1;
-      }
+      if (!silenceMap[i]) { if (rs < 0) rs = i; }
+      else { if (rs >= 0 && (i - rs) < minW) { for (var f = rs; f < i; f++) silenceMap[f] = true; } rs = -1; }
     }
-
-    // Pass 2: fill in short silence blips inside non-silence (brief dips)
-    runStart = -1;
+    // Pass 2: fill short silence inside non-silence
+    rs = -1;
     for (var j = 0; j < silenceMap.length; j++) {
-      if (silenceMap[j]) {
-        if (runStart < 0) runStart = j;
-      } else {
-        if (runStart >= 0 && (j - runStart) < minBlipWindows) {
-          for (var f2 = runStart; f2 < j; f2++) silenceMap[f2] = false;
-        }
-        runStart = -1;
-      }
+      if (silenceMap[j]) { if (rs < 0) rs = j; }
+      else { if (rs >= 0 && (j - rs) < minW) { for (var f2 = rs; f2 < j; f2++) silenceMap[f2] = false; } rs = -1; }
     }
   }
 
@@ -177,128 +164,114 @@
 
   function _extractGaps(silenceMap, profile, opts) {
     var gaps = [];
-    var gapStart = -1;
-
+    var gs = -1;
     for (var i = 0; i < silenceMap.length; i++) {
-      if (silenceMap[i]) {
-        if (gapStart < 0) gapStart = i;
-      } else {
-        if (gapStart >= 0) {
-          var startSec = profile[gapStart].startSec;
+      if (silenceMap[i]) { if (gs < 0) gs = i; }
+      else {
+        if (gs >= 0) {
+          var startSec = profile[gs].startSec;
           var endSec = profile[i].startSec;
-          var dur = endSec - startSec;
-          if (dur >= opts.minGapSec) {
-            gaps.push({
-              startSec: startSec,
-              endSec: endSec,
-              midpointSec: (startSec + endSec) / 2,
-              durationSec: dur,
-            });
+          if ((endSec - startSec) >= opts.minGapSec) {
+            gaps.push({ startSec: startSec, endSec: endSec, midpointSec: (startSec + endSec) / 2 });
           }
         }
-        gapStart = -1;
+        gs = -1;
       }
     }
-    // Trailing gap
-    if (gapStart >= 0) {
-      var trailStart = profile[gapStart].startSec;
-      var trailEnd = profile[profile.length - 1].endSec;
-      if ((trailEnd - trailStart) >= opts.minGapSec) {
-        gaps.push({ startSec: trailStart, endSec: trailEnd, midpointSec: (trailStart + trailEnd) / 2, durationSec: trailEnd - trailStart });
-      }
+    if (gs >= 0) {
+      var ts = profile[gs].startSec;
+      var te = profile[profile.length - 1].endSec;
+      if ((te - ts) >= opts.minGapSec) gaps.push({ startSec: ts, endSec: te, midpointSec: (ts + te) / 2 });
     }
     return gaps;
   }
 
   // ── Segment Building ───────────────────────────────────────────────────────
 
-  function _buildSegments(gaps, totalDuration, profile, opts) {
-    var boundaries = [0];
-    for (var g = 0; g < gaps.length; g++) boundaries.push(gaps[g].midpointSec);
-    boundaries.push(totalDuration);
+  function _buildSegments(gaps, totalDur, profile, opts) {
+    var bounds = [0];
+    for (var g = 0; g < gaps.length; g++) bounds.push(gaps[g].midpointSec);
+    bounds.push(totalDur);
 
     var segments = [];
-    for (var i = 0; i < boundaries.length - 1; i++) {
-      var startSec = _round1(boundaries[i]);
-      var endSec = _round1(boundaries[i + 1]);
-      var dur = _round1(endSec - startSec);
-
-      if (dur < opts.minSegmentSec && segments.length > 0) {
-        segments[segments.length - 1].endSec = endSec;
-        segments[segments.length - 1].durationSec = _round1(endSec - segments[segments.length - 1].startSec);
+    for (var i = 0; i < bounds.length - 1; i++) {
+      var s = _r1(bounds[i]);
+      var e = _r1(bounds[i + 1]);
+      var d = _r1(e - s);
+      if (d < opts.minSegmentSec && segments.length > 0) {
+        var prev = segments[segments.length - 1];
+        prev.endSec = e;
+        prev.durationSec = _r1(e - prev.startSec);
+        prev._windows = _getWindows(profile, prev.startSec, e);
         continue;
       }
-
-      segments.push({
-        startSec: startSec,
-        endSec: endSec,
-        durationSec: dur,
-        _windows: _getWindows(profile, startSec, endSec),
-      });
+      segments.push({ startSec: s, endSec: e, durationSec: d, _windows: _getWindows(profile, s, e) });
     }
     return segments;
   }
 
-  function _getWindows(profile, startSec, endSec) {
+  function _getWindows(p, s, e) {
     var w = [];
-    for (var i = 0; i < profile.length; i++) {
-      if (profile[i].endSec > startSec && profile[i].startSec < endSec) w.push(profile[i]);
-    }
+    for (var i = 0; i < p.length; i++) { if (p[i].endSec > s && p[i].startSec < e) w.push(p[i]); }
     return w;
   }
 
-  // ── Classification ─────────────────────────────────────────────────────────
+  // ── Classification (rehearsal-aware) ────────────────────────────────────────
 
   function _classifySegment(raw, index, baselines, opts) {
     var windows = raw._windows || [];
-    if (!windows.length) return _makeSegment(raw, index, 'unknown', 0.2, 'unknown');
+    if (!windows.length) return _makeSeg(raw, index, 'unknown', 0.15, 'unknown');
 
     var rmsVals = windows.map(function(w) { return w.rms; });
     var avgRms = rmsVals.reduce(function(a, b) { return a + b; }, 0) / rmsVals.length;
+    var maxRms = Math.max.apply(null, rmsVals);
     var vari = _variance(rmsVals);
 
-    // Get the local baseline for this segment's midpoint
+    // Local baseline at segment midpoint
     var midIdx = Math.min(baselines.length - 1, Math.floor((raw.startSec + raw.endSec) / 2 / opts.windowSizeSec));
-    var localBaseline = baselines[midIdx] || opts.fallbackThreshold;
+    var bl = baselines[midIdx] || opts.fallbackThreshold;
 
-    var kind = 'unknown';
-    var confidence = 0.3;
-    var intent = 'unknown';
+    var silenceThresh = bl * opts.silenceRmsMultiplier;
+    var musicThresh = bl * opts.musicRmsMultiplier;
 
-    var silenceThresh = localBaseline * opts.silenceEnterRatio;
-    var musicThresh = localBaseline * opts.energyHighMultiplier;
-
+    // 1. Clear silence
     if (avgRms < silenceThresh) {
-      kind = 'silence';
-      confidence = 0.9;
-      intent = raw.durationSec > 10 ? 'break' : 'pause';
-    } else if (avgRms >= musicThresh) {
-      kind = 'music';
-      confidence = 0.8;
-      intent = 'attempt';
-      if (raw.durationSec < 30) { intent = 'restart'; confidence = 0.5; }
-    } else if (avgRms < localBaseline && vari < opts.speechVarianceCap) {
-      kind = 'speech';
-      confidence = 0.5;
-      intent = 'discussion';
-    } else {
-      kind = 'music';
-      confidence = 0.6;
-      intent = 'attempt';
-      if (raw.durationSec < 20) { intent = 'tuning'; confidence = 0.4; }
+      return _makeSeg(raw, index, 'silence', 0.92, raw.durationSec > 15 ? 'break' : 'pause');
     }
 
-    return _makeSegment(raw, index, kind, confidence, intent);
+    // 2. Clear music (anything above musicThresh, which is now just 1.2x baseline)
+    if (avgRms >= musicThresh) {
+      var conf = Math.min(0.95, 0.7 + (avgRms / bl - 1.2) * 0.15); // scale confidence with energy
+      var intent = 'attempt';
+      if (raw.durationSec < 25) { intent = 'restart'; conf = Math.min(conf, 0.6); }
+      return _makeSeg(raw, index, 'music', _r2(conf), intent);
+    }
+
+    // 3. Pure speech: VERY strict — must be low energy, VERY low variance, sufficient duration
+    if (avgRms < bl * opts.speechMaxRmsRatio &&
+        vari < opts.speechRequiresLowVar &&
+        raw.durationSec >= opts.speechMinDuration &&
+        maxRms < bl * 0.8) {
+      return _makeSeg(raw, index, 'speech', 0.65, 'discussion');
+    }
+
+    // 4. Default: music (rehearsal-aware — soft playing, talking over instruments, loose passages)
+    // This is the critical fix: anything with energy above silence that doesn't meet
+    // the very strict speech criteria is treated as music/rehearsal activity
+    var musicConf = 0.55 + (avgRms / bl) * 0.2; // more energy = more confident it's music
+    var musicIntent = 'attempt';
+    if (raw.durationSec < 20 && vari > 0.001) { musicIntent = 'tuning'; musicConf = 0.4; }
+    return _makeSeg(raw, index, 'music', _r2(Math.min(0.85, musicConf)), musicIntent);
   }
 
-  function _makeSegment(raw, index, kind, confidence, intent) {
+  function _makeSeg(raw, index, kind, confidence, intent) {
     return {
       id: 'seg_' + index,
       startSec: raw.startSec,
       endSec: raw.endSec,
       durationSec: raw.durationSec,
       kind: kind,
-      confidence: Math.round(confidence * 100) / 100,
+      confidence: confidence,
       likelyIntent: intent,
       likelySongId: null,
       likelySongTitle: null,
@@ -306,14 +279,55 @@
     };
   }
 
+  // ── Post-Classification Merge ──────────────────────────────────────────────
+
+  function _mergeAdjacentSameType(segments, opts) {
+    if (segments.length < 2) return segments;
+    var merged = [segments[0]];
+    for (var i = 1; i < segments.length; i++) {
+      var prev = merged[merged.length - 1];
+      var cur = segments[i];
+      // Merge if same kind, or if current is very short and same-ish
+      if (cur.kind === prev.kind ||
+          (cur.durationSec < opts.minFinalSegmentSec && cur.kind !== 'silence' && prev.kind !== 'silence')) {
+        prev.endSec = cur.endSec;
+        prev.durationSec = _r1(prev.endSec - prev.startSec);
+        // Keep higher confidence
+        if (cur.confidence > prev.confidence) prev.confidence = cur.confidence;
+      } else {
+        merged.push(cur);
+      }
+    }
+    return merged;
+  }
+
+  // ── Final Cleanup ──────────────────────────────────────────────────────────
+
+  function _finalCleanup(segments, opts) {
+    if (segments.length < 2) return segments;
+    var cleaned = [];
+    for (var i = 0; i < segments.length; i++) {
+      var seg = segments[i];
+      if (seg.durationSec < opts.minFinalSegmentSec && cleaned.length > 0) {
+        // Absorb into previous
+        var prev = cleaned[cleaned.length - 1];
+        prev.endSec = seg.endSec;
+        prev.durationSec = _r1(prev.endSec - prev.startSec);
+      } else {
+        cleaned.push(seg);
+      }
+    }
+    return cleaned;
+  }
+
   // ── Restart Detection ──────────────────────────────────────────────────────
 
   function _detectRestarts(segments) {
     for (var i = 0; i < segments.length - 2; i++) {
       var a = segments[i], b = segments[i + 1], c = segments[i + 2];
-      if (a.kind === 'music' && a.durationSec < 40 &&
+      if (a.kind === 'music' && a.durationSec < 45 &&
           (b.kind === 'silence' || b.kind === 'speech') &&
-          c.kind === 'music' && c.durationSec > a.durationSec * 1.5) {
+          c.kind === 'music' && c.durationSec > a.durationSec * 1.3) {
         a.likelyIntent = 'restart';
         a.confidence = Math.max(a.confidence, 0.6);
       }
@@ -323,43 +337,33 @@
   // ── Summary ────────────────────────────────────────────────────────────────
 
   function _buildSummary(segments) {
-    var music = 0, speech = 0, silence = 0, restarts = 0;
+    var m = 0, sp = 0, si = 0, r = 0;
     for (var i = 0; i < segments.length; i++) {
-      if (segments[i].kind === 'music') music++;
-      if (segments[i].kind === 'speech') speech++;
-      if (segments[i].kind === 'silence') silence++;
-      if (segments[i].likelyIntent === 'restart') restarts++;
+      if (segments[i].kind === 'music') m++;
+      if (segments[i].kind === 'speech') sp++;
+      if (segments[i].kind === 'silence') si++;
+      if (segments[i].likelyIntent === 'restart') r++;
     }
-    return { segmentCount: segments.length, musicSegments: music, speechSegments: speech, silenceSegments: silence, likelyRestarts: restarts };
+    return { segmentCount: segments.length, musicSegments: m, speechSegments: sp, silenceSegments: si, likelyRestarts: r };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   function _emptyTimeline(reason) {
-    return {
-      id: 'seg_' + Date.now(), createdAt: new Date().toISOString(),
-      sourceType: 'none', durationSec: 0, segments: [],
-      summary: { segmentCount: 0, musicSegments: 0, speechSegments: 0, silenceSegments: 0, likelyRestarts: 0 },
-      error: reason,
-    };
+    return { id: 'seg_' + Date.now(), createdAt: new Date().toISOString(), sourceType: 'none', durationSec: 0, segments: [], summary: { segmentCount: 0, musicSegments: 0, speechSegments: 0, silenceSegments: 0, likelyRestarts: 0 }, error: reason };
   }
 
-  function _merge(d, o) {
-    var r = {};
-    for (var k in d) r[k] = d[k];
-    for (var k2 in o) { if (o[k2] !== undefined) r[k2] = o[k2]; }
-    return r;
-  }
+  function _merge(d, o) { var r = {}; for (var k in d) r[k] = d[k]; for (var k2 in o) { if (o[k2] !== undefined) r[k2] = o[k2]; } return r; }
 
   function _variance(arr) {
     if (!arr.length) return 0;
     var m = arr.reduce(function(a, b) { return a + b; }, 0) / arr.length;
-    var s = 0;
-    for (var i = 0; i < arr.length; i++) s += (arr[i] - m) * (arr[i] - m);
+    var s = 0; for (var i = 0; i < arr.length; i++) s += (arr[i] - m) * (arr[i] - m);
     return s / arr.length;
   }
 
-  function _round1(v) { return Math.round(v * 10) / 10; }
+  function _r1(v) { return Math.round(v * 10) / 10; }
+  function _r2(v) { return Math.round(v * 100) / 100; }
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
