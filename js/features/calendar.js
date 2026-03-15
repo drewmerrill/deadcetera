@@ -300,7 +300,7 @@ async function calAddEvent(date, editIdx, existing) {
     const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     setlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     const setlistOpts = setlists.map(sl =>
-        `<option value="${(sl.name||'').replace(/"/g,'&quot;')}" ${(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
+        `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}" ${(sl.setlistId&&ev.setlistId===sl.setlistId)||(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
     ).join('');
     const venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
     venues.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
@@ -423,26 +423,81 @@ async function calSaveEvent(editIdx) {
         events.push(ev);
     }
     await saveBandDataToDrive('_band', 'calendar_events', events);
-    // If this is a gig event, also sync to the Gigs page
+    // If this is a gig event, sync to canonical Gig record
     if (ev.type === 'gig') {
         const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-        const gigKey = (ev.venue||'') + '|' + (ev.date||'');
-        const existingIdx = existingGigs.findIndex(g => ((g.venue||'')+'|'+(g.date||'')) === gigKey);
+        // Match by gigId first (stable), fallback to venue+date (legacy compat)
+        var existingIdx = -1;
+        if (ev.gigId) {
+            existingIdx = existingGigs.findIndex(function(g) { return g.gigId === ev.gigId; });
+        }
+        if (existingIdx < 0) {
+            const gigKey = (ev.venue||'') + '|' + (ev.date||'');
+            existingIdx = existingGigs.findIndex(function(g) { return ((g.venue||'')+'|'+(g.date||'')) === gigKey; });
+        }
+
+        // Resolve setlist from dropdown
+        var calSetlistVal = ev.linkedSetlist || '';
+        var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        var linkedSl = calSetlistVal
+            ? (allSetlists.find(function(s) { return s.setlistId === calSetlistVal; })
+            || allSetlists.find(function(s) { return (s.name || '') === calSetlistVal; }))
+            : null;
+
         const gigRecord = {
             venue: ev.venue || ev.title || '',
             date: ev.date || '',
             startTime: ev.time || '',
             notes: ev.notes || '',
-            linkedSetlist: ev.linkedSetlist || '',
+            linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
+            setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
             updated: new Date().toISOString()
         };
         if (existingIdx >= 0) {
-            existingGigs[existingIdx] = { ...existingGigs[existingIdx], ...gigRecord };
+            var prev = existingGigs[existingIdx];
+            existingGigs[existingIdx] = { ...prev, ...gigRecord };
+            // Preserve existing gigId and fields not in the calendar form
+            existingGigs[existingIdx].gigId = prev.gigId || generateShortId(12);
+            if (!gigRecord.setlistId && prev.setlistId) existingGigs[existingIdx].setlistId = prev.setlistId;
+            if (!gigRecord.linkedSetlist && prev.linkedSetlist) existingGigs[existingIdx].linkedSetlist = prev.linkedSetlist;
+            // Write gigId back to calendar event
+            ev.gigId = existingGigs[existingIdx].gigId;
         } else {
+            gigRecord.gigId = generateShortId(12);
             gigRecord.created = new Date().toISOString();
+            // Auto-create blank setlist if none selected
+            if (!gigRecord.setlistId) {
+                var newSl = {
+                    setlistId: generateShortId(12),
+                    gigId: gigRecord.gigId,
+                    name: (gigRecord.venue || 'Gig') + ' ' + (gigRecord.date || ''),
+                    date: gigRecord.date || '',
+                    venue: gigRecord.venue || '',
+                    notes: '',
+                    sets: [{ name: 'Set 1', songs: [] }],
+                    created: new Date().toISOString()
+                };
+                gigRecord.setlistId = newSl.setlistId;
+                gigRecord.linkedSetlist = newSl.name;
+                allSetlists.push(newSl);
+                await saveBandDataToDrive('_band', 'setlists', allSetlists);
+            }
+            ev.gigId = gigRecord.gigId;
             existingGigs.push(gigRecord);
         }
+        // Link setlist back to gig if applicable
+        if (linkedSl && !linkedSl.gigId) {
+            linkedSl.gigId = ev.gigId;
+            await saveBandDataToDrive('_band', 'setlists', allSetlists);
+        }
         await saveBandDataToDrive('_band', 'gigs', existingGigs);
+        // Re-save calendar events with gigId stamped on the event
+        var savedEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var calIdx = savedEvents.findIndex(function(e) { return e.id === ev.id; });
+        if (calIdx >= 0 && !savedEvents[calIdx].gigId) {
+            savedEvents[calIdx].gigId = ev.gigId;
+            await saveBandDataToDrive('_band', 'calendar_events', savedEvents);
+        }
     }
     document.getElementById('calEventFormArea').innerHTML = '';
     loadCalendarEvents();

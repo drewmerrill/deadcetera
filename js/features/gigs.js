@@ -80,7 +80,7 @@ async function editGig(idx) {
         <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
             <select class="app-select" id="gigLinkedSetlist">
                 <option value="">-- None --</option>
-                ${(window._cachedSetlists||[]).map(sl => `<option value="${(sl.name||'').replace(/"/g,'&quot;')}" ${(g.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
+                ${(window._cachedSetlists||[]).map(sl => `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}" ${(sl.setlistId&&g.setlistId===sl.setlistId)||(g.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
             </select>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
@@ -94,8 +94,12 @@ async function editGig(idx) {
 async function saveGigEdit(idx) {
     if (!requireSignIn()) return;
     const gigData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var prev = gigData[idx] || {};
+    var selectedSetlistId = document.getElementById('gigLinkedSetlist')?.value || '';
+
     gigData[idx] = {
-        ...gigData[idx],
+        ...prev,
+        gigId:         prev.gigId || generateShortId(12),
         venue:         document.getElementById('gigVenue')?.value?.trim(),
         date:          document.getElementById('gigDate')?.value,
         pay:           document.getElementById('gigPay')?.value,
@@ -106,9 +110,35 @@ async function saveGigEdit(idx) {
         soundPerson:   document.getElementById('gigSound')?.value,
         contact:       document.getElementById('gigContact')?.value,
         notes:         document.getElementById('gigNotes')?.value,
-        linkedSetlist: document.getElementById('gigLinkedSetlist')?.value || '',
         updated: new Date().toISOString()
     };
+
+    // Resolve setlist link
+    var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var linkedSl = null;
+    if (selectedSetlistId) {
+        linkedSl = allSetlists.find(function(s) { return s.setlistId === selectedSetlistId; })
+                || allSetlists.find(function(s) { return (s.name || '') === selectedSetlistId; });
+    }
+
+    // Clear old setlist back-ref if changing
+    if (prev.setlistId && (!linkedSl || linkedSl.setlistId !== prev.setlistId)) {
+        var oldSl = allSetlists.find(function(s) { return s.setlistId === prev.setlistId; });
+        if (oldSl && oldSl.gigId === gigData[idx].gigId) oldSl.gigId = null;
+    }
+
+    if (linkedSl) {
+        if (!linkedSl.setlistId) linkedSl.setlistId = generateShortId(12);
+        gigData[idx].setlistId = linkedSl.setlistId;
+        gigData[idx].linkedSetlist = linkedSl.name || '';
+        linkedSl.gigId = gigData[idx].gigId;
+    } else {
+        gigData[idx].setlistId = prev.setlistId || null;
+        gigData[idx].linkedSetlist = prev.linkedSetlist || '';
+    }
+    await saveBandDataToDrive('_band', 'setlists', allSetlists);
+    window._cachedSetlists = null;
+
     await saveBandDataToDrive('_band', 'gigs', gigData);
     // Sync updated gig to calendar
     await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
@@ -300,10 +330,12 @@ function renderGigsPage(el) {
     // Map renders on expand — see toggleGigsMap()
 }
 
-async function gigLaunchLinkedSetlist(setlistName) {
+async function gigLaunchLinkedSetlist(setlistIdOrName) {
     if (!requireSignIn()) return;
     var allSl = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    var idx = allSl.findIndex(function(sl) { return (sl.name||'') === setlistName; });
+    // Try by setlistId first, then by name (compat)
+    var idx = allSl.findIndex(function(sl) { return sl.setlistId === setlistIdOrName; });
+    if (idx < 0) idx = allSl.findIndex(function(sl) { return (sl.name||'') === setlistIdOrName; });
     if (idx < 0) { showToast('Setlist not found'); return; }
     await launchGigMode(idx);
 }
@@ -340,7 +372,7 @@ async function loadGigs() {
         ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
         ${g.linkedSetlist ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist}</span>
-            <button onclick="gigLaunchLinkedSetlist('${g.linkedSetlist.replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
+            <button onclick="gigLaunchLinkedSetlist('${(g.setlistId || g.linkedSetlist).replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
             <button onclick="showPage('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
         </div>` : ''}
     </div>`).join('');
@@ -377,7 +409,7 @@ async function addGig() {
         <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
             <select class="app-select" id="gigLinkedSetlist">
                 <option value="">-- None --</option>
-                ${(window._cachedSetlists||[]).map(sl => `<option value="${(sl.name||'').replace(/"/g,'&quot;')}">${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
+                ${(window._cachedSetlists||[]).map(sl => `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}">${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
             </select>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Parking, load-in door, set length, gear needed…"></textarea></div>
@@ -434,14 +466,22 @@ async function gigSaveNewVenue() {
     showToast("🏛 Venue saved!");
 }
 window.gigSaveNewVenue = gigSaveNewVenue;
-// Sync a gig record to calendar_events — upsert by venue+date key
+// Sync a gig record to calendar_events — match by gigId first, fallback venue+date
 async function _syncGigToCalendar(gig, createdKey) {
     if (!gig || !gig.date || !gig.venue) return;
     const calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-    const matchKey = (gig.venue||'') + '|' + (gig.date||'');
-    const existIdx = calEvents.findIndex(e => e.type === 'gig' && ((e.venue||'')+'|'+(e.date||'')) === matchKey);
+    // Match by gigId first (stable), fallback to venue+date (legacy compat)
+    var existIdx = -1;
+    if (gig.gigId) {
+        existIdx = calEvents.findIndex(function(e) { return e.type === 'gig' && e.gigId === gig.gigId; });
+    }
+    if (existIdx < 0) {
+        const matchKey = (gig.venue||'') + '|' + (gig.date||'');
+        existIdx = calEvents.findIndex(function(e) { return e.type === 'gig' && ((e.venue||'')+'|'+(e.date||'')) === matchKey; });
+    }
     const calRecord = {
         type: 'gig',
+        gigId: gig.gigId || null,
         date: gig.date || '',
         title: gig.venue || '',
         time: gig.startTime || '',
@@ -452,16 +492,27 @@ async function _syncGigToCalendar(gig, createdKey) {
     };
     if (existIdx >= 0) {
         calEvents[existIdx] = { ...calEvents[existIdx], ...calRecord };
+        // Ensure id exists on existing event
+        if (!calEvents[existIdx].id) calEvents[existIdx].id = generateShortId(12);
     } else {
+        calRecord.id = generateShortId(12);
         calRecord.created = createdKey || gig.created || new Date().toISOString();
         calEvents.push(calRecord);
+    }
+    // Store back-ref on gig
+    if (!gig.calendarEventId && existIdx >= 0 && calEvents[existIdx].id) {
+        gig.calendarEventId = calEvents[existIdx].id;
+    } else if (!gig.calendarEventId && existIdx < 0) {
+        gig.calendarEventId = calRecord.id;
     }
     await saveBandDataToDrive('_band', 'calendar_events', calEvents);
 }
 
 async function saveGig() {
     if (!requireSignIn()) return;
+    var selectedSetlistId = document.getElementById('gigLinkedSetlist')?.value || null;
     const gig = {
+        gigId:      generateShortId(12),
         venue:      document.getElementById('gigVenue')?.value?.trim(),
         date:       document.getElementById('gigDate')?.value,
         pay:        document.getElementById('gigPay')?.value,
@@ -472,10 +523,47 @@ async function saveGig() {
         soundPerson:document.getElementById('gigSound')?.value,
         contact:    document.getElementById('gigContact')?.value,
         notes:      document.getElementById('gigNotes')?.value,
-        linkedSetlist: document.getElementById('gigLinkedSetlist')?.value || null,
+        setlistId:  null,
+        linkedSetlist: null,
         created: new Date().toISOString()
     };
     if (!gig.venue) { alert('Venue required'); return; }
+
+    // Resolve setlist link: by setlistId if available, fallback to name match
+    var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var linkedSl = null;
+    if (selectedSetlistId) {
+        // Try by setlistId first, then by name (compat with old dropdowns)
+        linkedSl = allSetlists.find(function(s) { return s.setlistId === selectedSetlistId; })
+                || allSetlists.find(function(s) { return (s.name || '') === selectedSetlistId; });
+    }
+
+    if (linkedSl) {
+        // Ensure setlist has an ID
+        if (!linkedSl.setlistId) linkedSl.setlistId = generateShortId(12);
+        gig.setlistId = linkedSl.setlistId;
+        gig.linkedSetlist = linkedSl.name || '';
+        linkedSl.gigId = gig.gigId;
+        await saveBandDataToDrive('_band', 'setlists', allSetlists);
+    } else {
+        // Auto-create blank setlist for this gig
+        var newSl = {
+            setlistId: generateShortId(12),
+            gigId: gig.gigId,
+            name: (gig.venue || 'Gig') + ' ' + (gig.date || ''),
+            date: gig.date || '',
+            venue: gig.venue || '',
+            notes: '',
+            sets: [{ name: 'Set 1', songs: [] }],
+            created: new Date().toISOString()
+        };
+        gig.setlistId = newSl.setlistId;
+        gig.linkedSetlist = newSl.name;
+        allSetlists.push(newSl);
+        await saveBandDataToDrive('_band', 'setlists', allSetlists);
+    }
+    window._cachedSetlists = null;
+
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);
     await saveBandDataToDrive('_band', 'gigs', existing);
@@ -603,15 +691,34 @@ async function seedGigData() {
         { name:'Wings Tap House', address:'GA' },
     ];
     
-    gigs.forEach(g => g.created = new Date().toISOString());
-    setlists.forEach(sl => sl.created = new Date().toISOString());
+    // Stamp IDs and cross-link gigs ↔ setlists by date+venue
+    gigs.forEach(function(g) {
+        g.gigId = generateShortId(12);
+        g.created = new Date().toISOString();
+    });
+    setlists.forEach(function(sl) {
+        sl.setlistId = generateShortId(12);
+        sl.created = new Date().toISOString();
+    });
+    // Cross-link: match seed gig to seed setlist by date+venue
+    gigs.forEach(function(g) {
+        var match = setlists.find(function(sl) {
+            return sl.date === g.date && sl.venue && g.venue &&
+                   sl.venue.toLowerCase().trim() === g.venue.toLowerCase().trim();
+        });
+        if (match) {
+            g.setlistId = match.setlistId;
+            g.linkedSetlist = match.name;
+            match.gigId = g.gigId;
+        }
+    });
     venues.forEach(v => v.created = new Date().toISOString());
-    
+
     try {
         const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
         const existingSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
         const existingVenues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
-        
+
         // Deduplicate
         const gigKeys = new Set(existingGigs.map(g => (g.venue||'') + '|' + (g.date||'')));
         const newGigs = gigs.filter(g => !gigKeys.has(g.venue + '|' + g.date));
@@ -619,11 +726,11 @@ async function seedGigData() {
         const newSetlists = setlists.filter(s => !slKeys.has(s.name));
         const venueKeys = new Set(existingVenues.map(v => v.name));
         const newVenues = venues.filter(v => !venueKeys.has(v.name));
-        
+
         if (newGigs.length > 0) await saveBandDataToDrive('_band', 'gigs', [...existingGigs, ...newGigs]);
         if (newSetlists.length > 0) await saveBandDataToDrive('_band', 'setlists', [...existingSetlists, ...newSetlists]);
         if (newVenues.length > 0) await saveBandDataToDrive('_band', 'venues', [...existingVenues, ...newVenues]);
-        
+
         alert('✅ Imported ' + newGigs.length + ' gigs, ' + newSetlists.length + ' setlists, and ' + newVenues.length + ' venues!\n\n(Duplicates were skipped.)');
         if (typeof loadGigs === 'function') loadGigs();
         if (typeof loadSetlists === 'function') loadSetlists();

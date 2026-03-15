@@ -622,7 +622,6 @@ window.renderStagePlotPage = renderStagePlotPage;
 window._spAddElement = _spAddElement;
 window._spPlaceAtCell = _spPlaceAtCell;
 window._spRemoveElement = _spRemoveElement;
-window._spEditElement = _spEditElement;
 window._spAddChannel = _spAddChannel;
 window._spUpdateChannel = _spUpdateChannel;
 window._spRemoveChannel = _spRemoveChannel;

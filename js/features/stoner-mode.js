@@ -42,9 +42,19 @@ function _stonerEnter() {
     // Update topbar button
     var btn = document.getElementById('stonerBtn');
     if (btn) { btn.textContent = '😵 Exit'; btn.style.background = 'rgba(139,92,246,0.3)'; btn.style.color = '#c084fc'; btn.style.borderColor = 'rgba(139,92,246,0.5)'; }
+    // Escape key exits stoner mode
+    document.addEventListener('keydown', _stonerKeyHandler);
+}
+
+function _stonerKeyHandler(e) {
+    if (e.key === 'Escape' && _stonerMode) {
+        e.preventDefault();
+        toggleStonerMode();
+    }
 }
 
 function _stonerExit() {
+    document.removeEventListener('keydown', _stonerKeyHandler);
     var ov = document.getElementById('stonerOverlay');
     if (ov) ov.classList.remove('stoner-visible');
     document.body.style.overflow = '';

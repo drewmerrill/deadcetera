@@ -427,6 +427,8 @@ function slAddSet(type) {
 async function slSaveSetlist() {
     if (!requireSignIn()) return;
     const sl = {
+        setlistId: generateShortId(12),
+        gigId: null,
         name: document.getElementById('slName')?.value || 'Untitled',
         date: document.getElementById('slDate')?.value || '',
         venue: document.getElementById('slVenue')?.value || '',
@@ -483,15 +485,22 @@ async function editSetlist(idx) {
     slEnrichKeyBpm();
     (async function() {
         var row = document.getElementById("slLinkedGigRow");
-        if (!row || !sl.date) return;
+        if (!row) return;
         try {
             var gigs = toArray(await loadBandDataFromDrive("_band", "gigs") || []);
-            var match = gigs.find(function(g){ return g.date === sl.date; });
+            // Match by gigId first (stable), fallback to date match (legacy compat)
+            var match = null;
+            if (sl.gigId) {
+                match = gigs.find(function(g){ return g.gigId === sl.gigId; });
+            }
+            if (!match && sl.date) {
+                match = gigs.find(function(g){ return g.date === sl.date; });
+            }
             if (match) {
                 var gigIdx = gigs.indexOf(match);
                 var label = match.title || match.venue || "Gig";
                 var html = '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(99,102,241,0.12);border-radius:8px;font-size:0.85em">';
-                html += '<span style="color:var(--accent-light)">⼿ Linked Gig:</span>';
+                html += '<span style="color:var(--accent-light)">🎤 Linked Gig:</span>';
                 html += '<span style="color:#fff;font-weight:600">' + label + '</span>';
                 html += '<button onclick="showPage(\'gigs\');setTimeout(function(){editGig(' + gigIdx + ');},400);" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer">Open →</button></div>';
                 row.innerHTML = html;
@@ -809,8 +818,11 @@ function parachuteOpenOfflinePack() {
 async function slSaveSetlistEdit(idx) {
     if (!requireSignIn()) return;
     const data = window._cachedSetlists ? [...window._cachedSetlists] : toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var prev = data[idx] || {};
     data[idx] = {
-        ...data[idx],
+        ...prev,
+        setlistId: prev.setlistId || generateShortId(12),
+        gigId: prev.gigId || null,
         name: document.getElementById('slName')?.value || 'Untitled',
         date: document.getElementById('slDate')?.value || '',
         venue: document.getElementById('slVenue')?.value || '',

@@ -164,7 +164,7 @@
       }
       if (!setlist) {
         for (var i = 0; i < setlistsArr.length; i++) {
-          if (setlistsArr[i] && setlistsArr[i].id === setlistId) {
+          if (setlistsArr[i] && (setlistsArr[i].id === setlistId || setlistsArr[i].setlistId === setlistId)) {
             setlist = setlistsArr[i];
             break;
           }
