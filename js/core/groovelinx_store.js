@@ -2649,9 +2649,92 @@
 
   // ── Gig / Setlist / Calendar data model audit + migration ─────────────────
 
+  /** Normalize a string for fuzzy matching: lowercase, trim, strip punctuation */
+  function _normStr(s) {
+    return (s || '').toLowerCase().trim().replace(/[''"".,!?&()]/g, '').replace(/\s+/g, ' ');
+  }
+
+  /** Count songs in a setlist */
+  function _slSongCount(sl) {
+    var count = 0;
+    (sl.sets || []).forEach(function(set) { count += (set.songs || []).length; });
+    return count;
+  }
+
+  /** Check if a setlist is a blank auto-created one (no songs) */
+  function _isBlankSetlist(sl) {
+    return _slSongCount(sl) === 0;
+  }
+
   /**
-   * Dry-run audit: reports what migrateGigSetlistIds() would do.
-   * Safe to call at any time — reads only, no writes.
+   * Multi-signal matcher: find the best existing setlist for a gig.
+   * Returns { setlist, confidence, reason } or null.
+   *
+   * Signals (in priority order):
+   *  1. Exact gig.linkedSetlist name match → confidence 100
+   *  2. Normalized name match → confidence 95
+   *  3. Date + exact venue match → confidence 90
+   *  4. Date + normalized venue match → confidence 85
+   *  5. Date-only match (single candidate with songs) → confidence 70
+   *  6. Date-only match (multiple candidates) → confidence 40 (review)
+   */
+  function _findBestSetlist(gig, setlists) {
+    var candidates = [];
+
+    for (var i = 0; i < setlists.length; i++) {
+      var sl = setlists[i];
+      var hasSongs = _slSongCount(sl) > 0;
+
+      // Signal 1: exact linkedSetlist name match
+      if (gig.linkedSetlist && sl.name && sl.name === gig.linkedSetlist) {
+        return { setlist: sl, confidence: 100, reason: 'exact name match: "' + sl.name + '"' };
+      }
+
+      // Signal 2: normalized name match
+      if (gig.linkedSetlist && sl.name && _normStr(sl.name) === _normStr(gig.linkedSetlist)) {
+        return { setlist: sl, confidence: 95, reason: 'normalized name match: "' + sl.name + '"' };
+      }
+
+      // Collect date-matching candidates for signals 3-6
+      if (sl.date && gig.date && sl.date === gig.date) {
+        var venueScore = 0;
+        if (sl.venue && gig.venue) {
+          if (sl.venue === gig.venue) venueScore = 90;
+          else if (_normStr(sl.venue) === _normStr(gig.venue)) venueScore = 85;
+        }
+        candidates.push({ setlist: sl, venueScore: venueScore, hasSongs: hasSongs });
+      }
+    }
+
+    // Signal 3/4: date + venue match (prefer ones with songs)
+    var venueMatches = candidates.filter(function(c) { return c.venueScore > 0; });
+    venueMatches.sort(function(a, b) {
+      if (b.venueScore !== a.venueScore) return b.venueScore - a.venueScore;
+      return (_slSongCount(b.setlist) - _slSongCount(a.setlist)); // prefer fuller setlist
+    });
+    if (venueMatches.length > 0) {
+      var best = venueMatches[0];
+      return { setlist: best.setlist, confidence: best.venueScore, reason: 'date+venue: "' + best.setlist.name + '"' };
+    }
+
+    // Signal 5/6: date-only match
+    var withSongs = candidates.filter(function(c) { return c.hasSongs; });
+    if (withSongs.length === 1) {
+      return { setlist: withSongs[0].setlist, confidence: 70, reason: 'date-only (sole candidate with songs): "' + withSongs[0].setlist.name + '"' };
+    }
+    if (withSongs.length > 1) {
+      // Pick the one with most songs as best guess, but low confidence
+      withSongs.sort(function(a, b) { return _slSongCount(b.setlist) - _slSongCount(a.setlist); });
+      return { setlist: withSongs[0].setlist, confidence: 40, reason: 'date-only (ambiguous, ' + withSongs.length + ' candidates): "' + withSongs[0].setlist.name + '"' };
+    }
+
+    // No match
+    return null;
+  }
+
+  /**
+   * Diagnostic report: shows current state, identifies mis-links, suggests repairs.
+   * Safe read-only — never writes.
    */
   async function auditGigSetlistLinks() {
     if (typeof loadBandDataFromDrive !== 'function') { console.warn('loadBandDataFromDrive not available'); return null; }
@@ -2659,70 +2742,89 @@
     var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var calEvts  = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
 
-    var gigsNoId       = gigs.filter(function(g) { return !g.gigId; }).length;
-    var setlistsNoId   = setlists.filter(function(s) { return !s.setlistId; }).length;
-    var calEvtsNoId    = calEvts.filter(function(e) { return !e.id; }).length;
-    var gigsNoSetlist  = gigs.filter(function(g) { return !g.setlistId; }).length;
-    var setlistsNoGig  = setlists.filter(function(s) { return !s.gigId; }).length;
-    var calGigsNoGigId = calEvts.filter(function(e) { return e.type === 'gig' && !e.gigId; }).length;
+    var blankSetlists = setlists.filter(_isBlankSetlist);
+    var realSetlists  = setlists.filter(function(s) { return !_isBlankSetlist(s); });
 
-    // Heuristic link candidates: gig.linkedSetlist name → setlist match
-    var nameLinks = 0;
+    // Find gigs currently linked to blank setlists
+    var misLinks = [];
+    var orphanBlanks = [];
     gigs.forEach(function(g) {
-      if (!g.setlistId && g.linkedSetlist) {
-        var match = setlists.find(function(s) { return (s.name || '') === g.linkedSetlist; });
-        if (match) nameLinks++;
-      }
+      if (!g.setlistId) return;
+      var linked = setlists.find(function(s) { return s.setlistId === g.setlistId; });
+      if (!linked || !_isBlankSetlist(linked)) return;
+
+      // This gig is linked to a blank — search for a better match in real setlists
+      var better = _findBestSetlist(g, realSetlists);
+      misLinks.push({
+        gig: (g.venue || '?') + ' ' + (g.date || '?'),
+        gigId: g.gigId,
+        currentSetlistId: g.setlistId,
+        currentSetlistName: linked.name || '?',
+        betterMatch: better ? better.setlist.name : null,
+        betterSetlistId: better ? better.setlist.setlistId : null,
+        confidence: better ? better.confidence : 0,
+        reason: better ? better.reason : 'no match found',
+        songCount: better ? _slSongCount(better.setlist) : 0
+      });
+      orphanBlanks.push(linked);
     });
 
-    // Date+venue match candidates
-    var dateVenueLinks = 0;
-    gigs.forEach(function(g) {
-      if (!g.setlistId && !g.linkedSetlist && g.date) {
-        var match = setlists.find(function(s) { return s.date === g.date && s.venue && g.venue && s.venue === g.venue; });
-        if (match) dateVenueLinks++;
-      }
-    });
+    // Stats
+    console.log('%c=== Gig/Setlist Repair Audit ===', 'font-weight:bold;font-size:14px;color:#667eea');
+    console.log('Gigs:', gigs.length, '| Setlists:', setlists.length, '| Blank setlists:', blankSetlists.length, '| Real setlists:', realSetlists.length);
+    console.log('Gigs linked to blank setlists:', misLinks.length);
 
-    // Duplicate detection
-    var dupeMap = {};
-    gigs.forEach(function(g) {
-      var key = ((g.venue || '').toLowerCase().trim()) + '|' + (g.date || '');
-      if (!dupeMap[key]) dupeMap[key] = [];
-      dupeMap[key].push(g);
-    });
-    var dupeGroups = Object.keys(dupeMap).filter(function(k) { return dupeMap[k].length > 1; });
+    if (misLinks.length) {
+      var high   = misLinks.filter(function(m) { return m.confidence >= 70; });
+      var review = misLinks.filter(function(m) { return m.confidence > 0 && m.confidence < 70; });
+      var noMatch = misLinks.filter(function(m) { return m.confidence === 0; });
 
-    console.log('%c=== Gig / Setlist Link Audit ===', 'font-weight:bold;font-size:14px;color:#667eea');
-    console.log('Gigs:', gigs.length, '| missing gigId:', gigsNoId);
-    console.log('Setlists:', setlists.length, '| missing setlistId:', setlistsNoId);
-    console.log('Calendar events:', calEvts.length, '| gig-type missing gigId:', calGigsNoGigId, '| missing id:', calEvtsNoId);
-    console.log('Gigs without setlistId:', gigsNoSetlist, '| linkable by name:', nameLinks, '| linkable by date+venue:', dateVenueLinks);
-    console.log('Setlists without gigId:', setlistsNoGig);
-    console.log('Duplicate gig groups:', dupeGroups.length);
-    if (dupeGroups.length) {
-      dupeGroups.forEach(function(k) {
-        console.log('  Dupe:', k, '→', dupeMap[k].length, 'records');
+      console.log('%cHigh confidence relinks (' + high.length + '):', 'color:#22c55e;font-weight:bold');
+      high.forEach(function(m) {
+        console.log('  ' + m.gig + ' → "' + m.betterMatch + '" (' + m.songCount + ' songs, confidence ' + m.confidence + ', ' + m.reason + ')');
+      });
+
+      console.log('%cNeeds review (' + review.length + '):', 'color:#f59e0b;font-weight:bold');
+      review.forEach(function(m) {
+        console.log('  ' + m.gig + ' → "' + m.betterMatch + '" (' + m.songCount + ' songs, confidence ' + m.confidence + ', ' + m.reason + ')');
+      });
+
+      console.log('%cNo match found (' + noMatch.length + '):', 'color:#64748b;font-weight:bold');
+      noMatch.forEach(function(m) {
+        console.log('  ' + m.gig + ' — blank setlist is correct (no existing setlist for this gig)');
+      });
+
+      console.table(misLinks.map(function(m) {
+        return { Gig: m.gig, Current: m.currentSetlistName, Better: m.betterMatch || '(none)', Songs: m.songCount, Confidence: m.confidence, Reason: m.reason };
+      }));
+    }
+
+    // Unlinked real setlists (orphans)
+    var unlinkedReal = realSetlists.filter(function(s) {
+      return !gigs.some(function(g) { return g.setlistId === s.setlistId; });
+    });
+    if (unlinkedReal.length) {
+      console.log('%cOrphan real setlists (not linked to any gig): ' + unlinkedReal.length, 'color:#f59e0b');
+      unlinkedReal.forEach(function(s) {
+        console.log('  "' + s.name + '" (' + _slSongCount(s) + ' songs, date: ' + (s.date || 'none') + ')');
       });
     }
 
-    return {
-      gigs: gigs.length, setlists: setlists.length, calEvents: calEvts.length,
-      gigsNoId: gigsNoId, setlistsNoId: setlistsNoId, calEvtsNoId: calEvtsNoId,
-      gigsNoSetlist: gigsNoSetlist, setlistsNoGig: setlistsNoGig, calGigsNoGigId: calGigsNoGigId,
-      nameLinks: nameLinks, dateVenueLinks: dateVenueLinks, dupeGroups: dupeGroups.length
-    };
+    return { misLinks: misLinks, blankSetlists: blankSetlists.length, realSetlists: realSetlists.length, orphanReal: unlinkedReal.length };
   }
 
   /**
-   * Migration: backfill IDs, cross-link gigs↔setlists↔calendar by heuristics,
-   * and auto-create blank setlists for orphan gigs.
+   * Repair pass: relink gigs from blank auto-created setlists to real existing ones.
+   * Only relinks when confidence >= threshold (default 70).
+   * Removes orphaned blank setlists that were replaced.
    *
    * @param {Object} [opts]
-   * @param {boolean} [opts.dryRun=true]  If true, only logs what would change.
+   * @param {boolean} [opts.dryRun=true]
+   * @param {number}  [opts.minConfidence=70]  Minimum confidence to auto-relink
    */
   async function migrateGigSetlistIds(opts) {
     var dryRun = !opts || opts.dryRun !== false;
+    var minConf = (opts && typeof opts.minConfidence === 'number') ? opts.minConfidence : 70;
     if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
       console.warn('Data functions not available'); return null;
     }
@@ -2732,132 +2834,122 @@
     var calEvts  = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
 
     var log = [];
+    var relinked = 0;
+    var blanksRemoved = 0;
+    var reviewed = 0;
 
-    // Step 1: Backfill IDs
+    // Step 1: Backfill IDs on anything still missing them
     gigs.forEach(function(g, i) {
       if (!g.gigId) {
         g.gigId = generateShortId(12);
-        log.push('Gig #' + i + ' (' + (g.venue||'?') + ' ' + (g.date||'?') + '): stamped gigId=' + g.gigId);
+        log.push('ID: Gig #' + i + ' (' + (g.venue||'?') + ' ' + (g.date||'?') + ') → gigId=' + g.gigId);
       }
     });
     setlists.forEach(function(s, i) {
       if (!s.setlistId) {
         s.setlistId = generateShortId(12);
-        log.push('Setlist #' + i + ' (' + (s.name||'?') + '): stamped setlistId=' + s.setlistId);
+        log.push('ID: Setlist #' + i + ' (' + (s.name||'?') + ') → setlistId=' + s.setlistId);
       }
     });
     calEvts.forEach(function(e, i) {
       if (!e.id) {
         e.id = generateShortId(12);
-        log.push('CalEvent #' + i + ' (' + (e.title||'?') + ' ' + (e.date||'?') + '): stamped id=' + e.id);
+        log.push('ID: CalEvent #' + i + ' → id=' + e.id);
       }
     });
 
-    // Build setlist lookup by name for Step 2
-    var slByName = {};
-    setlists.forEach(function(s) { if (s.name) slByName[s.name] = s; });
+    // Step 2: For each gig, find best setlist match using multi-signal matcher
+    var realSetlists = setlists.filter(function(s) { return _slSongCount(s) > 0; });
+    var blanksToRemove = [];
 
-    // Step 2a: Link gigs → setlists by linkedSetlist name
     gigs.forEach(function(g) {
-      if (g.setlistId) return; // already linked
-      if (g.linkedSetlist && slByName[g.linkedSetlist]) {
-        var sl = slByName[g.linkedSetlist];
-        g.setlistId = sl.setlistId;
-        g.linkedSetlist = sl.name; // ensure display name stays correct
-        if (!sl.gigId) sl.gigId = g.gigId;
-        log.push('Linked gig ' + g.gigId + ' → setlist "' + sl.name + '" by name match');
+      // Check if currently linked to a blank setlist
+      var currentSl = g.setlistId ? setlists.find(function(s) { return s.setlistId === g.setlistId; }) : null;
+      var currentIsBlank = currentSl && _isBlankSetlist(currentSl);
+
+      if (currentSl && !currentIsBlank) {
+        // Already linked to a real setlist — ensure back-ref
+        if (!currentSl.gigId) currentSl.gigId = g.gigId;
+        return;
       }
-    });
 
-    // Step 2b: Link remaining gigs → setlists by date + venue
-    gigs.forEach(function(g) {
-      if (g.setlistId) return;
-      if (!g.date) return;
-      var match = setlists.find(function(s) {
-        if (s.gigId) return false; // already claimed by another gig
-        if (s.date !== g.date) return false;
-        // Try venue match
-        if (s.venue && g.venue) {
-          return s.venue.toLowerCase().trim() === g.venue.toLowerCase().trim();
+      // No link, or linked to blank — try to find a real match
+      var match = _findBestSetlist(g, realSetlists);
+
+      if (match && match.confidence >= minConf) {
+        var oldId = g.setlistId;
+        g.setlistId = match.setlist.setlistId;
+        g.linkedSetlist = match.setlist.name;
+        match.setlist.gigId = g.gigId;
+        relinked++;
+        log.push('RELINK: ' + (g.venue||'?') + ' ' + (g.date||'?') + ' → "' + match.setlist.name + '" (conf ' + match.confidence + ', ' + match.reason + ')');
+
+        // Mark old blank for removal
+        if (currentIsBlank && currentSl) {
+          blanksToRemove.push(currentSl.setlistId);
+          log.push('  REMOVE blank: "' + currentSl.name + '" (setlistId=' + currentSl.setlistId + ')');
+          blanksRemoved++;
         }
-        // Fallback: if only one setlist matches the date, use it
-        return false;
-      });
-      if (match) {
-        g.setlistId = match.setlistId;
-        g.linkedSetlist = match.name;
-        if (!match.gigId) match.gigId = g.gigId;
-        log.push('Linked gig ' + g.gigId + ' → setlist "' + match.name + '" by date+venue');
+      } else if (match && match.confidence > 0 && match.confidence < minConf) {
+        reviewed++;
+        log.push('REVIEW: ' + (g.venue||'?') + ' ' + (g.date||'?') + ' → possible "' + match.setlist.name + '" (conf ' + match.confidence + ', ' + match.reason + ')');
+      } else if (!g.setlistId) {
+        // No match at all and no setlist — this gig genuinely needs a blank
+        var sl = {
+          setlistId: generateShortId(12),
+          gigId: g.gigId,
+          name: (g.venue || 'Gig') + ' ' + (g.date || ''),
+          date: g.date || '',
+          venue: g.venue || '',
+          notes: '',
+          sets: [{ name: 'Set 1', songs: [] }],
+          created: new Date().toISOString()
+        };
+        g.setlistId = sl.setlistId;
+        g.linkedSetlist = sl.name;
+        setlists.push(sl);
+        log.push('NEW BLANK: ' + (g.venue||'?') + ' ' + (g.date||'?') + ' — no existing setlist found');
       }
+      // If linked to blank but no better match exists, keep the blank
     });
 
-    // Step 2c: Link calendar gig events → gigs by gigId or venue+date
+    // Step 3: Link calendar gig events → gigs
     calEvts.forEach(function(e) {
       if (e.type !== 'gig') return;
-      if (e.gigId) return; // already linked
-      var matchKey = ((e.venue || '') + '|' + (e.date || ''));
+      if (e.gigId) return;
+      // Try gigId match, then venue+date
       var match = gigs.find(function(g) {
-        return ((g.venue || '') + '|' + (g.date || '')) === matchKey;
+        return (g.venue && e.venue && g.date && e.date &&
+          _normStr(g.venue) === _normStr(e.venue) && g.date === e.date);
       });
       if (match) {
         e.gigId = match.gigId;
-        log.push('Linked calEvent ' + e.id + ' → gig ' + match.gigId + ' by venue+date');
+        log.push('CAL LINK: event ' + e.id + ' → gig ' + match.gigId);
       }
     });
 
-    // Step 3: Auto-create blank setlists for orphan gigs
-    var newSetlists = [];
-    gigs.forEach(function(g) {
-      if (g.setlistId) return;
-      var sl = {
-        setlistId: generateShortId(12),
-        gigId: g.gigId,
-        name: (g.venue || 'Gig') + ' ' + (g.date || ''),
-        date: g.date || '',
-        venue: g.venue || '',
-        notes: '',
-        sets: [{ name: 'Set 1', songs: [] }],
-        created: new Date().toISOString()
-      };
-      g.setlistId = sl.setlistId;
-      g.linkedSetlist = sl.name;
-      newSetlists.push(sl);
-      log.push('Auto-created blank setlist "' + sl.name + '" for gig ' + g.gigId);
-    });
-
-    // Step 4: Duplicate detection (report only — no auto-merge)
-    var dupeMap = {};
-    gigs.forEach(function(g, i) {
-      var key = ((g.venue || '').toLowerCase().trim()) + '|' + (g.date || '');
-      if (!dupeMap[key]) dupeMap[key] = [];
-      dupeMap[key].push({ index: i, gig: g });
-    });
-    Object.keys(dupeMap).forEach(function(k) {
-      if (dupeMap[k].length > 1) {
-        log.push('⚠️ DUPLICATE: "' + k + '" has ' + dupeMap[k].length + ' records — manual review recommended');
-      }
+    // Step 4: Remove orphaned blank setlists
+    var finalSetlists = setlists.filter(function(s) {
+      return blanksToRemove.indexOf(s.setlistId) < 0;
     });
 
     // Report
-    console.log('%c=== Gig/Setlist Migration ' + (dryRun ? '(DRY RUN)' : '(LIVE)') + ' ===', 'font-weight:bold;font-size:14px;color:#667eea');
-    console.log('Changes (' + log.length + '):');
+    console.log('%c=== Gig/Setlist Repair ' + (dryRun ? '(DRY RUN)' : '(LIVE)') + ' ===', 'font-weight:bold;font-size:14px;color:#667eea');
+    console.log('Relinked:', relinked, '| Blanks removed:', blanksRemoved, '| Needs review:', reviewed);
     log.forEach(function(l) { console.log('  ' + l); });
-    console.log('New setlists to create:', newSetlists.length);
 
     if (!dryRun) {
-      var allSetlists = setlists.concat(newSetlists);
       await saveBandDataToDrive('_band', 'gigs', gigs);
-      await saveBandDataToDrive('_band', 'setlists', allSetlists);
+      await saveBandDataToDrive('_band', 'setlists', finalSetlists);
       await saveBandDataToDrive('_band', 'calendar_events', calEvts);
-      // Invalidate caches
       if (typeof window._cachedGigs !== 'undefined') window._cachedGigs = null;
       if (typeof window._cachedSetlists !== 'undefined') window._cachedSetlists = null;
-      console.log('%c✅ Migration complete! Saved all three data stores.', 'color:#22c55e;font-weight:bold');
+      console.log('%c✅ Repair complete! Relinked ' + relinked + ', removed ' + blanksRemoved + ' blanks.', 'color:#22c55e;font-weight:bold');
     } else {
       console.log('%cDry run — no data written. Run with { dryRun: false } to apply.', 'color:#f59e0b;font-weight:bold');
     }
 
-    return { changes: log.length, newSetlists: newSetlists.length, log: log };
+    return { relinked: relinked, blanksRemoved: blanksRemoved, reviewed: reviewed, log: log };
   }
 
   console.log('✅ GLStore loaded');
