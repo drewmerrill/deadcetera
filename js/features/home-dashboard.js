@@ -1084,36 +1084,50 @@ function _computeGigConfidence(opts) {
     if (pct === null) return null; // not enough data
 
     // ── Additive heuristic model ──────────────────────────────────────────
-    // Score built from zero, not from readiness %. Each signal contributes
-    // a fixed amount. Final score mapped to qualitative labels.
+    // Score built from zero. Readiness is the anchor (~50% of max), other
+    // signals adjust up/down. Designed so a well-prepared band realistically
+    // reaches "Strong" and a typical band lands in the middle of the range.
+    //
+    // Max possible: 50 (readiness) + 10 (rehearsal) + 10 (improved) +
+    //               10 (trend) + 5 (pocket) = 85
+    // Thresholds tuned so that:
+    //   - 85% ready + rehearsed + improving = Strong (~70+)
+    //   - 70% ready + rehearsed = Solid (~55+)
+    //   - 55% ready + some work = Trending Up (~40+)
+    //   - 40% ready + issues = Cautious (~25+)
+    //   - Below that = At Risk
     var score = 0;
     var reasons = [];
 
-    // Setlist readiness (biggest contributor)
-    if (pct >= 80) {
-        score += 40;
+    // Setlist readiness — smooth curve, biggest contributor (0-50 pts)
+    if (pct >= 85) {
+        score += 50;
         if (riskCount === 0) reasons.push('Most setlist songs are gig-ready');
-    } else if (pct >= 60) {
-        score += 25;
-    } else if (pct >= 40) {
+    } else if (pct >= 70) {
+        score += 35 + Math.round((pct - 70) / 15 * 15); // 35-50 scaled
+    } else if (pct >= 50) {
+        score += 20 + Math.round((pct - 50) / 20 * 15); // 20-35 scaled
+    } else if (pct >= 30) {
         score += 10;
     }
     // else: no readiness credit
 
-    // Risk songs penalty
-    if (riskCount >= 3) {
-        score -= 20;
-        reasons.push(riskCount + ' songs still need work before the gig');
-    } else if (riskCount > 0) {
-        score -= riskCount * 5;
-        reasons.push(riskCount + ' song' + (riskCount !== 1 ? 's' : '') + ' still need' + (riskCount === 1 ? 's' : '') + ' work');
+    // Risk songs penalty (capped, proportional to setlist size)
+    if (riskCount > 0) {
+        var _riskPenalty = Math.min(15, riskCount * 4);
+        score -= _riskPenalty;
+        if (riskCount >= 3) {
+            reasons.push(riskCount + ' songs still need work before the gig');
+        } else {
+            reasons.push(riskCount + ' song' + (riskCount !== 1 ? 's' : '') + ' still need' + (riskCount === 1 ? 's' : '') + ' work');
+        }
     }
 
-    // Rehearsal recency
+    // Rehearsal recency (14-day window)
     if (hasRecentRehearsal) {
         score += 10;
     } else {
-        score -= 10;
+        score -= 8;
         reasons.push('No recent rehearsal on record');
     }
 
@@ -1135,7 +1149,7 @@ function _computeGigConfidence(opts) {
     if (scorecardTrend === 'improving') {
         score += 10;
     } else if (scorecardTrend === 'slipping') {
-        score -= 10;
+        score -= 8;
         if (reasons.length < 2) reasons.push('Rehearsal scores have been slipping');
     }
 
@@ -1143,15 +1157,15 @@ function _computeGigConfidence(opts) {
     score = Math.max(0, Math.min(100, Math.round(score)));
 
     // ── Map to qualitative levels ─────────────────────────────────────────
-    // Strong (80+) / Solid (65-79) / Trending Up (50-64) / Cautious (35-49) / At Risk (<35)
+    // Strong (70+) / Solid (55-69) / Trending Up (40-54) / Cautious (25-39) / At Risk (<25)
     var level, label, color;
-    if (score >= 80) {
+    if (score >= 70) {
         level = 'strong'; label = 'Strong'; color = '#22c55e';
-    } else if (score >= 65) {
+    } else if (score >= 55) {
         level = 'solid'; label = 'Solid'; color = '#60a5fa';
-    } else if (score >= 50) {
+    } else if (score >= 40) {
         level = 'trending'; label = 'Trending Up'; color = '#818cf8';
-    } else if (score >= 35) {
+    } else if (score >= 25) {
         level = 'cautious'; label = 'Cautious'; color = '#f59e0b';
     } else {
         level = 'atrisk'; label = 'At Risk'; color = '#ef4444';
