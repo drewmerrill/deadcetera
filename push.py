@@ -16,71 +16,89 @@ REPO   = "drewmerrill/deadcetera"
 BRANCH = "main"
 API    = f"https://api.github.com/repos/{REPO}"
 
-# Files that should NEVER be pushed (internal/scratch files)
-EXCLUDE = {
-    'app_prev.js', 'app_repo.js', 'help_old.js',
-    'deploy_direct.py', 'diagnose.py', 'fix_cover_me.py',
-    'seed_firebase.py', 'seed_firebase_v2.py', 'seed_firebase_v3.py',
-    'claude_push.py', 'push_all.py',
-    'seed_harmonies.html',
+# ── Deploy discovery ──────────────────────────────────────────────────────────
+#
+# Strategy: auto-discover front-end runtime assets, explicitly list infra files.
+#
+# Auto-discovered (by extension, under js/ and css/ subdirs + repo root):
+#   .js .css .html .json .png
+#
+# NOT auto-discovered (tooling — listed explicitly if needed):
+#   .py .sh .md and anything in non-runtime directories
+#
+# This means adding a new .js/.css file to js/ or css/ is automatically covered.
+# Adding a new .py tool requires a manual add to EXPLICIT_INFRA below.
+
+# Root-level JS files known to be internal tooling, NOT runtime
+EXCLUDE_JS = {
+    'ARCHIVED_learning_resources.js',
 }
 
-# All files that belong in the deployed repo
-DEPLOY_FILES = [
-    'index.html',
-    'index-dev.html',      # dev entry point — loads app-dev.js
-    'css/gl-shell.css',    # Phase B: 3-pane shell CSS — dev only
-    'js/ui/gl-right-panel.js', # Phase C: right panel controller — dev only
-    'app.js',
-    'app-dev.js',
-    'help.js',
-    'data.js',
-    'rehearsal-mode.js',
-    'rehearsal-mode.css',
-    'version-hub.js',
-    'version-hub.css',
-    'service-worker.js',
-    'worker.js',
-    'pocket-meter.js',
-    'styles.css',
-    'app-shell.css',
-    'manifest.json',
-    'logo.png',
-    'logo-large.png',
-    'hero-logo.png',
-    'hero-logo-sm.png',
-    'badge-logo.png',
-    'sync.py',
+# Non-runtime directories — never scanned
+EXCLUDE_DIRS = {
+    '.git', '.github', '.claude', 'node_modules',
+    '02_GrooveLinx', 'docs', '__pycache__',
+}
+
+# Extensions auto-discovered as front-end runtime assets
+RUNTIME_EXTENSIONS = {'.js', '.css', '.html', '.json', '.png'}
+
+# Non-runtime files that must be deployed explicitly (infra/tooling)
+EXPLICIT_INFRA = [
     'push.py',
-    'version.json',
-    # Wave-1 modules
-    'js/core/utils.js',
-    'js/core/firebase-service.js',
-    'js/core/groovelinx_store.js',
-    'js/core/worker-api.js',
-    'js/core/calendar-export.js',
-    'js/ui/navigation.js',
-    'js/features/songs.js',
-    # Wave-2 modules
-    'js/features/gigs.js',
-    'js/features/rehearsal.js',
-    # Wave-3 modules
-    'js/features/setlists.js',
-    'js/features/practice.js',
-    'js/features/calendar.js',
-    'js/features/notifications.js',
-    'js/features/social.js',
-    'js/features/finances.js',
-    'js/features/bestshot.js',
-    'js/features/playlists.js',
-    'js/features/stoner-mode.js',
-    'js/features/home-dashboard.js',
-    'js/features/home-dashboard-cc.js',
-    'js/features/chart-import.js',
-    # Song Intelligence System
-    'js/features/song-detail.js',
-    'js/features/harmony-lab.js',
+    'sync.py',
+    'version.json',   # also discovered, but listed here for clarity
 ]
+
+def discover_deploy_files(repo_dir):
+    """Auto-discover front-end runtime assets + explicit infra files.
+
+    Scans repo root and js/, css/ subdirectories for runtime extensions.
+    Skips EXCLUDE_DIRS and EXCLUDE_JS. Appends EXPLICIT_INFRA at the end.
+    Does NOT sweep .py files — only explicitly listed ones are included."""
+    found = set()
+
+    for dirpath, dirnames, filenames in os.walk(repo_dir):
+        rel_dir = os.path.relpath(dirpath, repo_dir)
+
+        if rel_dir == '.':
+            # At repo root — prune non-runtime directories
+            dirnames[:] = [d for d in dirnames
+                           if d not in EXCLUDE_DIRS and not d.startswith('.')
+                           and d in ('js', 'css')]  # only descend into js/ and css/
+        else:
+            top_dir = rel_dir.split(os.sep)[0]
+            if top_dir not in ('js', 'css'):
+                dirnames[:] = []
+                continue
+
+        for fname in filenames:
+            if fname.startswith('.'):
+                continue
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in RUNTIME_EXTENSIONS:
+                continue
+            if fname in EXCLUDE_JS:
+                continue
+            rel_path = os.path.relpath(os.path.join(dirpath, fname), repo_dir)
+            found.add(rel_path.replace(os.sep, '/'))
+
+    # Also scan repo root for runtime files (not recursing into subdirs)
+    for fname in os.listdir(repo_dir):
+        fpath = os.path.join(repo_dir, fname)
+        if not os.path.isfile(fpath) or fname.startswith('.'):
+            continue
+        ext = os.path.splitext(fname)[1].lower()
+        if ext in RUNTIME_EXTENSIONS and fname not in EXCLUDE_JS:
+            found.add(fname)
+
+    # Add explicit infra files
+    for f in EXPLICIT_INFRA:
+        if os.path.exists(os.path.join(repo_dir, f)):
+            found.add(f)
+
+    result = sorted(found)
+    return result
 
 def get_token():
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -307,18 +325,18 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     msg = args[0] if args else "Auto-update from Claude"
 
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
     if len(args) > 1:
         files = args[1:]
     else:
-        repo_dir = os.path.dirname(os.path.abspath(__file__))
-        files = [f for f in DEPLOY_FILES if os.path.exists(os.path.join(repo_dir, f))]
+        files = discover_deploy_files(repo_dir)
+        print(f"📦 Auto-discovered {len(files)} deployable files")
 
     # Stamp and version all files
     vpath, version_str = update_version()
     if "version.json" not in files:
         files = list(files) + ["version.json"]
 
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
     check_drift(repo_dir)
 
     print(f"🚀 Pushing to {REPO} ({BRANCH}) — single commit")
