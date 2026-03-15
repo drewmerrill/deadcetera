@@ -104,8 +104,10 @@ a{color:var(--accent-light);}
     position:relative!important;
 }
 #songDropdown > div:hover{background:#232f45!important;border-color:rgba(255,255,255,0.1)!important;}
-#songDropdown > div.selected{background:rgba(99,102,241,0.06)!important;border:1px solid rgba(99,102,241,0.2)!important;border-left:2px solid #667eea!important;}
+#songDropdown > div.selected{background:#262f48!important;border:1px solid rgba(99,102,241,0.3)!important;border-left:3px solid #667eea!important;}
 #songDropdown > div.selected .song-name{color:#e0e7ff!important;font-weight:700!important;}
+#songDropdown > div.selected .song-badge{opacity:1!important;}
+#songDropdown > div.selected .status-badge{opacity:1!important;}
 #songDropdown > div:not(.song-item){display:block!important;grid-template-columns:none!important;background:transparent!important;border:none!important;margin:0!important;padding:0!important;}
 
 /* Song name text — MUST be visible */
@@ -1042,9 +1044,14 @@ input[type="time"].app-input {
 
 /* Song Drawer trigger button */
 /* View button — pill-shaped overlay that exactly covers the band pill (col 5) */
-/* View button — hidden by default, shown on hover/focus. No transform to avoid GPU layer per row */
-.song-drawer-btn{display:none;position:absolute;right:12px;top:4px;bottom:4px;z-index:10;background:#1e293b;border:1px solid rgba(99,102,241,0.6);color:#a5b4fc;border-radius:20px;padding:0;width:48px;cursor:pointer;align-items:center;justify-content:center;font-size:0.6em;font-weight:800;white-space:nowrap;letter-spacing:0.02em;box-sizing:border-box}
+/* View button — desktop hover only. Hidden on touch via media query. */
+.song-drawer-btn{display:none;position:absolute;right:12px;top:50%;margin-top:-11px;height:22px;z-index:10;background:#1e293b;border:1px solid rgba(99,102,241,0.6);color:#a5b4fc;border-radius:20px;padding:0;width:48px;cursor:pointer;align-items:center;justify-content:center;font-size:0.6em;font-weight:800;white-space:nowrap;letter-spacing:0.02em;box-sizing:border-box}
 .song-item:hover .song-drawer-btn{display:flex!important}
+/* Hide View button + quick actions on touch devices — tap opens detail directly */
+@media(hover:none),(pointer:coarse){
+.song-drawer-btn{display:none!important}
+.song-quick-actions{display:none!important}
+}
 
 /* Scrollbar styling */
 ::-webkit-scrollbar{width:4px;height:4px}

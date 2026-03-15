@@ -58,9 +58,10 @@ var _loadedVersion = BUILD_VERSION;
         .song-item.song--needs-work .song-name { color:#fca5a5 !important; }
         /* Unrated rows — neutral, slightly dimmer title */
         .song-item.song--unrated .song-name { color:#94a3b8 !important; font-weight:500; }
-        /* Selected song anchor */
-        .song-item.selected { background:rgba(99,102,241,0.06) !important; border-left:2px solid #667eea !important; border-color:rgba(99,102,241,0.2) !important; border-left-color:#667eea !important; }
+        /* Selected song anchor — visible dark background, not transparent */
+        .song-item.selected { background:#262f48 !important; border-left:3px solid #667eea !important; border-color:rgba(99,102,241,0.3) !important; border-left-color:#667eea !important; }
         .song-item.selected .song-name { color:#e0e7ff !important; font-weight:700 !important; }
+        .song-item.selected .song-badge, .song-item.selected .status-badge { opacity:1 !important; }
         .song-item.selected.song--needs-work { border-left-color:#667eea !important; }
         /* Title: visually first, slightly bolder than before */
         .song-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f1f5f9 !important; font-weight:600; font-size:0.9em; line-height:1.3; }
@@ -1117,7 +1118,8 @@ function setupSearchAndFilters() {
         var safeTitle = title.replace(/'/g, "\\'");
         var bar = document.createElement('div');
         bar.className = 'song-quick-actions';
-        bar.style.cssText = 'position:absolute;right:60px;top:50%;transform:translateY(-50%);display:flex;gap:4px;z-index:8';
+        // Desktop only (hidden on touch via CSS media query)
+        bar.style.cssText = 'position:absolute;right:12px;top:50%;margin-top:-10px;height:20px;display:flex;gap:3px;z-index:12';
         bar.innerHTML = '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + safeTitle + '\')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">CHART</button>'
             + '<button onclick="event.stopPropagation();_songQuickAddToAgenda(\'' + safeTitle + '\')" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">+ AGENDA</button>';
         row.appendChild(bar);
