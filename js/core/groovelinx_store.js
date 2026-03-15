@@ -2646,6 +2646,7 @@
     auditGigSetlistLinks:  auditGigSetlistLinks,
     migrateGigSetlistIds:  migrateGigSetlistIds,
     postMigrationAudit:    postMigrationAudit,
+    repairBadLinks:        repairBadLinks,
   };
 
   // ── Gig / Setlist / Calendar data model audit + migration ─────────────────
@@ -2951,6 +2952,124 @@
     }
 
     return { relinked: relinked, blanksRemoved: blanksRemoved, reviewed: reviewed, log: log };
+  }
+
+  /**
+   * TARGETED REPAIR: find and fix bad gig↔setlist links.
+   *
+   * A link is "bad" if:
+   *  - Gig date and setlist date disagree (e.g. 2025 gig → 2023 setlist)
+   *  - Gig venue and setlist venue/name have zero overlap
+   *  - Setlist is blank (0 songs) AND a real setlist exists for this gig's date
+   *
+   * For bad links: nulls out gig.setlistId and gig.linkedSetlist,
+   * clears the setlist's gigId back-ref, and removes orphaned blank setlists.
+   *
+   * @param {Object} [opts]
+   * @param {boolean} [opts.dryRun=true]  If true, only reports — no writes.
+   */
+  async function repairBadLinks(opts) {
+    var dryRun = !opts || opts.dryRun !== false;
+    if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
+      console.warn('Data functions not available'); return null;
+    }
+
+    var gigs     = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+
+    var slById = {};
+    setlists.forEach(function(s) { if (s.setlistId) slById[s.setlistId] = s; });
+
+    var log = [];
+    var fixed = 0;
+    var blanksToRemove = [];
+
+    gigs.forEach(function(g, i) {
+      if (!g.setlistId) return;
+      var sl = slById[g.setlistId];
+      if (!sl) return;
+
+      var dominated = false;
+      var reasons = [];
+      var songCount = _slSongCount(sl);
+
+      // Rule 1: Date mismatch — a gig from one year linked to a setlist from a different year/date
+      if (g.date && sl.date && g.date !== sl.date) {
+        reasons.push('DATE: gig=' + g.date + ' setlist=' + sl.date);
+        dominated = true;
+      }
+
+      // Rule 2: Venue/name has zero overlap with gig venue (and dates also don't match)
+      if (g.venue && sl.name && g.date && sl.date && g.date !== sl.date) {
+        var nGig = _normStr(g.venue);
+        var nSl  = _normStr(sl.name);
+        var nSlV = _normStr(sl.venue || '');
+        var firstWord = nGig.split(' ')[0];
+        if (firstWord.length > 2 && nSl.indexOf(firstWord) < 0 && nSlV.indexOf(firstWord) < 0) {
+          reasons.push('VENUE: "' + g.venue + '" vs "' + sl.name + '"');
+        }
+      }
+
+      // Rule 3: Linked to blank setlist that was auto-created by migration
+      if (songCount === 0 && sl.created) {
+        // Check if created today (migration artifact)
+        var createdDate = (sl.created || '').substring(0, 10);
+        var today = new Date().toISOString().substring(0, 10);
+        var yesterday = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+        if (createdDate === today || createdDate === yesterday) {
+          reasons.push('BLANK: 0 songs, created ' + createdDate + ' (likely migration artifact)');
+          dominated = true;
+        }
+      }
+
+      if (!dominated) return;
+
+      fixed++;
+      log.push('BAD LINK #' + fixed + ': ' + (g.venue || '?') + ' ' + (g.date || '?') +
+        ' → was linked to "' + sl.name + '" (' + sl.date + ', ' + songCount + ' songs)' +
+        ' | ' + reasons.join(', '));
+
+      if (!dryRun) {
+        // Null out the bad link
+        g.setlistId = null;
+        g.linkedSetlist = null;
+
+        // Clear back-ref on setlist
+        if (sl.gigId === g.gigId) {
+          sl.gigId = null;
+        }
+
+        // If the setlist is blank (0 songs), mark for removal
+        if (songCount === 0) {
+          blanksToRemove.push(sl.setlistId);
+          log.push('  → removing blank setlist "' + sl.name + '"');
+        }
+      }
+    });
+
+    // Remove orphaned blanks
+    var finalSetlists = dryRun ? setlists : setlists.filter(function(s) {
+      return blanksToRemove.indexOf(s.setlistId) < 0;
+    });
+
+    console.log('%c=== BAD LINK REPAIR ' + (dryRun ? '(DRY RUN)' : '(LIVE)') + ' ===', 'font-weight:bold;font-size:14px;color:#ef4444');
+    console.log('Bad links found:', fixed);
+    console.log('Blank setlists to remove:', blanksToRemove.length);
+    log.forEach(function(l) { console.log('  ' + l); });
+
+    if (!dryRun && fixed > 0) {
+      await saveBandDataToDrive('_band', 'gigs', gigs);
+      await saveBandDataToDrive('_band', 'setlists', finalSetlists);
+      if (typeof window._cachedGigs !== 'undefined') window._cachedGigs = null;
+      if (typeof window._cachedSetlists !== 'undefined') window._cachedSetlists = null;
+      console.log('%c✅ Repaired ' + fixed + ' bad links, removed ' + blanksToRemove.length + ' blank setlists.', 'color:#22c55e;font-weight:bold');
+    } else if (!dryRun) {
+      console.log('%cNo bad links found — data looks clean.', 'color:#22c55e;font-weight:bold');
+    } else {
+      console.log('%cDry run — no data written. Run with { dryRun: false } to apply.', 'color:#f59e0b;font-weight:bold');
+    }
+
+    return { fixed: fixed, blanksRemoved: blanksToRemove.length, log: log };
   }
 
   /**
