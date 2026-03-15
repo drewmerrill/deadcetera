@@ -762,12 +762,32 @@
       }
       if (this.engine) {
         var stab = this.engine.getStabilityScore();
+        // v3: Run GrooveAnalyser on live onsets for microtiming
+        var groove = null;
+        if (this.engine.onsets && this.engine.onsets.length >= 8) {
+          groove = GrooveAnalyser.analyse(this.engine.onsets, this.targetBPM);
+        }
+
+        var stabLines = [];
         if (stab !== null) {
           var stabColor = stab >= 80 ? '#22c55e' : stab >= 50 ? '#f59e0b' : '#ef4444';
-          stabEl.innerHTML = this._pmMode === 'pocket'
-            ? '<span style="color:' + stabColor + '">Pocket: ' + stab + '%</span>'
-            : '<span style="color:' + stabColor + '">Stability: ' + stab + '%</span>';
+          stabLines.push('<span style="color:' + stabColor + '">' + (this._pmMode === 'pocket' ? 'Pocket' : 'Stability') + ': ' + stab + '%</span>');
         }
+        // v3: Microtiming deviation
+        if (groove && groove.pocketPositionMs !== undefined) {
+          var devMs = groove.pocketPositionMs;
+          var absMs = Math.abs(devMs);
+          var devColor = absMs <= 10 ? '#22c55e' : absMs <= 25 ? '#f59e0b' : '#ef4444';
+          var devLabel = absMs <= 10 ? 'excellent' : absMs <= 25 ? 'good' : absMs <= 40 ? 'drift' : 'unstable';
+          var devSign = devMs >= 0 ? '+' : '';
+          stabLines.push('<span style="color:' + devColor + '">' + devSign + devMs.toFixed(1) + 'ms ' + (devMs > 3 ? 'behind' : devMs < -3 ? 'ahead' : 'centered') + ' <span style="font-size:0.8em;opacity:0.7">(' + devLabel + ')</span></span>');
+        }
+        // v3: Pocket score (pctInPocket from GrooveAnalyser)
+        if (groove && groove.pctInPocket !== undefined && this._pmMode === 'pocket') {
+          var pktColor = groove.pctInPocket >= 80 ? '#22c55e' : groove.pctInPocket >= 50 ? '#f59e0b' : '#ef4444';
+          stabLines.push('<span style="color:' + pktColor + '">In pocket: ' + groove.pctInPocket + '%</span>');
+        }
+        stabEl.innerHTML = stabLines.join(' <span style="color:#333">·</span> ');
       }
 
       // Gauge arc
@@ -1543,9 +1563,9 @@
         <div class="pm-nameplate"><div class="pm-nameplate-inner"><span>Pocket Meter</span></div></div>
 
         <!-- v2: Mode toggle — Live Tempo vs In The Pocket -->
-        <div class="pm-mode-toggle" style="display:flex;justify-content:center;gap:0;margin:8px 16px 4px;border-radius:8px;overflow:hidden;border:1px solid #444">
-          <button class="pm-mode-btn pm-mode-btn--active" data-pmmode="live" onclick="this.closest('.pm-root')._pmSwitchMode && this.closest('.pm-root')._pmSwitchMode('live')" style="flex:1;padding:8px 12px;background:#2a2a2a;border:none;color:#a5b4fc;font-weight:700;font-size:0.78em;cursor:pointer;letter-spacing:0.04em">&#x1F3AF; LIVE TEMPO</button>
-          <button class="pm-mode-btn" data-pmmode="pocket" onclick="this.closest('.pm-root')._pmSwitchMode && this.closest('.pm-root')._pmSwitchMode('pocket')" style="flex:1;padding:8px 12px;background:#1a1a1a;border:none;color:#64748b;font-weight:700;font-size:0.78em;cursor:pointer;letter-spacing:0.04em">&#x1F3B5; IN THE POCKET</button>
+        <div class="pm-mode-toggle" style="display:flex;justify-content:center;gap:0;margin:8px 16px 4px;border-radius:8px;overflow:hidden;border:1px solid #444;min-height:36px;flex-shrink:0">
+          <button class="pm-mode-btn pm-mode-btn--active" data-pmmode="live" onclick="this.closest('.pm-root')._pmSwitchMode && this.closest('.pm-root')._pmSwitchMode('live')" style="flex:1;padding:10px 12px;background:#2a2a2a;border:none;color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer;letter-spacing:0.04em;min-height:36px">&#x1F3AF; LIVE TEMPO</button>
+          <button class="pm-mode-btn" data-pmmode="pocket" onclick="this.closest('.pm-root')._pmSwitchMode && this.closest('.pm-root')._pmSwitchMode('pocket')" style="flex:1;padding:10px 12px;background:#1a1a1a;border:none;color:#64748b;font-weight:700;font-size:0.82em;cursor:pointer;letter-spacing:0.04em;min-height:36px">&#x1F3B5; IN THE POCKET</button>
         </div>
 
         <!-- Header row: target BPM + gear + view controls -->
@@ -1735,7 +1755,12 @@
           </div>
           <svg class="pm-history-graph" viewBox="0 0 280 60" preserveAspectRatio="none">
             <!-- Drift shading zones -->
-            <rect class="pm-graph-zone-ok" x="0" y="20" width="280" height="20" fill="#22c55e" opacity="0.04"/>
+            <!-- v3: Multi-color drift zones — positioned dynamically by _updateGraph -->
+            <rect class="pm-graph-zone-red-top" x="0" y="0" width="280" height="12" fill="#ef4444" opacity="0.03"/>
+            <rect class="pm-graph-zone-yellow-top" x="0" y="12" width="280" height="8" fill="#f59e0b" opacity="0.04"/>
+            <rect class="pm-graph-zone-green" x="0" y="20" width="280" height="20" fill="#22c55e" opacity="0.05"/>
+            <rect class="pm-graph-zone-yellow-bot" x="0" y="40" width="280" height="8" fill="#f59e0b" opacity="0.04"/>
+            <rect class="pm-graph-zone-red-bot" x="0" y="48" width="280" height="12" fill="#ef4444" opacity="0.03"/>
             <line class="pm-graph-target-line" x1="0" y1="30" x2="280" y2="30" stroke="#4ade80" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
             <polyline class="pm-graph-line" points="" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
