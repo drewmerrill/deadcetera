@@ -753,6 +753,16 @@ function openRehearsalChopper() {
         '<label style="display:flex;align-items:center;gap:4px;font-size:0.72em;color:var(--text-muted)">Silence: <input type="range" id="chopThreshold" min="0.002" max="0.08" step="0.002" value="0.015" style="width:60px"> <span id="chopThreshVal">0.015</span></label>' +
         '<label style="display:flex;align-items:center;gap:4px;font-size:0.72em;color:var(--text-muted)">Gap: <input type="range" id="chopMinGap" min="0.5" max="8" step="0.5" value="3" style="width:50px"> <span id="chopMinGapVal">3</span>s</label>' +
         '</div>' +
+        // Annotation toolbar
+        '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center">' +
+        '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-right:4px">Annotate:</span>' +
+        '<button class="btn btn-ghost btn-sm" onclick="chopAddTimestampMarker(\'song-start\')" style="font-size:0.72em;padding:3px 8px" title="Mark song start at playhead">🎵 Song Start</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="chopAddTimestampMarker(\'restart\')" style="font-size:0.72em;padding:3px 8px" title="Mark restart at playhead">🔄 Restart</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="chopAddTimestampMarker(\'clean-run\')" style="font-size:0.72em;padding:3px 8px" title="Mark clean run start at playhead">✅ Clean Run</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="chopAddTimestampMarker(\'discussion\')" style="font-size:0.72em;padding:3px 8px" title="Mark discussion at playhead">💬 Discussion</button>' +
+        '</div>' +
+        // Timestamp marker list
+        '<div id="chopTimestampList" style="margin-bottom:8px"></div>' +
         '<div id="chopSegments"></div>' +
         '</div></div>';
     document.body.appendChild(modal);
@@ -794,6 +804,7 @@ var chopPlayheadRAF = null;
 var chopDraggingMarker = -1; // index of marker being dragged (-1 = none)
 var chopSelectedSegment = -1; // which segment is selected for boundary editing
 var chopSettingBoundary = null; // 'start' or 'end'
+var chopTimestampMarkers = []; // { sec, type, label } — user annotation markers (not segment boundaries)
 
 // ── Zoom / Navigation State ──
 var chopZoom = { startSec: 0, endSec: 0 };   // visible window (0,0 = full view)
@@ -816,6 +827,7 @@ function _chopTryRehydrate(audioDuration) {
     if (Math.abs(tl.durationSec - audioDuration) > 2) return false;
 
     _chopLoadFromTimeline(tl);
+    _chopLoadTimestampMarkers();
     return true;
 }
 
@@ -883,6 +895,7 @@ async function chopLoadFile(file) {
         if (rehydrated) {
             chopDrawWaveform();
             chopRenderSegments();
+            chopRenderTimestampMarkerList();
             showToast('Restored ' + chopMarkers.length + ' saved segment boundaries');
         }
         // If no stored timeline, run fresh AI segmentation
@@ -890,8 +903,10 @@ async function chopLoadFile(file) {
             var timeline = GLStore.segmentRehearsalAudio(chopAudioBuffer);
             if (timeline && timeline.segments && timeline.segments.length > 1) {
                 _chopLoadFromTimeline(timeline);
+                chopTimestampMarkers = []; // fresh segmentation = clear old markers
                 chopDrawWaveform();
                 chopRenderSegments();
+                chopRenderTimestampMarkerList();
                 showToast('AI detected ' + timeline.summary.segmentCount + ' segments (' + timeline.summary.musicSegments + ' music, ' + timeline.summary.likelyRestarts + ' restarts)');
                 // Show first-use help banner
                 if (typeof glInlineHelp !== 'undefined') {
@@ -1215,6 +1230,9 @@ function chopDrawMinimap() {
         vp.style.left = leftPct + '%';
         vp.style.width = widthPct + '%';
     }
+
+    // Draw timestamp markers on minimap
+    _chopDrawMinimapTimestampMarkers(ctx, canvas, dur);
 }
 
 // ── Region Selection ─────────────────────────────────────────────────────────
@@ -1297,6 +1315,124 @@ function chopSnapToNearest(sec) {
     }
 
     return Math.round(best * 100) / 100;
+}
+
+// ── Timestamp Markers ─────────────────────────────────────────────────────────
+
+var CHOP_MARKER_TYPES = {
+    'song-start':  { icon: '🎵', color: '#22c55e', label: 'Song Start' },
+    'restart':     { icon: '🔄', color: '#f59e0b', label: 'Restart' },
+    'clean-run':   { icon: '✅', color: '#60a5fa', label: 'Clean Run' },
+    'discussion':  { icon: '💬', color: '#a78bfa', label: 'Discussion' },
+};
+
+window.chopAddTimestampMarker = function(type) {
+    var audio = document.getElementById('chopAudio');
+    if (!audio || !chopAudioBuffer) return;
+    var sec = audio.currentTime || 0;
+    var def = CHOP_MARKER_TYPES[type];
+    if (!def) return;
+    chopTimestampMarkers.push({
+        id: 'tm_' + Date.now() + '_' + chopTimestampMarkers.length,
+        sec: Math.round(sec * 100) / 100,
+        type: type,
+        label: def.label,
+    });
+    chopTimestampMarkers.sort(function(a, b) { return a.sec - b.sec; });
+    chopDrawWaveform();
+    chopDrawMinimap();
+    _chopSyncTimestampMarkers();
+    showToast(def.icon + ' ' + def.label + ' at ' + formatChopTime(sec));
+};
+
+window.chopRemoveTimestampMarker = function(id) {
+    chopTimestampMarkers = chopTimestampMarkers.filter(function(m) { return m.id !== id; });
+    chopDrawWaveform();
+    chopDrawMinimap();
+    _chopSyncTimestampMarkers();
+};
+
+function _chopSyncTimestampMarkers() {
+    if (typeof GLStore === 'undefined' || !GLStore.getLatestTimeline) return;
+    var tl = GLStore.getLatestTimeline();
+    if (!tl) return;
+    // Store markers alongside the timeline
+    tl.timestampMarkers = chopTimestampMarkers.slice();
+    if (GLStore.saveTimelineCorrections) GLStore.saveTimelineCorrections(tl);
+}
+
+function _chopLoadTimestampMarkers() {
+    if (typeof GLStore === 'undefined' || !GLStore.getLatestTimeline) return;
+    var tl = GLStore.getLatestTimeline();
+    if (tl && tl.timestampMarkers && Array.isArray(tl.timestampMarkers)) {
+        chopTimestampMarkers = tl.timestampMarkers.slice();
+    }
+}
+
+function _chopDrawTimestampMarkers(ctx, canvas, viewStart, viewDur) {
+    for (var i = 0; i < chopTimestampMarkers.length; i++) {
+        var m = chopTimestampMarkers[i];
+        if (m.sec < viewStart || m.sec > viewStart + viewDur) continue;
+        var x = ((m.sec - viewStart) / viewDur) * canvas.width;
+        var def = CHOP_MARKER_TYPES[m.type] || { color: '#94a3b8', icon: '📌' };
+
+        // Vertical dashed line
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Diamond marker at top
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.moveTo(x, 2);
+        ctx.lineTo(x + 4, 6);
+        ctx.lineTo(x, 10);
+        ctx.lineTo(x - 4, 6);
+        ctx.closePath();
+        ctx.fill();
+
+        // Label
+        ctx.fillStyle = def.color;
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(def.icon, x, canvas.height - 4);
+    }
+}
+
+function _chopDrawMinimapTimestampMarkers(ctx, canvas, totalDur) {
+    for (var i = 0; i < chopTimestampMarkers.length; i++) {
+        var m = chopTimestampMarkers[i];
+        var x = (m.sec / totalDur) * canvas.width;
+        var def = CHOP_MARKER_TYPES[m.type] || { color: '#94a3b8' };
+        ctx.fillStyle = def.color;
+        ctx.fillRect(x - 1, 0, 2, canvas.height);
+    }
+}
+
+function chopRenderTimestampMarkerList() {
+    var el = document.getElementById('chopTimestampList');
+    if (!el) return;
+    if (!chopTimestampMarkers.length) {
+        el.innerHTML = '<div style="font-size:0.72em;color:var(--text-dim);font-style:italic;padding:4px 0">No annotations yet. Use the buttons above to mark song starts, restarts, clean runs, or discussions.</div>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < chopTimestampMarkers.length; i++) {
+        var m = chopTimestampMarkers[i];
+        var def = CHOP_MARKER_TYPES[m.type] || { icon: '📌', label: m.type, color: '#94a3b8' };
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.78em">'
+            + '<span style="color:' + def.color + '">' + def.icon + '</span>'
+            + '<span style="font-family:monospace;font-size:0.9em;color:var(--text-dim);cursor:pointer" onclick="var a=document.getElementById(\'chopAudio\');if(a){a.currentTime=' + m.sec + ';a.play()}">' + formatChopTime(m.sec) + '</span>'
+            + '<span style="color:var(--text-muted);flex:1">' + def.label + '</span>'
+            + '<button onclick="chopRemoveTimestampMarker(\'' + m.id + '\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.8em;padding:2px" title="Remove">✕</button>'
+            + '</div>';
+    }
+    el.innerHTML = html;
 }
 
 function chopDrawWaveform() {
@@ -1385,6 +1521,9 @@ function chopDrawWaveform() {
             }
         }
     }
+
+    // Draw timestamp markers on top of everything
+    _chopDrawTimestampMarkers(ctx, canvas, viewStart, viewDur);
 }
 
 function chopDetectSilence() {
