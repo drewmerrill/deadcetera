@@ -907,30 +907,30 @@ function renderAttemptIntelligence() {
         var song = show[i];
         var hasRestart = song.restartCount > 0;
         var hasBest = !!song.bestRun;
+        var safeTitle = _escHtml(song.title);
+        var drilldownId = 'att-drill-' + i;
 
         h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
-        // Title row
-        h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
-        h += '<span style="font-weight:700;font-size:0.85em;color:var(--text,#f1f5f9)">' + _escHtml(song.title) + '</span>';
+        // Title row — clickable for drilldown
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;cursor:pointer" onclick="_hdToggleAttemptDrilldown(\'' + drilldownId + '\',' + i + ')">';
+        h += '<span style="font-weight:700;font-size:0.85em;color:var(--text,#f1f5f9)">' + safeTitle + ' <span style="font-size:0.7em;color:var(--text-dim)">▸</span></span>';
         h += '<div style="display:flex;gap:4px">';
         h += '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.12);color:#818cf8">' + song.attemptCount + ' attempt' + (song.attemptCount > 1 ? 's' : '') + '</span>';
         if (hasRestart) h += '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(239,68,68,0.12);color:#f87171">' + song.restartCount + ' restart' + (song.restartCount > 1 ? 's' : '') + '</span>';
         h += '</div></div>';
 
-        // Attempt strip — visual mini-bars for each attempt
+        // Attempt strip
         h += '<div style="display:flex;gap:2px;align-items:flex-end;height:20px">';
         var maxDur = 0;
         for (var m = 0; m < song.attempts.length; m++) { if (song.attempts[m].durationSec > maxDur) maxDur = song.attempts[m].durationSec; }
         maxDur = Math.max(maxDur, 10);
-
         for (var a = 0; a < song.attempts.length; a++) {
             var att = song.attempts[a];
             var barH = Math.max(4, Math.round((att.durationSec / maxDur) * 18));
             var barColor = att.isBestRun ? '#22c55e' : att.endedInRestart ? '#ef4444' : '#667eea';
             var barBorder = att.hadUserRestartMarker ? '1px solid rgba(239,68,68,0.5)' : 'none';
-            var tip = Math.round(att.durationSec) + 's' + (att.endedInRestart ? ' (restart)' : '') + (att.isBestRun ? ' ★ best' : '');
             var attLabel = att.isBestRun ? 'best run' : att.endedInRestart ? 'restart' : 'attempt';
-            h += '<div title="' + tip + '" onclick="_hdJumpToAttempt(' + att.startSec + ',' + att.endSec + ',\'' + attLabel + '\')" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + ';cursor:pointer"></div>';
+            h += '<div title="' + Math.round(att.durationSec) + 's' + (att.endedInRestart ? ' (restart)' : '') + (att.isBestRun ? ' ★ best' : '') + '" onclick="event.stopPropagation();_hdJumpToAttempt(' + att.startSec + ',' + att.endSec + ',\'' + attLabel + '\')" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:2px;border:' + barBorder + ';opacity:' + (att.isBestRun ? '1' : '0.7') + ';cursor:pointer"></div>';
         }
         h += '</div>';
 
@@ -938,7 +938,12 @@ function renderAttemptIntelligence() {
         h += '<div style="display:flex;gap:6px;margin-top:3px">';
         h += '<span style="font-size:0.62em;color:var(--text-dim,#475569)">' + song.totalWorkMin + 'min total</span>';
         if (hasBest) h += '<span style="font-size:0.62em;color:#22c55e">Best: ' + Math.round(song.bestRun.durationSec) + 's</span>';
+        if (song.lowConfidence) h += '<span style="font-size:0.62em;color:#f87171">⚠ needs work</span>';
+        if (song.improving) h += '<span style="font-size:0.62em;color:#22c55e">↑ improving</span>';
         h += '</div>';
+
+        // Drilldown panel (hidden by default)
+        h += '<div id="' + drilldownId + '" style="display:none"></div>';
 
         h += '</div>';
     }
@@ -949,6 +954,82 @@ function renderAttemptIntelligence() {
 
     h += '</div>';
     return h;
+}
+
+// ── Attempt Drilldown ─────────────────────────────────────────────────────────
+
+window._hdToggleAttemptDrilldown = function(panelId, songIdx) {
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    if (panel.style.display !== 'none' && panel.innerHTML) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+        return;
+    }
+    // Get attempt data
+    if (typeof GLStore === 'undefined' || !GLStore.getAttemptIntelligence) return;
+    var ai = GLStore.getAttemptIntelligence();
+    if (!ai || !ai.hasData || songIdx >= ai.songs.length) return;
+    var song = ai.songs[songIdx];
+
+    var h = '<div style="margin-top:8px;padding:10px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:8px">';
+
+    // Header
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    h += '<div style="font-weight:800;font-size:0.88em;color:var(--text)">' + _escHtml(song.title) + '</div>';
+    h += '<button onclick="document.getElementById(\'' + panelId + '\').style.display=\'none\';document.getElementById(\'' + panelId + '\').innerHTML=\'\'" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9em">✕</button>';
+    h += '</div>';
+
+    // Summary pills
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">';
+    h += '<span style="font-size:0.68em;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(99,102,241,0.12);color:#818cf8">' + song.attemptCount + ' attempts</span>';
+    h += '<span style="font-size:0.68em;font-weight:600;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">' + song.totalWorkMin + ' min</span>';
+    if (song.restartCount) h += '<span style="font-size:0.68em;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,0.1);color:#f87171">' + song.restartCount + ' restarts</span>';
+    if (song.bestRun) h += '<span style="font-size:0.68em;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(34,197,94,0.1);color:#86efac">Best: ' + Math.round(song.bestRun.durationSec) + 's</span>';
+    if (song.lowConfidence) h += '<span style="font-size:0.68em;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,0.1);color:#f87171">⚠ low confidence</span>';
+    if (song.improving) h += '<span style="font-size:0.68em;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(34,197,94,0.1);color:#86efac">↑ improving</span>';
+    h += '</div>';
+
+    // Practice focus summary
+    h += '<div style="font-size:0.75em;color:var(--text-muted,#94a3b8);margin-bottom:8px">';
+    h += _hdAttemptSummaryText(song);
+    h += '</div>';
+
+    // Attempt list
+    h += '<div style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:4px">Attempts</div>';
+    for (var a = 0; a < song.attempts.length; a++) {
+        var att = song.attempts[a];
+        var aColor = att.isBestRun ? '#22c55e' : att.endedInRestart ? '#ef4444' : '#667eea';
+        var aIcon = att.isBestRun ? '★' : att.endedInRestart ? '✕' : '▸';
+        var aLabel = att.isBestRun ? 'best run' : att.endedInRestart ? 'restart' : 'attempt';
+        h += '<div onclick="_hdJumpToAttempt(' + att.startSec + ',' + att.endSec + ',\'' + aLabel + '\')" style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.03)">';
+        h += '<span style="color:' + aColor + ';font-size:0.9em;width:14px;text-align:center">' + aIcon + '</span>';
+        h += '<span style="font-size:0.8em;font-weight:600;color:var(--text-muted)">#' + (a + 1) + '</span>';
+        h += '<span style="font-size:0.78em;color:var(--text);flex:1">' + Math.round(att.durationSec) + 's</span>';
+        h += '<span style="font-size:0.68em;color:' + aColor + ';font-weight:600">' + aLabel + '</span>';
+        if (att.hadUserRestartMarker) h += '<span style="font-size:0.65em;color:var(--text-dim)" title="User-confirmed restart">📌</span>';
+        h += '</div>';
+    }
+
+    h += '</div>';
+    panel.innerHTML = h;
+    panel.style.display = 'block';
+};
+
+function _hdAttemptSummaryText(song) {
+    if (song.lowConfidence) {
+        return 'Most attempts ended in restarts. Focus on getting through the full structure before polishing.';
+    }
+    if (song.improving && song.bestRun) {
+        return 'One strong ' + Math.round(song.bestRun.durationSec) + 's clean run suggests this song is improving. A few more full passes will lock it in.';
+    }
+    if (song.restartEndedCount >= 2 && song.attemptCount >= 3) {
+        return 'Work concentrated in short repeated attempts. Try running the full song from top to build continuity.';
+    }
+    if (song.attemptCount === 1) {
+        return 'Single attempt recorded. More data will help assess progress.';
+    }
+    return song.attemptCount + ' attempts logged. ' + (song.bestRun ? 'Best run at ' + Math.round(song.bestRun.durationSec) + 's.' : 'No clean run yet.');
 }
 
 // ── Attempt Deep Link Helper ──────────────────────────────────────────────────
