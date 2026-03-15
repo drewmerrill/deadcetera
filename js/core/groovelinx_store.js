@@ -2645,6 +2645,7 @@
     // Gig / Setlist / Calendar data model repair
     auditGigSetlistLinks:  auditGigSetlistLinks,
     migrateGigSetlistIds:  migrateGigSetlistIds,
+    postMigrationAudit:    postMigrationAudit,
   };
 
   // ── Gig / Setlist / Calendar data model audit + migration ─────────────────
@@ -2950,6 +2951,296 @@
     }
 
     return { relinked: relinked, blanksRemoved: blanksRemoved, reviewed: reviewed, log: log };
+  }
+
+  /**
+   * POST-MIGRATION AUDIT — Read-only comprehensive report.
+   * Never writes data. Produces:
+   *  A. Executive summary
+   *  B. Full link table
+   *  C. Suspicious records
+   *  D. Specific case search (From The Earth Brewing 2026-05-17)
+   *  E. Recoverability assessment
+   */
+  async function postMigrationAudit() {
+    if (typeof loadBandDataFromDrive !== 'function') { console.warn('loadBandDataFromDrive not available'); return null; }
+    var gigs     = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var calEvts  = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+
+    // ── Build lookup maps ──────────────────────────────────────────────────
+    var slById = {};
+    setlists.forEach(function(s) { if (s.setlistId) slById[s.setlistId] = s; });
+
+    var gigById = {};
+    gigs.forEach(function(g) { if (g.gigId) gigById[g.gigId] = g; });
+
+    // ── A. Link table: every gig and its linked setlist ────────────────────
+    var linkTable = [];
+    var suspicious = [];
+    var totalLinked = 0;
+    var totalUnlinked = 0;
+    var totalBlankSetlist = 0;
+
+    // Track setlists claimed by multiple gigs
+    var setlistClaimCount = {};
+
+    gigs.forEach(function(g, i) {
+      var sl = g.setlistId ? slById[g.setlistId] : null;
+      var songCount = sl ? _slSongCount(sl) : 0;
+      var isBlank = sl ? (songCount === 0) : false;
+
+      if (g.setlistId) {
+        if (!setlistClaimCount[g.setlistId]) setlistClaimCount[g.setlistId] = [];
+        setlistClaimCount[g.setlistId].push(g);
+      }
+
+      var row = {
+        idx: i,
+        gigId: g.gigId || '(none)',
+        gigVenue: g.venue || '?',
+        gigDate: g.date || '?',
+        setlistId: g.setlistId || '(none)',
+        setlistName: sl ? (sl.name || '?') : '(not found)',
+        setlistDate: sl ? (sl.date || '?') : '-',
+        setlistSongs: songCount,
+        isBlank: isBlank,
+        linkedSetlist: g.linkedSetlist || '',
+        gigCreated: g.created || '',
+        gigUpdated: g.updated || '',
+        slGigId: sl ? (sl.gigId || '') : '',
+        status: !g.setlistId ? 'UNLINKED' : (isBlank ? 'BLANK_SETLIST' : 'LINKED'),
+        flags: []
+      };
+
+      if (g.setlistId) totalLinked++; else totalUnlinked++;
+      if (isBlank) totalBlankSetlist++;
+
+      // ── Flag suspicious conditions ─────────────────────────────────────
+      // 1. Date disagreement
+      if (sl && sl.date && g.date && sl.date !== g.date) {
+        row.flags.push('DATE_MISMATCH: gig=' + g.date + ' sl=' + sl.date);
+      }
+
+      // 2. Venue similarity weak
+      if (sl && sl.venue && g.venue) {
+        var nGigV = _normStr(g.venue);
+        var nSlV  = _normStr(sl.venue);
+        if (nGigV !== nSlV) {
+          // Check if one contains the other
+          if (nGigV.indexOf(nSlV) < 0 && nSlV.indexOf(nGigV) < 0) {
+            row.flags.push('VENUE_MISMATCH: gig="' + g.venue + '" sl="' + sl.venue + '"');
+          }
+        }
+      }
+
+      // 3. Name doesn't relate to venue or date at all
+      if (sl && sl.name && g.venue) {
+        var nName = _normStr(sl.name);
+        var nVenue = _normStr(g.venue);
+        // If name doesn't contain any part of venue and doesn't contain date
+        if (nName.indexOf(nVenue.split(' ')[0]) < 0 && nName.indexOf(g.date || '????') < 0) {
+          // Check if it's a generic auto-created name
+          var autoPattern = _normStr(g.venue + ' ' + g.date);
+          if (nName !== autoPattern) {
+            row.flags.push('NAME_WEAK: sl="' + sl.name + '" vs gig="' + g.venue + ' ' + g.date + '"');
+          }
+        }
+      }
+
+      // 4. Legacy linkedSetlist existed but doesn't match current setlist name
+      if (g.linkedSetlist && sl && sl.name && g.linkedSetlist !== sl.name) {
+        row.flags.push('LEGACY_DRIFT: linkedSetlist="' + g.linkedSetlist + '" but sl.name="' + sl.name + '"');
+      }
+
+      // 5. Setlist's gigId doesn't point back to this gig
+      if (sl && sl.gigId && sl.gigId !== g.gigId) {
+        row.flags.push('BACK_REF_MISMATCH: sl.gigId=' + sl.gigId + ' != gig.gigId=' + g.gigId);
+      }
+
+      if (row.flags.length > 0) {
+        suspicious.push(row);
+      }
+      linkTable.push(row);
+    });
+
+    // 6. Check for setlists claimed by multiple gigs
+    var dupeTargets = [];
+    Object.keys(setlistClaimCount).forEach(function(slId) {
+      if (setlistClaimCount[slId].length > 1) {
+        var sl = slById[slId];
+        dupeTargets.push({
+          setlistId: slId,
+          setlistName: sl ? sl.name : '?',
+          claimedBy: setlistClaimCount[slId].map(function(g) { return g.venue + ' ' + g.date + ' (' + g.gigId + ')'; })
+        });
+        // Add flag to each gig
+        setlistClaimCount[slId].forEach(function(g) {
+          var row = linkTable.find(function(r) { return r.gigId === g.gigId; });
+          if (row) {
+            row.flags.push('DUPE_TARGET: ' + setlistClaimCount[slId].length + ' gigs share setlist "' + (sl ? sl.name : slId) + '"');
+            if (suspicious.indexOf(row) < 0) suspicious.push(row);
+          }
+        });
+      }
+    });
+
+    // ── C. Known suspicious case: From The Earth Brewing 2026-05-17 ───────
+    var knownCase = null;
+    var fteGigs = gigs.filter(function(g) {
+      return (g.venue || '').toLowerCase().indexOf('from the earth') >= 0;
+    });
+    // Also search for the specific date
+    var may17Gigs = gigs.filter(function(g) { return g.date === '2026-05-17'; });
+    // Search for "Tim's Birthday" in setlists
+    var timsBirthday = setlists.filter(function(s) {
+      return (s.name || '').toLowerCase().indexOf('tim') >= 0 || (s.name || '').toLowerCase().indexOf('birthday') >= 0;
+    });
+
+    knownCase = {
+      fteGigs: fteGigs.map(function(g) {
+        var sl = g.setlistId ? slById[g.setlistId] : null;
+        return {
+          gigId: g.gigId, venue: g.venue, date: g.date,
+          setlistId: g.setlistId, setlistName: sl ? sl.name : '(none)',
+          setlistDate: sl ? sl.date : '-', setlistSongs: sl ? _slSongCount(sl) : 0,
+          linkedSetlist: g.linkedSetlist || '',
+          created: g.created, updated: g.updated
+        };
+      }),
+      may17Gigs: may17Gigs.map(function(g) {
+        var sl = g.setlistId ? slById[g.setlistId] : null;
+        return { gigId: g.gigId, venue: g.venue, date: g.date, setlistId: g.setlistId, setlistName: sl ? sl.name : '(none)' };
+      }),
+      timsBirthdaySetlists: timsBirthday.map(function(s) {
+        return { setlistId: s.setlistId, name: s.name, date: s.date, venue: s.venue, gigId: s.gigId, songs: _slSongCount(s) };
+      })
+    };
+
+    // ── D. Orphan setlists (not linked to any gig) ───────────────────────
+    var orphanSetlists = setlists.filter(function(s) {
+      return !gigs.some(function(g) { return g.setlistId === s.setlistId; });
+    });
+
+    // ── E. Recoverability ────────────────────────────────────────────────
+    var hasCreatedTimestamps = gigs.filter(function(g) { return g.created; }).length;
+    var hasUpdatedTimestamps = gigs.filter(function(g) { return g.updated; }).length;
+    var gigsWithGigId = gigs.filter(function(g) { return g.gigId; }).length;
+    var setlistsWithSetlistId = setlists.filter(function(s) { return s.setlistId; }).length;
+
+    // ── REPORT ──────────────────────────────────────────────────────────
+    console.log('%c══════════════════════════════════════════════════', 'color:#667eea;font-weight:bold');
+    console.log('%c  POST-MIGRATION AUDIT — READ ONLY', 'font-weight:bold;font-size:16px;color:#667eea');
+    console.log('%c══════════════════════════════════════════════════', 'color:#667eea;font-weight:bold');
+
+    console.log('\n%cA. EXECUTIVE SUMMARY', 'font-weight:bold;font-size:14px;color:#22c55e');
+    console.log('  Gigs total:', gigs.length);
+    console.log('  Setlists total:', setlists.length);
+    console.log('  Calendar events:', calEvts.length);
+    console.log('  Gigs linked to setlist:', totalLinked);
+    console.log('  Gigs unlinked:', totalUnlinked);
+    console.log('  Gigs linked to BLANK setlist:', totalBlankSetlist);
+    console.log('  Suspicious records:', suspicious.length);
+    console.log('  Duplicate-target conflicts:', dupeTargets.length);
+    console.log('  Orphan setlists (not claimed by any gig):', orphanSetlists.length);
+
+    console.log('\n%cB. FULL LINK TABLE', 'font-weight:bold;font-size:14px;color:#818cf8');
+    console.table(linkTable.map(function(r) {
+      return {
+        '#': r.idx,
+        Gig: r.gigVenue + ' ' + r.gigDate,
+        GigID: r.gigId.substring(0, 8),
+        Status: r.status,
+        Setlist: r.setlistName,
+        SlDate: r.setlistDate,
+        Songs: r.setlistSongs,
+        Legacy: r.linkedSetlist,
+        Flags: r.flags.join(' | ') || '-'
+      };
+    }));
+
+    console.log('\n%cC. SUSPICIOUS RECORDS (' + suspicious.length + ')', 'font-weight:bold;font-size:14px;color:#f59e0b');
+    if (suspicious.length) {
+      console.table(suspicious.map(function(r) {
+        return {
+          Gig: r.gigVenue + ' ' + r.gigDate,
+          GigID: r.gigId.substring(0, 8),
+          Setlist: r.setlistName,
+          Songs: r.setlistSongs,
+          Flags: r.flags.join(' | ')
+        };
+      }));
+    } else {
+      console.log('  (none found)');
+    }
+
+    if (dupeTargets.length) {
+      console.log('\n%cDUPLICATE-TARGET CONFLICTS', 'font-weight:bold;color:#ef4444');
+      dupeTargets.forEach(function(d) {
+        console.log('  Setlist "' + d.setlistName + '" (' + d.setlistId.substring(0, 8) + ') claimed by:');
+        d.claimedBy.forEach(function(g) { console.log('    → ' + g); });
+      });
+    }
+
+    console.log('\n%cD. KNOWN CASE: "From The Earth Brewing"', 'font-weight:bold;font-size:14px;color:#ef4444');
+    if (knownCase.fteGigs.length) {
+      console.log('  All "From The Earth" gigs:');
+      console.table(knownCase.fteGigs);
+    } else {
+      console.log('  No "From The Earth" gigs found');
+    }
+    if (knownCase.may17Gigs.length) {
+      console.log('  All gigs dated 2026-05-17:');
+      console.table(knownCase.may17Gigs);
+    }
+    if (knownCase.timsBirthdaySetlists.length) {
+      console.log('  Setlists matching "Tim" or "Birthday":');
+      console.table(knownCase.timsBirthdaySetlists);
+    } else {
+      console.log('  No "Tim\'s Birthday" setlists found');
+    }
+
+    console.log('\n%cE. RECOVERABILITY', 'font-weight:bold;font-size:14px;color:#818cf8');
+    console.log('  Gigs with gigId:', gigsWithGigId, '/', gigs.length);
+    console.log('  Setlists with setlistId:', setlistsWithSetlistId, '/', setlists.length);
+    console.log('  Gigs with created timestamp:', hasCreatedTimestamps);
+    console.log('  Gigs with updated timestamp:', hasUpdatedTimestamps);
+    console.log('  Pre-migration snapshot: NOT available (no snapshot was taken before migration)');
+    console.log('  Migration log: NOT persisted (was console output only)');
+    console.log('  Targeted repair: POSSIBLE — can null out setlistId/gigId on suspicious records');
+    console.log('  Full rollback: RISKY — no snapshot to restore from. Targeted repair is safer.');
+
+    console.log('\n%cF. ORPHAN SETLISTS (' + orphanSetlists.length + ')', 'font-weight:bold;font-size:14px;color:#64748b');
+    if (orphanSetlists.length) {
+      console.table(orphanSetlists.map(function(s) {
+        return {
+          Name: s.name,
+          Date: s.date || '-',
+          Venue: s.venue || '-',
+          Songs: _slSongCount(s),
+          SetlistId: (s.setlistId || '').substring(0, 8),
+          GigId: s.gigId || '(none)'
+        };
+      }));
+    }
+
+    console.log('\n%c══════════════════════════════════════════════════', 'color:#667eea;font-weight:bold');
+    console.log('%c  END OF AUDIT — NO DATA WAS MODIFIED', 'font-weight:bold;font-size:14px;color:#22c55e');
+    console.log('%c══════════════════════════════════════════════════', 'color:#667eea;font-weight:bold');
+
+    return {
+      summary: {
+        gigs: gigs.length, setlists: setlists.length, calEvents: calEvts.length,
+        linked: totalLinked, unlinked: totalUnlinked, blankSetlists: totalBlankSetlist,
+        suspicious: suspicious.length, dupeTargets: dupeTargets.length,
+        orphanSetlists: orphanSetlists.length
+      },
+      linkTable: linkTable,
+      suspicious: suspicious,
+      dupeTargets: dupeTargets,
+      knownCase: knownCase,
+      orphanSetlists: orphanSetlists
+    };
   }
 
   console.log('✅ GLStore loaded');
