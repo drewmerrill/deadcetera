@@ -354,6 +354,7 @@ function _renderDashboard(bundle, context) {
         _renderBandMomentum(),
         _renderNarrativeBridge(),
         _renderPriorityQueue(bundle),
+        '<div style="text-align:center;padding:4px 0"><button onclick="if(typeof toggleStonerMode===\'function\')toggleStonerMode()" style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);color:#c084fc;padding:10px 24px;border-radius:12px;font-size:0.85em;font-weight:700;cursor:pointer;transition:all 0.15s">\uD83C\uDF3F Stoner Mode<span style="display:block;font-size:0.75em;font-weight:500;color:#64748b;margin-top:2px">Low-brain rehearsal cockpit</span></button></div>',
         _renderRecentChanges(bundle),
         '</div>'
     ].join('');

@@ -74,43 +74,179 @@ function _stonerEnsureOverlay() {
     document.body.appendChild(ov);
 }
 
+// ── Session state ──────────────────────────────────────────────────────────
+var _stonerStreak = 0;
+var _stonerCurrentSong = null;
+var _stonerQueue = [];
+var _stonerQueueIdx = 0;
+var _stonerRunStartTime = null;
+
+var _STONER_SUBS = [
+    'Less thinking. More playing.',
+    'For when the jam gets foggy.',
+    'Because somebody forgot the setlist.',
+    'Play the song. We\'ll remember the rest.',
+    'One song at a time.',
+];
+
 function _stonerRender() {
     var content = document.getElementById('stonerContent');
     if (!content) return;
-
+    // Build the queue from Priority Queue → Agenda → Library
+    _stonerBuildQueue();
+    _stonerCurrentSong = _stonerQueue[_stonerQueueIdx] || null;
     content.innerHTML = '<div id="stonerHome"></div>';
-    _stonerRenderHome();
+    _stonerRenderCockpit();
 }
 
-function _stonerRenderHome() {
+function _stonerBuildQueue() {
+    _stonerQueue = [];
+    var seen = {};
+    // 1. Practice Attention (Priority Queue source)
+    if (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention) {
+        var pa = GLStore.getPracticeAttention({ limit: 10 });
+        if (pa) pa.forEach(function(item) { if (!seen[item.songId]) { _stonerQueue.push(item.songId); seen[item.songId] = true; } });
+    }
+    // 2. Rehearsal Agenda
+    if (typeof GLStore !== 'undefined' && GLStore.generateRehearsalAgenda) {
+        var agenda = GLStore.generateRehearsalAgenda();
+        if (agenda && !agenda.empty && agenda.items) {
+            agenda.items.forEach(function(item) { if (!seen[item.songId]) { _stonerQueue.push(item.songId); seen[item.songId] = true; } });
+        }
+    }
+    // 3. Fallback: all rated songs
+    if (typeof readinessCache !== 'undefined') {
+        Object.keys(readinessCache).forEach(function(title) { if (!seen[title]) { _stonerQueue.push(title); seen[title] = true; } });
+    }
+    _stonerQueueIdx = 0;
+}
+
+function _stonerRenderCockpit() {
     var home = document.getElementById('stonerHome');
     if (!home) return;
+    var song = _stonerCurrentSong;
+    var sub = _STONER_SUBS[Math.floor(Math.random() * _STONER_SUBS.length)];
+
+    // Song indicators
+    var indicators = '';
+    if (song && typeof readinessCache !== 'undefined' && readinessCache[song]) {
+        var vals = Object.values(readinessCache[song]).filter(function(v) { return typeof v === 'number' && v > 0; });
+        var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+        if (avg < 3 && avg > 0) indicators += '<span style="color:#f59e0b;font-size:0.7em;font-weight:700">&#x26A0; Needs Work</span> ';
+    }
+    if (song && typeof window.northStarCache !== 'undefined' && window.northStarCache[song]) {
+        indicators += '<span style="color:#fbbf24;font-size:0.7em">&#x2B50;</span> ';
+    }
+
+    var queueInfo = _stonerQueue.length ? ('Song ' + (_stonerQueueIdx + 1) + ' of ' + _stonerQueue.length) : '';
 
     home.innerHTML = [
-        // Big search
-        '<div style="padding:20px 16px 12px">',
-        '  <div style="font-size:0.72em;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;text-align:center">What are we playing?</div>',
-        '  <input class="stoner-search" id="stonerSearchInput" placeholder="\uD83D\uDD0D Type a song..." oninput="stonerSearch(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">',
-        '  <div id="stonerSearchResults" style="margin-top:6px;border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)"></div>',
+        '<div style="padding:24px 20px;text-align:center;max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:16px;min-height:100%">',
+        // Subtitle
+        '<div style="font-size:0.75em;color:#475569;font-style:italic">' + sub + '</div>',
+        // Song card
+        '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px 20px;text-align:center">',
+        '<div style="font-size:0.6em;font-weight:700;letter-spacing:0.12em;color:#64748b;text-transform:uppercase;margin-bottom:8px">' + queueInfo + '</div>',
+        song ? '<div style="font-size:1.6em;font-weight:800;color:#f1f5f9;line-height:1.2;margin-bottom:8px">' + _stonerEsc(song) + '</div>' : '<div style="font-size:1.2em;color:#64748b">No songs in queue</div>',
+        indicators ? '<div style="margin-bottom:4px">' + indicators + '</div>' : '',
         '</div>',
-        // Big action buttons
-        '<div style="padding:0 16px;display:flex;flex-direction:column;gap:10px;margin-bottom:20px">',
-        '  <button class="stoner-big-btn" onclick="stonerPickSetlist()" style="background:rgba(102,126,234,0.12);border-color:rgba(102,126,234,0.3);color:#818cf8">',
-        '    <span style="font-size:1.4em">\uD83D\uDCCB</span> <span id="stonerActiveSetlistLabel">Pick a Setlist</span>',
-        '  </button>',
-        '  <button class="stoner-big-btn" onclick="stonerOpenGigs()" style="background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.25);color:#22c55e">',
-        '    <span style="font-size:1.4em">\uD83C\uDFA4</span> Gigs',
-        '  </button>',
+        // Action buttons
+        song ? [
+            '<div style="display:flex;gap:10px">',
+            '<button class="stoner-big-btn" onclick="_stonerOpenChart()" style="flex:1;background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.35);color:#a5b4fc;min-height:56px;font-size:1em">&#x1F4D6; CHART</button>',
+            '<button class="stoner-big-btn" onclick="_stonerStartRun()" style="flex:1;background:rgba(34,197,94,0.12);border-color:rgba(34,197,94,0.3);color:#86efac;min-height:56px;font-size:1em">&#x25B6; PRACTICE RUN</button>',
+            '</div>',
+            // Outcome buttons
+            '<div style="display:flex;gap:8px">',
+            '<button class="stoner-big-btn" onclick="_stonerOutcome(\'good\')" style="flex:1;background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.35);color:#22c55e;min-height:60px">&#x1F44D;<br>GOOD</button>',
+            '<button class="stoner-big-btn" onclick="_stonerOutcome(\'needswork\')" style="flex:1;background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.3);color:#f59e0b;min-height:60px">&#x1F914;<br>NEEDS<br>WORK</button>',
+            '<button class="stoner-big-btn" onclick="_stonerOutcome(\'trainwreck\')" style="flex:1;background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.3);color:#ef4444;min-height:60px">&#x1F4A5;<br>TRAIN<br>WRECK</button>',
+            '</div>',
+        ].join('') : '',
+        // Streak + Next
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px">',
+        '<div style="font-size:0.85em;font-weight:700;color:' + (_stonerStreak >= 3 ? '#22c55e' : '#64748b') + '">&#x1F525; Streak: ' + _stonerStreak + '</div>',
+        '<button class="stoner-big-btn" onclick="_stonerNextSong()" style="width:auto;padding:12px 24px;background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:#94a3b8;min-height:auto;font-size:0.9em">NEXT SONG &#x276F;</button>',
         '</div>',
-        // Recent songs
-        '<div style="padding:0 16px"><div style="font-size:0.68em;font-weight:700;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px">Recent Songs</div>',
-        '<div id="stonerRecentSongs"></div></div>'
+        // Toast area
+        '<div id="stonerToast" style="min-height:24px;font-size:0.8em;color:#64748b;text-align:center"></div>',
+        '</div>'
     ].join('');
+}
 
-    // Load recent songs from activity log
-    _stonerLoadRecent();
-    // Update active setlist label
-    _stonerUpdateSetlistLabel();
+function _stonerEsc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _stonerOpenChart() {
+    if (!_stonerCurrentSong) return;
+    // Exit stoner, open rehearsal mode chart
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    if (typeof openRehearsalMode === 'function') openRehearsalMode(_stonerCurrentSong);
+}
+
+function _stonerStartRun() {
+    _stonerRunStartTime = Date.now();
+    var toast = document.getElementById('stonerToast');
+    if (toast) toast.textContent = 'Practice run started \u2014 play the song, then mark the outcome.';
+}
+
+function _stonerOutcome(type) {
+    if (!_stonerCurrentSong) return;
+    var toast = document.getElementById('stonerToast');
+    var msg = '';
+
+    if (type === 'good') {
+        _stonerStreak++;
+        msg = '\u2705 Nice! Streak: ' + _stonerStreak;
+        // Readiness +1
+        if (typeof GLStore !== 'undefined' && GLStore.saveReadiness) {
+            var mk = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+            if (mk && typeof readinessCache !== 'undefined') {
+                var current = (readinessCache[_stonerCurrentSong] && readinessCache[_stonerCurrentSong][mk]) || 0;
+                var newVal = Math.min(5, current + 1);
+                if (newVal > current && newVal >= 1) GLStore.saveReadiness(_stonerCurrentSong, mk, newVal);
+            }
+        }
+    } else if (type === 'needswork') {
+        msg = '\uD83D\uDD27 Logged \u2014 keep at it.';
+    } else if (type === 'trainwreck') {
+        _stonerStreak = 0;
+        msg = '\uD83D\uDCA5 Trainwreck logged \u2014 this song just moved up in the practice queue.';
+        // Readiness -1
+        if (typeof GLStore !== 'undefined' && GLStore.saveReadiness) {
+            var mk2 = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+            if (mk2 && typeof readinessCache !== 'undefined') {
+                var current2 = (readinessCache[_stonerCurrentSong] && readinessCache[_stonerCurrentSong][mk2]) || 0;
+                var newVal2 = Math.max(1, current2 - 1);
+                if (newVal2 !== current2 && current2 >= 1) GLStore.saveReadiness(_stonerCurrentSong, mk2, newVal2);
+            }
+        }
+    }
+
+    // Log activity
+    if (typeof logActivity === 'function') {
+        logActivity('stoner_outcome', { song: _stonerCurrentSong, outcome: type, streak: _stonerStreak });
+    }
+
+    if (toast) { toast.textContent = msg; toast.style.color = type === 'good' ? '#22c55e' : type === 'trainwreck' ? '#ef4444' : '#f59e0b'; }
+    // Re-render streak display
+    _stonerRenderCockpit();
+}
+
+function _stonerNextSong() {
+    _stonerQueueIdx++;
+    if (_stonerQueueIdx >= _stonerQueue.length) _stonerQueueIdx = 0;
+    _stonerCurrentSong = _stonerQueue[_stonerQueueIdx] || null;
+    _stonerRunStartTime = null;
+    _stonerRenderCockpit();
+}
+
+// Keep old home renderer as fallback
+function _stonerRenderHome() {
+    _stonerRenderCockpit();
 }
 
 function stonerSearch(q) {
@@ -414,3 +550,8 @@ window.stonerOpenGigs = stonerOpenGigs;
 window.stonerPickSetlist = stonerPickSetlist;
 window.stonerOpenTuner = stonerOpenTuner;
 window.stonerOpenMetronome = stonerOpenMetronome;
+// Stoner Mode v1 cockpit functions
+window._stonerOpenChart = _stonerOpenChart;
+window._stonerStartRun = _stonerStartRun;
+window._stonerOutcome = _stonerOutcome;
+window._stonerNextSong = _stonerNextSong;
