@@ -537,6 +537,120 @@
     });
   }
 
+  // ── Legacy Status Audit + Migration ───────────────────────────────────────
+  //
+  // Valid status values: '', 'prospect', 'wip', 'gig_ready'
+  // Legacy values that may exist: 'needs_polish', 'needsPolish', 'on_deck',
+  //   'onDeck', 'Needs Polish', 'On Deck', 'Gig Ready', 'Work in Progress', etc.
+  //
+  // Usage from browser console:
+  //   GLStore.auditLegacyStatuses()        // dry-run report
+  //   GLStore.migrateLegacyStatuses()      // normalize + save
+
+  var _VALID_STATUSES = { '': true, 'prospect': true, 'wip': true, 'gig_ready': true };
+
+  var _STATUS_MIGRATION_MAP = {
+    'needs_polish':      'wip',
+    'needspolish':       'wip',
+    'needs polish':      'wip',
+    'work in progress':  'wip',
+    'work_in_progress':  'wip',
+    'on_deck':           'prospect',
+    'ondeck':            'prospect',
+    'on deck':           'prospect',
+    'gig ready':         'gig_ready',
+    'gig-ready':         'gig_ready',
+    'gigready':          'gig_ready',
+    'ready':             'gig_ready',
+    'not on radar':      '',
+    'not_on_radar':      '',
+    'none':              '',
+    'null':              '',
+    'undefined':         '',
+  };
+
+  function auditLegacyStatuses() {
+    var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var entries = Object.entries(sc);
+    var legacy = [];
+    var valid = [];
+    var empty = 0;
+
+    for (var i = 0; i < entries.length; i++) {
+      var title = entries[i][0];
+      var raw = entries[i][1];
+      if (!raw || raw === '') { empty++; continue; }
+      var val = (typeof raw === 'string') ? raw : (raw && raw.status) ? raw.status : '';
+      if (_VALID_STATUSES[val]) {
+        valid.push({ title: title, status: val });
+      } else {
+        var normalized = val.toLowerCase().replace(/\s+/g, ' ').trim();
+        var mapped = _STATUS_MIGRATION_MAP[normalized] || null;
+        legacy.push({ title: title, current: val, normalized: normalized, wouldMapTo: mapped || '(UNKNOWN — needs manual review)' });
+      }
+    }
+
+    console.log('%c=== Legacy Status Audit ===', 'font-weight:bold;font-size:14px;color:#667eea');
+    console.log('Total songs with status:', entries.length);
+    console.log('Valid statuses:', valid.length);
+    console.log('Empty/unset:', empty);
+    console.log('Legacy values found:', legacy.length);
+
+    if (legacy.length) {
+      console.log('%cLegacy songs:', 'font-weight:bold;color:#f59e0b');
+      console.table(legacy);
+    } else {
+      console.log('%cNo legacy statuses found — all clean!', 'color:#22c55e;font-weight:bold');
+    }
+
+    return { total: entries.length, valid: valid.length, empty: empty, legacy: legacy };
+  }
+
+  function migrateLegacyStatuses(opts) {
+    var dryRun = !opts || opts.dryRun !== false;
+    var audit = auditLegacyStatuses();
+
+    if (!audit.legacy.length) {
+      console.log('Nothing to migrate.');
+      return { migrated: 0, skipped: 0 };
+    }
+
+    var migrated = 0;
+    var skipped = 0;
+    var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+
+    for (var i = 0; i < audit.legacy.length; i++) {
+      var item = audit.legacy[i];
+      if (item.wouldMapTo.indexOf('UNKNOWN') >= 0) {
+        console.warn('SKIPPING (unknown mapping):', item.title, '→', item.current);
+        skipped++;
+        continue;
+      }
+      if (dryRun) {
+        console.log('[DRY RUN] Would migrate:', item.title, '"' + item.current + '" → "' + item.wouldMapTo + '"');
+      } else {
+        sc[item.title] = item.wouldMapTo;
+        migrated++;
+      }
+    }
+
+    if (!dryRun && migrated > 0) {
+      // Persist to master file
+      if (typeof saveMasterFile === 'function') {
+        saveMasterFile('_master_song_statuses.json', sc).then(function() {
+          console.log('%cMigration saved to master file!', 'color:#22c55e;font-weight:bold');
+        }).catch(function(e) {
+          console.error('Failed to save master file:', e);
+        });
+      }
+      console.log('%cMigrated ' + migrated + ' songs. Skipped ' + skipped + '.', 'font-weight:bold;color:#22c55e');
+    } else if (dryRun) {
+      console.log('%c[DRY RUN] Would migrate ' + (audit.legacy.length - skipped) + ' songs. Run GLStore.migrateLegacyStatuses({ dryRun: false }) to apply.', 'font-weight:bold;color:#f59e0b');
+    }
+
+    return { migrated: migrated, skipped: skipped };
+  }
+
   // ── Navigation / Selection state ─────────────────────────────────────────
   // Milestone 1 Phase A — additive only. Zero behavior change to existing paths.
 
@@ -2415,6 +2529,10 @@
 
     // Debug
     getState:          getState,
+
+    // Diagnostics — legacy status audit + migration
+    auditLegacyStatuses:   auditLegacyStatuses,
+    migrateLegacyStatuses: migrateLegacyStatuses,
   };
 
   console.log('✅ GLStore loaded');
