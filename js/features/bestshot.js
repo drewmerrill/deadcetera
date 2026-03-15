@@ -727,20 +727,31 @@ function openRehearsalChopper() {
         '<div id="chopperContent" style="display:none">' +
         '<div style="margin-bottom:8px">' +
         '<audio id="chopAudio" controls style="width:100%;height:36px;margin-bottom:6px"></audio>' +
+        // Mini-map overview
+        '<div style="position:relative;margin-bottom:4px">' +
+        '<canvas id="chopMinimap" width="920" height="28" style="width:100%;height:28px;border-radius:4px;background:#0a0a14;border:1px solid rgba(255,255,255,0.05);cursor:pointer"></canvas>' +
+        '<div id="chopMinimapViewport" style="position:absolute;top:0;height:100%;border:1px solid rgba(99,102,241,0.6);background:rgba(99,102,241,0.1);pointer-events:none;border-radius:3px"></div>' +
+        '</div>' +
+        // Main waveform
         '<div style="position:relative">' +
         '<canvas id="chopWaveform" width="920" height="130" style="width:100%;height:130px;border-radius:8px;cursor:crosshair;background:#0f0f1e;border:1px solid rgba(255,255,255,0.08)"></canvas>' +
         '<div id="chopPlayhead" style="position:absolute;top:0;left:0;width:2px;height:100%;background:#fff;pointer-events:none;opacity:0.8;display:none"></div>' +
         '<div id="chopHoverLine" style="position:absolute;top:0;left:0;width:1px;height:100%;background:rgba(255,255,255,0.4);pointer-events:none;display:none"></div>' +
         '<div id="chopHoverTime" style="position:absolute;top:2px;left:0;background:rgba(0,0,0,0.8);color:white;font-size:0.65em;padding:1px 4px;border-radius:3px;pointer-events:none;display:none"></div>' +
+        '<div id="chopRegionHighlight" style="position:absolute;top:0;height:100%;background:rgba(99,102,241,0.15);border-left:2px solid #667eea;border-right:2px solid #667eea;pointer-events:none;display:none"></div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;margin-top:3px;font-size:0.7em;color:var(--text-dim)"><span id="chopTimeStart">0:00</span><span id="chopTimeEnd">0:00</span></div>' +
         '</div>' +
-        '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">' +
+        // Controls bar
+        '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">' +
         '<button class="btn btn-primary btn-sm" id="chopDetectBtn">🔍 Detect Pauses</button>' +
-        '<button class="btn btn-ghost btn-sm" id="chopAddMarkerBtn" title="Adds a split marker at the current audio position. Play, pause at a song break, click this.">+ Split at Playhead</button>' +
-        '<button class="btn btn-ghost btn-sm" id="chopClearBtn" style="color:#ef4444">🗑️ Clear All</button>' +
-        '<label style="display:flex;align-items:center;gap:4px;font-size:0.78em;color:var(--text-muted);margin-left:auto">Silence: <input type="range" id="chopThreshold" min="0.002" max="0.08" step="0.002" value="0.015" style="width:80px"> <span id="chopThreshVal">0.015</span></label>' +
-        '<label style="display:flex;align-items:center;gap:4px;font-size:0.78em;color:var(--text-muted)">Min gap: <input type="range" id="chopMinGap" min="0.5" max="8" step="0.5" value="3" style="width:60px"> <span id="chopMinGapVal">3</span>s</label>' +
+        '<button class="btn btn-ghost btn-sm" id="chopAddMarkerBtn" title="Split at playhead">+ Split</button>' +
+        '<button class="btn btn-ghost btn-sm" id="chopLoopBtn" title="Loop selected region">🔁 Loop</button>' +
+        '<button class="btn btn-ghost btn-sm" id="chopZoomFitBtn" title="Zoom to fit full recording">Fit All</button>' +
+        '<button class="btn btn-ghost btn-sm" id="chopClearBtn" style="color:#ef4444">🗑️ Clear</button>' +
+        '<label style="display:flex;align-items:center;gap:4px;font-size:0.72em;color:var(--text-muted);margin-left:auto">Zoom: <input type="range" id="chopZoomSlider" min="1" max="20" step="0.5" value="1" style="width:70px"> <span id="chopZoomLevel">1x</span></label>' +
+        '<label style="display:flex;align-items:center;gap:4px;font-size:0.72em;color:var(--text-muted)">Silence: <input type="range" id="chopThreshold" min="0.002" max="0.08" step="0.002" value="0.015" style="width:60px"> <span id="chopThreshVal">0.015</span></label>' +
+        '<label style="display:flex;align-items:center;gap:4px;font-size:0.72em;color:var(--text-muted)">Gap: <input type="range" id="chopMinGap" min="0.5" max="8" step="0.5" value="3" style="width:50px"> <span id="chopMinGapVal">3</span>s</label>' +
         '</div>' +
         '<div id="chopSegments"></div>' +
         '</div></div>';
@@ -783,6 +794,14 @@ var chopPlayheadRAF = null;
 var chopDraggingMarker = -1; // index of marker being dragged (-1 = none)
 var chopSelectedSegment = -1; // which segment is selected for boundary editing
 var chopSettingBoundary = null; // 'start' or 'end'
+
+// ── Zoom / Navigation State ──
+var chopZoom = { startSec: 0, endSec: 0 };   // visible window (0,0 = full view)
+var chopRegion = null;     // { startSec, endSec } or null — selected region
+var chopLooping = false;   // loop playback active
+var chopLoopRAF = null;    // loop check animation frame
+var chopScrubbing = false; // scrub mode active
+var chopMinimapDragging = false; // minimap viewport drag
 
 /**
  * Try to rehydrate Chopper state from a stored corrected timeline.
@@ -851,7 +870,11 @@ async function chopLoadFile(file) {
         var arrayBuffer = await file.arrayBuffer();
         chopAudioBuffer = await chopAudioContext.decodeAudioData(arrayBuffer);
         document.getElementById('chopTimeEnd').textContent = formatChopTime(chopAudioBuffer.duration);
+        chopZoom = { startSec: 0, endSec: chopAudioBuffer.duration };
+        chopRegion = null;
+        chopLooping = false;
         chopDrawWaveform();
+        chopDrawMinimap();
         chopWireCanvasEvents();
         chopStartPlayheadTracker();
 
@@ -899,63 +922,100 @@ async function chopLoadFile(file) {
 function chopWireCanvasEvents() {
     var canvas = document.getElementById('chopWaveform');
     var audio = document.getElementById('chopAudio');
+    var minimap = document.getElementById('chopMinimap');
     if (!canvas || !chopAudioBuffer) return;
 
-    // Hover: show line + time tooltip
+    // Helper: pixel to seconds in zoom window
+    function pxToSec(x, rect) {
+        var zw = chopGetZoomWindow();
+        return zw.start + (x / rect.width) * zw.dur;
+    }
+    function secToPx(sec, rect) {
+        var zw = chopGetZoomWindow();
+        return ((sec - zw.start) / zw.dur) * rect.width;
+    }
+
+    var regionStartX = -1; // for click-drag region selection
+
+    // Hover: line + tooltip + marker drag
     canvas.addEventListener('mousemove', function(e) {
         var rect = canvas.getBoundingClientRect();
         var x = e.clientX - rect.left;
-        var pct = x / rect.width;
-        var sec = pct * chopAudioBuffer.duration;
+        var sec = pxToSec(x, rect);
 
-        var pixPerSec2 = rect.width / chopAudioBuffer.duration;
+        // Near marker check
         var nearM = false;
-        for (var mi = 0; mi < chopMarkers.length; mi++) { if (Math.abs(x - chopMarkers[mi] * pixPerSec2) < 8) { nearM = true; break; } }
+        for (var mi = 0; mi < chopMarkers.length; mi++) {
+            var mx = secToPx(chopMarkers[mi], rect);
+            if (Math.abs(x - mx) < 8) { nearM = true; break; }
+        }
         canvas.style.cursor = chopDraggingMarker >= 0 ? 'col-resize' : (nearM ? 'col-resize' : 'crosshair');
+
         var hoverLine = document.getElementById('chopHoverLine');
         var hoverTime = document.getElementById('chopHoverTime');
         if (hoverLine) { hoverLine.style.display = 'block'; hoverLine.style.left = x + 'px'; }
         if (hoverTime) { hoverTime.style.display = 'block'; hoverTime.style.left = (x + 6) + 'px'; hoverTime.textContent = formatChopTime(sec); }
 
+        // Marker drag with snap
         if (chopDraggingMarker >= 0) {
             var sorted = chopMarkers.slice().sort(function(a,b){return a-b});
-            var targetVal = sorted[chopDraggingMarker];
-            var origIdx = chopMarkers.indexOf(targetVal);
-            if (origIdx >= 0) chopMarkers[origIdx] = Math.max(0.1, Math.min(sec, chopAudioBuffer.duration - 0.1));
+            var origIdx = chopMarkers.indexOf(sorted[chopDraggingMarker]);
+            if (origIdx >= 0) {
+                var snapped = chopSnapToNearest(sec);
+                chopMarkers[origIdx] = Math.max(0.1, Math.min(snapped, chopAudioBuffer.duration - 0.1));
+            }
             chopDrawWaveform();
             chopRenderSegments();
+        }
+
+        // Region drag
+        if (regionStartX >= 0) {
+            var startSec = pxToSec(Math.min(regionStartX, x), rect);
+            var endSec = pxToSec(Math.max(regionStartX, x), rect);
+            chopRegion = { startSec: startSec, endSec: endSec };
+            chopUpdateRegionHighlight();
         }
     });
 
     canvas.addEventListener('mouseleave', function() {
-        document.getElementById('chopHoverLine').style.display = 'none';
-        document.getElementById('chopHoverTime').style.display = 'none';
+        var hl = document.getElementById('chopHoverLine');
+        var ht = document.getElementById('chopHoverTime');
+        if (hl) hl.style.display = 'none';
+        if (ht) ht.style.display = 'none';
         if (chopDraggingMarker >= 0) { chopDraggingMarker = -1; chopMarkers.sort(function(a,b){return a-b}); chopRenderSegments(); }
     });
 
-    // Click: seek audio or set boundary
+    // Click: seek or set boundary
     canvas.addEventListener('click', function(e) {
-        if (chopDraggingMarker >= 0) return;
+        if (chopDraggingMarker >= 0 || regionStartX >= 0) return;
         var rect = canvas.getBoundingClientRect();
-        var pct = (e.clientX - rect.left) / rect.width;
-        var sec = pct * chopAudioBuffer.duration;
-        // If setting a boundary, apply it
-        if (chopSelectedSegment >= 0 && chopSettingBoundary) {
-            chopSetBoundary(sec);
-            return;
-        }
+        var sec = pxToSec(e.clientX - rect.left, rect);
+        if (chopSelectedSegment >= 0 && chopSettingBoundary) { chopSetBoundary(sec); return; }
         audio.currentTime = sec;
         audio.play();
     });
 
+    // Double-click: zoom to segment
+    canvas.addEventListener('dblclick', function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var sec = pxToSec(e.clientX - rect.left, rect);
+        var dur = chopAudioBuffer.duration;
+        var sorted = chopMarkers.slice().sort(function(a,b){return a-b});
+        var all = [0].concat(sorted).concat([dur]);
+        for (var i = 0; i < all.length - 1; i++) {
+            if (sec >= all[i] && sec < all[i + 1]) { chopZoomToSegment(i); break; }
+        }
+    });
+
+    // Mousedown: marker drag or region selection start
     canvas.addEventListener('mousedown', function(e) {
         var rect = canvas.getBoundingClientRect();
         var clickX = e.clientX - rect.left;
-        var pixelPerSec = rect.width / chopAudioBuffer.duration;
+        // Check marker drag
         var sorted = chopMarkers.slice().sort(function(a,b){return a-b});
         for (var i = 0; i < sorted.length; i++) {
-            var markerX = sorted[i] * pixelPerSec;
-            if (Math.abs(clickX - markerX) < 8) {
+            var mx = secToPx(sorted[i], rect);
+            if (Math.abs(clickX - mx) < 8) {
                 chopDraggingMarker = i;
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
@@ -963,10 +1023,17 @@ function chopWireCanvasEvents() {
                 return;
             }
         }
+        // Start region selection (shift+click or right side of canvas)
+        if (e.shiftKey) {
+            regionStartX = clickX;
+            chopRegion = null;
+            chopUpdateRegionHighlight();
+            e.preventDefault();
+        }
     });
 
-    // Use document-level mouseup so drag works even if mouse leaves canvas
-    document.addEventListener('mouseup', function chopMouseUp() {
+    // Mouseup: end drag / region
+    document.addEventListener('mouseup', function() {
         if (chopDraggingMarker >= 0) {
             chopDraggingMarker = -1;
             document.body.style.cursor = '';
@@ -975,7 +1042,56 @@ function chopWireCanvasEvents() {
             chopDrawWaveform();
             chopRenderSegments();
         }
+        if (regionStartX >= 0) {
+            regionStartX = -1;
+            // Keep chopRegion for loop/split use
+        }
     });
+
+    // Mousewheel: zoom centered on cursor
+    canvas.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        chopApplyMouseZoom(e, canvas);
+    }, { passive: false });
+
+    // ── Minimap events ──
+    if (minimap) {
+        minimap.addEventListener('mousedown', function(e) {
+            chopMinimapDragging = true;
+            _minimapSeek(e);
+        });
+        minimap.addEventListener('mousemove', function(e) {
+            if (chopMinimapDragging) _minimapSeek(e);
+        });
+        document.addEventListener('mouseup', function() { chopMinimapDragging = false; });
+
+        function _minimapSeek(e) {
+            var rect = minimap.getBoundingClientRect();
+            var pct = (e.clientX - rect.left) / rect.width;
+            var centerSec = pct * chopAudioBuffer.duration;
+            var zw = chopGetZoomWindow();
+            var halfDur = zw.dur / 2;
+            chopSetZoom(centerSec - halfDur, centerSec + halfDur);
+        }
+    }
+
+    // ── Wire toolbar buttons ──
+    var loopBtn = document.getElementById('chopLoopBtn');
+    if (loopBtn) loopBtn.addEventListener('click', chopToggleLoop);
+    var fitBtn = document.getElementById('chopZoomFitBtn');
+    if (fitBtn) fitBtn.addEventListener('click', chopZoomToFit);
+    var zoomSlider = document.getElementById('chopZoomSlider');
+    if (zoomSlider) {
+        zoomSlider.addEventListener('input', function() {
+            var level = parseFloat(this.value);
+            var zw = chopGetZoomWindow();
+            var center = (zw.start + zw.end) / 2;
+            var newDur = chopAudioBuffer.duration / level;
+            chopSetZoom(center - newDur / 2, center + newDur / 2);
+            var lbl = document.getElementById('chopZoomLevel');
+            if (lbl) lbl.textContent = level.toFixed(1) + 'x';
+        });
+    }
 }
 
 function chopStartPlayheadTracker() {
@@ -987,7 +1103,10 @@ function chopStartPlayheadTracker() {
     function tick() {
         chopPlayheadRAF = requestAnimationFrame(tick);
         if (audio.paused) { playhead.style.display = 'none'; return; }
-        var pct = audio.currentTime / chopAudioBuffer.duration;
+        var zw = chopGetZoomWindow();
+        var t = audio.currentTime;
+        if (t < zw.start || t > zw.end) { playhead.style.display = 'none'; return; }
+        var pct = (t - zw.start) / zw.dur;
         var rect = canvas.getBoundingClientRect();
         playhead.style.display = 'block';
         playhead.style.left = (pct * rect.width) + 'px';
@@ -1000,34 +1119,225 @@ function chopStopPlayheadTracker() {
     chopPlayheadRAF = null;
 }
 
-function chopDrawWaveform() {
+// ── Zoom Helpers ─────────────────────────────────────────────────────────────
+
+function chopGetZoomWindow() {
+    if (!chopAudioBuffer) return { start: 0, end: 0, dur: 0 };
+    var totalDur = chopAudioBuffer.duration;
+    var s = chopZoom.startSec;
+    var e = chopZoom.endSec;
+    if (e <= s || e <= 0) { s = 0; e = totalDur; }
+    return { start: s, end: e, dur: e - s };
+}
+
+function chopSetZoom(startSec, endSec) {
     if (!chopAudioBuffer) return;
-    var canvas = document.getElementById('chopWaveform');
+    var d = chopAudioBuffer.duration;
+    chopZoom.startSec = Math.max(0, startSec);
+    chopZoom.endSec = Math.min(d, endSec);
+    if (chopZoom.endSec - chopZoom.startSec < 2) { chopZoom.startSec = 0; chopZoom.endSec = d; }
+    chopDrawWaveform();
+    chopDrawMinimap();
+    // Update time labels
+    var tsEl = document.getElementById('chopTimeStart');
+    var teEl = document.getElementById('chopTimeEnd');
+    if (tsEl) tsEl.textContent = formatChopTime(chopZoom.startSec);
+    if (teEl) teEl.textContent = formatChopTime(chopZoom.endSec);
+}
+
+function chopZoomToFit() {
+    chopZoom.startSec = 0;
+    chopZoom.endSec = 0;
+    chopSetZoom(0, chopAudioBuffer ? chopAudioBuffer.duration : 0);
+    var slider = document.getElementById('chopZoomSlider');
+    if (slider) { slider.value = '1'; var lbl = document.getElementById('chopZoomLevel'); if (lbl) lbl.textContent = '1x'; }
+}
+
+function chopZoomToSegment(segIdx) {
+    if (!chopAudioBuffer) return;
+    var dur = chopAudioBuffer.duration;
+    var sorted = chopMarkers.slice().sort(function(a,b){return a-b});
+    var all = [0].concat(sorted).concat([dur]);
+    var s = all[segIdx] || 0;
+    var e = all[segIdx + 1] || dur;
+    var pad = (e - s) * 0.1;
+    chopSetZoom(s - pad, e + pad);
+}
+
+function chopApplyMouseZoom(e, canvas) {
+    if (!chopAudioBuffer) return;
+    var rect = canvas.getBoundingClientRect();
+    var xPct = (e.clientX - rect.left) / rect.width;
+    var zw = chopGetZoomWindow();
+    var centerSec = zw.start + xPct * zw.dur;
+    var factor = e.deltaY < 0 ? 0.7 : 1.4; // scroll up = zoom in
+    var newDur = Math.max(2, Math.min(chopAudioBuffer.duration, zw.dur * factor));
+    var newStart = centerSec - xPct * newDur;
+    chopSetZoom(newStart, newStart + newDur);
+    // Update slider
+    var zoomLevel = chopAudioBuffer.duration / newDur;
+    var slider = document.getElementById('chopZoomSlider');
+    if (slider) { slider.value = Math.min(20, zoomLevel).toFixed(1); var lbl = document.getElementById('chopZoomLevel'); if (lbl) lbl.textContent = zoomLevel.toFixed(1) + 'x'; }
+}
+
+// ── Minimap ──────────────────────────────────────────────────────────────────
+
+function chopDrawMinimap() {
+    var canvas = document.getElementById('chopMinimap');
+    if (!canvas || !chopAudioBuffer) return;
     var ctx = canvas.getContext('2d');
     var data = chopAudioBuffer.getChannelData(0);
     var step = Math.ceil(data.length / canvas.width);
     var amp = canvas.height / 2;
     var dur = chopAudioBuffer.duration;
 
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw minimap waveform with segment colors
+    var allM = [0].concat(chopMarkers.slice().sort(function(a,b){return a-b})).concat([dur]);
+    for (var px = 0; px < canvas.width; px++) {
+        var sec = (px / canvas.width) * dur;
+        var segIdx = 0;
+        for (var m = 0; m < allM.length - 1; m++) { if (sec >= allM[m] && sec < allM[m + 1]) { segIdx = m; break; } }
+        var min = 1, max = -1;
+        for (var j = 0; j < step; j++) { var d = data[px * step + j] || 0; if (d < min) min = d; if (d > max) max = d; }
+        ctx.fillStyle = chopExcluded[segIdx] ? 'rgba(100,100,100,0.2)' : (segIdx % 2 === 0 ? 'rgba(102,126,234,0.5)' : 'rgba(52,211,153,0.5)');
+        ctx.fillRect(px, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
+    }
+
+    // Draw viewport indicator
+    var vp = document.getElementById('chopMinimapViewport');
+    if (vp) {
+        var zw = chopGetZoomWindow();
+        var leftPct = (zw.start / dur) * 100;
+        var widthPct = (zw.dur / dur) * 100;
+        vp.style.left = leftPct + '%';
+        vp.style.width = widthPct + '%';
+    }
+}
+
+// ── Region Selection ─────────────────────────────────────────────────────────
+
+function chopUpdateRegionHighlight() {
+    var el = document.getElementById('chopRegionHighlight');
+    if (!el || !chopRegion || !chopAudioBuffer) { if (el) el.style.display = 'none'; return; }
+    var zw = chopGetZoomWindow();
+    var canvas = document.getElementById('chopWaveform');
+    if (!canvas) return;
+    var w = canvas.getBoundingClientRect().width;
+    var leftPct = ((chopRegion.startSec - zw.start) / zw.dur) * 100;
+    var widthPct = ((chopRegion.endSec - chopRegion.startSec) / zw.dur) * 100;
+    el.style.display = 'block';
+    el.style.left = Math.max(0, leftPct) + '%';
+    el.style.width = Math.min(100 - Math.max(0, leftPct), widthPct) + '%';
+}
+
+// ── Loop Playback ────────────────────────────────────────────────────────────
+
+function chopToggleLoop() {
+    chopLooping = !chopLooping;
+    var btn = document.getElementById('chopLoopBtn');
+    if (btn) btn.style.color = chopLooping ? '#667eea' : '';
+    if (chopLooping && chopRegion) {
+        var audio = document.getElementById('chopAudio');
+        if (audio) { audio.currentTime = chopRegion.startSec; audio.play(); }
+        chopStartLoopCheck();
+    } else {
+        chopStopLoopCheck();
+    }
+}
+
+function chopStartLoopCheck() {
+    chopStopLoopCheck();
+    function check() {
+        if (!chopLooping || !chopRegion) return;
+        var audio = document.getElementById('chopAudio');
+        if (audio && audio.currentTime >= chopRegion.endSec) {
+            audio.currentTime = chopRegion.startSec;
+        }
+        chopLoopRAF = requestAnimationFrame(check);
+    }
+    check();
+}
+
+function chopStopLoopCheck() {
+    if (chopLoopRAF) { cancelAnimationFrame(chopLoopRAF); chopLoopRAF = null; }
+}
+
+// ── Boundary Snapping ────────────────────────────────────────────────────────
+
+function chopSnapToNearest(sec) {
+    if (!chopAudioBuffer) return sec;
+    var best = sec;
+    var bestDist = 0.5; // snap within 0.5 seconds
+
+    // Snap to silence gap edges
+    var data = chopAudioBuffer.getChannelData(0);
+    var sr = chopAudioBuffer.sampleRate;
+    var windowSize = Math.floor(sr * 0.05);
+    var sampleIdx = Math.floor(sec * sr);
+    var searchRange = Math.floor(sr * 0.5);
+    var minRms = Infinity;
+    var minRmsIdx = sampleIdx;
+
+    for (var i = Math.max(0, sampleIdx - searchRange); i < Math.min(data.length, sampleIdx + searchRange); i += windowSize) {
+        var sum = 0;
+        var end = Math.min(i + windowSize, data.length);
+        for (var j = i; j < end; j++) sum += data[j] * data[j];
+        var rms = Math.sqrt(sum / (end - i));
+        if (rms < minRms) { minRms = rms; minRmsIdx = i; }
+    }
+    var quietestSec = minRmsIdx / sr;
+    if (Math.abs(quietestSec - sec) < bestDist) best = quietestSec;
+
+    // Snap to existing markers
+    for (var m = 0; m < chopMarkers.length; m++) {
+        if (Math.abs(chopMarkers[m] - sec) < 0.3) { best = chopMarkers[m]; break; }
+    }
+
+    return Math.round(best * 100) / 100;
+}
+
+function chopDrawWaveform() {
+    if (!chopAudioBuffer) return;
+    var canvas = document.getElementById('chopWaveform');
+    var ctx = canvas.getContext('2d');
+    var data = chopAudioBuffer.getChannelData(0);
+    var amp = canvas.height / 2;
+    var totalDur = chopAudioBuffer.duration;
+
+    // Zoom window
+    var zw = chopGetZoomWindow();
+    var viewStart = zw.start;
+    var viewDur = zw.dur;
+
+    // Samples per pixel for the zoomed view
+    var sr = chopAudioBuffer.sampleRate;
+    var startSample = Math.floor(viewStart * sr);
+    var endSample = Math.floor((viewStart + viewDur) * sr);
+    var samplesInView = endSample - startSample;
+    var step = Math.max(1, Math.ceil(samplesInView / canvas.width));
+
     ctx.fillStyle = '#0f0f1e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Build segment boundaries for coloring
-    var allMarkers = [0].concat(chopMarkers.slice().sort(function(a,b){return a-b})).concat([dur]);
+    var allMarkers = [0].concat(chopMarkers.slice().sort(function(a,b){return a-b})).concat([totalDur]);
 
-    // Draw waveform with segment coloring
+    // Draw waveform with segment coloring (zoomed)
     for (var px = 0; px < canvas.width; px++) {
-        var sec = (px / canvas.width) * dur;
-        // Determine which segment this pixel belongs to
+        var sec = viewStart + (px / canvas.width) * viewDur;
         var segIdx = 0;
         for (var m = 0; m < allMarkers.length - 1; m++) {
             if (sec >= allMarkers[m] && sec < allMarkers[m + 1]) { segIdx = m; break; }
         }
         var isExcluded = !!chopExcluded[segIdx];
 
+        var sIdx = startSample + px * step;
         var min = 1.0, max = -1.0;
-        for (var j = 0; j < step; j++) {
-            var datum = data[px * step + j] || 0;
+        for (var j = 0; j < step && (sIdx + j) < data.length; j++) {
+            var datum = data[sIdx + j] || 0;
             if (datum < min) min = datum;
             if (datum > max) max = datum;
         }
@@ -1035,32 +1345,22 @@ function chopDrawWaveform() {
         if (isExcluded) {
             ctx.fillStyle = 'rgba(100,100,100,0.3)';
         } else {
-            // Alternate colors for adjacent segments
             ctx.fillStyle = segIdx % 2 === 0 ? '#667eea' : '#34d399';
         }
         ctx.fillRect(px, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
     }
 
-    // Draw split markers as draggable handles
-    chopMarkers.forEach(function(sec, idx) {
-        var x = (sec / dur) * canvas.width;
+    // Draw split markers (only those in view)
+    chopMarkers.forEach(function(sec) {
+        if (sec < viewStart || sec > viewStart + viewDur) return;
+        var x = ((sec - viewStart) / viewDur) * canvas.width;
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-        // Draw handle triangle at top
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
         ctx.fillStyle = '#f59e0b';
-        ctx.beginPath();
-        ctx.moveTo(x - 5, 0);
-        ctx.lineTo(x + 5, 0);
-        ctx.lineTo(x, 8);
-        ctx.fill();
-        // Label
+        ctx.beginPath(); ctx.moveTo(x - 5, 0); ctx.lineTo(x + 5, 0); ctx.lineTo(x, 8); ctx.fill();
         ctx.fillStyle = 'rgba(245,158,11,0.9)';
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
+        ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(formatChopTime(sec), x, canvas.height - 2);
     });
 
@@ -1069,8 +1369,8 @@ function chopDrawWaveform() {
         var selStart = allMarkers[chopSelectedSegment];
         var selEnd = allMarkers[Math.min(chopSelectedSegment + 1, allMarkers.length - 1)];
         if (selStart !== undefined && selEnd !== undefined) {
-            var x1 = (selStart / dur) * canvas.width;
-            var x2 = (selEnd / dur) * canvas.width;
+            var x1 = ((selStart - viewStart) / viewDur) * canvas.width;
+            var x2 = ((selEnd - viewStart) / viewDur) * canvas.width;
             ctx.strokeStyle = '#f59e0b';
             ctx.lineWidth = 2;
             ctx.setLineDash([4, 4]);
