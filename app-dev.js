@@ -10052,7 +10052,7 @@ function settingsTab(tab, btn) {
                 <div style="font-size:0.85em;color:var(--text-dim);margin-top:4px">Band HQ — Less admin. More jams. 🤘</div>
             </div>
             <div style="font-size:0.85em;line-height:2;color:var(--text-muted)">
-                ${[['Version','3.1.0'],['Build', document.querySelector('meta[name="build-version"]')?.content || 'unknown'],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+                ${[['Version','3.1.0'],['Build', (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'unknown')],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
             </div>
             <div style="margin-top:16px;text-align:center;font-size:0.78em;color:var(--text-dim);line-height:1.6">
                 © 2025–2026 Drew Merrill. All rights reserved.<br>
@@ -11214,7 +11214,7 @@ async function checkForAppUpdate() {
         console.log('[Update] Server version:', data.version, '| Loaded:', _loadedVersion);
         if (data.version && data.version !== _loadedVersion) {
             console.log('[Update] Version mismatch! Showing banner.');
-            showUpdateBanner();
+            showUpdateBanner(data.version);
         }
     } catch(e) { console.log('[Update] Check failed:', e); }
 }
@@ -11230,8 +11230,10 @@ function showUpdateBanner(serverVersion) {
     // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
     // Hard guard 3: sessionStorage — survives in-app navigation but NOT a true reload.
-    // If the user already dismissed the banner this session, never show again.
-    if (sessionStorage.getItem(_GL_BANNER_KEY) === _loadedVersion) return;
+    // If the user dismissed the banner for THIS server version, don't show again.
+    // When a DIFFERENT new version deploys, the stored value won't match → banner shows.
+    var dismissed = sessionStorage.getItem(_GL_BANNER_KEY);
+    if (dismissed && dismissed === (serverVersion || 'any')) return;
     _updateBannerShown = true;
     console.log('[Update] Creating banner');
     var banner = document.createElement('div');
