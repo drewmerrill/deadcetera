@@ -1065,6 +1065,104 @@ function deriveHdBandIntel(bundle) {
     return lines.slice(0,4);
 }
 
+// ── Gig Confidence Meter ──────────────────────────────────────────────────────
+// Executive summary of show readiness. Complements the granular readiness %
+// with qualitative confidence based on multiple signals.
+//
+// Inputs: readiness %, risk count, rehearsal recency, scorecard trend, pocket trend
+// Output: { level, label, color, reasons[] }
+
+function _computeGigConfidence(opts) {
+    var pct = opts.readinessPct;          // 0-100 or null
+    var riskCount = opts.riskCount || 0;  // songs below threshold on setlist
+    var setlistSize = opts.setlistSize || 0;
+    var hasRecentRehearsal = opts.hasRecentRehearsal || false;
+    var scorecardTrend = opts.scorecardTrend || null;   // 'improving' | 'slipping' | 'steady' | null
+    var pocketDelta = opts.pocketDelta || 0;            // positive = tighter
+
+    if (pct === null) return null; // not enough data
+
+    // Start with readiness-based baseline (0-100 internal score, not shown to user)
+    var score = pct;
+    var reasons = [];
+
+    // Risk penalty: each risk song reduces confidence
+    if (riskCount > 0 && setlistSize > 0) {
+        var riskPct = Math.round((riskCount / setlistSize) * 100);
+        score -= riskPct * 0.5;
+        reasons.push(riskCount + ' song' + (riskCount !== 1 ? 's' : '') + ' still need' + (riskCount === 1 ? 's' : '') + ' work');
+    }
+
+    // Rehearsal recency bonus/penalty
+    if (hasRecentRehearsal) {
+        score += 5;
+    } else {
+        score -= 8;
+        reasons.push('No recent rehearsal on record');
+    }
+
+    // Trend adjustments
+    if (scorecardTrend === 'improving') {
+        score += 5;
+        reasons.push('Rehearsal trend is improving');
+    } else if (scorecardTrend === 'slipping') {
+        score -= 5;
+        reasons.push('Rehearsal scores have been slipping');
+    }
+
+    if (pocketDelta > 3) {
+        reasons.push('Groove getting tighter');
+    } else if (pocketDelta < -5) {
+        reasons.push('Groove loosening up');
+    }
+
+    // No-risk bonus
+    if (riskCount === 0 && pct >= 70) {
+        reasons.push('All setlist songs stable');
+    }
+
+    // Clamp and classify
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    var level, label, color;
+    if (score >= 85) {
+        level = 'strong'; label = 'Strong'; color = '#22c55e';
+    } else if (score >= 70) {
+        level = 'solid'; label = 'Solid'; color = '#60a5fa';
+    } else if (score >= 50) {
+        level = 'cautious'; label = 'Cautious'; color = '#f59e0b';
+    } else {
+        level = 'low'; label = 'Low'; color = '#ef4444';
+    }
+
+    // Trending modifier — override label if trend is notable
+    if (scorecardTrend === 'improving' && level !== 'strong') {
+        label += ' \u2014 Trending Up';
+    }
+
+    return {
+        level: level,
+        label: label,
+        color: color,
+        reasons: reasons.slice(0, 2),
+        _score: score
+    };
+}
+
+function _renderGigConfidence(conf) {
+    if (!conf) return '';
+    var reasonHTML = conf.reasons.length
+        ? '<div class="hd-conf__reasons">' + conf.reasons.map(function(r) { return '<span class="hd-conf__reason">' + _escHtml(r) + '</span>'; }).join(' \xb7 ') + '</div>'
+        : '';
+    return '<div class="hd-conf" style="border-color:' + conf.color + '33">'
+        + '<div class="hd-conf__header">'
+        + '<span class="hd-conf__label">Gig Confidence</span>'
+        + '<span class="hd-conf__level" style="color:' + conf.color + '">' + conf.label + '</span>'
+        + '</div>'
+        + reasonHTML
+        + '</div>';
+}
+
 function renderHdHeroNextUp(bundle, isStoner) {
     var nextGig  = bundle.gigs  && bundle.gigs[0];
     var nextPlan = bundle.plans && bundle.plans[0];
@@ -1136,15 +1234,40 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
     // Biggest risk song — scoped to this gig's setlist (reuses _gigSongScope from above)
     var rc2 = bundle.readinessCache || {};
-    var riskEntry = Object.entries(rc2)
+    var riskEntries = Object.entries(rc2)
         .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!_hasScope || _gigSongScope[e[0]]); })
-        .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); })[0];
+        .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); });
+    var riskEntry = riskEntries[0];
     var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
     var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
+    // Gig Confidence Meter — executive summary
+    var _scTrend = null;
+    var _pkDelta = 0;
+    var _hasRecentRehearsal = false;
+    try {
+        var _scD = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
+        if (_scD && _scD.latest) {
+            var _tr = _scD.latest.trend || {};
+            _scTrend = _tr.direction || null;
+            var _ts = _scD.latest.createdAt || _scD.latest.completedAt;
+            if (_ts && (Date.now() - new Date(_ts).getTime()) < 7 * 24 * 60 * 60 * 1000) _hasRecentRehearsal = true;
+        }
+        var _pkH = (typeof GLStore !== 'undefined' && GLStore.getRecentRehearsalPocketHistory) ? GLStore.getRecentRehearsalPocketHistory(3) : null;
+        if (_pkH && _pkH.hasData && _pkH.entries[0] && _pkH.entries[0].deltaPocketPct != null) _pkDelta = _pkH.entries[0].deltaPocketPct;
+    } catch(e3) {}
+    var _gigConf = _computeGigConfidence({
+        readinessPct: pct,
+        riskCount: riskEntries.length,
+        setlistSize: Object.keys(_gigSongScope).length || 1,
+        hasRecentRehearsal: _hasRecentRehearsal,
+        scorecardTrend: _scTrend,
+        pocketDelta: _pkDelta
+    });
+    var confHTML = _renderGigConfidence(_gigConf);
     var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" title="Open gig details">Open Gig \u2192</button>';
     var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
     var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
-    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'',readHTML?'<div class="hd-hero__readiness">'+readHTML+'</div>':'',warnHTML?'<div class="hd-hero__warnings">'+warnHTML+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
+    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,confHTML,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
   } catch(e) {
     console.warn('[Dashboard] Hero gig render error:', e.message);
     return '<div class="hd-hero home-anim-header"><div class="hd-hero__eyebrow">BAND MISSION</div><div class="hd-hero__title">' + _escHtml(gig.venue || 'Upcoming Gig') + '</div><div class="hd-hero__actions"><button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gigs \u2192</button></div></div>';
@@ -3187,6 +3310,13 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-hero__pct-val{font-size:32px;font-weight:900;line-height:1;margin-bottom:6px;letter-spacing:-0.02em}',
     '.hd-hero__pct-state{font-size:11px;font-weight:700}',
     /* Risk pill */
+    /* Gig Confidence Meter */
+    '.hd-conf{margin:10px 0 6px;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid;border-radius:10px}',
+    '.hd-conf__header{display:flex;align-items:center;justify-content:space-between;gap:8px}',
+    '.hd-conf__label{font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase}',
+    '.hd-conf__level{font-size:0.95em;font-weight:800}',
+    '.hd-conf__reasons{font-size:0.72em;color:var(--text-muted,#94a3b8);margin-top:3px}',
+    '.hd-conf__reason{white-space:nowrap}',
     '.hd-hero__risk-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.3);border-radius:20px;padding:4px 10px;margin:4px 0 8px}',
     '.hd-hero__risk-song{font-size:12px;font-weight:700;color:#f97316}',
     '.hd-hero__risk-label{font-size:9px;font-weight:800;letter-spacing:0.1em;color:rgba(249,115,22,0.7);text-transform:uppercase}',
