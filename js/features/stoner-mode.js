@@ -16,12 +16,20 @@
 var _stonerMode = false;
 
 function toggleStonerMode() {
-    _stonerMode = !_stonerMode;
-    localStorage.setItem('deadcetera_stoner_mode', _stonerMode ? '1' : '0');
     if (_stonerMode) {
-        _stonerEnter();
+        // Exiting — show summary if any outcomes were recorded
+        var totalOutcomes = _stonerSession.good + _stonerSession.needswork + _stonerSession.trainwreck;
+        if (totalOutcomes > 0) {
+            _stonerShowSummary();
+        } else {
+            _stonerMode = false;
+            localStorage.setItem('deadcetera_stoner_mode', '0');
+            _stonerExit();
+        }
     } else {
-        _stonerExit();
+        _stonerMode = true;
+        localStorage.setItem('deadcetera_stoner_mode', '1');
+        _stonerEnter();
     }
 }
 
@@ -81,6 +89,14 @@ var _stonerQueue = [];
 var _stonerQueueIdx = 0;
 var _stonerRunStartTime = null;
 
+// Session tracking for summary
+var _stonerSession = { good: 0, needswork: 0, trainwreck: 0, bestStreak: 0, songs: {} };
+
+function _stonerResetSession() {
+    _stonerSession = { good: 0, needswork: 0, trainwreck: 0, bestStreak: 0, songs: {} };
+    _stonerStreak = 0;
+}
+
 var _STONER_SUBS = [
     'Less thinking. More playing.',
     'For when the jam gets foggy.',
@@ -92,6 +108,7 @@ var _STONER_SUBS = [
 function _stonerRender() {
     var content = document.getElementById('stonerContent');
     if (!content) return;
+    _stonerResetSession();
     // Build the queue from Priority Queue → Agenda → Library
     _stonerBuildQueue();
     _stonerCurrentSong = _stonerQueue[_stonerQueueIdx] || null;
@@ -197,9 +214,14 @@ function _stonerOutcome(type) {
     if (!_stonerCurrentSong) return;
     var toast = document.getElementById('stonerToast');
     var msg = '';
+    // Track session stats
+    if (!_stonerSession.songs[_stonerCurrentSong]) _stonerSession.songs[_stonerCurrentSong] = { good: 0, needswork: 0, trainwreck: 0 };
+    _stonerSession.songs[_stonerCurrentSong][type === 'needswork' ? 'needswork' : type]++;
+    _stonerSession[type === 'needswork' ? 'needswork' : type]++;
 
     if (type === 'good') {
         _stonerStreak++;
+        if (_stonerStreak > _stonerSession.bestStreak) _stonerSession.bestStreak = _stonerStreak;
         msg = '\u2705 Nice! Streak: ' + _stonerStreak;
         // Readiness +1
         if (typeof GLStore !== 'undefined' && GLStore.saveReadiness) {
@@ -242,6 +264,66 @@ function _stonerNextSong() {
     _stonerCurrentSong = _stonerQueue[_stonerQueueIdx] || null;
     _stonerRunStartTime = null;
     _stonerRenderCockpit();
+}
+
+// ── Session Summary ─────────────────────────────────────────────────────────
+
+function _stonerShowSummary() {
+    var s = _stonerSession;
+    var totalSongs = Object.keys(s.songs).length;
+    var totalRuns = s.good + s.needswork + s.trainwreck;
+
+    // Find most improved (most GOODs)
+    var mostImproved = null;
+    var mostImprovedCount = 0;
+    // Find needs attention (most NEEDS WORK + TRAINWRECK)
+    var needsAttention = null;
+    var needsAttentionCount = 0;
+
+    Object.entries(s.songs).forEach(function(e) {
+        var title = e[0], stats = e[1];
+        if (stats.good > mostImprovedCount) { mostImproved = title; mostImprovedCount = stats.good; }
+        var problemCount = stats.needswork + stats.trainwreck;
+        if (problemCount > needsAttentionCount) { needsAttention = title; needsAttentionCount = problemCount; }
+    });
+
+    var content = document.getElementById('stonerContent');
+    if (!content) return;
+
+    var highlightsHTML = '';
+    if (mostImproved && mostImprovedCount > 0) {
+        highlightsHTML += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0"><span style="color:#22c55e;font-size:1.1em">&#x2B06;</span><div><div style="font-size:0.7em;color:#64748b;text-transform:uppercase;letter-spacing:0.08em">Most improved</div><div style="font-weight:700;color:#f1f5f9">' + _stonerEsc(mostImproved) + '</div></div></div>';
+    }
+    if (needsAttention && needsAttentionCount > 0) {
+        highlightsHTML += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0"><span style="color:#f59e0b;font-size:1.1em">&#x26A0;</span><div><div style="font-size:0.7em;color:#64748b;text-transform:uppercase;letter-spacing:0.08em">Needs attention</div><div style="font-weight:700;color:#f1f5f9">' + _stonerEsc(needsAttention) + '</div></div></div>';
+    }
+
+    content.innerHTML = [
+        '<div style="padding:32px 20px;max-width:400px;margin:0 auto;text-align:center">',
+        '<div style="font-size:0.68em;font-weight:700;letter-spacing:0.12em;color:#64748b;text-transform:uppercase;margin-bottom:8px">Rehearsal Summary</div>',
+        '<div style="font-size:2.4em;font-weight:900;color:#f1f5f9;line-height:1">' + totalSongs + '</div>',
+        '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:20px">song' + (totalSongs !== 1 ? 's' : '') + ' played</div>',
+        // Outcome row
+        '<div style="display:flex;gap:12px;justify-content:center;margin-bottom:20px">',
+        '<div style="text-align:center"><div style="font-size:1.6em;font-weight:800;color:#22c55e">' + s.good + '</div><div style="font-size:0.68em;color:#64748b">Good</div></div>',
+        '<div style="text-align:center"><div style="font-size:1.6em;font-weight:800;color:#f59e0b">' + s.needswork + '</div><div style="font-size:0.68em;color:#64748b">Needs Work</div></div>',
+        '<div style="text-align:center"><div style="font-size:1.6em;font-weight:800;color:#ef4444">' + s.trainwreck + '</div><div style="font-size:0.68em;color:#64748b">Trainwrecks</div></div>',
+        '</div>',
+        // Best streak
+        s.bestStreak > 0 ? '<div style="font-size:0.9em;color:' + (s.bestStreak >= 3 ? '#22c55e' : '#94a3b8') + ';font-weight:700;margin-bottom:16px">&#x1F525; Best streak: ' + s.bestStreak + '</div>' : '',
+        // Highlights
+        highlightsHTML ? '<div style="text-align:left;padding:12px 16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;margin-bottom:20px">' + highlightsHTML + '</div>' : '',
+        // CTA
+        '<button class="stoner-big-btn" onclick="_stonerDismissSummary()" style="background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.35);color:#a5b4fc;max-width:280px;margin:0 auto">Back to Command Center</button>',
+        '</div>'
+    ].join('');
+}
+
+function _stonerDismissSummary() {
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    _stonerExit();
+    if (typeof showPage === 'function') showPage('home');
 }
 
 // Keep old home renderer as fallback
@@ -555,3 +637,4 @@ window._stonerOpenChart = _stonerOpenChart;
 window._stonerStartRun = _stonerStartRun;
 window._stonerOutcome = _stonerOutcome;
 window._stonerNextSong = _stonerNextSong;
+window._stonerDismissSummary = _stonerDismissSummary;
