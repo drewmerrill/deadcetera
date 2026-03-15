@@ -61,17 +61,17 @@ var _loadedVersion = BUILD_VERSION;
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
         .song-status-cell { width:68px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
         /* Col 2: Icon badges — row layout so single badge stays vertically centered */
-        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:4px; width:40px; flex-shrink:0; overflow:visible; }
-        .harmony-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; overflow:visible; }
-        .northstar-slot { display:flex; align-items:center; justify-content:center; width:16px; flex-shrink:0; overflow:visible; }
+        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:4px; width:44px; flex-shrink:0; overflow:hidden; }
+        .harmony-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
+        .northstar-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
         .harmony-badge { font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.35); padding:1px 2px; border-radius:3px; border:1px solid rgba(129,140,248,0.6); overflow:visible; flex-shrink:0; -webkit-font-smoothing:antialiased; }
         .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
         /* Col 3: Chain strip */
         .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; position:relative; z-index:3; }
         /* Col 4: Status badge */
-        .status-badge { white-space:nowrap; font-size:0.48em; padding:2px 5px; border-radius:10px; font-weight:700; letter-spacing:0.01em; display:inline-flex; align-items:center; justify-content:center; width:100%; max-width:82px; text-align:center; box-sizing:border-box; overflow:hidden; }
+        .status-badge { white-space:nowrap; font-size:0.45em; padding:2px 4px; border-radius:10px; font-weight:700; letter-spacing:0.01em; display:inline-flex; align-items:center; justify-content:center; width:100%; max-width:66px; text-align:center; box-sizing:border-box; overflow:hidden; }
         /* Col 5: Band badge */
-        .song-badge { font-size:0.58em; padding:3px 0; border-radius:20px; font-weight:700; text-align:center; width:44px; letter-spacing:0.03em; text-transform:uppercase; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; flex-shrink:0; }
+        .song-badge { font-size:0.58em; padding:3px 0; border-radius:20px; font-weight:700; text-align:center; width:48px; letter-spacing:0.03em; text-transform:uppercase; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; flex-shrink:0; }
         .song-badge.gd    { background:rgba(239,68,68,0.15);  color:#f87171; border:1px solid rgba(239,68,68,0.25); }
         .song-badge.jgb   { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.25); }
         .song-badge.wsp   { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.25); }

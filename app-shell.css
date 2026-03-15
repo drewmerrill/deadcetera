@@ -91,7 +91,8 @@ a{color:var(--accent-light);}
 /* EVERY child div in songDropdown = a song row */
 #songDropdown > div {
     display:grid!important;
-    grid-template-columns:1fr 28px 50px 68px 44px!important;
+    grid-template-columns:1fr 44px 50px 68px 48px!important;
+    position:relative!important;
     align-items:center!important;
     gap:6px!important;
     padding:10px 12px!important;
@@ -307,9 +308,10 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
 @media(max-width:640px) {
     /* Song row: name | mic | status | band — tighter */
     #songDropdown > div {
-        grid-template-columns: 1fr 28px 50px 68px 44px !important;
+        grid-template-columns: 1fr 36px 40px 60px 44px !important;
         padding: 9px 10px !important;
         gap: 3px !important;
+        position: relative !important;
     }
     .song-name, .song-item .song-name { font-size: 0.85em !important; }
     .song-badge { font-size: 0.6em !important; padding: 2px 6px !important; min-width: 28px !important; }
@@ -374,8 +376,9 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
         grid-template-columns: 1fr 20px 60px !important; /* drop band badge column */
         padding: 8px !important;
     }
-    /* Hide band badge on very small phones — it's in the filter anyway */
+    /* Hide band badge + view button on very small phones — it's in the filter anyway */
     .song-badge { display: none !important; }
+    .song-drawer-btn { display: none !important; }
     .song-name { font-size: 0.82em !important; }
     .topbar-brand { font-size: 0.9em !important; }
 }
@@ -1040,9 +1043,10 @@ input[type="time"].app-input {
 }
 
 /* Song Drawer trigger button */
-.song-drawer-btn{opacity:0;position:absolute;right:0;top:0;bottom:0;z-index:10;background:#0f172a;border:none;border-left:1px solid rgba(102,126,234,0.4);color:#818cf8;border-radius:0 var(--radius,8px) var(--radius,8px) 0;padding:0 14px;cursor:pointer;transition:opacity 0.15s,background 0.15s;display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:700;white-space:nowrap;min-width:60px}
+/* View button — pill-shaped overlay that exactly covers the band pill (col 5) */
+.song-drawer-btn{opacity:0;position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.5);color:#a5b4fc;border-radius:20px;padding:3px 0;width:48px;cursor:pointer;transition:opacity 0.15s,background 0.15s;display:flex;align-items:center;justify-content:center;font-size:0.6em;font-weight:800;white-space:nowrap;letter-spacing:0.02em;box-sizing:border-box}
 .song-item:hover .song-drawer-btn{opacity:1!important}
-.song-drawer-btn:hover{background:rgba(102,126,234,0.25)!important;border-color:rgba(102,126,234,0.9)!important}
+.song-drawer-btn:hover{background:rgba(99,102,241,0.35)!important;border-color:rgba(99,102,241,0.8)!important;color:#c7d2fe!important}
 
 /* Scrollbar styling */
 ::-webkit-scrollbar{width:4px;height:4px}
