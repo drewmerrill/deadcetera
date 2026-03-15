@@ -6493,13 +6493,18 @@ async function updateSongKey(key) {
 
 async function loadSongKey(songTitle) {
     try {
-        // Check Firebase metadata first (same source Song Detail uses)
+        // Drive is the write path for key (updateSongKey writes here).
+        // Check Drive first, then Firebase metadata as fallback.
+        // This matches Song Detail priority: Drive key → allSongs → Firebase metadata.
+        const data = await loadBandDataFromDrive(songTitle, 'key');
+        var driveKey = (data && typeof data === 'object') ? (data.key || '') : (data || '');
+        if (driveKey) return driveKey;
+        // Fallback: Firebase metadata
         if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof sanitizeFirebasePath === 'function') {
             var snap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/metadata/key')).once('value');
             if (snap.val()) return snap.val();
         }
-        const data = await loadBandDataFromDrive(songTitle, 'key');
-        return (data && typeof data === 'object') ? (data.key || '') : (data || '');
+        return '';
     } catch(e) { return ''; }
 }
 
