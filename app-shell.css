@@ -94,7 +94,8 @@ a{color:var(--accent-light);}
     grid-template-columns:1fr 48px 50px 68px 48px!important;
     position:relative!important;
     align-items:center!important;
-    gap:6px!important;
+    gap:4px!important;
+    column-gap:4px!important;
     padding:10px 12px!important;
     background:#1e293b!important;
     border:1px solid rgba(255,255,255,0.08)!important;
@@ -102,6 +103,20 @@ a{color:var(--accent-light);}
     margin-bottom:2px!important;
     cursor:pointer!important;
     color:#f1f5f9!important;
+}
+/* Signal cluster visual grouping — subtle tint behind cols 2-4 */
+#songDropdown > div.song-item::after {
+    content:'';
+    position:absolute;
+    right:56px; /* band pill col (48px) + right padding (12px) - 4px overlap */
+    top:4px;
+    bottom:4px;
+    width:174px; /* badges(48) + chain(50) + status(68) + gaps(3×4=12) - 4px */
+    background:rgba(255,255,255,0.015);
+    border-radius:4px;
+    border-left:1px solid rgba(255,255,255,0.04);
+    pointer-events:none;
+    z-index:0;
 }
 #songDropdown > div:hover{background:#263248!important;border-color:rgba(102,126,234,0.25)!important;}
 #songDropdown > div.selected{background:#2d3a5c!important;border:1px solid #667eea!important;border-width:1px!important;}
@@ -313,6 +328,7 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
         gap: 3px !important;
         position: relative !important;
     }
+    #songDropdown > div.song-item::after { display: none !important; }
     .song-name, .song-item .song-name { font-size: 0.85em !important; }
     .song-badge { font-size: 0.6em !important; padding: 2px 6px !important; min-width: 28px !important; }
     .status-badge { font-size: 0.62em !important; padding: 2px 5px !important; }
