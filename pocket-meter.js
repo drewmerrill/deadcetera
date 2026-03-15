@@ -930,9 +930,23 @@
     // ── Events ─────────────────────────────────────────────────────────────────
 
     _bindEvents() {
-      // v2: Wire mode toggle
+      // v2: Wire mode toggle + zoom + range controls
       var self = this;
       this.el._pmSwitchMode = function(m) { self._switchMode(m); };
+      this.el._pmSetZoom = function(sec) {
+        self._graphZoomSec = sec;
+        self.el.querySelectorAll('.pm-zoom-btn').forEach(function(btn) {
+          var isActive = parseInt(btn.dataset.zoom) === sec;
+          btn.style.background = isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)';
+          btn.style.color = isActive ? '#94a3b8' : '#64748b';
+          btn.classList.toggle('pm-zoom--active', isActive);
+        });
+        self._updateGraph();
+      };
+      this.el._pmSetRange = function(min, max) {
+        if (self.engine) { self.engine._bpmMin = min; self.engine._bpmMax = max; }
+        if (typeof showToast === 'function') showToast('BPM range: ' + min + '–' + max);
+      };
       this.el.querySelector('.pm-listen-btn').addEventListener('click', () => {
         if (this.listening) this._stopListening();
         else this._startListening();
@@ -1252,29 +1266,69 @@
 
     // -- Tempo History Graph ---------------------------------------------------
 
+    _graphZoomSec = 30; // default 30-second window
+
     _updateGraph() {
       const svg = this.el && this.el.querySelector('.pm-history-graph');
       if (!svg) return;
       if (!this._history.length) {
         const l = svg.querySelector('.pm-graph-line'); if (l) l.setAttribute('points', ''); return;
       }
+
+      // v2: zoom window — only show last N seconds
+      const zoomMs = this._graphZoomSec * 1000;
+      const now = this._history[this._history.length - 1].t;
+      const startT = Math.max(0, now - zoomMs);
+      const visible = this._history.filter(p => p.t >= startT);
+      if (!visible.length) return;
+
+      // v2: moving average smoothing (8-point window)
+      const MA_WINDOW = 8;
+      const smoothed = visible.map(function(p, i, arr) {
+        var start = Math.max(0, i - MA_WINDOW + 1);
+        var window = arr.slice(start, i + 1);
+        var avg = window.reduce(function(a, b) { return a + b.bpm; }, 0) / window.length;
+        return { t: p.t, bpm: avg };
+      });
+
       const W = 280, H = 60, pad = 4, target = this.targetBPM;
       const lo = target - 15, hi = target + 15;
-      const maxT = this._history[this._history.length - 1].t || 1000;
-      const xS = (W - pad*2) / maxT, yS = (H - pad*2) / (hi - lo);
-      const pts = this._history.map(p => {
-        const x = pad + p.t * xS;
+      const tRange = Math.max(1, smoothed[smoothed.length - 1].t - smoothed[0].t);
+      const t0 = smoothed[0].t;
+      const xS = (W - pad*2) / tRange, yS = (H - pad*2) / (hi - lo);
+
+      const pts = smoothed.map(p => {
+        const x = pad + (p.t - t0) * xS;
         const y = H - pad - (Math.min(hi, Math.max(lo, p.bpm)) - lo) * yS;
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
+
+      // Target line
       const ty = (H - pad - (target - lo) * yS).toFixed(1);
       const tl = svg.querySelector('.pm-graph-target-line');
       if (tl) { tl.setAttribute('y1', ty); tl.setAttribute('y2', ty); }
-      const bpms = this._history.map(p => p.bpm);
-      const avg = bpms.reduce((a,b) => a + Math.abs(b-target), 0) / bpms.length;
-      const col = avg <= 2 ? '#00ff88' : avg <= 5 ? '#ffcc00' : '#ff4444';
+
+      // Color by average drift
+      const bpms = smoothed.map(p => p.bpm);
+      const avgDrift = bpms.reduce((a,b) => a + Math.abs(b-target), 0) / bpms.length;
+      const col = avgDrift <= 2 ? '#00ff88' : avgDrift <= 5 ? '#ffcc00' : '#ff4444';
       const pl = svg.querySelector('.pm-graph-line');
       if (pl) { pl.setAttribute('points', pts); pl.setAttribute('stroke', col); }
+
+      // v2: Drift bias indicator
+      const biasEl = this.el && this.el.querySelector('.pm-drift-bias');
+      if (biasEl && bpms.length >= 4) {
+        const avgBPM = bpms.reduce((a,b) => a+b, 0) / bpms.length;
+        const drift = avgBPM - target;
+        var biasText, biasColor;
+        if (Math.abs(drift) < 1) { biasText = 'Trend: Locked in'; biasColor = '#22c55e'; }
+        else if (drift > 3) { biasText = 'Trend: Rushing +' + drift.toFixed(1) + ' BPM'; biasColor = '#ef4444'; }
+        else if (drift > 0) { biasText = 'Trend: Slightly rushing'; biasColor = '#f59e0b'; }
+        else if (drift < -3) { biasText = 'Trend: Dragging ' + drift.toFixed(1) + ' BPM'; biasColor = '#ef4444'; }
+        else { biasText = 'Trend: Slightly dragging'; biasColor = '#f59e0b'; }
+        biasEl.textContent = biasText;
+        biasEl.style.color = biasColor;
+      }
     }
 
     // -- Drift Report ----------------------------------------------------------
@@ -1665,13 +1719,33 @@
           <button class="pm-countin-btn" title="Plays 2 bars of click at target BPM before you start — second bar is louder as your cue">Count In</button>
         </div>
 
-        <!-- Tempo history graph -->
+        <!-- Drift bias indicator (v2) -->
+        <div class="pm-drift-bias" style="text-align:center;font-size:0.72em;font-weight:700;color:#64748b;padding:2px 0"></div>
+
+        <!-- Tempo history graph + controls -->
         <div class="pm-graph-section">
-          <div class="pm-graph-label" title="Shows how your live BPM drifted over the last ~30 seconds. Flat = locked in. Spikes = rushing or dragging.">Tempo History &#x24D8;</div>
-          <svg class="pm-history-graph" viewBox="0 0 280 50" preserveAspectRatio="none">
-            <line class="pm-graph-target-line" x1="0" y1="25" x2="280" y2="25" stroke="#4ade80" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div class="pm-graph-label" style="margin:0" title="Shows how your live BPM drifted. Flat = locked in. Spikes = rushing or dragging.">Tempo History</div>
+            <div style="display:flex;gap:2px">
+              <button class="pm-zoom-btn pm-zoom--active" data-zoom="30" onclick="this.closest('.pm-root')._pmSetZoom && this.closest('.pm-root')._pmSetZoom(30)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:#94a3b8;padding:2px 6px;border-radius:4px;font-size:0.65em;cursor:pointer">30s</button>
+              <button class="pm-zoom-btn" data-zoom="120" onclick="this.closest('.pm-root')._pmSetZoom && this.closest('.pm-root')._pmSetZoom(120)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.65em;cursor:pointer">2m</button>
+              <button class="pm-zoom-btn" data-zoom="300" onclick="this.closest('.pm-root')._pmSetZoom && this.closest('.pm-root')._pmSetZoom(300)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.65em;cursor:pointer">5m</button>
+              <button class="pm-zoom-btn" data-zoom="600" onclick="this.closest('.pm-root')._pmSetZoom && this.closest('.pm-root')._pmSetZoom(600)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.65em;cursor:pointer">10m</button>
+            </div>
+          </div>
+          <svg class="pm-history-graph" viewBox="0 0 280 60" preserveAspectRatio="none">
+            <!-- Drift shading zones -->
+            <rect class="pm-graph-zone-ok" x="0" y="20" width="280" height="20" fill="#22c55e" opacity="0.04"/>
+            <line class="pm-graph-target-line" x1="0" y1="30" x2="280" y2="30" stroke="#4ade80" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
             <polyline class="pm-graph-line" points="" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
+          <!-- BPM range presets -->
+          <div style="display:flex;gap:4px;margin-top:4px;justify-content:center">
+            <button onclick="this.closest('.pm-root')._pmSetRange && this.closest('.pm-root')._pmSetRange(60,100)" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.58em;cursor:pointer">Slow</button>
+            <button onclick="this.closest('.pm-root')._pmSetRange && this.closest('.pm-root')._pmSetRange(80,140)" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.58em;cursor:pointer">Mid</button>
+            <button onclick="this.closest('.pm-root')._pmSetRange && this.closest('.pm-root')._pmSetRange(120,200)" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.58em;cursor:pointer">Fast</button>
+            <button onclick="this.closest('.pm-root')._pmSetRange && this.closest('.pm-root')._pmSetRange(40,220)" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:#64748b;padding:2px 6px;border-radius:4px;font-size:0.58em;cursor:pointer">All</button>
+          </div>
         </div>
 
         <!-- Drift report (shown after stop) -->
