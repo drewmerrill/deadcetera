@@ -1077,67 +1077,84 @@ function _computeGigConfidence(opts) {
     var riskCount = opts.riskCount || 0;  // songs below threshold on setlist
     var setlistSize = opts.setlistSize || 0;
     var hasRecentRehearsal = opts.hasRecentRehearsal || false;
+    var rehearsalImproved = opts.rehearsalImproved || false;
     var scorecardTrend = opts.scorecardTrend || null;   // 'improving' | 'slipping' | 'steady' | null
     var pocketDelta = opts.pocketDelta || 0;            // positive = tighter
 
     if (pct === null) return null; // not enough data
 
-    // Start with readiness-based baseline (0-100 internal score, not shown to user)
-    var score = pct;
+    // ── Additive heuristic model ──────────────────────────────────────────
+    // Score built from zero, not from readiness %. Each signal contributes
+    // a fixed amount. Final score mapped to qualitative labels.
+    var score = 0;
     var reasons = [];
 
-    // Risk penalty: each risk song reduces confidence
-    if (riskCount > 0 && setlistSize > 0) {
-        var riskPct = Math.round((riskCount / setlistSize) * 100);
-        score -= riskPct * 0.5;
+    // Setlist readiness (biggest contributor)
+    if (pct >= 80) {
+        score += 40;
+        if (riskCount === 0) reasons.push('Most setlist songs are gig-ready');
+    } else if (pct >= 60) {
+        score += 25;
+    } else if (pct >= 40) {
+        score += 10;
+    }
+    // else: no readiness credit
+
+    // Risk songs penalty
+    if (riskCount >= 3) {
+        score -= 20;
+        reasons.push(riskCount + ' songs still need work before the gig');
+    } else if (riskCount > 0) {
+        score -= riskCount * 5;
         reasons.push(riskCount + ' song' + (riskCount !== 1 ? 's' : '') + ' still need' + (riskCount === 1 ? 's' : '') + ' work');
     }
 
-    // Rehearsal recency bonus/penalty
+    // Rehearsal recency
     if (hasRecentRehearsal) {
-        score += 5;
+        score += 10;
     } else {
-        score -= 8;
+        score -= 10;
         reasons.push('No recent rehearsal on record');
     }
 
-    // Trend adjustments
-    if (scorecardTrend === 'improving') {
-        score += 5;
-        reasons.push('Rehearsal trend is improving');
-    } else if (scorecardTrend === 'slipping') {
-        score -= 5;
-        reasons.push('Rehearsal scores have been slipping');
+    // Rehearsal improved readiness
+    if (rehearsalImproved) {
+        score += 10;
+        reasons.push('Last rehearsal improved readiness');
     }
 
+    // Pocket trend
     if (pocketDelta > 3) {
-        reasons.push('Groove getting tighter');
+        score += 5;
+        if (reasons.length < 2) reasons.push('Groove getting tighter');
     } else if (pocketDelta < -5) {
-        reasons.push('Groove loosening up');
+        score -= 5;
     }
 
-    // No-risk bonus
-    if (riskCount === 0 && pct >= 70) {
-        reasons.push('All setlist songs stable');
+    // Scorecard trend
+    if (scorecardTrend === 'improving') {
+        score += 10;
+    } else if (scorecardTrend === 'slipping') {
+        score -= 10;
+        if (reasons.length < 2) reasons.push('Rehearsal scores have been slipping');
     }
 
-    // Clamp and classify
+    // Clamp
     score = Math.max(0, Math.min(100, Math.round(score)));
 
+    // ── Map to qualitative levels ─────────────────────────────────────────
+    // Strong (80+) / Solid (65-79) / Trending Up (50-64) / Cautious (35-49) / At Risk (<35)
     var level, label, color;
-    if (score >= 85) {
+    if (score >= 80) {
         level = 'strong'; label = 'Strong'; color = '#22c55e';
-    } else if (score >= 70) {
+    } else if (score >= 65) {
         level = 'solid'; label = 'Solid'; color = '#60a5fa';
     } else if (score >= 50) {
+        level = 'trending'; label = 'Trending Up'; color = '#818cf8';
+    } else if (score >= 35) {
         level = 'cautious'; label = 'Cautious'; color = '#f59e0b';
     } else {
-        level = 'low'; label = 'Low'; color = '#ef4444';
-    }
-
-    // Trending modifier — override label if trend is notable
-    if (scorecardTrend === 'improving' && level !== 'strong') {
-        label += ' \u2014 Trending Up';
+        level = 'atrisk'; label = 'At Risk'; color = '#ef4444';
     }
 
     return {
@@ -1244,13 +1261,17 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var _scTrend = null;
     var _pkDelta = 0;
     var _hasRecentRehearsal = false;
+    var _rehearsalImproved = false;
     try {
         var _scD = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
         if (_scD && _scD.latest) {
             var _tr = _scD.latest.trend || {};
             _scTrend = _tr.direction || null;
             var _ts = _scD.latest.createdAt || _scD.latest.completedAt;
-            if (_ts && (Date.now() - new Date(_ts).getTime()) < 7 * 24 * 60 * 60 * 1000) _hasRecentRehearsal = true;
+            if (_ts && (Date.now() - new Date(_ts).getTime()) < 14 * 24 * 60 * 60 * 1000) _hasRecentRehearsal = true;
+            // Check if rehearsal improved readiness
+            var _rd = _scD.latest.readiness || {};
+            if (_rd.hasEnoughData && _rd.deltaAvg > 0) _rehearsalImproved = true;
         }
         var _pkH = (typeof GLStore !== 'undefined' && GLStore.getRecentRehearsalPocketHistory) ? GLStore.getRecentRehearsalPocketHistory(3) : null;
         if (_pkH && _pkH.hasData && _pkH.entries[0] && _pkH.entries[0].deltaPocketPct != null) _pkDelta = _pkH.entries[0].deltaPocketPct;
@@ -1260,6 +1281,7 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         riskCount: riskEntries.length,
         setlistSize: Object.keys(_gigSongScope).length || 1,
         hasRecentRehearsal: _hasRecentRehearsal,
+        rehearsalImproved: _rehearsalImproved,
         scorecardTrend: _scTrend,
         pocketDelta: _pkDelta
     });
