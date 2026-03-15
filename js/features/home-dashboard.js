@@ -778,7 +778,39 @@ function renderRehearsalInsights() {
         h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">Longest: ' + pt.longestRunMinutes + 'min</span>';
         h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">' + pt.restartCount + ' restart' + (pt.restartCount !== 1 ? 's' : '') + '</span>';
         h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">Avg run: ' + pt.averageRunLengthSeconds + 's</span>';
-        h += '</div></div>';
+        h += '</div>';
+
+        // Pocket Time trend
+        var pth = (typeof GLStore !== 'undefined' && GLStore.getRecentRehearsalPocketHistory) ? GLStore.getRecentRehearsalPocketHistory(5) : null;
+        if (pth && pth.hasData && pth.count >= 2) {
+            h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
+            // Simple bar sequence
+            h += '<div style="display:flex;align-items:flex-end;gap:3px;height:32px;margin-bottom:4px">';
+            var maxPct = 0;
+            for (var bi = 0; bi < pth.entries.length; bi++) { if (pth.entries[bi].pocketTimePct > maxPct) maxPct = pth.entries[bi].pocketTimePct; }
+            maxPct = Math.max(maxPct, 10);
+            for (var bj = pth.entries.length - 1; bj >= 0; bj--) { // oldest to newest, left to right
+                var be = pth.entries[bj];
+                var barH = Math.max(4, Math.round((be.pocketTimePct / maxPct) * 28));
+                var barColor = be.pocketTimePct >= 70 ? '#22c55e' : be.pocketTimePct >= 50 ? '#60a5fa' : be.pocketTimePct >= 30 ? '#f59e0b' : '#ef4444';
+                var isNewest = bj === 0;
+                h += '<div title="' + be.pocketTimePct + '% · ' + (be.createdAt || '').slice(0, 10) + '" style="flex:1;height:' + barH + 'px;background:' + barColor + ';border-radius:3px;opacity:' + (isNewest ? '1' : '0.5') + '"></div>';
+            }
+            h += '</div>';
+            // Delta + insight
+            var latest = pth.entries[0];
+            if (latest.deltaPocketPct !== null) {
+                var dColor = latest.deltaPocketPct > 0 ? '#22c55e' : latest.deltaPocketPct < 0 ? '#ef4444' : '#94a3b8';
+                var dSign = latest.deltaPocketPct > 0 ? '+' : '';
+                h += '<span style="font-size:0.68em;font-weight:700;color:' + dColor + '">' + dSign + latest.deltaPocketPct + ' pts</span> ';
+            }
+            if (pth.insight) {
+                h += '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:2px">' + _escHtml(pth.insight) + '</div>';
+            }
+            h += '</div>';
+        }
+
+        h += '</div>';
     }
 
     h += '</div>';

@@ -1469,6 +1469,7 @@
 
     _latestTimeline = RehearsalSegmentationEngine.segmentAudio(features, opts);
     try { localStorage.setItem(_TIMELINE_KEY, JSON.stringify(_latestTimeline)); } catch(e) {}
+    _snapshotPocketTime();
     emit('timelineGenerated', { timeline: _latestTimeline });
     return _latestTimeline;
   }
@@ -1486,6 +1487,7 @@
     if (!correctedTimeline) return;
     _latestTimeline = correctedTimeline;
     try { localStorage.setItem(_TIMELINE_KEY, JSON.stringify(_latestTimeline)); } catch(e) {}
+    _snapshotPocketTime();
     emit('timelineCorrected', { timeline: _latestTimeline });
   }
 
@@ -1711,6 +1713,91 @@
       averageRunLengthSeconds: Math.round(avgRunLength),
       runCount: runLengths.length,
       minRunThreshold: minRunSec,
+    };
+  }
+
+  // ── Pocket Time History ─────────────────────────────────────────────────
+
+  var _pocketTimeHistory = [];
+  var _POCKET_HISTORY_KEY = 'glPocketTimeHistory';
+  var _POCKET_HISTORY_MAX = 10;
+
+  // Hydrate
+  try {
+    var _savedPH = localStorage.getItem(_POCKET_HISTORY_KEY);
+    if (_savedPH) {
+      var _parsedPH = JSON.parse(_savedPH);
+      if (Array.isArray(_parsedPH)) _pocketTimeHistory = _parsedPH.slice(0, _POCKET_HISTORY_MAX);
+    }
+  } catch(e) {}
+
+  function _persistPocketHistory() {
+    try { localStorage.setItem(_POCKET_HISTORY_KEY, JSON.stringify(_pocketTimeHistory)); } catch(e) {}
+  }
+
+  /**
+   * Snapshot current Pocket Time metrics into history.
+   * Called after new timeline generation or significant correction.
+   */
+  function _snapshotPocketTime() {
+    var pt = getPocketTimeMetrics();
+    if (!pt) return;
+    var tl = _latestTimeline;
+    var entry = {
+      rehearsalId: tl ? tl.id : 'unknown',
+      createdAt: tl ? (tl.createdAt || new Date().toISOString()) : new Date().toISOString(),
+      totalRehearsalMinutes: pt.totalRehearsalMinutes,
+      pocketTimePct: pt.pocketTimePct,
+      label: pt.label,
+      longestRunSeconds: pt.longestRunSeconds,
+      restartCount: pt.restartCount,
+      averageRunLengthSeconds: pt.averageRunLengthSeconds,
+    };
+
+    // Avoid duplicate entries for the same timeline
+    if (_pocketTimeHistory.length && _pocketTimeHistory[0].rehearsalId === entry.rehearsalId) {
+      _pocketTimeHistory[0] = entry; // update in place
+    } else {
+      _pocketTimeHistory.unshift(entry);
+      if (_pocketTimeHistory.length > _POCKET_HISTORY_MAX) {
+        _pocketTimeHistory = _pocketTimeHistory.slice(0, _POCKET_HISTORY_MAX);
+      }
+    }
+    _persistPocketHistory();
+  }
+
+  /**
+   * Get recent rehearsal Pocket Time history with comparison deltas.
+   * @param {number} [count]  How many entries (default 5)
+   * @returns {object}
+   */
+  function getRecentRehearsalPocketHistory(count) {
+    count = count || 5;
+    var recent = _pocketTimeHistory.slice(0, count);
+    if (!recent.length) return { hasData: false, entries: [], insight: null };
+
+    // Compute deltas vs previous entry
+    for (var i = 0; i < recent.length; i++) {
+      var prev = recent[i + 1] || null;
+      recent[i].deltaPocketPct = prev ? recent[i].pocketTimePct - prev.pocketTimePct : null;
+      recent[i].deltaRestarts = prev ? recent[i].restartCount - prev.restartCount : null;
+      recent[i].deltaLongestRun = prev ? recent[i].longestRunSeconds - prev.longestRunSeconds : null;
+    }
+
+    // Plain-English insight from most recent delta
+    var insight = null;
+    if (recent.length >= 2 && recent[0].deltaPocketPct !== null) {
+      var d = recent[0].deltaPocketPct;
+      if (d > 5) insight = 'Pocket Time improved by ' + d + ' points from the last rehearsal.';
+      else if (d < -5) insight = 'Pocket Time dropped ' + Math.abs(d) + ' points — more stop-start in the latest session.';
+      else insight = 'Pocket Time holding steady compared to last rehearsal.';
+    }
+
+    return {
+      hasData: true,
+      entries: recent,
+      insight: insight,
+      count: recent.length,
     };
   }
 
@@ -2035,6 +2122,7 @@
     // Rehearsal Segmentation (Milestone 8)
     getRehearsalIntelligence:          getRehearsalIntelligence,
     getPocketTimeMetrics:              getPocketTimeMetrics,
+    getRecentRehearsalPocketHistory:   getRecentRehearsalPocketHistory,
     segmentRehearsalAudio:             segmentRehearsalAudio,
     getLatestTimeline:                 getLatestTimeline,
     saveTimelineCorrections:           saveTimelineCorrections,
