@@ -102,6 +102,11 @@ window.showPage = function showPage(page) {
     if (typeof GLStore !== 'undefined' && typeof GLStore.setActivePage === 'function') {
         GLStore.setActivePage(page);
     }
+    // Update browser URL hash for back/forward navigation
+    if (!window._glNavFromPopstate) {
+        try { history.pushState({ page: page }, '', '#' + page); } catch(e) {}
+    }
+    window._glNavFromPopstate = false;
     window.scrollTo(0, 0);
     try { localStorage.setItem('glLastPage', page); } catch(e) {}
 
@@ -161,6 +166,28 @@ var pageRenderers = window.pageRenderers = {
         else el.innerHTML = '<p>Help loading…</p>';
     }
 };
+
+// ── Browser history support ───────────────────────────────────────────────
+window.addEventListener('popstate', function(e) {
+    var page = (e.state && e.state.page) ? e.state.page : (location.hash ? location.hash.slice(1) : 'home');
+    if (page && typeof showPage === 'function') {
+        window._glNavFromPopstate = true;
+        showPage(page);
+    }
+});
+
+// On first load: read URL hash and navigate (deferred so app init runs first)
+document.addEventListener('DOMContentLoaded', function() {
+    var hash = location.hash ? location.hash.slice(1) : '';
+    if (hash && hash !== 'home') {
+        setTimeout(function() {
+            if (typeof showPage === 'function') {
+                window._glNavFromPopstate = true; // don't push duplicate state
+                showPage(hash);
+            }
+        }, 900); // after page restore + auth timing
+    }
+});
 
 console.log('✅ navigation.js loaded');
 
