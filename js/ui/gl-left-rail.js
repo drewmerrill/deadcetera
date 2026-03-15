@@ -34,10 +34,11 @@
       { page: 'practice',  icon: '🎯', label: 'Practice' },
       { page: 'rehearsal', icon: '📅', label: 'Rehearsals' },
     ]},
-    { title: 'Gigs', sub: 'Shows, venues, calendar', items: [
-      { page: 'gigs',     icon: '🎤', label: 'Gigs' },
-      { page: 'calendar', icon: '📆', label: 'Calendar' },
-      { page: 'venues',   icon: '🏛️', label: 'Venues' },
+    { title: 'Gigs', sub: 'Shows, venues, stage plots', items: [
+      { page: 'gigs',      icon: '🎤', label: 'Gigs' },
+      { page: 'calendar',  icon: '📆', label: 'Calendar' },
+      { page: 'venues',    icon: '🏛️', label: 'Venues' },
+      { page: 'stageplot', icon: '🎭', label: 'Stage Plot' },
     ]},
     { title: 'Tools', sub: 'Tuner, meter, playlists', items: [
       { page: 'playlists',   icon: '🎧', label: 'Playlists' },
