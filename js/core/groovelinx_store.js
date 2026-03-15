@@ -531,6 +531,90 @@
 
   // ── getState (debug / introspection) ─────────────────────────────────────
 
+  // ── Song Coaching Signal ─────────────────────────────────────────────────
+  // Returns ONE short coaching message for a song, or null if none.
+  // Priority: restart patterns > attention > readiness > improvement > recency
+
+  function getSongCoachSignal(songId) {
+    if (!songId) return null;
+
+    // 1. Check for restart/trainwreck patterns from attempt intelligence
+    try {
+      var ai = getAttemptIntelligence();
+      if (ai && ai.hasData) {
+        var songAttempt = ai.songs.find(function(s) { return s.title === songId; });
+        if (songAttempt) {
+          if (songAttempt.restartCount >= 3) return 'Had ' + songAttempt.restartCount + ' restarts last rehearsal \u2014 focus on transitions.';
+          if (songAttempt.lowConfidence) return 'Most attempts ended in restarts \u2014 try a full run-through.';
+          if (songAttempt.improving) return 'Improving \u2014 one more clean run locks it in.';
+        }
+      }
+    } catch(e) {}
+
+    // 2. Check practice attention signals
+    try {
+      var pa = (typeof SongIntelligence !== 'undefined' && SongIntelligence.computePracticeAttention)
+        ? SongIntelligence.computePracticeAttention(getAllReadiness(), getAllStatus(), _members(), _activityIndex(), _upcomingSongs())
+        : null;
+      if (pa) {
+        var item = pa.find(function(p) { return p.songId === songId; });
+        if (item && item.breakdown) {
+          var bd = item.breakdown;
+          if (bd.exposureBoost >= 8) return 'On the setlist for your next gig \u2014 make it count.';
+          if (bd.statusModifier >= 4) return 'Marked gig-ready but band avg is ' + (item.avg || '?') + '/5.';
+          if (bd.decayRisk >= 8) return 'Not practiced recently \u2014 worth a refresher.';
+          if (bd.variancePenalty >= 3) return 'Big gap between members \u2014 align on this one.';
+        }
+      }
+    } catch(e) {}
+
+    // 3. Check readiness
+    var intel = getSongIntelligence(songId);
+    if (intel) {
+      if (intel.avg > 0 && intel.avg < 2) return 'Below target \u2014 the band needs real work here.';
+      if (intel.avg >= 2 && intel.avg < 3) return 'Getting there \u2014 a focused run would help.';
+      if (intel.missingMembers && intel.missingMembers.length >= 2) return intel.missingMembers.length + ' members haven\u2019t rated this song yet.';
+      if (intel.avg >= 4.5) return 'Locked in \u2014 keep it tight.';
+    }
+
+    // 4. Check gaps
+    var gaps = getSongGaps(songId);
+    if (gaps && gaps.length) {
+      var highGap = gaps.find(function(g) { return g.severity === 'high'; });
+      if (highGap) return highGap.detail;
+    }
+
+    return null;
+  }
+
+  // Helper: build activity index for practice attention (reuses existing pattern)
+  function _activityIndex() {
+    if (typeof window.activityLogCache !== 'undefined' && Array.isArray(window.activityLogCache)) {
+      var idx = {};
+      window.activityLogCache.forEach(function(e) {
+        if (e && e.song && e.time) {
+          var t = new Date(e.time).getTime();
+          if (!isNaN(t) && (!idx[e.song] || t > idx[e.song])) idx[e.song] = t;
+        }
+      });
+      return idx;
+    }
+    return {};
+  }
+
+  function _upcomingSongs() {
+    var up = {};
+    if (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) {
+      var today = new Date().toISOString().slice(0,10);
+      window._cachedSetlists.forEach(function(sl) {
+        if (sl.date && sl.date >= today && sl.sets) {
+          sl.sets.forEach(function(set) { (set.songs||[]).forEach(function(s) { var t = typeof s === 'string' ? s : s.title; if (t) up[t] = true; }); });
+        }
+      });
+    }
+    return up;
+  }
+
   function getState() {
     return Object.assign({}, _state, {
       // Expose legacy globals for full picture
@@ -2541,6 +2625,9 @@
     getCurrentBand:         getCurrentBand,
     setSnapshotRange:       setSnapshotRange,
     getSnapshotRange:       getSnapshotRange,
+
+    // Coaching
+    getSongCoachSignal:     getSongCoachSignal,
 
     // Derived selectors
     isPerformanceMode:      isPerformanceMode,

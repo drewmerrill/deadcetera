@@ -187,6 +187,7 @@ async function _sdPopulateBandLens(title) {
             'style="background:none;border:1px solid rgba(255,255,255,0.1);color:var(--text-dim,#475569);font-size:0.65em;padding:2px 8px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap" '+
             'title="Set as Now Playing">🎵 Now Playing</button>'+
         '</div>'+
+        (function(){ var cs = (typeof GLStore !== 'undefined' && GLStore.getSongCoachSignal) ? GLStore.getSongCoachSignal(title) : null; return cs ? '<div style="padding:6px 10px;margin-bottom:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.12);border-radius:6px;font-size:0.78em;color:#94a3b8">\uD83C\uDFAF ' + _sdEsc(cs) + '</div>' : ''; })() +
         '<div class="sd-intel-grid">'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Band Readiness</div><div class="sd-intel-val">'+(avgReadiness||'—')+'<span class="sd-intel-unit"> / 5</span></div>'+(tierLabel?'<div class="sd-intel-sub">'+_sdEsc(tierLabel)+'</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Status</div><div class="sd-intel-val sd-intel-sm">'+_sdEsc(statusLabel)+'</div></div>'+

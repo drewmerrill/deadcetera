@@ -245,6 +245,8 @@ function _stonerRenderCockpit() {
         '<div style="font-size:0.6em;font-weight:700;letter-spacing:0.12em;color:#64748b;text-transform:uppercase;margin-bottom:8px">' + queueInfo + '</div>',
         song ? '<div style="font-size:1.6em;font-weight:800;color:#f1f5f9;line-height:1.2;margin-bottom:8px">' + _stonerEsc(song) + '</div>' : '<div style="font-size:1.2em;color:#64748b">No songs in queue</div>',
         indicators ? '<div style="margin-bottom:4px">' + indicators + '</div>' : '',
+        // Coaching signal
+        (function() { var cs = song && typeof GLStore !== 'undefined' && GLStore.getSongCoachSignal ? GLStore.getSongCoachSignal(song) : null; return cs ? '<div style="font-size:0.75em;color:#94a3b8;margin-top:6px;font-style:italic">\uD83C\uDFAF ' + _stonerEsc(cs) + '</div>' : ''; })(),
         '</div>',
         // Action buttons
         song ? [

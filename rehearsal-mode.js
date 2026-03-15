@@ -291,6 +291,18 @@ async function rmLoadChart() {
     if (!crib) { try { const gn = toArray(await loadBandDataFromDrive(song.title, 'gig_notes') || []); if (gn.length) crib = gn.join('\n'); } catch(e) {} }
 
     document.getElementById('rmChartLoading').style.display = 'none';
+    // Song coaching signal
+    var _coachEl = document.getElementById('rmCoachSignal');
+    if (!_coachEl) {
+        _coachEl = document.createElement('div');
+        _coachEl.id = 'rmCoachSignal';
+        _coachEl.style.cssText = 'padding:6px 12px;font-size:0.78em;color:#94a3b8;background:rgba(99,102,241,0.06);border-bottom:1px solid rgba(99,102,241,0.1);display:none';
+        var chartPanel = document.getElementById('rmChartText');
+        if (chartPanel && chartPanel.parentElement) chartPanel.parentElement.insertBefore(_coachEl, chartPanel);
+    }
+    var _coachMsg = (typeof GLStore !== 'undefined' && GLStore.getSongCoachSignal) ? GLStore.getSongCoachSignal(song.title) : null;
+    if (_coachMsg) { _coachEl.textContent = '\uD83C\uDFAF ' + _coachMsg; _coachEl.style.display = 'block'; }
+    else { _coachEl.style.display = 'none'; }
     const safeSong = song.title.replace(/'/g, "\\'");
     const band = song.band || 'Grateful Dead';
     const ugQuery = encodeURIComponent(song.title + ' ' + band);
