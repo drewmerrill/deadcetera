@@ -3,7 +3,7 @@
 
 // ── VERSION: bump this string on every deploy to force cache refresh ────────
 // This is automatically kept fresh — the app writes a ?v= timestamp to bust cache
-const CACHE_NAME = 'groovelinx-20260315-171246';
+const CACHE_NAME = 'groovelinx-20260315-173144';
 const BASE = self.registration.scope;
 
 const CACHE_URLS = [
