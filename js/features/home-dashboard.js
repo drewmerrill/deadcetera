@@ -313,7 +313,7 @@ function _renderDashboard(bundle, context) {
 
         // Section 3b: Rehearsal Timeline preview + Attempt Intelligence
         renderRehearsalTimelinePreview(),
-        renderAttemptIntelligence(),
+        (typeof renderAttemptIntelligence === 'function' ? renderAttemptIntelligence() : ''),
 
         // Section 4: Practice Radar + Songs Needing Work (radar elevated above warnings)
         '<div style="grid-column:1/-1;height:8px"></div>',
