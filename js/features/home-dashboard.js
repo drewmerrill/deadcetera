@@ -800,11 +800,113 @@ function _renderPriorityQueue(bundle) {
     return html;
 }
 
+// ── Command Center: Impact Feedback ───────────────────────────────────────────
+// Detects measurable improvements from recommended actions.
+// Returns 0-2 concise feedback messages using existing data.
+
+function _detectImpactFeedback() {
+    var messages = [];
+
+    // 1. Scorecard readiness improvements
+    var scData = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
+    if (scData && scData.latest) {
+        var sc = scData.latest;
+        var rd = sc.readiness || {};
+        // Check if readiness improved for specific songs
+        if (rd.hasEnoughData && rd.improvedSongs && rd.improvedSongs.length > 0) {
+            var topImproved = rd.improvedSongs[0];
+            if (topImproved && topImproved.title) {
+                messages.push({
+                    icon: '&#x2B06;',
+                    text: 'Last rehearsal improved readiness for ' + _escHtml(topImproved.title),
+                    color: '#22c55e'
+                });
+            }
+        } else if (rd.hasEnoughData && rd.deltaAvg > 0) {
+            messages.push({
+                icon: '&#x2B06;',
+                text: 'Rehearsal lifted band readiness by +' + rd.deltaAvg + ' avg',
+                color: '#22c55e'
+            });
+        }
+        // Biggest win from highlights
+        var hl = sc.highlights || {};
+        if (hl.biggestWin && !messages.length) {
+            messages.push({
+                icon: '&#x1F3C6;',
+                text: _escHtml(hl.biggestWin),
+                color: '#22c55e'
+            });
+        }
+    }
+
+    // 2. Pocket time improvement
+    if (messages.length < 2) {
+        var pth = (typeof GLStore !== 'undefined' && GLStore.getRecentRehearsalPocketHistory) ? GLStore.getRecentRehearsalPocketHistory(3) : null;
+        if (pth && pth.hasData && pth.count >= 2 && pth.entries[0].deltaPocketPct > 0) {
+            messages.push({
+                icon: '&#x1F3AF;',
+                text: 'Groove tightened \u2014 pocket time up ' + pth.entries[0].deltaPocketPct + ' points from last session',
+                color: '#22c55e'
+            });
+        }
+    }
+
+    // 3. Songs that crossed into gig-ready since last check
+    if (messages.length < 2) {
+        var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+        var statusMap = (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+        // Find songs where avg >= 4 but status was not gig_ready — implies recent improvement
+        var newlyReady = [];
+        Object.entries(rc).forEach(function(e) {
+            var title = e[0], scores = e[1] || {};
+            var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+            if (!vals.length) return;
+            var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+            var status = statusMap[title] || '';
+            // High readiness but status hasn't caught up yet
+            if (avg >= 4 && status === 'wip') {
+                newlyReady.push(title);
+            }
+        });
+        if (newlyReady.length === 1) {
+            messages.push({
+                icon: '&#x2705;',
+                text: 'Practice paid off \u2014 ' + _escHtml(newlyReady[0]) + ' is now gig-ready',
+                color: '#22c55e'
+            });
+        } else if (newlyReady.length > 1) {
+            messages.push({
+                icon: '&#x2705;',
+                text: newlyReady.length + ' songs now at gig-ready readiness \u2014 consider updating their status',
+                color: '#22c55e'
+            });
+        }
+    }
+
+    return messages.slice(0, 2);
+}
+
 // ── Command Center: Recent Changes ────────────────────────────────────────────
 
 function _renderRecentChanges(bundle) {
     var hasMeaningfulContent = false;
     var sections = [];
+
+    // Impact feedback — show improvements first
+    var impacts = _detectImpactFeedback();
+    if (impacts.length) {
+        hasMeaningfulContent = true;
+        var impactHTML = '<div class="hd-changes__impacts">';
+        for (var im = 0; im < impacts.length; im++) {
+            impactHTML += '<div class="hd-changes__impact">'
+                + '<span class="hd-changes__impact-icon">' + impacts[im].icon + '</span>'
+                + '<span class="hd-changes__impact-text" style="color:' + impacts[im].color + '">' + impacts[im].text + '</span>'
+                + '</div>';
+        }
+        impactHTML += '</div>';
+        sections.push(impactHTML);
+    }
 
     // Latest scorecard headline
     var scData = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
@@ -3122,7 +3224,12 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-changes__sc-time{font-size:0.68em;color:var(--text-dim,#475569);flex-shrink:0}',
     '.hd-changes__timeline{margin-bottom:8px}',
     '.hd-changes__strip{position:relative;height:16px;background:#0f172a;border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,0.05)}',
-    '.hd-changes__strip-meta{font-size:0.62em;color:var(--text-dim,#475569);margin-top:3px}'
+    '.hd-changes__strip-meta{font-size:0.62em;color:var(--text-dim,#475569);margin-top:3px}',
+    /* Impact feedback */
+    '.hd-changes__impacts{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06)}',
+    '.hd-changes__impact{display:flex;align-items:center;gap:8px;padding:4px 0}',
+    '.hd-changes__impact-icon{font-size:0.9em;flex-shrink:0}',
+    '.hd-changes__impact-text{font-size:0.78em;font-weight:600}'
   ].join('');
   document.head.appendChild(s);
 })();
