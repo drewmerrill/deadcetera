@@ -491,6 +491,7 @@ function renderHdHeroNextUp(bundle, isStoner) {
 }
 
 function _renderHdHeroGig(gig, bundle, isStoner) {
+  try {
     var ls      = gig.linkedSetlist || null;
     var lsEsc   = ls ? _escHtml(ls) : '';
     var venue   = _escHtml(gig.venue || 'Upcoming Show');
@@ -544,6 +545,10 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
     var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
     return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'',readHTML?'<div class="hd-hero__readiness">'+readHTML+'</div>':'',warnHTML?'<div class="hd-hero__warnings">'+warnHTML+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+'</div>',tertiaryCTA,'</div>'].join('');
+  } catch(e) {
+    console.warn('[Dashboard] Hero gig render error:', e.message);
+    return '<div class="hd-hero home-anim-header"><div class="hd-hero__eyebrow">BAND MISSION</div><div class="hd-hero__title">' + _escHtml(gig.venue || 'Upcoming Gig') + '</div><div class="hd-hero__actions"><button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gigs \u2192</button></div></div>';
+  }
 }
 
 function _renderHdHeroRehearsal(plan, bundle) {

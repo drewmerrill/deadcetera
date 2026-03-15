@@ -284,7 +284,7 @@
     delete _state.songDetailCache[songId];
     emit('songFieldUpdated', { songId: songId, field: field, value: value });
     // Sync all dependent UI surfaces immediately
-    if (typeof renderSongs === 'function') requestAnimationFrame(renderSongs);
+    if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
     if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
     if (typeof showToast === 'function') showToast(field.charAt(0).toUpperCase() + field.slice(1) + ' saved');
   }
@@ -317,7 +317,7 @@
         try { db.ref(_bp('meta/readinessIndex/' + k + '/' + memberKey)).remove(); } catch(ei) {}
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
-        if (typeof renderSongs === 'function') requestAnimationFrame(renderSongs);
+        if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
         emit('readinessChanged', { songId: songId, memberKey: memberKey, value: 0 });
         if (typeof showToast === 'function') showToast('Readiness cleared');
         return;
@@ -341,7 +341,7 @@
       } catch (ei) {}
       if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
       if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
-      if (typeof renderSongs === 'function') requestAnimationFrame(renderSongs);
+      if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
       // History
       try {
         db.ref(_bp('songs/' + k + '/readiness_history/' + memberKey))
