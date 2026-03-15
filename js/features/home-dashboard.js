@@ -761,6 +761,26 @@ function renderRehearsalInsights() {
         }
     }
 
+    // Pocket Time meter
+    var pt = (typeof GLStore !== 'undefined' && GLStore.getPocketTimeMetrics) ? GLStore.getPocketTimeMetrics() : null;
+    if (pt) {
+        var ptColor = pt.pocketTimePct >= 70 ? '#22c55e' : pt.pocketTimePct >= 50 ? '#60a5fa' : pt.pocketTimePct >= 30 ? '#f59e0b' : '#ef4444';
+        h += '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">';
+        h += '<div style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Pocket Time</div>';
+        h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+        h += '<div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden">';
+        h += '<div style="height:100%;width:' + pt.pocketTimePct + '%;background:' + ptColor + ';border-radius:4px;transition:width 0.4s"></div>';
+        h += '</div>';
+        h += '<span style="font-size:0.88em;font-weight:800;color:' + ptColor + ';min-width:36px;text-align:right">' + pt.pocketTimePct + '%</span>';
+        h += '</div>';
+        h += '<div style="font-size:0.75em;font-weight:700;color:' + ptColor + ';margin-bottom:4px">' + pt.label + '</div>';
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+        h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">Longest: ' + pt.longestRunMinutes + 'min</span>';
+        h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">' + pt.restartCount + ' restart' + (pt.restartCount !== 1 ? 's' : '') + '</span>';
+        h += '<span style="font-size:0.68em;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:var(--text-dim)">Avg run: ' + pt.averageRunLengthSeconds + 's</span>';
+        h += '</div></div>';
+    }
+
     h += '</div>';
     return h;
 }

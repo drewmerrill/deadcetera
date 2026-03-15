@@ -1639,6 +1639,81 @@
     };
   }
 
+  // ── Pocket Time Metric ──────────────────────────────────────────────────
+
+  /**
+   * Compute Pocket Time and related rehearsal flow metrics from the latest timeline.
+   * Pocket Time Ratio = continuous music time / total rehearsal time.
+   * @param {object} [opts]
+   * @param {number} [opts.minRunSec]  Minimum music segment duration to count as "continuous" (default 30)
+   * @returns {object|null}
+   */
+  function getPocketTimeMetrics(opts) {
+    var tl = _latestTimeline;
+    if (!tl || !tl.segments || !tl.segments.length) return null;
+
+    opts = opts || {};
+    var minRunSec = opts.minRunSec || 30;
+    var totalSec = tl.durationSec || 0;
+    if (totalSec <= 0) return null;
+
+    var continuousMusicSec = 0;
+    var allMusicSec = 0;
+    var discussionSec = 0;
+    var silenceSec = 0;
+    var restartCount = 0;
+    var longestRunSec = 0;
+    var runLengths = [];
+
+    for (var i = 0; i < tl.segments.length; i++) {
+      var seg = tl.segments[i];
+      var dur = seg.durationSec || 0;
+
+      if (seg.kind === 'music') {
+        allMusicSec += dur;
+        if (seg.likelyIntent !== 'restart') {
+          runLengths.push(dur);
+          if (dur > longestRunSec) longestRunSec = dur;
+          if (dur >= minRunSec) continuousMusicSec += dur;
+        }
+        if (seg.likelyIntent === 'restart') restartCount++;
+      } else if (seg.kind === 'speech') {
+        discussionSec += dur;
+      } else if (seg.kind === 'silence') {
+        silenceSec += dur;
+      }
+    }
+
+    var pocketTimeRatio = totalSec > 0 ? continuousMusicSec / totalSec : 0;
+    var avgRunLength = runLengths.length ? runLengths.reduce(function(a, b) { return a + b; }, 0) / runLengths.length : 0;
+
+    // Pocket label
+    var pocketPct = Math.round(pocketTimeRatio * 100);
+    var label;
+    if (pocketPct >= 70) label = 'Locked In';
+    else if (pocketPct >= 50) label = 'Strong Flow';
+    else if (pocketPct >= 30) label = 'Working Session';
+    else label = 'Stop-Start Heavy';
+
+    return {
+      totalRehearsalSeconds: Math.round(totalSec),
+      totalRehearsalMinutes: Math.round(totalSec / 60),
+      continuousMusicSeconds: Math.round(continuousMusicSec),
+      allMusicSeconds: Math.round(allMusicSec),
+      discussionSeconds: Math.round(discussionSec),
+      silenceSeconds: Math.round(silenceSec),
+      pocketTimeRatio: Math.round(pocketTimeRatio * 1000) / 1000,
+      pocketTimePct: pocketPct,
+      label: label,
+      longestRunSeconds: Math.round(longestRunSec),
+      longestRunMinutes: Math.round(longestRunSec / 60 * 10) / 10,
+      restartCount: restartCount,
+      averageRunLengthSeconds: Math.round(avgRunLength),
+      runCount: runLengths.length,
+      minRunThreshold: minRunSec,
+    };
+  }
+
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
   /**
@@ -1959,6 +2034,7 @@
 
     // Rehearsal Segmentation (Milestone 8)
     getRehearsalIntelligence:          getRehearsalIntelligence,
+    getPocketTimeMetrics:              getPocketTimeMetrics,
     segmentRehearsalAudio:             segmentRehearsalAudio,
     getLatestTimeline:                 getLatestTimeline,
     saveTimelineCorrections:           saveTimelineCorrections,
