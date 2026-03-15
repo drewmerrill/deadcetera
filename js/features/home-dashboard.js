@@ -505,9 +505,13 @@ function _renderPriorityQueue(bundle) {
     var activeSession = (typeof GLStore !== 'undefined' && GLStore.getActiveRehearsalAgendaSession)
         ? GLStore.getActiveRehearsalAgendaSession() : null;
     if (activeSession && activeSession.status === 'active') {
+        var _curItem = activeSession.items[activeSession.currentIndex];
+        var _sessionDesc = _curItem
+            ? 'Currently on: ' + (_curItem.title || _curItem.songId || 'song ' + (activeSession.currentIndex + 1))
+            : 'Slot ' + (activeSession.currentIndex + 1) + ' of ' + activeSession.items.length;
         items.push({
             urgency: 100, label: 'Resume Rehearsal Session',
-            desc: 'Slot ' + (activeSession.currentIndex + 1) + ' of ' + activeSession.items.length,
+            desc: _sessionDesc,
             badge: 'IN PROGRESS', badgeColor: '#22c55e',
             cta: 'Resume', onclick: "if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaAtIndex(" + activeSession.currentIndex + ")"
         });
@@ -516,30 +520,35 @@ function _renderPriorityQueue(bundle) {
     // Rehearsal agenda available
     var agenda = (typeof GLStore !== 'undefined' && GLStore.generateRehearsalAgenda) ? GLStore.generateRehearsalAgenda() : null;
     if (agenda && !agenda.empty && !(activeSession && activeSession.status === 'active')) {
+        var _agendaDesc = agenda.summary || (agenda.items.length + ' songs \xb7 ' + agenda.totalMinutes + ' min plan ready');
         items.push({
             urgency: 80, label: 'Start Rehearsal',
-            desc: agenda.items.length + ' songs \xb7 ' + agenda.totalMinutes + ' min plan ready',
+            desc: _agendaDesc,
             badge: '', badgeColor: '',
             cta: 'Start', onclick: "if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaSession()"
         });
     }
 
     // Upload CTA — only when the band has *some* data but no recording yet.
-    // If no readiness data exists either, the upload prompt is premature —
-    // the user should add songs and rate readiness first.
     var tl = (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) ? GLStore.getLatestTimeline() : null;
     var hasAnyReadiness = _computeBandReadinessPct(bundle) !== null;
     if ((!tl || !tl.summary) && hasAnyReadiness) {
+        // Build a contextual reason for why uploading matters now
+        var _uploadReason = 'No rehearsal recording on file yet';
+        var _weakCount = Object.entries(bundle.readinessCache || {}).filter(function(e) {
+            var k = Object.keys(e[1] || {}).filter(function(k) { return typeof e[1][k] === 'number' && e[1][k] > 0; });
+            return k.length && _bandAvgForSong(e[1]) < 3;
+        }).length;
+        if (_weakCount > 0) _uploadReason = _weakCount + ' weak song' + (_weakCount !== 1 ? 's' : '') + ' \u2014 a recording would show where breakdowns happen';
         items.push({
             urgency: 40, label: 'Analyze a Rehearsal Recording',
-            desc: 'Upload an MP3 to see what your rehearsal actually looked like',
+            desc: _uploadReason,
             badge: '', badgeColor: '',
             cta: 'Upload', onclick: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
         });
     }
 
     // Practice radar top items — cap at 2 when agenda or session is present
-    // to avoid the queue feeling like just a song list
     var hasAgendaItem = items.length > 0;
     var prLimit = hasAgendaItem ? 2 : 3;
     var prItems = (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention)
@@ -552,7 +561,7 @@ function _renderPriorityQueue(bundle) {
             items.push({
                 urgency: 50 - p,
                 label: 'Practice: ' + pr.songId,
-                desc: pr.topReason,
+                desc: _humanizePracticeReason(pr),
                 badge: prTier.label !== 'Keep Warm' ? prTier.label.toUpperCase() : '',
                 badgeColor: prTier.color,
                 cta: 'Practice',
@@ -966,6 +975,45 @@ function _prUrgencyTier(item) {
         badge: '',
         color: '#22c55e'
     };
+}
+
+/**
+ * Convert a Practice Attention item's raw reasons into a human-readable sentence.
+ * Uses breakdown data + reasons array from computePracticeAttention().
+ */
+function _humanizePracticeReason(pr) {
+    if (!pr) return '';
+    var bd = pr.breakdown || {};
+    var parts = [];
+
+    // Pick the most meaningful signal, in priority order
+    if (bd.exposureBoost >= 8) {
+        parts.push('On the setlist for your next gig');
+    }
+    if (bd.statusModifier >= 4) {
+        parts.push('Marked gig-ready but band avg is only ' + (pr.avg || '?') + '/5');
+    }
+    if (bd.decayRisk >= 6) {
+        // Find the days-since text from reasons
+        var decayReason = (pr.reasons || []).find(function(r) { return r.indexOf('days since') >= 0 || r.indexOf('Never practiced') >= 0; });
+        parts.push(decayReason || 'Not practiced recently');
+    }
+    if (bd.readinessDeficit >= 6) {
+        parts.push('Band avg ' + (pr.avg || '?') + '/5 \u2014 needs work');
+    }
+    if (bd.variancePenalty >= 2) {
+        parts.push('Some members rated much lower than others');
+    }
+    if (bd.unratedNudge > 0 && parts.length === 0) {
+        parts.push('Not all members have rated this song');
+    }
+
+    if (!parts.length) {
+        // Fallback to the engine's top reason
+        return pr.topReason || '';
+    }
+    // Return first two reasons joined
+    return parts.slice(0, 2).join(' \xb7 ');
 }
 
 // ── Rehearsal Agenda (Milestone 6 Phase 1) ───────────────────────────────────
