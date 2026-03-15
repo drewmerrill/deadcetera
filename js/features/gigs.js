@@ -583,7 +583,7 @@ async function seedGigData() {
     const gigs = [
         // From The Earth Brewing 2026-02-01 removed — user deleted
         { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'2 sets, ~156 min total' },
-        { venue:'Dunwoody Square', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
+        // Dunwoody Square 2025-06-27 removed — user deleted
         // Wild Wings Café 2025-05-23 removed — user deleted
         // Dead Fest 2025-04-12 removed — did not happen
         { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM' },
