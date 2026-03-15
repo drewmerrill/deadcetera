@@ -310,11 +310,20 @@
         await db.ref(path).remove();
         if (typeof readinessCache !== 'undefined' && readinessCache[songId]) {
           delete readinessCache[songId][memberKey];
+          // If no members left with scores, remove the song entry entirely
+          var remaining = Object.keys(readinessCache[songId]).filter(function(k) {
+            return typeof readinessCache[songId][k] === 'number' && readinessCache[songId][k] > 0;
+          });
+          if (!remaining.length) delete readinessCache[songId];
         }
         if (_state.songDetailCache[songId] && _state.songDetailCache[songId].readiness) {
           delete _state.songDetailCache[songId].readiness[memberKey];
         }
         try { db.ref(_bp('meta/readinessIndex/' + k + '/' + memberKey)).remove(); } catch(ei) {}
+        // Persist cleared score to master file so it doesn't revert on reload
+        if (typeof saveMasterFile === 'function' && typeof MASTER_READINESS_FILE !== 'undefined') {
+          saveMasterFile(MASTER_READINESS_FILE, readinessCache).catch(function() {});
+        }
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
         if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });

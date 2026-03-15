@@ -749,10 +749,16 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var readHTML = isStoner ? '' : _renderSetlistReadinessBars(gig, bundle.readinessCache);
     var warnHTML = isStoner ? '' : _renderReadinessWarnings(gig, bundle.readinessCache);
     var slLine   = ls ? '<div class="hd-hero__setlist">Setlist: ' + lsEsc + '</div>' : '';
-    // Build gig-scoped song set for readiness/risk computation
+    // Build gig-scoped song set for readiness/risk computation.
+    // Use both bundle.setlists (always loaded by dashboard) and _cachedSetlists
+    // (populated when Gigs/Setlists pages render) to ensure scope works on
+    // first Home load before user visits other pages.
     var _gigSongScope = {};
-    if (ls && typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) {
-        var _slMatch = window._cachedSetlists.find(function(sl) { return (sl.name||'') === ls; });
+    if (ls) {
+        var _slSources = [];
+        if (bundle && bundle.setlists && Array.isArray(bundle.setlists)) _slSources = _slSources.concat(bundle.setlists);
+        if (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) _slSources = _slSources.concat(window._cachedSetlists);
+        var _slMatch = _slSources.find(function(sl) { return (sl.name||'') === ls; });
         if (_slMatch && _slMatch.sets) {
             for (var _si = 0; _si < _slMatch.sets.length; _si++) {
                 var _ss = _slMatch.sets[_si].songs || [];
