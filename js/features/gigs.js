@@ -306,7 +306,6 @@ function renderGigsPage(el) {
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="addGig()">+ Add Gig</button>
-        <button class="btn btn-ghost" onclick="seedGigData()" title="Import past gigs, setlists, and venues from master spreadsheet">📥 Import Spreadsheet Data</button>
     </div>
     <div class="app-card" style="margin-bottom:16px;padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;user-select:none" onclick="toggleGigsMap()">
@@ -582,10 +581,10 @@ async function seedGigData() {
     
     // ===== GIGS from PDF tabs =====
     const gigs = [
-        { venue:'From The Earth Brewing', date:'2026-02-01', time:'8:00 PM', notes:'2 sets, ~116 min total' },
+        // From The Earth Brewing 2026-02-01 removed — user deleted
         { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'2 sets, ~156 min total' },
         { venue:'Dunwoody Square', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
-        { venue:'Wild Wings Café', date:'2025-05-23', time:'9:00 PM' },
+        // Wild Wings Café 2025-05-23 removed — user deleted
         // Dead Fest 2025-04-12 removed — did not happen
         { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM' },
         { venue:'Reformation Brewery', date:'2025-03-29', time:'7:00 PM' },
