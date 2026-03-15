@@ -170,12 +170,13 @@ h1 {
 }
 
 .song-item:hover {
-    background: #edf2f7;
+    background: #263248;
 }
 
 .song-item.selected {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    /* Dark theme anchor — subtle accent, not a bright block */
+    background: rgba(99,102,241,0.06);
+    border-left: 2px solid #667eea;
 }
 
 .song-name {

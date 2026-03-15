@@ -4,10 +4,10 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260315-142306', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260315-143415', 'color:#667eea;font-weight:bold;font-size:14px');
 
 // ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260315-142306';
+var BUILD_VERSION = '20260315-143415';
 var _loadedVersion = BUILD_VERSION;
 
 
@@ -1047,6 +1047,51 @@ function setupSearchAndFilters() {
             renderSongs(currentFilter, searchInput.value);
         });
     });
+    // Sync restored filter state to UI controls
+    if (currentFilter && currentFilter !== 'all') {
+        filterBtns.forEach(b => {
+            b.classList.toggle('active', b.dataset.filter === currentFilter);
+        });
+    }
+    if (activeStatusFilter) {
+        var sf = document.getElementById('statusFilter');
+        if (sf) sf.value = activeStatusFilter;
+    }
+    // Keyboard navigation for Songs list
+    var _songDropdown = document.getElementById('songDropdown');
+    if (_songDropdown) _songDropdown.setAttribute('tabindex', '0');
+    document.addEventListener('keydown', function(e) {
+        if (typeof currentPage === 'undefined' || currentPage !== 'songs') return;
+        var dd = document.getElementById('songDropdown');
+        if (!dd) return;
+        var rows = Array.from(dd.querySelectorAll('.song-item'));
+        if (!rows.length) return;
+        var sel = dd.querySelector('.song-item.selected');
+        var idx = sel ? rows.indexOf(sel) : -1;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            var next = idx < rows.length - 1 ? idx + 1 : 0;
+            rows[next].click();
+            rows[next].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            var prev = idx > 0 ? idx - 1 : rows.length - 1;
+            rows[prev].click();
+            rows[prev].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && sel) {
+            e.preventDefault();
+            var title = sel.dataset.title;
+            if (title && typeof selectSong === 'function') selectSong(title);
+        } else if (e.key === ' ' && sel && !e.target.matches('input,textarea,select')) {
+            e.preventDefault();
+            var sTitle = sel.dataset.title;
+            if (sTitle && typeof openRehearsalMode === 'function') openRehearsalMode(sTitle);
+        } else if (e.key === 'Escape') {
+            if (typeof glRightPanel !== 'undefined' && glRightPanel.close) glRightPanel.close();
+        }
+    });
+
     // Inject heatmap toggle button
     if (!document.getElementById('heatmapToggleBtn')) {
         const btn = document.createElement('button');

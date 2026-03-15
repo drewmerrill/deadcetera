@@ -159,6 +159,11 @@ function _stonerRenderCockpit() {
 
     home.innerHTML = [
         '<div style="padding:24px 20px;text-align:center;max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:16px;min-height:100%">',
+        // Quick chart search
+        '<div style="position:relative">',
+        '<input class="stoner-search" id="stonerQuickSearch" placeholder="&#x1F50D; Find any song..." oninput="_stonerQuickFilter(this.value)" autocomplete="off" autocorrect="off" spellcheck="false" style="font-size:0.95em;padding:10px 14px">',
+        '<div id="stonerQuickResults" style="position:absolute;left:0;right:0;top:100%;z-index:20;max-height:200px;overflow-y:auto;border-radius:0 0 10px 10px;background:#1a1f2e;border:1px solid rgba(139,92,246,0.3);border-top:none;display:none"></div>',
+        '</div>',
         // Subtitle
         '<div style="font-size:0.75em;color:#475569;font-style:italic">' + sub + '</div>',
         // Song card
@@ -324,6 +329,34 @@ function _stonerDismissSummary() {
     localStorage.setItem('deadcetera_stoner_mode', '0');
     _stonerExit();
     if (typeof showPage === 'function') showPage('home');
+}
+
+// ── Quick Chart Picker ──────────────────────────────────────────────────────
+
+function _stonerQuickFilter(q) {
+    var results = document.getElementById('stonerQuickResults');
+    if (!results) return;
+    if (!q || q.length < 2) { results.style.display = 'none'; results.innerHTML = ''; return; }
+    var matches = (typeof allSongs !== 'undefined' ? allSongs : [])
+        .filter(function(s) { return s.title.toLowerCase().indexOf(q.toLowerCase()) >= 0; })
+        .slice(0, 5);
+    if (!matches.length) { results.style.display = 'block'; results.innerHTML = '<div style="padding:10px;color:#64748b;font-size:0.85em">No songs found</div>'; return; }
+    results.style.display = 'block';
+    results.innerHTML = matches.map(function(s) {
+        return '<div onclick="_stonerQuickOpen(\'' + s.title.replace(/'/g, "\\'") + '\')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;transition:background 0.1s" onmouseover="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseout="this.style.background=\'\'">'
+            + '<span style="font-size:0.95em;color:#f1f5f9;font-weight:600">' + _stonerEsc(s.title) + '</span>'
+            + '<span style="margin-left:auto;font-size:0.7em;color:#818cf8;font-weight:700">CHART &#x276F;</span>'
+            + '</div>';
+    }).join('');
+}
+
+function _stonerQuickOpen(title) {
+    _stonerExit();
+    _stonerMode = false;
+    localStorage.setItem('deadcetera_stoner_mode', '0');
+    var btn = document.getElementById('stonerBtn');
+    if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    if (typeof openRehearsalMode === 'function') openRehearsalMode(title);
 }
 
 // Keep old home renderer as fallback
@@ -638,3 +671,5 @@ window._stonerStartRun = _stonerStartRun;
 window._stonerOutcome = _stonerOutcome;
 window._stonerNextSong = _stonerNextSong;
 window._stonerDismissSummary = _stonerDismissSummary;
+window._stonerQuickFilter = _stonerQuickFilter;
+window._stonerQuickOpen = _stonerQuickOpen;
