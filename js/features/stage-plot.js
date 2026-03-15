@@ -75,7 +75,9 @@ var SP_PRESETS = {
 };
 
 // Move mode state
-var _spMoveIdx = -1; // index of element being moved (-1 = none)
+var _spMoveIdx = -1;
+var _spShowLabels = true; // labels toggle
+var _spShowDirections = true; // stage direction markers
 
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
@@ -150,6 +152,12 @@ function _spRender() {
   html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Save</button>';
   html += '</div></div>';
 
+  // Display toggles
+  html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+  html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
+  html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
+  html += '</div>';
+
   // Stage canvas (grid-based)
   html += _spRenderStage(plot);
 
@@ -191,8 +199,13 @@ function _spRenderStage(plot) {
 
   var html = '<div style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;min-height:200px">';
 
-  // Stage label
+  // Stage label + direction indicators
   html += '<div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#1e293b;padding:0 8px;font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'</div>';
+  if (_spShowDirections) {
+    html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.5em;font-weight:700;color:rgba(255,255,255,0.08);letter-spacing:0.15em;text-transform:uppercase;white-space:nowrap">STAGE LEFT</div>';
+    html += '<div style="position:absolute;top:50%;right:-2px;transform:translateY(-50%) rotate(90deg);font-size:0.5em;font-weight:700;color:rgba(255,255,255,0.08);letter-spacing:0.15em;text-transform:uppercase;white-space:nowrap">STAGE RIGHT</div>';
+    html += '<div style="position:absolute;top:4px;left:50%;transform:translateX(-50%);font-size:0.48em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.1em;text-transform:uppercase">UPSTAGE</div>';
+  }
 
   // Grid of placed elements
   html += '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;min-height:160px">';
@@ -224,7 +237,21 @@ function _spRenderStage(plot) {
         if (el.inputNum) chNum = el.inputNum;
         html += '<div style="background:' + (isMoving ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.08)') + ';border:1px solid ' + (isMoving ? 'rgba(245,158,11,0.4)' : 'rgba(99,102,241,0.2)') + ';border-radius:8px;padding:8px 4px;text-align:center;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;position:relative" onclick="_spClickElement(' + elIdx + ')">';
         html += '<span style="font-size:1.2em;' + rotStyle + '">' + el.icon + '</span>';
-        html += '<span style="font-size:0.6em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + _spEsc(el.label) + '</span>';
+        if (_spShowLabels) {
+          // Show monitor mix number if this is a monitor/wedge element
+          var mixLabel = '';
+          if (el.type === 'audio' && (el.label.indexOf('Monitor') >= 0 || el.label.indexOf('Wedge') >= 0 || el.label.indexOf('Floor') >= 0)) {
+            if (plot.monitors) {
+              for (var mi = 0; mi < plot.monitors.length; mi++) {
+                if (plot.monitors[mi].label && el.label.indexOf(plot.monitors[mi].label.split(' ')[0]) >= 0) {
+                  mixLabel = ' (Mix ' + (mi + 1) + ')'; break;
+                }
+              }
+            }
+            if (!mixLabel && el.inputNum) mixLabel = ' (Mix ' + el.inputNum + ')';
+          }
+          html += '<span style="font-size:0.6em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + _spEsc(el.label) + mixLabel + '</span>';
+        }
         if (chNum) html += '<span style="position:absolute;top:2px;left:2px;background:#667eea;color:white;font-size:0.5em;font-weight:800;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center">' + chNum + '</span>';
         html += '<button onclick="event.stopPropagation();_spRemoveElement(' + elIdx + ')" style="position:absolute;top:2px;right:2px;background:none;border:none;color:#64748b;cursor:pointer;font-size:0.6em;padding:2px">✕</button>';
         html += '</div>';
@@ -237,8 +264,12 @@ function _spRenderStage(plot) {
   }
   html += '</div>';
 
-  // Audience marker
-  html += '<div style="text-align:center;margin-top:12px;font-size:0.6em;font-weight:700;color:rgba(255,255,255,0.15);letter-spacing:0.2em;text-transform:uppercase">&#x25BC; AUDIENCE &#x25BC;</div>';
+  // Audience marker + downstage indicator
+  html += '<div style="text-align:center;margin-top:12px;font-size:0.6em;font-weight:700;color:rgba(255,255,255,0.15);letter-spacing:0.2em;text-transform:uppercase">';
+  if (_spShowDirections) html += '<span style="font-size:0.85em;color:rgba(255,255,255,0.06);margin-right:12px">DOWNSTAGE</span>';
+  html += '&#x25BC; AUDIENCE &#x25BC;';
+  if (_spShowDirections) html += '<span style="font-size:0.85em;color:rgba(255,255,255,0.06);margin-left:12px">DOWNSTAGE</span>';
+  html += '</div>';
 
   html += '</div>';
   return html;
@@ -608,5 +639,7 @@ window._spUpdateContact = _spUpdateContact;
 window._spExportView = _spExportView;
 window._spClickElement = _spClickElement;
 window._spApplyPreset = _spApplyPreset;
+window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
+window._spToggleDirections = function(v) { _spShowDirections = v; _spRender(); };
 
 console.log('🎭 stage-plot.js loaded');

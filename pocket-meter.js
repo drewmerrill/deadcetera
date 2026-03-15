@@ -782,10 +782,23 @@
           var devSign = devMs >= 0 ? '+' : '';
           stabLines.push('<span style="color:' + devColor + '">' + devSign + devMs.toFixed(1) + 'ms ' + (devMs > 3 ? 'behind' : devMs < -3 ? 'ahead' : 'centered') + ' <span style="font-size:0.8em;opacity:0.7">(' + devLabel + ')</span></span>');
         }
-        // v3: Pocket score (pctInPocket from GrooveAnalyser)
+        // v3: Pocket score
         if (groove && groove.pctInPocket !== undefined && this._pmMode === 'pocket') {
           var pktColor = groove.pctInPocket >= 80 ? '#22c55e' : groove.pctInPocket >= 50 ? '#f59e0b' : '#ef4444';
           stabLines.push('<span style="color:' + pktColor + '">In pocket: ' + groove.pctInPocket + '%</span>');
+        }
+        // v4: Beat variance (raw IOI standard deviation in ms)
+        if (groove && groove.spacingVarianceMsRaw !== undefined) {
+          var varMs = groove.spacingVarianceMsRaw;
+          var varColor = varMs <= 10 ? '#22c55e' : varMs <= 25 ? '#f59e0b' : '#ef4444';
+          stabLines.push('<span style="color:' + varColor + '">Variance: ' + varMs + 'ms</span>');
+        }
+        // v4: Groove Score (composite: stability × pocket × (1 - normalized variance))
+        if (stab !== null && groove && groove.pctInPocket !== undefined) {
+          var grooveScore = Math.round((stab * 0.4) + (groove.pctInPocket * 0.4) + (Math.max(0, 100 - groove.spacingVarianceMsRaw * 2) * 0.2));
+          grooveScore = Math.max(0, Math.min(100, grooveScore));
+          var gsColor = grooveScore >= 80 ? '#22c55e' : grooveScore >= 50 ? '#f59e0b' : '#ef4444';
+          stabLines.push('<span style="font-weight:800;color:' + gsColor + '">Groove: ' + grooveScore + '</span>');
         }
         stabEl.innerHTML = stabLines.join(' <span style="color:#333">·</span> ');
       }

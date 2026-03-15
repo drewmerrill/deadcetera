@@ -156,9 +156,16 @@ window._bcPostIdea = async function() {
 
   try {
     if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      // Auto-detect links in title text
+      var titleText = titleEl.value.trim();
+      var autoLink = (linkEl && linkEl.value.trim()) || '';
+      if (!autoLink) {
+        var urlMatch = titleText.match(/(https?:\/\/[^\s]+)/);
+        if (urlMatch) { autoLink = urlMatch[1]; titleText = titleText.replace(urlMatch[1], '').trim(); }
+      }
       await firebaseDB.ref(bandPath('ideas/posts')).push({
-        title: titleEl.value.trim(),
-        link: (linkEl && linkEl.value.trim()) || '',
+        title: titleText,
+        link: autoLink,
         author: _bcGetName(),
         ts: new Date().toISOString()
       });
