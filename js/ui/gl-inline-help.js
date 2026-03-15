@@ -129,6 +129,38 @@
       title: 'Now Playing',
       text: 'The song you\'re currently focused on. This persists across pages — it\'s your working context. Set it from any song detail panel. Clear it with the ✕ button.',
     },
+
+    // Command Center
+    'command-center': {
+      title: 'Command Center',
+      text: 'Your band\'s operational brain. Answers three questions: What should we work on next? Are we improving? Are we ready for the gig? Each section updates automatically as you add data.',
+    },
+    'gig-confidence': {
+      title: 'Gig Confidence',
+      text: 'A show-level summary of how ready the band is, based on setlist readiness, recent rehearsals, improvement trends, and groove quality. Not a percentage — a qualitative assessment: Strong, Solid, Trending Up, Cautious, or At Risk.',
+    },
+    'priority-queue': {
+      title: 'Priority Queue',
+      text: 'The top actions the band should take right now, ranked by urgency. Items adapt over time — things you ignore get escalated, things you act on cool down. Powered by Practice Attention scoring.',
+    },
+    'band-health': {
+      title: 'Band Health',
+      text: 'Quick-glance metrics for your band. Readiness = what percentage of songs meet the gig threshold. Weak Songs = how many are below it. Pocket Time and Last Score appear after rehearsal uploads.',
+    },
+    'impact-feedback': {
+      title: 'What Changed',
+      text: 'Shows meaningful improvements from your recent actions: readiness gains, groove improvements, and songs that crossed into gig-ready status. Green = improvement. Purple = new capability unlocked.',
+    },
+
+    // Song Intelligence
+    'song-intelligence': {
+      title: 'Song Intelligence',
+      text: 'A per-song diagnostic showing band readiness average, the top gap (who needs the most work), and practice attention priority. Updated live as members rate their readiness.',
+    },
+    'song-readiness': {
+      title: 'Band Readiness Score',
+      text: 'Average of all band members\' readiness ratings for this song. 5 = locked in, 4 = almost there, 3 = getting there, 2 = knows the basics, 1 = never played it.',
+    },
   };
 
   // ── Empty / First-Use States ───────────────────────────────────────────────

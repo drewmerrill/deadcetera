@@ -366,9 +366,10 @@ function _renderCommandCenterHeader(bundle) {
     if (tone) {
         chip = '<span class="hd-cc-chip" style="background:' + tone.color + '18;color:' + tone.color + ';border-color:' + tone.color + '44">' + tone.short + '</span>';
     }
+    var _helpIcon = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('command-center') : '';
     return '<div class="hd-cc-header home-anim-header">'
         + '<div class="hd-cc-header__left">'
-        + '<div class="hd-cc-header__title">Command Center</div>'
+        + '<div class="hd-cc-header__title">Command Center ' + _helpIcon + '</div>'
         + '<div class="hd-cc-header__date">' + dateStr + '</div>'
         + '</div>'
         + chip
@@ -543,9 +544,10 @@ function _renderBandHealthRow(bundle) {
 
     // Attribution line — helps users understand what unlocked these metrics
     var _healthAttrib = '';
-    if (tiles.length === 2) _healthAttrib = '<div class="hd-health-attrib">Based on your readiness ratings</div>';
-    else if (tiles.length === 3) _healthAttrib = '<div class="hd-health-attrib">Based on your ratings and rehearsal data</div>';
-    else if (tiles.length >= 4) _healthAttrib = '<div class="hd-health-attrib">Full band intelligence active</div>';
+    var _bhHelp = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('band-health') : '';
+    if (tiles.length === 2) _healthAttrib = '<div class="hd-health-attrib">Based on your readiness ratings ' + _bhHelp + '</div>';
+    else if (tiles.length === 3) _healthAttrib = '<div class="hd-health-attrib">Based on your ratings and rehearsal data ' + _bhHelp + '</div>';
+    else if (tiles.length >= 4) _healthAttrib = '<div class="hd-health-attrib">Full band intelligence active ' + _bhHelp + '</div>';
 
     var html = '<div class="hd-health-row-wrap home-anim-cards">' + _healthAttrib + '<div class="hd-health-row">';
     for (var i = 0; i < tiles.length; i++) {
@@ -767,7 +769,7 @@ function _renderPriorityQueue(bundle) {
             _pqEmptyCta = '<button class="hd-setup-step__cta" style="margin-top:8px" onclick="showPage(\'gigs\')">Add Gig &#x2192;</button>';
         }
         return '<div class="hd-pq home-anim-cards">'
-            + '<div class="hd-pq__header">Priority Queue</div>'
+            + '<div class="hd-pq__header">Priority Queue ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('priority-queue') : '') + '</div>'
             + '<div class="hd-pq__empty">' + _pqEmptyMsg + '</div>'
             + _pqEmptyCta
             + '</div>';
@@ -779,7 +781,7 @@ function _renderPriorityQueue(bundle) {
     }
 
     var html = '<div class="hd-pq home-anim-cards">'
-        + '<div class="hd-pq__header">Priority Queue</div>';
+        + '<div class="hd-pq__header">Priority Queue ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('priority-queue') : '') + '</div>';
 
     for (var i = 0; i < items.length; i++) {
         var item = items[i];
@@ -1016,7 +1018,7 @@ function _renderRecentChanges(bundle) {
 
     if (!sections.length) return '';
     return '<div class="hd-changes home-anim-feed">'
-        + '<div class="hd-changes__header">What Changed</div>'
+        + '<div class="hd-changes__header">What Changed ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('impact-feedback') : '') + '</div>'
         + sections.join('')
         + '</div>';
 }
@@ -1193,7 +1195,7 @@ function _renderGigConfidence(conf) {
         : '';
     return '<div class="hd-conf" style="border-color:' + conf.color + '33">'
         + '<div class="hd-conf__header">'
-        + '<span class="hd-conf__label">Gig Confidence</span>'
+        + '<span class="hd-conf__label">Gig Confidence ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('gig-confidence') : '') + '</span>'
         + '<span class="hd-conf__level" style="color:' + conf.color + '">' + conf.label + '</span>'
         + '</div>'
         + reasonHTML
