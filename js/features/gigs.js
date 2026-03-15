@@ -586,7 +586,7 @@ async function seedGigData() {
         { venue:'MoonShadow Tavern', date:'2026-01-12', time:'9:00 PM', notes:'2 sets, ~156 min total' },
         { venue:'Dunwoody Square', date:'2025-06-27', time:'7:00 PM', notes:'Private event' },
         { venue:'Wild Wings Café', date:'2025-05-23', time:'9:00 PM' },
-        { venue:'Dead Fest', date:'2025-04-12', time:'TBD', notes:'Festival' },
+        // Dead Fest 2025-04-12 removed — did not happen
         { venue:'Reformation Brewery', date:'2025-04-25', time:'7:00 PM' },
         { venue:'Reformation Brewery', date:'2025-03-29', time:'7:00 PM' },
         { venue:'Wing Café Marietta', date:'2024-12-14', time:'9:00 PM', notes:'2 sets' },
