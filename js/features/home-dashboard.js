@@ -884,7 +884,51 @@ function _detectImpactFeedback() {
         }
     }
 
-    return messages.slice(0, 2);
+    // 4. Milestone unlock events (progressive discovery ladder)
+    // Show once per milestone, then persist so it doesn't repeat.
+    if (messages.length < 3) {
+        var _unlockKey = 'gl_cc_unlocks';
+        var _seen = {};
+        try { _seen = JSON.parse(localStorage.getItem(_unlockKey) || '{}'); } catch(e) {}
+        var _newUnlocks = [];
+        var rc2 = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+        var ratedN = Object.keys(rc2).filter(function(k) {
+            return Object.values(rc2[k] || {}).some(function(v) { return typeof v === 'number' && v > 0; });
+        }).length;
+
+        // Practice radar unlocked (5+ songs rated)
+        if (ratedN >= 5 && !_seen.radar) {
+            _newUnlocks.push({ id: 'radar', icon: '&#x1F4E1;', text: 'Practice Radar unlocked \u2014 based on your readiness ratings', color: '#818cf8' });
+        }
+        // Gig risk unlocked (has a gig with linked setlist)
+        var _hasGigScope = false;
+        try {
+            var _gigs = (typeof window._homeBundle !== 'undefined' && _homeBundle) ? _homeBundle.gigs : [];
+            _hasGigScope = _gigs && _gigs.length && _gigs[0].linkedSetlist;
+        } catch(e2) {}
+        if (_hasGigScope && !_seen.gigrisk) {
+            _newUnlocks.push({ id: 'gigrisk', icon: '&#x1F6A8;', text: 'Gig risk analysis active \u2014 tracking your setlist readiness', color: '#818cf8' });
+        }
+        // Scorecard unlocked (first rehearsal completed)
+        if (scData && scData.latest && !_seen.scorecard) {
+            _newUnlocks.push({ id: 'scorecard', icon: '&#x1F3C1;', text: 'Rehearsal Scorecard unlocked \u2014 from your rehearsal session data', color: '#818cf8' });
+        }
+        // Segmentation unlocked (first recording analyzed)
+        var _hasTl = (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) ? GLStore.getLatestTimeline() : null;
+        if (_hasTl && _hasTl.summary && !_seen.segmentation) {
+            _newUnlocks.push({ id: 'segmentation', icon: '&#x1F50D;', text: 'Rehearsal insights unlocked \u2014 from your uploaded recording', color: '#818cf8' });
+        }
+
+        // Show up to 1 unlock per render (avoid flood), persist it
+        if (_newUnlocks.length) {
+            var unlock = _newUnlocks[0];
+            messages.push(unlock);
+            _seen[unlock.id] = Date.now();
+            try { localStorage.setItem(_unlockKey, JSON.stringify(_seen)); } catch(e) {}
+        }
+    }
+
+    return messages.slice(0, 3);
 }
 
 // ── Command Center: Recent Changes ────────────────────────────────────────────
