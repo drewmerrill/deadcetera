@@ -294,50 +294,63 @@ function _scorePlayShowCard(bundle) {
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
     var activityHTML = _renderActivityFeed(bundle);
+    // Determine workflow state for visual emphasis
+    var hasTimeline = !!(typeof GLStore !== 'undefined' && GLStore.getLatestTimeline && GLStore.getLatestTimeline());
+    var hasScorecard = !!(typeof GLStore !== 'undefined' && GLStore.getLatestCompletedSummary && GLStore.getLatestCompletedSummary());
+    var hasAttempts = !!(typeof GLStore !== 'undefined' && GLStore.getAttemptIntelligence && GLStore.getAttemptIntelligence() && GLStore.getAttemptIntelligence().hasData);
+
     return [
         '<div class="home-dashboard hd-mission-board">',
 
-        // Section 1: Band Mission
+        // Hero
         renderHdHeroNextUp(bundle, isStoner),
 
-        '<div class="hd-buckets home-anim-cards">',
+        '<div class="hd-spine-container">',
 
-        // Section 2: Your Prep + Band Strategy
+        // Phase: PLAN
+        '<div class="hd-phase' + (hasScorecard ? ' hd-phase--active' : '') + '" data-phase="Plan">',
+        '<div class="hd-phase__label">Plan</div>',
+        '<div class="hd-phase__cards hd-buckets home-anim-cards">',
         renderHdYourPrep(bundle),
         renderHdBandStatus(bundle),
-
-        // Section 3: Next Rehearsal Goal + Rehearsal Insights
-        '<div style="grid-column:1/-1;height:8px"></div>', // section spacer
         renderHdNextRehearsalGoal(bundle),
-        renderRehearsalInsights(),
+        renderRehearsalAgenda(),
+        '</div></div>',
 
-        // Section 3b: Rehearsal Timeline preview + Attempt Intelligence
+        // Phase: CAPTURE
+        '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Capture">',
+        '<div class="hd-phase__label">Capture</div>',
+        '<div class="hd-phase__cards hd-buckets">',
+        renderUploadRehearsal(),
+        renderRehearsalInsights(),
+        '</div></div>',
+
+        // Phase: ANALYZE
+        '<div class="hd-phase' + (hasTimeline ? ' hd-phase--active' : '') + '" data-phase="Analyze">',
+        '<div class="hd-phase__label">Analyze</div>',
+        '<div class="hd-phase__cards hd-buckets">',
         renderRehearsalTimelinePreview(),
         (typeof renderAttemptIntelligence === 'function' ? renderAttemptIntelligence() : ''),
+        '</div></div>',
 
-        // Section 4: Practice Radar + Songs Needing Work (radar elevated above warnings)
-        '<div style="grid-column:1/-1;height:8px"></div>',
+        // Phase: LEARN
+        '<div class="hd-phase' + (hasAttempts ? ' hd-phase--active' : '') + '" data-phase="Learn">',
+        '<div class="hd-phase__label">Learn</div>',
+        '<div class="hd-phase__cards hd-buckets">',
         renderPracticeRadar(),
         renderHdSongsNeedingWork(bundle),
+        '</div></div>',
 
-        // Section 5: Rehearsal Agenda + Upload
-        '<div style="grid-column:1/-1;height:8px"></div>',
-        renderRehearsalAgenda(),
-        renderUploadRehearsal(),
-
-        // Section 6: Scorecard + History
-        '<div style="grid-column:1/-1;height:8px"></div>',
+        // Phase: IMPROVE
+        '<div class="hd-phase' + (hasScorecard ? ' hd-phase--active' : '') + '" data-phase="Improve">',
+        '<div class="hd-phase__label">Improve</div>',
+        '<div class="hd-phase__cards hd-buckets">',
         renderLastRehearsal(),
         renderRehearsalHistory(),
+        '</div></div>',
 
-        // Future progressive discovery modules
-        // Render after X rehearsals or X recordings:
-        // if (completionHistory.length >= 3) renderImprovementTrends()
-        // if (completionHistory.length >= 5) renderMostImprovedSongs()
-        // if (pocketDataAvailable) renderGrooveTrends()
-        // if (timelineCount >= 2) renderRecordingInsights()
+        '</div>', // end spine-container
 
-        '</div>',
         activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
         '</div>'
     ].join('');
@@ -2361,6 +2374,20 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-hero__cta--secondary{background:rgba(255,255,255,0.06);color:var(--text-dim);border:1px solid rgba(255,255,255,0.12)}',
     '.hd-hero__cta--secondary:hover{background:rgba(255,255,255,0.1);color:var(--text)}',
     '.hd-hero__cta--tertiary{background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.08);font-size:12px}',
+    // Spine container
+    '.hd-spine-container{position:relative;padding-left:28px}',
+    '.hd-spine-container::before{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:linear-gradient(180deg,rgba(99,102,241,0.25) 0%,rgba(99,102,241,0.08) 100%);border-radius:1px}',
+    '@media(max-width:480px){.hd-spine-container{padding-left:0}.hd-spine-container::before{display:none}}',
+    // Phase blocks
+    '.hd-phase{position:relative;margin-bottom:24px;opacity:0.7;transition:opacity 0.3s}',
+    '.hd-phase--active{opacity:1}',
+    '.hd-phase::before{content:"";position:absolute;left:-24px;top:6px;width:10px;height:10px;border-radius:50%;background:rgba(99,102,241,0.2);border:2px solid rgba(99,102,241,0.35)}',
+    '.hd-phase--active::before{background:rgba(99,102,241,0.5);border-color:#667eea;box-shadow:0 0 8px rgba(99,102,241,0.3)}',
+    '@media(max-width:480px){.hd-phase::before{display:none}}',
+    '.hd-phase__label{font-size:9px;font-weight:800;letter-spacing:0.18em;color:rgba(99,102,241,0.4);text-transform:uppercase;margin-bottom:8px;margin-left:2px}',
+    '.hd-phase--active .hd-phase__label{color:rgba(99,102,241,0.7)}',
+    '@media(max-width:480px){.hd-phase__label{margin-left:0}}',
+    '.hd-phase__cards{margin-bottom:0}',
     '.hd-buckets{display:grid;grid-template-columns:1fr 1fr;gap:20px}',
     '@media(max-width:480px){.hd-buckets{grid-template-columns:1fr}}',
     '.hd-bucket{background:rgba(255,255,255,0.03);border-radius:14px;padding:14px 14px 12px;border:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;gap:8px}',
