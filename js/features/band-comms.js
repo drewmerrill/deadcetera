@@ -36,10 +36,24 @@ window.renderSongDiscussion = async function(songTitle, container) {
 
   var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Discussion</div>';
 
+  // Mark as seen for notification tracking
+  try { localStorage.setItem('bc_seen_disc_' + songKey, String(Date.now())); } catch(e) {}
+
   if (!messages.length) {
     html += '<div style="font-size:0.8em;color:var(--text-dim);padding:6px 0;font-style:italic">No comments yet. Start the conversation.</div>';
   } else {
     messages.sort(function(a, b) { return (a.ts || '').localeCompare(b.ts || ''); });
+    // Pinned messages first
+    var pinned = messages.filter(function(m) { return m.pinned; });
+    var unpinned = messages.filter(function(m) { return !m.pinned; });
+    if (pinned.length) {
+      html += '<div style="margin-bottom:6px">';
+      pinned.forEach(function(m) {
+        html += '<div style="padding:5px 8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:6px;margin-bottom:4px;font-size:0.78em;color:var(--text-muted)">&#x1F4CC; ' + _bcEsc(m.text || '') + ' <span style="font-size:0.8em;color:var(--text-dim)">— ' + _bcEsc(m.author || '') + '</span></div>';
+      });
+      html += '</div>';
+    }
+    messages = unpinned;
     html += '<div style="max-height:200px;overflow-y:auto;margin-bottom:8px">';
     messages.forEach(function(m) {
       var timeAgo = _bcTimeAgo(m.ts);
@@ -59,7 +73,9 @@ window.renderSongDiscussion = async function(songTitle, container) {
         + '<span style="font-size:0.62em;color:var(--text-dim)">' + timeAgo + '</span>'
         + '</div>'
         + '<div style="font-size:0.82em;color:var(--text-muted);margin-top:2px">' + _bcEsc(m.text || '') + '</div>'
-        + '<div style="display:flex;gap:3px;margin-top:3px">' + rHTML + '</div>'
+        + '<div style="display:flex;gap:3px;margin-top:3px;align-items:center">' + rHTML
+        + '<button onclick="_bcPinMsg(\'' + songKey + '\',\'' + m._key + '\')" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:1px 4px" title="Pin message">&#x1F4CC;</button>'
+        + '</div>'
         + '</div>';
     });
     html += '</div>';
@@ -106,10 +122,13 @@ function renderIdeasBoardPage(el) {
   el.innerHTML = '<div class="page-header"><h1>💡 Ideas Board</h1><p>Song ideas, jam concepts, setlist suggestions, polls</p></div>'
     + '<div style="max-width:600px;margin:0 auto">'
     + '<div id="bcIdeasContainer"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>'
+    + '<div id="bcBriefContainer" style="margin-top:20px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"></div>'
     + '<div id="bcPollsContainer" style="margin-top:20px"></div>'
     + '</div>';
   _bcLoadIdeas();
   setTimeout(function() {
+    var briefContainer = document.getElementById('bcBriefContainer');
+    if (briefContainer && typeof renderRehearsalBrief === 'function') renderRehearsalBrief(briefContainer);
     var pollContainer = document.getElementById('bcPollsContainer');
     if (pollContainer && typeof renderPollWidget === 'function') renderPollWidget(pollContainer);
   }, 100);
@@ -362,6 +381,98 @@ window._bcReact = async function(path, emoji) {
       await firebaseDB.ref(bandPath(path + '/reactions/' + userId)).set(emoji);
     }
   } catch(e) {}
+};
+
+// ── Pin Messages ─────────────────────────────────────────────────────────────
+
+window._bcPinMsg = async function(songKey, msgKey) {
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      var ref = firebaseDB.ref(bandPath('discussions/' + songKey + '/messages/' + msgKey + '/pinned'));
+      var snap = await ref.once('value');
+      await ref.set(!snap.val()); // toggle
+      if (typeof showToast === 'function') showToast(snap.val() ? 'Unpinned' : '📌 Pinned');
+    }
+  } catch(e) {}
+};
+
+// ── Notification Tracking (localStorage-based) ──────────────────────────────
+// Tracks "last seen" timestamps per surface. New items after that timestamp
+// count as unread. Checked on navigation to show badges.
+
+window.bcGetUnreadCount = async function(type, key) {
+  var seenKey = 'bc_seen_' + type + '_' + (key || 'global');
+  var lastSeen = 0;
+  try { lastSeen = parseInt(localStorage.getItem(seenKey) || '0'); } catch(e) {}
+  if (!lastSeen) return 0;
+
+  var count = 0;
+  try {
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      var path = type === 'disc' ? 'discussions/' + key + '/messages' : type === 'ideas' ? 'ideas/posts' : type === 'polls' ? 'polls' : null;
+      if (!path) return 0;
+      var snap = await firebaseDB.ref(bandPath(path)).orderByChild('ts').startAt(new Date(lastSeen).toISOString()).once('value');
+      var val = snap.val();
+      if (val) count = Object.keys(val).length;
+    }
+  } catch(e) {}
+  return count;
+};
+
+window.bcMarkSeen = function(type, key) {
+  var seenKey = 'bc_seen_' + type + '_' + (key || 'global');
+  try { localStorage.setItem(seenKey, String(Date.now())); } catch(e) {}
+};
+
+// ── Rehearsal Brief ──────────────────────────────────────────────────────────
+// Auto-generated pre-rehearsal summary using existing intelligence.
+
+window.renderRehearsalBrief = function(container) {
+  if (!container) return;
+  var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px">Rehearsal Brief</div>';
+  var sections = [];
+
+  // Songs needing work
+  if (typeof readinessCache !== 'undefined') {
+    var weak = [];
+    Object.entries(readinessCache).forEach(function(e) {
+      var title = e[0], scores = e[1] || {};
+      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+      if (vals.length) {
+        var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+        if (avg < 3) weak.push({ title: title, avg: avg });
+      }
+    });
+    weak.sort(function(a, b) { return a.avg - b.avg; });
+    if (weak.length) {
+      var items = weak.slice(0, 5).map(function(w) {
+        return '<div style="font-size:0.82em;color:var(--text-muted);padding:2px 0">\u2022 ' + _bcEsc(w.title) + ' <span style="color:#f59e0b;font-size:0.85em">(' + w.avg.toFixed(1) + '/5)</span></div>';
+      }).join('');
+      sections.push('<div style="margin-bottom:10px"><div style="font-size:0.72em;font-weight:700;color:#f59e0b;margin-bottom:4px">Songs Needing Work</div>' + items + '</div>');
+    }
+  }
+
+  // Tempo reminders from song metadata
+  if (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention) {
+    var pa = GLStore.getPracticeAttention({ limit: 3 });
+    if (pa && pa.length) {
+      var tempoItems = pa.map(function(p) {
+        return '<div style="font-size:0.82em;color:var(--text-muted);padding:2px 0">\u2022 ' + _bcEsc(p.songId) + ' <span style="font-size:0.8em;color:var(--text-dim)">— ' + _bcEsc(p.topReason || '') + '</span></div>';
+      }).join('');
+      sections.push('<div style="margin-bottom:10px"><div style="font-size:0.72em;font-weight:700;color:#818cf8;margin-bottom:4px">Practice Focus</div>' + tempoItems + '</div>');
+    }
+  }
+
+  // Recent discussion activity
+  sections.push('<div style="font-size:0.72em;color:var(--text-dim);font-style:italic">Check Song Discussions for arrangement notes and the Ideas Board for new suggestions.</div>');
+
+  if (!sections.length) {
+    html += '<div style="font-size:0.82em;color:var(--text-dim)">No data available for briefing yet.</div>';
+  } else {
+    html += sections.join('');
+  }
+
+  container.innerHTML = html;
 };
 
 // ── Register ────────────────────────────────────────────────────────────────
