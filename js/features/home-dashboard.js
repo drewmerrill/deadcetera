@@ -339,94 +339,334 @@ function _scorePlayShowCard(bundle) {
 
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
-    var activityHTML = _renderActivityFeed(bundle);
 
     // Workflow state from GLStore
     var wf = (typeof GLStore !== 'undefined' && GLStore.getDashboardWorkflowState)
         ? GLStore.getDashboardWorkflowState()
         : { phaseState: {}, currentPhase: 'plan', nextActionLabel: 'Get started', nextActionDescription: '', nextActionTarget: '' };
-    var ps = wf.phaseState || {};
 
-    var PHASE_HINTS = {
-        plan: 'Decide what the band should work on',
-        capture: 'Bring in a rehearsal recording',
-        analyze: 'See what happened across the session',
-        learn: 'Find the exact moments that broke down',
-        improve: 'Turn insights into the next plan',
+    return [
+        '<div class="home-dashboard hd-command-center">',
+        _renderCommandCenterHeader(bundle),
+        _renderHeroNextBestStep(bundle, wf, isStoner),
+        _renderBandHealthRow(bundle),
+        _renderPriorityQueue(bundle),
+        _renderRecentChanges(bundle),
+        '</div>'
+    ].join('');
+}
+
+// ── Command Center: Header ────────────────────────────────────────────────────
+
+function _renderCommandCenterHeader(bundle) {
+    var tone = deriveHdConfidenceTone(bundle);
+    var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var chip = '';
+    if (tone) {
+        chip = '<span class="hd-cc-chip" style="background:' + tone.color + '18;color:' + tone.color + ';border-color:' + tone.color + '44">' + tone.short + '</span>';
+    }
+    return '<div class="hd-cc-header home-anim-header">'
+        + '<div class="hd-cc-header__left">'
+        + '<div class="hd-cc-header__title">Command Center</div>'
+        + '<div class="hd-cc-header__date">' + dateStr + '</div>'
+        + '</div>'
+        + chip
+        + '</div>';
+}
+
+// ── Command Center: Hero + Next Best Step ─────────────────────────────────────
+
+function _renderHeroNextBestStep(bundle, wf, isStoner) {
+    var nextGig = bundle.gigs && bundle.gigs[0];
+    var nextPlan = bundle.plans && bundle.plans[0];
+
+    if (nextGig || nextPlan) {
+        // Render gig/rehearsal hero, then place next-step banner BELOW it as
+        // a sibling element rather than splicing into the hero HTML. This keeps
+        // the hero focused on event context and puts the workflow guidance in a
+        // visually distinct strip underneath.
+        var heroHTML = renderHdHeroNextUp(bundle, isStoner);
+        var nsBanner = _renderNextStepBannerInline(wf);
+        return heroHTML + nsBanner;
+    }
+    // No gig or rehearsal — next step IS the hero
+    return _renderWorkflowHero(wf);
+}
+
+function _renderNextStepBannerInline(wf) {
+    if (!wf || !wf.nextActionLabel) return '';
+    var targetActions = {
+        agenda: "if(typeof GLStore!=='undefined'&&GLStore.regenerateRehearsalAgenda){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard==='function')renderHomeDashboard();}",
+        chopper: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()",
+        learn: "showPage('songs')",
+        improve: "showPage('rehearsal')",
     };
+    var onclick = targetActions[wf.nextActionTarget] || '';
+    return '<div class="hd-cc-nextstep">'
+        + '<span class="hd-cc-nextstep__icon">&#x279C;</span>'
+        + '<div class="hd-cc-nextstep__text">'
+        + '<span class="hd-cc-nextstep__label">' + wf.nextActionLabel + '</span>'
+        + (wf.nextActionDescription ? '<span class="hd-cc-nextstep__desc">' + (wf.nextActionDescription || '') + '</span>' : '')
+        + '</div>'
+        + (onclick ? '<button onclick="' + onclick + '" class="hd-cc-nextstep__cta">Go</button>' : '')
+        + '</div>';
+}
 
-    function _phaseClass(key) {
-        var state = ps[key] || 'future';
-        if (state === 'completed') return ' hd-phase--active hd-phase--done';
-        if (state === 'current') return ' hd-phase--active hd-phase--current';
-        return '';
+function _renderWorkflowHero(wf) {
+    var targetActions = {
+        agenda: "if(typeof GLStore!=='undefined'&&GLStore.regenerateRehearsalAgenda){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard==='function')renderHomeDashboard();}",
+        chopper: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()",
+        learn: "showPage('songs')",
+        improve: "showPage('rehearsal')",
+    };
+    var onclick = targetActions[wf.nextActionTarget] || '';
+    return '<div class="hd-hero hd-hero--workflow home-anim-header">'
+        + '<div class="hd-hero__eyebrow">NEXT BEST STEP</div>'
+        + '<div class="hd-hero__title">' + (wf.nextActionLabel || 'Get Started') + '</div>'
+        + '<div class="hd-hero__sub">' + (wf.nextActionDescription || 'Add a gig or rehearsal to begin.') + '</div>'
+        + '<div class="hd-hero__actions">'
+        + (onclick ? '<button class="hd-hero__cta hd-hero__cta--primary" onclick="' + onclick + '">Go</button>' : '')
+        + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'gigs\')">Add Gig</button>'
+        + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'rehearsal\')">Plan Rehearsal</button>'
+        + '</div></div>';
+}
+
+// ── Command Center: Band Health Row ───────────────────────────────────────────
+
+function _renderBandHealthRow(bundle) {
+    var tiles = [];
+
+    // 1. Band Readiness %
+    var pct = _computeBandReadinessPct(bundle);
+    var rl = deriveHdReadinessLabel(pct);
+    if (pct !== null && rl) {
+        tiles.push({
+            icon: '&#x1F4CA;', label: 'Readiness', value: pct + '%', sub: rl.long, color: rl.color,
+            onclick: "showPage('songs')"
+        });
     }
 
-    function _phaseLabel(key) {
-        var hint = PHASE_HINTS[key] || '';
-        return '<div class="hd-phase__label">' + key.charAt(0).toUpperCase() + key.slice(1)
-            + (hint ? ' <span style="font-weight:500;letter-spacing:0;text-transform:none;color:rgba(255,255,255,0.15);font-size:0.9em">— ' + hint + '</span>' : '')
+    // 2. Pocket Time
+    var pt = (typeof GLStore !== 'undefined' && GLStore.getPocketTimeMetrics) ? GLStore.getPocketTimeMetrics() : null;
+    if (pt) {
+        var ptColor = pt.pocketTimePct >= 70 ? '#22c55e' : pt.pocketTimePct >= 50 ? '#60a5fa' : pt.pocketTimePct >= 30 ? '#f59e0b' : '#ef4444';
+        tiles.push({
+            icon: '&#x23F1;', label: 'Pocket Time', value: pt.pocketTimePct + '%', sub: pt.label, color: ptColor,
+            onclick: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
+        });
+    }
+
+    // 3. Last Rehearsal Score
+    var scData = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
+    if (scData && scData.latest) {
+        var sc = scData.latest;
+        var scColor = sc.score >= 80 ? '#22c55e' : sc.score >= 50 ? '#f59e0b' : '#ef4444';
+        tiles.push({
+            icon: '&#x1F3C1;', label: 'Last Score', value: String(sc.score), sub: sc.label || '', color: scColor,
+            onclick: "showPage('rehearsal')"
+        });
+    }
+
+    // 4. Weak Songs count
+    var rc = bundle.readinessCache || {};
+    var weakCount = Object.entries(rc).filter(function(e) {
+        var keys = Object.keys(e[1] || {}).filter(function(k) { return typeof e[1][k] === 'number' && e[1][k] > 0; });
+        return keys.length && _bandAvgForSong(e[1]) < 3;
+    }).length;
+    var wkColor = weakCount === 0 ? '#22c55e' : weakCount <= 2 ? '#f59e0b' : '#ef4444';
+    tiles.push({
+        icon: '&#x26A0;', label: 'Weak Songs', value: String(weakCount), sub: weakCount === 0 ? 'All clear' : 'Need work', color: wkColor,
+        onclick: "showPage('songs')"
+    });
+
+    // Need at least 2 tiles for the row to feel useful — a single tile looks odd
+    if (tiles.length < 2) return '';
+
+    var html = '<div class="hd-health-row home-anim-cards">';
+    for (var i = 0; i < tiles.length; i++) {
+        var t = tiles[i];
+        html += '<div class="hd-health-tile" onclick="' + t.onclick + '">'
+            + '<div class="hd-health-tile__icon">' + t.icon + '</div>'
+            + '<div class="hd-health-tile__value" style="color:' + t.color + '">' + t.value + '</div>'
+            + '<div class="hd-health-tile__label">' + t.label + '</div>'
+            + (t.sub ? '<div class="hd-health-tile__sub" style="color:' + t.color + '">' + t.sub + '</div>' : '')
+            + '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+// ── Command Center: Priority Work Queue ───────────────────────────────────────
+
+function _renderPriorityQueue(bundle) {
+    var items = [];
+
+    // Active rehearsal session — top priority
+    var activeSession = (typeof GLStore !== 'undefined' && GLStore.getActiveRehearsalAgendaSession)
+        ? GLStore.getActiveRehearsalAgendaSession() : null;
+    if (activeSession && activeSession.status === 'active') {
+        items.push({
+            urgency: 100, label: 'Resume Rehearsal Session',
+            desc: 'Slot ' + (activeSession.currentIndex + 1) + ' of ' + activeSession.items.length,
+            badge: 'IN PROGRESS', badgeColor: '#22c55e',
+            cta: 'Resume', onclick: "if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaAtIndex(" + activeSession.currentIndex + ")"
+        });
+    }
+
+    // Rehearsal agenda available
+    var agenda = (typeof GLStore !== 'undefined' && GLStore.generateRehearsalAgenda) ? GLStore.generateRehearsalAgenda() : null;
+    if (agenda && !agenda.empty && !(activeSession && activeSession.status === 'active')) {
+        items.push({
+            urgency: 80, label: 'Start Rehearsal',
+            desc: agenda.items.length + ' songs \xb7 ' + agenda.totalMinutes + ' min plan ready',
+            badge: '', badgeColor: '',
+            cta: 'Start', onclick: "if(typeof GLStore!=='undefined')GLStore.startRehearsalAgendaSession()"
+        });
+    }
+
+    // Upload CTA — only when the band has *some* data but no recording yet.
+    // If no readiness data exists either, the upload prompt is premature —
+    // the user should add songs and rate readiness first.
+    var tl = (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) ? GLStore.getLatestTimeline() : null;
+    var hasAnyReadiness = _computeBandReadinessPct(bundle) !== null;
+    if ((!tl || !tl.summary) && hasAnyReadiness) {
+        items.push({
+            urgency: 40, label: 'Analyze a Rehearsal Recording',
+            desc: 'Upload an MP3 to see what your rehearsal actually looked like',
+            badge: '', badgeColor: '',
+            cta: 'Upload', onclick: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
+        });
+    }
+
+    // Practice radar top items — cap at 2 when agenda or session is present
+    // to avoid the queue feeling like just a song list
+    var hasAgendaItem = items.length > 0;
+    var prLimit = hasAgendaItem ? 2 : 3;
+    var prItems = (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention)
+        ? GLStore.getPracticeAttention({ limit: prLimit }) : [];
+    if (prItems && prItems.length) {
+        for (var p = 0; p < Math.min(prLimit, prItems.length); p++) {
+            var pr = prItems[p];
+            var prTier = _prUrgencyTier(pr);
+            var safeTitle = pr.songId.replace(/'/g, "\\'");
+            items.push({
+                urgency: 50 - p,
+                label: 'Practice: ' + pr.songId,
+                desc: pr.topReason,
+                badge: prTier.label !== 'Keep Warm' ? prTier.label.toUpperCase() : '',
+                badgeColor: prTier.color,
+                cta: 'Practice',
+                onclick: "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + safeTitle + "');if(typeof highlightSelectedSongRow==='function')highlightSelectedSongRow('" + safeTitle + "');},200)"
+            });
+        }
+    }
+
+    // Sort by urgency, cap at 5
+    items.sort(function(a, b) { return b.urgency - a.urgency; });
+    items = items.slice(0, 5);
+
+    if (!items.length) {
+        return '<div class="hd-pq home-anim-cards">'
+            + '<div class="hd-pq__header">Priority Queue</div>'
+            + '<div class="hd-pq__empty">No actions right now. Add songs and rate readiness to get started.</div>'
             + '</div>';
     }
 
-    return [
-        '<div class="home-dashboard hd-mission-board">',
+    var html = '<div class="hd-pq home-anim-cards">'
+        + '<div class="hd-pq__header">Priority Queue</div>';
 
-        // Hero
-        renderHdHeroNextUp(bundle, isStoner),
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var badgeHTML = item.badge
+            ? '<span class="hd-pq__badge" style="background:' + item.badgeColor + '18;color:' + item.badgeColor + ';border-color:' + item.badgeColor + '44">' + item.badge + '</span>'
+            : '';
+        html += '<div class="hd-pq__item">'
+            + '<span class="hd-pq__rank">' + (i + 1) + '</span>'
+            + '<div class="hd-pq__body">'
+            + '<div class="hd-pq__label">' + _escHtml(item.label) + ' ' + badgeHTML + '</div>'
+            + '<div class="hd-pq__desc">' + _escHtml(item.desc) + '</div>'
+            + '</div>'
+            + '<button class="hd-pq__cta" onclick="' + item.onclick + '">' + item.cta + ' &#x2192;</button>'
+            + '</div>';
+    }
 
-        // Next Best Step banner
-        _renderNextStepBanner(wf),
+    html += '</div>';
+    return html;
+}
 
-        '<div class="hd-spine-container">',
+// ── Command Center: Recent Changes ────────────────────────────────────────────
 
-        // PLAN
-        '<div class="hd-phase' + _phaseClass('plan') + '" data-phase="Plan">',
-        _phaseLabel('plan'),
-        '<div class="hd-phase__cards hd-buckets home-anim-cards">',
-        renderHdYourPrep(bundle),
-        renderHdBandStatus(bundle),
-        renderHdNextRehearsalGoal(bundle),
-        '</div></div>',
+function _renderRecentChanges(bundle) {
+    var hasMeaningfulContent = false;
+    var sections = [];
 
-        // CAPTURE
-        '<div class="hd-phase' + _phaseClass('capture') + '" data-phase="Capture">',
-        _phaseLabel('capture'),
-        '<div class="hd-phase__cards hd-buckets">',
-        renderUploadRehearsal(),
-        '</div></div>',
+    // Latest scorecard headline
+    var scData = (typeof GLStore !== 'undefined' && GLStore.getRehearsalScorecardData) ? GLStore.getRehearsalScorecardData() : null;
+    if (scData && scData.latest) {
+        hasMeaningfulContent = true;
+        var sc = scData.latest;
+        var tsField = sc.createdAt || sc.completedAt;
+        var recency = '';
+        if (tsField) {
+            var ms = Date.now() - new Date(tsField).getTime();
+            var mins = Math.round(ms / 60000);
+            if (mins < 60) recency = mins + ' min ago';
+            else if (mins < 1440) recency = Math.round(mins / 60) + 'h ago';
+            else recency = Math.round(mins / 1440) + 'd ago';
+        }
+        var scColor = sc.score >= 80 ? '#22c55e' : sc.score >= 50 ? '#f59e0b' : '#ef4444';
+        sections.push('<div class="hd-changes__scorecard">'
+            + '<span style="font-size:0.65em;color:var(--text-dim,#475569);margin-right:4px">Last rehearsal</span>'
+            + '<span style="font-weight:800;color:' + scColor + '">' + sc.score + '</span>'
+            + '<span class="hd-changes__sc-label">' + _escHtml(sc.headline || sc.label || 'Complete') + '</span>'
+            + (recency ? '<span class="hd-changes__sc-time">' + recency + '</span>' : '')
+            + '</div>');
+    }
 
-        // ANALYZE
-        '<div class="hd-phase' + _phaseClass('analyze') + '" data-phase="Analyze">',
-        _phaseLabel('analyze'),
-        '<div class="hd-phase__cards hd-buckets">',
-        renderRehearsalInsights(),
-        renderRehearsalTimelinePreview(),
-        renderLastRehearsal(),
-        renderRehearsalHistory(),
-        '</div></div>',
+    // Compact timeline strip
+    var ri = (typeof GLStore !== 'undefined' && GLStore.getRehearsalIntelligence) ? GLStore.getRehearsalIntelligence() : null;
+    if (ri && ri.hasData && ri.stripSegments && ri.stripSegments.length) {
+        hasMeaningfulContent = true;
+        var kindColors = { music: '#667eea', speech: '#f59e0b', silence: '#334155', unknown: '#1e293b', excluded: '#1e293b' };
+        var strip = '<div class="hd-changes__timeline" title="Last rehearsal \xb7 ' + ri.totalDurationMin + ' min">';
+        strip += '<div class="hd-changes__strip">';
+        for (var s = 0; s < ri.stripSegments.length; s++) {
+            var seg = ri.stripSegments[s];
+            var c = kindColors[seg.kind] || '#1e293b';
+            var op = seg.kind === 'silence' ? '0.3' : '0.8';
+            strip += '<div style="position:absolute;left:' + seg.startPct.toFixed(2) + '%;width:' + Math.max(seg.widthPct, 0.3).toFixed(2) + '%;height:100%;background:' + c + ';opacity:' + op + '"></div>';
+        }
+        strip += '</div>';
+        strip += '<div class="hd-changes__strip-meta">' + ri.totalDurationMin + ' min \xb7 ' + (ri.musicSegments || 0) + ' music \xb7 ' + (ri.restartCount || 0) + ' restarts</div>';
+        strip += '</div>';
+        sections.push(strip);
+    }
 
-        // LEARN
-        '<div class="hd-phase' + _phaseClass('learn') + '" data-phase="Learn">',
-        _phaseLabel('learn'),
-        '<div class="hd-phase__cards hd-buckets">',
-        renderHdSongsNeedingWork(bundle),
-        (typeof renderAttemptIntelligence === 'function' ? renderAttemptIntelligence() : ''),
-        '</div></div>',
+    // Activity feed — only include if we have some meaningful anchor content above,
+    // otherwise the section is just generic activity which isn't worth a card.
+    if (hasMeaningfulContent) {
+        sections.push('<div id="home-activity-feed" class="home-activity"></div>');
+        setTimeout(function() {
+            var el = document.getElementById('home-activity-feed');
+            if (!el) return;
+            _loadActivityFeed().then(function(entries) {
+                if (!entries || !entries.length) { el.style.display = 'none'; return; }
+                el.innerHTML = '<div class="home-activity__title">Recent Activity</div>'
+                    + entries.map(function(e) {
+                        return '<div class="home-activity__item">'
+                            + '<span class="home-activity__text">' + _escHtml(_activityLabel(e)) + '</span>'
+                            + '<span class="home-activity__time">' + _activityTimeAgo(e.time) + '</span>'
+                            + '</div>';
+                    }).join('');
+            });
+        }, 300);
+    }
 
-        // IMPROVE
-        '<div class="hd-phase' + _phaseClass('improve') + '" data-phase="Improve">',
-        _phaseLabel('improve'),
-        '<div class="hd-phase__cards hd-buckets">',
-        renderPracticeRadar(),
-        renderRehearsalAgenda(),
-        '</div></div>',
-
-        '</div>', // end spine-container
-
-        activityHTML ? activityHTML.replace('id="home-activity-feed"', 'id="home-activity-feed" class="hd-activity-demoted"') : '',
-        '</div>'
-    ].join('');
+    if (!sections.length) return '';
+    return '<div class="hd-changes home-anim-feed">'
+        + '<div class="hd-changes__header">What Changed</div>'
+        + sections.join('')
+        + '</div>';
 }
 
 // ── Mission Board Helpers ────────────────────────────────────────────────────
@@ -2567,7 +2807,59 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-intel__row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;gap:6px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06)}',
     '.hd-intel__rows{display:flex;flex-direction:column}',
     '.hd-mission-board .home-readiness-widget{display:none!important}',
-    '.hd-mission-board .home-banner{display:none!important}'
+    '.hd-mission-board .home-banner{display:none!important}',
+    /* ── Command Center layout ── */
+    '.hd-command-center{display:flex;flex-direction:column;gap:16px;padding:12px 0 32px;max-width:680px;margin:0 auto}',
+    /* CC Header */
+    '.hd-cc-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px}',
+    '.hd-cc-header__title{font-size:1.2em;font-weight:800;color:var(--text,#f1f5f9);letter-spacing:-0.01em}',
+    '.hd-cc-header__date{font-size:0.72em;font-weight:600;color:var(--text-dim,#475569);margin-top:1px}',
+    '.hd-cc-chip{font-size:10px;font-weight:800;letter-spacing:0.06em;padding:3px 10px;border-radius:20px;border:1px solid;white-space:nowrap}',
+    /* CC Next Step inline */
+    '.hd-hero:has(+.hd-cc-nextstep){border-radius:16px 16px 0 0;margin-bottom:0}',
+    '.hd-cc-nextstep{display:flex;align-items:center;gap:10px;padding:10px 14px 12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.18);border-top:1px solid rgba(99,102,241,0.12);border-radius:0 0 12px 12px}',
+    '.hd-cc-nextstep__icon{font-size:1.1em;color:#818cf8;flex-shrink:0}',
+    '.hd-cc-nextstep__text{flex:1;min-width:0}',
+    '.hd-cc-nextstep__label{font-weight:700;font-size:0.85em;color:var(--text,#f1f5f9);display:block}',
+    '.hd-cc-nextstep__desc{font-size:0.72em;color:var(--text-dim,#475569);display:block;margin-top:1px}',
+    '.hd-cc-nextstep__cta{padding:5px 14px;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:700;font-size:0.78em;cursor:pointer;white-space:nowrap;flex-shrink:0}',
+    '.hd-cc-nextstep__cta:hover{filter:brightness(1.1)}',
+    /* Workflow hero (no gig/rehearsal) */
+    '.hd-hero--workflow{background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(99,102,241,0.02));border-color:rgba(99,102,241,0.2)}',
+    /* Band Health Row */
+    '.hd-health-row{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
+    '.hd-health-row::-webkit-scrollbar{display:none}',
+    '.hd-health-tile{flex:1;min-width:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:12px 10px 10px;text-align:center;cursor:pointer;transition:border-color 0.15s,transform 0.15s;position:relative}',
+    '.hd-health-tile:hover{border-color:rgba(255,255,255,0.18);transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.2)}',
+    '.hd-health-tile::after{content:"\\2192";position:absolute;bottom:4px;right:8px;font-size:0.6em;color:rgba(255,255,255,0.12);transition:color 0.15s}',
+    '.hd-health-tile:hover::after{color:rgba(255,255,255,0.3)}',
+    '.hd-health-tile__icon{font-size:1.1em;margin-bottom:4px}',
+    '.hd-health-tile__value{font-size:1.35em;font-weight:900;line-height:1.1}',
+    '.hd-health-tile__label{font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase;margin-top:2px}',
+    '.hd-health-tile__sub{font-size:0.65em;font-weight:600;margin-top:1px}',
+    '@media(max-width:480px){.hd-health-row{flex-wrap:wrap}.hd-health-tile{min-width:calc(50% - 6px)}}',
+    /* Priority Queue */
+    '.hd-pq{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px}',
+    '.hd-pq__header{font-size:10px;font-weight:800;letter-spacing:0.14em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:10px}',
+    '.hd-pq__empty{font-size:12px;color:var(--text-dim,#475569);font-style:italic}',
+    '.hd-pq__item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)}',
+    '.hd-pq__item:last-child{border-bottom:none}',
+    '.hd-pq__rank{font-size:0.72em;font-weight:800;color:var(--text-dim,#475569);width:20px;text-align:center;flex-shrink:0}',
+    '.hd-pq__body{flex:1;min-width:0}',
+    '.hd-pq__label{font-size:0.85em;font-weight:700;color:var(--text,#f1f5f9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.hd-pq__desc{font-size:0.7em;color:var(--text-dim,#475569);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.hd-pq__badge{font-size:9px;font-weight:800;letter-spacing:0.06em;padding:1px 6px;border-radius:4px;border:1px solid;vertical-align:middle;margin-left:4px}',
+    '.hd-pq__cta{padding:6px 14px;border-radius:8px;background:rgba(255,255,255,0.06);color:var(--text-muted,#94a3b8);border:1px solid rgba(255,255,255,0.1);font-weight:700;font-size:0.75em;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.15s}',
+    '.hd-pq__cta:hover{background:rgba(255,255,255,0.1);color:var(--text,#f1f5f9)}',
+    /* Recent Changes */
+    '.hd-changes{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:14px;padding:14px}',
+    '.hd-changes__header{font-size:10px;font-weight:800;letter-spacing:0.14em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:10px}',
+    '.hd-changes__scorecard{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:6px}',
+    '.hd-changes__sc-label{font-size:0.78em;color:var(--text-muted,#94a3b8);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.hd-changes__sc-time{font-size:0.68em;color:var(--text-dim,#475569);flex-shrink:0}',
+    '.hd-changes__timeline{margin-bottom:8px}',
+    '.hd-changes__strip{position:relative;height:16px;background:#0f172a;border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,0.05)}',
+    '.hd-changes__strip-meta{font-size:0.62em;color:var(--text-dim,#475569);margin-top:3px}'
   ].join('');
   document.head.appendChild(s);
 })();

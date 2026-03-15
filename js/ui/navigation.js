@@ -103,8 +103,13 @@ window.showPage = function showPage(page) {
         GLStore.setActivePage(page);
     }
     // Update browser URL hash for back/forward navigation
+    // Skip push when navigating to the same page (prevents duplicate history entries
+    // that make browser Back appear to do nothing).
     if (!window._glNavFromPopstate) {
-        try { history.pushState({ page: page }, '', '#' + page); } catch(e) {}
+        var _prevHash = location.hash ? location.hash.slice(1) : '';
+        if (_prevHash !== page) {
+            try { history.pushState({ page: page }, '', '#' + page); } catch(e) {}
+        }
     }
     window._glNavFromPopstate = false;
     window.scrollTo(0, 0);
@@ -168,22 +173,41 @@ var pageRenderers = window.pageRenderers = {
 };
 
 // ── Browser history support ───────────────────────────────────────────────
+
+// Pages the hash router will accept. Anything else falls back to 'home'.
+var _HASH_VALID_PAGES = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
+    'venues','finances','tuner','metronome','bestshot','admin',
+    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel'];
+
+function _sanitizeHashPage(raw) {
+    if (!raw) return 'home';
+    return _HASH_VALID_PAGES.indexOf(raw) !== -1 ? raw : 'home';
+}
+
 window.addEventListener('popstate', function(e) {
-    var page = (e.state && e.state.page) ? e.state.page : (location.hash ? location.hash.slice(1) : 'home');
-    if (page && typeof showPage === 'function') {
+    var raw = (e.state && e.state.page) ? e.state.page : (location.hash ? location.hash.slice(1) : 'home');
+    var page = _sanitizeHashPage(raw);
+    if (typeof showPage === 'function') {
         window._glNavFromPopstate = true;
         showPage(page);
     }
 });
 
-// On first load: read URL hash and navigate (deferred so app init runs first)
+// On first load: read URL hash and navigate (deferred so app init runs first).
+// If the hash matches the glLastPage restore, we skip — no double-navigate.
 document.addEventListener('DOMContentLoaded', function() {
     var hash = location.hash ? location.hash.slice(1) : '';
-    if (hash && hash !== 'home') {
+    var page = _sanitizeHashPage(hash);
+    if (page && page !== 'home') {
+        // Signal to glLastPage restore that hash will handle navigation
+        window._glHashRestorePending = page;
         setTimeout(function() {
+            window._glHashRestorePending = null;
+            // Skip if another restore already landed on this page
+            if (typeof currentPage !== 'undefined' && currentPage === page) return;
             if (typeof showPage === 'function') {
                 window._glNavFromPopstate = true; // don't push duplicate state
-                showPage(hash);
+                showPage(page);
             }
         }, 900); // after page restore + auth timing
     }
@@ -201,6 +225,20 @@ console.log('✅ navigation.js loaded');
         try {
             var last = localStorage.getItem('glLastPage');
             if (last && VALID.indexOf(last) !== -1) {
+                // If a URL hash is present and points to a different page, the hash
+                // handler (900ms) should win — it represents explicit navigation intent.
+                // Skip the localStorage restore to avoid a double-navigate flash.
+                var _hashTarget = window._glHashRestorePending || null;
+                if (_hashTarget && _hashTarget !== last) {
+                    // Hash disagrees with glLastPage — let hash handler take over.
+                    // Still set restore-pending so glHeroCheck doesn't clobber us.
+                    window._glPageRestorePending = true;
+                    if (_hashTarget !== 'songs') {
+                        var _sp0 = document.getElementById('page-songs');
+                        if (_sp0) _sp0.classList.add('hidden');
+                    }
+                    return; // yield to hash handler
+                }
                 // Defer so app.js auth + data init runs first.
                 // Set flag so glHeroCheck(true) / 50ms showPage('home') don't
                 // override the restored page (same pattern as _glPanelRestorePending).

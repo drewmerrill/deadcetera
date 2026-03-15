@@ -38,13 +38,19 @@
     var dashboard = container.querySelector('.home-dashboard');
     if (!dashboard) return;
 
-    // 1. Inject Summary Strip at the very top of .home-dashboard
-    if (!dashboard.classList.contains('hd-mission-board')) {
-      var strip = document.createElement('div');
-      strip.id = 'cc-summary-strip';
-      strip.innerHTML = _ccRenderSummaryStrip();
-      dashboard.insertBefore(strip, dashboard.firstChild);
+    // Command Center layout (hd-command-center) already includes its own
+    // health row, priority queue, and recent changes — skip all cc injections.
+    // The old mission-board layout also handled its own strips.
+    if (dashboard.classList.contains('hd-command-center') || dashboard.classList.contains('hd-mission-board')) {
+      _ccInjectStyles(); // still inject styles for any leftover elements
+      return;
     }
+
+    // 1. Inject Summary Strip at the very top of .home-dashboard
+    var strip = document.createElement('div');
+    strip.id = 'cc-summary-strip';
+    strip.innerHTML = _ccRenderSummaryStrip();
+    dashboard.insertBefore(strip, dashboard.firstChild);
 
     // 2. Add new cards to card grid — Radar, Pocket, Quick Actions
     var cardGrid = dashboard.querySelector('.home-card-grid');
@@ -76,7 +82,11 @@
     if (!container) return;
     var dashboard = container.querySelector('.home-dashboard');
     if (!dashboard) return;
-    if (!document.getElementById('cc-summary-strip') && !dashboard.classList.contains('hd-mission-board')) {
+    // Skip cc injections for Command Center and mission-board layouts
+    if (dashboard.classList.contains('hd-command-center') || dashboard.classList.contains('hd-mission-board')) {
+      return;
+    }
+    if (!document.getElementById('cc-summary-strip')) {
       var strip = document.createElement('div');
       strip.id = 'cc-summary-strip';
       strip.innerHTML = _ccRenderSummaryStrip();
