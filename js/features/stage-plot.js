@@ -45,17 +45,19 @@ var SP_ELEMENTS = {
   gear: [
     { type: 'gear', icon: '📻', label: 'Guitar Amp' },
     { type: 'gear', icon: '📻', label: 'Bass Amp' },
-    { type: 'gear', icon: '🎹', label: 'Keyboard' },
+    { type: 'gear', icon: '🎹', label: 'Keyboard Rig' },
+    { type: 'gear', icon: '🥁', label: 'Drum Kit' },
     { type: 'gear', icon: '🎛️', label: 'Pedalboard' },
     { type: 'gear', icon: '💻', label: 'Laptop' },
+    { type: 'gear', icon: '📡', label: 'IEM Rack' },
   ],
   audio: [
     { type: 'audio', icon: '🎙️', label: 'Vocal Mic' },
     { type: 'audio', icon: '🎙️', label: 'Inst Mic' },
     { type: 'audio', icon: '📦', label: 'DI Box' },
-    { type: 'audio', icon: '🔊', label: 'Monitor Wedge' },
-    { type: 'audio', icon: '🎧', label: 'IEM Pack' },
+    { type: 'audio', icon: '🔊', label: 'Floor Monitor' },
     { type: 'audio', icon: '🔈', label: 'Side Fill' },
+    { type: 'audio', icon: '🎧', label: 'IEM Pack' },
   ],
   stage: [
     { type: 'stage', icon: '⬜', label: 'Riser' },
@@ -63,6 +65,17 @@ var SP_ELEMENTS = {
     { type: 'stage', icon: '⚡', label: 'Power Drop' },
   ]
 };
+
+// Venue presets
+var SP_PRESETS = {
+  'Club Stage':    { w: 20, d: 12 },
+  'Small Stage':   { w: 16, d: 10 },
+  'Festival Stage': { w: 40, d: 24 },
+  'Large Stage':   { w: 32, d: 20 },
+};
+
+// Move mode state
+var _spMoveIdx = -1; // index of element being moved (-1 = none)
 
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
@@ -130,8 +143,8 @@ function _spRender() {
   });
   html += '</select>';
   html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New</button>';
-  html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Duplicate</button>';
-  html += '<button onclick="_spResetToDefault()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Reset</button>';
+  html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Dup</button>';
+  html += '<select onchange="_spApplyPreset(this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:4px 6px;border-radius:6px;font-size:0.72em"><option value="">Presets...</option>' + Object.keys(SP_PRESETS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>';
   html += '<div style="margin-left:auto;display:flex;gap:6px">';
   html += '<button onclick="_spExportView()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">&#x1F4E4; Export</button>';
   html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Save</button>';
@@ -189,13 +202,36 @@ function _spRenderStage(plot) {
       var el = plot.elements.find(function(e) { return e.x === c && e.y === r; });
       if (el) {
         var elIdx = plot.elements.indexOf(el);
-        html += '<div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:8px 4px;text-align:center;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;position:relative" onclick="_spEditElement(' + elIdx + ')">';
-        html += '<span style="font-size:1.2em">' + el.icon + '</span>';
+        var isMoving = _spMoveIdx === elIdx;
+        var rotation = el.rotation || 0;
+        var rotStyle = rotation ? 'transform:rotate(' + rotation + 'deg)' : '';
+        // Find matching channel number
+        var chNum = '';
+        if (plot.channels) {
+          for (var ci = 0; ci < plot.channels.length; ci++) {
+            if (plot.channels[ci].label && el.label && plot.channels[ci].label.toLowerCase().indexOf(el.label.split(' – ')[0].split(' ')[0].toLowerCase()) >= 0) {
+              chNum = String(ci + 1); break;
+            }
+          }
+          // Also match by exact label
+          if (!chNum) {
+            for (var cj = 0; cj < plot.channels.length; cj++) {
+              if (plot.channels[cj].label && plot.channels[cj].label === el.label) { chNum = String(cj + 1); break; }
+            }
+          }
+        }
+        // Allow manual input number on element
+        if (el.inputNum) chNum = el.inputNum;
+        html += '<div style="background:' + (isMoving ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.08)') + ';border:1px solid ' + (isMoving ? 'rgba(245,158,11,0.4)' : 'rgba(99,102,241,0.2)') + ';border-radius:8px;padding:8px 4px;text-align:center;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;position:relative" onclick="_spClickElement(' + elIdx + ')">';
+        html += '<span style="font-size:1.2em;' + rotStyle + '">' + el.icon + '</span>';
         html += '<span style="font-size:0.6em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + _spEsc(el.label) + '</span>';
+        if (chNum) html += '<span style="position:absolute;top:2px;left:2px;background:#667eea;color:white;font-size:0.5em;font-weight:800;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center">' + chNum + '</span>';
         html += '<button onclick="event.stopPropagation();_spRemoveElement(' + elIdx + ')" style="position:absolute;top:2px;right:2px;background:none;border:none;color:#64748b;cursor:pointer;font-size:0.6em;padding:2px">✕</button>';
         html += '</div>';
       } else {
-        html += '<div style="background:rgba(255,255,255,0.01);border:1px dashed rgba(255,255,255,0.06);border-radius:8px;min-height:50px;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="_spPlaceAtCell(' + c + ',' + r + ')"><span style="color:rgba(255,255,255,0.1);font-size:0.7em">+</span></div>';
+        var emptyLabel = _spMoveIdx >= 0 ? 'Move here' : (_spPendingElement ? 'Place here' : '+');
+        var emptyBg = _spMoveIdx >= 0 ? 'rgba(245,158,11,0.04)' : 'rgba(255,255,255,0.01)';
+        html += '<div style="background:' + emptyBg + ';border:1px dashed rgba(255,255,255,0.06);border-radius:8px;min-height:50px;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="_spPlaceAtCell(' + c + ',' + r + ')"><span style="color:rgba(255,255,255,0.15);font-size:0.6em">' + emptyLabel + '</span></div>';
       }
     }
   }
@@ -257,15 +293,27 @@ function _spRenderMonitorMixes(plot) {
 var _spPendingElement = null;
 
 function _spAddElement(type, icon, label) {
+  _spMoveIdx = -1; // cancel any move in progress
   _spPendingElement = { type: type, icon: icon, label: label };
-  if (typeof showToast === 'function') showToast('Tap an empty cell on the stage to place ' + label);
+  if (typeof showToast === 'function') showToast('Tap an empty cell to place ' + label);
+  _spRender();
 }
 
 function _spPlaceAtCell(x, y) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
+  // Move mode: relocate existing element to this cell
+  if (_spMoveIdx >= 0 && plot.elements[_spMoveIdx]) {
+    plot.elements[_spMoveIdx].x = x;
+    plot.elements[_spMoveIdx].y = y;
+    _spMoveIdx = -1;
+    _spDirty = true;
+    _spRender();
+    return;
+  }
+  // Place mode: new element
   if (_spPendingElement) {
-    plot.elements.push({ type: _spPendingElement.type, icon: _spPendingElement.icon, label: _spPendingElement.label, x: x, y: y });
+    plot.elements.push({ type: _spPendingElement.type, icon: _spPendingElement.icon, label: _spPendingElement.label, x: x, y: y, rotation: 0 });
     _spPendingElement = null;
     _spDirty = true;
     _spRender();
@@ -275,21 +323,52 @@ function _spPlaceAtCell(x, y) {
 function _spRemoveElement(idx) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
+  _spMoveIdx = -1;
   plot.elements.splice(idx, 1);
   _spDirty = true;
   _spRender();
 }
 
-function _spEditElement(idx) {
+/** Click on placed element: shows action menu (edit/move/rotate/input#) */
+function _spClickElement(idx) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot || !plot.elements[idx]) return;
   var el = plot.elements[idx];
-  var newLabel = prompt('Edit label:', el.label);
-  if (newLabel !== null) {
-    el.label = newLabel;
+
+  // If already in move mode for this element, cancel
+  if (_spMoveIdx === idx) { _spMoveIdx = -1; _spRender(); return; }
+
+  var action = prompt(
+    el.label + '\n\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Cancel',
+    '1'
+  );
+  if (action === '1') {
+    var newLabel = prompt('Edit label:', el.label);
+    if (newLabel !== null) { el.label = newLabel; _spDirty = true; _spRender(); }
+  } else if (action === '2') {
+    _spMoveIdx = idx;
+    if (typeof showToast === 'function') showToast('Tap an empty cell to move ' + el.label);
+    _spRender();
+  } else if (action === '3') {
+    el.rotation = ((el.rotation || 0) + 90) % 360;
     _spDirty = true;
     _spRender();
+  } else if (action === '4') {
+    var num = prompt('Input/channel number (e.g. 3):', el.inputNum || '');
+    if (num !== null) { el.inputNum = num.trim(); _spDirty = true; _spRender(); }
   }
+}
+
+function _spApplyPreset(name) {
+  var preset = SP_PRESETS[name];
+  if (!preset) return;
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  plot.stageWidth = preset.w;
+  plot.stageDepth = preset.d;
+  _spDirty = true;
+  _spRender();
+  if (typeof showToast === 'function') showToast('Stage: ' + preset.w + '\' x ' + preset.d + '\'');
 }
 
 function _spAddChannel() {
@@ -527,5 +606,7 @@ window._spResetToDefault = _spResetToDefault;
 window._spUpdateRiderNotes = _spUpdateRiderNotes;
 window._spUpdateContact = _spUpdateContact;
 window._spExportView = _spExportView;
+window._spClickElement = _spClickElement;
+window._spApplyPreset = _spApplyPreset;
 
 console.log('🎭 stage-plot.js loaded');
