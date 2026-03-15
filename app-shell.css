@@ -91,34 +91,19 @@ a{color:var(--accent-light);}
 /* EVERY child div in songDropdown = a song row */
 #songDropdown > div {
     display:grid!important;
-    grid-template-columns:1fr 50px 50px 68px 48px!important;
-    position:relative!important;
+    grid-template-columns:1fr 48px 50px 68px 48px!important;
     align-items:center!important;
-    gap:4px!important;
-    column-gap:4px!important;
+    gap:6px!important;
     padding:10px 12px!important;
     background:#1e293b!important;
-    border:1px solid rgba(255,255,255,0.08)!important;
+    border:1px solid rgba(255,255,255,0.06)!important;
     border-radius:6px!important;
     margin-bottom:2px!important;
     cursor:pointer!important;
     color:#f1f5f9!important;
+    position:relative!important;
 }
-/* Signal cluster visual grouping — subtle tint behind cols 2-4 */
-#songDropdown > div.song-item::after {
-    content:'';
-    position:absolute;
-    right:56px; /* band pill col (48px) + right padding (12px) - 4px overlap */
-    top:4px;
-    bottom:4px;
-    width:174px; /* badges(48) + chain(50) + status(68) + gaps(3×4=12) - 4px */
-    background:rgba(255,255,255,0.015);
-    border-radius:4px;
-    border-left:1px solid rgba(255,255,255,0.04);
-    pointer-events:none;
-    z-index:0;
-}
-#songDropdown > div:hover{background:#263248!important;border-color:rgba(102,126,234,0.25)!important;}
+#songDropdown > div:hover{background:#232f45!important;border-color:rgba(255,255,255,0.1)!important;}
 #songDropdown > div.selected{background:#2d3a5c!important;border:1px solid #667eea!important;border-width:1px!important;}
 #songDropdown > div.selected *{color:inherit!important;}
 #songDropdown > div.selected .song-name{color:#c7d2fe!important;}
@@ -323,12 +308,10 @@ button[style*="background: #ff0000"],button[style*="background:#ff0000"]{color:w
 @media(max-width:640px) {
     /* Song row: name | mic | status | band — tighter */
     #songDropdown > div {
-        grid-template-columns: 1fr 40px 40px 60px 44px !important;
+        grid-template-columns: 1fr 36px 40px 56px 40px !important;
         padding: 9px 10px !important;
         gap: 3px !important;
-        position: relative !important;
     }
-    #songDropdown > div.song-item::after { display: none !important; }
     .song-name, .song-item .song-name { font-size: 0.85em !important; }
     .song-badge { font-size: 0.6em !important; padding: 2px 6px !important; min-width: 28px !important; }
     .status-badge { font-size: 0.62em !important; padding: 2px 5px !important; }
