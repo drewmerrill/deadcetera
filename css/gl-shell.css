@@ -75,6 +75,15 @@
   white-space: nowrap;
   overflow: hidden;
 }
+.gl-rail-section-sub {
+  display: block;
+  font-size: 0.85em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: rgba(148, 163, 184, 0.4);
+  margin-top: 1px;
+}
 #gl-shell.gl-shell--nav-collapsed .gl-rail-section-title {
   opacity: 0;
   height: 0;

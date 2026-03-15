@@ -27,25 +27,25 @@
   // Both surfaces must stay in sync. If you add a page here, add it to
   // the slide-out menu too (and vice versa).
   var NAV_SECTIONS = [
-    { title: 'Music', items: [
+    { title: 'Music', sub: 'Songs, practice, rehearsal', items: [
       { page: 'home',      icon: '🏠', label: 'Home' },
       { page: 'songs',     icon: '🎵', label: 'Songs' },
       { page: 'setlists',  icon: '📋', label: 'Setlists' },
       { page: 'practice',  icon: '🎯', label: 'Practice' },
       { page: 'rehearsal', icon: '📅', label: 'Rehearsals' },
     ]},
-    { title: 'Gigs', items: [
+    { title: 'Gigs', sub: 'Shows, venues, calendar', items: [
       { page: 'gigs',     icon: '🎤', label: 'Gigs' },
       { page: 'calendar', icon: '📆', label: 'Calendar' },
       { page: 'venues',   icon: '🏛️', label: 'Venues' },
     ]},
-    { title: 'Tools', items: [
+    { title: 'Tools', sub: 'Tuner, meter, playlists', items: [
       { page: 'playlists',   icon: '🎧', label: 'Playlists' },
       { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter' },
       { page: 'tuner',       icon: '🎸', label: 'Tuner' },
       { page: 'metronome',   icon: '🥁', label: 'Metronome' },
     ]},
-    { title: 'More', items: [
+    { title: 'More', sub: 'Business, settings, help', items: [
       { page: 'bestshot',      icon: '🏆', label: 'Best Shot' },
       { page: 'social',        icon: '📣', label: 'Social Media' },
       { page: 'finances',      icon: '💰', label: 'Finances' },
@@ -152,7 +152,9 @@
     for (var s = 0; s < NAV_SECTIONS.length; s++) {
       var section = NAV_SECTIONS[s];
       html += '<div class="gl-rail-section">';
-      html += '<div class="gl-rail-section-title">' + section.title + '</div>';
+      html += '<div class="gl-rail-section-title">' + section.title
+        + (section.sub ? '<span class="gl-rail-section-sub">' + section.sub + '</span>' : '')
+        + '</div>';
       for (var i = 0; i < section.items.length; i++) {
         var item = section.items[i];
         html += '<button class="gl-rail-item" data-page="' + item.page + '"'

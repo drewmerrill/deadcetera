@@ -352,6 +352,7 @@ function _renderDashboard(bundle, context) {
         _renderSetupGuidance(bundle, wf),
         _renderBandHealthRow(bundle),
         _renderBandMomentum(),
+        _renderNarrativeBridge(),
         _renderPriorityQueue(bundle),
         _renderRecentChanges(bundle),
         '</div>'
@@ -645,6 +646,18 @@ function _renderBandMomentum() {
         + (m.reason ? '<span class="hd-momentum__reason">' + _escHtml(m.reason) + '</span>' : '')
         + _mHelp
         + '</div>';
+}
+
+// ── Narrative Bridge ──────────────────────────────────────────────────────────
+// Subtle transition line between the status cluster and the action queue.
+// Only shown when both Health and Queue have content.
+
+function _renderNarrativeBridge() {
+    // Only render when there's a momentum or health row above and queue below
+    // The check is lightweight — if momentum computed, status section exists
+    var m = _computeBandMomentum();
+    if (!m) return '';
+    return '<div class="hd-narrative-bridge">What to do about it</div>';
 }
 
 // ── Command Center: Priority Work Queue ───────────────────────────────────────
@@ -3507,6 +3520,7 @@ function _scheduleWeakSongsFill(bundle) {
     '.hd-momentum__arrow{font-size:1.2em;font-weight:800;line-height:1}',
     '.hd-momentum__label{font-size:0.82em;font-weight:700}',
     '.hd-momentum__reason{font-size:0.7em;color:var(--text-dim,#475569);flex:1}',
+    '.hd-narrative-bridge{font-size:0.58em;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.12);padding:4px 2px 0}',
     /* Setup guidance (progressive discovery) */
     '.hd-setup-guidance{display:flex;flex-direction:column;gap:6px}',
     '.hd-setup-step{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px}',
