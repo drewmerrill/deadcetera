@@ -982,7 +982,8 @@ function _renderRecentChanges(bundle) {
     if (ri && ri.hasData && ri.stripSegments && ri.stripSegments.length) {
         hasMeaningfulContent = true;
         var kindColors = { music: '#667eea', speech: '#f59e0b', silence: '#334155', unknown: '#1e293b', excluded: '#1e293b' };
-        var strip = '<div class="hd-changes__timeline" title="Last rehearsal \xb7 ' + ri.totalDurationMin + ' min">';
+        var _tlHelp = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('rehearsal-timeline') : '';
+        var strip = '<div class="hd-changes__timeline" title="Last rehearsal \xb7 ' + ri.totalDurationMin + ' min">' + '<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px"><span style="font-size:0.62em;font-weight:800;letter-spacing:0.1em;color:rgba(255,255,255,0.3);text-transform:uppercase">Rehearsal Timeline</span>' + _tlHelp + '</div>';
         strip += '<div class="hd-changes__strip">';
         for (var s = 0; s < ri.stripSegments.length; s++) {
             var seg = ri.stripSegments[s];
@@ -1278,7 +1279,8 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var rlLabel = rl ? rl.long : '';
     var pctClickAction = ls ? 'homeViewSetlist(\'' + lsEsc + '\')' : 'showPage(\'setlists\')';
     var pctScopeLabel = _hasScope ? 'Setlist Readiness' : 'Band Readiness';
-    var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:3px">'+pctScopeLabel+'</div>' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
+    var _slHelp = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('setlist-readiness') : '';
+    var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:3px">'+pctScopeLabel+' '+_slHelp+'</div>' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
     var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
     var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
     // Gig Confidence Meter — executive summary

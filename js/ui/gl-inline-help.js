@@ -109,7 +109,7 @@
     // Practice Radar
     'practice-radar': {
       title: 'Practice Radar',
-      text: 'Songs ranked by how much rehearsal attention they need. The score combines readiness deficit, practice recency, upcoming gig exposure, and member variance. Higher score = more urgent.',
+      text: 'Songs ranked by how much rehearsal attention they need. Combines readiness, practice recency, gig exposure, and member variance. Tap a song to open it and update your readiness.',
     },
 
     // Practice Attention
@@ -133,33 +133,41 @@
     // Command Center
     'command-center': {
       title: 'Command Center',
-      text: 'Your band\'s operational brain. Answers three questions: What should we work on next? Are we improving? Are we ready for the gig? Each section updates automatically as you add data.',
+      text: 'Your band\'s operational brain. Answers three questions: What should we work on next? Are we improving? Are we ready for the gig? Scroll down to see your Priority Queue and recent progress.',
     },
     'gig-confidence': {
       title: 'Gig Confidence',
-      text: 'A show-level summary of how ready the band is, based on setlist readiness, recent rehearsals, improvement trends, and groove quality. Not a percentage — a qualitative assessment: Strong, Solid, Trending Up, Cautious, or At Risk.',
+      text: 'A show-level summary based on setlist readiness, recent rehearsals, and groove trends. Strong / Solid / Trending Up / Cautious / At Risk. Work the Priority Queue items to move this up.',
     },
     'priority-queue': {
       title: 'Priority Queue',
-      text: 'The top actions the band should take right now, ranked by urgency. Items adapt over time — things you ignore get escalated, things you act on cool down. Powered by Practice Attention scoring.',
+      text: 'The top actions to take right now, ranked by urgency. Items adapt — things you ignore get escalated, things you act on cool down. Tap any item to jump straight to that action.',
     },
     'band-health': {
       title: 'Band Health',
-      text: 'Quick-glance metrics for your band. Readiness = what percentage of songs meet the gig threshold. Weak Songs = how many are below it. Pocket Time and Last Score appear after rehearsal uploads.',
+      text: 'Quick-glance metrics. Readiness = % of songs at gig threshold. Weak Songs = how many are below it. Tap any tile to drill into that area.',
     },
     'impact-feedback': {
       title: 'What Changed',
-      text: 'Shows meaningful improvements from your recent actions: readiness gains, groove improvements, and songs that crossed into gig-ready status. Green = improvement. Purple = new capability unlocked.',
+      text: 'Improvements from your recent actions. Green = readiness or groove improved. Purple = new capability unlocked. Check here after rehearsals to see what moved.',
+    },
+    'setlist-readiness': {
+      title: 'Setlist Readiness',
+      text: 'What percentage of songs on the gig\'s linked setlist are at or above the gig-ready threshold. This is scoped to the setlist — the Band Health tile shows the full catalog number.',
+    },
+    'rehearsal-timeline': {
+      title: 'Rehearsal Timeline',
+      text: 'A visual strip showing how your last rehearsal session broke down — blue for music, yellow for speech, gray for silence. Hover segments for details. Upload a recording to generate this.',
     },
 
     // Song Intelligence
     'song-intelligence': {
       title: 'Song Intelligence',
-      text: 'A per-song diagnostic showing band readiness average, the top gap (who needs the most work), and practice attention priority. Updated live as members rate their readiness.',
+      text: 'Per-song diagnostic: band readiness average, top gap (who needs work), and practice priority. Rate your readiness on the sliders below to update this.',
     },
     'song-readiness': {
       title: 'Band Readiness Score',
-      text: 'Average of all band members\' readiness ratings for this song. 5 = locked in, 4 = almost there, 3 = getting there, 2 = knows the basics, 1 = never played it.',
+      text: 'Average of all band members\' ratings. 5 = locked in, 4 = almost there, 3 = getting there, 2 = knows the basics, 1 = never played it. Slide the bar below to rate yours.',
     },
   };
 
