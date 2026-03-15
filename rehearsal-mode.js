@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260315-155515', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260315-171246', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
 let rmIndex   = 0;
