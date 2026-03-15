@@ -805,6 +805,7 @@ var chopDraggingMarker = -1; // index of marker being dragged (-1 = none)
 var chopSelectedSegment = -1; // which segment is selected for boundary editing
 var chopSettingBoundary = null; // 'start' or 'end'
 var chopTimestampMarkers = []; // { sec, type, label } — user annotation markers (not segment boundaries)
+var chopEnergyEnvelope = null; // { rms: Float32Array, windowSec: number, totalSec: number } — computed once on load
 
 // ── Zoom / Navigation State ──
 var chopZoom = { startSec: 0, endSec: 0 };   // visible window (0,0 = full view)
@@ -885,6 +886,7 @@ async function chopLoadFile(file) {
         chopZoom = { startSec: 0, endSec: chopAudioBuffer.duration };
         chopRegion = null;
         chopLooping = false;
+        chopComputeEnergyEnvelope();
         chopDrawWaveform();
         chopDrawMinimap();
         chopWireCanvasEvents();
@@ -1232,6 +1234,7 @@ function chopDrawMinimap() {
     }
 
     // Draw timestamp markers on minimap
+    _chopDrawMinimapEnvelope(ctx, canvas);
     _chopDrawMinimapTimestampMarkers(ctx, canvas, dur);
 }
 
@@ -1435,6 +1438,142 @@ function chopRenderTimestampMarkerList() {
     el.innerHTML = html;
 }
 
+// ── Energy Envelope ───────────────────────────────────────────────────────────
+
+function chopComputeEnergyEnvelope() {
+    if (!chopAudioBuffer) { chopEnergyEnvelope = null; return; }
+    var data = chopAudioBuffer.getChannelData(0);
+    var sr = chopAudioBuffer.sampleRate;
+    var windowSec = 0.08; // 80ms windows for smooth envelope
+    var windowSamples = Math.floor(sr * windowSec);
+    var count = Math.ceil(data.length / windowSamples);
+    var rms = new Float32Array(count);
+
+    for (var i = 0; i < count; i++) {
+        var start = i * windowSamples;
+        var end = Math.min(start + windowSamples, data.length);
+        var sum = 0;
+        for (var j = start; j < end; j++) sum += data[j] * data[j];
+        rms[i] = Math.sqrt(sum / (end - start));
+    }
+
+    // Light smoothing pass (3-point moving average)
+    var smoothed = new Float32Array(count);
+    smoothed[0] = rms[0];
+    smoothed[count - 1] = rms[count - 1];
+    for (var s = 1; s < count - 1; s++) {
+        smoothed[s] = (rms[s - 1] + rms[s] * 2 + rms[s + 1]) / 4;
+    }
+
+    // Find peak for normalization
+    var peak = 0;
+    for (var p = 0; p < count; p++) { if (smoothed[p] > peak) peak = smoothed[p]; }
+
+    chopEnergyEnvelope = {
+        rms: smoothed,
+        peak: peak || 0.001,
+        windowSec: windowSec,
+        totalSec: chopAudioBuffer.duration,
+        count: count,
+    };
+}
+
+function _chopDrawEnvelope(ctx, canvas, viewStart, viewDur) {
+    if (!chopEnergyEnvelope || !chopEnergyEnvelope.count) return;
+    var env = chopEnergyEnvelope;
+    var w = canvas.width;
+    var h = canvas.height;
+
+    // Map envelope indices to the zoom window
+    var startIdx = Math.floor(viewStart / env.windowSec);
+    var endIdx = Math.ceil((viewStart + viewDur) / env.windowSec);
+    startIdx = Math.max(0, startIdx);
+    endIdx = Math.min(env.count - 1, endIdx);
+    var spanIdx = endIdx - startIdx;
+    if (spanIdx < 2) return;
+
+    // Draw filled envelope
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+
+    for (var px = 0; px < w; px++) {
+        var sec = viewStart + (px / w) * viewDur;
+        var idx = sec / env.windowSec;
+        // Linear interpolation between envelope points
+        var i0 = Math.floor(idx);
+        var i1 = Math.min(i0 + 1, env.count - 1);
+        i0 = Math.max(0, Math.min(i0, env.count - 1));
+        var frac = idx - i0;
+        var val = env.rms[i0] * (1 - frac) + env.rms[i1] * frac;
+        var normalized = val / env.peak; // 0–1
+        var y = h - normalized * h * 0.85; // leave 15% headroom
+        ctx.lineTo(px, y);
+    }
+
+    ctx.lineTo(w, h);
+    ctx.closePath();
+
+    // Fill with semi-transparent gradient
+    var grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(99, 102, 241, 0.15)');
+    grad.addColorStop(1, 'rgba(99, 102, 241, 0.02)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Stroke the top line
+    ctx.beginPath();
+    for (var px2 = 0; px2 < w; px2++) {
+        var sec2 = viewStart + (px2 / w) * viewDur;
+        var idx2 = sec2 / env.windowSec;
+        var i02 = Math.floor(idx2);
+        var i12 = Math.min(i02 + 1, env.count - 1);
+        i02 = Math.max(0, Math.min(i02, env.count - 1));
+        var frac2 = idx2 - i02;
+        var val2 = env.rms[i02] * (1 - frac2) + env.rms[i12] * frac2;
+        var y2 = h - (val2 / env.peak) * h * 0.85;
+        if (px2 === 0) ctx.moveTo(px2, y2);
+        else ctx.lineTo(px2, y2);
+    }
+    ctx.strokeStyle = 'rgba(99, 102, 241, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function _chopDrawMinimapEnvelope(ctx, canvas) {
+    if (!chopEnergyEnvelope || !chopEnergyEnvelope.count) return;
+    var env = chopEnergyEnvelope;
+    var w = canvas.width;
+    var h = canvas.height;
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (var px = 0; px < w; px++) {
+        var idx = (px / w) * env.count;
+        var i0 = Math.max(0, Math.min(Math.floor(idx), env.count - 1));
+        var i1 = Math.min(i0 + 1, env.count - 1);
+        var frac = idx - i0;
+        var val = env.rms[i0] * (1 - frac) + env.rms[i1] * frac;
+        var y = h - (val / env.peak) * h * 0.8;
+        ctx.lineTo(px, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(99, 102, 241, 0.08)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(99, 102, 241, 0.25)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (var px2 = 0; px2 < w; px2++) {
+        var idx2 = (px2 / w) * env.count;
+        var i02 = Math.max(0, Math.min(Math.floor(idx2), env.count - 1));
+        var i12 = Math.min(i02 + 1, env.count - 1);
+        var val2 = env.rms[i02] * (1 - (idx2 - i02)) + env.rms[i12] * (idx2 - i02);
+        var y2 = h - (val2 / env.peak) * h * 0.8;
+        if (px2 === 0) ctx.moveTo(px2, y2); else ctx.lineTo(px2, y2);
+    }
+    ctx.stroke();
+}
+
 function chopDrawWaveform() {
     if (!chopAudioBuffer) return;
     var canvas = document.getElementById('chopWaveform');
@@ -1485,6 +1624,9 @@ function chopDrawWaveform() {
         }
         ctx.fillRect(px, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
     }
+
+    // Draw energy envelope overlay
+    _chopDrawEnvelope(ctx, canvas, viewStart, viewDur);
 
     // Draw split markers (only those in view)
     chopMarkers.forEach(function(sec) {
