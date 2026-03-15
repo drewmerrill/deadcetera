@@ -44,6 +44,12 @@
       // Adaptive noise floor — rolling median of flux values (no-onset frames)
       this._fluxHistory = [];   // last 60 frames of flux
       this._noiseFloor  = 0;
+
+      // Rolling window + range filter (v2 upgrade)
+      this._rollingWindow = 16;  // beats for rolling BPM calculation
+      this._bpmMin = 40;         // user-settable min BPM
+      this._bpmMax = 220;        // user-settable max BPM
+      this._stabilityHistory = []; // recent BPM values for stability calc
     }
 
     async start() {
@@ -92,11 +98,12 @@
       const nBins  = mag.length;
       const bin    = hz => Math.min(Math.floor(hz / binHz), nBins - 1);
 
-      // ── Spectral flux per band ────────────────────────────────────────────
-      // Only sum positive increases (half-wave rectify) so decays don't trigger
-      const kickFlux  = this._bandFlux(mag, bin(50),   bin(200),  0.6);
-      const snapFlux  = this._bandFlux(mag, bin(200),  bin(8000), 0.4);
-      const flux      = kickFlux + snapFlux;
+      // ── Spectral flux per band (v2: enhanced weighting) ──────────────────
+      // Kick+snare prioritized, hi-hat/ride de-emphasized
+      const kickFlux  = this._bandFlux(mag, bin(50),   bin(200),  0.55);  // kick
+      const snareFlux = this._bandFlux(mag, bin(200),  bin(1000), 0.30);  // snare body
+      const hatFlux   = this._bandFlux(mag, bin(3000), bin(8000), 0.15);  // hi-hat/ride (de-emphasized)
+      const flux      = kickFlux + snareFlux + hatFlux;
 
       // ── Adaptive noise floor ──────────────────────────────────────────────
       this._fluxHistory.push(flux);
@@ -122,6 +129,17 @@
       this._prevMag = mag;
     }
 
+    /** v2: Calculate tempo stability score (0-100%) from recent BPM values */
+    getStabilityScore() {
+      if (this._stabilityHistory.length < 4) return null;
+      const n = this._stabilityHistory.length;
+      const mean = this._stabilityHistory.reduce((a, b) => a + b, 0) / n;
+      const variance = this._stabilityHistory.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / n;
+      const stdDev = Math.sqrt(variance);
+      // 0 BPM variance = 100%, 5+ BPM variance = 0%
+      return Math.round(Math.max(0, Math.min(100, 100 - (stdDev / 5) * 100)));
+    }
+
     _bandFlux(mag, lo, hi, weight) {
       if (!this._prevMag) return 0;
       let flux = 0;
@@ -135,17 +153,24 @@
     _calcBPM() {
       if (this.onsets.length < 4) return;
 
-      // Inter-onset intervals
+      // Use rolling window of last N onsets (v2: configurable, default 16)
+      const windowOnsets = this.onsets.slice(-this._rollingWindow);
+      if (windowOnsets.length < 4) return;
+
+      // Inter-onset intervals within the window
       const iois = [];
-      for (let i = 1; i < this.onsets.length; i++) {
-        iois.push(this.onsets[i] - this.onsets[i - 1]);
+      for (let i = 1; i < windowOnsets.length; i++) {
+        iois.push(windowOnsets[i] - windowOnsets[i - 1]);
       }
 
       // Median filter (robust to occasional double-triggers)
       const sorted = [...iois].sort((a, b) => a - b);
       const med    = sorted[Math.floor(sorted.length / 2)];
 
-      if (med < 250 || med > 2500) return; // 24–240 BPM range
+      // v2: user-settable BPM range filter
+      const minIOI = 60000 / this._bpmMax;  // fastest allowed beat
+      const maxIOI = 60000 / this._bpmMin;  // slowest allowed beat
+      if (med < minIOI || med > maxIOI) return;
 
       const rawBPM = 60000 / med;
 
@@ -155,6 +180,10 @@
         const alpha = this._smoothing || 0.5;
         this.smoothedBPM = this.smoothedBPM * (1 - alpha) + rawBPM * alpha;
       }
+
+      // v2: track stability — variance of recent BPM values
+      this._stabilityHistory.push(this.smoothedBPM);
+      if (this._stabilityHistory.length > 16) this._stabilityHistory.shift();
 
       this.onBPM(Math.round(this.smoothedBPM * 10) / 10);
     }
@@ -254,6 +283,32 @@
         targetBeatMs: Math.round(targetBeatMs),
         pctInPocket,
       };
+    },
+
+    /** v2: Section analysis — split onsets into chunks and analyze each */
+    analyseSections(onsets, targetBPM, sectionCount) {
+      if (!onsets || onsets.length < 16) return [];
+      sectionCount = sectionCount || 4;
+      const chunkSize = Math.floor(onsets.length / sectionCount);
+      const sections = [];
+      const labels = ['Intro', 'Verse', 'Chorus', 'Bridge', 'Solo', 'Outro'];
+      for (var s = 0; s < sectionCount; s++) {
+        var start = s * chunkSize;
+        var end = s === sectionCount - 1 ? onsets.length : (s + 1) * chunkSize;
+        var chunk = onsets.slice(start, end);
+        var result = this.analyse(chunk, targetBPM);
+        if (result) {
+          var direction = result.pocketPositionMs < -5 ? 'rushing' : result.pocketPositionMs > 5 ? 'dragging' : 'stable';
+          sections.push({
+            label: labels[s] || 'Section ' + (s + 1),
+            stabilityScore: result.stabilityScore,
+            pocketPositionMs: result.pocketPositionMs,
+            direction: direction,
+            pctInPocket: result.pctInPocket,
+          });
+        }
+      }
+      return sections;
     },
   };
 
@@ -572,6 +627,23 @@
       if (this.el) this.el.remove();
     }
 
+    /** v2: Pocket Meter mode — 'live' or 'pocket' */
+    _pmMode = 'live';
+
+    _switchMode(newMode) {
+      this._pmMode = newMode;
+      if (!this.el) return;
+      // Update toggle buttons
+      this.el.querySelectorAll('.pm-mode-btn').forEach(function(btn) {
+        var isActive = btn.dataset.pmmode === newMode;
+        btn.style.background = isActive ? '#2a2a2a' : '#1a1a1a';
+        btn.style.color = isActive ? '#a5b4fc' : '#64748b';
+        btn.classList.toggle('pm-mode-btn--active', isActive);
+      });
+      // Update the main status label
+      this._update();
+    }
+
     setTargetBPM(bpm) {
       this.targetBPM = bpm;
       this._updateTarget();
@@ -678,6 +750,25 @@
       if (miniVal) miniVal.textContent = bpmStr;
       const miniSt = this.el.querySelector('.pm-mini-status');
       if (miniSt) { miniSt.textContent = status; miniSt.style.color = zone === 'green' ? 'var(--pm-green)' : zone === 'yellow' ? 'var(--pm-yellow)' : 'var(--pm-red)'; }
+
+      // v2: Stability score display
+      var stabEl = this.el.querySelector('.pm-stability');
+      if (!stabEl) {
+        stabEl = document.createElement('div');
+        stabEl.className = 'pm-stability';
+        stabEl.style.cssText = 'text-align:center;font-size:0.72em;font-weight:700;padding:2px 0;color:#64748b';
+        var gaugeParent = this.el.querySelector('.pm-gauge-wrap');
+        if (gaugeParent) gaugeParent.parentElement.insertBefore(stabEl, gaugeParent.nextSibling);
+      }
+      if (this.engine) {
+        var stab = this.engine.getStabilityScore();
+        if (stab !== null) {
+          var stabColor = stab >= 80 ? '#22c55e' : stab >= 50 ? '#f59e0b' : '#ef4444';
+          stabEl.innerHTML = this._pmMode === 'pocket'
+            ? '<span style="color:' + stabColor + '">Pocket: ' + stab + '%</span>'
+            : '<span style="color:' + stabColor + '">Stability: ' + stab + '%</span>';
+        }
+      }
 
       // Gauge arc
       this._renderGauge(delta);
@@ -839,6 +930,9 @@
     // ── Events ─────────────────────────────────────────────────────────────────
 
     _bindEvents() {
+      // v2: Wire mode toggle
+      var self = this;
+      this.el._pmSwitchMode = function(m) { self._switchMode(m); };
       this.el.querySelector('.pm-listen-btn').addEventListener('click', () => {
         if (this.listening) this._stopListening();
         else this._startListening();
@@ -1393,6 +1487,12 @@
         <div class="pm-banner"></div>
         <div class="pm-flash-overlay"></div>
         <div class="pm-nameplate"><div class="pm-nameplate-inner"><span>Pocket Meter</span></div></div>
+
+        <!-- v2: Mode toggle — Live Tempo vs In The Pocket -->
+        <div class="pm-mode-toggle" style="display:flex;justify-content:center;gap:0;margin:8px 16px 4px;border-radius:8px;overflow:hidden;border:1px solid #444">
+          <button class="pm-mode-btn pm-mode-btn--active" data-pmmode="live" onclick="this.closest('.pm-root')._pmSwitchMode && this.closest('.pm-root')._pmSwitchMode('live')" style="flex:1;padding:8px 12px;background:#2a2a2a;border:none;color:#a5b4fc;font-weight:700;font-size:0.78em;cursor:pointer;letter-spacing:0.04em">&#x1F3AF; LIVE TEMPO</button>
+          <button class="pm-mode-btn" data-pmmode="pocket" onclick="this.closest('.pm-root')._pmSwitchMode && this.closest('.pm-root')._pmSwitchMode('pocket')" style="flex:1;padding:8px 12px;background:#1a1a1a;border:none;color:#64748b;font-weight:700;font-size:0.78em;cursor:pointer;letter-spacing:0.04em">&#x1F3B5; IN THE POCKET</button>
+        </div>
 
         <!-- Header row: target BPM + gear + view controls -->
         <div class="pm-header">
