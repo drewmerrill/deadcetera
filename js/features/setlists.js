@@ -517,6 +517,11 @@ async function editSetlist(idx) {
                 html += '<span style="color:var(--accent-light)">🎤 Linked Gig:</span>';
                 html += '<span style="color:#fff;font-weight:600">' + label + '</span>';
                 html += '<button onclick="showPage(\'gigs\');setTimeout(function(){editGig(' + gigIdx + ');},400);" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer">Open →</button></div>';
+                // Venue mismatch info bar — only when both have venueId and they differ
+                if (sl.venueId && match.venueId && sl.venueId !== match.venueId) {
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;margin-top:6px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;font-size:0.8em;color:#fbbf24">'
+                        + '<span>This setlist\'s venue differs from its linked gig.</span></div>';
+                }
                 row.innerHTML = html;
             }
         } catch(e) {}

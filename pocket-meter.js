@@ -939,7 +939,7 @@
       this._broadcastBPM(this.tapTarget);
       this.targetBPM = this.tapTarget;
       this._updateTarget();
-      this._flashBanner(`💾 Saved ${this.tapTarget} BPM as new default`);
+      this._flashBanner(`💾 Session tempo locked: ${this.tapTarget} BPM`);
       this.tapper.reset();
       this.tapTarget = null;
       this.el.querySelector('.pm-tap-readout').textContent = 'Tap Tempo';
@@ -1047,7 +1047,7 @@
             ref.set(this._pendingBPM);
             // Also update global app state if available
             if (typeof selectedSong !== 'undefined' && selectedSong) selectedSong.bpm = this._pendingBPM;
-            this._flashBanner('✅ BPM saved to song (' + this._pendingBPM + ')');
+            this._flashBanner('✅ Session tempo locked (' + this._pendingBPM + ' BPM)');
           } catch(e) { this._flashBanner('⚠️ Could not save BPM: ' + e.message); }
         }
         this.el.querySelector('.pm-bpm-prompt').classList.add('pm-hidden');
@@ -1641,8 +1641,8 @@
           <div>Plays 2 bars of clicks at the target BPM before you start — helpful for getting in the pocket before the song begins. The second bar is louder so you know recording or playing is about to begin.</div>
           <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Tempo History</div>
           <div>The graph shows how your live BPM drifted over the last ~30 seconds. Flat line = locked in. Spikes = rushing or dragging moments. Use it after a run-through to identify problem spots.</div>
-          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Save to Song</div>
-          <div>Saves the detected BPM to the current song&apos;s profile in GrooveLinx. It&apos;ll pre-fill the target next time you open this song.</div>
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">Lock Session Tempo</div>
+          <div>Locks the detected BPM as the session target and broadcasts it to all band members. This is a live session value — to permanently change a song&apos;s BPM, edit it in Song DNA.</div>
           <div style="color:#c8ff00;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;margin-top:10px">&#x2699; Calibration — Most Important</div>
           <div style="color:#e0e0e0">If the meter feels unresponsive or triggers on everything, calibration is your fix:</div>
           <div style="margin-top:6px;padding:8px 10px;background:rgba(200,255,0,0.04);border-left:2px solid #c8ff00;border-radius:0 6px 6px 0;font-size:11px">
@@ -1754,7 +1754,7 @@
           <div class="pm-tap-readout">Tap Tempo</div>
           <div class="pm-action-row">
             <button class="pm-broadcast-btn pm-hidden" title="Send this BPM to all band members in the app">📡 Broadcast</button>
-            <button class="pm-lock-btn pm-hidden">💾 Save to Song</button>
+            <button class="pm-lock-btn pm-hidden">💾 Lock Session Tempo</button>
           </div>
           <button class="pm-countin-btn" title="Plays 2 bars of click at target BPM before you start — second bar is louder as your cue">Count In</button>
         </div>
@@ -1802,9 +1802,9 @@
 
         <!-- BPM save prompt (shown when user adjusts target BPM) -->
         <div class="pm-bpm-prompt pm-hidden">
-          <div class="pm-bpm-prompt-msg">Save <span class="pm-bpm-prompt-val"></span> BPM to this song?</div>
+          <div class="pm-bpm-prompt-msg">Lock <span class="pm-bpm-prompt-val"></span> BPM as session tempo?</div>
           <div class="pm-bpm-prompt-btns">
-            <button class="pm-bpm-save-yes" title="Save this BPM to the song profile — it will pre-fill as the target next time">Save to Song</button>
+            <button class="pm-bpm-save-yes" title="Lock this tempo for the session and broadcast to all members">Lock Tempo</button>
             <button class="pm-bpm-save-no">Just for Now</button>
           </div>
         </div>
