@@ -159,6 +159,12 @@ Dev and production move together immediately. Every accepted change must be:
 - **gigId** — stable gig identity
 - BPM/Key edits route through `GLStore.updateSongField()` which dual-writes to v2 + legacy paths
 
+### Recording Asset Model
+Recordings organized by PURPOSE (not platform): north_star, best_shot, cover, instruction, practice_track, session_capture. Target: unified `recordings` array per song in songs_v2. Current separate fields (`spotify_versions`, `best_shot_takes`, `cover_me`, `practice_tracks`) will converge over time. Full schema: `docs/song_record_schema.md`.
+
+### Playlist Strategy
+Playlists are views over recording assets. Auto-generated playlists (Gig Prep, Learn Queue, Best Shots to Review) computed from intelligence data + recordings. Custom playlists store `[{songId, recordingId}]` references.
+
 ### Firebase Path Model
 - Legacy song data: `bands/{slug}/songs/{sanitizedTitle}/{dataType}`
 - v2 song data: `bands/{slug}/songs_v2/{songId}/{dataType}` (BPM + Key only, expanding)

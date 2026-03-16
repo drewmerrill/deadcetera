@@ -59,6 +59,86 @@ bands/{bandSlug}/songs/{sanitizedTitle}/{fieldName}
 | Section Ratings | `songs/{title}/section_ratings` (Firebase direct) | `{ [section]: { [memberKey]: number } }` | Deferred — Firebase-direct pattern |
 | Metadata | `songs/{title}/metadata` (Firebase direct) | `{ structure, key, ... }` | Deferred — general-purpose bucket |
 
+## Recording Asset Model (Target Architecture)
+
+All recording/media assets will converge on a unified schema organized by PURPOSE, not platform.
+
+### Canonical Recording Asset
+
+```
+{
+  recordingId,    // auto-generated short ID
+  type,           // 'north_star' | 'best_shot' | 'cover' | 'instruction' | 'practice_track' | 'session_capture'
+  sourceType,     // 'spotify' | 'youtube' | 'archive_org' | 'apple_music' | 'soundcloud' | 'upload_audio' | 'upload_video' | 'moises' | 'fadr' | 'midi' | 'url'
+  title,          // display label
+  artist,         // artist/band
+  url,            // playback URL
+  description,    // optional notes
+  scope,          // 'song' | 'section' | 'part' | 'session'
+  part,           // 'rhythm_guitar' | 'bass' | 'harmony' | null
+  section,        // 'intro' | 'verse' | null
+  addedBy,
+  addedAt,
+  isPrimary,      // true = crowned north star / best shot
+  votes,          // { [memberKey]: boolean }
+  metadata        // { bpm, key, duration, quality, archiveId, etc. }
+}
+```
+
+### Target Storage Path (future)
+
+```
+songs_v2/{songId}/recordings → [ recording, recording, ... ]
+```
+
+### Current → Target Mapping
+
+| Current field | Recording type | Status |
+|---|---|---|
+| `spotify_versions` | `north_star` (voted primary) + references | Active — rename later |
+| `best_shot_takes` | `best_shot` | Active — migrate to v2 then unify |
+| `cover_me` | `cover` | Active — normalized |
+| `practice_tracks` | `practice_track` | Active |
+| (new) | `instruction` | Planned |
+| (new) | `session_capture` | Planned |
+
+### UI Buckets (what musicians see)
+
+1. North Star — "The version we're chasing"
+2. Best Shot — "Our best take so far"
+3. Cover Me — "Other artists' takes for inspiration"
+4. Learn It — "Lessons and walkthroughs"
+5. Practice With It — "Backing tracks and stems"
+6. Sessions — "Raw rehearsal and gig recordings"
+
+### Migration Plan
+
+1. Document model (done)
+2. New recording types use unified schema from day one
+3. Existing fields gradually normalize on edit/re-save
+4. Old arrays become read-only fallback
+5. Playlists built as views over unified recordings
+
+## Playlist Strategy
+
+Playlists are views over recording assets, not separate link collections.
+
+### Auto-Generated Playlists (from intelligence data)
+
+| Playlist | Source |
+|----------|--------|
+| Next Rehearsal North Stars | Agenda songs → north_star recordings |
+| Best Shots to Review | best_shot recordings, newest first |
+| Cover Inspirations | cover recordings across library |
+| {Instrument} Learn Queue | instruction recordings filtered by part |
+| Harmony Practice Queue | practice_track recordings where part = harmony |
+| Gig Prep Listening Pack | Setlist songs → north_star recordings |
+| Songs Needing Work | Priority queue songs → north_star recordings |
+
+### Custom Playlists
+
+User-curated from any recording assets. Store `[ { songId, recordingId } ]` references.
+
 ## Separate Paths (Intentionally NOT in songs_v2)
 
 | Field | Firebase path | Notes |

@@ -54,6 +54,7 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | — | Availability "Create Rehearsal" CTA on best days | ✅ DONE |
 | — | Band Room nav badge on Ideas Board in left rail | ✅ DONE |
 | — | Setlist lock: lockedBy/lockedAt shown on card | ✅ DONE |
+| — | Recording Asset Model + Playlist Strategy documented | ✅ DONE |
 
 ### Upcoming Phases
 
