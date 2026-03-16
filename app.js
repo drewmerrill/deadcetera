@@ -1146,7 +1146,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     });
     
     if (filtered.length === 0) {
-        const statusNames = { 'prospect':'Prospect', 'wip':'Work in Progress', 'gig_ready':'Gig Ready' };
+        const statusNames = { 'prospect':'Prospect', 'active':'Active', 'wip':'Active', 'parked':'Parked', 'retired':'Retired', 'gig_ready':'Gig Ready' };
         const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
         let msg;
         if (activeHarmonyFilter === 'harmonies') {
@@ -6695,7 +6695,10 @@ function addStatusBadges() {
         if (status) {
             const badges = {
                 'prospect': { text: 'PROSPECT', color: '#fff', bg: '#7c3aed' },
-                'wip': { text: 'WIP', color: '#fff', bg: '#d97706' },
+                'active': { text: 'ACTIVE', color: '#fff', bg: '#2563eb' },
+                'wip': { text: 'ACTIVE', color: '#fff', bg: '#2563eb' },
+                'parked': { text: 'PARKED', color: '#fff', bg: '#6b7280' },
+                'retired': { text: 'RETIRED', color: '#fff', bg: '#374151' },
                 'gig_ready': { text: 'READY', color: '#fff', bg: '#059669' }
             };
             

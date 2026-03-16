@@ -31,7 +31,7 @@ bands/{bandSlug}/songs/{sanitizedTitle}/{fieldName}
 | BPM | `song_bpm` | `{ bpm: number, updatedAt: string }` | Yes | Valid range: 40-240 |
 | Key | `key` | `{ key: string, updatedAt: string }` | Yes | e.g. "G", "Am", "Bb" |
 | Lead Singer | `lead_singer` | `{ singer: string }` | Yes | Member key: "drew", "chris", etc. |
-| Status | `song_status` | `{ status: string, updatedAt: string }` | Yes | Values: "", "prospect", "wip", "gig_ready" |
+| Status | `song_status` | `{ status: string, updatedAt: string }` | Yes | Lifecycle values: "", "prospect", "active", "parked", "retired". Legacy "wip"/"gig_ready" accepted on read. |
 | Song Roles | `song_roles` | `{ [memberKey]: instrument }` | Planned (Phase B) | e.g. `{ drew: "guitar", jay: "drums" }` |
 | Song Votes | `song_votes` | `{ [memberKey]: 'yes'\|'maybe'\|'no', _updatedAt: string }` | Yes | Prospect voting: "Should we learn this?" |
 

@@ -86,7 +86,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     });
 
     if (filtered.length === 0) {
-        var statusNames = { prospect:'Prospect', wip:'Work in Progress', gig_ready:'Gig Ready' };
+        var statusNames = { prospect:'Prospect', active:'Active', wip:'Active', parked:'Parked', retired:'Retired', gig_ready:'Gig Ready' };
         var statusLabel = (typeof activeStatusFilter !== 'undefined' && activeStatusFilter)
             ? (statusNames[activeStatusFilter] || activeStatusFilter)
             : '';
@@ -241,7 +241,7 @@ function _renderActiveFilterChip() {
         if (existing) existing.remove();
         return;
     }
-    var statusNames = { prospect:'👀 Prospect', wip:'🔧 Work in Progress', gig_ready:'✅ Gig Ready' };
+    var statusNames = { prospect:'👀 Prospect', active:'🎵 Active', wip:'🎵 Active', parked:'⏸ Parked', retired:'🗄 Retired', gig_ready:'✅ Gig Ready' };
     var label = statusNames[activeStatusFilter] || activeStatusFilter;
     if (!existing) {
         existing = document.createElement('div');

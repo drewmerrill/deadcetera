@@ -837,29 +837,31 @@
 
   // ── Legacy Status Audit + Migration ───────────────────────────────────────
   //
-  // Valid status values: '', 'prospect', 'wip', 'gig_ready'
-  // Legacy values that may exist: 'needs_polish', 'needsPolish', 'on_deck',
-  //   'onDeck', 'Needs Polish', 'On Deck', 'Gig Ready', 'Work in Progress', etc.
+  // Valid status values (lifecycle): '', 'prospect', 'active', 'parked', 'retired'
+  // Legacy values still accepted: 'wip' (→ active), 'gig_ready' (→ active)
+  // Legacy migration: 'needs_polish', 'on_deck', etc.
   //
   // Usage from browser console:
   //   GLStore.auditLegacyStatuses()        // dry-run report
   //   GLStore.migrateLegacyStatuses()      // normalize + save
 
-  var _VALID_STATUSES = { '': true, 'prospect': true, 'wip': true, 'gig_ready': true };
+  var _VALID_STATUSES = { '': true, 'prospect': true, 'active': true, 'parked': true, 'retired': true, 'wip': true, 'gig_ready': true };
 
   var _STATUS_MIGRATION_MAP = {
-    'needs_polish':      'wip',
-    'needspolish':       'wip',
-    'needs polish':      'wip',
-    'work in progress':  'wip',
-    'work_in_progress':  'wip',
+    'needs_polish':      'active',
+    'needspolish':       'active',
+    'needs polish':      'active',
+    'work in progress':  'active',
+    'work_in_progress':  'active',
+    'wip':               'active',
     'on_deck':           'prospect',
     'ondeck':            'prospect',
     'on deck':           'prospect',
-    'gig ready':         'gig_ready',
-    'gig-ready':         'gig_ready',
-    'gigready':          'gig_ready',
-    'ready':             'gig_ready',
+    'gig ready':         'active',
+    'gig-ready':         'active',
+    'gigready':          'active',
+    'gig_ready':         'active',
+    'ready':             'active',
     'not on radar':      '',
     'not_on_radar':      '',
     'none':              '',

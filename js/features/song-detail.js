@@ -147,7 +147,7 @@ async function _sdPopulateBandLens(title) {
         var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v.charAt(0).toUpperCase()+v.slice(1);
         return '<option value="'+v+'"'+(lead===v?' selected':'')+'>'+lbl+'</option>';
     }).join('');
-    var statusOpts=[['','— Not on Radar —'],['prospect','👀 Prospect'],['wip','🔧 Work in Progress'],['gig_ready','✅ Gig Ready']].map(function(p){
+    var statusOpts=[['','— Not Tracked —'],['prospect','👀 Prospect'],['active','🎵 Active'],['parked','⏸ Parked'],['retired','🗄 Retired']].map(function(p){
         return '<option value="'+p[0]+'"'+(status===p[0]?' selected':'')+'>'+p[1]+'</option>';
     }).join('');
     var keyOpts=['','A','Am','Bb','Bbm','B','Bm','C','Cm','C#','C#m','D','Dm','D#m','E','Em','F','Fm','F#','F#m','G','Gm','G#m','Ab','Abm'].map(function(k){
@@ -175,7 +175,7 @@ async function _sdPopulateBandLens(title) {
         topGapText = _sdEsc(topGap.detail);
     }
     var gapCount = _siGaps ? _siGaps.filter(function(g) { return g.severity === 'high'; }).length : 0;
-    var statusLabels={'prospect':'Prospect','wip':'Work in Progress','gig_ready':'Gig Ready','':'Not on Radar'};
+    var statusLabels={'prospect':'Prospect','active':'Active','wip':'Active','parked':'Parked','retired':'Retired','gig_ready':'Gig Ready','':'Not Tracked'};
     var statusLabel=statusLabels[status]||status||'—';
     var ytQuery=encodeURIComponent(title);
     panel.innerHTML =
@@ -194,12 +194,15 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-intel-item"><div class="sd-intel-label">Top Gap</div><div class="sd-intel-val sd-intel-sm">'+topGapText+'</div>'+(gapCount>1?'<div class="sd-intel-sub">+' + (gapCount - 1) + ' more high</div>':'')+'</div>'+
         '<div class="sd-intel-item"><div class="sd-intel-label">Last Played</div><div class="sd-intel-val sd-intel-sm" id="sd-last-played">—</div></div>'+
         '</div></div>'+
-        _sdRenderAttentionCard(title, safeSong)+
-        _sdRenderGapsCard(_siGaps)+
-        '<div class="sd-card">'+
-        '<div class="sd-card-title">📊 Readiness</div>'+
+        // ── Readiness (moved up for mobile prominence) ──
+        '<div class="sd-card" id="sd-readiness-card">'+
+        '<div class="sd-card-title">📊 Your Readiness</div>'+
         _sdRenderReadinessBlock(title,safeSong)+
+        '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;line-height:1.5;display:flex;flex-wrap:wrap;gap:2px 10px">'+
+        '<span>0 Never played</span><span>1 Learning</span><span>2 Rough</span><span>3 Getting there</span><span>4 Tight</span><span>5 Gig ready</span>'+
         '</div>'+
+        '</div>'+
+        // ── Song DNA (moved up for mobile prominence) ──
         '<div class="sd-card" style="padding:10px 14px">'+
         '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song DNA</div>'+
         '<div class="sd-dna-grid">'+
@@ -210,13 +213,17 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         _sdSectionDots(sectionRatings)+
         '</div>'+
-        ((status === 'prospect' || status === 'wip' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
+        // ── Intelligence detail cards ──
+        _sdRenderAttentionCard(title, safeSong)+
+        _sdRenderGapsCard(_siGaps)+
+        ((status === 'prospect' || status === 'active' || status === 'wip' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
+        // ── Practice Mode (chart-aware buttons) ──
         '<div class="sd-card">'+
         '<div class="sd-card-title">🧠 Practice Mode</div>'+
-        (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\\n').slice(0,4).join('\\n'))+'</pre>':'')+
+        (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre>':'')+
         '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-        '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Find Chart</button>'+
-        '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>'+
+        (chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 View Chart</button>':'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Find Chart</button>')+
+        (!chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>':'')+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
         '<div class="sd-card" id="sd-discussion-mount"><div style="font-size:0.82em;color:var(--text-dim);padding:4px">Loading discussion...</div></div>'+
@@ -338,14 +345,14 @@ function _sdRenderAttentionCard(title, safeSong) {
         actions.push('<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📖 Practice Mode</button>');
     }
     if (b.readinessDeficit >= 4 || item.confidence !== 'rated') {
-        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-strip\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
+        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
     }
     if (b.exposureBoost >= 8) {
         actions.push('<button onclick="showPage(\'setlists\')" style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);color:#fbbf24;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📋 View Setlist</button>');
     }
     // Fallback: always show at least one action
     if (!actions.length) {
-        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-strip\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
+        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
     }
 
     return '<div class="sd-card" style="padding:10px 14px">'
@@ -396,12 +403,12 @@ function _sdRenderReadinessBlock(title, safeSong) {
         var color=score>=4?'#10b981':score>=3?'#f59e0b':score>0?'#ef4444':'rgba(255,255,255,0.1)';
         var isMe=myKey&&key===myKey;
         var barId='sd-bar-'+key, lblId='sd-lbl-'+key;
-        var RDEFS=['','🔴 Never played it','🟠 Know the basics','🟡 Getting there','🟢 Almost there','⭐ Gig ready'];
+        var RDEFS=['🔴 Never played','🟠 Learning','🟡 Rough','🟢 Getting there','🔵 Tight','⭐ Gig ready'];
         var tipTitle=RDEFS[score]||'Not rated — slide to set';
         var slider=isMe?'<input type="range" min="0" max="5" step="1" value="'+(score!=null&&score!==''?score:0)+'" '+
                         'style="width:80px;accent-color:var(--accent)" '+
                         'title="'+tipTitle+'" '+
-                        'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'\',\'🔴 Never played it\',\'🟠 Know the basics\',\'🟡 Getting there\',\'🟢 Almost there\',\'⭐ Gig ready\'];var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
+                        'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'🔴 Never played\',\'🟠 Learning\',\'🟡 Rough\',\'🟢 Getting there\',\'🔵 Tight\',\'⭐ Gig ready\'];var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
                         'onchange="sdSaveReadiness(\''+safeSong+'\',\''+key+'\',this.value)">':'';
         return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
                '<span style="font-size:0.82em;font-weight:'+(isMe?'800':'600')+';color:var(--text);min-width:52px">'+_sdEsc(name)+'</span>'+
