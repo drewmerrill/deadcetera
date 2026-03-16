@@ -85,9 +85,9 @@ Example: cover_me canonical shape = `{ artist, url, description, addedBy, addedA
 | A | Fast visible wins | Availability matrix, setlist lock, Band Room card — **DONE** |
 | A.5 | Polish | Matrix best-day finder, lock metadata, Band Room expansion — **DONE** |
 | B1 | Band Room + Voting | Band Room rename, song prospect voting — **DONE** |
-| **Pre-launch 1** | **Multi-member adoption** | **Invite Bandmates flow — NEXT** |
-| **Pre-launch 2** | **First-run experience** | **Onboarding Wizard** |
-| **Pre-launch 3** | **Scheduling** | **Recurring Events** |
+| **Pre-launch 1** | **Multi-member adoption** | **Invite Bandmates flow — DONE** |
+| **Pre-launch 2** | **First-run experience** | **Onboarding Wizard — NEXT** |
+| **Pre-launch 3** | **Scheduling** | **Recurring Events — DONE** |
 | **Pre-launch 4** | **Instant value** | **Starter Pack auto-offer** |
 | **Infra** | **Payments + Auth** | **Stripe, Firebase Auth (Google/Apple/email), legal pages** |
 | B3 | Song DNA depth | Instruments-per-song (song_roles) |
@@ -146,7 +146,7 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 
 ## Current State (20260316)
 
-**Build:** 20260316-221416
+**Build:** 20260316-225147
 **Active work:** Pre-launch features + operational UX + songId migration
 **Milestones 1-9:** Complete
 **Milestone 10:** Canonical Entity Model + Operational Features — deployed
@@ -244,7 +244,6 @@ Playlists are views over recording assets. Auto-generated playlists (Gig Prep, L
 ## Top Open Items (Priority Order)
 
 1. **Onboarding Wizard** (PL-2) — first-run: band name → pick catalog → add members → set rehearsal
-2. **Recurring Events** (PL-3) — "Repeat weekly/biweekly" on event create
 3. **Starter Pack Auto-Offer** (PL-4) — genre selection → auto-load charts + key + BPM + North Star
 4. **Firebase Auth migration** (Infra) — Google + Apple + email login, replaces GIS token client
 5. **Stripe payments** (Infra) — per-band subscriptions, free vs pro gating
