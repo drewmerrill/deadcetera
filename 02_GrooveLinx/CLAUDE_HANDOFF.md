@@ -146,19 +146,37 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 
 ## Current State (20260316)
 
-**Build:** 20260316-125045
-**Active work:** Canonical entity model + songId foundation + live UAT
+**Build:** 20260316-221416
+**Active work:** Pre-launch features + operational UX + songId migration
 **Milestones 1-9:** Complete
-**Milestone 10:** Canonical Entity Model — deployed, in UAT
+**Milestone 10:** Canonical Entity Model + Operational Features — deployed
 
 ### What happened this session (20260316):
+
+**Canonical entity model:**
 - Venue canonicalization: venueId, entity picker, duplicate detection, venue-aware matching/audit/repair
 - BPM/Key source-of-truth: all edits route through GLStore.updateSongField(), panel + topbar + quick-fill unified
 - linkedSetlist cleanup: setlistId-first in all interactive UI paths
 - songId foundation: 585 songs with stable songId + artist field, GLStore index helpers
-- songId dual-path: songs_v2/{songId}/ namespace for BPM + Key with legacy fallback
+- songId dual-path: songs_v2/{songId}/ for 10 field types with legacy fallback
 - Song title collision fix: 5 collisions resolved, duplicate-title guardrails added
-- Sticky filter bug fix, Gig Map toggle fix, Install App fix, Google Maps API migration
+- cover_me payload normalized across all write paths
+
+**Operational features (BandZone-inspired):**
+- Availability Matrix: 14-day look-ahead, best-day finder, Create Rehearsal CTA, 7/14/30 day toggle
+- Setlist Lock: lock/unlock with lockedBy/lockedAt metadata, unlock confirmation for gig-linked setlists
+- Band Room: renamed from Ideas Board, dashboard card with polls + ideas, nav badge
+- Song Prospect Voting: "Should we learn this?" on prospect songs, votes in songs_v2
+- Progressive Onboarding: 3-step setup card (songs, bandmates, rehearsal), celebratory completion
+- Invite Bandmates: full modal with share link, add by name, pending/active member display
+
+**Bug fixes:**
+- BPM/Key panel revert, sticky status filter, Gig Map toggle, Install App button, Google Maps API migration
+
+**Architecture docs:**
+- docs/song_record_schema.md: canonical song data model
+- Recording Asset Model + Playlist Strategy documented
+- Product philosophy + roadmap codified in CLAUDE_HANDOFF.md
 
 ## Deploy Workflow (CRITICAL)
 
@@ -223,12 +241,17 @@ Playlists are views over recording assets. Auto-generated playlists (Gig Prep, L
 - **Two-layer agenda model:** `latestGenerated` (immutable) + `activeSession` (mutable execution)
 - **Overlay root:** `#gl-overlay-root` for persistent UI that escapes shell stacking contexts
 
-## Top Open Items
+## Top Open Items (Priority Order)
 
-1. Practice Mode chart card UX — needs clickable chart preview restoration
-2. Phase 2B Step 2 — expand dual-path to full song detail metadata
-3. Playlist `linkedSetlistId` — stores name not ID, needs cleanup
-4. Song title suffixes (WSP)/(DMB) — transitional until songId replaces title-as-key in Firebase
+1. **Onboarding Wizard** (PL-2) — first-run: band name → pick catalog → add members → set rehearsal
+2. **Recurring Events** (PL-3) — "Repeat weekly/biweekly" on event create
+3. **Starter Pack Auto-Offer** (PL-4) — genre selection → auto-load charts + key + BPM + North Star
+4. **Firebase Auth migration** (Infra) — Google + Apple + email login, replaces GIS token client
+5. **Stripe payments** (Infra) — per-band subscriptions, free vs pro gating
+6. **Practice Mode chart card** — restore clickable chart preview (researched, not built)
+7. **Invite join-band flow** — token validation + user attachment (requires Firebase Auth)
+8. **Playlist linkedSetlistId** — stores name not ID, needs cleanup
+9. **best_shot_takes dual-write** — 5 write paths in bestshot.js not yet v2-migrated
 
 ## Primary Docs To Review Next
 
@@ -238,12 +261,16 @@ Playlists are views over recording assets. Auto-generated playlists (Gig Prep, L
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development. Milestones 1-10 deployed. Live band UAT in progress.
+Continue GrooveLinx development. Milestones 1-10 deployed. Pre-launch features in progress.
 
 Please read these files first:
 1. `CLAUDE.md`
 2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
 3. `02_GrooveLinx/CURRENT_PHASE.md`
-4. `02_GrooveLinx/notes/uat_bug_log.md`
+4. `docs/song_record_schema.md`
 
-Current build: 20260316-125045. Dev and production are synced. Ask Drew for next priority.
+Current build: 20260316-221416. Dev and production are synced.
+
+This session completed: venue canonicalization, BPM/Key unification, songId foundation with dual-path migration (10 field types), availability matrix, setlist lock, Band Room, song prospect voting, progressive onboarding card, invite bandmates flow.
+
+Next priority: Onboarding Wizard (PL-2) or Recurring Events (PL-3). Ask Drew.
