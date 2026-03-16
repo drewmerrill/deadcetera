@@ -189,7 +189,8 @@ async function _homeDataLoad() {
         _loadUpcomingGigs(3),
         _loadUpcomingPlans(2),
         _loadSetlistSummaries(),
-        _loadRecentGigHistory()
+        _loadRecentGigHistory(),
+        (typeof loadBandDataFromDrive === 'function') ? loadBandDataFromDrive('_band', 'calendar_events').catch(function(){return [];}) : Promise.resolve([])
     ]);
 
     var bundle = {
@@ -197,12 +198,17 @@ async function _homeDataLoad() {
         plans:         results[1].status === 'fulfilled' ? results[1].value : [],
         setlists:      results[2].status === 'fulfilled' ? results[2].value : [],
         recentSongs:   results[3].status === 'fulfilled' ? results[3].value : [],
+        _calEvents:    results[4].status === 'fulfilled' ? (Array.isArray(results[4].value) ? results[4].value : Object.values(results[4].value || {})) : [],
         readinessCache: (typeof readinessCache !== 'undefined') ? readinessCache : {},
         memberKey:     _getMemberKey()
     };
 
     _homeBundle   = bundle;
     _homeCacheTime = Date.now();
+    // Evaluate onboarding state from real data
+    if (typeof GLStore !== 'undefined' && GLStore.evaluateOnboardingState) {
+        GLStore.evaluateOnboardingState(bundle);
+    }
     return bundle;
 }
 
@@ -397,62 +403,102 @@ function _renderCommandCenterHeader(bundle) {
         + _orientBanner;
 }
 
-// ── Command Center: Setup Guidance (Progressive Discovery) ────────────────────
-// Shows lightweight unlock prompts when foundational data is missing.
-// Disappears naturally as users complete each step — no dismiss needed.
+// ── Command Center: Progressive Onboarding ──────────────────────────────────
+// Persistent setup card for bands that haven't completed activation.
+// 3 steps: Add Songs, Invite Bandmates, Schedule Rehearsal.
+// Derived from real data via GLStore.evaluateOnboardingState().
+// Shows celebratory success state at 3/3, dismissible.
 
 function _renderSetupGuidance(bundle, wf) {
-    var steps = [];
-    var rc = bundle.readinessCache || {};
-    var ratedCount = Object.keys(rc).filter(function(k) {
-        var vals = Object.values(rc[k] || {}).filter(function(v) { return typeof v === 'number' && v > 0; });
-        return vals.length > 0;
-    }).length;
-    var hasGig = bundle.gigs && bundle.gigs.length > 0;
-    var hasRecording = wf && wf.hasRecording;
+    var ob = (typeof GLStore !== 'undefined' && GLStore.getOnboardingState) ? GLStore.getOnboardingState() : null;
+    if (!ob) return '';
+    if (ob.isDismissed && !ob.isComplete) return '';
 
-    // Step 1: Rate songs (most foundational)
-    if (ratedCount < 5) {
-        steps.push({
-            icon: '&#x2B50;',
-            text: ratedCount === 0
-                ? 'Rate readiness on a few songs to unlock practice guidance and band health.'
-                : ratedCount + ' song' + (ratedCount !== 1 ? 's' : '') + ' rated \u2014 rate ' + (5 - ratedCount) + ' more to unlock full practice radar.',
-            cta: 'Rate Songs', onclick: "showPage('songs')"
-        });
+    // Already activated and dismissed — don't show
+    if (ob.isDismissed) return '';
+
+    var steps = ob.steps;
+    var progress = ob.completedCount;
+    var total = 3;
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var appUrl = window.location.origin + window.location.pathname;
+
+    // 3/3 complete — success state
+    if (ob.isComplete) {
+        return '<div class="app-card home-anim-cards" style="border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.04)">'
+            + '<div style="text-align:center;padding:16px 12px">'
+            + '<div style="font-size:2em;margin-bottom:8px">🎉</div>'
+            + '<div style="font-size:1.05em;font-weight:700;color:#22c55e;margin-bottom:4px">Your band is set up!</div>'
+            + '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:16px">GrooveLinx can now help you improve between rehearsals.</div>'
+            + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+            + '<button onclick="if(typeof GLStore!==\'undefined\'&&GLStore.generateRehearsalAgenda)GLStore.generateRehearsalAgenda();showPage(\'rehearsal\')" class="btn btn-primary" style="font-weight:700">Generate First Rehearsal Agenda</button>'
+            + '<button onclick="if(typeof openRehearsalChopper===\'function\')openRehearsalChopper()" class="btn btn-ghost">Analyze a Recording</button>'
+            + '</div>'
+            + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.dismissOnboardingCard();renderHomeDashboard()" style="background:none;border:none;color:var(--text-dim);font-size:0.75em;cursor:pointer;margin-top:12px;padding:4px 8px">Dismiss</button>'
+            + '</div></div>';
     }
 
-    // Step 2: Add a gig (unlocks scoping and risk)
-    if (!hasGig && ratedCount >= 3) {
-        steps.push({
-            icon: '&#x1F3A4;',
-            text: 'Add your next gig to unlock gig-specific risk analysis and setlist prep.',
-            cta: 'Add Gig', onclick: "showPage('gigs')"
-        });
+    // Incomplete — show setup card
+    var pctWidth = Math.round(progress / total * 100);
+    var html = '<div class="app-card home-anim-cards" style="border:1px solid rgba(99,102,241,0.2)">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+    html += '<h3 style="margin:0;font-size:0.95em">⚡ Complete Your Band Setup</h3>';
+    html += '<span style="font-size:0.75em;font-weight:700;color:var(--accent-light)">' + progress + '/' + total + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px">Set up your songs, bandmates, and rehearsal rhythm so GrooveLinx can generate insights.</div>';
+
+    // Progress bar
+    html += '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:14px;overflow:hidden">';
+    html += '<div style="width:' + pctWidth + '%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:2px;transition:width 0.3s"></div>';
+    html += '</div>';
+
+    // Step 1: Add Songs
+    if (steps.addSongs.complete) {
+        html += _obStepDone('🎵', 'Add Songs', steps.addSongs.detail);
+    } else {
+        html += _obStepTodo('🎵', 'Add Songs',
+            'Import your library so GrooveLinx can score readiness and build rehearsal agendas.',
+            '<button onclick="if(typeof showStarterPackImport===\'function\')showStarterPackImport();else showPage(\'songs\')" class="btn btn-primary btn-sm" style="font-weight:700;font-size:0.8em">Add Starter Pack</button>'
+            + '<button onclick="showPage(\'songs\')" class="btn btn-ghost btn-sm" style="font-size:0.8em">Add Songs</button>');
     }
 
-    // Step 3: Upload a recording (unlocks advanced features)
-    if (!hasRecording && ratedCount >= 5 && hasGig) {
-        steps.push({
-            icon: '&#x1F399;',
-            text: 'Upload a rehearsal recording to unlock scorecards, segmentation, and song attempt tracking.',
-            cta: 'Upload', onclick: "if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
-        });
+    // Step 2: Invite Bandmates
+    if (steps.inviteBandmates.complete) {
+        html += _obStepDone('👥', 'Invite Bandmates', steps.inviteBandmates.detail);
+    } else {
+        html += _obStepTodo('👥', 'Invite Bandmates',
+            'GrooveLinx works best when your band tracks readiness together.',
+            '<button onclick="showPage(\'admin\')" class="btn btn-primary btn-sm" style="font-weight:700;font-size:0.8em">Invite Bandmates</button>'
+            + '<button onclick="navigator.clipboard.writeText(\'' + _escHtml(appUrl) + '\').then(function(){showToast(\'Link copied!\')})" class="btn btn-ghost btn-sm" style="font-size:0.8em">Copy Invite Link</button>');
     }
 
-    if (!steps.length) return '';
-
-    var html = '<div class="hd-setup-guidance home-anim-cards">';
-    for (var i = 0; i < steps.length; i++) {
-        var s = steps[i];
-        html += '<div class="hd-setup-step">'
-            + '<span class="hd-setup-step__icon">' + s.icon + '</span>'
-            + '<span class="hd-setup-step__text">' + s.text + '</span>'
-            + '<button class="hd-setup-step__cta" onclick="' + s.onclick + '">' + s.cta + ' &#x2192;</button>'
-            + '</div>';
+    // Step 3: Schedule Rehearsal
+    if (steps.scheduleRehearsal.complete) {
+        html += _obStepDone('📅', 'Schedule Rehearsal', steps.scheduleRehearsal.detail);
+    } else {
+        html += _obStepTodo('📅', 'Schedule Rehearsal',
+            'Set your rehearsal rhythm so GrooveLinx can build agendas and prep workflows.',
+            '<button onclick="showPage(\'calendar\');setTimeout(function(){if(typeof calAddEvent===\'function\')calAddEvent()},300)" class="btn btn-primary btn-sm" style="font-weight:700;font-size:0.8em">Schedule Rehearsal</button>'
+            + '<button onclick="showPage(\'calendar\')" class="btn btn-ghost btn-sm" style="font-size:0.8em">Open Calendar</button>');
     }
+
     html += '</div>';
     return html;
+}
+
+function _obStepDone(icon, title, detail) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:4px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12);border-radius:8px">'
+        + '<span style="font-size:1.1em">' + icon + '</span>'
+        + '<div style="flex:1"><div style="font-weight:600;font-size:0.85em;color:#22c55e">✅ ' + title + '</div>'
+        + '<div style="font-size:0.75em;color:var(--text-dim)">' + _escHtml(detail) + '</div></div></div>';
+}
+
+function _obStepTodo(icon, title, desc, buttons) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;margin-bottom:4px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">'
+        + '<span style="font-size:1.1em;margin-top:2px">' + icon + '</span>'
+        + '<div style="flex:1"><div style="font-weight:600;font-size:0.85em;color:var(--text);margin-bottom:2px">' + title + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">' + desc + '</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + buttons + '</div></div></div>';
 }
 
 // ── Command Center: Hero + Next Best Step ─────────────────────────────────────

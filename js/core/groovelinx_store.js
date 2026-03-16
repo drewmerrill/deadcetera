@@ -2862,6 +2862,13 @@
     // Song data write (dual-path)
     saveSongData:          saveSongData,
 
+    // Onboarding / Band Activation
+    evaluateOnboardingState: evaluateOnboardingState,
+    getOnboardingState:      getOnboardingState,
+    getOnboardingProgress:   getOnboardingProgress,
+    isBandActivated:         isBandActivated,
+    dismissOnboardingCard:   dismissOnboardingCard,
+
     // Song voting
     voteSongProspect:      voteSongProspect,
     getSongVotes:          getSongVotes,
@@ -2876,6 +2883,74 @@
     findDuplicateVenues:   findDuplicateVenues,
     getVenueById:          getVenueById,
   };
+
+  // ── Onboarding / Band Activation ────────────────────────────────────────
+  //
+  // Progressive onboarding tracks 3 activation steps:
+  //   1. addSongs — band has >= 10 songs
+  //   2. inviteBandmates — band has >= 2 members (bandMembers count)
+  //   3. scheduleRehearsal — at least 1 rehearsal event exists
+  //
+  // State is computed from real data, not manual checkboxes.
+  // Dismiss state persists in localStorage.
+
+  var _onboardingState = null;
+
+  function evaluateOnboardingState(bundle) {
+    var songs = getSongs();
+    var songCount = songs.length;
+    var memberCount = (typeof bandMembers !== 'undefined') ? Object.keys(bandMembers).length : 1;
+    // Check for rehearsal events
+    var hasRehearsal = false;
+    var gigs = (bundle && bundle.gigs) ? bundle.gigs : [];
+    // Also check calendar events if available
+    if (bundle && bundle._calEvents) {
+      hasRehearsal = bundle._calEvents.some(function(e) { return e.type === 'rehearsal'; });
+    }
+    if (!hasRehearsal && typeof loadBandDataFromDrive === 'function') {
+      // Sync check — will be evaluated after data loads
+    }
+
+    var addSongs = songCount >= 10;
+    var inviteBandmates = memberCount >= 2;
+    var scheduleRehearsal = hasRehearsal;
+
+    var completedCount = (addSongs ? 1 : 0) + (inviteBandmates ? 1 : 0) + (scheduleRehearsal ? 1 : 0);
+    var isDismissed = false;
+    try { isDismissed = localStorage.getItem('gl_onboarding_dismissed') === '1'; } catch(e) {}
+
+    _onboardingState = {
+      isActive: completedCount < 3 && !isDismissed,
+      isComplete: completedCount === 3,
+      isDismissed: isDismissed,
+      completedCount: completedCount,
+      steps: {
+        addSongs: { complete: addSongs, detail: songCount + ' song' + (songCount !== 1 ? 's' : '') + ' in library' },
+        inviteBandmates: { complete: inviteBandmates, detail: memberCount + ' member' + (memberCount !== 1 ? 's' : '') },
+        scheduleRehearsal: { complete: scheduleRehearsal, detail: scheduleRehearsal ? 'Rehearsal scheduled' : 'No rehearsal yet' }
+      }
+    };
+    return _onboardingState;
+  }
+
+  function getOnboardingState() {
+    return _onboardingState;
+  }
+
+  function getOnboardingProgress() {
+    if (!_onboardingState) return { completed: 0, total: 3 };
+    return { completed: _onboardingState.completedCount, total: 3 };
+  }
+
+  function isBandActivated() {
+    return _onboardingState ? _onboardingState.isComplete : false;
+  }
+
+  function dismissOnboardingCard() {
+    try { localStorage.setItem('gl_onboarding_dismissed', '1'); } catch(e) {}
+    if (_onboardingState) _onboardingState.isDismissed = true;
+    emit('onboardingDismissed', {});
+  }
 
   // ── Song Prospect Voting ────────────────────────────────────────────────
   //
