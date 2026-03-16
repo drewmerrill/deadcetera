@@ -54,23 +54,30 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesFilter || !matchesSearch) return false;
 
-        // Status filter (data-level)
-        if (typeof activeStatusFilter !== 'undefined' && activeStatusFilter &&
+        // When the user is actively searching, bypass status/harmony/northstar
+        // filters so search always finds everything in the library.
+        var isSearching = searchTerm.length > 0;
+
+        // Status filter (data-level) — skipped during active search
+        if (!isSearching &&
+            typeof activeStatusFilter !== 'undefined' && activeStatusFilter &&
             typeof statusCacheLoaded !== 'undefined' && statusCacheLoaded) {
             if (typeof getStatusFromCache === 'function') {
                 if (getStatusFromCache(song.title) !== activeStatusFilter) return false;
             }
         }
 
-        // Harmony filter
-        if (typeof activeHarmonyFilter !== 'undefined' && activeHarmonyFilter === 'harmonies') {
+        // Harmony filter — skipped during active search
+        if (!isSearching &&
+            typeof activeHarmonyFilter !== 'undefined' && activeHarmonyFilter === 'harmonies') {
             var hbc = (typeof harmonyBadgeCache !== 'undefined') ? harmonyBadgeCache : {};
             var hc  = (typeof harmonyCache      !== 'undefined') ? harmonyCache      : {};
             if (!hbc[song.title] && !hc[song.title]) return false;
         }
 
-        // North Star filter
-        if (typeof activeNorthStarFilter !== 'undefined' && activeNorthStarFilter) {
+        // North Star filter — skipped during active search
+        if (!isSearching &&
+            typeof activeNorthStarFilter !== 'undefined' && activeNorthStarFilter) {
             var nsc = (typeof northStarCache !== 'undefined') ? northStarCache : {};
             if (!nsc[song.title]) return false;
         }
@@ -104,6 +111,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;display:block !important;grid-template-columns:none !important">' + msg + '</div>';
         return;
     }
+
+    // Show active filter chip so the user knows a filter is hiding songs
+    _renderActiveFilterChip();
 
     dropdown.innerHTML = filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
@@ -217,6 +227,37 @@ window.setupSearchAndFilters = function setupSearchAndFilters() {
         else if (searchInput?.parentElement?.parentElement) searchInput.parentElement.parentElement.appendChild(hBtn);
     }
 };
+
+// ── Active filter chip ───────────────────────────────────────────────────────
+
+/**
+ * Show/hide a visible chip above the song list when a status filter is active,
+ * so the user always knows songs are being filtered.
+ */
+function _renderActiveFilterChip() {
+    var existing = document.getElementById('glActiveFilterChip');
+    var hasFilter = (typeof activeStatusFilter !== 'undefined' && activeStatusFilter);
+    if (!hasFilter) {
+        if (existing) existing.remove();
+        return;
+    }
+    var statusNames = { prospect:'👀 Prospect', wip:'🔧 Work in Progress', gig_ready:'✅ Gig Ready' };
+    var label = statusNames[activeStatusFilter] || activeStatusFilter;
+    if (!existing) {
+        existing = document.createElement('div');
+        existing.id = 'glActiveFilterChip';
+        existing.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25);border-radius:8px;font-size:0.82em;color:#fbbf24';
+        var dropdown = document.getElementById('songDropdown');
+        if (dropdown && dropdown.parentElement) {
+            dropdown.parentElement.insertBefore(existing, dropdown);
+        } else {
+            return;
+        }
+    }
+    existing.innerHTML = '<span>Showing: <strong>' + label + '</strong></span>' +
+        '<button onclick="document.getElementById(\'statusFilter\').value=\'all\';filterByStatus(\'all\')" ' +
+        'style="background:none;border:1px solid rgba(251,191,36,0.3);color:#fbbf24;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:0.9em;font-weight:700" title="Clear filter">✕ Show All</button>';
+}
 
 // ── Song row highlight ────────────────────────────────────────────────────────
 

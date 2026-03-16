@@ -967,17 +967,19 @@ function renderSongs(filter = 'all', searchTerm = '') {
                 : bandUpper === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesFilter || !matchesSearch) return false;
+        // When user is actively searching, bypass status/harmony/northstar filters
+        var isSearching = searchTerm.length > 0;
         // Status filter at data level
-        if (activeStatusFilter && statusCacheLoaded) {
+        if (!isSearching && activeStatusFilter && statusCacheLoaded) {
             const songStatus = getStatusFromCache(song.title);
             if (songStatus !== activeStatusFilter) return false;
         }
         // Harmony filter at data level
-        if (activeHarmonyFilter === 'harmonies') {
+        if (!isSearching && activeHarmonyFilter === 'harmonies') {
             if (!harmonyBadgeCache[song.title] && !harmonyCache[song.title]) return false;
         }
         // North Star filter at data level
-        if (activeNorthStarFilter) {
+        if (!isSearching && activeNorthStarFilter) {
             if (!northStarCache[song.title]) return false;
         }
         return true;
