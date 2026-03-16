@@ -2869,6 +2869,13 @@
     isBandActivated:         isBandActivated,
     dismissOnboardingCard:   dismissOnboardingCard,
 
+    // Band Invitations
+    getBandInvites:        getBandInvites,
+    createBandInvite:      createBandInvite,
+    revokeBandInvite:      revokeBandInvite,
+    getBandInviteLink:     getBandInviteLink,
+    getBandMembers:        getBandMembers,
+
     // Song voting
     voteSongProspect:      voteSongProspect,
     getSongVotes:          getSongVotes,
@@ -2912,7 +2919,9 @@
     }
 
     var addSongs = songCount >= 10;
-    var inviteBandmates = memberCount >= 2;
+    var hasInvites = bundle && bundle._invites && bundle._invites.some(function(inv) { return inv.status === 'pending' || inv.status === 'accepted'; });
+    var inviteBandmates = memberCount >= 2 || hasInvites;
+    var inviteDetail = hasInvites ? memberCount + ' member' + (memberCount !== 1 ? 's' : '') + ' + invites sent' : memberCount + ' member' + (memberCount !== 1 ? 's' : '');
     var scheduleRehearsal = hasRehearsal;
 
     var completedCount = (addSongs ? 1 : 0) + (inviteBandmates ? 1 : 0) + (scheduleRehearsal ? 1 : 0);
@@ -2926,7 +2935,7 @@
       completedCount: completedCount,
       steps: {
         addSongs: { complete: addSongs, detail: songCount + ' song' + (songCount !== 1 ? 's' : '') + ' in library' },
-        inviteBandmates: { complete: inviteBandmates, detail: memberCount + ' member' + (memberCount !== 1 ? 's' : '') },
+        inviteBandmates: { complete: inviteBandmates, detail: inviteDetail },
         scheduleRehearsal: { complete: scheduleRehearsal, detail: scheduleRehearsal ? 'Rehearsal scheduled' : 'No rehearsal yet' }
       }
     };
@@ -2950,6 +2959,67 @@
     try { localStorage.setItem('gl_onboarding_dismissed', '1'); } catch(e) {}
     if (_onboardingState) _onboardingState.isDismissed = true;
     emit('onboardingDismissed', {});
+  }
+
+  // ── Band Invitations ────────────────────────────────────────────────────
+  //
+  // Firebase: bands/{slug}/invites/{inviteId}
+  // Shape: { inviteId, name, email, role, status, createdBy, createdAt, acceptedAt }
+  // Status: 'pending' | 'accepted' | 'revoked'
+  //
+  // Join link: {appUrl}?join={bandSlug}&invite={inviteId}
+  // Full auth-gated acceptance is a future milestone (Firebase Auth).
+  // Current flow: create invite record + share link for manual onboarding.
+
+  async function getBandInvites() {
+    var db = _db();
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+      var snap = await db.ref(bandPath('invites')).once('value');
+      var val = snap.val();
+      if (!val) return [];
+      return Object.entries(val).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); });
+    } catch(e) { return []; }
+  }
+
+  async function createBandInvite(data) {
+    var db = _db();
+    if (!db || typeof bandPath !== 'function') return null;
+    var inviteId = (typeof generateShortId === 'function') ? generateShortId(10) : Date.now().toString(36);
+    var invite = {
+      inviteId: inviteId,
+      name: (data.name || '').trim(),
+      email: (data.email || '').trim(),
+      role: data.role || 'member',
+      status: 'pending',
+      createdBy: (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown',
+      createdAt: _now()
+    };
+    await db.ref(bandPath('invites/' + inviteId)).set(invite);
+    emit('inviteCreated', { invite: invite });
+    return invite;
+  }
+
+  async function revokeBandInvite(inviteId) {
+    var db = _db();
+    if (!db || typeof bandPath !== 'function') return;
+    await db.ref(bandPath('invites/' + inviteId + '/status')).set('revoked');
+    emit('inviteRevoked', { inviteId: inviteId });
+  }
+
+  function getBandInviteLink() {
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var base = window.location.origin + window.location.pathname;
+    return base + '?join=' + encodeURIComponent(slug);
+  }
+
+  function getBandMembers() {
+    if (typeof bandMembers !== 'undefined') {
+      return Object.entries(bandMembers).map(function(e) {
+        return { key: e[0], name: e[1].name || e[0], role: e[1].role || '', status: 'active' };
+      });
+    }
+    return [];
   }
 
   // ── Song Prospect Voting ────────────────────────────────────────────────

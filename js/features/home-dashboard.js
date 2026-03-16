@@ -190,7 +190,8 @@ async function _homeDataLoad() {
         _loadUpcomingPlans(2),
         _loadSetlistSummaries(),
         _loadRecentGigHistory(),
-        (typeof loadBandDataFromDrive === 'function') ? loadBandDataFromDrive('_band', 'calendar_events').catch(function(){return [];}) : Promise.resolve([])
+        (typeof loadBandDataFromDrive === 'function') ? loadBandDataFromDrive('_band', 'calendar_events').catch(function(){return [];}) : Promise.resolve([]),
+        (typeof GLStore !== 'undefined' && GLStore.getBandInvites) ? GLStore.getBandInvites() : Promise.resolve([])
     ]);
 
     var bundle = {
@@ -199,6 +200,7 @@ async function _homeDataLoad() {
         setlists:      results[2].status === 'fulfilled' ? results[2].value : [],
         recentSongs:   results[3].status === 'fulfilled' ? results[3].value : [],
         _calEvents:    results[4].status === 'fulfilled' ? (Array.isArray(results[4].value) ? results[4].value : Object.values(results[4].value || {})) : [],
+        _invites:      results[5].status === 'fulfilled' ? results[5].value : [],
         readinessCache: (typeof readinessCache !== 'undefined') ? readinessCache : {},
         memberKey:     _getMemberKey()
     };
@@ -467,9 +469,9 @@ function _renderSetupGuidance(bundle, wf) {
         html += _obStepDone('👥', 'Invite Bandmates', steps.inviteBandmates.detail);
     } else {
         html += _obStepTodo('👥', 'Invite Bandmates',
-            'GrooveLinx works best when your band tracks readiness together.',
-            '<button onclick="showPage(\'admin\')" class="btn btn-primary btn-sm" style="font-weight:700;font-size:0.8em">Invite Bandmates</button>'
-            + '<button onclick="navigator.clipboard.writeText(\'' + _escHtml(appUrl) + '\').then(function(){showToast(\'Link copied!\')})" class="btn btn-ghost btn-sm" style="font-size:0.8em">Copy Invite Link</button>');
+            'Bring your band into GrooveLinx so everyone can track readiness together.',
+            '<button onclick="glShowInviteModal()" class="btn btn-primary btn-sm" style="font-weight:700;font-size:0.8em">Invite Bandmates</button>'
+            + '<button onclick="glCopyInviteLink()" class="btn btn-ghost btn-sm" style="font-size:0.8em">Copy Invite Link</button>');
     }
 
     // Step 3: Schedule Rehearsal

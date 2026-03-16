@@ -1127,6 +1127,137 @@ window.notifSMSAppLink = notifSMSAppLink;
 window.notifTextOne = notifTextOne;
 window.notifPopulateRehearsalPicker = notifPopulateRehearsalPicker;
 window.notifGetAllPhones = notifGetAllPhones;
+
+// ── Invite Bandmates Modal ──────────────────────────────────────────────────
+
+window.glShowInviteModal = async function() {
+    var existing = document.getElementById('glInviteModal');
+    if (existing) existing.remove();
+
+    var members = (typeof GLStore !== 'undefined' && GLStore.getBandMembers) ? GLStore.getBandMembers() : [];
+    var invites = (typeof GLStore !== 'undefined' && GLStore.getBandInvites) ? await GLStore.getBandInvites() : [];
+    var pendingInvites = invites.filter(function(i) { return i.status === 'pending'; });
+    var inviteLink = (typeof GLStore !== 'undefined' && GLStore.getBandInviteLink) ? GLStore.getBandInviteLink() : window.location.href;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'glInviteModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+    var html = '<div style="background:#1e293b;border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+    html += '<h2 style="margin:0;font-size:1.1em;color:#fff">👥 Invite Bandmates</h2>';
+    html += '<button onclick="document.getElementById(\'glInviteModal\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.3em;cursor:pointer;padding:0 4px">✕</button>';
+    html += '</div>';
+    html += '<p style="color:var(--text-dim);font-size:0.82em;margin:0 0 16px">Bring your band into GrooveLinx so everyone can track readiness, rehearsal priorities, and gig prep together.</p>';
+
+    // Share link section
+    html += '<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    html += '<div style="font-weight:700;font-size:0.85em;color:var(--accent-light);margin-bottom:8px">Share Invite Link</div>';
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">';
+    html += '<code style="flex:1;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:0.75em;color:var(--accent-light);word-break:break-all;min-width:0">' + inviteLink + '</code>';
+    html += '<button onclick="glCopyInviteLink()" class="btn btn-primary btn-sm" style="flex-shrink:0;font-size:0.78em">📋 Copy</button>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    html += '<button onclick="glShareInviteLink()" class="btn btn-ghost btn-sm" style="font-size:0.75em">🔗 Share via Messages</button>';
+    html += '<button onclick="glSMSInviteLink()" class="btn btn-ghost btn-sm" style="font-size:0.75em">💬 Text the Band</button>';
+    html += '</div></div>';
+
+    // Add invite by name/email
+    html += '<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;margin-bottom:16px">';
+    html += '<div style="font-weight:700;font-size:0.85em;color:var(--text-muted);margin-bottom:8px">Add by Name</div>';
+    html += '<div style="display:flex;gap:6px;margin-bottom:6px">';
+    html += '<input id="glInviteName" class="app-input" placeholder="Name" style="flex:1;font-size:0.85em">';
+    html += '<input id="glInviteEmail" class="app-input" placeholder="Email (optional)" style="flex:1;font-size:0.85em">';
+    html += '</div>';
+    html += '<button onclick="glSendInvite()" class="btn btn-success btn-sm" style="font-size:0.82em;font-weight:700">Send Invite</button>';
+    html += '</div>';
+
+    // Active members
+    html += '<div style="margin-bottom:12px">';
+    html += '<div style="font-weight:700;font-size:0.82em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Active Members (' + members.length + ')</div>';
+    members.forEach(function(m) {
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
+        html += '<span style="color:#22c55e;font-size:0.8em">●</span>';
+        html += '<span style="flex:1;font-size:0.85em;color:var(--text)">' + (m.name || m.key) + '</span>';
+        html += '<span style="font-size:0.72em;color:var(--text-dim)">' + (m.role || '') + '</span>';
+        html += '</div>';
+    });
+    html += '</div>';
+
+    // Pending invites
+    if (pendingInvites.length > 0) {
+        html += '<div>';
+        html += '<div style="font-weight:700;font-size:0.82em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Pending Invites (' + pendingInvites.length + ')</div>';
+        pendingInvites.forEach(function(inv) {
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
+            html += '<span style="color:#fbbf24;font-size:0.8em">●</span>';
+            html += '<span style="flex:1;font-size:0.85em;color:var(--text-muted)">' + (inv.name || inv.email || 'Unnamed') + '</span>';
+            html += '<span style="font-size:0.7em;color:var(--text-dim)">Pending</span>';
+            html += '<button onclick="glRevokeInvite(\'' + inv.inviteId + '\')" style="background:none;border:none;color:#ef4444;font-size:0.72em;cursor:pointer;padding:2px 4px">✕</button>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+};
+
+window.glCopyInviteLink = function() {
+    var link = (typeof GLStore !== 'undefined' && GLStore.getBandInviteLink) ? GLStore.getBandInviteLink() : window.location.href;
+    navigator.clipboard.writeText(link).then(function() {
+        if (typeof showToast === 'function') showToast('📋 Invite link copied!');
+    });
+};
+
+window.glShareInviteLink = function() {
+    var link = (typeof GLStore !== 'undefined' && GLStore.getBandInviteLink) ? GLStore.getBandInviteLink() : window.location.href;
+    if (navigator.share) {
+        navigator.share({
+            title: 'Join our band on GrooveLinx',
+            text: '🎸 Join our band on GrooveLinx — songs, setlists, rehearsal intelligence, and more!',
+            url: link
+        }).catch(function(){});
+    } else {
+        navigator.clipboard.writeText(link).then(function() {
+            if (typeof showToast === 'function') showToast('📋 Link copied — paste it in your band group chat!');
+        });
+    }
+};
+
+window.glSMSInviteLink = function() {
+    var link = (typeof GLStore !== 'undefined' && GLStore.getBandInviteLink) ? GLStore.getBandInviteLink() : window.location.href;
+    if (typeof notifSMSAppLink === 'function') {
+        notifSMSAppLink(link);
+    } else {
+        navigator.clipboard.writeText(link).then(function() {
+            if (typeof showToast === 'function') showToast('📋 Link copied!');
+        });
+    }
+};
+
+window.glSendInvite = async function() {
+    var name = (document.getElementById('glInviteName') || {}).value || '';
+    var email = (document.getElementById('glInviteEmail') || {}).value || '';
+    if (!name.trim()) { if (typeof showToast === 'function') showToast('Enter a name'); return; }
+    if (typeof GLStore !== 'undefined' && GLStore.createBandInvite) {
+        await GLStore.createBandInvite({ name: name.trim(), email: email.trim() });
+        if (typeof showToast === 'function') showToast('Invite sent to ' + name.trim());
+        // Refresh modal
+        glShowInviteModal();
+    }
+};
+
+window.glRevokeInvite = async function(inviteId) {
+    if (!confirm('Revoke this invite?')) return;
+    if (typeof GLStore !== 'undefined' && GLStore.revokeBandInvite) {
+        await GLStore.revokeBandInvite(inviteId);
+        if (typeof showToast === 'function') showToast('Invite revoked');
+        glShowInviteModal();
+    }
+};
 window.carePackageGenId = carePackageGenId;
 window.carePackageLoadSongs = carePackageLoadSongs;
 window.carePackageSave = carePackageSave;
