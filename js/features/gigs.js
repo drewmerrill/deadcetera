@@ -333,6 +333,20 @@ function renderGigsPage(el) {
     // Map renders on expand — see toggleGigsMap()
 }
 
+var _gigsMapOpen = false;
+function toggleGigsMap() {
+    var wrap = document.getElementById('gigsMapCollapsible');
+    var chev = document.getElementById('gigsMapChevron');
+    var filterBtns = document.getElementById('gmFilterBtns');
+    if (!wrap) return;
+    _gigsMapOpen = !_gigsMapOpen;
+    wrap.style.display = _gigsMapOpen ? '' : 'none';
+    if (chev) chev.style.transform = _gigsMapOpen ? 'rotate(180deg)' : '';
+    if (filterBtns) filterBtns.style.display = _gigsMapOpen ? 'flex' : 'none';
+    if (_gigsMapOpen) renderGigsMap();
+}
+window.toggleGigsMap = toggleGigsMap;
+
 async function gigLaunchLinkedSetlist(setlistIdOrName) {
     if (!requireSignIn()) return;
     var allSl = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
