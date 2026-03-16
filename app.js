@@ -842,6 +842,149 @@ async function deleteCustomSong(title) {
     renderSongs();
 }
 
+// ============================================================================
+// STARTER PACK IMPORT
+// ============================================================================
+
+function showStarterPackImport() {
+    var existing = document.getElementById('starterPackModal');
+    if (existing) existing.remove();
+    if (typeof STARTER_PACKS === 'undefined') {
+        alert('Starter pack data not loaded.');
+        return;
+    }
+    var modal = document.createElement('div');
+    modal.id = 'starterPackModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+    var packKeys = Object.keys(STARTER_PACKS);
+    var cardsHtml = packKeys.map(function(key) {
+        var pack = STARTER_PACKS[key];
+        return '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;cursor:pointer;transition:border-color 0.15s" '
+            + 'onmouseenter="this.style.borderColor=\'rgba(102,126,234,0.5)\'" onmouseleave="this.style.borderColor=\'rgba(255,255,255,0.08)\'" '
+            + 'onclick="importStarterPack(\'' + key + '\')">'
+            + '<div style="font-weight:700;font-size:0.95em;margin-bottom:4px">' + _escHtml(pack.label) + '</div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:6px">' + _escHtml(pack.description) + '</div>'
+            + '<div style="font-size:0.72em;color:var(--accent-light)">' + pack.songs.length + ' songs</div>'
+            + '</div>';
+    }).join('');
+
+    modal.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:520px;width:100%;color:var(--text);max-height:85vh;overflow-y:auto">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        + '<h3 style="margin:0;color:var(--accent-light)">📦 Build Your Band Library</h3>'
+        + '<button onclick="document.getElementById(\'starterPackModal\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">\u2715</button>'
+        + '</div>'
+        + '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Load a starter pack to populate your song list instantly. Duplicates are skipped.</div>'
+        + '<div style="display:flex;flex-direction:column;gap:10px">' + cardsHtml + '</div>'
+        + '<div style="text-align:center;margin-top:14px">'
+        + '<button onclick="document.getElementById(\'starterPackModal\').remove()" class="btn btn-ghost" style="font-size:0.82em;color:var(--text-dim)">Skip — I\'ll add songs manually</button>'
+        + '</div>'
+        + '</div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+async function importStarterPack(packId) {
+    if (typeof STARTER_PACKS === 'undefined' || !STARTER_PACKS[packId]) {
+        alert('Pack not found: ' + packId);
+        return;
+    }
+    var pack = STARTER_PACKS[packId];
+    var songs = pack.songs;
+    // Close modal and show progress
+    var modal = document.getElementById('starterPackModal');
+    if (modal) modal.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:400px;width:100%;color:var(--text);text-align:center">'
+        + '<div style="font-size:1.5em;margin-bottom:12px">📦</div>'
+        + '<div style="font-weight:700;margin-bottom:8px">Importing ' + pack.label + '...</div>'
+        + '<div style="font-size:0.82em;color:var(--text-dim)">Adding ' + songs.length + ' songs to your library</div>'
+        + '</div>';
+
+    // Build set of existing titles for duplicate detection
+    var existingTitles = new Set();
+    allSongs.forEach(function(s) { existingTitles.add(s.title.toLowerCase()); });
+
+    // Load existing custom songs
+    var customSongs = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
+
+    var added = 0;
+    var skipped = 0;
+
+    for (var i = 0; i < songs.length; i++) {
+        var s = songs[i];
+        if (!s.title) continue;
+
+        // Duplicate check
+        if (existingTitles.has(s.title.toLowerCase())) {
+            skipped++;
+            continue;
+        }
+
+        var songId = 'c_' + generateShortId(8);
+        var newSong = {
+            songId: songId,
+            title: s.title,
+            artist: s.artist || 'Other',
+            band: s.artist || 'Other',
+            originType: 'pack',
+            addedBy: currentUserEmail || 'unknown',
+            addedAt: new Date().toISOString()
+        };
+
+        // Add to custom_songs array
+        customSongs.push(newSong);
+
+        // Add to in-memory allSongs
+        allSongs.push({
+            songId: songId,
+            title: s.title,
+            artist: s.artist || 'Other',
+            band: s.artist || 'Other',
+            isCustom: true,
+            addedBy: newSong.addedBy,
+            notes: ''
+        });
+        existingTitles.add(s.title.toLowerCase());
+
+        // Dual-write BPM and Key via GLStore if available
+        if (s.bpm && typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+            GLStore.updateSongField(s.title, 'bpm', s.bpm);
+        }
+        if (s.key && typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+            GLStore.updateSongField(s.title, 'key', s.key);
+        }
+
+        added++;
+    }
+
+    // Save custom_songs in bulk
+    await saveBandDataToDrive('_band', 'custom_songs', customSongs);
+
+    // Rebuild indexes
+    if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+    if (typeof updateCustomSongCount === 'function') updateCustomSongCount();
+
+    // Emit event for UI refresh
+    if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('songs:imported', { packId: packId, added: added, skipped: skipped });
+
+    // Refresh UI
+    if (typeof renderSongs === 'function') renderSongs();
+    if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
+
+    // Show confirmation
+    var confirmModal = document.getElementById('starterPackModal');
+    if (confirmModal) {
+        confirmModal.innerHTML = '<div style="background:var(--bg-card);border:1px solid rgba(34,197,94,0.3);border-radius:14px;padding:32px;max-width:400px;width:100%;color:var(--text);text-align:center">'
+            + '<div style="font-size:2em;margin-bottom:12px">🎉</div>'
+            + '<div style="font-weight:700;font-size:1.1em;color:#22c55e;margin-bottom:8px">' + added + ' songs added to your library!</div>'
+            + (skipped > 0 ? '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:12px">' + skipped + ' duplicate' + (skipped !== 1 ? 's' : '') + ' skipped.</div>' : '')
+            + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:16px">BPM and Key are pre-loaded. Your band is ready to build rehearsal agendas.</div>'
+            + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+            + '<button onclick="document.getElementById(\'starterPackModal\').remove();showPage(\'songs\')" class="btn btn-primary">View Songs</button>'
+            + '<button onclick="document.getElementById(\'starterPackModal\').remove()" class="btn btn-ghost">Close</button>'
+            + '</div></div>';
+    }
+}
+
 async function showCustomSongsList() {
     const custom = allSongs.filter(s => s.isCustom);
     const existing = document.getElementById('customSongsListModal');

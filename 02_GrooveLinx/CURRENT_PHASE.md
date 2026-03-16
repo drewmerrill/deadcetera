@@ -4,7 +4,7 @@ _Updated: 2026-03-16_
 
 ## Active Phase: Operational + Intelligence Platform Build
 
-Build: **20260316-225147**
+Build: **20260316-230844**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -64,7 +64,7 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | **PL-1** | **Invite Bandmates Flow** | Medium | ✅ DONE |
 | **PL-2** | **Onboarding Wizard** | Medium | 📋 **NEXT** |
 | **PL-3** | **Recurring Events** | Medium | ✅ DONE |
-| **PL-4** | **Starter Pack Auto-Offer** | Small | 📋 PLANNED |
+| **PL-4** | **Starter Pack Auto-Offer** | Small | ✅ DONE |
 | **Infra** | **Stripe + Firebase Auth + Legal** | Larger | 📋 PLANNED |
 
 ### Post-Launch Phases

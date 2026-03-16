@@ -130,6 +130,13 @@ window.showPage = function showPage(page) {
         }
     }
 
+    // Auto-offer Starter Pack on songs page when library is nearly empty
+    if (page === 'songs' && typeof allSongs !== 'undefined' && allSongs.length < 5
+        && typeof showStarterPackImport === 'function' && !window._starterPackOffered) {
+        window._starterPackOffered = true;
+        setTimeout(showStarterPackImport, 500);
+    }
+
     // First-time onboarding overlay — shows once per page per device
     if (typeof glCheckOnboarding === 'function') glCheckOnboarding(page);
 };
