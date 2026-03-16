@@ -12,7 +12,7 @@
 'use strict';
 
 // Also update the calendar event DETAIL view for rehearsals to show a "📋 Practice Plan" link
-async function calShowEvent(idx) {
+async function calShowEvent(idx, occDate) {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     const ev = events[idx];
     if (!ev) return;
@@ -20,25 +20,29 @@ async function calShowEvent(idx) {
     if (!area) return;
     const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
     const isRehearsal = ev.type === 'rehearsal';
+    const displayDate = occDate || ev.date || '';
+    const repeatLbl = _calRepeatLabel(ev.repeatRule);
+    const isRecurring = ev.repeatRule && ev.repeatRule.frequency;
     area.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <h3 style="margin:0;font-size:1em">${typeIcon} ${ev.title||'Untitled'}</h3>
         <button onclick="document.getElementById('calEventFormArea').innerHTML=''" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
     </div>
     <div style="font-size:0.85em;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <span>📅 ${ev.date||''}</span>
+        <span>📅 ${displayDate}</span>
         ${ev.time ? `<span>⏰ ${ev.time}</span>` : ''}
         <span style="text-transform:capitalize">📂 ${ev.type||'other'}</span>
+        ${repeatLbl ? `<span style="color:var(--accent-light)">🔄 ${repeatLbl}</span>` : ''}
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${ev.date}';showPage('rehearsal')" class="btn btn-primary btn-sm">📅 Rehearsal Plan</button>` : ''}
-        <button onclick="calEditEvent(${idx})" class="btn btn-ghost btn-sm">✏️ Edit</button>
-        <button onclick="calDeleteEvent(${idx})" class="btn btn-danger btn-sm">✕ Delete</button>
+        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${displayDate}';showPage('rehearsal')" class="btn btn-primary btn-sm">📅 Rehearsal Plan</button>` : ''}
+        <button onclick="calEditEventById('${ev.id||''}')" class="btn btn-ghost btn-sm">${isRecurring ? '✏️ Edit Series' : '✏️ Edit'}</button>
+        <button onclick="calDeleteEventById('${ev.id||''}')" class="btn btn-danger btn-sm">${isRecurring ? '✕ Delete Series' : '✕ Delete'}</button>
         <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07)">
-        ${typeof calExportButtonsHTML === 'function' ? calExportButtonsHTML(ev, '_calExp_' + idx) : ''}
+        ${typeof calExportButtonsHTML === 'function' ? calExportButtonsHTML(Object.assign({}, ev, {date: displayDate}), '_calExp_' + idx) : ''}
     </div>`;
     area.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
@@ -49,6 +53,88 @@ async function calShowEvent(idx) {
 // Calendar state - persists during session
 let calViewYear = new Date().getFullYear();
 let calViewMonth = new Date().getMonth();
+
+// ── Recurrence helpers ──────────────────────────────────────────────────────
+
+function _calRepeatRuleToValue(rule) {
+    if (!rule || !rule.frequency) return 'none';
+    if (rule.frequency === 'weekly' && (rule.interval || 1) === 1) return 'weekly';
+    if (rule.frequency === 'weekly' && rule.interval === 2) return 'biweekly';
+    if (rule.frequency === 'monthly') return 'monthly';
+    return 'none';
+}
+
+function _calRepeatLabel(rule) {
+    if (!rule || !rule.frequency) return '';
+    if (rule.frequency === 'weekly' && (rule.interval || 1) === 1) return 'Repeats weekly';
+    if (rule.frequency === 'weekly' && rule.interval === 2) return 'Repeats every 2 weeks';
+    if (rule.frequency === 'monthly') return 'Repeats monthly';
+    return '';
+}
+
+function expandRecurringEvents(rawEvents, rangeStart, rangeEnd) {
+    var result = [];
+    rawEvents.forEach(function(ev, idx) {
+        if (!ev.repeatRule || !ev.repeatRule.frequency) {
+            // Non-recurring: pass through with base index
+            if (ev.date) result.push(Object.assign({}, ev, { _baseIdx: idx, _baseEventId: ev.id || null }));
+            return;
+        }
+        // Recurring: generate occurrences within range
+        var dates = _generateOccurrenceDates(
+            ev.date, ev.repeatRule.frequency, ev.repeatRule.interval || 1,
+            rangeStart, rangeEnd, ev.repeatRule.endsAt
+        );
+        dates.forEach(function(occDate) {
+            result.push(Object.assign({}, ev, {
+                date: occDate,
+                _isOccurrence: occDate !== ev.date,
+                _baseIdx: idx,
+                _baseEventId: ev.id || null,
+                _occurrenceDate: occDate
+            }));
+        });
+    });
+    return result;
+}
+
+function _generateOccurrenceDates(baseDate, frequency, interval, rangeStart, rangeEnd, endsAt) {
+    if (!baseDate) return [];
+    var dates = [];
+    var effectiveEnd = (endsAt && endsAt < rangeEnd) ? endsAt : rangeEnd;
+
+    if (frequency === 'weekly') {
+        var base = new Date(baseDate + 'T12:00:00');
+        var start = new Date(rangeStart + 'T12:00:00');
+        var end = new Date(effectiveEnd + 'T12:00:00');
+        var stepMs = interval * 7 * 86400000;
+        // Jump to first occurrence at or after rangeStart
+        var diffMs = start.getTime() - base.getTime();
+        var stepsToSkip = diffMs > 0 ? Math.floor(diffMs / stepMs) : 0;
+        var current = new Date(base.getTime() + stepsToSkip * stepMs);
+        for (var i = 0; i < 200 && current <= end; i++) {
+            var ds = current.toISOString().split('T')[0];
+            if (ds >= rangeStart && ds <= effectiveEnd) dates.push(ds);
+            current = new Date(current.getTime() + stepMs);
+        }
+    } else if (frequency === 'monthly') {
+        var parts = baseDate.split('-');
+        var baseY = parseInt(parts[0], 10);
+        var baseM = parseInt(parts[1], 10) - 1;
+        var baseD = parseInt(parts[2], 10);
+        for (var step = 0; step < 120; step++) {
+            var totalM = baseM + step * interval;
+            var y = baseY + Math.floor(totalM / 12);
+            var m = totalM % 12;
+            var daysInMonth = new Date(y, m + 1, 0).getDate();
+            var d = Math.min(baseD, daysInMonth);
+            var ds = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+            if (ds > effectiveEnd) break;
+            if (ds >= rangeStart) dates.push(ds);
+        }
+    }
+    return dates;
+}
 
 function renderCalendarPage(el) {
     el.innerHTML = `<div class="page-header"><h1>📆 Calendar</h1><p>Band schedule and availability</p></div><div id="calendarInner"></div>`;
@@ -128,7 +214,7 @@ function renderCalendarInner() {
                     const icon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
                     const name = (ev.title||'').substring(0,10) + ((ev.title||'').length > 10 ? '…' : '');
                     const evIdx = ev._idx !== undefined ? ev._idx : ei;
-                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx})" style="display:flex;align-items:center;gap:2px;background:rgba(102,126,234,0.25);border-radius:3px;padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
+                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:rgba(102,126,234,0.25);border-radius:3px;padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
                         <span style="font-size:0.75em;flex-shrink:0">${icon}</span>
                         <span style="font-size:0.6em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white">${name}</span>
                     </div>`;
@@ -170,19 +256,27 @@ function calNavMonth(dir) {
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
 
-    // Build date map for grid dots (all events, not just upcoming)
+    // Expand recurring events for the viewed month (grid dots)
+    var daysInViewMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+    var monthStart = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-01';
+    var monthEnd = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-' + String(daysInViewMonth).padStart(2, '0');
+    var expandedGrid = expandRecurringEvents(events, monthStart, monthEnd);
+
     const dateMap = {};
-    events.forEach((e, idx) => {
+    expandedGrid.forEach(function(e) {
         if (e.date) {
             if (!dateMap[e.date]) dateMap[e.date] = [];
-            dateMap[e.date].push({...e, _idx: idx});
+            dateMap[e.date].push(Object.assign({}, e, { _idx: e._baseIdx }));
         }
     });
 
     const el = document.getElementById('calendarEvents');
-    if (!el) return dateMap;
+    if (!el) return { dateMap, blockedRanges: [] };
     const today = new Date().toISOString().split('T')[0];
-    const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    var futureEnd = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+    var expandedUpcoming = expandRecurringEvents(events, today, futureEnd);
+    const upcoming = expandedUpcoming.filter(function(e) { return (e.date || '') >= today; })
+        .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
     if (upcoming.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">No upcoming events. Click a date or + Add Event.</div>';
     } else {
@@ -192,20 +286,23 @@ async function loadCalendarEvents() {
             var wk = '_calEv_' + i; window[wk] = e;
             const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[e.type]||'📌';
             const isRehearsal = e.type === 'rehearsal';
+            var repeatLbl = _calRepeatLabel(e.repeatRule);
+            var evtId = e._baseEventId || e.id || '';
             return `<div class="list-item" style="padding:10px 12px;gap:10px">
                 <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
                 <div style="flex:1;min-width:0">
                     <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${typeIcon} ${e.title||'Untitled'}</div>
                     ${e.venue?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📍 ${e.venue}</div>`:''}
                     ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📋 ${e.linkedSetlist}</div>`:''}
+                    ${repeatLbl?`<div style="font-size:0.68em;color:var(--accent-light);margin-top:1px">🔄 ${repeatLbl}</div>`:''}
                 </div>
                 ${e.time?`<span style="font-size:0.75em;color:var(--text-muted);flex-shrink:0">${e.time}</span>`:''}
                 <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:nowrap;align-items:center">
                     ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('rehearsal')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
                     <button onclick="var u=calExportGoogleLink(window['_calEv_${i}']);if(u!=='#')window.open(u,'_blank')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Add to Google Calendar">📅</button>
                     <button onclick="calExportICS(window['_calEv_${i}'])" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Download .ics">⬇️</button>
-                    <button onclick="calEditEvent(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
-                    <button onclick="calDeleteEvent(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;">✕</button>
+                    <button onclick="calEditEventById('${evtId}')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
+                    <button onclick="calDeleteEventById('${evtId}')" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;">✕</button>
                 </div>
             </div>`;
         }).join('');
@@ -444,7 +541,11 @@ async function calAddEvent(date, editIdx, existing) {
     window._calSelectedVenueName = ev.venue || null;
     const showSetlist = ev.type === 'gig';
     const showVenue   = ev.type === 'gig';
+    var repeatVal = _calRepeatRuleToValue(ev.repeatRule);
+    window._calEditEventId = isEdit ? (ev.id || null) : null;
+    var isRecurringEdit = isEdit && ev.repeatRule && ev.repeatRule.frequency;
     area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
+    ${isRecurringEdit ? '<div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:0.82em;color:var(--accent-light)">🔄 Editing this recurring event updates all future occurrences.</div>' : ''}
     <div class="form-grid">
         <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}"></div>
         <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType" onchange="calTypeChanged(this)">
@@ -459,6 +560,12 @@ async function calAddEvent(date, editIdx, existing) {
         </div>
         <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's" value="${ev.title||''}"></div>
         <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}"></div>
+        <div class="form-row"><label class="form-label">Repeat</label><select class="app-select" id="calRepeat">
+            <option value="none" ${repeatVal==='none'?'selected':''}>None</option>
+            <option value="weekly" ${repeatVal==='weekly'?'selected':''}>Weekly</option>
+            <option value="biweekly" ${repeatVal==='biweekly'?'selected':''}>Every 2 Weeks</option>
+            <option value="monthly" ${repeatVal==='monthly'?'selected':''}>Monthly</option>
+        </select></div>
         <div class="form-row calGigOnly" id="calSetlistRow" style="${showSetlist?'':'display:none'}">
             <label class="form-label">\uD83D\uDCCB Linked Setlist</label>
             <select class="app-select" id="calLinkedSetlist">
@@ -559,6 +666,31 @@ async function calDeleteEvent(idx) {
     loadCalendarEvents();
 }
 
+async function calEditEventById(eventId) {
+    if (!eventId) return;
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var ev = events.find(function(e) { return e.id === eventId; });
+    if (!ev) return;
+    var rawIdx = events.indexOf(ev);
+    calAddEvent(ev.date, rawIdx, ev);
+}
+
+async function calDeleteEventById(eventId) {
+    if (!eventId) return;
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var ev = events.find(function(e) { return e.id === eventId; });
+    if (!ev) return;
+    var isRecurring = ev.repeatRule && ev.repeatRule.frequency;
+    var msg = isRecurring
+        ? 'Delete this recurring event? All future occurrences will be removed.'
+        : 'Delete this event?';
+    if (!confirm(msg)) return;
+    events = events.filter(function(e) { return e.id !== eventId; });
+    await saveBandDataToDrive('_band', 'calendar_events', events);
+    document.getElementById('calEventFormArea').innerHTML = '';
+    renderCalendarInner();
+}
+
 async function calSaveEvent(editIdx) {
     const ev = {
         date: document.getElementById('calDate')?.value,
@@ -570,24 +702,36 @@ async function calSaveEvent(editIdx) {
         venueId: window._calSelectedVenueId || null,
         venue: window._calSelectedVenueName || null,
     };
+    // Recurrence rule
+    var repeatVal = (document.getElementById('calRepeat') || {}).value || 'none';
+    if (repeatVal === 'weekly') ev.repeatRule = { frequency: 'weekly', interval: 1, endsAt: null };
+    else if (repeatVal === 'biweekly') ev.repeatRule = { frequency: 'weekly', interval: 2, endsAt: null };
+    else if (repeatVal === 'monthly') ev.repeatRule = { frequency: 'monthly', interval: 1, endsAt: null };
+    else ev.repeatRule = null;
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
     if (ev.type === 'gig' && !ev.venue) { alert('Gig events require a venue'); return; }
     let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     if (editIdx !== undefined) {
-        // Find event by position in upcoming sorted list
-        const today = new Date().toISOString().split('T')[0];
-        const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
-        const old = upcoming[editIdx];
-        if (old) {
-            const i = events.findIndex(e => e.date===old.date && e.title===old.title);
-            if (i >= 0) {
-                // Preserve existing id (never overwrite a stable id)
-                const existingId = events[i].id;
-                events[i] = { ...events[i], ...ev };
-                if (existingId) events[i].id = existingId;
-                events[i].updated_at = new Date().toISOString();
-            }
+        var i = -1;
+        // Try id-based lookup first (set by calEditEventById)
+        var editId = window._calEditEventId;
+        if (editId) {
+            i = events.findIndex(function(e) { return e.id === editId; });
         }
+        if (i < 0) {
+            // Fallback to positional lookup (legacy path)
+            const today = new Date().toISOString().split('T')[0];
+            const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+            const old = upcoming[editIdx];
+            if (old) i = events.findIndex(e => e.date===old.date && e.title===old.title);
+        }
+        if (i >= 0) {
+            const existingId = events[i].id;
+            events[i] = { ...events[i], ...ev };
+            if (existingId) events[i].id = existingId;
+            events[i].updated_at = new Date().toISOString();
+        }
+        window._calEditEventId = null;
     } else {
         ev.created = new Date().toISOString();
         ev.updated_at = ev.created;
@@ -714,5 +858,8 @@ window.calTypeChanged = calTypeChanged;
 window._calInitVenuePicker = _calInitVenuePicker;
 window.calEditEvent = calEditEvent;
 window.calDeleteEvent = calDeleteEvent;
+window.calEditEventById = calEditEventById;
+window.calDeleteEventById = calDeleteEventById;
 window.calSaveEvent = calSaveEvent;
+window.expandRecurringEvents = expandRecurringEvents;
 window.calShowSubscribeModal = typeof calShowSubscribeModal !== 'undefined' ? calShowSubscribeModal : function() { alert('Calendar export module not loaded.'); };
