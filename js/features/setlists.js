@@ -33,19 +33,21 @@ async function loadSetlists() {
     if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
     container.innerHTML = data.map((sl, i) => `<div class="app-card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="flex:1;cursor:pointer" onclick="editSetlist(${sl._origIdx})">
-                <h3 style="margin-bottom:4px">${sl.name||'Untitled'}</h3>
+            <div style="flex:1;cursor:pointer" onclick="${sl.locked ? '' : 'editSetlist('+sl._origIdx+')'}">
+                <h3 style="margin-bottom:4px">${sl.locked ? '🔒 ' : ''}${sl.name||'Untitled'}</h3>
                 <div style="display:flex;gap:12px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">
                     <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
                     <span>🎵 ${(sl.sets||[]).reduce((a,s)=>a+(s.songs||[]).length,0)} songs</span>
                     <span>📋 ${(sl.sets||[]).length} set${(sl.sets||[]).length!==1?'s':''}</span>
+                    ${sl.locked ? '<span style="color:#fbbf24;font-weight:700">🔒 Locked</span>' : ''}
                 </div>
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
-                <button class="btn btn-sm btn-ghost" onclick="editSetlist(${sl._origIdx})" title="Edit">✏️</button>
+                <button class="btn btn-sm btn-ghost" onclick="slToggleLock(${sl._origIdx})" title="${sl.locked ? 'Unlock setlist' : 'Lock setlist'}" style="color:${sl.locked ? '#fbbf24' : 'var(--text-dim)'}">${sl.locked ? '🔓' : '🔒'}</button>
+                ${sl.locked ? '' : '<button class="btn btn-sm btn-ghost" onclick="editSetlist('+sl._origIdx+')" title="Edit">✏️</button>'}
                 <button class="btn btn-sm btn-ghost" onclick="launchLiveGig('${sl.id || sl._origIdx}')" title="Go Live" style="color:#22c55e">🎤</button>
                 <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${sl._origIdx})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
-                <button class="btn btn-sm btn-ghost" onclick="deleteSetlist(${sl._origIdx})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
+                ${sl.locked ? '' : '<button class="btn btn-sm btn-ghost" onclick="deleteSetlist('+sl._origIdx+')" title="Delete" style="color:var(--red,#f87171)">🗑️</button>'}
             </div>
         </div>
         ${(sl.sets||[]).map(s => { const SA={'stop':'  ','flow':' → ','segue':' ~ ','cutoff':' | '}; return `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map((sg,i,arr)=>{ const t=typeof sg==='string'?sg:sg.title; const a=i<arr.length-1?(SA[(typeof sg==='object'&&sg.segue)||'stop']||'  '):''; return t+a; }).join('')}</div>`; }).join('')}
@@ -917,6 +919,19 @@ function _slInitVenuePicker(venues, preselected) {
 }
 
 // ── Window exports (called from inline HTML onclick handlers) ──────────────
+// Setlist lock toggle
+async function slToggleLock(idx) {
+    if (!requireSignIn()) return;
+    var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    if (!data[idx]) return;
+    data[idx].locked = !data[idx].locked;
+    await saveBandDataToDrive('_band', 'setlists', data);
+    window._cachedSetlists = null;
+    showToast(data[idx].locked ? '🔒 Setlist locked' : '🔓 Setlist unlocked');
+    loadSetlists();
+}
+window.slToggleLock = slToggleLock;
+
 window.renderSetlistsPage = renderSetlistsPage;
 window.loadSetlists = loadSetlists;
 window.exportSetlistToiPad = exportSetlistToiPad;

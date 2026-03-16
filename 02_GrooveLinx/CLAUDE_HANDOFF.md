@@ -21,6 +21,32 @@ GrooveLinx is a **Band Operating System** for practice, rehearsal, setlist build
 
 It is not just a collection of music tools. The UX should guide each band member toward the next meaningful action.
 
+## Product Philosophy
+
+**"BandZone for operational smoothness + GrooveLinx for musical intelligence."**
+
+BandZone focuses on organizing bands. GrooveLinx focuses on making bands better musicians.
+
+### Three Intelligence Engines (Core Differentiation — Preserve Always)
+1. **Song Intelligence** — readiness scoring, practice gap detection, improvement signals
+2. **Rehearsal Intelligence** — scorecard, agenda generation, analytics
+3. **Groove Intelligence** — Pocket Meter BPM detection, tempo stability, groove tracking
+
+### Operational Features Adopted from BandZone Model
+- Availability matrix (calendar)
+- Recurring events
+- Instruments-per-song
+- Song prospect voting
+- Setlist lock
+- Poll visibility on dashboard
+
+### Features GrooveLinx Should NOT Build
+- File storage systems (use Google Drive/Dropbox)
+- Messaging platforms (use group texts/Slack)
+- Complex RBAC permission systems
+- Email blast systems
+- Multi-band support (single-band focused by design)
+
 ## Stack (Intentional Constraints)
 
 - Frontend: vanilla JavaScript SPA

@@ -95,6 +95,9 @@ function renderCalendarInner() {
     <div class="app-card"><h3>📌 Upcoming Events</h3>
         <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading…</div></div>
     </div>
+    <div class="app-card"><h3>📊 Availability Matrix</h3>
+        <div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading…</div></div>
+    </div>
     <div class="app-card"><h3>🚫 Blocked Dates</h3>
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
     </div>`;
@@ -150,6 +153,8 @@ function renderCalendarInner() {
         }
         g += '</div>';
         grid.innerHTML = g;
+        // Render availability matrix from blocked ranges
+        _calRenderAvailabilityMatrix(result ? (result.blockedRanges || []) : []);
     });
 }
 
@@ -216,6 +221,62 @@ async function loadCalendarEvents() {
         </div>`).join('');
     }
     return { dateMap, blockedRanges: blocked };
+}
+
+function _calRenderAvailabilityMatrix(blockedRanges) {
+    var el = document.getElementById('calAvailabilityMatrix');
+    if (!el) return;
+    if (!blockedRanges.length) {
+        el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates — everyone is available.</div>';
+        return;
+    }
+    // Build a 14-day look-ahead matrix
+    var today = new Date();
+    var days = [];
+    for (var d = 0; d < 14; d++) {
+        var dt = new Date(today.getTime() + d * 86400000);
+        days.push({
+            date: dt.toISOString().split('T')[0],
+            label: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
+            dayNum: dt.getDate()
+        });
+    }
+    // Get unique members from blocked ranges + bandMembers
+    var members = [];
+    if (typeof bandMembers !== 'undefined') {
+        Object.entries(bandMembers).forEach(function(e) { members.push(e[1].name || e[0]); });
+    } else {
+        var seen = {};
+        blockedRanges.forEach(function(b) {
+            if (b.person && !seen[b.person]) { seen[b.person] = true; members.push(b.person); }
+        });
+    }
+    if (!members.length) { el.innerHTML = ''; return; }
+
+    // Build HTML table
+    var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.8em">';
+    html += '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-dim);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08)"></th>';
+    days.forEach(function(day) {
+        var isWeekend = day.label === 'Sat' || day.label === 'Sun';
+        html += '<th style="text-align:center;padding:4px 3px;color:' + (isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') + ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08)">' + day.label.charAt(0) + '<br>' + day.dayNum + '</th>';
+    });
+    html += '</tr>';
+
+    members.forEach(function(member) {
+        html += '<tr>';
+        html += '<td style="padding:4px 6px;color:var(--text-muted);font-weight:600;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.04)">' + member.split(' ')[0] + '</td>';
+        days.forEach(function(day) {
+            var blocked = blockedRanges.some(function(b) {
+                return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate;
+            });
+            html += '<td style="text-align:center;padding:4px 3px;border-bottom:1px solid rgba(255,255,255,0.04)">' +
+                (blocked ? '<span style="color:#ef4444;font-weight:700">✖</span>' : '<span style="color:#22c55e;opacity:0.5">✔</span>') +
+                '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</table></div>';
+    el.innerHTML = html;
 }
 
 function calBlockDates() {
