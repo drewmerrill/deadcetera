@@ -9243,7 +9243,6 @@ function _venueCalcRoute(venueIdx, venue, origin, fromGPS) {
     var mapsUrl = 'https://maps.google.com/maps?saddr=' + encodeURIComponent(fromGPS ? 'My+Location' : origin) + '&daddr=' + encodeURIComponent(venue.address||venue.name);
     var fallbackHtml = '<a href="' + mapsUrl + '" target="_blank" class="btn btn-sm btn-ghost">🗺 Open in Google Maps</a>';
 
-    // Use DirectionsService (already loaded, key handled automatically, not deprecated)
     if (!window.google || !window.google.maps || !window.google.maps.DirectionsService) {
         if (resultEl) resultEl.innerHTML = fallbackHtml;
         if (statusEl) statusEl.textContent = 'Tap to open in Google Maps:';
@@ -9467,9 +9466,12 @@ function addVenue() {
     requestAnimationFrame(function() { vInitPlacesAutocomplete(); });
 }
 
-function vInitPlacesAutocomplete() {
+async function vInitPlacesAutocomplete() {
     var input = document.getElementById('vPlacesSearch');
     if (!input) return;
+    try {
+        if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
+    } catch(e) {}
     if (!window.google || !window.google.maps || !window.google.maps.places) {
         input.placeholder = 'Google Maps not loaded — fill fields manually';
         return;
@@ -10157,9 +10159,13 @@ function saveHomeAddress() {
     if (btn) { btn.textContent = 'Saved!'; setTimeout(function(){ btn.textContent = 'Save'; }, 1500); }
 }
 
-function initSettingsAddressAutocomplete() {
+async function initSettingsAddressAutocomplete() {
     var input = document.getElementById('settingsHomeAddress');
-    if (!input || !window.google || !window.google.maps || !window.google.maps.places) return;
+    if (!input) return;
+    try {
+        if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
+    } catch(e) {}
+    if (!window.google || !window.google.maps || !window.google.maps.places) return;
     if (input._acInit) return;
     input._acInit = true;
     var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });

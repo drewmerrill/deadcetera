@@ -183,7 +183,13 @@ async function renderGigsMap() {
     el.innerHTML = '';
     el.style.cssText = 'height:360px;border-radius:12px;overflow:hidden;position:relative';
 
-    if (!window.google || !window.google.maps) {
+    try {
+        if (window.google && google.maps && google.maps.importLibrary) {
+            await google.maps.importLibrary('maps');
+            await google.maps.importLibrary('marker');
+        }
+    } catch(e) {}
+    if (!window.google || !window.google.maps || !window.google.maps.Map) {
         el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">Maps loading...</div>';
         return;
     }
