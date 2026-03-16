@@ -5187,8 +5187,13 @@ async function runFadrImport(songTitle) {
                 if (!abcParts.length) throw new Error('MIDI→ABC conversion failed');
                 const songKey = assetData.key || 'C';
                 const songBpm = assetData.tempo || assetData.bpm || 120;
-                await saveBandDataToDrive(songTitle, 'song_bpm', { bpm: Math.round(songBpm) });
-                await saveBandDataToDrive(songTitle, 'key', { key: songKey, updatedAt: new Date().toISOString() });
+                if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+                    await GLStore.updateSongField(songTitle, 'bpm', Math.round(songBpm));
+                    await GLStore.updateSongField(songTitle, 'key', songKey);
+                } else {
+                    await saveBandDataToDrive(songTitle, 'song_bpm', { bpm: Math.round(songBpm) });
+                    await saveBandDataToDrive(songTitle, 'key', { key: songKey, updatedAt: new Date().toISOString() });
+                }
                 let combinedAbc = `X:1
 T:${songTitle} (Fadr)
 M:4/4

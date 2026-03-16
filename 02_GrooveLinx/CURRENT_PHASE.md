@@ -1,85 +1,87 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-15_
+_Updated: 2026-03-16_
 
-## Active Phase: Live UAT + Command Center Stabilization
+## Active Phase: Canonical Entity Model + songId Foundation
 
-Build: **20260315-150721**
+Build: **20260316-125045**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
 
-## Milestone 9 — Command Center Dashboard (CURRENT)
+## Milestone 10 — Canonical Entity Model (CURRENT)
 
-Goal: Restructure Home dashboard from 5-phase workflow spine into a 5-section Command Center hierarchy with clear action priority.
+Goal: Establish canonical identity and source-of-truth patterns for venues, songs, BPM/Key, and setlist linkage.
 
 ### Phase Completion Status
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Command Center layout refactor | ✅ DONE |
-| 2 | Refinement pass (hero docking, tile wording, queue ranking) | ✅ DONE |
-| 3 | Legacy cc.js injection suppression | ✅ DONE |
-| 4 | Navigation hash routing hardening | ✅ DONE |
-| 5 | Bug fixes (status sync, readiness persistence, hero scoping) | ✅ DONE |
-| 6 | Deploy workflow hardening (push.py auto-discovery) | ✅ DONE |
-| 7 | Legacy status audit + migration tooling | ✅ DONE |
-| 8 | Priority Queue reason micro-explanations | ✅ DONE |
-| 9 | Priority Queue self-correcting telemetry + adaptive rules | ✅ DONE |
-| 10 | Progressive discovery (setup guidance, unlock attribution, smart empty states) | ✅ DONE |
-| 11 | Impact feedback in Recent Changes (readiness improvements, pocket time, gig-ready crossings) | ✅ DONE |
-| 12 | Milestone unlock events in impact feedback (one-time celebratory messages) | ✅ DONE |
-| 13 | Gig Confidence Meter — Band Coach spec + threshold calibration | ✅ DONE |
+| 1 | Venue canonicalization (venueId, entity picker, duplicate detection) | ✅ DONE |
+| 1.5 | Venue hardening (touched-flag, map lookup, _normStr improvements) | ✅ DONE |
+| 1.6 | Venue matching upgrade (venueId-first in _findBestSetlist, audit, repair) | ✅ DONE |
+| 2 | BPM/Key source-of-truth unification (GLStore.updateSongField canonical path) | ✅ DONE |
+| 2.1 | BPM/Key hardening (validation constants, Pocket Meter wording, dev notes) | ✅ DONE |
+| 3 | linkedSetlist Phase 1 (setlistId-first in dropdowns, save paths, home dashboard) | ✅ DONE |
+| 4 | Song title collision fix + duplicate-title guardrails | ✅ DONE |
+| 5 | songId foundation (Phase 2A: songId + artist on all songs, GLStore index) | ✅ DONE |
+| 5.5 | songId validation (2A.5: index safety, uniqueness, backfill idempotency) | ✅ DONE |
+| 6 | songId dual-path (Phase 2B Step 1: songs_v2/{songId}/ for BPM + Key) | ✅ DONE |
+| 7 | UX clarity (venue mismatch info bar, Pocket Meter "Lock Session Tempo") | ✅ DONE |
 | UAT | Live band testing | 🟡 IN PROGRESS |
 
-### Command Center Layout (5 sections)
-
-1. `_renderCommandCenterHeader()` — "Command Center" title + date + readiness chip
-2. `_renderHeroNextBestStep()` — gig/rehearsal hero + docked next-step strip
-3. `_renderBandHealthRow()` — 4 metric tiles (readiness %, pocket time, last score, weak songs)
-4. `_renderPriorityQueue()` — 3-5 ranked actionable items
-5. `_renderRecentChanges()` — scorecard headline + timeline strip + activity feed
-
-### Key Decisions
-
-- Hero + next-step as sibling elements with CSS `:has()` for visual docking
-- Health row requires 2+ tiles to render (sparse-data resilience)
-- Priority Queue caps practice items at 2 when agenda/session items exist
-- Upload CTA gated on `hasAnyReadiness` — doesn't appear for brand-new users
-- Recent Changes section only renders when scorecard or timeline data exists
-- Legacy cc.js strips suppressed via class guard on `hd-command-center`
-
-### Bugs Fixed (20260315)
+### Bug Fixes (20260316)
 
 | Bug | Root Cause | Fix |
 |-----|-----------|-----|
-| Status inconsistency (Althea/Bertha) | `sdUpdateSongStatus()` didn't persist to master file | Added `saveMasterFile()` call in song-detail.js |
-| Hero "555 biggest risk" for non-setlist song | `deriveHdMissionSummary()` used global weak songs | Coach text now uses gig-scoped `riskEntry` |
-| Hero setlist scoping failed on first load | `_cachedSetlists` not populated until Gigs page visited | Now also checks `bundle.setlists` (always loaded) |
-| Readiness 0 reverts on reload | `saveReadiness(v=0)` path didn't persist to master file | Added `saveMasterFile()` call in v=0 branch |
-| Hero buttons stacked awkwardly | Tertiary CTA outside `.hd-hero__actions` flex container | Moved inside actions div |
-| Duplicate history entries on same-page nav | `pushState` fired for every `showPage()` call | Added same-page hash check before push |
-| Invalid hash shows blank screen | No validation on popstate/hash values | Added `_sanitizeHashPage()` with allowlist |
-| Hash vs localStorage double-navigate on startup | Two competing restore timers at 800ms/900ms | `_glHashRestorePending` flag for arbitration |
+| BPM/Key reverts in panel overlay | sdUpdateSongBpm/Key wrote to Firebase but didn't invalidate songDetailCache or sync allSongs[] | All DNA writes route through GLStore.updateSongField() |
+| metaBpm fallback precedence | Operator precedence bug in ternary chain | Fixed grouping in song-detail.js |
+| Key reads miss canonical path | setlists.js and rehearsal-mode.js read 'song_key' only | Now read 'key' first, 'song_key' fallback |
+| Fadr import writes non-canonical Key path | Wrote to 'song_key' instead of 'key' | Fixed to 'key' |
+| Sticky status filter hides songs from search | activeStatusFilter persisted in localStorage, not visible in UI | Search bypasses filters; visible filter chip added |
+| "Fire on the Mountain" duplicate (ABB) | Seed data error — ABB doesn't have this song | Removed ABB entry |
+| Song title collisions (5 affected) | Title used as Firebase path key; shared titles = shared data | Suffixed distinct songs, removed true duplicates |
+| Gig Map expand button broken | toggleGigsMap() called in HTML but function never implemented | Added function |
+| Install App button silently fails | beforeinstallprompt unavailable on iOS/already-installed | Button now shows manual install instructions |
+| Google Maps API deprecation warning | Legacy script-tag loading pattern | Migrated to Dynamic Library Import |
 
-### Legacy Status Migration
+### Canonical Data Model (as of build 20260316)
 
-- Audit tool: `GLStore.auditLegacyStatuses()` — dry-run report
-- Migration tool: `GLStore.migrateLegacyStatuses({ dryRun: false })` — normalize + persist
-- 7 legacy statuses found: 2 `needs_polish` → `wip`, 5 `on_deck` → `prospect`
-- Migration mapping covers all known legacy values
+| Entity | Canonical ID | Status |
+|--------|-------------|--------|
+| Venue | venueId | ✅ All create/edit paths stamp venueId |
+| Song | songId | ✅ 585 seed songs + custom song backfill |
+| Setlist | setlistId | ✅ Primary link in all interactive paths |
+| Gig | gigId | ✅ Existing from prior milestones |
+| Calendar Event | id | ✅ Existing from prior milestones |
 
-### Files Changed (Milestone 9)
+### songId Dual-Path (Phase 2B)
+
+- v2 namespace: `bands/{slug}/songs_v2/{songId}/{dataType}`
+- Currently enabled for: `song_bpm`, `key`
+- All BPM/Key writes dual-write to v2 + legacy
+- All BPM/Key reads try v2 first, fall back to legacy
+- v2 populates organically as songs are edited
+
+### Files Changed (Milestone 10)
 
 | File | Change |
 |------|--------|
-| `js/features/home-dashboard.js` | Command Center refactor: 5-section layout, health row, priority queue, recent changes, hero scoping, button layout |
-| `js/features/home-dashboard-cc.js` | Legacy strip/card injection suppression guard |
-| `js/ui/navigation.js` | Hash routing: same-page guard, `_sanitizeHashPage()`, `_glHashRestorePending` arbitration |
-| `js/features/song-detail.js` | `sdUpdateSongStatus()` now persists to master status file |
-| `js/core/groovelinx_store.js` | `saveReadiness(v=0)` master file persistence, legacy status audit/migration tools |
-| `push.py` | Auto-discover runtime assets by extension, explicit infra only (.py excluded from auto-scan) |
-| `js/features/home-dashboard.js` | `_humanizePracticeReason()`, PQ telemetry (`_pqRecordSurface/Click`), adaptive rules (`_pqApplyAdaptive`) |
+| `data.js` | songId + artist on all 585 songs; removed duplicates; band-suffixed collisions |
+| `js/core/groovelinx_store.js` | Venue methods, song index, dual-path helpers, BPM validation, _normStr improvements |
+| `js/ui/gl-entity-picker.js` | NEW — reusable entity picker + venue create modal |
+| `js/features/gigs.js` | Venue picker, venueId in sync/save, toggleGigsMap(), linkedSetlist cleanup |
+| `js/features/calendar.js` | Venue picker, venueId passthrough, setlistId-only dropdowns |
+| `js/features/setlists.js` | Venue picker, venueId on setlists, venue mismatch info bar |
+| `js/features/song-detail.js` | BPM/Key/Status/Lead all route through GLStore |
+| `js/features/songs.js` | Search bypasses filters, active filter chip |
+| `js/features/home-dashboard.js` | setlistId-first in all CTA/lookup paths |
+| `js/features/chart-import.js` | BPM/Key writes route through GLStore |
+| `app.js` / `app-dev.js` | BPM/Key unification, quick-fill via GLStore, Fadr import fix, Install App fix, Maps migration, venueId on venue CRUD |
+| `pocket-meter.js` | "Lock Session Tempo" wording, documented separate path |
+| `rehearsal-mode.js` | Key reads canonical 'key' first |
+| `index.html` / `index-dev.html` | Entity picker script, Google Maps Dynamic Import bootstrap |
+| `service-worker.js` | Build stamps |
 
 ---
 
@@ -95,18 +97,7 @@ Goal: Restructure Home dashboard from 5-phase workflow spine into a 5-section Co
 | 6 | Rehearsal Agenda Engine | ✅ COMPLETE |
 | 7 | Rehearsal Scorecard | ✅ COMPLETE |
 | 8 | AI Rehearsal Segmentation | ✅ COMPLETE |
-
-See prior entries in git history for detailed phase tracking of Milestones 1-8.
-
----
-
-## Deploy Workflow
-
-- `push.py` auto-discovers `.js`, `.css`, `.html`, `.json`, `.png` from repo root + `js/` + `css/`
-- `.py` files NOT auto-discovered — only `push.py` and `sync.py` explicitly included
-- `app-dev.js` mirrored from `app.js` during version stamping
-- 64 files in current deploy set
-- Dev and production move together — no separate environments
+| 9 | Command Center Dashboard | ✅ COMPLETE |
 
 ---
 
@@ -114,5 +105,7 @@ See prior entries in git history for detailed phase tracking of Milestones 1-8.
 
 1. `glSongDetailBack` override in gl-right-panel.js — temporary patch
 2. `app-dev.js` duplicate `selectSong()` — harmless, overwritten at load
-3. Practice page still checks legacy status values (`needs_polish`, `on_deck`) — works after migration but should be normalized to only check canonical values
-4. `deriveHdMissionSummary()` still uses global weak-song data for some text (partially fixed, coach text scoped, but line1 text still global)
+3. Practice page checks legacy status values — works after migration but should normalize
+4. Title suffixes (WSP)/(DMB) — transitional until songId migration replaces title-as-key in Firebase
+5. Pocket Meter _savePermanentBPM writes to separate session BPM path — documented, intentional
+6. Playlist `linkedSetlistId` field stores name not ID — needs Phase 2 cleanup

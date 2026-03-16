@@ -865,11 +865,19 @@ window.runChartImport = async function runChartImport() {
             await saveBandDataToDrive(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
             chartsSaved++;
 
-            // 2. Save key
-            await saveBandDataToDrive(song.title, 'key', { key: song.key, updatedAt: new Date().toISOString() });
+            // 2. Save key (dual-write via GLStore if available)
+            if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+                await GLStore.updateSongField(song.title, 'key', song.key);
+            } else {
+                await saveBandDataToDrive(song.title, 'key', { key: song.key, updatedAt: new Date().toISOString() });
+            }
 
-            // 3. Save BPM
-            await saveBandDataToDrive(song.title, 'song_bpm', { bpm: song.bpm, updatedAt: new Date().toISOString() });
+            // 3. Save BPM (dual-write via GLStore if available)
+            if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+                await GLStore.updateSongField(song.title, 'bpm', song.bpm);
+            } else {
+                await saveBandDataToDrive(song.title, 'song_bpm', { bpm: song.bpm, updatedAt: new Date().toISOString() });
+            }
 
             // 4. If not in main allSongs library, add as custom song
             var inLib = typeof allSongs !== 'undefined' && allSongs.find(function(s) {
