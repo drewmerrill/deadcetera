@@ -84,13 +84,22 @@ Example: cover_me canonical shape = `{ artist, url, description, addedBy, addedA
 |-------|-------|----------|
 | A | Fast visible wins | Availability matrix, setlist lock, Band Room card — **DONE** |
 | A.5 | Polish | Matrix best-day finder, lock metadata, Band Room expansion — **DONE** |
-| B1 | Band Room + Voting | Band Room rename, song prospect voting — **NEXT** |
-| B2 | Scheduling | Recurring events |
+| B1 | Band Room + Voting | Band Room rename, song prospect voting — **DONE** |
+| **Pre-launch 1** | **Multi-member adoption** | **Invite Bandmates flow — NEXT** |
+| **Pre-launch 2** | **First-run experience** | **Onboarding Wizard** |
+| **Pre-launch 3** | **Scheduling** | **Recurring Events** |
+| **Pre-launch 4** | **Instant value** | **Starter Pack auto-offer** |
+| **Infra** | **Payments + Auth** | **Stripe, Firebase Auth (Google/Apple/email), legal pages** |
 | B3 | Song DNA depth | Instruments-per-song (song_roles) |
 | C | Intelligence expansion | Instrument-change detection, vote-weighted rehearsal planning |
 | Rec | Recording model | Unified recordings array, instruction + session_capture types |
 | PL | Smart playlists | Playlists as views over recordings + intelligence data |
+| TL | Band Timeline | Chronological band progress history + shareable milestone cards |
 | Nav | Structure | Migrate to workflow-based navigation groups |
+
+### Launch Positioning
+**"GrooveLinx is the first Band Performance Intelligence System."**
+Most bands rehearse the wrong way. GrooveLinx fixes rehearsal by measuring readiness, groove, and improvement.
 
 ## Stack (Intentional Constraints)
 

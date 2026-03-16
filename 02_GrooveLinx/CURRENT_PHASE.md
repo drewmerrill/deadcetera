@@ -56,24 +56,29 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | — | Setlist lock: lockedBy/lockedAt shown on card | ✅ DONE |
 | — | Recording Asset Model + Playlist Strategy documented | ✅ DONE |
 
-### Phase B Priority Order (Approved)
+### Pre-Launch Priority Order (Revised)
 
 | Build | Focus | Sessions | Status |
 |-------|-------|----------|--------|
-| B1 | Band Room rename + Song Prospect Voting | Medium | 📋 NEXT |
-| B2 | Recurring Events | Medium | 📋 PLANNED |
-| B3 | Instruments-per-Song (song_roles) | Small | 📋 PLANNED |
+| B1 | Band Room rename + Song Prospect Voting | Medium | ✅ DONE |
+| **PL-1** | **Invite Bandmates Flow** | Medium | 📋 **NEXT** |
+| **PL-2** | **Onboarding Wizard** | Medium | 📋 PLANNED |
+| **PL-3** | **Recurring Events** | Medium | 📋 PLANNED |
+| **PL-4** | **Starter Pack Auto-Offer** | Small | 📋 PLANNED |
+| **Infra** | **Stripe + Firebase Auth + Legal** | Larger | 📋 PLANNED |
 
-### Later Phases
+### Post-Launch Phases
 
 | Phase | Focus | Status |
 |-------|-------|--------|
+| B3 | Instruments-per-Song (song_roles) | 📋 PLANNED |
 | C | Instrument-change detection, vote-weighted rehearsal planning | 📋 PLANNED |
+| Rec | Recording asset model (unified recordings array) | 📋 PLANNED |
+| PL | Smart playlists (views over recordings + intelligence) | 📋 PLANNED |
+| TL | Band Timeline (chronological progress + shareable milestones) | 📋 PLANNED |
 | Nav | Workflow-based navigation restructure | 📋 PLANNED |
-| Rec | Recording asset model implementation (unified recordings array) | 📋 PLANNED |
-| PL | Playlist strategy (smart playlists from recordings + intelligence) | 📋 PLANNED |
-| 2B.4 | best_shot_takes dual-write (bestshot.js cleanup) | 📋 PLANNED |
-| 2C | Readiness + section_ratings migration (Firebase-direct pattern) | 📋 PLANNED |
+| 2B.4 | best_shot_takes dual-write | 📋 PLANNED |
+| 2C | Readiness + section_ratings migration | 📋 PLANNED |
 | UAT | Live band testing | 🟡 IN PROGRESS |
 
 ### Naming Decision
