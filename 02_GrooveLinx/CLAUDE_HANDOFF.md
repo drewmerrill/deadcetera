@@ -101,6 +101,31 @@ Example: cover_me canonical shape = `{ artist, url, description, addedBy, addedA
 **"GrooveLinx is the first Band Performance Intelligence System."**
 Most bands rehearse the wrong way. GrooveLinx fixes rehearsal by measuring readiness, groove, and improvement.
 
+### Pricing Model (Per-Band)
+| Tier | Price | Limits |
+|------|-------|--------|
+| Free | $0 | 1 band, 5 members, 40 songs, 3 setlists |
+| Pro | $9/mo or $79/yr | Unlimited songs/members/setlists + full intelligence suite |
+| Founding Band | Free forever | First 100-500 bands, same as Pro |
+
+### Invite Loop (Primary Growth Engine)
+CTA: **"Bring Your Band Into GrooveLinx."** The invite flow is the #1 growth mechanism. Every band that joins brings 4-5 members. Every member who sees the product may bring it to their other bands.
+
+### Starter Packs (Instant Value)
+Auto-include: chord charts, key, BPM, North Star recordings. A new band should see populated song data within 60 seconds of picking their catalog.
+
+### Legal Checklist
+- [ ] USPTO trademark filing for "GrooveLinx" (before marketing push)
+- [ ] Terms of Service: cover user-uploaded recordings, no copyright distribution
+- [ ] Privacy Policy: Firebase data, Stripe billing, audio analysis
+- [ ] Confirm: GrooveLinx links to recordings but does not host/distribute copyrighted audio
+
+### Video Strategy
+- Homepage hero: 30-45 second hook ("Hi, I'm Drew. Your band rehearses wrong.")
+- Full founder story (90s): below fold or YouTube
+- Feature explainers (45-60s each): below hero
+- Social clips (15-30s vertical): Instagram/TikTok/YouTube Shorts
+
 ## Stack (Intentional Constraints)
 
 - Frontend: vanilla JavaScript SPA
