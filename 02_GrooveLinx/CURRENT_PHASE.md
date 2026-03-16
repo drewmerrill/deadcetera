@@ -56,16 +56,33 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | — | Setlist lock: lockedBy/lockedAt shown on card | ✅ DONE |
 | — | Recording Asset Model + Playlist Strategy documented | ✅ DONE |
 
-### Upcoming Phases
+### Phase B Priority Order (Approved)
+
+| Build | Focus | Sessions | Status |
+|-------|-------|----------|--------|
+| B1 | Band Room rename + Song Prospect Voting | Medium | 📋 NEXT |
+| B2 | Recurring Events | Medium | 📋 PLANNED |
+| B3 | Instruments-per-Song (song_roles) | Small | 📋 PLANNED |
+
+### Later Phases
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| B | Recurring events, instruments-per-song, song prospect voting | 📋 PLANNED |
 | C | Instrument-change detection, vote-weighted rehearsal planning | 📋 PLANNED |
 | Nav | Workflow-based navigation restructure | 📋 PLANNED |
+| Rec | Recording asset model implementation (unified recordings array) | 📋 PLANNED |
+| PL | Playlist strategy (smart playlists from recordings + intelligence) | 📋 PLANNED |
 | 2B.4 | best_shot_takes dual-write (bestshot.js cleanup) | 📋 PLANNED |
 | 2C | Readiness + section_ratings migration (Firebase-direct pattern) | 📋 PLANNED |
 | UAT | Live band testing | 🟡 IN PROGRESS |
+
+### Naming Decision
+
+"Ideas Board" → renamed to **"Band Room"** in nav + page header. Internal route stays `ideas`. Dashboard card CTA targets `showPage('ideas')`.
+
+### Migration Tooling
+
+`GLStore.auditMigrationStatus()` stays console-only until readiness/section_ratings migration begins.
 
 ### Bug Fixes (20260316)
 

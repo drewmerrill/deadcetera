@@ -84,8 +84,12 @@ Example: cover_me canonical shape = `{ artist, url, description, addedBy, addedA
 |-------|-------|----------|
 | A | Fast visible wins | Availability matrix, setlist lock, Band Room card — **DONE** |
 | A.5 | Polish | Matrix best-day finder, lock metadata, Band Room expansion — **DONE** |
-| B | Operational depth | Recurring events, instruments-per-song, song prospect voting |
-| C | Intelligence expansion | Instrument-change detection, vote-weighted rehearsal planning, automated gig packets |
+| B1 | Band Room + Voting | Band Room rename, song prospect voting — **NEXT** |
+| B2 | Scheduling | Recurring events |
+| B3 | Song DNA depth | Instruments-per-song (song_roles) |
+| C | Intelligence expansion | Instrument-change detection, vote-weighted rehearsal planning |
+| Rec | Recording model | Unified recordings array, instruction + session_capture types |
+| PL | Smart playlists | Playlists as views over recordings + intelligence data |
 | Nav | Structure | Migrate to workflow-based navigation groups |
 
 ## Stack (Intentional Constraints)
