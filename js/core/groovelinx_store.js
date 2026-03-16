@@ -129,6 +129,81 @@
 
   // ── Songs ─────────────────────────────────────────────────────────────────
 
+  // Song indexes — built lazily on first access, rebuilt on demand.
+  // _songByIdIndex:    { songId → song object }
+  // _songByTitleIndex: { normalizedTitle → [song, song, ...] }  (multi-value — titles can collide)
+  var _songByIdIndex = null;
+  var _songByTitleIndex = null;
+
+  /**
+   * Build/rebuild song lookup indexes from allSongs.
+   * Call after allSongs changes (custom song add/remove, startup).
+   */
+  function rebuildSongIndexes() {
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    _songByIdIndex = {};
+    _songByTitleIndex = {};
+    songs.forEach(function(s) {
+      if (s.songId) _songByIdIndex[s.songId] = s;
+      var normTitle = (s.title || '').toLowerCase();
+      if (!_songByTitleIndex[normTitle]) _songByTitleIndex[normTitle] = [];
+      _songByTitleIndex[normTitle].push(s);
+    });
+    if (DEBUG) console.log('[GLStore] Song indexes built:', songs.length, 'songs,', Object.keys(_songByIdIndex).length, 'by ID');
+  }
+
+  function _ensureSongIndexes() {
+    if (!_songByIdIndex) rebuildSongIndexes();
+  }
+
+  /**
+   * Look up a song by songId. Returns the song object or null.
+   * @param {string} songId
+   * @returns {object|null}
+   */
+  function getSongById(songId) {
+    _ensureSongIndexes();
+    return (songId && _songByIdIndex[songId]) || null;
+  }
+
+  /**
+   * Look up all songs matching a title (case-insensitive). Returns array.
+   * Multiple songs can share a title (e.g., before dedup or during import).
+   * @param {string} title
+   * @returns {Array}
+   */
+  function getSongsByTitle(title) {
+    _ensureSongIndexes();
+    return _songByTitleIndex[(title || '').toLowerCase()] || [];
+  }
+
+  /**
+   * Look up a song by title, but ONLY if exactly one match exists.
+   * Returns null and warns if ambiguous (multiple matches) or not found.
+   * This is a transition bridge — callers should migrate to getSongById.
+   * @param {string} title
+   * @returns {object|null}
+   */
+  function getSongByTitle(title) {
+    var matches = getSongsByTitle(title);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      console.warn('[GLStore] getSongByTitle: ambiguous title "' + title + '" — ' + matches.length + ' matches. Use getSongById() instead.');
+    }
+    return null;
+  }
+
+  /**
+   * Get songId for a title, but ONLY if exactly one match exists.
+   * Returns null if ambiguous or not found.
+   * @param {string} title
+   * @returns {string|null}
+   */
+  function getSongIdByTitle(title) {
+    var song = getSongByTitle(title);
+    return song ? (song.songId || null) : null;
+  }
+
   /**
    * Return the static songs array from data.js.
    * Does not fetch — allSongs is loaded synchronously at startup.
@@ -2554,6 +2629,11 @@
   window.GLStore = {
     // Songs
     getSongs:          getSongs,
+    getSongById:       getSongById,
+    getSongsByTitle:   getSongsByTitle,
+    getSongByTitle:    getSongByTitle,
+    getSongIdByTitle:  getSongIdByTitle,
+    rebuildSongIndexes: rebuildSongIndexes,
     loadSongDetail:    loadSongDetail,
 
     // Active context

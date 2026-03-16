@@ -726,12 +726,19 @@ async function loadCustomSongs() {
         }
         // Add fresh custom songs (skip any that duplicate a built-in title)
         const builtInTitles = new Set(allSongs.map(s => s.title.toLowerCase()));
+        var needsResave = false;
         custom.forEach(s => {
             if (s.title && !builtInTitles.has(s.title.toLowerCase())) {
-                allSongs.push({ title: s.title, band: s.band || 'Other', isCustom: true, addedBy: s.addedBy, notes: s.notes || '' });
+                // Backfill songId and artist on legacy custom songs
+                if (!s.songId) { s.songId = 'c_' + generateShortId(8); needsResave = true; }
+                if (!s.artist) { s.artist = s.band || 'Other'; needsResave = true; }
+                allSongs.push({ songId: s.songId, title: s.title, artist: s.artist, band: s.band || 'Other', isCustom: true, addedBy: s.addedBy, notes: s.notes || '' });
             }
         });
+        if (needsResave) await saveBandDataToDrive('_band', 'custom_songs', custom);
         customSongsLoaded = true;
+        // Rebuild song indexes after custom songs are merged
+        if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
         updateCustomSongCount();
     } catch(e) {
         console.warn('loadCustomSongs error:', e);
@@ -810,7 +817,7 @@ async function saveCustomSong() {
         alert(`"${title}" is already in the library!\n\nIf this is a different song with the same name, add the band name in parentheses — e.g. "${title} (${band})"`);
         return;
     }
-    const newSong = { title, band, notes, addedBy: currentUserEmail || 'unknown', addedAt: new Date().toISOString() };
+    const newSong = { songId: 'c_' + generateShortId(8), title, artist: band, band, notes, originType: 'custom', addedBy: currentUserEmail || 'unknown', addedAt: new Date().toISOString() };
     const existing = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
     existing.push(newSong);
     await saveBandDataToDrive('_band', 'custom_songs', existing);
