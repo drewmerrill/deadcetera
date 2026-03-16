@@ -127,6 +127,72 @@
 
   function _now() { return new Date().toISOString(); }
 
+  // ── songs_v2 dual-path helpers (Phase 2B) ───────────────────────────────
+  //
+  // v2 paths use songId as the key instead of title:
+  //   Legacy: bands/{slug}/songs/{sanitizedTitle}/{dataType}
+  //   v2:     bands/{slug}/songs_v2/{songId}/{dataType}
+  //
+  // Read:  try v2 first, fall back to legacy title-keyed path
+  // Write: write to BOTH paths (parallel) for forward/backward compat
+  //
+  // Currently enabled for: song_bpm, key only. Expand in future phases.
+
+  var _V2_ENABLED_TYPES = { 'song_bpm': true, 'key': true };
+
+  /** Build the v2 Firebase path: bands/{slug}/songs_v2/{songId}/{dataType} */
+  function _v2Path(songId, dataType) {
+    return (typeof bandPath === 'function') ? bandPath('songs_v2/' + songId + '/' + dataType) : null;
+  }
+
+  /** Read from songs_v2/{songId}/{dataType} via Firebase directly */
+  function _loadV2(songId, dataType) {
+    var db = _db();
+    var path = _v2Path(songId, dataType);
+    if (!db || !path) return Promise.resolve(null);
+    return db.ref(path).once('value').then(function(snap) {
+      return snap.val();
+    }).catch(function() { return null; });
+  }
+
+  /** Write to songs_v2/{songId}/{dataType} via Firebase directly */
+  function _saveV2(songId, dataType, data) {
+    var db = _db();
+    var path = _v2Path(songId, dataType);
+    if (!db || !path) return Promise.resolve(null);
+    return db.ref(path).set(data);
+  }
+
+  /**
+   * Dual-read: try v2 path first (songId-keyed), fall back to legacy (title-keyed).
+   * @param {string} title  - song title (legacy key)
+   * @param {string} songId - songId (v2 key), null if unknown
+   * @param {string} dataType - e.g. 'song_bpm', 'key'
+   * @returns {Promise<*>} data or null
+   */
+  function _loadDual(title, songId, dataType) {
+    if (!_V2_ENABLED_TYPES[dataType] || !songId) return _lbdf(title, dataType);
+    return _loadV2(songId, dataType).then(function(v2Data) {
+      if (v2Data !== null && v2Data !== undefined) return v2Data;
+      return _lbdf(title, dataType); // fallback to legacy
+    });
+  }
+
+  /**
+   * Dual-write: write to BOTH v2 and legacy paths in parallel.
+   * @param {string} title  - song title (legacy key)
+   * @param {string} songId - songId (v2 key), null if unknown
+   * @param {string} dataType - e.g. 'song_bpm', 'key'
+   * @param {*} data
+   */
+  function _saveDual(title, songId, dataType, data) {
+    var legacyWrite = _sbdf(title, dataType, data);
+    if (_V2_ENABLED_TYPES[dataType] && songId) {
+      return Promise.all([legacyWrite, _saveV2(songId, dataType, data)]);
+    }
+    return legacyWrite;
+  }
+
   // ── Songs ─────────────────────────────────────────────────────────────────
 
   // Song indexes — built lazily on first access, rebuilt on demand.
@@ -333,25 +399,28 @@
   // ── Canonical song metadata validation ─────────────────────────────────
   //
   // BPM:
-  //   Canonical path:   saveBandDataToDrive(title, 'song_bpm', { bpm, updatedAt })
-  //   Firebase:         /bands/{slug}/assets/{title}/song_bpm
+  //   v2 path (new):    /bands/{slug}/songs_v2/{songId}/song_bpm
+  //   Legacy path:      /bands/{slug}/songs/{sanitizedTitle}/song_bpm
   //   Valid range:      40–240 (musical BPM for permanent song record)
-  //   All permanent BPM edits should route through GLStore.updateSongField('bpm').
+  //   All permanent BPM edits route through GLStore.updateSongField('bpm'),
+  //   which dual-writes to BOTH v2 and legacy paths.
   //   Pocket Meter's _savePermanentBPM writes to a SEPARATE path
   //   (/bands/{slug}/songs/{key}/bpm) — that is a live session consensus value,
   //   not the canonical song BPM. See pocket-meter.js header.
   //
   // Key:
-  //   Canonical path:   saveBandDataToDrive(title, 'key', { key, updatedAt })
-  //   Firebase:         /bands/{slug}/assets/{title}/key
-  //   Legacy path:      'song_key' — some older imports used this; readers should
-  //                     try 'key' first, fall back to 'song_key'.
-  //   All permanent Key edits should route through GLStore.updateSongField('key').
+  //   v2 path (new):    /bands/{slug}/songs_v2/{songId}/key
+  //   Legacy path:      /bands/{slug}/songs/{sanitizedTitle}/key
+  //   Old import path:  'song_key' — some older imports used this; readers should
+  //                     try v2 first, then 'key', then 'song_key'.
+  //   All permanent Key edits route through GLStore.updateSongField('key'),
+  //   which dual-writes to BOTH v2 and legacy paths.
   //
-  // Fallback read order (for both):
-  //   1. Firebase Drive asset (canonical)
-  //   2. allSongs[] in-memory cache
-  //   3. Firebase metadata path (legacy)
+  // Read order:
+  //   1. songs_v2/{songId}/{dataType} (new, songId-keyed)
+  //   2. songs/{title}/{dataType} (legacy, title-keyed)
+  //   3. allSongs[] in-memory cache
+  //   4. Firebase metadata path (very old legacy)
   // ────────────────────────────────────────────────────────────────────────
 
   var SONG_BPM_MIN = 40;
@@ -364,29 +433,34 @@
    * @param {*}      value
    */
   async function updateSongField(songId, field, value) {
+    // songId param is actually the song TITLE (legacy). Resolve the real songId for v2 writes.
+    var title = songId;
+    var song = getSongByTitle(title);
+    var realSongId = song ? song.songId : null;
+
     var writes = {
-      leadSinger: function () { return _sbdf(songId, 'lead_singer', { singer: value }); },
+      leadSinger: function () { return _sbdf(title, 'lead_singer', { singer: value }); },
       status:     function () {
-        var p = _sbdf(songId, 'song_status', { status: value, updatedAt: _now() });
+        var p = _sbdf(title, 'song_status', { status: value, updatedAt: _now() });
         // Keep statusCache in sync
-        if (typeof statusCache !== 'undefined') statusCache[songId] = value;
+        if (typeof statusCache !== 'undefined') statusCache[title] = value;
         if (typeof addStatusBadges === 'function') addStatusBadges();
         return p;
       },
-      key:        function () { return _sbdf(songId, 'key', { key: value, updatedAt: _now() }); },
+      key:        function () { return _saveDual(title, realSongId, 'key', { key: value, updatedAt: _now() }); },
       bpm:        function () {
         var n = parseInt(value, 10);
         if (isNaN(n) || n < SONG_BPM_MIN || n > SONG_BPM_MAX) return Promise.resolve();
-        return _sbdf(songId, 'song_bpm', { bpm: n, updatedAt: _now() });
+        return _saveDual(title, realSongId, 'song_bpm', { bpm: n, updatedAt: _now() });
       },
     };
     if (!writes[field]) { console.warn('[GLStore] unknown field:', field); return; }
     await writes[field]();
     // Bust cache so next loadSongDetail gets fresh data
-    delete _state.songDetailCache[songId];
+    delete _state.songDetailCache[title];
     // Sync allSongs in-memory cache so all UI surfaces see the update immediately
     if (typeof allSongs !== 'undefined') {
-      var _idx = allSongs.findIndex(function(s) { return s.title === songId; });
+      var _idx = allSongs.findIndex(function(s) { return s.title === title; });
       if (_idx >= 0 && (field === 'key' || field === 'bpm')) {
         allSongs[_idx][field] = value;
       }

@@ -6580,6 +6580,16 @@ async function updateSongBpm(bpm) {
 }
 
 async function loadSongBpm(songTitle) {
+    // Try v2 (songId-keyed) first, fall back to legacy (title-keyed)
+    var song = (typeof GLStore !== 'undefined' && GLStore.getSongByTitle) ? GLStore.getSongByTitle(songTitle) : null;
+    var songId = song ? song.songId : null;
+    if (songId && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+        try {
+            var snap = await firebaseDB.ref(bandPath('songs_v2/' + songId + '/song_bpm')).once('value');
+            var v2 = snap.val();
+            if (v2 && v2.bpm !== undefined) return v2.bpm;
+        } catch(e) {}
+    }
     const data = await loadBandDataFromDrive(songTitle, 'song_bpm');
     return data ? data.bpm : null;
 }
@@ -6649,9 +6659,16 @@ async function updateSongKey(key) {
 
 async function loadSongKey(songTitle) {
     try {
-        // Drive is the write path for key (updateSongKey writes here).
-        // Check Drive first, then Firebase metadata as fallback.
-        // This matches Song Detail priority: Drive key → allSongs → Firebase metadata.
+        // Try v2 (songId-keyed) first
+        var song = (typeof GLStore !== 'undefined' && GLStore.getSongByTitle) ? GLStore.getSongByTitle(songTitle) : null;
+        var songId = song ? song.songId : null;
+        if (songId && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+            var v2Snap = await firebaseDB.ref(bandPath('songs_v2/' + songId + '/key')).once('value');
+            var v2 = v2Snap.val();
+            var v2Key = (v2 && typeof v2 === 'object') ? (v2.key || '') : (v2 || '');
+            if (v2Key) return v2Key;
+        }
+        // Legacy: title-keyed Drive path
         const data = await loadBandDataFromDrive(songTitle, 'key');
         var driveKey = (data && typeof data === 'object') ? (data.key || '') : (data || '');
         if (driveKey) return driveKey;
