@@ -96,16 +96,16 @@ window.invalidateHomeCache = function invalidateHomeCache() {
 
 // ── CTA event handlers (must be on window for inline onclick) ────────────────
 
-window.homeGoLive = function homeGoLive(linkedSetlist) {
-    if (!linkedSetlist) {
+window.homeGoLive = function homeGoLive(setlistIdOrName) {
+    if (!setlistIdOrName) {
         if (typeof window.showPage === 'function') window.showPage('gigs');
         return;
     }
     if (typeof window.gigLaunchLinkedSetlist === 'function') {
-        window.gigLaunchLinkedSetlist(linkedSetlist);
+        window.gigLaunchLinkedSetlist(setlistIdOrName);
     } else if (typeof window.showPage === 'function') {
         window.showPage('gigs');
-        if (typeof window.showToast === 'function') window.showToast('📍 Opening Gigs — tap Go Live');
+        if (typeof window.showToast === 'function') window.showToast('Opening Gigs — tap Go Live');
     }
 };
 
@@ -122,9 +122,9 @@ window.homeDismissBanner = function homeDismissBanner() {
     window.refreshHomeDashboard();
 };
 
-window.homeViewSetlist = function homeViewSetlist(linkedSetlist) {
-    if (linkedSetlist && typeof window.gigLaunchLinkedSetlist === 'function') {
-        window.gigLaunchLinkedSetlist(linkedSetlist);
+window.homeViewSetlist = function homeViewSetlist(setlistIdOrName) {
+    if (setlistIdOrName && typeof window.gigLaunchLinkedSetlist === 'function') {
+        window.gigLaunchLinkedSetlist(setlistIdOrName);
     } else if (typeof window.showPage === 'function') {
         window.showPage('setlists');
     }
@@ -1017,7 +1017,7 @@ function _detectImpactFeedback() {
         var _hasGigScope = false;
         try {
             var _gigs = (typeof window._homeBundle !== 'undefined' && _homeBundle) ? _homeBundle.gigs : [];
-            _hasGigScope = _gigs && _gigs.length && _gigs[0].linkedSetlist;
+            _hasGigScope = _gigs && _gigs.length && (_gigs[0].setlistId || _gigs[0].linkedSetlist);
         } catch(e2) {}
         if (_hasGigScope && !_seen.gigrisk) {
             _newUnlocks.push({ id: 'gigrisk', icon: '&#x1F6A8;', text: 'Gig risk analysis active \u2014 tracking your setlist readiness', color: '#818cf8' });
@@ -1333,7 +1333,7 @@ function renderHdHeroNextUp(bundle, isStoner) {
 
 function _renderHdHeroGig(gig, bundle, isStoner) {
   try {
-    var ls      = gig.linkedSetlist || null;
+    var ls      = gig.setlistId || gig.linkedSetlist || null;
     var lsEsc   = ls ? _escHtml(ls) : '';
     var venue   = _escHtml(gig.venue || 'Upcoming Show');
     var diff    = gig.date ? _dayDiff(_todayStr(), gig.date) : null;
@@ -2324,7 +2324,7 @@ function _renderContextBanner(bannerType, bannerData, isStoner) {
     var plan = bannerData && bannerData.plan;
 
     var venueName    = gig ? _escHtml(gig.venue || 'Tonight\'s Show') : '';
-    var linkedSetlist = gig ? (gig.linkedSetlist || null) : null;
+    var linkedSetlist = gig ? (gig.setlistId || gig.linkedSetlist || null) : null;
     var linkedSetlistEsc = linkedSetlist ? _escHtml(linkedSetlist) : '';
 
     if (bannerType === 'rehearsal_today') {
@@ -2439,7 +2439,7 @@ function _renderPlayShowCard(bundle, isStoner) {
 
     var venueName      = nextGig.venue || 'Upcoming Show';
     var gigDate        = nextGig.date  || '';
-    var linkedSetlist  = nextGig.linkedSetlist || null;
+    var linkedSetlist  = nextGig.setlistId || nextGig.linkedSetlist || null;
     var linkedSetlistEsc = linkedSetlist ? _escHtml(linkedSetlist) : '';
 
     var daysUntil  = gigDate ? _dayDiff(_todayStr(), gigDate) : null;
@@ -2643,8 +2643,8 @@ function _scoreSetlistCard(bundle) {
     var gigs = bundle.gigs || [];
     if (!setlists.length) return 0;
     var nextGig = gigs[0];
-    if (nextGig && !nextGig.linkedSetlist) return 2;
-    if (nextGig && nextGig.linkedSetlist) return 1;
+    if (nextGig && !nextGig.setlistId && !nextGig.linkedSetlist) return 2;
+    if (nextGig && (nextGig.setlistId || nextGig.linkedSetlist)) return 1;
     return 0;
 }
 
@@ -2666,14 +2666,18 @@ function _renderSetlistCard(bundle, isStoner) {
     }
 
     var featured = null;
-    if (nextGig && nextGig.linkedSetlist) {
+    if (nextGig && nextGig.setlistId) {
+        featured = setlists.find(function(sl) { return sl.setlistId === nextGig.setlistId; }) || null;
+    }
+    if (!featured && nextGig && nextGig.linkedSetlist) {
+        // Legacy fallback: name match for records without setlistId
         featured = setlists.find(function(sl) { return sl.name === nextGig.linkedSetlist; }) || null;
     }
     if (!featured) {
         featured = setlists.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); })[0];
     }
 
-    var isLinked = nextGig && nextGig.linkedSetlist && featured && featured.name === nextGig.linkedSetlist;
+    var isLinked = nextGig && featured && (nextGig.setlistId === featured.setlistId);
     var totalSongs = featured.songCount || 0;
     var setCount = (featured.sets || []).length;
 

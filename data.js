@@ -252,7 +252,6 @@ const allSongs = [
     { title: "End of the Line", band: "ABB" },
     { title: "Every Hungry Woman", band: "ABB" },
     { title: "Everybody's Got a Mountain to Climb", band: "ABB" },
-    { title: "Fire on the Mountain", band: "ABB" },
     { title: "Floating Bridge", band: "ABB" },
     { title: "Forty Four Blues", band: "ABB" },
     { title: "Gambler's Roll", band: "ABB" },

@@ -607,7 +607,16 @@ function hidePWAInstallBanner() {
 }
 
 async function pwaTriggerInstall() {
-    if (!pwaInstallPrompt) return;
+    if (!pwaInstallPrompt) {
+        // No install prompt available — guide user to manual install
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIOS) {
+            showToast('On iPhone: tap Share (□↑) in Safari → "Add to Home Screen"');
+        } else {
+            showToast('Use your browser menu → "Install app" or "Add to Home Screen"');
+        }
+        return;
+    }
     hidePWAInstallBanner();
     pwaInstallPrompt.prompt();
     const { outcome } = await pwaInstallPrompt.userChoice;

@@ -302,7 +302,7 @@ async function calAddEvent(date, editIdx, existing) {
     const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     setlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     const setlistOpts = setlists.map(sl =>
-        `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}" ${(sl.setlistId&&ev.setlistId===sl.setlistId)||(ev.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
+        `<option value="${sl.setlistId||''}" ${sl.setlistId&&ev.setlistId===sl.setlistId?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
     ).join('');
     const venues = await GLStore.getVenues();
     window._calSelectedVenueId = ev.venueId || null;
@@ -478,8 +478,7 @@ async function calSaveEvent(editIdx) {
         var calSetlistVal = ev.linkedSetlist || '';
         var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
         var linkedSl = calSetlistVal
-            ? (allSetlists.find(function(s) { return s.setlistId === calSetlistVal; })
-            || allSetlists.find(function(s) { return (s.name || '') === calSetlistVal; }))
+            ? allSetlists.find(function(s) { return s.setlistId === calSetlistVal; })
             : null;
 
         const gigRecord = {

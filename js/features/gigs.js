@@ -79,7 +79,7 @@ async function editGig(idx) {
         <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
             <select class="app-select" id="gigLinkedSetlist">
                 <option value="">-- None --</option>
-                ${(window._cachedSetlists||[]).map(sl => `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}" ${(sl.setlistId&&g.setlistId===sl.setlistId)||(g.linkedSetlist||'')===(sl.name||'')?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
+                ${(window._cachedSetlists||[]).map(sl => `<option value="${sl.setlistId||''}" ${sl.setlistId&&g.setlistId===sl.setlistId?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
             </select>
         </div>
         <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
@@ -114,12 +114,11 @@ async function saveGigEdit(idx) {
         updated: new Date().toISOString()
     };
 
-    // Resolve setlist link
+    // Resolve setlist link by setlistId only
     var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var linkedSl = null;
     if (selectedSetlistId) {
-        linkedSl = allSetlists.find(function(s) { return s.setlistId === selectedSetlistId; })
-                || allSetlists.find(function(s) { return (s.name || '') === selectedSetlistId; });
+        linkedSl = allSetlists.find(function(s) { return s.setlistId === selectedSetlistId; });
     }
 
     // Clear old setlist back-ref if changing
@@ -337,8 +336,8 @@ function renderGigsPage(el) {
 async function gigLaunchLinkedSetlist(setlistIdOrName) {
     if (!requireSignIn()) return;
     var allSl = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    // Try by setlistId first, then by name (compat)
     var idx = allSl.findIndex(function(sl) { return sl.setlistId === setlistIdOrName; });
+    // Legacy fallback: if no ID match, try name (for records before venueId era)
     if (idx < 0) idx = allSl.findIndex(function(sl) { return (sl.name||'') === setlistIdOrName; });
     if (idx < 0) { showToast('Setlist not found'); return; }
     await launchGigMode(idx);
@@ -374,9 +373,9 @@ async function loadGigs() {
             </div>
         </div>
         ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
-        ${g.linkedSetlist ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist}</span>
-            <button onclick="gigLaunchLinkedSetlist('${(g.setlistId || g.linkedSetlist).replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
+        ${(g.setlistId || g.linkedSetlist) ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist || '(linked)'}</span>
+            <button onclick="gigLaunchLinkedSetlist('${(g.setlistId || '').replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
             <button onclick="showPage('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
         </div>` : ''}
     </div>`).join('');
@@ -525,13 +524,11 @@ async function saveGig() {
     };
     if (!gig.venue) { alert('Venue required'); return; }
 
-    // Resolve setlist link: by setlistId if available, fallback to name match
+    // Resolve setlist link by setlistId only
     var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var linkedSl = null;
     if (selectedSetlistId) {
-        // Try by setlistId first, then by name (compat with old dropdowns)
-        linkedSl = allSetlists.find(function(s) { return s.setlistId === selectedSetlistId; })
-                || allSetlists.find(function(s) { return (s.name || '') === selectedSetlistId; });
+        linkedSl = allSetlists.find(function(s) { return s.setlistId === selectedSetlistId; });
     }
 
     if (linkedSl) {
