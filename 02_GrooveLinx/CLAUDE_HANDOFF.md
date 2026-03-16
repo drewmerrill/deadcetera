@@ -25,27 +25,63 @@ It is not just a collection of music tools. The UX should guide each band member
 
 **"BandZone for operational smoothness + GrooveLinx for musical intelligence."**
 
-BandZone focuses on organizing bands. GrooveLinx focuses on making bands better musicians.
+BandZone organizes bands. GrooveLinx makes bands better musicians.
 
-### Three Intelligence Engines (Core Differentiation — Preserve Always)
-1. **Song Intelligence** — readiness scoring, practice gap detection, improvement signals
-2. **Rehearsal Intelligence** — scorecard, agenda generation, analytics
-3. **Groove Intelligence** — Pocket Meter BPM detection, tempo stability, groove tracking
+### Two-Layer Product Model
 
-### Operational Features Adopted from BandZone Model
-- Availability matrix (calendar)
-- Recurring events
-- Instruments-per-song
-- Song prospect voting
-- Setlist lock
-- Poll visibility on dashboard
+**Band Operations Layer** — remove friction
+- Calendar, availability, gigs, setlists, polls/discussions
+
+**Musicianship Intelligence Layer** — improve performance
+- Song Intelligence (readiness, gaps, improvement signals)
+- Rehearsal Intelligence (scorecard, agenda, analytics)
+- Groove Intelligence (Pocket Meter, tempo stability, groove tracking)
+
+The Command Center (Home page) unifies both layers.
+
+### Command Center Principle
+
+Home page = **Band Mission Control**. It answers: "What should the band do next?"
+
+Must surface: band momentum, rehearsal scorecard, next agenda, practice priorities, availability signals, band votes/discussions, upload CTA.
+
+Important signals must NOT remain buried inside feature pages.
+
+### Navigation Workflow Model (Future)
+
+Current nav reflects data modules. Future nav should follow band activity:
+
+| Group | Pages |
+|-------|-------|
+| Music | Songs, Practice, Harmony, Charts |
+| Rehearsal | Rehearsal Mode, Agenda, Scorecard, Upload |
+| Shows | Gigs, Setlists, Venues, Care Package |
+| Band | Calendar, Availability, Polls, Discussions |
+| Tools | Pocket Meter, Playlists, Practice Tracks |
+
+Not implemented yet — incorporated into roadmap for phased restructuring.
+
+### UX Card Rules (All Feature Cards)
+1. Each card explains its purpose (microcopy)
+2. Each card has one clear next-action CTA
+3. Urgent states are visually distinct (awaiting vote, locked, best day, new discussion)
 
 ### Features GrooveLinx Should NOT Build
-- File storage systems (use Google Drive/Dropbox)
-- Messaging platforms (use group texts/Slack)
-- Complex RBAC permission systems
+- File storage (use Google Drive/Dropbox)
+- Messaging/chat (use group texts/Slack)
+- Complex RBAC permissions
 - Email blast systems
-- Multi-band support (single-band focused by design)
+- Multi-band support (single-band by design)
+
+### Roadmap Phases
+
+| Phase | Focus | Features |
+|-------|-------|----------|
+| A | Fast visible wins | Availability matrix, setlist lock, Band Room card — **DONE** |
+| A.5 | Polish | Matrix best-day finder, lock metadata, Band Room expansion — **DONE** |
+| B | Operational depth | Recurring events, instruments-per-song, song prospect voting |
+| C | Intelligence expansion | Instrument-change detection, vote-weighted rehearsal planning, automated gig packets |
+| Nav | Structure | Migrate to workflow-based navigation groups |
 
 ## Stack (Intentional Constraints)
 

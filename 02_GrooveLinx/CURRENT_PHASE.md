@@ -2,10 +2,24 @@
 
 _Updated: 2026-03-16_
 
-## Active Phase: Canonical Entity Model + songId Foundation
+## Active Phase: Operational + Intelligence Platform Build
 
-Build: **20260316-125045**
+Build: **20260316-154814**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
+
+---
+
+## GrooveLinx Product Philosophy
+
+**Two-layer product model:**
+1. **Band Operations Layer** — calendar, availability, gigs, setlists, polls/discussions
+2. **Musicianship Intelligence Layer** — Song Intelligence, Rehearsal Intelligence, Groove Intelligence
+
+**Command Center = Band Mission Control.** Answers: "What should the band do next?"
+
+**Navigation roadmap:** Migrate from data-module nav to workflow-based groups (Music / Rehearsal / Shows / Band / Tools).
+
+**Out of scope:** file storage, messaging/chat, complex RBAC, email blasts, multi-band.
 
 ---
 
@@ -28,6 +42,21 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | 5.5 | songId validation (2A.5: index safety, uniqueness, backfill idempotency) | ✅ DONE |
 | 6 | songId dual-path (Phase 2B Step 1: songs_v2/{songId}/ for BPM + Key) | ✅ DONE |
 | 7 | UX clarity (venue mismatch info bar, Pocket Meter "Lock Session Tempo") | ✅ DONE |
+| 8 | Phase 2B Step 2: expand songs_v2 to core Song Detail metadata (7 fields) | ✅ DONE |
+| 9 | Phase 2B Step 3: expand songs_v2 to spotify_versions, practice_tracks, cover_me | ✅ DONE |
+| A | Phase A: Availability Matrix, Setlist Lock, Poll Dashboard Card | ✅ DONE |
+| A.5 | Phase A Polish: best-day finder, lock metadata, Band Room card | ✅ DONE |
+| — | Product philosophy + roadmap codified in CLAUDE_HANDOFF.md | ✅ DONE |
+
+### Upcoming Phases
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| B | Recurring events, instruments-per-song, song prospect voting | 📋 PLANNED |
+| C | Instrument-change detection, vote-weighted rehearsal planning | 📋 PLANNED |
+| Nav | Workflow-based navigation restructure | 📋 PLANNED |
+| 2B.4 | best_shot_takes dual-write (bestshot.js cleanup) | 📋 PLANNED |
+| 2C | Readiness + section_ratings migration (Firebase-direct pattern) | 📋 PLANNED |
 | UAT | Live band testing | 🟡 IN PROGRESS |
 
 ### Bug Fixes (20260316)
