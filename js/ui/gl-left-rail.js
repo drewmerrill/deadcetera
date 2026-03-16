@@ -164,6 +164,7 @@
           + ' title="' + item.label + '">'
           + '<span class="gl-rail-icon">' + item.icon + '</span>'
           + '<span class="gl-rail-label">' + item.label + '</span>'
+          + (item.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;background:#fbbf24;color:#000;font-size:0.6em;font-weight:800;border-radius:8px;padding:0 5px;margin-left:4px;min-width:14px;text-align:center;line-height:16px"></span>' : '')
           + '</button>';
       }
       html += '</div>';
@@ -172,6 +173,33 @@
     _rail.innerHTML = html;
     _items = _rail.querySelectorAll('.gl-rail-item');
   }
+
+  // ── Band Room badge ────────────────────────────────────────────────────
+  // Async: loads poll counts from Firebase and updates the nav badge
+  async function _updateBandRoomBadge() {
+    try {
+      var db = (typeof firebaseDB !== 'undefined') ? firebaseDB : null;
+      if (!db || typeof bandPath !== 'function') return;
+      var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
+      var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      var snap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(10).once('value');
+      var val = snap.val();
+      var count = 0;
+      if (val) {
+        Object.values(val).forEach(function(p) {
+          if (p.ts > cutoff && p.options && p.options.length && (!p.votes || p.votes[userId] === undefined)) count++;
+        });
+      }
+      var badge = document.getElementById('glRailBandRoomBadge');
+      if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? '' : 'none';
+      }
+    } catch(e) {}
+  }
+  // Check badge on init and periodically
+  setTimeout(_updateBandRoomBadge, 3000);
+  setInterval(_updateBandRoomBadge, 120000); // refresh every 2 min
 
   // ── Active state ────────────────────────────────────────────────────────
 

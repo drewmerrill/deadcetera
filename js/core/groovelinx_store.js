@@ -2768,6 +2768,7 @@
 
     // Event bus
     subscribe:         subscribe,
+    on:                subscribe,  // alias for subscribe
     emit:              emit,
 
     // Song Intelligence (Milestone 2)
@@ -2860,8 +2861,9 @@
     // Song data write (dual-path)
     saveSongData:          saveSongData,
 
-    // Song library health
+    // Song library health + migration
     auditSongTitles:       auditSongTitles,
+    auditMigrationStatus:  auditMigrationStatus,
 
     // Venues (Phase 1: Canonical Entity Selection)
     getVenues:             getVenues,
@@ -2909,6 +2911,57 @@
       console.log('[GLStore] Song library clean — no title collisions.');
     }
     return { duplicates: duplicates, clean: duplicates.length === 0 };
+  }
+
+  /**
+   * Migration status audit: check how many songs have v2 data vs legacy-only.
+   * Safe read-only — no writes. Results logged to console + returned.
+   */
+  async function auditMigrationStatus() {
+    var songs = getSongs();
+    var db = _db();
+    if (!db || !songs.length) { console.warn('[GLStore] Cannot audit — no DB or songs'); return null; }
+
+    var v2Fields = Object.keys(_V2_ENABLED_TYPES);
+    var totalSongs = songs.filter(function(s) { return s.songId; }).length;
+    var withV2 = 0;
+    var fullyMigrated = 0;
+    var pendingMigration = 0;
+
+    // Sample check: for each song with songId, check if any v2 node exists
+    var snap = await db.ref((typeof bandPath === 'function') ? bandPath('songs_v2') : 'songs_v2').once('value');
+    var v2Data = snap.val() || {};
+    var v2SongIds = Object.keys(v2Data);
+
+    songs.forEach(function(s) {
+      if (!s.songId) return;
+      if (v2Data[s.songId]) {
+        withV2++;
+        var v2Node = v2Data[s.songId];
+        var hasAll = v2Fields.every(function(f) { return v2Node[f] !== undefined; });
+        if (hasAll) fullyMigrated++;
+        else pendingMigration++;
+      } else {
+        pendingMigration++;
+      }
+    });
+
+    var result = {
+      totalSongs: totalSongs,
+      withV2Data: withV2,
+      fullyMigrated: fullyMigrated,
+      pendingMigration: pendingMigration,
+      v2Fields: v2Fields,
+      v2SongNodes: v2SongIds.length
+    };
+
+    console.log('%c=== songs_v2 Migration Status ===', 'font-weight:bold;font-size:14px;color:#667eea');
+    console.log('Total songs with songId:', totalSongs);
+    console.log('Songs with any v2 data:', withV2);
+    console.log('Fully migrated (all ' + v2Fields.length + ' fields):', fullyMigrated);
+    console.log('Pending migration:', pendingMigration);
+    console.log('v2 fields tracked:', v2Fields.join(', '));
+    return result;
   }
 
   // ── Venues (Phase 1: Canonical Entity Selection) ────────────────────────

@@ -49,6 +49,11 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | — | Product philosophy + roadmap codified in CLAUDE_HANDOFF.md | ✅ DONE |
 | — | cover_me payload normalization (name→artist, notes→description) | ✅ DONE |
 | — | UX consistency: microcopy, locked-state explainer, CTA clarity | ✅ DONE |
+| — | Song record schema doc (docs/song_record_schema.md) | ✅ DONE |
+| — | Migration status audit (GLStore.auditMigrationStatus) | ✅ DONE |
+| — | Availability "Create Rehearsal" CTA on best days | ✅ DONE |
+| — | Band Room nav badge on Ideas Board in left rail | ✅ DONE |
+| — | Setlist lock: lockedBy/lockedAt shown on card | ✅ DONE |
 
 ### Upcoming Phases
 

@@ -278,8 +278,13 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
                 new Date(d.day.date).getFullYear() + ',' + new Date(d.day.date).getMonth() + ',' + new Date(d.day.date).getDate() + ')">' +
                 d.day.label + ' ' + d.day.dayNum + '</span>';
         }).join(' ');
+        var firstBest = allFreeDays[0].day;
         bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:0.85em">' +
-            '<span style="color:#22c55e;font-weight:700">Best rehearsal days:</span> ' + bestList + '</div>';
+            '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">' +
+            '<div><span style="color:#22c55e;font-weight:700">Best rehearsal days:</span> ' + bestList + '</div>' +
+            '<button onclick="calDayClick(' + new Date(firstBest.date).getFullYear() + ',' + new Date(firstBest.date).getMonth() + ',' + new Date(firstBest.date).getDate() + ')" ' +
+            'style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:4px 12px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">+ Create Rehearsal</button>' +
+            '</div></div>';
     } else {
         var maxFree = Math.max.apply(null, dayAvail.map(function(d) { return d.freeCount; }));
         if (maxFree > 0) {

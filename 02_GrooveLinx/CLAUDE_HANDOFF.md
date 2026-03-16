@@ -147,6 +147,9 @@ Dev and production move together immediately. Every accepted change must be:
 - `loadBandDataFromDrive()` / `saveBandDataToDrive()` are the main browser-side data helpers.
 - `saveMasterFile()` / `loadMasterFile()` are for bulk-cached data (readiness, statuses, activity log).
 - **Both per-song AND master file must be updated** when saving readiness or status.
+- **Song record schema:** `docs/song_record_schema.md` is the source of truth for all song-linked fields.
+- **GLStore event bus:** `GLStore.emit(name, payload)` + `GLStore.subscribe(name, fn)` (or `GLStore.on()`). Already used by 12+ subscribers.
+- **Migration audit:** `GLStore.auditMigrationStatus()` — console tool showing songs_v2 migration progress.
 - Song status canonical values: `''`, `'prospect'`, `'wip'`, `'gig_ready'`
 
 ### Canonical Entity IDs
