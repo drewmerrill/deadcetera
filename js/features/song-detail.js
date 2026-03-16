@@ -210,6 +210,7 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         _sdSectionDots(sectionRatings)+
         '</div>'+
+        ((status === 'prospect' || status === 'wip' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
         '<div class="sd-card">'+
         '<div class="sd-card-title">🧠 Practice Mode</div>'+
         (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\\n').slice(0,4).join('\\n'))+'</pre>':'')+
@@ -228,10 +229,11 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         '</div>';
     _sdBuildReadinessStrip(title);
-    // Load song discussion
+    // Load song discussion + prospect votes
     setTimeout(function() {
         var discMount = document.getElementById('sd-discussion-mount');
         if (discMount && typeof renderSongDiscussion === 'function') renderSongDiscussion(title, discMount);
+        _sdRenderProspectVote(title);
     }, 200);
 }
 
@@ -492,6 +494,41 @@ window.sdSaveReadiness = function(songTitle, memberKey, val) {
     GLStore.saveReadiness(songTitle, memberKey, val).then(function() {
         _sdBuildReadinessStrip(songTitle);
     });
+};
+
+// ── Prospect Voting ──────────────────────────────────────────────────────────
+async function _sdRenderProspectVote(title) {
+    var el = (_sdContainer||document).querySelector('#sd-prospect-vote');
+    if (!el) return;
+    var songObj = (typeof GLStore !== 'undefined' && GLStore.getSongByTitle) ? GLStore.getSongByTitle(title) : null;
+    var songId = songObj ? songObj.songId : null;
+    if (!songId) { el.innerHTML = ''; return; }
+    var votes = (typeof GLStore !== 'undefined' && GLStore.getSongVotes) ? await GLStore.getSongVotes(songId) : null;
+    var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
+    var myVote = votes ? votes[userId] : null;
+
+    var voteOpts = [
+        { val: 'yes', icon: '👍', label: 'Yes', color: '#22c55e' },
+        { val: 'maybe', icon: '🤔', label: 'Maybe', color: '#f59e0b' },
+        { val: 'no', icon: '👎', label: 'Pass', color: '#ef4444' }
+    ];
+    var btns = voteOpts.map(function(o) {
+        var active = myVote === o.val;
+        var count = votes ? Object.values(votes).filter(function(v) { return v === o.val; }).length : 0;
+        return '<button onclick="sdVoteProspect(\'' + songId + '\',\'' + o.val + '\')" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:600;border:1px solid ' +
+            (active ? o.color : 'rgba(255,255,255,0.1)') + ';background:' + (active ? o.color + '20' : 'rgba(255,255,255,0.03)') +
+            ';color:' + (active ? o.color : 'var(--text-muted)') + '">' + o.icon + ' ' + o.label +
+            (count > 0 ? ' <span style="font-size:0.75em;opacity:0.7">' + count + '</span>' : '') + '</button>';
+    }).join('');
+    el.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap">' + btns + '</div>';
+}
+window.sdVoteProspect = async function(songId, vote) {
+    var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
+    if (typeof GLStore !== 'undefined' && GLStore.voteSongProspect) {
+        await GLStore.voteSongProspect(songId, userId, vote);
+        if (typeof showToast === 'function') showToast('Vote recorded');
+        _sdRenderProspectVote(_sdCurrentSong);
+    }
 };
 
 // ── Listen Lens ───────────────────────────────────────────────────────────────

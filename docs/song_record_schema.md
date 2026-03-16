@@ -33,6 +33,7 @@ bands/{bandSlug}/songs/{sanitizedTitle}/{fieldName}
 | Lead Singer | `lead_singer` | `{ singer: string }` | Yes | Member key: "drew", "chris", etc. |
 | Status | `song_status` | `{ status: string, updatedAt: string }` | Yes | Values: "", "prospect", "wip", "gig_ready" |
 | Song Roles | `song_roles` | `{ [memberKey]: instrument }` | Planned (Phase B) | e.g. `{ drew: "guitar", jay: "drums" }` |
+| Song Votes | `song_votes` | `{ [memberKey]: 'yes'\|'maybe'\|'no', _updatedAt: string }` | Yes | Prospect voting: "Should we learn this?" |
 
 ## Song Content
 

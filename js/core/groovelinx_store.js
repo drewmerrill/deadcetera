@@ -142,7 +142,8 @@
     'song_bpm': true, 'key': true,
     'lead_singer': true, 'song_status': true, 'chart': true,
     'personal_tabs': true, 'rehearsal_notes': true,
-    'spotify_versions': true, 'practice_tracks': true, 'cover_me': true
+    'spotify_versions': true, 'practice_tracks': true, 'cover_me': true,
+    'song_votes': true
   };
 
   /** Build the v2 Firebase path: bands/{slug}/songs_v2/{songId}/{dataType} */
@@ -2861,6 +2862,10 @@
     // Song data write (dual-path)
     saveSongData:          saveSongData,
 
+    // Song voting
+    voteSongProspect:      voteSongProspect,
+    getSongVotes:          getSongVotes,
+
     // Song library health + migration
     auditSongTitles:       auditSongTitles,
     auditMigrationStatus:  auditMigrationStatus,
@@ -2871,6 +2876,47 @@
     findDuplicateVenues:   findDuplicateVenues,
     getVenueById:          getVenueById,
   };
+
+  // ── Song Prospect Voting ────────────────────────────────────────────────
+  //
+  // Firebase: songs_v2/{songId}/song_votes
+  // Shape: { [memberKey]: 'yes'|'maybe'|'no', _updatedAt: ISO }
+  //
+  // Allows band members to vote on whether to learn a prospect song.
+  // Feeds into Song Intelligence priority scoring.
+
+  /**
+   * Cast a vote on a prospect song.
+   * @param {string} songId
+   * @param {string} memberKey  e.g. 'drew'
+   * @param {string} vote       'yes' | 'maybe' | 'no'
+   */
+  async function voteSongProspect(songId, memberKey, vote) {
+    if (!songId || !memberKey || !vote) return;
+    var db = _db();
+    var path = _v2Path(songId, 'song_votes');
+    if (!db || !path) return;
+    var update = {};
+    update[memberKey] = vote;
+    update['_updatedAt'] = _now();
+    await db.ref(path).update(update);
+    emit('songVoteChanged', { songId: songId, memberKey: memberKey, vote: vote });
+  }
+
+  /**
+   * Get votes for a song. Returns { [memberKey]: 'yes'|'maybe'|'no' } or null.
+   * @param {string} songId
+   */
+  async function getSongVotes(songId) {
+    if (!songId) return null;
+    var db = _db();
+    var path = _v2Path(songId, 'song_votes');
+    if (!db || !path) return null;
+    try {
+      var snap = await db.ref(path).once('value');
+      return snap.val() || null;
+    } catch(e) { return null; }
+  }
 
   // ── Song library health ─────────────────────────────────────────────────
 

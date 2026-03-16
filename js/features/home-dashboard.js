@@ -1255,7 +1255,7 @@ async function _renderHdPollCard() {
             html += '</div>';
         }
 
-        html += '<div style="text-align:center;padding:6px 0 0"><button onclick="showPage(\'social\')" class="btn btn-ghost btn-sm" style="font-size:0.75em">Open Band Room →</button></div>';
+        html += '<div style="text-align:center;padding:6px 0 0"><button onclick="showPage(\'ideas\')" class="btn btn-ghost btn-sm" style="font-size:0.75em">Open Band Room →</button></div>';
         html += '</div>';
         el.innerHTML = html;
     } catch(e) { el.innerHTML = ''; }

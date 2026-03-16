@@ -120,7 +120,7 @@ window._bcPostComment = async function(songTitle) {
 
 function renderIdeasBoardPage(el) {
   if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'ideas');
-  el.innerHTML = '<div class="page-header"><h1>💡 Ideas Board</h1><p>Song ideas, jam concepts, setlist suggestions, polls</p></div>'
+  el.innerHTML = '<div class="page-header"><h1>🎸 Band Room</h1><p>Polls, ideas, discussions, and band decisions</p></div>'
     + '<div style="max-width:600px;margin:0 auto">'
     + '<div id="bcIdeasContainer"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>'
     + '<div id="bcBriefContainer" style="margin-top:20px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"></div>'
