@@ -2682,12 +2682,56 @@
     postMigrationAudit:    postMigrationAudit,
     repairBadLinks:        repairBadLinks,
 
+    // Song library health
+    auditSongTitles:       auditSongTitles,
+
     // Venues (Phase 1: Canonical Entity Selection)
     getVenues:             getVenues,
     createVenue:           createVenue,
     findDuplicateVenues:   findDuplicateVenues,
     getVenueById:          getVenueById,
   };
+
+  // ── Song library health ─────────────────────────────────────────────────
+
+  /**
+   * Audit song library for title collisions.
+   * Title is currently the Firebase key — duplicates cause data corruption.
+   * Returns { duplicates: [...], clean: bool }.
+   *
+   * NOTE: Song title is not a valid long-term identity key. Future direction:
+   * introduce songId as canonical key with title as display-only metadata.
+   * Do not perform broad songId migration yet.
+   */
+  function auditSongTitles() {
+    var songs = getSongs();
+    var seen = {};
+    var duplicates = [];
+    songs.forEach(function(s) {
+      var key = s.title.toLowerCase();
+      if (!seen[key]) { seen[key] = []; }
+      seen[key].push(s);
+    });
+    Object.keys(seen).forEach(function(key) {
+      if (seen[key].length > 1) {
+        duplicates.push({
+          title: seen[key][0].title,
+          entries: seen[key].map(function(s) { return s.band; }),
+          count: seen[key].length,
+          risk: 'Firebase data collision — all entries share storage path'
+        });
+      }
+    });
+    if (duplicates.length) {
+      console.warn('[GLStore] Song title collisions found:', duplicates.length);
+      console.table(duplicates.map(function(d) {
+        return { Title: d.title, Bands: d.entries.join(', '), Count: d.count, Risk: d.risk };
+      }));
+    } else {
+      console.log('[GLStore] Song library clean — no title collisions.');
+    }
+    return { duplicates: duplicates, clean: duplicates.length === 0 };
+  }
 
   // ── Venues (Phase 1: Canonical Entity Selection) ────────────────────────
 

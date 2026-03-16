@@ -807,7 +807,8 @@ async function saveCustomSong() {
     const notes = document.getElementById('csNotes')?.value.trim() || '';
     if (!title) { alert('Please enter a song title'); return; }
     if (allSongs.find(s => s.title.toLowerCase() === title.toLowerCase())) {
-        alert(`"${title}" is already in the library!`); return;
+        alert(`"${title}" is already in the library!\n\nIf this is a different song with the same name, add the band name in parentheses — e.g. "${title} (${band})"`);
+        return;
     }
     const newSong = { title, band, notes, addedBy: currentUserEmail || 'unknown', addedAt: new Date().toISOString() };
     const existing = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
