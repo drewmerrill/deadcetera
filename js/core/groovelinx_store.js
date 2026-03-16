@@ -141,7 +141,8 @@
   var _V2_ENABLED_TYPES = {
     'song_bpm': true, 'key': true,
     'lead_singer': true, 'song_status': true, 'chart': true,
-    'personal_tabs': true, 'rehearsal_notes': true
+    'personal_tabs': true, 'rehearsal_notes': true,
+    'spotify_versions': true, 'practice_tracks': true, 'cover_me': true
   };
 
   /** Build the v2 Firebase path: bands/{slug}/songs_v2/{songId}/{dataType} */
@@ -307,10 +308,10 @@
       _loadDual(title, realSongId, 'chart'),
       _loadDual(title, realSongId, 'personal_tabs'),
       _loadDual(title, realSongId, 'rehearsal_notes'),
-      _lbdf(title, 'spotify_versions'),
+      _loadDual(title, realSongId, 'spotify_versions'),
       _lbdf(title, 'best_shot_takes'),
-      _lbdf(title, 'practice_tracks'),
-      _lbdf(title, 'cover_me'),
+      _loadDual(title, realSongId, 'practice_tracks'),
+      _loadDual(title, realSongId, 'cover_me'),
       _dbGet('songs/' + _sanitize(title) + '/metadata'),
       _dbGet('songs/' + _sanitize(title) + '/section_ratings'),
       _dbGet('songs/' + _sanitize(title) + '/readiness'),

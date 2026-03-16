@@ -630,7 +630,8 @@ window._sdSaveTrack = async function(songTitle) {
     if (!url.trim()) { if (typeof showToast==='function') showToast('Enter a URL'); return; }
     var tracks = _sdArr(await loadBandDataFromDrive(songTitle,'practice_tracks').catch(function(){return null;}));
     tracks.push({ url: url.trim(), label: label.trim() || url.trim(), addedBy: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
-    await saveBandDataToDrive(songTitle,'practice_tracks',tracks);
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle,'practice_tracks',tracks); }
+    else { await saveBandDataToDrive(songTitle,'practice_tracks',tracks); }
     if (typeof showToast==='function') showToast('Track saved');
     _sdPopulateLearnLens(songTitle);
 };
@@ -659,7 +660,8 @@ window._sdSaveCover = async function(songTitle) {
     var notes = ((_sdContainer||document).querySelector('#sd-cover-notes')||{}).value || '';
     var covers = _sdArr(await loadBandDataFromDrive(songTitle,'cover_me').catch(function(){return null;}));
     covers.push({ name: artist.trim(), url: url.trim(), notes: notes.trim(), addedBy: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
-    await saveBandDataToDrive(songTitle,'cover_me',covers);
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle,'cover_me',covers); }
+    else { await saveBandDataToDrive(songTitle,'cover_me',covers); }
     if (typeof showToast==='function') showToast('Cover saved');
     _sdPopulateLearnLens(songTitle);
 };

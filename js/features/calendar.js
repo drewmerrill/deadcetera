@@ -223,25 +223,14 @@ async function loadCalendarEvents() {
     return { dateMap, blockedRanges: blocked };
 }
 
+var _calMatrixDays = 14;
+window.calMatrixRange = function(n) { _calMatrixDays = n; renderCalendarInner(); };
+
 function _calRenderAvailabilityMatrix(blockedRanges) {
     var el = document.getElementById('calAvailabilityMatrix');
     if (!el) return;
-    if (!blockedRanges.length) {
-        el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates — everyone is available.</div>';
-        return;
-    }
-    // Build a 14-day look-ahead matrix
-    var today = new Date();
-    var days = [];
-    for (var d = 0; d < 14; d++) {
-        var dt = new Date(today.getTime() + d * 86400000);
-        days.push({
-            date: dt.toISOString().split('T')[0],
-            label: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
-            dayNum: dt.getDate()
-        });
-    }
-    // Get unique members from blocked ranges + bandMembers
+
+    // Get members
     var members = [];
     if (typeof bandMembers !== 'undefined') {
         Object.entries(bandMembers).forEach(function(e) { members.push(e[1].name || e[0]); });
@@ -251,31 +240,110 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
             if (b.person && !seen[b.person]) { seen[b.person] = true; members.push(b.person); }
         });
     }
-    if (!members.length) { el.innerHTML = ''; return; }
+    if (!members.length) { el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-dim)">Add band members to see availability.</div>'; return; }
 
-    // Build HTML table
-    var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.8em">';
-    html += '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-dim);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08)"></th>';
+    // Build day range
+    var today = new Date();
+    var numDays = _calMatrixDays;
+    var days = [];
+    for (var d = 0; d < numDays; d++) {
+        var dt = new Date(today.getTime() + d * 86400000);
+        days.push({
+            date: dt.toISOString().split('T')[0],
+            label: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
+            dayNum: dt.getDate(),
+            isWeekend: dt.getDay() === 0 || dt.getDay() === 6
+        });
+    }
+
+    // Compute per-day availability
+    var dayAvail = days.map(function(day) {
+        var freeCount = 0;
+        members.forEach(function(member) {
+            var blocked = blockedRanges.some(function(b) {
+                return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate;
+            });
+            if (!blocked) freeCount++;
+        });
+        return { day: day, freeCount: freeCount, allFree: freeCount === members.length };
+    });
+
+    // Best rehearsal days summary
+    var allFreeDays = dayAvail.filter(function(d) { return d.allFree; });
+    var bestHtml = '';
+    if (allFreeDays.length > 0) {
+        var bestList = allFreeDays.slice(0, 5).map(function(d) {
+            return '<span style="background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 8px;border-radius:4px;font-weight:700;cursor:pointer" onclick="calDayClick(' +
+                new Date(d.day.date).getFullYear() + ',' + new Date(d.day.date).getMonth() + ',' + new Date(d.day.date).getDate() + ')">' +
+                d.day.label + ' ' + d.day.dayNum + '</span>';
+        }).join(' ');
+        bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:0.85em">' +
+            '<span style="color:#22c55e;font-weight:700">Best rehearsal days:</span> ' + bestList + '</div>';
+    } else {
+        var maxFree = Math.max.apply(null, dayAvail.map(function(d) { return d.freeCount; }));
+        if (maxFree > 0) {
+            var mostAvail = dayAvail.filter(function(d) { return d.freeCount === maxFree; }).slice(0, 3);
+            var mostList = mostAvail.map(function(d) {
+                return '<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 8px;border-radius:4px;font-weight:700">' +
+                    d.day.label + ' ' + d.day.dayNum + ' (' + d.freeCount + '/' + members.length + ')</span>';
+            }).join(' ');
+            bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:8px;font-size:0.85em">' +
+                '<span style="color:#fbbf24;font-weight:700">Most available:</span> ' + mostList + '</div>';
+        }
+    }
+
+    // Range controls
+    var rangeHtml = '<div style="display:flex;gap:4px;margin-bottom:8px">';
+    [7, 14, 30].forEach(function(n) {
+        var active = numDays === n;
+        rangeHtml += '<button onclick="calMatrixRange(' + n + ')" style="background:' + (active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)') +
+            ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + ';border:1px solid ' + (active ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') +
+            ';padding:3px 10px;border-radius:6px;font-size:0.72em;font-weight:700;cursor:pointer">' + n + ' days</button>';
+    });
+    rangeHtml += '</div>';
+
+    // Table
+    var html = rangeHtml + bestHtml;
+    html += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;font-size:0.78em">';
+    html += '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-dim);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);position:sticky;left:0;background:#0f172a;z-index:1"></th>';
     days.forEach(function(day) {
-        var isWeekend = day.label === 'Sat' || day.label === 'Sun';
-        html += '<th style="text-align:center;padding:4px 3px;color:' + (isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') + ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08)">' + day.label.charAt(0) + '<br>' + day.dayNum + '</th>';
+        var allFree = dayAvail.find(function(d) { return d.day.date === day.date; });
+        var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.08)' : '';
+        html += '<th style="text-align:center;padding:4px 2px;color:' + (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') +
+            ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg +
+            ';cursor:pointer" onclick="calDayClick(' + new Date(day.date).getFullYear() + ',' + new Date(day.date).getMonth() + ',' + new Date(day.date).getDate() + ')">' +
+            day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span></th>';
     });
     html += '</tr>';
 
     members.forEach(function(member) {
         html += '<tr>';
-        html += '<td style="padding:4px 6px;color:var(--text-muted);font-weight:600;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.04)">' + member.split(' ')[0] + '</td>';
+        html += '<td style="padding:4px 6px;color:var(--text-muted);font-weight:600;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.04);position:sticky;left:0;background:#0f172a;z-index:1">' + member.split(' ')[0] + '</td>';
         days.forEach(function(day) {
             var blocked = blockedRanges.some(function(b) {
                 return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate;
             });
-            html += '<td style="text-align:center;padding:4px 3px;border-bottom:1px solid rgba(255,255,255,0.04)">' +
-                (blocked ? '<span style="color:#ef4444;font-weight:700">✖</span>' : '<span style="color:#22c55e;opacity:0.5">✔</span>') +
+            var allFreeDay = dayAvail.find(function(d) { return d.day.date === day.date; });
+            var bgCol = allFreeDay && allFreeDay.allFree ? 'rgba(34,197,94,0.05)' : '';
+            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + '">' +
+                (blocked ? '<span style="color:#ef4444;font-weight:700">✖</span>' : '<span style="color:#22c55e;opacity:0.4">✔</span>') +
                 '</td>';
         });
         html += '</tr>';
     });
+
+    // Footer row: free count per day
+    html += '<tr><td style="padding:4px 6px;color:var(--text-dim);font-size:0.8em;font-weight:600;position:sticky;left:0;background:#0f172a;z-index:1">Free</td>';
+    dayAvail.forEach(function(d) {
+        var color = d.allFree ? '#22c55e' : d.freeCount >= members.length - 1 ? '#fbbf24' : 'var(--text-dim)';
+        html += '<td style="text-align:center;padding:4px 2px;font-size:0.8em;font-weight:700;color:' + color + '">' + d.freeCount + '</td>';
+    });
+    html += '</tr>';
+
     html += '</table></div>';
+    if (!blockedRanges.length) {
+        html += '<div style="text-align:center;padding:8px;color:var(--text-dim);font-size:0.8em">No blocked dates yet — all days show available.</div>';
+    }
     el.innerHTML = html;
 }
 

@@ -763,7 +763,8 @@ async function vhSendTo(dest) {
         var existing = typeof loadBandDataFromDrive === 'function' ? (await loadBandDataFromDrive(songTitle, 'cover_me') || []) : [];
         var covers = Array.isArray(existing) ? existing : (existing.covers || []);
         covers.push(entry);
-        if (typeof saveBandDataToDrive === 'function') await saveBandDataToDrive(songTitle, 'cover_me', covers);
+        if (typeof GLStore !== 'undefined' && GLStore.saveSongData) await GLStore.saveSongData(songTitle, 'cover_me', covers);
+        else if (typeof saveBandDataToDrive === 'function') await saveBandDataToDrive(songTitle, 'cover_me', covers);
         if (typeof renderCoverMe === 'function') await renderCoverMe(songTitle);
         if (typeof showToast === 'function') showToast('🎤 Added to Cover Me!');
         closeVersionHub();

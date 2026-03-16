@@ -1189,45 +1189,73 @@ async function _renderHdPollCard() {
     var el = document.getElementById('hdPollCard');
     if (!el) return;
     try {
-        if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return;
-        var snap = await firebaseDB.ref(bandPath('polls')).orderByChild('ts').limitToLast(3).once('value');
-        var val = snap.val();
-        if (!val) { el.innerHTML = ''; return; }
-        var polls = Object.entries(val).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); });
-        polls.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+        if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath === 'function') {} else return;
         var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
-        // Only show polls that have options and are recent (last 30 days)
         var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
-        var recent = polls.filter(function(p) { return p.ts > cutoff && p.options && p.options.length; });
-        if (!recent.length) { el.innerHTML = ''; return; }
-        // Count how many I haven't voted on
-        var unanswered = recent.filter(function(p) { return !p.votes || p.votes[userId] === undefined; }).length;
+
+        // Load polls, ideas in parallel
+        var pollSnap = await firebaseDB.ref(bandPath('polls')).orderByChild('ts').limitToLast(5).once('value');
+        var ideasSnap = await firebaseDB.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(3).once('value');
+
+        var polls = pollSnap.val() ? Object.entries(pollSnap.val()).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); }) : [];
+        polls.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+        var recentPolls = polls.filter(function(p) { return p.ts > cutoff && p.options && p.options.length; });
+        var unanswered = recentPolls.filter(function(p) { return !p.votes || p.votes[userId] === undefined; }).length;
+
+        var ideas = ideasSnap.val() ? Object.entries(ideasSnap.val()).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); }) : [];
+        ideas.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+        var recentIdeas = ideas.filter(function(i) { return i.ts > cutoff; });
+
+        if (!recentPolls.length && !recentIdeas.length) { el.innerHTML = ''; return; }
+
+        // Build Band Room card
         var html = '<div class="app-card" style="margin-top:12px">';
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-        html += '<h3 style="margin:0;font-size:0.95em">📊 Open Polls</h3>';
-        if (unanswered > 0) {
-            html += '<span style="background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:12px;padding:2px 8px;font-size:0.72em;font-weight:700">' + unanswered + ' awaiting your vote</span>';
-        }
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+        html += '<h3 style="margin:0;font-size:0.95em">🎸 Band Room</h3>';
+        var badges = [];
+        if (unanswered > 0) badges.push('<span style="background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:12px;padding:2px 8px;font-size:0.7em;font-weight:700">' + unanswered + ' vote' + (unanswered > 1 ? 's' : '') + ' needed</span>');
+        if (recentIdeas.length > 0) badges.push('<span style="background:rgba(34,197,94,0.12);color:#86efac;border-radius:12px;padding:2px 8px;font-size:0.7em;font-weight:700">' + recentIdeas.length + ' idea' + (recentIdeas.length > 1 ? 's' : '') + '</span>');
+        html += '<div style="display:flex;gap:4px">' + badges.join('') + '</div>';
         html += '</div>';
-        recent.forEach(function(p) {
-            var votes = p.votes || {};
-            var myVote = votes[userId];
-            var totalVotes = Object.keys(votes).length;
-            html += '<div style="padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px">';
-            html += '<div style="font-weight:600;font-size:0.85em;color:var(--text);margin-bottom:4px">' + _escHtml(p.question) + '</div>';
-            (p.options || []).forEach(function(opt, i) {
-                var count = Object.values(votes).filter(function(v) { return v === i; }).length;
-                var pct = totalVotes > 0 ? Math.round(count / totalVotes * 100) : 0;
-                var isMyVote = myVote === i;
-                html += '<div onclick="_hdVotePoll(\'' + p._key + '\',' + i + ')" style="display:flex;align-items:center;gap:6px;padding:3px 6px;margin-bottom:2px;border-radius:4px;cursor:pointer;background:' + (isMyVote ? 'rgba(99,102,241,0.1)' : 'transparent') + '">';
-                html += '<div style="flex:1;font-size:0.8em;color:var(--text-muted)">' + _escHtml(opt) + '</div>';
-                html += '<div style="width:40px;background:rgba(255,255,255,0.06);border-radius:3px;height:14px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + (isMyVote ? '#818cf8' : 'rgba(255,255,255,0.15)') + ';border-radius:3px"></div></div>';
-                html += '<span style="font-size:0.7em;color:var(--text-dim);min-width:18px;text-align:right">' + count + '</span>';
+        html += '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">Polls, ideas, and band decisions</div>';
+
+        // Polls section
+        if (recentPolls.length) {
+            recentPolls.slice(0, 2).forEach(function(p) {
+                var votes = p.votes || {};
+                var myVote = votes[userId];
+                var totalVotes = Object.keys(votes).length;
+                html += '<div style="padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px">';
+                html += '<div style="font-weight:600;font-size:0.85em;color:var(--text);margin-bottom:4px">' + _escHtml(p.question) + '</div>';
+                (p.options || []).forEach(function(opt, i) {
+                    var count = Object.values(votes).filter(function(v) { return v === i; }).length;
+                    var pct = totalVotes > 0 ? Math.round(count / totalVotes * 100) : 0;
+                    var isMyVote = myVote === i;
+                    html += '<div onclick="_hdVotePoll(\'' + p._key + '\',' + i + ')" style="display:flex;align-items:center;gap:6px;padding:3px 6px;margin-bottom:2px;border-radius:4px;cursor:pointer;background:' + (isMyVote ? 'rgba(99,102,241,0.1)' : 'transparent') + '">';
+                    html += '<div style="flex:1;font-size:0.8em;color:var(--text-muted)">' + _escHtml(opt) + '</div>';
+                    html += '<div style="width:40px;background:rgba(255,255,255,0.06);border-radius:3px;height:14px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + (isMyVote ? '#818cf8' : 'rgba(255,255,255,0.15)') + ';border-radius:3px"></div></div>';
+                    html += '<span style="font-size:0.7em;color:var(--text-dim);min-width:18px;text-align:right">' + count + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+            });
+        }
+
+        // Ideas section
+        if (recentIdeas.length) {
+            html += '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;margin-top:4px">';
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Recent Ideas</div>';
+            recentIdeas.slice(0, 3).forEach(function(idea) {
+                html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.82em">';
+                html += '<span style="color:var(--accent-light)">💡</span>';
+                html += '<span style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(idea.title || '') + '</span>';
+                html += '<span style="color:var(--text-dim);font-size:0.75em;flex-shrink:0">' + _escHtml(idea.author || '') + '</span>';
                 html += '</div>';
             });
             html += '</div>';
-        });
-        html += '<div style="text-align:center;padding:4px"><button onclick="showPage(\'social\')" class="btn btn-ghost btn-sm" style="font-size:0.75em">All Polls & Discussions →</button></div>';
+        }
+
+        html += '<div style="text-align:center;padding:6px 0 0"><button onclick="showPage(\'social\')" class="btn btn-ghost btn-sm" style="font-size:0.75em">Open Band Room →</button></div>';
         html += '</div>';
         el.innerHTML = html;
     } catch(e) { el.innerHTML = ''; }

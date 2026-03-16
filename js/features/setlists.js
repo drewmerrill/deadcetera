@@ -924,10 +924,25 @@ async function slToggleLock(idx) {
     if (!requireSignIn()) return;
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     if (!data[idx]) return;
-    data[idx].locked = !data[idx].locked;
+    var willLock = !data[idx].locked;
+    // If unlocking a setlist linked to an upcoming gig, confirm
+    if (!willLock && data[idx].gigId) {
+        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        var today = new Date().toISOString().split('T')[0];
+        var linkedGig = gigs.find(function(g) { return g.gigId === data[idx].gigId && g.date && g.date >= today; });
+        if (linkedGig && !confirm('This setlist is linked to an upcoming gig (' + (linkedGig.venue || linkedGig.date) + '). Unlock it?')) return;
+    }
+    data[idx].locked = willLock;
+    if (willLock) {
+        data[idx].lockedAt = new Date().toISOString();
+        data[idx].lockedBy = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
+    } else {
+        data[idx].lockedAt = null;
+        data[idx].lockedBy = null;
+    }
     await saveBandDataToDrive('_band', 'setlists', data);
     window._cachedSetlists = null;
-    showToast(data[idx].locked ? '🔒 Setlist locked' : '🔓 Setlist unlocked');
+    showToast(willLock ? '🔒 Setlist locked for show readiness' : '🔓 Setlist unlocked');
     loadSetlists();
 }
 window.slToggleLock = slToggleLock;

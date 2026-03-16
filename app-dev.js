@@ -2320,7 +2320,8 @@ async function saveCoverMe(editIndex = null) {
     const covers = Array.isArray(existing) ? existing : (existing.covers || []);
     const entry = { artist, url, description, addedBy: currentUserEmail, addedAt: new Date().toISOString() };
     if (editIndex !== null) { covers[editIndex] = entry; } else { covers.push(entry); }
-    await saveBandDataToDrive(songTitle, 'cover_me', covers);
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle, 'cover_me', covers); }
+    else { await saveBandDataToDrive(songTitle, 'cover_me', covers); }
     document.getElementById('coverMeForm')?.remove();
     await renderCoverMe(songTitle);
     showToast(editIndex !== null ? '✅ Cover updated!' : '✅ Cover version added!');
@@ -2361,7 +2362,8 @@ async function deleteCoverMe(index) {
     const existing = await loadBandDataFromDrive(songTitle, 'cover_me') || [];
     const covers = Array.isArray(existing) ? existing : (existing.covers || []);
     covers.splice(index, 1);
-    await saveBandDataToDrive(songTitle, 'cover_me', covers);
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle, 'cover_me', covers); }
+    else { await saveBandDataToDrive(songTitle, 'cover_me', covers); }
     await renderCoverMe(songTitle);
     showToast('🗑️ Cover removed');
 }
@@ -3314,7 +3316,9 @@ async function deleteRefVersion(versionIndex) {
 }
 
 async function saveRefVersions(songTitle, versions) {
-    const result = await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+    const result = (typeof GLStore !== 'undefined' && GLStore.saveSongData)
+        ? await GLStore.saveSongData(songTitle, 'spotify_versions', versions)
+        : await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
     // Update North Star cache
     const hasVersions = versions && versions.length > 0;
     if (northStarCache[songTitle] !== hasVersions) {
