@@ -66,6 +66,11 @@ Not implemented yet — incorporated into roadmap for phased restructuring.
 2. Each card has one clear next-action CTA
 3. Urgent states are visually distinct (awaiting vote, locked, best day, new discussion)
 
+### Data Shape Rule
+New song-linked fields must have **one canonical payload shape** before or during songs_v2 migration. If a field is written from multiple code paths, all paths must use the same field names. Rendering code may accept legacy aliases for backward compat, but new writes must be canonical.
+
+Example: cover_me canonical shape = `{ artist, url, description, addedBy, addedAt }`. Legacy `name`/`notes` accepted on read but never written.
+
 ### Features GrooveLinx Should NOT Build
 - File storage (use Google Drive/Dropbox)
 - Messaging/chat (use group texts/Slack)

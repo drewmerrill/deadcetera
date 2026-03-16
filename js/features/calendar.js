@@ -96,6 +96,7 @@ function renderCalendarInner() {
         <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading…</div></div>
     </div>
     <div class="app-card"><h3>📊 Availability Matrix</h3>
+        <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">See when the band is free to rehearse. Click a day to schedule.</div>
         <div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading…</div></div>
     </div>
     <div class="app-card"><h3>🚫 Blocked Dates</h3>

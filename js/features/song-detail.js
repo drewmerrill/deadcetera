@@ -659,7 +659,7 @@ window._sdSaveCover = async function(songTitle) {
     var url = ((_sdContainer||document).querySelector('#sd-cover-url')||{}).value || '';
     var notes = ((_sdContainer||document).querySelector('#sd-cover-notes')||{}).value || '';
     var covers = _sdArr(await loadBandDataFromDrive(songTitle,'cover_me').catch(function(){return null;}));
-    covers.push({ name: artist.trim(), url: url.trim(), notes: notes.trim(), addedBy: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
+    covers.push({ artist: artist.trim(), url: url.trim(), description: notes.trim(), addedBy: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown', addedAt: new Date().toISOString() });
     if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle,'cover_me',covers); }
     else { await saveBandDataToDrive(songTitle,'cover_me',covers); }
     if (typeof showToast==='function') showToast('Cover saved');
@@ -670,7 +670,7 @@ function _sdLinkList(items, icon, emptyMsg) {
     if (!items||!items.length) return '<div style="color:var(--text-dim);font-size:0.85em">'+emptyMsg+'</div>';
     return items.map(function(item){
         var url=item.url||item.link||item.spotifyUrl||'';
-        var label=item.title||item.label||item.name||url;
+        var label=item.artist||item.title||item.label||item.name||url;
         var who=item.addedBy||item.memberKey||'';
         return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'+
                '<span style="font-size:1.2em">'+icon+'</span>'+

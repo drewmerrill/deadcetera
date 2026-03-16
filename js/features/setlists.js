@@ -41,6 +41,7 @@ async function loadSetlists() {
                     <span>📋 ${(sl.sets||[]).length} set${(sl.sets||[]).length!==1?'s':''}</span>
                     ${sl.locked ? '<span style="color:#fbbf24;font-weight:700">🔒 Locked</span>' : ''}
                 </div>
+                ${sl.locked ? '<div style="font-size:0.75em;color:#fbbf24;margin-top:4px;opacity:0.8">Locked for show readiness — Go Live and Export still available</div>' : ''}
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="btn btn-sm btn-ghost" onclick="slToggleLock(${sl._origIdx})" title="${sl.locked ? 'Unlock setlist' : 'Lock setlist'}" style="color:${sl.locked ? '#fbbf24' : 'var(--text-dim)'}">${sl.locked ? '🔓' : '🔒'}</button>

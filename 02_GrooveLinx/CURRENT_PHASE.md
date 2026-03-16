@@ -4,7 +4,7 @@ _Updated: 2026-03-16_
 
 ## Active Phase: Operational + Intelligence Platform Build
 
-Build: **20260316-154814**
+Build: **20260316-161525**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -47,6 +47,8 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | A | Phase A: Availability Matrix, Setlist Lock, Poll Dashboard Card | ✅ DONE |
 | A.5 | Phase A Polish: best-day finder, lock metadata, Band Room card | ✅ DONE |
 | — | Product philosophy + roadmap codified in CLAUDE_HANDOFF.md | ✅ DONE |
+| — | cover_me payload normalization (name→artist, notes→description) | ✅ DONE |
+| — | UX consistency: microcopy, locked-state explainer, CTA clarity | ✅ DONE |
 
 ### Upcoming Phases
 
