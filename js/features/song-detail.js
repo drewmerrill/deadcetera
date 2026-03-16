@@ -642,7 +642,11 @@ window._sdSaveTab = async function(songTitle) {
     if (!url.trim()) { if (typeof showToast==='function') showToast('Enter a URL'); return; }
     var tabs = _sdArr(await loadBandDataFromDrive(songTitle,'personal_tabs').catch(function(){return null;}));
     tabs.push({ url: url.trim(), label: label.trim() || url.trim(), memberKey: typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'unknown' });
-    await saveBandDataToDrive(songTitle,'personal_tabs',tabs);
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        await GLStore.saveSongData(songTitle,'personal_tabs',tabs);
+    } else {
+        await saveBandDataToDrive(songTitle,'personal_tabs',tabs);
+    }
     if (typeof showToast==='function') showToast('Tab saved');
     _sdPopulateLearnLens(songTitle);
 };

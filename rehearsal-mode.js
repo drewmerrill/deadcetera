@@ -429,7 +429,11 @@ async function rmSaveChart() {
     const song = rmQueue[rmIndex];
     const text = document.getElementById('rmEditTextarea').value.trim();
     try {
-        await saveBandDataToDrive(song.title, 'chart', text ? {text: text} : null);
+        if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+            await GLStore.saveSongData(song.title, 'chart', text ? {text: text} : null);
+        } else {
+            await saveBandDataToDrive(song.title, 'chart', text ? {text: text} : null);
+        }
         rmOriginalChart = text; document.getElementById('rmChartText').textContent = text;
         rmCancelEdit();
         if (text) { document.getElementById('rmChartText').style.display = 'block'; document.getElementById('rmNoChart').classList.add('hidden'); rmAutoFitFont(); }
@@ -1236,7 +1240,7 @@ function rmKeyHandler(e) {
 // ── Quick actions ────────────────────────────────────────────────────────────
 function rmAddNote(){document.getElementById('rmNoteInput').value='';document.getElementById('rmNoteSheet').classList.remove('hidden');document.getElementById('rmNoteInput').focus();}
 function rmCloseSheet(id){document.getElementById(id)?.classList.add('hidden');}
-async function rmSaveNote(){const s=rmQueue[rmIndex],t=document.getElementById('rmNoteInput').value.trim();if(!t)return;try{const n=toArray(await loadBandDataFromDrive(s.title,'rehearsal_notes')||[]);n.push({text:t,author:(typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'drew'),date:new Date().toISOString(),priority:'normal'});await saveBandDataToDrive(s.title,'rehearsal_notes',n);rmCloseSheet('rmNoteSheet');showToast('📋 Note saved!');}catch(e){showToast('❌ Note save failed');}}
+async function rmSaveNote(){const s=rmQueue[rmIndex],t=document.getElementById('rmNoteInput').value.trim();if(!t)return;try{const n=toArray(await loadBandDataFromDrive(s.title,'rehearsal_notes')||[]);n.push({text:t,author:(typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'drew'),date:new Date().toISOString(),priority:'normal'});if(typeof GLStore!=='undefined'&&GLStore.saveSongData){await GLStore.saveSongData(s.title,'rehearsal_notes',n);}else{await saveBandDataToDrive(s.title,'rehearsal_notes',n);}rmCloseSheet('rmNoteSheet');showToast('📋 Note saved!');}catch(e){showToast('❌ Note save failed');}}
 function rmAddSongToQueue(){const p=document.getElementById('rmQueuePicker');p.innerHTML='<option value="">— Pick a song —</option>';const iq=new Set(rmQueue.map(s=>s.title));(typeof allSongs!=='undefined'?allSongs:[]).forEach(s=>{if(!iq.has(s.title)){const o=document.createElement('option');o.value=s.title;o.textContent=s.title+(s.band?' · '+s.band:'');p.appendChild(o);}});document.getElementById('rmQueueSheet').classList.remove('hidden');}
 function rmConfirmAddSong(){const t=document.getElementById('rmQueuePicker').value;if(!t)return;const sd=(typeof allSongs!=='undefined'?allSongs:[]).find(s=>s.title===t);rmQueue.splice(rmIndex+1,0,{title:t,band:sd?.band||''});rmCloseSheet('rmQueueSheet');showToast(`✅ "${t}" added — next up`);document.getElementById('rmPosition').textContent=rmQueue.length>1?`${rmIndex+1} / ${rmQueue.length}`:'';document.getElementById('rmNextBtn').style.opacity='1';}
 function rmOpenYouTube(){const s=rmQueue[rmIndex];window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+(s.band||'')+' live'),'_blank');}

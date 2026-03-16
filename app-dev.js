@@ -1825,6 +1825,9 @@ async function deletePersonalTab(songTitle, index) {
 
 // Storage functions
 async function savePersonalTabs(songTitle, tabs) {
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        return await GLStore.saveSongData(songTitle, 'personal_tabs', tabs);
+    }
     return await saveBandDataToDrive(songTitle, 'personal_tabs', tabs);
 }
 
@@ -5965,8 +5968,11 @@ async function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
 async function updateLeadSinger(singer) {
     if (!selectedSong || !selectedSong.title) return;
     if (!isUserSignedIn) showSignInNudge();
-    await saveBandDataToDrive(selectedSong.title, 'lead_singer', { singer });
-    console.log(`🎤 Lead singer updated: ${singer} - saved to Google Drive!`);
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        await GLStore.updateSongField(selectedSong.title, 'leadSinger', singer);
+    } else {
+        await saveBandDataToDrive(selectedSong.title, 'lead_singer', { singer });
+    }
 }
 
 async function loadLeadSinger(songTitle) {
@@ -6443,10 +6449,12 @@ async function updateSongStatus(status) {
         'gig_ready': 'Gig Ready'
     };
     
-    // Save to individual file (backward compatibility)
-    await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
-    
-    // Update cache immediately
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        await GLStore.updateSongField(selectedSong.title, 'status', status);
+    } else {
+        await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
+    }
+
     statusCache[selectedSong.title] = status;
     
     // Save updated master file (so next page load is instant)

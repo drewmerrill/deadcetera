@@ -646,7 +646,11 @@ async function sendToPracticePlan(songTitle) {
     }
     var oldStatus = currentStatus;
     song.status = 'This Week';
-    await saveBandDataToDrive(songTitle, 'song_status', { status: 'This Week' });
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        await GLStore.updateSongField(songTitle, 'status', 'This Week');
+    } else {
+        await saveBandDataToDrive(songTitle, 'song_status', { status: 'This Week' });
+    }
     showToast('🎯 Added to This Week\'s Focus!' + (oldStatus ? ' (was: ' + oldStatus + ')' : ''));
 }
 

@@ -138,7 +138,11 @@
   //
   // Currently enabled for: song_bpm, key only. Expand in future phases.
 
-  var _V2_ENABLED_TYPES = { 'song_bpm': true, 'key': true };
+  var _V2_ENABLED_TYPES = {
+    'song_bpm': true, 'key': true,
+    'lead_singer': true, 'song_status': true, 'chart': true,
+    'personal_tabs': true, 'rehearsal_notes': true
+  };
 
   /** Build the v2 Firebase path: bands/{slug}/songs_v2/{songId}/{dataType} */
   function _v2Path(songId, dataType) {
@@ -291,16 +295,18 @@
       return _state.songDetailCache[songId];
     }
 
-    var title = songId; // songId IS the title in current schema
+    var title = songId; // songId param IS the title in current schema
+    var songObj = getSongByTitle(title);
+    var realSongId = songObj ? songObj.songId : null;
 
     var results = await Promise.all([
-      _lbdf(title, 'lead_singer'),
-      _lbdf(title, 'song_status'),
-      _lbdf(title, 'key'),
-      _lbdf(title, 'song_bpm'),
-      _lbdf(title, 'chart'),
-      _lbdf(title, 'personal_tabs'),
-      _lbdf(title, 'rehearsal_notes'),
+      _loadDual(title, realSongId, 'lead_singer'),
+      _loadDual(title, realSongId, 'song_status'),
+      _loadDual(title, realSongId, 'key'),
+      _loadDual(title, realSongId, 'song_bpm'),
+      _loadDual(title, realSongId, 'chart'),
+      _loadDual(title, realSongId, 'personal_tabs'),
+      _loadDual(title, realSongId, 'rehearsal_notes'),
       _lbdf(title, 'spotify_versions'),
       _lbdf(title, 'best_shot_takes'),
       _lbdf(title, 'practice_tracks'),
@@ -439,9 +445,9 @@
     var realSongId = song ? song.songId : null;
 
     var writes = {
-      leadSinger: function () { return _sbdf(title, 'lead_singer', { singer: value }); },
+      leadSinger: function () { return _saveDual(title, realSongId, 'lead_singer', { singer: value }); },
       status:     function () {
-        var p = _sbdf(title, 'song_status', { status: value, updatedAt: _now() });
+        var p = _saveDual(title, realSongId, 'song_status', { status: value, updatedAt: _now() });
         // Keep statusCache in sync
         if (typeof statusCache !== 'undefined') statusCache[title] = value;
         if (typeof addStatusBadges === 'function') addStatusBadges();
@@ -470,6 +476,20 @@
     if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
     if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
     if (typeof showToast === 'function') showToast(field.charAt(0).toUpperCase() + field.slice(1) + ' saved');
+  }
+
+  /**
+   * Direct dual-write for song data types not covered by updateSongField.
+   * Resolves songId from title, writes to both v2 and legacy paths.
+   * Use for: chart, personal_tabs, rehearsal_notes, etc.
+   * @param {string} title  Song title
+   * @param {string} dataType  Firebase data type key
+   * @param {*} data  Data to write
+   */
+  async function saveSongData(title, dataType, data) {
+    var songObj = getSongByTitle(title);
+    var realSongId = songObj ? songObj.songId : null;
+    return _saveDual(title, realSongId, dataType, data);
   }
 
   // ── Readiness ─────────────────────────────────────────────────────────────
@@ -2835,6 +2855,9 @@
     migrateGigSetlistIds:  migrateGigSetlistIds,
     postMigrationAudit:    postMigrationAudit,
     repairBadLinks:        repairBadLinks,
+
+    // Song data write (dual-path)
+    saveSongData:          saveSongData,
 
     // Song library health
     auditSongTitles:       auditSongTitles,

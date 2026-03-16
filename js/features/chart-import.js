@@ -861,8 +861,12 @@ window.runChartImport = async function runChartImport() {
     for (var i = 0; i < toImport.length; i++) {
         var song = toImport[i];
         try {
-            // 1. Save chord chart
-            await saveBandDataToDrive(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
+            // 1. Save chord chart (dual-write via GLStore if available)
+            if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+                await GLStore.saveSongData(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
+            } else {
+                await saveBandDataToDrive(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
+            }
             chartsSaved++;
 
             // 2. Save key (dual-write via GLStore if available)
