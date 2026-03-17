@@ -208,12 +208,13 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_upcomingSongs[song.title]) {
             signal = '<span style="font-size:0.58em;color:#818cf8;font-weight:600">🎯 In setlist</span>';
         } else if (_topGaps[song.title] || (avg > 0 && avg < 3)) {
-            signal = '<span style="font-size:0.58em;color:#f59e0b;font-weight:600">⚠️ Needs work</span>';
+            signal = '<span class="song-signal-needswork">⚠️ Needs work</span>';
         }
 
         var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
+        var needsWorkClass = (signal && signal.indexOf('needswork') > -1) ? ' song-item--needswork' : '';
 
-        return '<div class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
+        return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<span class="song-name">' + song.title + '</span>' +
                '<span class="song-row-meta">' + statusBadge + avgDisplay + signal + '</span>' +
@@ -398,6 +399,8 @@ window.sqTriageStart = function(filter) {
 window._sqTriageAdvance = function(currentTitle) {
     _sqClose(currentTitle);
     window._sqTriageDone++;
+    // Micro-feedback
+    if (typeof showToast === 'function') showToast('Saved — next song');
     // Re-render to update progress + re-filter (the song may now pass)
     var searchTerm = (document.getElementById('songSearch') || {}).value || '';
     renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
@@ -464,8 +467,8 @@ function _renderTriageBar(dropdown, count) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
         html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
-            + '<span>⚡</span>Fix missing info <span style="font-weight:500;opacity:0.8">(' + _totalMissing + ')</span>'
-            + '<span style="font-size:0.85em">Start →</span></button>';
+            + '<span>⚡</span>Start cleanup →'
+            + '<span style="font-weight:500;opacity:0.7;font-size:0.85em">' + _totalMissing + ' songs</span></button>';
     }
     // Triage progress bar when active
     if (tf && window._sqTriageDone > 0) {
@@ -481,10 +484,10 @@ function _renderTriageBar(dropdown, count) {
     items.forEach(function(it) {
         var active = tf === it.id;
         var itemCount = _missingCounts[it.id] || '';
-        html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:600;padding:2px 8px;border-radius:10px;cursor:pointer;border:1px solid '
-            + (active ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:'
-            + (active ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.03)') + ';color:'
-            + (active ? '#fbbf24' : 'var(--text-dim)') + '">' + it.label + (itemCount ? ' (' + itemCount + ')' : '') + '</button>';
+        html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:' + (active ? '3px 10px' : '2px 8px') + ';border-radius:10px;cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid '
+            + (active ? '#fbbf24' : 'rgba(255,255,255,0.08)') + ';background:'
+            + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.03)') + ';color:'
+            + (active ? '#fbbf24' : 'var(--text-dim)') + (active ? ';box-shadow:0 0 8px rgba(251,191,36,0.15)' : '') + '">' + it.label + (itemCount ? ' (' + itemCount + ')' : '') + '</button>';
     });
     if (tf) {
         html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs need data</span>';
@@ -503,9 +506,11 @@ function _renderTriageBar(dropdown, count) {
     // Inject styles once
     var style = document.createElement('style');
     style.textContent = '.song-row-meta{display:flex;align-items:center;gap:4px;flex-shrink:0}'
-        + '.song-quick-edit-btn{font-size:0.65em;opacity:0.25;cursor:pointer;border:none;background:none;padding:2px 4px;transition:opacity 0.15s;flex-shrink:0}'
-        + '.song-item:hover .song-quick-edit-btn{opacity:0.8}'
-        + '.song-item--editing{border:1px solid rgba(99,102,241,0.3)!important;background:rgba(99,102,241,0.04)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important}'
+        + '.song-signal-needswork{font-size:0.58em;color:#f59e0b;font-weight:700;background:rgba(245,158,11,0.08);padding:1px 6px;border-radius:6px;border:1px solid rgba(245,158,11,0.2)}'
+        + '.song-item--needswork{border-left:3px solid #f59e0b!important;background:rgba(245,158,11,0.02)!important}'
+        + '.song-quick-edit-btn{font-size:0.62em;opacity:0.2;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);padding:2px 8px;border-radius:4px;color:var(--text-dim);font-weight:600;transition:all 0.15s;flex-shrink:0}'
+        + '.song-item:hover .song-quick-edit-btn{opacity:0.9;border-color:rgba(99,102,241,0.3);color:var(--accent-light)}'
+        + '.song-item--editing{border:2px solid rgba(99,102,241,0.4)!important;background:rgba(99,102,241,0.06)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important;box-shadow:0 0 12px rgba(99,102,241,0.1)}'
         + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
         + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
         + '.sq-label{font-size:0.62em;color:var(--text-dim);font-weight:700;white-space:nowrap}'
