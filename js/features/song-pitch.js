@@ -61,6 +61,21 @@ function _pitchIsInRehearsalAgenda(songTitle) {
     } catch(e) { return false; }
 }
 
+// Returns human-readable relative time string (e.g. "2 days ago")
+function _pitchRelativeTime(isoStr) {
+    if (!isoStr) return '';
+    var diff = Date.now() - new Date(isoStr).getTime();
+    var mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    if (days === 1) return 'yesterday';
+    if (days < 30) return days + 'd ago';
+    return Math.floor(days / 30) + 'mo ago';
+}
+
 // Returns count of Active songs
 function _pitchActiveCount() {
     var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
@@ -107,7 +122,7 @@ window.renderSongPitchSection = async function(container) {
         html += '<div style="margin-bottom:6px">'
             + '<div style="font-weight:700;font-size:0.88em;color:var(--text)">' + (p.title || 'Untitled') + '</div>'
             + (p.reason ? '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">"' + p.reason + '"</div>' : '')
-            + '<div style="font-size:0.7em;color:var(--text-dim);margin-top:2px">Pitched by ' + (p.pitchedBy || 'someone') + ' · Votes are anonymous</div>'
+            + '<div style="font-size:0.7em;color:var(--text-dim);margin-top:2px">Pitched by ' + (p.pitchedBy || 'someone') + ' · Vote choices are private</div>'
             + '</div>';
 
         // Vote tally — stacked for readability on mobile
@@ -160,12 +175,33 @@ window.renderSongPitchSection = async function(container) {
         html += '</div>';
     });
 
+    // Recently decided (approved + rejected within last 14 days, collapsed)
+    var _cutoff = Date.now() - (14 * 24 * 60 * 60 * 1000);
+    var recent = pitches.filter(function(p) {
+        return (p.status === 'approved' || p.status === 'rejected') && p.decidedAt && new Date(p.decidedAt).getTime() > _cutoff;
+    }).sort(function(a, b) { return (b.decidedAt || '').localeCompare(a.decidedAt || ''); });
+    if (recent.length > 0) {
+        html += '<details style="margin-top:8px"><summary style="font-size:0.75em;color:var(--text-dim);cursor:pointer;padding:6px 0">Recently decided (' + recent.length + ')</summary>';
+        recent.forEach(function(p) {
+            var icon = p.status === 'approved' ? '✅' : '❌';
+            var label = p.status === 'approved' ? 'Approved' : 'Not approved';
+            html += '<div style="font-size:0.78em;color:var(--text-dim);padding:6px 8px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + icon + ' ' + (p.title || '') + '</span>'
+                + '<span style="font-size:0.85em;white-space:nowrap;color:var(--text-muted)">' + label + ' · ' + _pitchRelativeTime(p.decidedAt) + '</span>'
+                + '</div>';
+        });
+        html += '</details>';
+    }
+
     // Backlog (collapsed) — mobile-friendly tap targets
     if (backlog.length > 0) {
         html += '<details style="margin-top:8px"><summary style="font-size:0.75em;color:var(--text-dim);cursor:pointer;padding:6px 0">Backlog (' + backlog.length + ' songs)</summary>';
         backlog.forEach(function(p) {
+            var _time = _pitchRelativeTime(p.decidedAt || p.pitchedAt);
             html += '<div style="font-size:0.8em;color:var(--text-dim);padding:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.title || '') + '</span>'
+                + '<div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.title || '') + '</div>'
+                + (_time ? '<div style="font-size:0.8em;color:var(--text-muted)">' + _time + '</div>' : '')
+                + '</div>'
                 + '<button onclick="showPitchModal(\'' + (p.title || '').replace(/'/g, "\\'") + '\')" style="font-size:0.75em;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15);color:var(--accent-light);cursor:pointer;padding:6px 12px;border-radius:5px;min-height:36px;white-space:nowrap">Re-pitch</button>'
                 + '</div>';
         });
@@ -286,7 +322,7 @@ window.showPitchModal = function(prefillTitle) {
     var titleEl = document.getElementById('pitchTitle');
     var titleHint = document.createElement('div');
     titleHint.id = 'pitchTitleHint';
-    titleHint.style.cssText = 'font-size:0.68em;min-height:16px;margin-top:-6px;margin-bottom:6px';
+    titleHint.style.cssText = 'font-size:0.68em;margin-top:-6px;margin-bottom:6px';
     if (titleEl) titleEl.parentNode.insertBefore(titleHint, titleEl.nextSibling);
     function _updateTitleHint() {
         if (!titleHint || !titleEl) return;
