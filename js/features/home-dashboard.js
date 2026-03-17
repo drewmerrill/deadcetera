@@ -1484,7 +1484,7 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var warnHTML = isStoner ? '' : _renderReadinessWarnings(gig, bundle.readinessCache);
     // Show setlist name + song count (not raw ID)
     var _slName = '';
-    var _slSongCount = Object.keys(_gigSongScope).length;
+    var _slSongCount = _gigSongScope ? Object.keys(_gigSongScope).length : 0;
     if (_slMatch) _slName = _slMatch.name || '';
     var slLine = ls ? '<div class="hd-hero__setlist" style="font-size:0.78em;color:var(--text-muted)">' + (_slName ? _escHtml(_slName) : 'Setlist linked') + (_slSongCount ? ' · ' + _slSongCount + ' songs' : '') + '</div>' : '';
     // Build gig-scoped song set for readiness/risk computation.

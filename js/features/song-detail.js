@@ -603,10 +603,6 @@ function _sdLoadAssets(title) {
         ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);color:#fbbf24;font-weight:600">📖 Chart' + chartMeta + '</span>'
         : _pillMissing('📖', 'Chart', "sdShowGetChartModal('" + _safeSong + "')"));
     // Key/BPM live in Song DNA — not shown here
-    try {
-            }
-        }
-    } catch(e) {}
     el.innerHTML = items.join('');
 }
 
