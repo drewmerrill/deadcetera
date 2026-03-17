@@ -238,10 +238,10 @@ async function _sdPopulateBandLens(title) {
         (!chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>':'')+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
-        // ── Song Structure (jam structure MVP) ──
+        // ── Jam Structure (jam structure MVP) ──
         '<div class="sd-card" style="padding:10px 14px">' +
         '<div style="display:flex;align-items:center;justify-content:space-between">' +
-        '<div class="sd-card-title" style="margin-bottom:0">🎼 Song Structure</div>' +
+        '<div class="sd-card-title" style="margin-bottom:0">🎼 Jam Structure</div>' +
         '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\''+safeSong+'\')">Edit</button>' +
         '</div>' +
         '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
@@ -623,7 +623,7 @@ function _sdLoadAssets(title) {
     el.innerHTML = items.join('');
 }
 
-// ── Song Structure ────────────────────────────────────────────────────────────
+// ── Jam Structure ────────────────────────────────────────────────────────────
 function _sdLoadStructure(title) {
     var el = (_sdContainer || document).querySelector('#sd-structure');
     if (!el) return;
