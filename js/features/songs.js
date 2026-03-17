@@ -369,7 +369,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             + '</div></div>';
     }
 
-    dropdown.innerHTML = _modeBar + (_isCleanup ? _cleanupCard : _suggestHTML) + headerHTML + filtered.map(function(song) {
+    // Render recommendation ABOVE search (in separate container)
+    var _recEl = document.getElementById('songRecommendation');
+    if (_recEl) _recEl.innerHTML = _isCleanup ? _cleanupCard : _suggestHTML;
+
+    dropdown.innerHTML = _modeBar + headerHTML + filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
         var titleOnclick = song.title.replace(/'/g, "\\'");
         var customAttr = song.isCustom ? ' data-custom="true"' : '';
@@ -733,7 +737,7 @@ function _renderTriageBar(dropdown, count) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
         html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
-            + '<span>⚡</span>Start cleanup → Fill missing song data'
+            + '<span>⚡</span>Get your songs rehearsal-ready'
             + '<span style="font-weight:500;opacity:0.7;font-size:0.82em">(' + _totalMissing + ')</span></button>';
     }
     // Triage progress bar when active (always show when filter active)
