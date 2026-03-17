@@ -318,6 +318,8 @@ async function rmLoadChart() {
     var _coachMsg = (typeof GLStore !== 'undefined' && GLStore.getSongCoachSignal) ? GLStore.getSongCoachSignal(song.title) : null;
     if (_coachMsg) { _coachEl.textContent = '\uD83C\uDFAF ' + _coachMsg; _coachEl.style.display = 'block'; }
     else { _coachEl.style.display = 'none'; }
+    // Band Notes strip — load song_structure and render summary
+    _rmLoadBandNotesStrip(song.title);
     const safeSong = song.title.replace(/'/g, "\\'");
     const band = song.band || 'Grateful Dead';
     const ugQuery = encodeURIComponent(song.title + ' ' + band);
@@ -352,6 +354,54 @@ async function rmLoadChart() {
         // Load personal tabs into the chart panel
         rmLoadPersonalTabsInChart(song.title);
     }
+}
+
+// ── Band Notes strip in chart panel ──────────────────────────────────────────
+function _rmLoadBandNotesStrip(songTitle) {
+    var stripId = 'rmBandNotesStrip';
+    var existing = document.getElementById(stripId);
+    if (existing) existing.remove();
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
+    GLStore.loadFieldMeta(songTitle, 'song_structure').then(function(data) {
+        if (!data || !data.sections || !data.sections.length) return;
+        var typeIcons = {intro:'🎬',verse:'📝',chorus:'🎶',solo:'🎸',jam:'🌀',bridge:'🌉',outro:'🔚',ending:'🔚',breakdown:'💥',build:'📈',vamp:'🔁',tag:'🏷',other:'·'};
+        // Only show sections with band notes content
+        var lines = [];
+        data.sections.forEach(function(s) {
+            var parts = [];
+            if (s.starter) parts.push(s.starter + ' starts');
+            if (s.feel) parts.push(s.feel);
+            if (s.soloOrder && s.soloOrder.length) parts.push(s.soloOrder.join(' → '));
+            if (s.instrument && !(s.soloOrder && s.soloOrder.length)) parts.push(s.instrument);
+            if (s.dynamics) parts.push(s.dynamics);
+            if (s.stopCue) parts.push('Stop: ' + s.stopCue);
+            if (s.endCue) parts.push(s.endCue);
+            if (s.introType) parts.push(s.introType.replace(/_/g, ' '));
+            if (s.endingType) parts.push(s.endingType.replace(/_/g, ' '));
+            if (parts.length === 0 && s.notes) parts.push(s.notes);
+            if (parts.length === 0) return;
+            var icon = typeIcons[s.type] || typeIcons.other;
+            var label = s.label || s.name || '';
+            lines.push(icon + ' <strong>' + label + '</strong> — ' + parts.join(' · '));
+        });
+        if (lines.length === 0) return;
+        var strip = document.createElement('div');
+        strip.id = stripId;
+        strip.style.cssText = 'padding:6px 12px;font-size:0.72em;line-height:1.5;color:#94a3b8;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer';
+        strip.innerHTML = lines.slice(0, 3).join('<br>') + (lines.length > 3 ? '<br><span style="color:var(--text-dim);opacity:0.5">+' + (lines.length - 3) + ' more</span>' : '');
+        strip.title = 'Tap to expand';
+        strip.onclick = function() {
+            if (strip.dataset.expanded === 'true') {
+                strip.innerHTML = lines.slice(0, 3).join('<br>') + (lines.length > 3 ? '<br><span style="color:var(--text-dim);opacity:0.5">+' + (lines.length - 3) + ' more</span>' : '');
+                strip.dataset.expanded = 'false';
+            } else {
+                strip.innerHTML = lines.join('<br>');
+                strip.dataset.expanded = 'true';
+            }
+        };
+        var chartPanel = document.getElementById('rmChartText');
+        if (chartPanel && chartPanel.parentElement) chartPanel.parentElement.insertBefore(strip, chartPanel);
+    }).catch(function() {});
 }
 
 function rmAdjustFont(delta) {

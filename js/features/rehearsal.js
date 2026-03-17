@@ -2153,13 +2153,15 @@ function renderRiLiveMode(ctx, focusSongs, container) {
         var st = i < done ? 'done' : i === done ? 'current' : 'upcoming';
         var bg     = st === 'current' ? 'rgba(102,126,234,0.15)' : 'rgba(255,255,255,0.02)';
         var border = st === 'current' ? '1px solid rgba(102,126,234,0.4)' : '1px solid rgba(255,255,255,0.05)';
-        var icon   = st === 'done' ? 'v' : st === 'current' ? '>' : '-';
+        var icon   = st === 'done' ? '✓' : st === 'current' ? '▸' : '·';
         var col    = st === 'done' ? '#34d399' : st === 'current' ? '#818cf8' : 'var(--text-dim)';
         var weight = st === 'current' ? '700' : '500';
         var textCol = st === 'current' ? 'var(--text)' : 'var(--text-dim)';
-        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:' + bg + ';border:' + border + ';margin-bottom:4px">'
+        var safeTitle = title.replace(/'/g, "\\'");
+        return '<div onclick="riOpenSongChart(\'' + safeTitle + '\',' + i + ')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:' + bg + ';border:' + border + ';margin-bottom:4px;cursor:pointer;touch-action:manipulation">'
             + '<span style="font-size:0.82em;color:' + col + ';flex-shrink:0">' + icon + '</span>'
             + '<span style="font-size:0.85em;font-weight:' + weight + ';color:' + textCol + ';flex:1">' + title + '</span>'
+            + '<span style="font-size:0.7em;color:' + col + ';opacity:0.5">📖</span>'
             + '</div>';
     }).join('');
 
@@ -2183,9 +2185,15 @@ function renderRiLiveMode(ctx, focusSongs, container) {
         + '</div>'
         + grHtml
         + _renderAgendaOverlay()
-        + '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'
-        + '<button onclick="advanceRiSong()" style="flex:2;padding:10px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.85em;cursor:pointer;touch-action:manipulation">Next Song</button>'
-        + '<button onclick="repeatRiSong()" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.82em;cursor:pointer">Repeat</button>'
+        // Primary CTAs: Open Chart + Band Notes
+        + '<div style="display:flex;gap:6px;margin-top:10px">'
+        + '<button onclick="riOpenSongChart(\'' + cur.replace(/'/g, "\\'") + '\',' + done + ')" style="flex:2;padding:11px;border-radius:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;font-weight:800;font-size:0.88em;cursor:pointer;touch-action:manipulation">📖 Open Chart</button>'
+        + '<button onclick="riOpenSongChart(\'' + cur.replace(/'/g, "\\'") + '\',' + done + ',\'bandnotes\')" style="flex:1;padding:11px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.82em;cursor:pointer">🎯 Notes</button>'
+        + '</div>'
+        // Session controls
+        + '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+        + '<button onclick="advanceRiSong()" style="flex:2;padding:10px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;font-weight:800;font-size:0.85em;cursor:pointer;touch-action:manipulation">Next Song ›</button>'
+        + '<button onclick="repeatRiSong()" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.82em;cursor:pointer">↻ Repeat</button>'
         + pmBtnHtml
         + '</div>'
         + '</div>'
@@ -2222,6 +2230,22 @@ function repeatRiSong() {
     if (el) el.textContent = '0:00';
 }
 window.repeatRiSong = repeatRiSong;
+
+// Open chart for a song from live rehearsal — bridges live mode → rehearsal-mode.js
+window.riOpenSongChart = function(songTitle, queueIdx, tab) {
+    if (!songTitle) return;
+    // Jump queue position if clicking a different song
+    if (typeof queueIdx === 'number' && queueIdx !== _riLive.songIdx && queueIdx >= 0 && queueIdx < _riLive.songs.length) {
+        _riLive.songIdx = queueIdx;
+        _riLive.songStartTime = Date.now();
+        var container = document.getElementById('rhTabContent');
+        if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
+    }
+    // Open rehearsal-mode overlay with this song
+    if (typeof openRehearsalMode === 'function') {
+        openRehearsalMode(songTitle);
+    }
+};
 
 function endRiSession() {
     _riLive.active = false;

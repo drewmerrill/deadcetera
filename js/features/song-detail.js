@@ -678,48 +678,192 @@ window.sdSaveChartFromModal = function(title) {
 };
 
 // ── Jam Structure ────────────────────────────────────────────────────────────
+// ── Section type taxonomy ────────────────────────────────────────────────────
+var _sdSectionTypes = [
+    'intro','verse','pre_chorus','chorus','post_chorus','bridge','refrain',
+    'interlude','solo','break','turnaround','breakdown','build','drop',
+    'jam','vamp','tag','outro','ending','head','skit','other'
+];
+var _sdTypeIcons = {intro:'🎬',verse:'📝',chorus:'🎶',solo:'🎸',jam:'🌀',bridge:'🌉',outro:'🔚',ending:'🔚',breakdown:'💥',build:'📈',drop:'📉',vamp:'🔁',tag:'🏷',interlude:'🎵',turnaround:'↩️',other:'·'};
+var _sdIntroTypes = ['count_in','cold_start','riff','drum_intro','vamp','build','acappella','noise'];
+var _sdEndingTypes = ['hard_stop','big_rock','cacophony','fade','tag','stinger','ritardando','vamp','subtraction','false_end','cadence'];
+
+// Infer type from label text
+function _sdInferType(label) {
+    if (!label) return 'other';
+    var l = label.toLowerCase().trim();
+    if (/^intro/i.test(l)) return 'intro';
+    if (/^(verse|v\d)/i.test(l)) return 'verse';
+    if (/pre.?chorus/i.test(l)) return 'pre_chorus';
+    if (/^chorus/i.test(l)) return 'chorus';
+    if (/post.?chorus/i.test(l)) return 'post_chorus';
+    if (/^(bridge|middle.?eight)/i.test(l)) return 'bridge';
+    if (/^(solo|guitar solo|keys solo|bass solo|drum solo)/i.test(l)) return 'solo';
+    if (/^(jam|space|improv)/i.test(l)) return 'jam';
+    if (/^(break|instrumental)/i.test(l)) return 'interlude';
+    if (/^(breakdown|drop)/i.test(l)) return 'breakdown';
+    if (/^(build)/i.test(l)) return 'build';
+    if (/^(vamp)/i.test(l)) return 'vamp';
+    if (/^(tag)/i.test(l)) return 'tag';
+    if (/^(turnaround|ta\b)/i.test(l)) return 'turnaround';
+    if (/^(outro|ending|end|coda)/i.test(l)) return 'outro';
+    if (/^(head)/i.test(l)) return 'head';
+    if (/^(refrain)/i.test(l)) return 'refrain';
+    return 'other';
+}
+
+// Extract instrument from solo-type labels (e.g. "Guitar Solo" → "Guitar")
+function _sdInferInstrument(label, type) {
+    if (type !== 'solo' && type !== 'jam') return null;
+    var m = (label || '').match(/^(guitar|keys|keyboard|bass|drum|sax|trumpet|harmonica|organ|piano|vocal)\s/i);
+    return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : null;
+}
+
+// Generate stable section ID
+function _sdGenSectionId() { return 'sec_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
+
+// Ensure section has all required fields (backward-compat upgrade)
+function _sdNormalizeSection(s, i) {
+    return {
+        id: s.id || _sdGenSectionId(),
+        type: s.type || _sdInferType(s.label || s.name),
+        label: s.label || s.name || ('Section ' + (i + 1)),
+        instrument: s.instrument || null,
+        role: s.role || null,
+        themeGroup: s.themeGroup || null,
+        chartAnchor: s.chartAnchor || null,
+        anchorIndex: (typeof s.anchorIndex === 'number') ? s.anchorIndex : 0,
+        notes: s.notes || '',
+        starter: s.starter || null,
+        feel: s.feel || null,
+        soloOrder: s.soloOrder || null,
+        dynamics: s.dynamics || null,
+        stopCue: s.stopCue || null,
+        endCue: s.endCue || null,
+        introType: s.introType || null,
+        endingType: s.endingType || null
+    };
+}
+
+// Auto-derive sections from chart text headers
+function _sdDeriveFromChart(chartText) {
+    if (!chartText) return [];
+    var re = /^\[(.+?)\]\s*$/gm;
+    var match, sections = [], seen = {};
+    while ((match = re.exec(chartText)) !== null) {
+        var label = match[1].trim();
+        var anchor = label;
+        var idx = seen[anchor] || 0;
+        seen[anchor] = idx + 1;
+        var type = _sdInferType(label);
+        sections.push({
+            id: _sdGenSectionId(),
+            type: type,
+            label: label,
+            instrument: _sdInferInstrument(label, type),
+            chartAnchor: anchor,
+            anchorIndex: idx,
+            notes: '', starter: null, feel: null, soloOrder: null,
+            dynamics: null, stopCue: null, endCue: null,
+            introType: null, endingType: null, role: null, themeGroup: null
+        });
+    }
+    return sections;
+}
+
+// ── Display ──────────────────────────────────────────────────────────────────
+
 function _sdLoadStructure(title) {
     var el = (_sdContainer || document).querySelector('#sd-structure');
     if (!el) return;
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
         GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
             if (!data || !data.sections || !data.sections.length) {
-                el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined — click Edit to add how your band plays this song</span>';
+                // Try auto-derive from chart
+                var chartData = null;
+                GLStore.loadFieldMeta(title, 'chart').then(function(cd) {
+                    chartData = cd;
+                    var derived = _sdDeriveFromChart(cd && cd.text ? cd.text : '');
+                    if (derived.length > 0) {
+                        el.innerHTML = '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:4px">Auto-detected from chart:</div>'
+                            + _sdRenderStructureSummary(derived)
+                            + '<div style="margin-top:6px"><button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdSaveAutoStructure(\'' + title.replace(/'/g, "\\'") + '\')">Use This</button>'
+                            + ' <button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\'' + title.replace(/'/g, "\\'") + '\')">Edit</button></div>';
+                        window._sdAutoSections = derived;
+                    } else {
+                        el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined — <span style="color:var(--accent-light);cursor:pointer" onclick="sdEditStructure(\'' + title.replace(/'/g, "\\'") + '\')">click Edit</span> to add how your band plays this song</span>';
+                    }
+                }).catch(function() {
+                    el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined — click Edit to add</span>';
+                });
                 return;
             }
-            el.innerHTML = data.sections.map(function(s, i) {
-                var label = s.name || ('Section ' + (i + 1));
-                var notes = s.notes ? ' <span style="color:var(--text-muted);font-size:0.88em">— ' + _sdEsc(s.notes) + '</span>' : '';
-                return '<div style="padding:2px 0;display:flex;align-items:baseline;gap:4px">'
-                    + '<span style="color:var(--text-dim);font-size:0.75em;min-width:14px">' + (i + 1) + '</span>'
-                    + '<strong style="font-size:0.88em">' + _sdEsc(label) + '</strong>' + notes + '</div>';
-            }).join('');
+            var sections = data.sections.map(_sdNormalizeSection);
+            el.innerHTML = _sdRenderStructureSummary(sections);
         }).catch(function() {
             el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined yet</span>';
         });
     }
 }
 
+// Save auto-derived sections
+window.sdSaveAutoStructure = function(title) {
+    if (!window._sdAutoSections || !window._sdAutoSections.length) return;
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        var who = (typeof getCurrentMemberKey === 'function' && getCurrentMemberKey()) || 'unknown';
+        GLStore.saveSongData(title, 'song_structure', { sections: window._sdAutoSections, updatedBy: who, updatedAt: new Date().toISOString() });
+    }
+    if (typeof showToast === 'function') showToast('Structure saved from chart');
+    _sdLoadStructure(title);
+};
+
+// Render read-only summary of sections with band notes
+function _sdRenderStructureSummary(sections) {
+    return sections.map(function(s, i) {
+        var icon = _sdTypeIcons[s.type] || _sdTypeIcons.other;
+        var label = s.label || ('Section ' + (i + 1));
+        // Build band notes line
+        var details = [];
+        if (s.starter) details.push(s.starter + ' starts');
+        if (s.feel) details.push(s.feel);
+        if (s.soloOrder && s.soloOrder.length) details.push(s.soloOrder.join(' → '));
+        if (s.instrument && !s.soloOrder) details.push(s.instrument);
+        if (s.dynamics) details.push(s.dynamics);
+        if (s.stopCue) details.push('Stop: ' + s.stopCue);
+        if (s.endCue) details.push(s.endCue);
+        if (s.introType) details.push(s.introType.replace(/_/g, ' '));
+        if (s.endingType) details.push(s.endingType.replace(/_/g, ' '));
+        if (s.notes && !details.length) details.push(s.notes);
+        var detailStr = details.length
+            ? ' <span style="color:var(--text-muted);font-size:0.88em">— ' + details.map(_sdEsc).join(' · ') + '</span>'
+            : (s.notes ? ' <span style="color:var(--text-muted);font-size:0.88em">— ' + _sdEsc(s.notes) + '</span>' : '');
+        return '<div style="padding:2px 0;display:flex;align-items:baseline;gap:4px">'
+            + '<span style="font-size:0.75em;min-width:16px">' + icon + '</span>'
+            + '<strong style="font-size:0.88em">' + _sdEsc(label) + '</strong>' + detailStr + '</div>';
+    }).join('');
+}
+
+// ── Editor ───────────────────────────────────────────────────────────────────
+
 window.sdEditStructure = function(title) {
     var el = (_sdContainer || document).querySelector('#sd-structure');
     if (!el) return;
-    var sections = [];
     var defaultSections = [
-        { name: 'Intro', notes: '' },
-        { name: 'Verse 1', notes: '' },
-        { name: 'Chorus', notes: '' },
-        { name: 'Verse 2', notes: '' },
-        { name: 'Chorus', notes: '' },
-        { name: 'Bridge', notes: '' },
-        { name: 'Solo', notes: 'e.g. 1 solo, 16 bars' },
-        { name: 'Chorus', notes: '' },
-        { name: 'Breakdown', notes: '' },
-        { name: 'Outro', notes: '' },
-        { name: 'End Cue', notes: 'e.g. big finish on 1' }
-    ];
+        { label: 'Intro', type: 'intro' },
+        { label: 'Verse 1', type: 'verse' },
+        { label: 'Chorus', type: 'chorus' },
+        { label: 'Verse 2', type: 'verse' },
+        { label: 'Chorus', type: 'chorus' },
+        { label: 'Bridge', type: 'bridge' },
+        { label: 'Solo', type: 'solo', notes: 'e.g. 1 solo, 16 bars' },
+        { label: 'Chorus', type: 'chorus' },
+        { label: 'Breakdown', type: 'breakdown' },
+        { label: 'Outro', type: 'outro' },
+        { label: 'End Cue', type: 'ending', notes: 'e.g. big finish on 1' }
+    ].map(_sdNormalizeSection);
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
         GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
-            sections = (data && data.sections) ? data.sections : defaultSections;
+            var sections = (data && data.sections && data.sections.length) ? data.sections.map(_sdNormalizeSection) : defaultSections;
             _sdRenderStructureEditor(el, title, sections);
         }).catch(function() {
             _sdRenderStructureEditor(el, title, defaultSections);
@@ -729,26 +873,84 @@ window.sdEditStructure = function(title) {
 
 function _sdRenderStructureEditor(el, title, sections) {
     var safeSong = title.replace(/'/g, "\\'");
-    // Store sections on window for add/remove operations
     window._sdEditSections = sections;
     window._sdEditTitle = title;
-    var html = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:4px">Add/remove sections. For solos, note how many and who takes them.</div>';
+
+    var typeOpts = _sdSectionTypes.map(function(t) { return '<option value="' + t + '">' + t.replace(/_/g, ' ') + '</option>'; }).join('');
+
+    var html = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">Define your song structure. Tap a row to expand band notes.</div>';
     html += '<div id="sd-structure-rows">';
     html += sections.map(function(s, i) {
-        return '<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px" data-row="' + i + '">'
-            + '<input style="width:85px;font-size:0.82em;padding:3px 5px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.name || '') + '" data-idx="' + i + '" data-field="name" placeholder="Section">'
-            + '<input style="flex:1;font-size:0.78em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-muted)" value="' + _sdEsc(s.notes || '') + '" placeholder="Notes (who solos, # solos, cues...)" data-idx="' + i + '" data-field="notes">'
-            + '<button onclick="sdRemoveStructureRow(' + i + ')" style="background:none;border:none;color:var(--text-dim);opacity:0.4;cursor:pointer;font-size:0.8em;padding:2px 4px" title="Remove section">✕</button>'
+        var isSolo = s.type === 'solo' || s.type === 'jam';
+        var isIntro = s.type === 'intro';
+        var isEnding = s.type === 'outro' || s.type === 'ending';
+        var icon = _sdTypeIcons[s.type] || '·';
+        // Compact row — always visible
+        var row = '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:6px;margin-bottom:4px;background:rgba(255,255,255,0.02)" data-secrow="' + i + '">'
+            + '<div style="display:flex;gap:4px;align-items:center;padding:4px 6px;cursor:pointer" onclick="sdToggleStructureDetail(' + i + ')">'
+            + '<span style="font-size:0.8em">' + icon + '</span>'
+            + '<input style="width:80px;font-size:0.82em;padding:2px 4px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.label || '') + '" data-idx="' + i + '" data-field="label" placeholder="Label" onclick="event.stopPropagation()">'
+            + '<select style="width:72px;font-size:0.7em;padding:2px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)" data-idx="' + i + '" data-field="type" onclick="event.stopPropagation()">' + typeOpts.replace('value="' + s.type + '"', 'value="' + s.type + '" selected') + '</select>'
+            + '<input style="flex:1;font-size:0.72em;padding:2px 4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:3px;color:var(--text-muted)" value="' + _sdEsc(s.notes || '') + '" data-idx="' + i + '" data-field="notes" placeholder="Notes..." onclick="event.stopPropagation()">'
+            + '<button onclick="event.stopPropagation();sdRemoveStructureRow(' + i + ')" style="background:none;border:none;color:var(--text-dim);opacity:0.3;cursor:pointer;font-size:0.75em;padding:2px 4px" title="Remove">✕</button>'
             + '</div>';
+        // Expandable detail — band notes fields
+        row += '<div id="sd-sec-detail-' + i + '" style="display:none;padding:4px 6px 6px 24px;border-top:1px solid rgba(255,255,255,0.04)">'
+            + _sdDetailField(i, 'starter', 'Who starts', s.starter)
+            + _sdDetailField(i, 'feel', 'Feel / groove', s.feel)
+            + (isSolo ? _sdDetailField(i, 'soloOrder', 'Solo order (comma-sep)', (s.soloOrder || []).join(', ')) : '')
+            + (isSolo ? _sdDetailField(i, 'instrument', 'Instrument', s.instrument) : '')
+            + _sdDetailField(i, 'dynamics', 'Dynamics', s.dynamics)
+            + _sdDetailField(i, 'stopCue', 'Stop / hit cue', s.stopCue)
+            + _sdDetailField(i, 'endCue', 'End cue', s.endCue)
+            + (isIntro ? _sdQuickSelect(i, 'introType', 'Intro type', _sdIntroTypes, s.introType) : '')
+            + (isEnding ? _sdQuickSelect(i, 'endingType', 'Ending type', _sdEndingTypes, s.endingType) : '')
+            + '</div></div>';
+        return row;
     }).join('');
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
         + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdAddStructureRow()">+ Add Section</button>'
-        + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdSaveStructure(\'' + safeSong + '\')">Save</button>'
+        + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdDeriveFromChart(\'' + safeSong + '\')">↻ From Chart</button>'
+        + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px;background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.3);color:#86efac" onclick="sdSaveStructure(\'' + safeSong + '\')">Save</button>'
         + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="_sdLoadStructure(\'' + safeSong + '\')">Cancel</button>'
         + '</div>';
     el.innerHTML = html;
 }
+
+function _sdDetailField(idx, field, placeholder, value) {
+    return '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">'
+        + '<span style="font-size:0.65em;color:var(--text-dim);min-width:60px;text-align:right">' + placeholder + '</span>'
+        + '<input style="flex:1;font-size:0.72em;padding:2px 4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:3px;color:var(--text-muted)" value="' + _sdEsc(value || '') + '" data-idx="' + idx + '" data-field="' + field + '" placeholder="' + placeholder + '">'
+        + '</div>';
+}
+
+function _sdQuickSelect(idx, field, label, options, current) {
+    var pills = options.map(function(opt) {
+        var active = current === opt;
+        return '<span onclick="sdSetQuickField(' + idx + ',\'' + field + '\',\'' + opt + '\',this)" style="font-size:0.65em;padding:2px 6px;border-radius:3px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.12)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + opt.replace(/_/g, ' ') + '</span>';
+    }).join('');
+    return '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;flex-wrap:wrap">'
+        + '<span style="font-size:0.65em;color:var(--text-dim);min-width:60px;text-align:right">' + label + '</span>'
+        + pills + '</div>';
+}
+
+window.sdSetQuickField = function(idx, field, value, el) {
+    if (!window._sdEditSections || !window._sdEditSections[idx]) return;
+    var current = window._sdEditSections[idx][field];
+    window._sdEditSections[idx][field] = (current === value) ? null : value; // toggle
+    var container = (_sdContainer || document).querySelector('#sd-structure');
+    if (container && window._sdEditTitle) _sdRenderStructureEditor(container, window._sdEditTitle, window._sdEditSections);
+    // Re-open the same detail panel
+    var detail = document.getElementById('sd-sec-detail-' + idx);
+    if (detail) detail.style.display = 'block';
+};
+
+window.sdToggleStructureDetail = function(idx) {
+    var el = document.getElementById('sd-sec-detail-' + idx);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
 
 window.sdRemoveStructureRow = function(idx) {
     if (!window._sdEditSections) return;
@@ -759,25 +961,51 @@ window.sdRemoveStructureRow = function(idx) {
 
 window.sdAddStructureRow = function() {
     if (!window._sdEditSections) window._sdEditSections = [];
-    window._sdEditSections.push({ name: '', notes: '' });
+    window._sdEditSections.push(_sdNormalizeSection({ label: '', type: 'other' }, window._sdEditSections.length));
     var el = (_sdContainer || document).querySelector('#sd-structure');
     if (el && window._sdEditTitle) _sdRenderStructureEditor(el, window._sdEditTitle, window._sdEditSections);
+};
+
+window.sdDeriveFromChart = function(title) {
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
+    GLStore.loadFieldMeta(title, 'chart').then(function(cd) {
+        var derived = _sdDeriveFromChart(cd && cd.text ? cd.text : '');
+        if (derived.length === 0) { if (typeof showToast === 'function') showToast('No [Section] headers found in chart'); return; }
+        window._sdEditSections = derived;
+        var el = (_sdContainer || document).querySelector('#sd-structure');
+        if (el) _sdRenderStructureEditor(el, title, derived);
+        if (typeof showToast === 'function') showToast(derived.length + ' sections detected — review and save');
+    });
 };
 
 window.sdSaveStructure = function(title) {
     var el = (_sdContainer || document).querySelector('#sd-structure');
     if (!el) return;
-    var inputs = el.querySelectorAll('input[data-idx]');
-    var sections = [];
+    // Read all inputs from the editor
+    var sections = window._sdEditSections ? window._sdEditSections.slice() : [];
+    var inputs = el.querySelectorAll('input[data-idx],select[data-idx]');
     inputs.forEach(function(inp) {
         var idx = parseInt(inp.dataset.idx, 10);
-        if (!sections[idx]) sections[idx] = { name: '', notes: '' };
-        sections[idx][inp.dataset.field] = inp.value.trim();
+        if (!sections[idx]) return;
+        var field = inp.dataset.field;
+        var val = inp.value.trim();
+        if (field === 'soloOrder') {
+            sections[idx].soloOrder = val ? val.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : null;
+        } else if (field === 'label') {
+            sections[idx].label = val;
+            // Re-infer type if label changed and type is still 'other'
+            if (sections[idx].type === 'other' && val) sections[idx].type = _sdInferType(val);
+        } else {
+            sections[idx][field] = val || null;
+        }
     });
-    // Remove empty sections
-    sections = sections.filter(function(s) { return s && s.name; });
+    // Remove empty sections (no label)
+    sections = sections.filter(function(s) { return s && s.label; });
+    // Ensure IDs
+    sections.forEach(function(s) { if (!s.id) s.id = _sdGenSectionId(); });
+    var who = (typeof getCurrentMemberKey === 'function' && getCurrentMemberKey()) || 'unknown';
     if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
-        GLStore.saveSongData(title, 'song_structure', { sections: sections, updatedAt: new Date().toISOString() });
+        GLStore.saveSongData(title, 'song_structure', { sections: sections, updatedBy: who, updatedAt: new Date().toISOString() });
     }
     if (typeof showToast === 'function') showToast('Structure saved');
     _sdLoadStructure(title);
