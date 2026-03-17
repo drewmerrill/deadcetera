@@ -78,12 +78,19 @@ function renderHelpPage(el) {
             ])
         )}
 
-        ${helpSection('status-system','\uD83D\uDCCA','Song Status System','How to track readiness across the whole repertoire.',
-            '<p>Every song can have one status. Set it from Song DNA (Step 2). Filter the Song Library by status to focus rehearsals on the right songs.</p><div style="display:flex;flex-direction:column;gap:10px;margin:16px 0">' +
-            helpStatusCard('\uD83D\uDC40','PROSPECT','#7c3aed','A song the band is considering. Someone suggested it but you haven\'t started learning it yet. Great for building a pipeline of future songs.') +
-            helpStatusCard('\uD83D\uDD27','IN PROGRESS','#d97706','Actively working on this song. Parts are being learned, arrangement is taking shape, but it\'s not stage-ready yet.') +
-            helpStatusCard('\u2705','GIG READY','#059669','Solid enough to play live. Everyone knows their part, the arrangement is locked, and it\'s in the active setlist rotation.') +
-            '</div>' + helpCallout('tip','Workflow suggestion','Move a song from PROSPECT \u2192 IN PROGRESS when you start rehearsing it. After a few good run-throughs, promote it to GIG READY when it\'s locked.')
+        ${helpSection('status-system','\uD83D\uDCCA','Song Lifecycle','How songs move between Active rehearsal and Library.',
+            '<p>Every song has a lifecycle status that determines whether it\u2019s part of your <strong>Active</strong> rehearsal set or sitting in the <strong>Library</strong>.</p>' +
+            '<div style="margin:12px 0 6px;font-size:0.78em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.1em">Active Set \u2014 what the band is working on</div>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">' +
+            helpStatusCard('\uD83D\uDC40','PROSPECT','#7c3aed','A song the band is considering learning. Pitched by a member, waiting for first run-through. Active in recommendations so it gets attention.') +
+            helpStatusCard('\uD83D\uDCD6','LEARNING','#d97706','Being actively learned. Parts are being worked out, arrangement is taking shape. Shows up in rehearsal agenda and practice priorities.') +
+            helpStatusCard('\uD83D\uDD04','IN ROTATION','#059669','Current working songs. Solid enough to play at gigs. The core of your rehearsal set and setlist building.') +
+            '</div>' +
+            '<div style="margin:12px 0 6px;font-size:0.78em;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.1em">Library \u2014 everything else</div>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">' +
+            helpStatusCard('\uD83D\uDCE6','SHELVED','#64748b','Not currently being rehearsed. All data (readiness, notes, charts) is preserved. Does not appear in rehearsal suggestions or intelligence scoring. Move back to Active any time.') +
+            '</div>' +
+            helpCallout('tip','How songs flow','Pitch a Song \u2192 <strong>Prospect</strong> \u2192 first run-through \u2192 <strong>Learning</strong> \u2192 gig-ready \u2192 <strong>In Rotation</strong>. When you\u2019re done with a song, <strong>Shelve</strong> it to move it to Library. Nothing is deleted \u2014 you can always bring it back.')
         )}
 
         ${helpSection('harmonies','\uD83C\uDFA4','Harmonies & Vocal Parts','Documenting who sings what, section by section.',
@@ -96,7 +103,7 @@ function renderHelpPage(el) {
         ${helpSection('practice-plan','\uD83D\uDCC5','Practice Plan','Structuring rehearsals so every minute counts.',
             '<p>The <strong>Practice Plan</strong> page (Menu \u2192 Practice Plan) lets you build a structured plan for each rehearsal \u2014 goals, songs, and an agenda \u2014 then share it to the band with one tap.</p>' +
             helpStep(1,'Create or open a rehearsal','<p>Tap <strong>"+ New Rehearsal"</strong> and pick a date. Or tap an existing date. You can also navigate from the Calendar page.</p>') +
-            helpStep(2,'Add goals and songs','<p>Add session goals (e.g., "Nail the Scarlet \u2192 Fire transition") and pick songs. Songs with status <em>In Progress</em> are suggested at the top.</p>' + helpCallout('tip','Focus note','Each song in the plan can have a focus note \u2014 "Work on the outro" or "Brian leads the harmony on chorus 2". Keeps everyone aligned.')) +
+            helpStep(2,'Add goals and songs','<p>Add session goals (e.g., "Nail the Scarlet \u2192 Fire transition") and pick songs. Songs with status <em>Learning</em> or <em>In Rotation</em> are suggested at the top.</p>' + helpCallout('tip','Focus note','Each song in the plan can have a focus note \u2014 "Work on the outro" or "Brian leads the harmony on chorus 2". Keeps everyone aligned.')) +
             helpStep(3,'Launch Rehearsal Mode','<p>Hit <strong>\uD83C\uDFB8 Rehearse</strong> to launch full-screen <strong>Rehearsal Mode</strong> for the entire song queue in order. Or tap \u25B6 next to any song to start there. Full-screen, high-contrast chart display.</p>') +
             helpStep(4,'Share to the band','<p>Tap <strong>\uD83D\uDD14 Share to Band</strong> to push a notification to all members.</p>') +
             helpCallout('tip','Send to Practice Plan','From any song\'s detail page, tap <strong>"Send to Practice Plan"</strong> to add it directly to the current or next scheduled rehearsal.')

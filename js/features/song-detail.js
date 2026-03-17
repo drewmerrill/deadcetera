@@ -151,7 +151,7 @@ async function _sdPopulateBandLens(title) {
         var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v==='shared'?'Shared':v==='rotating'?'Rotating':v.charAt(0).toUpperCase()+v.slice(1);
         return '<option value="'+v+'"'+(lead===v?' selected':'')+'>'+lbl+'</option>';
     }).join('');
-    var statusOpts=[['','— Select —'],['prospect','👀 Prospect'],['learning','📖 Learning'],['rotation','🔄 In Rotation'],['shelved','📦 Shelved']].map(function(p){
+    var statusOpts=[['','— Select —'],['prospect','👀 Prospect (Active)'],['learning','📖 Learning (Active)'],['rotation','🔄 In Rotation (Active)'],['shelved','📦 Shelved (Library)']].map(function(p){
         return '<option value="'+p[0]+'"'+(status===p[0]?' selected':'')+'>'+p[1]+'</option>';
     }).join('');
     var keyOpts=['','A','Am','Bb','Bbm','B','Bm','C','Cm','C#','C#m','D','Dm','D#m','E','Em','F','Fm','F#','F#m','G','Gm','G#m','Ab','Abm'].map(function(k){

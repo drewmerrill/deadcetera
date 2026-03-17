@@ -298,9 +298,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var _modeBar = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
         + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
         + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
-        + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">'
-        + '<button onclick="window._sqScopeView=\'active\';window._sqSelectMode=false;window._sqSelected={};renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active</button>'
-        + '<button onclick="window._sqScopeView=\'library\';window._sqSelectMode=false;window._sqSelected={};renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'library' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'library' ? '#a5b4fc' : 'var(--text-dim)') + '">Library</button>'
+        + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">';
+    // Count active vs library for scope labels
+    var _activeCount = 0, _libraryCount = 0;
+    if (typeof allSongs !== 'undefined') allSongs.forEach(function(s) { if (getSongScope(s.title) === 'active') _activeCount++; else _libraryCount++; });
+    _modeBar += '<button onclick="window._sqScopeView=\'active\';window._sqSelectMode=false;window._sqSelected={};renderSongs()" title="Prospect + Learning + In Rotation" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active (' + _activeCount + ')</button>'
+        + '<button onclick="window._sqScopeView=\'library\';window._sqSelectMode=false;window._sqSelected={};renderSongs()" title="Shelved + unassigned songs" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'library' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'library' ? '#a5b4fc' : 'var(--text-dim)') + '">Library (' + _libraryCount + ')</button>'
         + (window._sqScopeView === 'library' ? '<button onclick="window._sqSelectMode=!window._sqSelectMode;window._sqSelected={};renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqSelectMode ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqSelectMode ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqSelectMode ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (window._sqSelectMode ? '#fbbf24' : 'var(--text-dim)') + '">' + (window._sqSelectMode ? '✓ Done' : '☐ Select') + '</button>' : '')
         + '<span style="font-size:0.58em;color:var(--text-dim)">Sorted: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
         + '</span></div>';
@@ -505,9 +508,9 @@ function _sqRenderBulkBar() {
     bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(251,191,36,0.3);padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,0.4)';
     bar.innerHTML = '<span style="font-size:0.82em;font-weight:700;color:#fbbf24">' + count + ' song' + (count > 1 ? 's' : '') + ' selected</span>'
         + '<select id="sqBulkStatus" style="padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:var(--text);font-size:0.82em;min-height:40px;-webkit-appearance:menulist">'
-        + '<option value="learning" selected>📖 Learning</option>'
-        + '<option value="prospect">👀 Prospect</option>'
-        + '<option value="rotation">🔄 In Rotation</option>'
+        + '<option value="learning" selected>📖 Learning — actively being learned</option>'
+        + '<option value="prospect">👀 Prospect — candidate, not yet learned</option>'
+        + '<option value="rotation">🔄 In Rotation — current working songs</option>'
         + '</select>'
         + '<button onclick="_sqBulkActivate()" style="padding:8px 18px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.82em;cursor:pointer;min-height:40px;white-space:nowrap">Add to Active Set</button>'
         + '<button onclick="window._sqSelected={};renderSongs()" style="padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.78em;cursor:pointer;min-height:40px">Cancel</button>';
@@ -590,7 +593,7 @@ window._sqApplyBandFilter = function() {
 window._sqToggleStatusFilter = function() {
     var existing = document.getElementById('sqStatusFilterDD');
     if (existing) { existing.remove(); return; }
-    var statuses = [['prospect','Prospect'],['learning','Learning'],['rotation','In Rotation'],['shelved','Shelved'],['','Unrated']];
+    var statuses = [['prospect','👀 Prospect'],['learning','📖 Learning'],['rotation','🔄 In Rotation'],['shelved','📦 Shelved'],['','— Unrated']];
     var selected = window._sqStatusFilter || [];
     var dd = document.createElement('div');
     dd.id = 'sqStatusFilterDD';
@@ -1005,7 +1008,7 @@ window.songQuickSetup = function songQuickSetup(title) {
     }).join('');
 
     // Status options
-    var statusOpts = [['','—'],['prospect','Prospect'],['learning','Learning'],['rotation','Rotation'],['shelved','Shelved']].map(function(p) {
+    var statusOpts = [['','—'],['prospect','👀 Prospect'],['learning','📖 Learning'],['rotation','🔄 Rotation'],['shelved','📦 Shelved']].map(function(p) {
         return '<option value="' + p[0] + '"' + (currentStatus === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
     }).join('');
 
