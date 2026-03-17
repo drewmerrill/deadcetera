@@ -273,14 +273,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // ── UNIFIED TABLE (header + rows in one <table> for perfect alignment) ──
     var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:8px 8px';
     var _tableStart = '<table style="width:100%;border-collapse:collapse;table-layout:fixed">';
-    var headerHTML = !_isCleanup
-        ? _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
+    var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
           + '<th style="' + _hd + ';text-align:left;width:40%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:30%" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Why it matters' + _arrow('status') + '</th>'
           + '<th style="' + _hd + ';text-align:right;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</th>'
-          + '</tr></thead><tbody>'
-        : _tableStart + '<tbody>';
+          + '</tr></thead><tbody>';
 
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
     var _suggestHTML = '';
@@ -319,9 +317,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
         var barPct = avg ? Math.round((avg / 5) * 100) : 0;
         var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)';
-        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
-        var ratedCount = vals.length;
-        var participation = (avg > 0 && ratedCount < memberCount) ? ' <span style="font-size:0.7em;color:var(--text-dim);opacity:0.6">' + ratedCount + '/' + memberCount + '</span>' : '';
+        // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
+        var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
 
         // Lifecycle + context as chips
         var status = _sc[song.title] || '';
@@ -339,7 +336,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         return '<tr class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')" style="cursor:pointer">' +
                '<td style="padding:8px;font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
-               '<td style="padding:8px 4px"><div style="display:flex;align-items:center;gap:3px"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>' + participation + '</div></td>' +
+               '<td style="padding:8px 4px"><div style="display:flex;align-items:center;gap:4px"><span style="width:50px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
                '<td style="padding:8px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
                '<td style="padding:8px;text-align:right"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
                '</tr>';
@@ -744,17 +741,19 @@ window.songQuickSetup = function songQuickSetup(title) {
         return '<option value="' + k + '"' + (currentKey === k ? ' selected' : '') + '>' + (k || '—') + '</option>';
     }).join('');
 
-    row.innerHTML = '<div class="sq-edit-form">'
-        + '<div class="sq-edit-title">' + title + '</div>'
-        + '<div class="sq-edit-row">'
+    row.innerHTML = '<td colspan="4" style="padding:10px 12px">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        + '<span style="font-weight:700;font-size:0.95em;color:#f1f5f9">' + title + '</span>'
+        + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>'
+        + '</div>'
+        + '<div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">'
         + '<label class="sq-edit-field"><span class="sq-edit-label">Lead</span><select class="sq-field sq-tab" id="sq-lead-' + safeTitle + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'leadSinger\',this.value)">' + leadOpts + '</select></label>'
         + '<label class="sq-edit-field"><span class="sq-edit-label">Status</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'status\',this.value)">' + statusOpts + '</select></label>'
         + '<label class="sq-edit-field"><span class="sq-edit-label">Key</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'key\',this.value)">' + keyOpts + '</select></label>'
         + '<label class="sq-edit-field"><span class="sq-edit-label">BPM</span><input type="number" class="sq-field sq-tab" style="width:60px" min="40" max="240" value="' + currentBpm + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}"></label>'
-        + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>'
         + '</div>'
-        + '<div class="sq-edit-extras" id="sq-extras-' + safeTitle + '"></div>'
-        + '</div>';
+        + '<div class="sq-edit-extras" id="sq-extras-' + safeTitle + '" style="margin-top:6px;font-size:0.78em;color:var(--text-dim)"></div>'
+        + '</td>';
 
     // Smart auto-focus: jump to the first MISSING field based on triage filter
     requestAnimationFrame(function() {
