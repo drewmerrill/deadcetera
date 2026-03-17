@@ -1207,21 +1207,8 @@ var _legacySetupSearchAndFilters = function setupSearchAndFilters() {
         }
     });
 
-    // Quick action bar for selected song row — injected on selection, not via observer
-    window._songInjectQuickActions = function(row) {
-        document.querySelectorAll('.song-quick-actions').forEach(function(el) { el.remove(); });
-        if (!row) return;
-        var title = row.dataset.title;
-        if (!title) return;
-        var safeTitle = title.replace(/'/g, "\\'");
-        var bar = document.createElement('div');
-        bar.className = 'song-quick-actions';
-        // Desktop only (hidden on touch via CSS media query)
-        bar.style.cssText = 'position:absolute;right:12px;top:50%;margin-top:-10px;height:20px;display:flex;gap:3px;z-index:12';
-        bar.innerHTML = '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + safeTitle + '\')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">CHART</button>'
-            + '<button onclick="event.stopPropagation();_songQuickAddToAgenda(\'' + safeTitle + '\')" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:3px 8px;border-radius:6px;font-size:0.6em;font-weight:700;cursor:pointer;white-space:nowrap">+ AGENDA</button>';
-        row.appendChild(bar);
-    };
+    // Quick action bar removed (PL-11)
+    window._songInjectQuickActions = function() {};
 
     // Heatmap button removed (PL-11)
 }

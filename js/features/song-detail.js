@@ -630,14 +630,15 @@ function _sdLoadStructure(title) {
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
         GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
             if (!data || !data.sections || !data.sections.length) {
-                el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined yet</span>';
+                el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined — click Edit to add how your band plays this song</span>';
                 return;
             }
             el.innerHTML = data.sections.map(function(s, i) {
                 var label = s.name || ('Section ' + (i + 1));
-                var who = s.who ? ' <span style="color:var(--accent-light);font-size:0.85em">(' + s.who + ')</span>' : '';
-                var notes = s.notes ? ' <span style="color:var(--text-dim);font-size:0.85em">— ' + _sdEsc(s.notes) + '</span>' : '';
-                return '<div style="padding:2px 0">' + (i + 1) + '. <strong>' + _sdEsc(label) + '</strong>' + who + notes + '</div>';
+                var notes = s.notes ? ' <span style="color:var(--text-muted);font-size:0.88em">— ' + _sdEsc(s.notes) + '</span>' : '';
+                return '<div style="padding:2px 0;display:flex;align-items:baseline;gap:4px">'
+                    + '<span style="color:var(--text-dim);font-size:0.75em;min-width:14px">' + (i + 1) + '</span>'
+                    + '<strong style="font-size:0.88em">' + _sdEsc(label) + '</strong>' + notes + '</div>';
             }).join('');
         }).catch(function() {
             el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined yet</span>';
@@ -648,27 +649,38 @@ function _sdLoadStructure(title) {
 window.sdEditStructure = function(title) {
     var el = (_sdContainer || document).querySelector('#sd-structure');
     if (!el) return;
-    // Load existing or create default
     var sections = [];
-    var defaultSections = ['Intro','Verse 1','Chorus','Verse 2','Chorus','Bridge','Solo','Chorus','Outro'];
+    var defaultSections = [
+        { name: 'Intro', notes: '' },
+        { name: 'Verse 1', notes: '' },
+        { name: 'Chorus', notes: '' },
+        { name: 'Verse 2', notes: '' },
+        { name: 'Chorus', notes: '' },
+        { name: 'Bridge', notes: '' },
+        { name: 'Solo', notes: 'e.g. 1 solo, 16 bars' },
+        { name: 'Chorus', notes: '' },
+        { name: 'Breakdown', notes: '' },
+        { name: 'Outro', notes: '' },
+        { name: 'End Cue', notes: 'e.g. big finish on 1' }
+    ];
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
         GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
-            sections = (data && data.sections) ? data.sections : defaultSections.map(function(s) { return { name: s, who: '', notes: '' }; });
+            sections = (data && data.sections) ? data.sections : defaultSections;
             _sdRenderStructureEditor(el, title, sections);
         }).catch(function() {
-            sections = defaultSections.map(function(s) { return { name: s, who: '', notes: '' }; });
-            _sdRenderStructureEditor(el, title, sections);
+            _sdRenderStructureEditor(el, title, defaultSections);
         });
     }
 };
 
 function _sdRenderStructureEditor(el, title, sections) {
     var safeSong = title.replace(/'/g, "\\'");
-    var html = sections.map(function(s, i) {
+    var html = '<div style="font-size:0.7em;color:var(--text-dim);margin-bottom:4px">Section name + notes (solos: note how many, who takes them)</div>';
+    html += sections.map(function(s, i) {
         return '<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px">'
-            + '<input style="width:80px;font-size:0.82em;padding:2px 4px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.name || '') + '" data-idx="' + i + '" data-field="name">'
-            + '<input style="width:50px;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)" value="' + _sdEsc(s.who || '') + '" placeholder="Who" data-idx="' + i + '" data-field="who">'
-            + '<input style="flex:1;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)" value="' + _sdEsc(s.notes || '') + '" placeholder="Notes" data-idx="' + i + '" data-field="notes">'
+            + '<span style="font-size:0.7em;color:var(--text-dim);min-width:14px">' + (i + 1) + '</span>'
+            + '<input style="width:90px;font-size:0.82em;padding:3px 5px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.name || '') + '" data-idx="' + i + '" data-field="name" placeholder="Section">'
+            + '<input style="flex:1;font-size:0.78em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-muted)" value="' + _sdEsc(s.notes || '') + '" placeholder="Notes (who solos, # of solos, cues...)" data-idx="' + i + '" data-field="notes">'
             + '</div>';
     }).join('');
     html += '<div style="display:flex;gap:6px;margin-top:6px">'
@@ -685,7 +697,7 @@ window.sdSaveStructure = function(title) {
     var sections = [];
     inputs.forEach(function(inp) {
         var idx = parseInt(inp.dataset.idx, 10);
-        if (!sections[idx]) sections[idx] = { name: '', who: '', notes: '' };
+        if (!sections[idx]) sections[idx] = { name: '', notes: '' };
         sections[idx][inp.dataset.field] = inp.value.trim();
     });
     // Remove empty sections
