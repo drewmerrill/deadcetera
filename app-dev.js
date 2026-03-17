@@ -48,10 +48,9 @@ if (!_rt.buildLogged) {
         /* ===== SONG LIST (DARK THEME) ===== */
         /* ===== SONG LIST ===== */
         .song-item {
-            position: relative !important;
-            display: grid !important;
-            grid-template-columns: 1fr 32px 50px 68px 44px !important;
-            align-items: center;
+            position: relative;
+            display: block;
+            padding: 8px 12px;
             gap: 4px;
             padding: 10px 12px;
             min-height: 42px;
@@ -94,7 +93,7 @@ if (!_rt.buildLogged) {
         .song-badge.dmb   { background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.25); }
         /* Mobile: hide chain strip */
         @media (max-width:479px) {
-            .song-item { grid-template-columns:1fr 32px 68px 44px !important; }
+            /* song-item grid controlled by songs.js */
             .song-chain-strip { display:none !important; }
         }
         /* Connected button pulse */

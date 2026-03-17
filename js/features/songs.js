@@ -262,14 +262,15 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_sm === field + '_desc' || (_sm === field)) return ' ↓';
         return '';
     };
+    var _hdrStyle = 'font-size:0.65em;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;user-select:none';
     var headerHTML = !window._sqTriageFilter
-        ? '<div class="song-header-row" style="display:grid;grid-template-columns:1fr 100px 80px 90px 48px 36px;gap:0 8px;padding:6px 12px;border-bottom:2px solid rgba(255,255,255,0.12);background:#0f172a;position:sticky;top:0;z-index:5">'
-          + '<span class="song-hdr" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</span>'
-          + '<span class="song-hdr song-hdr-sm" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</span>'
-          + '<span class="song-hdr song-hdr-sm" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Status' + _arrow('status') + '</span>'
-          + '<span class="song-hdr song-hdr-sm">Context</span>'
-          + '<span class="song-hdr song-hdr-xs" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</span>'
-          + '<span class="song-hdr song-hdr-xs"></span>'
+        ? '<div style="display:flex;align-items:center;gap:0;padding:6px 12px;border-bottom:2px solid rgba(255,255,255,0.12);background:#0f172a;position:sticky;top:0;z-index:5;margin-bottom:2px">'
+          + '<span style="' + _hdrStyle + ';flex:1;min-width:0" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</span>'
+          + '<span style="' + _hdrStyle + ';width:100px;text-align:left" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</span>'
+          + '<span style="' + _hdrStyle + ';width:80px;text-align:left" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Status' + _arrow('status') + '</span>'
+          + '<span style="' + _hdrStyle + ';width:90px;text-align:left">Context</span>'
+          + '<span style="' + _hdrStyle + ';width:48px;text-align:center" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</span>'
+          + '<span style="width:36px"></span>'
           + '</div>' : '';
 
     dropdown.innerHTML = headerHTML + filtered.map(function(song) {

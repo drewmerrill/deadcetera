@@ -52,15 +52,12 @@ if (!_rt.buildLogged) {
         /* ===== SONG LIST (DARK THEME) ===== */
         /* ===== SONG LIST ===== */
         .song-item {
-            position: relative !important;
-            display: grid !important;
-            grid-template-columns: 1fr 32px 50px 68px 44px !important;
-            align-items: center;
-            gap: 4px;
-            padding: 10px 12px;
-            min-height: 42px;
-            background: #1e293b !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
+            position: relative;
+            display: block;
+            padding: 8px 12px;
+            min-height: 36px;
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 8px;
             margin-bottom: 3px;
             cursor: pointer;
