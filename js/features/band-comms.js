@@ -17,6 +17,8 @@
 // ── Song Discussion ──────────────────────────────────────────────────────────
 // Per-song comment thread. Accessed from Song Detail panel.
 
+var _bcPendingMentions = [];
+
 window.renderSongDiscussion = async function(songTitle, container) {
   if (!container || !songTitle) return;
   var songKey = typeof sanitizeFirebasePath === 'function' ? sanitizeFirebasePath(songTitle) : songTitle.replace(/[.#$/[\]]/g, '_');
@@ -40,7 +42,7 @@ window.renderSongDiscussion = async function(songTitle, container) {
   try { localStorage.setItem('bc_seen_disc_' + songKey, String(Date.now())); } catch(e) {}
 
   if (!messages.length) {
-    html += '<div style="font-size:0.8em;color:var(--text-dim);padding:6px 0;font-style:italic">No comments yet. Start the conversation.</div>';
+    html += '<div style="font-size:0.8em;color:var(--text-dim);padding:6px 0;font-style:italic">No comments yet — say something to your band. Comments stay attached to this song.</div>';
   } else {
     messages.sort(function(a, b) { return (a.ts || '').localeCompare(b.ts || ''); });
     // Pinned messages first
@@ -72,7 +74,7 @@ window.renderSongDiscussion = async function(songTitle, container) {
         + '<span style="font-size:0.78em;font-weight:700;color:var(--text)">' + _bcEsc(m.author || 'Anonymous') + '</span>'
         + '<span style="font-size:0.62em;color:var(--text-dim)">' + timeAgo + '</span>'
         + '</div>'
-        + '<div style="font-size:0.82em;color:var(--text-muted);margin-top:2px">' + _bcEsc(m.text || '') + '</div>'
+        + '<div style="font-size:0.82em;color:var(--text-muted);margin-top:2px">' + _bcRenderMentions(_bcEsc(m.text || ''), m.mentions) + '</div>'
         + '<div style="display:flex;gap:3px;margin-top:3px;align-items:center">' + rHTML
         + '<button onclick="_bcPinMsg(\'' + songKey + '\',\'' + m._key + '\')" style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:1px 4px" title="Pin message">&#x1F4CC;</button>'
         + '</div>'
@@ -89,7 +91,88 @@ window.renderSongDiscussion = async function(songTitle, container) {
   html += '</div>';
 
   container.innerHTML = html;
+  _bcPendingMentions = [];
+  _bcWireMentionInput(songTitle);
 };
+
+// ── @Mention rendering ───────────────────────────────────────────────────────
+function _bcRenderMentions(escapedText, mentions) {
+  if (mentions && mentions.length) {
+    mentions.forEach(function(m) {
+      var re = new RegExp('@' + m.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      escapedText = escapedText.replace(re, '<span style="color:#818cf8;font-weight:600">@' + m.displayName + '</span>');
+    });
+    return escapedText;
+  }
+  // Fallback: regex highlight for legacy comments without structured mentions
+  return escapedText.replace(/@(\w+)/g, '<span style="color:#818cf8;font-weight:600">@$1</span>');
+}
+
+// ── @Mention input wiring ────────────────────────────────────────────────────
+function _bcWireMentionInput(songTitle) {
+  var input = document.getElementById('bcDiscussionInput');
+  if (!input) return;
+  var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+  if (!members.length) return;
+
+  input.addEventListener('input', function() {
+    var val = input.value;
+    var cursorPos = input.selectionStart || val.length;
+    var textBefore = val.substring(0, cursorPos);
+    var match = textBefore.match(/@(\w*)$/);
+    var existing = document.getElementById('bcMentionDropdown');
+
+    if (!match) {
+      if (existing) existing.remove();
+      return;
+    }
+    var partial = match[1].toLowerCase();
+    var filtered = members.filter(function(m) {
+      var firstName = (m.name || m.key || '').split(' ')[0].toLowerCase();
+      return firstName.indexOf(partial) === 0 || (m.key || '').toLowerCase().indexOf(partial) === 0;
+    });
+    if (!filtered.length) { if (existing) existing.remove(); return; }
+
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'bcMentionDropdown';
+      existing.style.cssText = 'position:absolute;bottom:100%;left:0;right:0;background:#1e293b;border:1px solid rgba(99,102,241,0.25);border-radius:8px;z-index:100;max-height:160px;overflow-y:auto;margin-bottom:4px';
+      input.parentElement.style.position = 'relative';
+      input.parentElement.appendChild(existing);
+    }
+    existing.innerHTML = filtered.map(function(m, i) {
+      var firstName = (m.name || m.key).split(' ')[0];
+      return '<div class="bc-mention-item" data-idx="' + i + '" style="padding:6px 10px;cursor:pointer;font-size:0.82em;display:flex;align-items:center;gap:6px;color:var(--text)" '
+        + 'onmouseenter="this.style.background=\'rgba(99,102,241,0.15)\'" onmouseleave="this.style.background=\'none\'">'
+        + '<span>' + (m.emoji || '') + '</span><span style="font-weight:600">' + firstName + '</span>'
+        + '<span style="font-size:0.75em;color:var(--text-dim)">' + (m.name || m.key) + '</span>'
+        + '</div>';
+    }).join('');
+
+    existing.querySelectorAll('.bc-mention-item').forEach(function(item, i) {
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var m = filtered[i];
+        var firstName = (m.name || m.key).split(' ')[0];
+        var beforeAt = textBefore.substring(0, match.index);
+        var afterCursor = val.substring(cursorPos);
+        input.value = beforeAt + '@' + firstName + ' ' + afterCursor;
+        input.focus();
+        var newPos = (beforeAt + '@' + firstName + ' ').length;
+        input.setSelectionRange(newPos, newPos);
+        _bcPendingMentions.push({ userId: m.key, displayName: firstName });
+        existing.remove();
+      });
+    });
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var dd = document.getElementById('bcMentionDropdown');
+      if (dd) dd.remove();
+    }
+  });
+}
 
 window._bcPostComment = async function(songTitle) {
   var input = document.getElementById('bcDiscussionInput');
@@ -99,11 +182,18 @@ window._bcPostComment = async function(songTitle) {
 
   try {
     if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-      await firebaseDB.ref(bandPath('discussions/' + songKey + '/messages')).push({
+      var payload = {
         author: name,
         text: input.value.trim(),
         ts: new Date().toISOString()
-      });
+      };
+      if (_bcPendingMentions.length) payload.mentions = _bcPendingMentions.slice();
+      await firebaseDB.ref(bandPath('discussions/' + songKey + '/messages')).push(payload);
+      // Emit mention notification
+      if (_bcPendingMentions.length && typeof GLStore !== 'undefined' && GLStore.emit) {
+        GLStore.emit('mentionNotification', { song: songTitle, mentions: _bcPendingMentions, author: name });
+      }
+      _bcPendingMentions = [];
       input.value = '';
       // Re-render
       var container = input.closest('[id]') || input.parentElement.parentElement;
@@ -262,7 +352,7 @@ window.renderEventComments = async function(eventId, container, label) {
 
   var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">' + _bcEsc(label || 'Comments') + '</div>';
   if (!messages.length) {
-    html += '<div style="font-size:0.78em;color:var(--text-dim);font-style:italic;padding:4px 0">No comments yet.</div>';
+    html += '<div style="font-size:0.78em;color:var(--text-dim);font-style:italic;padding:4px 0">No comments yet — say something to your band.</div>';
   } else {
     html += '<div style="max-height:180px;overflow-y:auto;margin-bottom:6px">';
     messages.forEach(function(m) {

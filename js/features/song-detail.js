@@ -147,7 +147,7 @@ async function _sdPopulateBandLens(title) {
         var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v.charAt(0).toUpperCase()+v.slice(1);
         return '<option value="'+v+'"'+(lead===v?' selected':'')+'>'+lbl+'</option>';
     }).join('');
-    var statusOpts=[['','— Not Tracked —'],['prospect','👀 Prospect'],['active','🎵 Active'],['parked','⏸ Parked'],['retired','🗄 Retired']].map(function(p){
+    var statusOpts=[['','— Select —'],['prospect','👀 Prospect'],['learning','📖 Learning'],['rotation','🔄 In Rotation'],['shelved','📦 Shelved']].map(function(p){
         return '<option value="'+p[0]+'"'+(status===p[0]?' selected':'')+'>'+p[1]+'</option>';
     }).join('');
     var keyOpts=['','A','Am','Bb','Bbm','B','Bm','C','Cm','C#','C#m','D','Dm','D#m','E','Em','F','Fm','F#','F#m','G','Gm','G#m','Ab','Abm'].map(function(k){
@@ -175,7 +175,7 @@ async function _sdPopulateBandLens(title) {
         topGapText = _sdEsc(topGap.detail);
     }
     var gapCount = _siGaps ? _siGaps.filter(function(g) { return g.severity === 'high'; }).length : 0;
-    var statusLabels={'prospect':'Prospect','active':'Active','wip':'Active','parked':'Parked','retired':'Retired','gig_ready':'Gig Ready','':'Not Tracked'};
+    var statusLabels={'prospect':'Prospect','learning':'Learning','rotation':'In Rotation','shelved':'Shelved','wip':'Learning','active':'Learning','gig_ready':'Learning','parked':'Shelved','retired':'Shelved','':'—'};
     var statusLabel=statusLabels[status]||status||'—';
     var ytQuery=encodeURIComponent(title);
     panel.innerHTML =
@@ -206,17 +206,17 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-card" style="padding:10px 14px">'+
         '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song DNA</div>'+
         '<div class="sd-dna-grid">'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🎤 Lead</span><select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select></label>'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🎯 Status</span><select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select></label>'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🔑 Key</span><select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select></label>'+
-        '<label class="sd-dna-item"><span class="sd-dna-label">🥁 BPM</span><input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"></label>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">🎤 Lead</span><select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select><div class="sd-dna-attr" id="sd-attr-lead"></div></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">🎯 Status</span><select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select><div class="sd-dna-attr" id="sd-attr-status"></div></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">🔑 Key</span><select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select><div class="sd-dna-attr" id="sd-attr-key"></div></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">🥁 BPM</span><input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"><div class="sd-dna-attr" id="sd-attr-bpm"></div></div>'+
         '</div>'+
         _sdSectionDots(sectionRatings)+
         '</div>'+
         // ── Intelligence detail cards ──
         _sdRenderAttentionCard(title, safeSong)+
         _sdRenderGapsCard(_siGaps)+
-        ((status === 'prospect' || status === 'active' || status === 'wip' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
+        ((status === 'prospect' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
         // ── Practice Mode (chart-aware buttons) ──
         '<div class="sd-card">'+
         '<div class="sd-card-title">🧠 Practice Mode</div>'+
@@ -236,6 +236,8 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         '</div>';
     _sdBuildReadinessStrip(title);
+    // Load attribution for DNA fields
+    setTimeout(function() { _sdLoadAttribution(title); }, 300);
     // Load song discussion + prospect votes
     setTimeout(function() {
         var discMount = document.getElementById('sd-discussion-mount');
@@ -496,6 +498,37 @@ function _sdSyncAllSongsField(title, field, value) {
     var idx = allSongs.findIndex(function(s) { return s.title === title; });
     if (idx >= 0) allSongs[idx][field] = value;
 }
+// ── Attribution per DNA field ─────────────────────────────────────────────────
+function _sdTimeAgo(iso) {
+    if (!iso) return '';
+    var diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+    return new Date(iso).toLocaleDateString();
+}
+function _sdLoadAttribution(title) {
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
+    var fields = [
+        { dataType: 'lead_singer', elId: 'sd-attr-lead', nameKey: 'updatedBy' },
+        { dataType: 'song_status', elId: 'sd-attr-status', nameKey: 'updatedBy' },
+        { dataType: 'key',         elId: 'sd-attr-key',    nameKey: 'updatedBy' },
+        { dataType: 'song_bpm',    elId: 'sd-attr-bpm',    nameKey: 'updatedBy' }
+    ];
+    fields.forEach(function(f) {
+        GLStore.loadFieldMeta(title, f.dataType).then(function(data) {
+            var el = (_sdContainer || document).querySelector('#' + f.elId);
+            if (!el || !data || !data[f.nameKey]) return;
+            var who = data[f.nameKey];
+            // Resolve display name from bandMembers
+            var displayName = who;
+            if (typeof bandMembers !== 'undefined' && bandMembers[who]) displayName = bandMembers[who].name || who;
+            el.textContent = 'by ' + displayName + ' \u00B7 ' + _sdTimeAgo(data.updatedAt);
+        }).catch(function() {});
+    });
+}
+
 window.sdSaveReadiness = function(songTitle, memberKey, val) {
     if (typeof GLStore === 'undefined') { console.warn('[song-detail] GLStore not available'); return; }
     GLStore.saveReadiness(songTitle, memberKey, val).then(function() {
@@ -797,7 +830,8 @@ function _sdInjectStyles(){
     '.sd-title-badge{font-size:0.78em;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(102,126,234,0.15);color:#818cf8;text-transform:none;letter-spacing:0}'+
     '.sd-title-badge--gold{background:rgba(251,191,36,0.15);color:#fbbf24}'+
     '.sd-dna-grid{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px}'+
-    '.sd-dna-item{display:flex;align-items:center;gap:6px}'+
+    '.sd-dna-item{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}'+
+    '.sd-dna-attr{width:100%;font-size:0.65em;color:var(--text-dim,#475569);line-height:1.2;min-height:0}'+
     '.sd-dna-label{font-size:0.8em;font-weight:700;color:var(--text-muted,#94a3b8);white-space:nowrap}'+
     '.sd-select{font-size:0.82em!important;padding:5px 8px!important}'+
     '.sd-bpm-input{width:65px!important;padding:5px 8px!important;font-size:0.82em!important}'+

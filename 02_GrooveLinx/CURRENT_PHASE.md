@@ -4,7 +4,7 @@ _Updated: 2026-03-16_
 
 ## Active Phase: Operational + Intelligence Platform Build
 
-Build: **20260316-233316**
+Build: **20260317-001204**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---

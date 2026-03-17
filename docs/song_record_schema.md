@@ -28,10 +28,10 @@ bands/{bandSlug}/songs/{sanitizedTitle}/{fieldName}
 
 | Field | Firebase dataType | Payload shape | v2 enabled | Notes |
 |-------|------------------|---------------|------------|-------|
-| BPM | `song_bpm` | `{ bpm: number, updatedAt: string }` | Yes | Valid range: 40-240 |
-| Key | `key` | `{ key: string, updatedAt: string }` | Yes | e.g. "G", "Am", "Bb" |
-| Lead Singer | `lead_singer` | `{ singer: string }` | Yes | Member key: "drew", "chris", etc. |
-| Status | `song_status` | `{ status: string, updatedAt: string }` | Yes | Lifecycle values: "", "prospect", "active", "parked", "retired". Legacy "wip"/"gig_ready" accepted on read. |
+| BPM | `song_bpm` | `{ bpm: number, updatedBy: string, updatedAt: string }` | Yes | Valid range: 40-240. History: `song_bpm_history` (last 5). |
+| Key | `key` | `{ key: string, updatedBy: string, updatedAt: string }` | Yes | e.g. "G", "Am", "Bb". History: `key_history` (last 5). |
+| Lead Singer | `lead_singer` | `{ singer: string, updatedBy: string, updatedAt: string }` | Yes | Member key: "drew", "chris", etc. History: `lead_singer_history` (last 5). |
+| Status | `song_status` | `{ status: string, updatedBy: string, updatedAt: string }` | Yes | Lifecycle values: "", "prospect", "learning", "rotation", "shelved". Legacy "wip"/"active"/"gig_ready"/"parked"/"retired" accepted on read, migrated. |
 | Song Roles | `song_roles` | `{ [memberKey]: instrument }` | Planned (Phase B) | e.g. `{ drew: "guitar", jay: "drums" }` |
 | Song Votes | `song_votes` | `{ [memberKey]: 'yes'\|'maybe'\|'no', _updatedAt: string }` | Yes | Prospect voting: "Should we learn this?" |
 

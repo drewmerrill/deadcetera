@@ -86,7 +86,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     });
 
     if (filtered.length === 0) {
-        var statusNames = { prospect:'Prospect', active:'Active', wip:'Active', parked:'Parked', retired:'Retired', gig_ready:'Gig Ready' };
+        var statusNames = { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
         var statusLabel = (typeof activeStatusFilter !== 'undefined' && activeStatusFilter)
             ? (statusNames[activeStatusFilter] || activeStatusFilter)
             : '';
@@ -126,6 +126,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">'+
             '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>'+
             '</button>';
+        var editBtn = '<button class="song-quick-edit-btn" title="Quick edit" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">✏️</button>';
         return '<div class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<span class="song-name">' + song.title + '</span>' +
@@ -133,7 +134,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                '<span class="song-chain-strip" data-song="' + titleEsc + '"></span>' +
                '<span class="song-status-cell"></span>' +
                '<span class="song-badge ' + bandClass + '">' + (song.band || '') + '</span>' +
-               drawerBtn +
+               editBtn + drawerBtn +
                '</div>';
     }).join('');
 
@@ -241,7 +242,7 @@ function _renderActiveFilterChip() {
         if (existing) existing.remove();
         return;
     }
-    var statusNames = { prospect:'👀 Prospect', active:'🎵 Active', wip:'🎵 Active', parked:'⏸ Parked', retired:'🗄 Retired', gig_ready:'✅ Gig Ready' };
+    var statusNames = { prospect:'👀 Prospect', learning:'📖 Learning', rotation:'🔄 In Rotation', shelved:'📦 Shelved', wip:'📖 Learning', active:'📖 Learning', gig_ready:'📖 Learning', parked:'📦 Shelved', retired:'📦 Shelved' };
     var label = statusNames[activeStatusFilter] || activeStatusFilter;
     if (!existing) {
         existing = document.createElement('div');
@@ -323,6 +324,103 @@ window.selectSong = function selectSong(songTitle) {
         if (typeof showPage === 'function') {
             showPage('songdetail');
         }
+    }
+};
+
+// ── Quick Song Setup (inline editing) ─────────────────────────────────────────
+
+(function() {
+    // Inject styles once
+    var style = document.createElement('style');
+    style.textContent = '.song-quick-edit-btn{font-size:0.65em;opacity:0.25;cursor:pointer;border:none;background:none;padding:2px 4px;transition:opacity 0.15s;flex-shrink:0}'
+        + '.song-item:hover .song-quick-edit-btn{opacity:0.8}'
+        + '.song-item--editing{border:1px solid rgba(99,102,241,0.3)!important;background:rgba(99,102,241,0.04)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important}'
+        + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
+        + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
+        + '.sq-label{font-size:0.62em;color:var(--text-dim);font-weight:700;white-space:nowrap}'
+        + '.sq-done{font-size:0.7em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;white-space:nowrap}';
+    document.head.appendChild(style);
+})();
+
+window.songQuickSetup = function songQuickSetup(title) {
+    var row = document.querySelector('.song-item[data-title="' + title.replace(/"/g, '\\"') + '"]');
+    if (!row) return;
+    // If already editing, skip
+    if (row.classList.contains('song-item--editing')) return;
+    // Store original HTML for restore
+    row._sqOrigHTML = row.innerHTML;
+    row._sqOrigClick = row.getAttribute('onclick');
+    row.removeAttribute('onclick');
+    row.classList.add('song-item--editing');
+
+    // Load current values
+    var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
+    var currentKey = (songObj && songObj.key) || '';
+    var currentBpm = (songObj && songObj.bpm) ? String(songObj.bpm) : '';
+    var currentStatus = (typeof statusCache !== 'undefined' && statusCache[title]) || '';
+
+    var safeTitle = title.replace(/'/g, "\\'");
+    var titleLabel = '<span style="font-weight:600;font-size:0.85em;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:1">' + (title.length > 25 ? title.substring(0, 25) + '...' : title) + '</span>';
+
+    // Lead options
+    var leadOpts = ['','drew','chris','brian','pierce'].map(function(v) {
+        var lbl = v === '' ? '—' : v.charAt(0).toUpperCase() + v.slice(1);
+        return '<option value="' + v + '">' + lbl + '</option>';
+    }).join('');
+
+    // Status options
+    var statusOpts = [['','—'],['prospect','Prospect'],['learning','Learning'],['rotation','Rotation'],['shelved','Shelved']].map(function(p) {
+        return '<option value="' + p[0] + '"' + (currentStatus === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+    }).join('');
+
+    // Key options
+    var keyOpts = ['','A','Am','Bb','B','Bm','C','Cm','C#','D','Dm','E','Em','F','Fm','F#','G','Gm','Ab'].map(function(k) {
+        return '<option value="' + k + '"' + (currentKey === k ? ' selected' : '') + '>' + (k || '—') + '</option>';
+    }).join('');
+
+    row.innerHTML = titleLabel
+        + '<span class="sq-label">Lead</span><select class="sq-field" id="sq-lead-' + safeTitle + '" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'leadSinger\',this.value)">' + leadOpts + '</select>'
+        + '<span class="sq-label">Status</span><select class="sq-field" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'status\',this.value)">' + statusOpts + '</select>'
+        + '<span class="sq-label">Key</span><select class="sq-field" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'key\',this.value)">' + keyOpts + '</select>'
+        + '<span class="sq-label">BPM</span><input type="number" class="sq-field" style="width:55px" min="40" max="240" value="' + currentBpm + '" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}">'
+        + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>';
+
+    // Load lead singer async
+    if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        GLStore.loadFieldMeta(title, 'lead_singer').then(function(data) {
+            var sel = document.getElementById('sq-lead-' + safeTitle);
+            if (sel && data && data.singer) sel.value = data.singer;
+        }).catch(function() {});
+    }
+
+    // Escape to close
+    row._sqKeyHandler = function(e) {
+        if (e.key === 'Escape') _sqClose(title);
+    };
+    document.addEventListener('keydown', row._sqKeyHandler);
+};
+
+window._sqClose = function(title) {
+    var row = document.querySelector('.song-item[data-title="' + title.replace(/"/g, '\\"') + '"]');
+    if (!row || !row._sqOrigHTML) return;
+    row.innerHTML = row._sqOrigHTML;
+    if (row._sqOrigClick) row.setAttribute('onclick', row._sqOrigClick);
+    row.classList.remove('song-item--editing');
+    if (row._sqKeyHandler) document.removeEventListener('keydown', row._sqKeyHandler);
+    // Re-apply badges
+    requestAnimationFrame(function() {
+        if (typeof addStatusBadges === 'function') addStatusBadges();
+        if (typeof addReadinessChains === 'function') addReadinessChains();
+    });
+};
+
+window._sqAdvanceNext = function(title) {
+    _sqClose(title);
+    // Find next song row
+    var row = document.querySelector('.song-item[data-title="' + title.replace(/"/g, '\\"') + '"]');
+    if (row && row.nextElementSibling && row.nextElementSibling.classList.contains('song-item')) {
+        var nextTitle = row.nextElementSibling.dataset.title;
+        if (nextTitle) songQuickSetup(nextTitle);
     }
 };
 

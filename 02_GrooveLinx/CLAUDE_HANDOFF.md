@@ -146,7 +146,7 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 
 ## Current State (20260316)
 
-**Build:** 20260316-233316
+**Build:** 20260317-001204
 **Active work:** Pre-launch features + operational UX + songId migration
 **Milestones 1-9:** Complete
 **Milestone 10:** Canonical Entity Model + Operational Features — deployed
@@ -206,8 +206,9 @@ Dev and production move together immediately. Every accepted change must be:
 - **Song record schema:** `docs/song_record_schema.md` is the source of truth for all song-linked fields.
 - **GLStore event bus:** `GLStore.emit(name, payload)` + `GLStore.subscribe(name, fn)` (or `GLStore.on()`). Already used by 12+ subscribers.
 - **Migration audit:** `GLStore.auditMigrationStatus()` — console tool showing songs_v2 migration progress.
-- Song status canonical values (lifecycle): `''`, `'prospect'`, `'active'`, `'parked'`, `'retired'`
-- Legacy statuses `'wip'` and `'gig_ready'` accepted on read, migrated to `'active'`
+- Song status canonical values (lifecycle): `''`, `'prospect'`, `'learning'`, `'rotation'`, `'shelved'`
+- Legacy statuses `'wip'`, `'active'`, `'gig_ready'` → `'learning'`; `'parked'`, `'retired'` → `'shelved'`
+- All DNA field writes include `updatedBy` + `updatedAt` attribution; bounded 5-entry history in v2
 
 ### Canonical Entity IDs
 - **venueId** — on all venue records, used in gig/calendar/setlist forms

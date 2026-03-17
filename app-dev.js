@@ -1098,7 +1098,7 @@ function renderSongs(filter = 'all', searchTerm = '') {
     });
     
     if (filtered.length === 0) {
-        const statusNames = { 'prospect':'Prospect', 'active':'Active', 'wip':'Active', 'parked':'Parked', 'retired':'Retired', 'gig_ready':'Gig Ready' };
+        const statusNames = { 'prospect':'Prospect', 'learning':'Learning', 'rotation':'In Rotation', 'shelved':'Shelved', 'wip':'Learning', 'active':'Learning', 'gig_ready':'Learning', 'parked':'Shelved', 'retired':'Shelved' };
         const statusLabel = activeStatusFilter ? statusNames[activeStatusFilter] || activeStatusFilter : '';
         let msg;
         if (activeHarmonyFilter === 'harmonies') {
@@ -6645,11 +6645,14 @@ function addStatusBadges() {
         if (status) {
             const badges = {
                 'prospect': { text: 'PROSPECT', color: '#fff', bg: '#7c3aed' },
-                'active': { text: 'ACTIVE', color: '#fff', bg: '#2563eb' },
-                'wip': { text: 'ACTIVE', color: '#fff', bg: '#2563eb' },
-                'parked': { text: 'PARKED', color: '#fff', bg: '#6b7280' },
-                'retired': { text: 'RETIRED', color: '#fff', bg: '#374151' },
-                'gig_ready': { text: 'READY', color: '#fff', bg: '#059669' }
+                'learning': { text: 'LEARNING', color: '#fff', bg: '#2563eb' },
+                'rotation': { text: 'ROTATION', color: '#fff', bg: '#059669' },
+                'shelved': { text: 'SHELVED', color: '#fff', bg: '#6b7280' },
+                'wip': { text: 'LEARNING', color: '#fff', bg: '#2563eb' },
+                'active': { text: 'LEARNING', color: '#fff', bg: '#2563eb' },
+                'gig_ready': { text: 'LEARNING', color: '#fff', bg: '#2563eb' },
+                'parked': { text: 'SHELVED', color: '#fff', bg: '#6b7280' },
+                'retired': { text: 'SHELVED', color: '#fff', bg: '#6b7280' }
             };
             
             const badge = badges[status];

@@ -445,25 +445,29 @@
     var title = songId;
     var song = getSongByTitle(title);
     var realSongId = song ? song.songId : null;
+    var _who = (typeof getCurrentMemberKey === 'function' && getCurrentMemberKey()) || 'unknown';
 
     var writes = {
-      leadSinger: function () { return _saveDual(title, realSongId, 'lead_singer', { singer: value }); },
+      leadSinger: function () { return _saveDual(title, realSongId, 'lead_singer', { singer: value, updatedBy: _who, updatedAt: _now() }); },
       status:     function () {
-        var p = _saveDual(title, realSongId, 'song_status', { status: value, updatedAt: _now() });
+        var p = _saveDual(title, realSongId, 'song_status', { status: value, updatedBy: _who, updatedAt: _now() });
         // Keep statusCache in sync
         if (typeof statusCache !== 'undefined') statusCache[title] = value;
         if (typeof addStatusBadges === 'function') addStatusBadges();
         return p;
       },
-      key:        function () { return _saveDual(title, realSongId, 'key', { key: value, updatedAt: _now() }); },
+      key:        function () { return _saveDual(title, realSongId, 'key', { key: value, updatedBy: _who, updatedAt: _now() }); },
       bpm:        function () {
         var n = parseInt(value, 10);
         if (isNaN(n) || n < SONG_BPM_MIN || n > SONG_BPM_MAX) return Promise.resolve();
-        return _saveDual(title, realSongId, 'song_bpm', { bpm: n, updatedAt: _now() });
+        return _saveDual(title, realSongId, 'song_bpm', { bpm: n, updatedBy: _who, updatedAt: _now() });
       },
     };
     if (!writes[field]) { console.warn('[GLStore] unknown field:', field); return; }
     await writes[field]();
+    // Write bounded history (v2 only)
+    var _dtMap = { leadSinger: 'lead_singer', status: 'song_status', key: 'key', bpm: 'song_bpm' };
+    if (realSongId && _dtMap[field]) _appendFieldHistory(realSongId, _dtMap[field], value, _who);
     // Bust cache so next loadSongDetail gets fresh data
     delete _state.songDetailCache[title];
     // Sync allSongs in-memory cache so all UI surfaces see the update immediately
@@ -478,6 +482,25 @@
     if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
     if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
     if (typeof showToast === 'function') showToast(field.charAt(0).toUpperCase() + field.slice(1) + ' saved');
+  }
+
+  // ── Field history (bounded, v2 only) ────────────────────────────────────────
+  function _appendFieldHistory(songId, dataType, value, who) {
+    var db = _db(); if (!db || !songId) return;
+    var path = _bp('songs_v2/' + songId + '/' + dataType + '_history');
+    db.ref(path).once('value').then(function(snap) {
+      var arr = snap.val() || [];
+      if (!Array.isArray(arr)) arr = Object.values(arr);
+      arr.push({ value: value, by: who, at: _now() });
+      if (arr.length > 5) arr = arr.slice(arr.length - 5);
+      db.ref(path).set(arr);
+    }).catch(function() {});
+  }
+
+  function loadFieldMeta(title, dataType) {
+    var songObj = getSongByTitle(title);
+    var realSongId = songObj ? songObj.songId : null;
+    return _loadDual(title, realSongId, dataType);
   }
 
   /**
@@ -845,23 +868,26 @@
   //   GLStore.auditLegacyStatuses()        // dry-run report
   //   GLStore.migrateLegacyStatuses()      // normalize + save
 
-  var _VALID_STATUSES = { '': true, 'prospect': true, 'active': true, 'parked': true, 'retired': true, 'wip': true, 'gig_ready': true };
+  var _VALID_STATUSES = { '': true, 'prospect': true, 'learning': true, 'rotation': true, 'shelved': true, 'wip': true, 'gig_ready': true, 'active': true, 'parked': true, 'retired': true };
 
   var _STATUS_MIGRATION_MAP = {
-    'needs_polish':      'active',
-    'needspolish':       'active',
-    'needs polish':      'active',
-    'work in progress':  'active',
-    'work_in_progress':  'active',
-    'wip':               'active',
+    'needs_polish':      'learning',
+    'needspolish':       'learning',
+    'needs polish':      'learning',
+    'work in progress':  'learning',
+    'work_in_progress':  'learning',
+    'wip':               'learning',
+    'active':            'learning',
     'on_deck':           'prospect',
     'ondeck':            'prospect',
     'on deck':           'prospect',
-    'gig ready':         'active',
-    'gig-ready':         'active',
-    'gigready':          'active',
-    'gig_ready':         'active',
-    'ready':             'active',
+    'gig ready':         'learning',
+    'gig-ready':         'learning',
+    'gigready':          'learning',
+    'gig_ready':         'learning',
+    'ready':             'learning',
+    'parked':            'shelved',
+    'retired':           'shelved',
     'not on radar':      '',
     'not_on_radar':      '',
     'none':              '',
@@ -2863,6 +2889,7 @@
 
     // Song data write (dual-path)
     saveSongData:          saveSongData,
+    loadFieldMeta:         loadFieldMeta,
 
     // Onboarding / Band Activation
     evaluateOnboardingState: evaluateOnboardingState,

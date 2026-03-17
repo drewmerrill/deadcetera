@@ -14,11 +14,11 @@
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   var READINESS_TIERS = {
-    locked:    { min: 5, max: 5, label: 'Locked In' },
-    almost:    { min: 4, max: 4.99, label: 'Almost Locked' },
-    needsWork: { min: 2, max: 3.99, label: 'Needs Work' },
-    notReady:  { min: 1, max: 1.99, label: 'Not Ready' },
-    unrated:   { min: 0, max: 0, label: 'Unrated' },
+    locked:    { min: 5, max: 5, label: 'Gig Ready' },
+    almost:    { min: 4, max: 4.99, label: 'Tightening' },
+    needsWork: { min: 2, max: 3.99, label: 'Rough' },
+    notReady:  { min: 1, max: 1.99, label: 'Learning' },
+    unrated:   { min: 0, max: 0, label: 'New Song' },
   };
 
   function _tierFor(avg) {
