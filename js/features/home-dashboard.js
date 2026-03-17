@@ -1582,7 +1582,20 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
             + '<button onclick="' + _nbaOnclick + '" style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">Go →</button>'
             + '</div>';
     }
-    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,confHTML,pctBar,riskLine,_nba,coach?'<div class="hd-hero__coach">'+coach+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
+    // Availability check: who's blocked on gig day?
+    var _availLine = '';
+    try {
+        var _blocked = (typeof window._glCachedBlockedDates !== 'undefined') ? window._glCachedBlockedDates : [];
+        var _gigDate = gig.date || '';
+        if (_gigDate && _blocked.length) {
+            var _unavail = _blocked.filter(function(b) { return b.startDate && b.endDate && _gigDate >= b.startDate && _gigDate <= b.endDate; });
+            if (_unavail.length) {
+                var _names = _unavail.map(function(b) { return (b.person || '').split(' ')[0]; }).join(', ');
+                _availLine = '<div style="font-size:0.75em;padding:4px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;color:#f87171;margin:4px 0">⚠️ Unavailable: ' + _escHtml(_names) + '</div>';
+            }
+        }
+    } catch(e) {}
+    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,confHTML,pctBar,riskLine,_availLine,_nba,coach?'<div class="hd-hero__coach">'+coach+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
   } catch(e) {
     console.warn('[Dashboard] Hero gig render error:', e.message);
     return '<div class="hd-hero home-anim-header"><div class="hd-hero__eyebrow">BAND MISSION</div><div class="hd-hero__title">' + _escHtml(gig.venue || 'Upcoming Gig') + '</div><div class="hd-hero__actions"><button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gigs \u2192</button></div></div>';

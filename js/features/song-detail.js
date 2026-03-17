@@ -200,7 +200,8 @@ async function _sdPopulateBandLens(title) {
         '</div></div>'+
         // ── Readiness (moved up for mobile prominence) ──
         '<div class="sd-card" id="sd-readiness-card">'+
-        '<div class="sd-card-title">📊 Your Readiness</div>'+
+        '<div style="display:flex;align-items:center;justify-content:space-between"><div class="sd-card-title">📊 Your Readiness</div>'+
+        '<label style="display:flex;align-items:center;gap:4px;font-size:0.65em;color:var(--text-dim);cursor:pointer" title="Hide member names — scores show as anonymous"><input type="checkbox" id="sd-anon-toggle" onchange="sdToggleAnon(this.checked)" style="accent-color:var(--accent);width:12px;height:12px"'+(window._sdAnonMode?' checked':'')+'>Anonymous</label></div>'+
         _sdRenderReadinessBlock(title,safeSong)+
         '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;line-height:1.5;display:flex;flex-wrap:wrap;gap:2px 10px">'+
         '<span>0 Never played</span><span>1 Learning</span><span>2 Rough</span><span>3 Getting there</span><span>4 Tight</span><span>5 Gig ready</span>'+
@@ -403,17 +404,32 @@ function _sdRenderGapsCard(gaps) {
         + rows + medLine + '</div>';
 }
 
-function _sdRenderReadinessBlock(title, safeSong) {
+window._sdAnonMode = false;
+window.sdToggleAnon = function(checked) {
+    window._sdAnonMode = checked;
+    // Re-render readiness block with new mode
+    if (!_sdCurrentSong) return;
+    var container = (_sdContainer || document).querySelector('#sd-readiness-card');
+    if (!container) return;
+    var safeSong = _sdCurrentSong.replace(/'/g, "\\'");
+    // Replace just the readiness content (keep the header)
+    var inner = container.querySelector('.sd-readiness-inner');
+    if (inner) inner.innerHTML = _sdRenderReadinessInner(_sdCurrentSong, safeSong);
+};
+
+function _sdRenderReadinessInner(title, safeSong) {
     var rc=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
     var members=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
     var songScores=rc[title]||{};
     var myKey=typeof getCurrentMemberKey==='function'?getCurrentMemberKey():null;
     if (!members.length) return '<div style="color:var(--text-dim);font-size:0.85em">Loading…</div>';
-    return '<div>'+members.map(function(m) {
+    var isAnon = window._sdAnonMode;
+    return members.map(function(m, idx) {
         var key=m.key||m, name=m.name||(key.charAt(0).toUpperCase()+key.slice(1));
         var score=songScores[key]||0, pct=score?Math.round((score/5)*100):0;
         var color=score>=4?'#10b981':score>=3?'#f59e0b':score>0?'#ef4444':'rgba(255,255,255,0.1)';
         var isMe=myKey&&key===myKey;
+        var displayName = isAnon && !isMe ? 'Member ' + (idx + 1) : name;
         var barId='sd-bar-'+key, lblId='sd-lbl-'+key;
         var RDEFS=['🔴 Never played','🟠 Learning','🟡 Rough','🟢 Getting there','🔵 Tight','⭐ Gig ready'];
         var tipTitle=RDEFS[score]||'Not rated — slide to set';
@@ -423,12 +439,16 @@ function _sdRenderReadinessBlock(title, safeSong) {
                         'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'🔴 Never played\',\'🟠 Learning\',\'🟡 Rough\',\'🟢 Getting there\',\'🔵 Tight\',\'⭐ Gig ready\'];var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
                         'onchange="sdSaveReadiness(\''+safeSong+'\',\''+key+'\',this.value)">':'';
         return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
-               '<span style="font-size:0.82em;font-weight:'+(isMe?'800':'600')+';color:var(--text);min-width:52px">'+_sdEsc(name)+'</span>'+
+               '<span style="font-size:0.82em;font-weight:'+(isMe?'800':'600')+';color:var(--text);min-width:52px">'+_sdEsc(displayName)+'</span>'+
                '<div style="flex:1;height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">'+
                '<div id="'+barId+'" style="height:100%;width:'+pct+'%;background:'+color+';border-radius:3px;transition:width 0.4s ease"></div></div>'+
                '<span id="'+lblId+'" style="font-size:0.78em;font-weight:700;color:'+color+';min-width:22px;text-align:right">'+(score||'—')+'</span>'+
                slider+'</div>';
-    }).join('')+'</div>';
+    }).join('');
+}
+
+function _sdRenderReadinessBlock(title, safeSong) {
+    return '<div class="sd-readiness-inner">' + _sdRenderReadinessInner(title, safeSong) + '</div>';
 }
 
 function _sdBuildReadinessStrip(title) {
@@ -555,16 +575,33 @@ function _sdLoadAssets(title) {
     items.push((hbc[title] || hc[title])
         ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8;font-weight:600">🎤 Harmonies</span>'
         : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">🎤 No Harmonies</span>');
-    // Check Chart (from detail cache)
+    // Check Chart (from detail cache) — with versioning info
     var dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(title) : null;
     var hasChart = dc && dc.chart && dc.chart.text;
+    var chartMeta = '';
+    if (hasChart && dc.chart.importedAt) {
+        chartMeta = ' · ' + _sdTimeAgo(dc.chart.importedAt);
+    }
     items.push(hasChart
-        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);color:#fbbf24;font-weight:600">📖 Chart</span>'
+        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);color:#fbbf24;font-weight:600">📖 Chart' + chartMeta + '</span>'
         : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">📖 No Chart</span>');
     // Check Key/BPM
     var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
     if (songObj && songObj.key) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🔑 ' + songObj.key + '</span>');
     if (songObj && songObj.bpm) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🥁 ' + songObj.bpm + '</span>');
+    // Last practiced indicator (from readiness history)
+    var _rhKey = (songObj && songObj.songId) ? songObj.songId : title;
+    try {
+        var _rh = dc && dc.readiness_history;
+        if (!_rh) {
+            // Check if we have any readiness score as a proxy for "practiced"
+            var _rs = (typeof readinessCache !== 'undefined') ? readinessCache[title] : null;
+            if (_rs) {
+                var _anyScore = Object.values(_rs).some(function(v) { return typeof v === 'number' && v > 0; });
+                if (_anyScore) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">✅ Rated</span>');
+            }
+        }
+    } catch(e) {}
     el.innerHTML = items.join('');
 }
 

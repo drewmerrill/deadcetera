@@ -670,9 +670,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
-        // Preload setlists for lifecycle suggestions + lead singer data for triage accuracy
+        // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
             window._glCachedSetlists = toArray(data || []);
+        }).catch(function() {});
+        loadBandDataFromDrive('_band', 'blocked_dates').then(function(data) {
+            window._glCachedBlockedDates = toArray(data || []);
         }).catch(function() {});
         _preloadLeadSingerCache();
 

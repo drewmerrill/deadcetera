@@ -77,6 +77,14 @@ Example: cover_me canonical shape = `{ artist, url, description, addedBy, addedA
 - Complex RBAC permissions
 - Email blast systems
 - Multi-band support (single-band by design)
+- Full CRM / contact management
+- Full calendar/scheduling system (basic availability only — use Google Calendar for the rest)
+- Complex admin/role tools
+
+### Strategic Positioning
+GrooveLinx = "the system that makes your band tighter, not just organized"
+Differentiation vs BandZone/BandHelper: performance intelligence, not band administration.
+Focus: readiness measurement, rehearsal optimization, groove tracking, song intelligence.
 
 ### Roadmap Phases
 
@@ -146,7 +154,7 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 
 ## Current State (20260316)
 
-**Build:** 20260317-011626
+**Build:** 20260317-012127
 **Active work:** Pre-launch features + operational UX + songId migration
 **Milestones 1-9:** Complete
 **Milestone 10:** Canonical Entity Model + Operational Features — deployed
@@ -219,6 +227,14 @@ Dev and production move together immediately. Every accepted change must be:
 
 ### Recording Asset Model
 Recordings organized by PURPOSE (not platform): north_star, best_shot, cover, instruction, practice_track, session_capture. Target: unified `recordings` array per song in songs_v2. Current separate fields (`spotify_versions`, `best_shot_takes`, `cover_me`, `practice_tracks`) will converge over time. Full schema: `docs/song_record_schema.md`.
+
+### Performance Page (Future — Data Model Only)
+Public-facing band page concept. Not built yet. Target data:
+- Upcoming gigs (from `gigs[]`)
+- Recent setlists (from `setlists[]`)
+- Band readiness summary (from `readinessCache`)
+- Highlight stats (songs in rotation, rehearsal frequency)
+Route: `/band/{slug}` or subdomain. Requires auth separation (public read, private write).
 
 ### Playlist Strategy
 Playlists are views over recording assets. Auto-generated playlists (Gig Prep, Learn Queue, Best Shots to Review) computed from intelligence data + recordings. Custom playlists store `[{songId, recordingId}]` references.
