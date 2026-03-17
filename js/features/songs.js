@@ -292,8 +292,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     if (_filterBarEl) {
         if (_hasFilters) {
             var _chips = [];
-            _bandFilter.forEach(function(b) { _chips.push('<span style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2)">' + b + ' ✕</span>'); });
-            _statusFilter.forEach(function(s) { _chips.push('<span style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">' + (_statusDisplay[s] || s) + ' ✕</span>'); });
+            _bandFilter.forEach(function(b) { _chips.push('<span onclick="window._sqBandFilter=window._sqBandFilter.filter(function(x){return x!==\'' + b + '\'});renderSongs()" style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2);cursor:pointer">' + b + ' ✕</span>'); });
+            _statusFilter.forEach(function(s) { _chips.push('<span onclick="window._sqStatusFilter=window._sqStatusFilter.filter(function(x){return x!==\'' + s + '\'});renderSongs()" style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2);cursor:pointer">' + (_statusDisplay[s] || s || 'Unrated') + ' ✕</span>'); });
             _filterBarEl.style.display = 'flex';
             _filterBarEl.innerHTML = '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">' + _chips.join('') +
                 '<button onclick="window._sqBandFilter=[];window._sqStatusFilter=[];window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#f87171;cursor:pointer;font-weight:700">Clear All</button></div>';
@@ -303,17 +303,17 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     }
 
     // ── UNIFIED TABLE ──
-    var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:8px 8px';
+    var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:8px;white-space:nowrap';
     var _tableStart = '<table style="width:100%;border-collapse:collapse;table-layout:fixed">';
-    // Band filter icon: multi-pick dropdown
-    var _bandFilterIcon = '<span onclick="event.stopPropagation();_sqToggleBandFilter()" style="cursor:pointer;margin-left:3px;font-size:1.1em;opacity:0.6" title="Filter by band">⏷</span>';
-    // Status filter icon: multi-pick dropdown
-    var _statusFilterIcon = '<span onclick="event.stopPropagation();_sqToggleStatusFilter()" style="cursor:pointer;margin-left:3px;font-size:1.1em;opacity:0.6" title="Filter by status">⏷</span>';
+    var _bfActive = _bandFilter.length > 0;
+    var _sfActive = _statusFilter.length > 0;
+    var _bandFilterIcon = '<span onclick="event.stopPropagation();_sqToggleBandFilter()" style="cursor:pointer;margin-left:3px;font-size:0.9em;color:' + (_bfActive ? '#a5b4fc' : '#64748b') + '" title="Filter by band">' + (_bfActive ? '▼' : '▾') + '</span>';
+    var _statusFilterIcon = '<span onclick="event.stopPropagation();_sqToggleStatusFilter()" style="cursor:pointer;margin-left:3px;font-size:0.9em;color:' + (_sfActive ? '#fbbf24' : '#64748b') + '" title="Filter by status">' + (_sfActive ? '▼' : '▾') + '</span>';
     var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
-          + '<th style="' + _hd + ';text-align:left;width:40%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:25%">Status' + _statusFilterIcon + '</th>'
-          + '<th style="' + _hd + ';text-align:right;width:20%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + _bandFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:38%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:28%">Status' + _statusFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:right;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
           + '</tr></thead><tbody>';
 
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
@@ -332,11 +332,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             var _sgSafe = _bestSuggest.title.replace(/'/g, "\\'");
             var _sgStatus = _statusDisplay[_bestSuggest.status] || '';
             var _sgWhy = (_sgStatus ? _sgStatus + ' · ' : '') + 'Avg ' + _bestSuggest.avg.toFixed(1);
-            _suggestHTML = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px">'
-                + '<span style="font-size:1em">🎯</span>'
-                + '<div style="flex:1;min-width:0"><div style="font-size:0.82em;font-weight:700;color:var(--text)">Suggested next: ' + _bestSuggest.title + '</div>'
-                + '<div style="font-size:0.68em;color:var(--text-dim)">' + _sgWhy + '</div></div>'
-                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;white-space:nowrap">Open →</button>'
+            _suggestHTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:4px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.12);border-radius:6px">'
+                + '<span style="font-size:0.78em;font-weight:700;color:var(--text);white-space:nowrap">🎯 Suggested: <span style="color:#a5b4fc">' + _bestSuggest.title + '</span></span>'
+                + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto;white-space:nowrap">' + _sgWhy + '</span>'
+                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.68em;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap">Open →</button>'
                 + '</div>';
         }
     }
@@ -373,8 +372,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                ' onclick="selectSong(\'' + titleOnclick + '\')" style="cursor:pointer">' +
                '<td style="padding:8px;font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:8px 4px"><div style="display:flex;align-items:center;gap:4px"><span style="width:50px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
-               '<td style="padding:8px 4px;width:25%"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
-               '<td style="padding:8px;text-align:right;width:20%"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
+               '<td style="padding:8px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
+               '<td style="padding:8px;text-align:right"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
                '</tr>';
     }).join('') + '</tbody></table>';
 
@@ -382,6 +381,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     requestAnimationFrame(function() {
         if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
             highlightSelectedSongRow(selectedSong.title);
+        } else if (filtered.length > 0) {
+            // Auto-select first song if none selected (prevents blank right panel)
+            var firstTitle = filtered[0].title;
+            if (firstTitle && typeof selectSong === 'function') selectSong(firstTitle);
         }
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
     });
