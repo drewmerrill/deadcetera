@@ -512,54 +512,16 @@ function getFullBandName(bandAbbr) {
 // ============================================================================
 
 // ── PWA: Register service worker (single owner — PL-9.2) ───────────────────
+// ── PWA: Simple service worker registration ─────────────────────────────────
 if ('serviceWorker' in navigator && !_rt.swInitialized) {
     _rt.swInitialized = true;
     window.addEventListener('load', () => {
-        const swPath = new URL('service-worker.js', window.location.href).href;
-        navigator.serviceWorker.register(swPath)
+        navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
             .then(reg => {
-                if (DEBUG) console.log('[PWA] Service worker registered:', reg.scope);
-
-                // ── Poll for updates every 60s (iOS PWAs need this) ──────────
+                // Poll for SW updates every 60s
                 setInterval(() => reg.update(), 60 * 1000);
-
-                // ── When a new SW is waiting, show the update banner ────────
-                // NEVER auto-reload — user clicks the banner when ready
-                function promptUpdate() {
-                    if (DEBUG) console.log('[PWA] New version detected — showing banner');
-                    showUpdateBanner(null);
-                }
-
-                // If a SW is already waiting when we register
-                if (reg.waiting) promptUpdate();
-
-                // When a new SW finishes installing and enters waiting state
-                reg.addEventListener('updatefound', () => {
-                    const newSW = reg.installing;
-                    if (!newSW) return;
-                    newSW.addEventListener('statechange', () => {
-                        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                            // New SW is installed but waiting — show banner
-                            promptUpdate();
-                        }
-                    });
-                });
-
-                // ── postMessage handler ────────────────────────────────────
-                navigator.serviceWorker.addEventListener('message', event => {
-                    if (event.data?.type === 'SW_UPDATED') {
-                        if (DEBUG) console.log('[PWA] SW_UPDATED message — showing banner');
-                        showUpdateBanner();
-                        return;
-                    }
-                    if (event.data?.type === 'NAVIGATE' && event.data.url) {
-                        const params = new URLSearchParams(event.data.url.split('?')[1] || '');
-                        const page = params.get('page');
-                        if (page) showPage(page);
-                    }
-                });
             })
-            .catch(err => console.log('[PWA] SW registration failed:', err));
+            .catch(() => {});
     });
 }
 
@@ -11474,82 +11436,52 @@ function onPartyEnded() {
 
 // showToast() → js/core/utils.js (Wave-1 refactor)
 
-// ── VERSION CHECKER ──────────────────────────────────────────────────────────
+// ── VERSION CHECKER — single source of truth for update detection ────────────
+// ONE system: polls version.json. If mismatch, shows ONE banner. Reload = hard reload.
+// No SW-based detection. No duplicate triggers. No session gymnastics.
 
 async function checkForAppUpdate() {
     try {
         var base = location.hostname === 'localhost' ? '' : '/deadcetera';
         var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
-        if (!res.ok) { if (DEBUG) console.log('[Update] version.json fetch failed:', res.status); return; }
+        if (!res.ok) return;
         var data = await res.json();
         _rt.lastUpdateCheck = new Date().toISOString();
-        if (DEBUG) console.log('[Update] Server version:', data.version, '| Loaded:', _loadedVersion);
         if (data.version && data.version !== _loadedVersion) {
-            if (DEBUG) console.log('[Update] Version mismatch! Showing banner.');
-            showUpdateBanner(data.version);
+            showUpdateBanner();
         }
-    } catch(e) { if (DEBUG) console.log('[Update] Check failed:', e); }
+    } catch(e) {}
 }
 
 var _updateBannerShown = false;
-// sessionStorage key: stores the BUILD_VERSION when banner was shown+dismissed this session.
-// Cleared automatically when the browser tab/session ends (true reload = new session = correct).
-var _GL_BANNER_KEY = 'gl_update_banner_dismissed';
 
-function showUpdateBanner(serverVersion) {
-    // Hard guard: single prompt per page lifecycle (PL-9.2)
-    if (_rt.reloadPromptShown) return;
+function showUpdateBanner() {
+    // ONE guard: if banner already shown this page load, done.
     if (_updateBannerShown) return;
-    // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
-    // Hard guard 3: sessionStorage — survives across reloads within same session.
-    // Once banner shown for ANY version this session, don't show again.
-    var dismissed = sessionStorage.getItem(_GL_BANNER_KEY);
-    if (dismissed) return;
     _updateBannerShown = true;
     _rt.reloadPromptShown = true;
-    // Mark session immediately so reloads within same session don't re-show
-    try { sessionStorage.setItem(_GL_BANNER_KEY, '1'); } catch(e) {}
-    if (DEBUG) console.log('[Update] Creating banner');
+
     var banner = document.createElement('div');
     banner.id = 'dc-update-banner';
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px 20px;font-size:0.9em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;gap:12px';
+
     var label = document.createElement('span');
     label.textContent = '🎸 New version available!';
     banner.appendChild(label);
+
     var reloadBtn = document.createElement('button');
     reloadBtn.textContent = 'Reload';
-    reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em;white-space:nowrap;flex-shrink:0';
+    reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em';
     reloadBtn.addEventListener('click', function() {
-        sessionStorage.setItem(_GL_BANNER_KEY, serverVersion || BUILD_VERSION);
         banner.remove();
-        // Tell waiting SW to take over, then reload
-        if (navigator.serviceWorker) {
-            navigator.serviceWorker.getRegistration().then(function(r) {
-                if (r && r.waiting) {
-                    // Listen for the new SW to activate, then reload
-                    navigator.serviceWorker.addEventListener('controllerchange', function onCC() {
-                        navigator.serviceWorker.removeEventListener('controllerchange', onCC);
-                        window.location.reload();
-                    });
-                    r.waiting.postMessage({type: 'SKIP_WAITING'});
-                } else {
-                    // No waiting SW — just reload (network-first will get new files)
-                    window.location.reload();
-                }
-            });
-        } else {
-            window.location.reload();
-        }
+        window.location.reload();
     });
-    // ✕ dismiss button — closes the banner without reloading, never shows again this session
+
     var dismissBtn = document.createElement('button');
     dismissBtn.textContent = '✕';
-    dismissBtn.title = 'Dismiss — you can reload later';
-    dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;margin-left:2px;flex-shrink:0;line-height:1';
+    dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;line-height:1';
     dismissBtn.addEventListener('click', function() {
-        sessionStorage.setItem(_GL_BANNER_KEY, serverVersion || BUILD_VERSION);
-        _updateBannerShown = false; // reset so a true reload can re-show if needed
         banner.remove();
     });
     banner.appendChild(reloadBtn);
