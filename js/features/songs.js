@@ -144,6 +144,17 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // Show triage bar when active
     _renderTriageBar(dropdown, filtered.length);
 
+    // ── CANONICAL SONG ROW MODEL (PL-8c) ──────────────────────────────────
+    // Song rows are scan-only. They render EXACTLY:
+    //   1. Song title (primary)
+    //   2. Lifecycle badge (Prospect / Learning / In Rotation / Shelved)
+    //   3. Average readiness score (single number, color-coded)
+    //   4. One contextual signal (setlist / priority gap / needs work)
+    //   5. Band tag (quiet)
+    //   6. Quick edit button
+    // NO post-paint decoration. NO injected badges/chains/dots/heatmaps.
+    // All rich data lives in the song detail view (Song Assets card).
+    // ────────────────────────────────────────────────────────────────────────
     // Precompute readiness + status + priority signals for simplified rows
     var _rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
     var _sc = (typeof statusCache !== 'undefined') ? statusCache : {};
@@ -254,19 +265,7 @@ window.setupSearchAndFilters = function setupSearchAndFilters() {
         });
     });
 
-    // Inject heatmap toggle button once
-    if (!document.getElementById('heatmapToggleBtn')) {
-        var hBtn = document.createElement('button');
-        hBtn.id = 'heatmapToggleBtn';
-        hBtn.title = 'Show readiness heatmap';
-        hBtn.textContent = '🌡️ Heatmap';
-        hBtn.style.cssText = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:4px 9px;border-radius:20px;cursor:pointer;font-size:0.72em;font-weight:700;white-space:nowrap;transition:all 0.15s;flex-shrink:0;margin-left:4px';
-        hBtn.onclick = function() { if (typeof toggleHeatmapMode === 'function') toggleHeatmapMode(); };
-        var harmoniesEl = document.getElementById('harmoniesOnlyFilter');
-        var target = harmoniesEl ? (harmoniesEl.closest('label')?.parentElement || harmoniesEl.parentElement) : null;
-        if (target && target.parentElement) target.parentElement.appendChild(hBtn);
-        else if (searchInput?.parentElement?.parentElement) searchInput.parentElement.parentElement.appendChild(hBtn);
-    }
+    // Heatmap toggle removed — heatmap no longer renders on song rows (PL-8c)
 };
 
 // ── Active filter chip ───────────────────────────────────────────────────────

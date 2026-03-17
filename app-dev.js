@@ -662,7 +662,6 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadNorthStarCache();
         backgroundScanNorthStars();
         preloadReadinessCache().then(function() {
-            addReadinessChains();
             // Signal that bulk readiness data loaded — invalidates Practice Attention cache
             if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
             // Re-render dashboard now that readiness data is available (Practice Radar needs it)
@@ -3435,7 +3434,6 @@ async function saveRefVersions(songTitle, versions) {
         northStarCache[songTitle] = hasVersions || undefined;
         if (!hasVersions) delete northStarCache[songTitle];
         saveMasterFile(MASTER_NORTH_STAR_FILE, northStarCache).catch(() => {});
-        addNorthStarBadges();
     }
     return result;
 }
@@ -6444,7 +6442,6 @@ async function buildHarmonySections(songTitle) {
     // Re-render
     await renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
     logActivity('harmony_add', { song: songTitle, extra: sectionNames.join(', ') });
-    addHarmonyBadges();
     
     alert('✅ Created ' + newSections.length + ' harmony section(s): ' + sectionNames.join(', '));
 }
@@ -6469,8 +6466,6 @@ async function updateHasHarmonies(hasHarmonies) {
     });
     
     // Update badge on song list
-    addHarmonyBadges();
-    
     // Show/hide harmony members row
     const membersRow = document.getElementById('harmonyMembersRow');
     if (membersRow) membersRow.style.display = hasHarmonies ? 'flex' : 'none';
@@ -6579,8 +6574,7 @@ async function updateSongStatus(status) {
     console.log(`Song status updated: ${statusNames[status] || 'Not Started'}`);
     logActivity('status_change', { song: selectedSong.title, extra: statusNames[status] || 'Not Started' });
     
-    // Update badge on song list
-    await addStatusBadges();
+    // Status badge on song list — handled inline by songs.js
 }
 
 async function loadSongStatus(songTitle) {
@@ -6840,13 +6834,11 @@ async function preloadSectionRatingsCache() {
             }
         } catch(e) {}
     }));
-    addSectionStatusDots();
 }
 
 async function preloadAllStatuses() {
     if (statusPreloadRunning) return;
     if (statusCacheLoaded) {
-        addStatusBadges();
         return;
     }
     
@@ -6894,8 +6886,6 @@ async function preloadAllStatuses() {
     }
     statusPreloadRunning = false;
     console.log('All song statuses ready! Filtering is now instant.');
-    
-    addStatusBadges();
 }
 
 
