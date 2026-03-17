@@ -34,9 +34,14 @@
  * @param {string} [filter='all']    Band abbreviation or 'all'
  * @param {string} [searchTerm='']  Substring match against song title
  */
+// Restore persisted sort on load
+try { window._sqSongSort = localStorage.getItem('gl_song_sort') || 'default'; } catch(e) {}
+
 window.renderSongs = function renderSongs(filter, searchTerm) {
     filter     = filter     || 'all';
     searchTerm = searchTerm || '';
+    // Persist sort preference
+    try { if (window._sqSongSort) localStorage.setItem('gl_song_sort', window._sqSongSort); } catch(e) {}
 
     var dropdown = document.getElementById('songDropdown');
     if (!dropdown) return;
@@ -148,6 +153,25 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Show active filter chip so the user knows a filter is hiding songs
     _renderActiveFilterChip();
+
+    // Sort: user-selected or triage auto-sort
+    var _sortMode = window._sqSongSort || 'default';
+    if (!window._sqTriageFilter && _sortMode !== 'default' && filtered.length > 1) {
+        var _sRc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+        var _sSc = (typeof statusCache !== 'undefined') ? statusCache : {};
+        filtered.sort(function(a, b) {
+            if (_sortMode === 'readiness_asc' || _sortMode === 'readiness_desc') {
+                var aS = _sRc[a.title] || {}, bS = _sRc[b.title] || {};
+                var aV = Object.values(aS).filter(function(v){return typeof v==='number'&&v>0;}), bV = Object.values(bS).filter(function(v){return typeof v==='number'&&v>0;});
+                var aA = aV.length ? aV.reduce(function(x,y){return x+y;},0)/aV.length : (_sortMode === 'readiness_asc' ? 99 : -1);
+                var bA = bV.length ? bV.reduce(function(x,y){return x+y;},0)/bV.length : (_sortMode === 'readiness_asc' ? 99 : -1);
+                return _sortMode === 'readiness_asc' ? aA - bA : bA - aA;
+            }
+            if (_sortMode === 'status') return ((_sSc[a.title]||'').localeCompare(_sSc[b.title]||''));
+            if (_sortMode === 'band') return ((a.band||'').localeCompare(b.band||''));
+            return 0;
+        });
+    }
 
     // Triage priority sort: when triage active, surface the most important songs first
     if (window._sqTriageFilter && filtered.length > 1) {
@@ -264,20 +288,24 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
         var needsWorkClass = (signal && signal.indexOf('needswork') > -1) ? ' song-item--needswork' : '';
 
-        // Secondary line: status + signal as tight phrase, band + edit pushed right
+        // Participation indicator
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var ratedCount = vals.length;
+        var participation = (avg > 0 && ratedCount < memberCount) ? '<span class="song-participation">' + ratedCount + '/' + memberCount + '</span>' : '';
+
+        // Secondary phrase: status · signal
         var secondaryLeft = (statusBadge && signal) ? statusBadge + '<span class="song-sep">·</span>' + signal
                           : statusBadge + signal;
 
         return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
-               '<div class="song-row-primary">' +
-               '<span class="song-name">' + song.title + '</span>' +
-               '<span class="song-readiness-cluster">' + readinessCluster + '</span>' +
-               '</div>' +
-               '<div class="song-row-secondary"><span class="song-row-meaning">' + secondaryLeft + '</span>' +
-               '<span class="song-row-actions"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
-               editBtn + '</span></div>' +
-               '</div>';
+               '<div class="song-row-grid">' +
+               '<span class="song-col-title"><span class="song-name">' + song.title + '</span>' +
+               '<span class="song-readiness-cluster">' + readinessCluster + participation + '</span></span>' +
+               '<span class="song-col-status">' + secondaryLeft + '</span>' +
+               '<span class="song-col-actions"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
+               editBtn + '</span>' +
+               '</div></div>';
     }).join('');
 
     // Post-paint: highlight + preload only (no badge injection — all inline now)
@@ -572,6 +600,17 @@ function _renderTriageBar(dropdown, count) {
         }
         html += '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;renderSongs()" style="font-size:0.62em;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px">Clear</button>';
     }
+    // Sort control (not shown during triage — triage has auto-sort)
+    if (!tf) {
+        var _sm = window._sqSongSort || 'default';
+        html += '<select onchange="window._sqSongSort=this.value;renderSongs()" style="font-size:0.6em;margin-left:auto;padding:1px 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer">'
+            + '<option value="default"' + (_sm==='default'?' selected':'') + '>Default order</option>'
+            + '<option value="readiness_asc"' + (_sm==='readiness_asc'?' selected':'') + '>Readiness ↑</option>'
+            + '<option value="readiness_desc"' + (_sm==='readiness_desc'?' selected':'') + '>Readiness ↓</option>'
+            + '<option value="status"' + (_sm==='status'?' selected':'') + '>Status</option>'
+            + '<option value="band"' + (_sm==='band'?' selected':'') + '>Band</option>'
+            + '</select>';
+    }
     bar.innerHTML = html;
     dropdown.parentElement.insertBefore(bar, dropdown);
 }
@@ -582,13 +621,14 @@ function _renderTriageBar(dropdown, count) {
     // Inject styles once
     var style = document.createElement('style');
     style.textContent = ''
-        // Row structure
-        + '.song-row-primary{display:flex;align-items:center;gap:6px;min-width:0}'
-        + '.song-row-secondary{display:flex;align-items:center;justify-content:space-between;min-width:0;margin-top:1px}'
-        + '.song-row-meaning{display:flex;align-items:center;gap:4px}'
-        + '.song-row-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}'
+        // Grid row — 3 soft columns aligned across all rows
+        + '.song-row-grid{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px 10px;min-width:0}'
+        + '.song-col-title{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}'
+        + '.song-col-status{display:flex;align-items:center;gap:4px;min-width:70px;justify-content:flex-start}'
+        + '.song-col-actions{display:flex;align-items:center;gap:4px;min-width:60px;justify-content:flex-end}'
         + '.song-sep{font-size:0.5em;color:var(--text-dim);opacity:0.4}'
         + '.song-readiness-cluster{display:flex;align-items:center;gap:3px;flex-shrink:0}'
+        + '.song-participation{font-size:0.5em;color:var(--text-dim);opacity:0.6}'
         // Readiness bar
         + '.song-readiness-bar{width:76px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0}'
         + '.song-readiness-fill{height:100%;border-radius:3px;transition:width 0.3s}'

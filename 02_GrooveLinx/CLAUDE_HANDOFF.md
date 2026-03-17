@@ -228,6 +228,11 @@ Dev and production move together immediately. Every accepted change must be:
 ### Recording Asset Model
 Recordings organized by PURPOSE (not platform): north_star, best_shot, cover, instruction, practice_track, session_capture. Target: unified `recordings` array per song in songs_v2. Current separate fields (`spotify_versions`, `best_shot_takes`, `cover_me`, `practice_tracks`) will converge over time. Full schema: `docs/song_record_schema.md`.
 
+### Future: Band Membership Features (Documented, Not Built)
+- **Proxy Scoring:** Band leader can input readiness scores for absent members. Prevents adoption blockers.
+- **Member Lifecycle:** When a member leaves, option to exclude from readiness averages (retain history). New members initialize with no scores, see "gap vs band" highlights.
+- **New Member Onboarding Mode:** "Get up to speed" view surfaces setlist songs, weakest songs, largest gaps vs band average. Accelerates integration.
+
 ### Performance Page (Future — Data Model Only)
 Public-facing band page concept. Not built yet. Target data:
 - Upcoming gigs (from `gigs[]`)
