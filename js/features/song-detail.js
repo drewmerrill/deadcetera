@@ -201,6 +201,7 @@ async function _sdPopulateBandLens(title) {
         // ── Readiness (moved up for mobile prominence) ──
         '<div class="sd-card" id="sd-readiness-card">'+
         '<div class="sd-card-title">📊 Your Readiness</div>'+
+        (avgReadiness === 0 ? '<div style="font-size:0.78em;color:var(--accent-light);margin-bottom:6px;padding:6px 8px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.12);border-radius:6px">Be the first to rate this song — slide to set your readiness</div>' : '') +
         _sdRenderReadinessBlock(title,safeSong)+
         '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;line-height:1.5;display:flex;flex-wrap:wrap;gap:2px 10px">'+
         '<span>0 Never played</span><span>1 Learning</span><span>2 Rough</span><span>3 Getting there</span><span>4 Tight</span><span>5 Gig ready</span>'+

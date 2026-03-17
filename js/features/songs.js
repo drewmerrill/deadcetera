@@ -280,20 +280,38 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
           + '<td style="' + _hd + ';width:15%;text-align:right;padding-right:12px" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</td>'
           + '</tr></table>' : '';
 
-    dropdown.innerHTML = _modeBar + headerHTML + filtered.map(function(song) {
+    // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
+    var _suggestHTML = '';
+    if (!_isCleanup && filtered.length > 0) {
+        // Find best suggestion: low readiness + has some data + not recently selected
+        var _bestSuggest = null;
+        for (var _si = 0; _si < filtered.length && !_bestSuggest; _si++) {
+            var _ss = filtered[_si];
+            var _sScores = _rc[_ss.title] || {};
+            var _sVals = Object.values(_sScores).filter(function(v) { return typeof v === 'number' && v > 0; });
+            var _sAvg = _sVals.length ? _sVals.reduce(function(a,b){return a+b;},0) / _sVals.length : 0;
+            if (_sAvg > 0 && _sAvg < 3.5) { _bestSuggest = { title: _ss.title, avg: _sAvg, status: _sc[_ss.title] || '' }; }
+        }
+        if (_bestSuggest) {
+            var _sgSafe = _bestSuggest.title.replace(/'/g, "\\'");
+            var _sgStatus = _statusDisplay[_bestSuggest.status] || '';
+            var _sgWhy = (_sgStatus ? _sgStatus + ' · ' : '') + 'Avg ' + _bestSuggest.avg.toFixed(1);
+            _suggestHTML = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px">'
+                + '<span style="font-size:1em">🎯</span>'
+                + '<div style="flex:1;min-width:0"><div style="font-size:0.82em;font-weight:700;color:var(--text)">Suggested next: ' + _bestSuggest.title + '</div>'
+                + '<div style="font-size:0.68em;color:var(--text-dim)">' + _sgWhy + '</div></div>'
+                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;white-space:nowrap">Open →</button>'
+                + '</div>';
+        }
+    }
+
+    dropdown.innerHTML = _modeBar + _suggestHTML + headerHTML + filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
         var titleOnclick = song.title.replace(/'/g, "\\'");
         var customAttr = song.isCustom ? ' data-custom="true"' : '';
         var customClass = song.isCustom ? ' custom-song' : '';
 
-        // Lifecycle + context combined into "Why it matters"
-        var status = _sc[song.title] || '';
-        var statusText = _statusDisplay[status] || '';
-        var signal = '';
-        if (_upcomingSongs[song.title]) signal = '🎯 Setlist';
-        else if (_topGaps[song.title] || (avg > 0 && avg < 3)) signal = '⚠️ Needs work';
-
-        // Average readiness
+        // Average readiness (compute FIRST — needed by signal logic)
         var scores = _rc[song.title] || {};
         var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
         var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
@@ -303,14 +321,18 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var ratedCount = vals.length;
         var participation = (avg > 0 && ratedCount < memberCount) ? ' <span style="font-size:0.7em;color:var(--text-dim);opacity:0.6">' + ratedCount + '/' + memberCount + '</span>' : '';
 
-        // "Why it matters" = status + signal combined
-        var whyParts = [];
-        if (statusText) whyParts.push('<span style="color:' + (_statusColor[status] || '#6b7280') + '">' + statusText + '</span>');
-        if (signal) whyParts.push('<span class="' + (signal.indexOf('Needs') > -1 ? 'song-signal-needswork' : 'song-signal-context') + '">' + signal + '</span>');
-        var whyHTML = whyParts.join(' <span style="opacity:0.3">·</span> ');
+        // Lifecycle + context as chips
+        var status = _sc[song.title] || '';
+        var statusText = _statusDisplay[status] || '';
+        var chips = [];
+        if (statusText) chips.push('<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>');
+        if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">🎯 Setlist</span>');
+        if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">⚠️ Needs work</span>');
+        if (avg === 0 && !statusText) chips.push('<span class="song-chip song-chip--dim">Unrated</span>');
+        var whyHTML = chips.join(' ');
 
         var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
-        var needsWorkClass = signal.indexOf('Needs work') > -1 ? ' song-item--needswork' : '';
+        var needsWorkClass = chips.some(function(c) { return c.indexOf('warn') > -1; }) ? ' song-item--needswork' : '';
 
         return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
@@ -628,7 +650,11 @@ function _renderTriageBar(dropdown, count) {
         + '.song-col{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}'
         + '.song-col-title{font-weight:600;font-size:0.9em;color:var(--text,#f1f5f9);padding-left:8px}'
         + '.song-col-readiness{display:flex;align-items:center;gap:3px}'
-        + '.song-col-why{font-size:0.72em}'
+        + '.song-col-why{font-size:0.72em;display:flex;flex-wrap:wrap;gap:3px;align-items:center}'
+        + '.song-chip{font-size:0.82em;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);white-space:nowrap}'
+        + '.song-chip--setlist{color:#818cf8;border-color:rgba(129,140,248,0.3);background:rgba(129,140,248,0.08)}'
+        + '.song-chip--warn{color:#f59e0b;border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.08)}'
+        + '.song-chip--dim{color:var(--text-dim);opacity:0.5;border-color:rgba(255,255,255,0.06)}'
         + '.song-col-end{display:flex;align-items:center;gap:4px;justify-content:flex-end;padding-right:8px}'
         // Column headers
         + '#songDropdown{background:transparent!important;max-height:none!important;border:none!important}'
