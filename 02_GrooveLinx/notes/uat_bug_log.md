@@ -1,6 +1,25 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-15 — Build 20260315-121626_
+_Last updated: 2026-03-17 — Build 20260317-102808_
+
+---
+
+## Bugs Fixed (20260317 Session)
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Update banner shows 3 times | 3 competing detection systems (SW updatefound, SW message, version.json) + sessionStorage used inconsistent keys | Rewrote entire update system: single version.json poll, one in-memory guard, simplified SW | 20260317-094732 |
+| BUILD_VERSION always stale | Hardcoded in app.js (20260315) while version.json was 20260317 | Reads from `<meta name="build-version">` dynamically | 20260317-015156 |
+| Mixed-version JS bundle | Only 3 of 46 script tags had ?v= cache-bust params | Added ?v=BUILD to all 46 local JS script tags | 20260317-023336 |
+| Stale build log in console | rehearsal-mode.js + help.js had hardcoded BUILD: 20260315 | Removed hardcoded logs, build logged once by app.js from meta tag | 20260317-095521 |
+| renderSongs hoisting shadow | app.js `function renderSongs()` declaration hoisted over songs.js `window.renderSongs` | Converted to `var _legacyRenderSongs = function renderSongs()` | 20260317-014315 |
+| setupSearchAndFilters hoisting | Same pattern — app.js declaration shadowed songs.js version, injected Heatmap button | Converted to var assignment | 20260317-101525 |
+| Inline edit shows empty Key/BPM | allSongs[] doesn't include key/bpm for seed songs (only in Firebase) | Check GLStore._getDetailCache + async load from Firebase | 20260317-030055 |
+| Triage counts inflated (601 missing BPM) | Same — checked only allSongs[].bpm, not Firebase data | Check detail cache + preload key/bpm at init | 20260317-030055 |
+| NBA recommends non-setlist songs | Setlist matched by name only (not setlistId); unresolved setlist fell back to global pool | Match by setlistId first; no fallback to global when setlist linked | 20260317-015755 |
+| Optional recommendation scope leak | "Optional: work on X" used global weakest, not setlist songs | Removed global fallback when setlist strong | 20260317-021519 |
+| 'agenda is not defined' crash | agenda/tl variables referenced in _renderHdHeroGig but only defined in _renderPriorityQueue | Added local computation in NBA block | 20260317-091531 |
+| Agenda+/Chart buttons on song rows | _songInjectQuickActions injected absolute-positioned buttons conflicting with grid | Made function a no-op | 20260317-101829 |
 
 ---
 

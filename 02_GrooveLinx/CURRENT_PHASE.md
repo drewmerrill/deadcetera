@@ -4,7 +4,7 @@ _Updated: 2026-03-16_
 
 ## Active Phase: Operational + Intelligence Platform Build
 
-Build: **20260317-100456**
+Build: **20260317-102808**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -74,7 +74,11 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | PL-9 | Strategic Layer (Availability + Confidence) | ✅ DONE |
 | PL-9.5+9.6 | Performance Coverage + Gig-Aware NBA | ✅ DONE |
 | PL-10 | Songs UX Polish + Triage Flow | ✅ DONE |
-| **PL-11** | **Songs Screen Finalization — Workbench** | ✅ **CURRENT** |
+| PL-11 | Songs Screen Finalization — 6-col grid, headers, sort | ✅ DONE |
+| PL-11b | Visible column headers + docs update | ✅ DONE |
+| PL-11c | Fix headers, remove Heatmap, hide Harmonies/NorthStar | ✅ DONE |
+| PL-11d | Remove Agenda+/Chart row actions, redesign Jam Structure | ✅ DONE |
+| **PL-11e** | **Redesign inline edit + Chart/Jam in edit extras** | ✅ **CURRENT** |
 | **Infra** | **Stripe + Firebase Auth + Legal** | 📋 PLANNED |
 
 ### Post-Launch Phases

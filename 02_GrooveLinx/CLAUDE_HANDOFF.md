@@ -154,21 +154,32 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 
 ## Current State (20260317)
 
-**Build:** 20260317-100456
-**Active work:** Songs screen finalization + update system reliability
+**Build:** 20260317-102808
+**Active work:** Songs screen finalization (PL-11) + update system reliability
 **Milestones 1-10:** Complete
-**PL-3 through PL-11:** Complete (see CURRENT_PHASE.md for full list)
+**PL-3 through PL-11e:** Complete (see CURRENT_PHASE.md for full list)
 
 ### What happened this session (20260317):
 
-**Songs Screen Finalization (PL-8 through PL-11):**
-- Simplified song rows: 6-column soft grid (Song, Readiness, Status, Context, Band, Action)
-- Column headers with clickable sort (Readiness ↑↓, Status, Band) — sticky on desktop
-- Readiness bar as primary visual signal (76px, 6px, red/amber/green)
-- Triage mode: guided cleanup workflow with priority sort, progress bar, smart field focus
-- Quick Song Setup: inline editing with auto-focus, save feedback, Enter-to-advance
-- Mobile: 2-column layout, scroll snap, full-screen song detail with bottom CTA bar
-- Legacy row decorations fully removed (harmony/north star/heatmap/chains/dots)
+**Songs Screen Finalization (PL-8 through PL-11e):**
+- 6-column soft grid: Song, Readiness, Status, Context, Band, Action
+- Column headers with clickable sort (Song A-Z, Readiness ↑↓, Status, Band) — sticky, dark bg
+- Readiness bar as primary visual signal (60px, 5px, red/amber/green)
+- Triage mode: guided cleanup with priority sort, progress bar, smart field focus
+- Quick Song Setup: redesigned inline edit with stacked form layout, labeled fields (LEAD/STATUS/KEY/BPM), Chart + Jam Structure status in extras row
+- Mobile: 2-column layout, scroll snap, full-screen detail with bottom CTA bar
+- Harmonies + North Star filter checkboxes removed from HTML (now in Song Assets card only)
+- Heatmap button removed from Songs page (both songs.js and app.js)
+- "Agenda+" and "Chart" row action buttons removed (now in detail panel)
+- setupSearchAndFilters hoisting fixed (same pattern as renderSongs)
+- Legacy row decorations fully removed (harmony/north star/heatmap/chains/dots/status badges)
+
+**Jam Structure (PL-Structure-1):**
+- "How We Play It" section in song detail panel
+- Section name + notes (no "Who" column — notes are primary)
+- Solo sections: support for noting count and who solos
+- Default template: 11 sections (Intro through End Cue)
+- Stored in songs_v2/{songId}/song_structure
 
 **Lifecycle Model (PL-6):**
 - Canonical: prospect / learning / rotation / shelved
@@ -188,11 +199,16 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 - "What Changed" collapsed by default
 
 **Infrastructure:**
-- Service worker rewritten: network-first, skipWaiting, delete all caches
-- Single update system: version.json poll → one banner → reload
-- All script tags cache-busted with ?v=BUILD
-- BUILD_VERSION reads from <meta> tag (never hardcoded)
-- Preloads: setlists, blocked dates, lead singer, key/bpm at app init
+- Service worker rewritten from scratch: network-first everything, skipWaiting on install, delete ALL caches on activate, ~80 lines total
+- Single update system: version.json poll every 60s → one in-memory guard → one banner → simple reload. No SW-based detection, no sessionStorage, no duplicate triggers.
+- All 46 script tags cache-busted with ?v=BUILD in both index.html and index-dev.html
+- BUILD_VERSION reads from <meta> tag dynamically (never hardcoded)
+- Hardcoded build logs removed from rehearsal-mode.js and help.js
+- Meta tag, version.json, SW CACHE_NAME, and ?v= params all bumped atomically
+- app.js + app-dev.js renderSongs/setupSearchAndFilters converted from function declarations to var assignments to prevent hoisting shadow over songs.js
+- _glRuntime centralized state object replaces scattered window._gl* flags
+- Debug panel at ?debug=true shows build, SW status, cache states
+- Preloads at init: setlists, blocked dates, lead singer, key/bpm (for triage accuracy)
 
 **New Features:**
 - Recurring calendar events (weekly/biweekly/monthly)
