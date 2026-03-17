@@ -395,8 +395,13 @@ function _rmRenderTimeline() {
     _rmSections.forEach(function(s, i) {
         var isActive = i === _rmActiveSectionIdx;
         var icon = _rmTypeIcons[s.type] || _rmTypeIcons.other;
-        var shortLabel = (s.label || s.name || '').replace(/\s*\d+$/, ''); // "Verse 1" → "Verse" for compact display
-        if (shortLabel.length > 8) shortLabel = shortLabel.slice(0, 7) + '…';
+        var rawLabel = s.label || s.name || '';
+        // Compact labels: "Verse 1" → "V1", "Chorus 2" → "Ch2", but preserve numbering
+        var shortLabel = rawLabel
+            .replace(/^Verse\s*/i, 'V').replace(/^Chorus\s*/i, 'Ch')
+            .replace(/^Bridge\s*/i, 'Br').replace(/^Breakdown\s*/i, 'Bkdn')
+            .replace(/^Interlude\s*/i, 'Int').replace(/^Turnaround\s*/i, 'TA');
+        if (shortLabel.length > 10) shortLabel = shortLabel.slice(0, 9) + '…';
 
         var pill = document.createElement('button');
         pill.dataset.secIdx = i;
@@ -417,6 +422,29 @@ function _rmRenderTimeline() {
             timeline.appendChild(arrow);
         }
     });
+
+    // Prev/Next section buttons at edges
+    var prevBtn = document.createElement('button');
+    prevBtn.style.cssText = 'flex-shrink:0;padding:3px 6px;border-radius:4px;font-size:0.7em;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:' + (_rmActiveSectionIdx > 0 ? '#64748b' : 'rgba(255,255,255,0.1)') + ';touch-action:manipulation';
+    prevBtn.textContent = '‹';
+    prevBtn.onclick = function() { if (_rmActiveSectionIdx > 0) _rmSetActiveSection(_rmActiveSectionIdx - 1); };
+    timeline.insertBefore(prevBtn, timeline.firstChild);
+
+    var nextBtn = document.createElement('button');
+    nextBtn.style.cssText = 'flex-shrink:0;padding:3px 6px;border-radius:4px;font-size:0.7em;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:' + (_rmActiveSectionIdx < _rmSections.length - 1 ? '#64748b' : 'rgba(255,255,255,0.1)') + ';touch-action:manipulation';
+    nextBtn.textContent = '›';
+    nextBtn.onclick = function() { if (_rmActiveSectionIdx < _rmSections.length - 1) _rmSetActiveSection(_rmActiveSectionIdx + 1); };
+    timeline.appendChild(nextBtn);
+
+    // Swipe on timeline for prev/next section
+    var _swStartX = 0;
+    timeline.addEventListener('touchstart', function(e) { _swStartX = e.touches[0].clientX; }, { passive: true });
+    timeline.addEventListener('touchend', function(e) {
+        var dx = e.changedTouches[0].clientX - _swStartX;
+        if (Math.abs(dx) < 50) return; // too short
+        if (dx < 0 && _rmActiveSectionIdx < _rmSections.length - 1) _rmSetActiveSection(_rmActiveSectionIdx + 1);
+        else if (dx > 0 && _rmActiveSectionIdx > 0) _rmSetActiveSection(_rmActiveSectionIdx - 1);
+    }, { passive: true });
 
     // Insert between sticky bar and chart
     var chartEl = document.getElementById('rmChartText');
@@ -452,7 +480,12 @@ function _rmRenderActiveSectionPanel() {
     panel.id = 'rmActiveSectionPanel';
     panel.style.cssText = 'padding:5px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(99,102,241,0.04);border-bottom:1px solid rgba(99,102,241,0.1);font-size:0.72em;color:#94a3b8';
 
-    // Section label
+    // "ACTIVE" badge + section label
+    var badge = document.createElement('span');
+    badge.style.cssText = 'font-size:0.6em;font-weight:800;letter-spacing:0.08em;color:rgba(99,102,241,0.5);text-transform:uppercase;flex-shrink:0';
+    badge.textContent = 'NOW';
+    panel.appendChild(badge);
+
     var sectionIcon = _rmTypeIcons[s.type] || '';
     var labelSpan = document.createElement('span');
     labelSpan.style.cssText = 'font-weight:700;color:#a5b4fc;flex-shrink:0';
@@ -494,6 +527,32 @@ function _rmSetActiveSection(idx) {
     _rmScrollChartToSection(idx);
 }
 
+// Find chart position for an anchor — case-insensitive exact match, then partial fallback
+function _rmFindAnchorPos(text, anchorLabel, anchorIndex) {
+    if (!anchorLabel || !text) return -1;
+    var textLower = text.toLowerCase();
+    var exact = '[' + anchorLabel.toLowerCase() + ']';
+    var aIdx = anchorIndex || 0;
+    // Try exact case-insensitive match first
+    var pos = -1;
+    for (var n = 0; n <= aIdx; n++) {
+        pos = textLower.indexOf(exact, pos + 1);
+        if (pos === -1) break;
+    }
+    if (pos !== -1) return pos;
+    // Partial fallback: search for any [Header] containing the anchor label
+    var partial = anchorLabel.toLowerCase();
+    var re = /\[([^\]]+)\]/g;
+    var match, count = 0;
+    while ((match = re.exec(textLower)) !== null) {
+        if (match[1].indexOf(partial) !== -1 || partial.indexOf(match[1]) !== -1) {
+            if (count === aIdx) return match.index;
+            count++;
+        }
+    }
+    return -1;
+}
+
 // Scroll chart text to the section's chartAnchor
 function _rmScrollChartToSection(idx) {
     var s = _rmSections[idx];
@@ -501,20 +560,11 @@ function _rmScrollChartToSection(idx) {
     var chartEl = document.getElementById('rmChartText');
     if (!chartEl) return;
     var text = chartEl.textContent || '';
-    var anchor = '[' + s.chartAnchor + ']';
-    // Find the Nth occurrence (anchorIndex)
-    var anchorIdx = s.anchorIndex || 0;
-    var pos = -1;
-    for (var n = 0; n <= anchorIdx; n++) {
-        pos = text.indexOf(anchor, pos + 1);
-        if (pos === -1) break;
-    }
+    var pos = _rmFindAnchorPos(text, s.chartAnchor, s.anchorIndex);
     if (pos === -1) return;
-    // Find approximate scroll position: count newlines before the match
     var linesBefore = text.substring(0, pos).split('\n').length - 1;
     var lineHeight = parseFloat(getComputedStyle(chartEl).lineHeight) || (rmFontSize * 1.4);
     var scrollTarget = linesBefore * lineHeight;
-    // Scroll the chart panel (parent is rm-panel which is the scrollable container)
     var scrollContainer = chartEl.closest('.rm-panel') || chartEl.parentElement;
     if (scrollContainer) scrollContainer.scrollTo({ top: scrollTarget, behavior: 'smooth' });
 }
@@ -523,48 +573,44 @@ function _rmScrollChartToSection(idx) {
 function _rmSetupScrollSync() {
     _rmScrollSyncEnabled = false;
     if (!_rmSections.length) return;
-    // Build anchor position map from chart text
     var chartEl = document.getElementById('rmChartText');
     if (!chartEl) return;
     var text = chartEl.textContent || '';
-    var anchorPositions = []; // [{idx, linePos}]
+    // Build anchor position map using resilient matching
+    var anchorPositions = [];
     _rmSections.forEach(function(s, i) {
         if (!s.chartAnchor) return;
-        var anchor = '[' + s.chartAnchor + ']';
-        var aIdx = s.anchorIndex || 0;
-        var pos = -1;
-        for (var n = 0; n <= aIdx; n++) {
-            pos = text.indexOf(anchor, pos + 1);
-            if (pos === -1) break;
-        }
+        var pos = _rmFindAnchorPos(text, s.chartAnchor, s.anchorIndex);
         if (pos === -1) return;
         var linesBefore = text.substring(0, pos).split('\n').length - 1;
-        anchorPositions.push({ sectionIdx: i, line: linesBefore });
+        var isJam = s.type === 'jam' || s.type === 'solo' || s.type === 'vamp';
+        anchorPositions.push({ sectionIdx: i, line: linesBefore, isJam: isJam });
     });
-    if (anchorPositions.length < 2) return; // Not enough anchors to sync
+    if (anchorPositions.length < 2) return;
     _rmScrollSyncEnabled = true;
 
     var scrollContainer = chartEl.closest('.rm-panel') || chartEl.parentElement;
     if (!scrollContainer) return;
 
-    // Throttled scroll handler
     var _lastSyncTs = 0;
     scrollContainer.addEventListener('scroll', function() {
         var now = Date.now();
-        if (now - _lastSyncTs < 200) return; // 200ms throttle
+        if (now - _lastSyncTs < 250) return; // 250ms throttle (slightly longer for stability)
         _lastSyncTs = now;
         var lineHeight = parseFloat(getComputedStyle(chartEl).lineHeight) || (rmFontSize * 1.4);
         var scrollLine = Math.round(scrollContainer.scrollTop / lineHeight);
-        // Find the section whose anchor is closest to (but before) current scroll
         var bestIdx = 0;
         for (var i = 0; i < anchorPositions.length; i++) {
-            if (anchorPositions[i].line <= scrollLine + 2) bestIdx = anchorPositions[i].sectionIdx;
+            var ap = anchorPositions[i];
+            // For jam/solo/vamp sections: require scrolling well past the anchor (8 lines)
+            // to avoid premature advance out of the jam
+            var threshold = ap.isJam ? 8 : 2;
+            if (ap.line <= scrollLine + threshold) bestIdx = ap.sectionIdx;
         }
         if (bestIdx !== _rmActiveSectionIdx) {
             _rmActiveSectionIdx = bestIdx;
             _rmRenderTimeline();
             _rmRenderActiveSectionPanel();
-            // Scroll timeline pill into view
             var timeline = document.getElementById('rmSectionTimeline');
             if (timeline) {
                 var pill = timeline.querySelector('[data-sec-idx="' + bestIdx + '"]');
