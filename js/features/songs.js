@@ -148,6 +148,42 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Show active filter chip so the user knows a filter is hiding songs
     _renderActiveFilterChip();
+
+    // Triage priority sort: when triage active, surface the most important songs first
+    if (window._sqTriageFilter && filtered.length > 1) {
+        var _sortRc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+        var _sortUpcoming = (typeof window._glCachedSetlists !== 'undefined') ? {} : null;
+        if (_sortUpcoming) {
+            try {
+                var _today = new Date().toISOString().split('T')[0];
+                (window._glCachedSetlists || []).forEach(function(sl) {
+                    if ((sl.date || '') < _today) return;
+                    (sl.sets || []).forEach(function(set) {
+                        (set.songs || []).forEach(function(sg) {
+                            var t = typeof sg === 'string' ? sg : (sg.title || '');
+                            if (t) _sortUpcoming[t] = true;
+                        });
+                    });
+                });
+            } catch(e) {}
+        }
+        filtered.sort(function(a, b) {
+            var aInSet = _sortUpcoming && _sortUpcoming[a.title] ? 1 : 0;
+            var bInSet = _sortUpcoming && _sortUpcoming[b.title] ? 1 : 0;
+            if (aInSet !== bInSet) return bInSet - aInSet; // setlist first
+            var aScores = _sortRc[a.title] || {};
+            var bScores = _sortRc[b.title] || {};
+            var aVals = Object.values(aScores).filter(function(v) { return typeof v === 'number' && v > 0; });
+            var bVals = Object.values(bScores).filter(function(v) { return typeof v === 'number' && v > 0; });
+            var aAvg = aVals.length ? aVals.reduce(function(x,y){return x+y;},0) / aVals.length : -1;
+            var bAvg = bVals.length ? bVals.reduce(function(x,y){return x+y;},0) / bVals.length : -1;
+            // Unrated (avg=-1) after rated-low, before rated-high
+            if (aAvg < 0 && bAvg >= 0) return bAvg < 3 ? 1 : -1;
+            if (bAvg < 0 && aAvg >= 0) return aAvg < 3 ? -1 : 1;
+            return aAvg - bAvg; // lowest readiness first
+        });
+    }
+
     // Show triage bar when active
     _renderTriageBar(dropdown, filtered.length);
 
@@ -228,15 +264,19 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
         var needsWorkClass = (signal && signal.indexOf('needswork') > -1) ? ' song-item--needswork' : '';
 
+        // Secondary line: status + signal as tight phrase, band + edit pushed right
+        var secondaryLeft = (statusBadge && signal) ? statusBadge + '<span class="song-sep">·</span>' + signal
+                          : statusBadge + signal;
+
         return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<div class="song-row-primary">' +
                '<span class="song-name">' + song.title + '</span>' +
                '<span class="song-readiness-cluster">' + readinessCluster + '</span>' +
                '</div>' +
-               '<div class="song-row-secondary">' + statusBadge + signal +
-               '<span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
-               editBtn + '</div>' +
+               '<div class="song-row-secondary"><span class="song-row-meaning">' + secondaryLeft + '</span>' +
+               '<span class="song-row-actions"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
+               editBtn + '</span></div>' +
                '</div>';
     }).join('');
 
@@ -543,9 +583,12 @@ function _renderTriageBar(dropdown, count) {
     var style = document.createElement('style');
     style.textContent = ''
         // Row structure
-        + '.song-row-primary{display:flex;align-items:center;gap:8px;min-width:0}'
-        + '.song-row-secondary{display:flex;align-items:center;gap:5px;min-width:0;margin-top:2px}'
-        + '.song-readiness-cluster{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}'
+        + '.song-row-primary{display:flex;align-items:center;gap:6px;min-width:0}'
+        + '.song-row-secondary{display:flex;align-items:center;justify-content:space-between;min-width:0;margin-top:1px}'
+        + '.song-row-meaning{display:flex;align-items:center;gap:4px}'
+        + '.song-row-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}'
+        + '.song-sep{font-size:0.5em;color:var(--text-dim);opacity:0.4}'
+        + '.song-readiness-cluster{display:flex;align-items:center;gap:3px;flex-shrink:0}'
         // Readiness bar
         + '.song-readiness-bar{width:76px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0}'
         + '.song-readiness-fill{height:100%;border-radius:3px;transition:width 0.3s}'
