@@ -31,6 +31,30 @@ Do not maintain a second active `02_GrooveLinx` doc tree in Command Center. Comm
 - `glship "message"` — install + deploy + smoke + close
 - `glsnapshot` — create safety snapshot
 
+## Build Bump Procedure (CRITICAL)
+
+Every deploy must update **4 sources atomically**:
+1. `<meta name="build-version">` in index.html + index-dev.html
+2. All `?v=` params on script tags (46+ tags in both HTML files)
+3. `version.json`
+4. `CACHE_NAME` in service-worker.js
+
+One-liner:
+```bash
+NEW_BUILD=$(date -u +"%Y%m%d-%H%M%S") && \
+sed -i '' "s|?v=OLD_BUILD|?v=$NEW_BUILD|g" index.html index-dev.html && \
+sed -i '' "s|content=\"OLD_BUILD\"|content=\"$NEW_BUILD\"|g" index.html index-dev.html && \
+echo '{"version":"'$NEW_BUILD'","deployed":"'$(date -u +"%Y-%m-%dT%H:%M:%S")'Z"}' > version.json && \
+sed -i '' "s|groovelinx-OLD_BUILD|groovelinx-$NEW_BUILD|g" service-worker.js
+```
+
+Also update doc build numbers:
+```bash
+sed -i '' "s|OLD_BUILD|$NEW_BUILD|g" 02_GrooveLinx/CLAUDE_HANDOFF.md 02_GrooveLinx/CURRENT_PHASE.md
+```
+
+**Do NOT hardcode build numbers in JS files.** app.js reads from `<meta>` tag.
+
 ## Standard Session Start
 
 1. `git checkout <working-branch>`

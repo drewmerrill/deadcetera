@@ -189,10 +189,40 @@ setTimeout(function () { editGig(idx); }, 400);
 
 ## Caching, Service Worker, and Updates
 
-- Service worker cache namespace is `groovelinx-*`
-- Update flow should be single-click reload, not surprise auto-reload
-- Build/version stamping is performed in deploy flow
-- `sync.py` and `push.py` are critical tooling and part of the architecture, not just convenience scripts
+- Service worker: network-first for everything, cache as offline fallback only
+- `skipWaiting()` on install, delete ALL caches on activate
+- Update detection: version.json poll every 60s, one in-memory guard, one banner
+- No SW-based update detection (removed updatefound/controllerchange)
+- All script tags cache-busted with `?v=BUILD` (46+ tags per HTML file)
+- `BUILD_VERSION` reads from `<meta name="build-version">` dynamically
+- Build bump must update 4 sources atomically (see DEV_WORKFLOW.md)
+
+---
+
+## Song Scope Model (Active vs Library)
+
+Every song has a derived scope based on lifecycle status:
+- **Active** (prospect, learning, rotation): included in intelligence, triage, recommendations
+- **Library** (shelved, no status): excluded from all scoring
+
+Rules:
+- Intelligence engine only processes Active songs
+- Triage counts only consider Active songs
+- Bulk imports default to Library
+- Songs page has Active/Library toggle (Active = default view)
+- Helper functions: `getSongScope(title)`, `isSongActive(title)`
+
+---
+
+## Song Pitch System
+
+Structured song intake with anonymous voting. Lives in Band Room.
+- Firebase path: `bands/{slug}/song_pitches`
+- Pitch = title + reason + suggested replacement + votes + status
+- Votes stored by memberKey, displayed as counts (anonymous)
+- Majority threshold: `ceil(memberCount / 2)`
+- Approval: new song → Prospect, replacement → Shelved
+- Guards: no Active duplicates, no pending duplicates, setlist replacement warnings
 
 ---
 

@@ -155,9 +155,9 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 ## Current State (20260317)
 
 **Build:** 20260317-200258
-**Active work:** Songs screen finalization (PL-11) + update system reliability
+**Active work:** Song Pitch system QA + Songs Command Center refactor
 **Milestones 1-10:** Complete
-**PL-3 through PL-11e:** Complete (see CURRENT_PHASE.md for full list)
+**PL-3 through PL-13.9:** Complete (see CURRENT_PHASE.md for full list)
 
 ### What happened this session (20260317):
 
@@ -209,6 +209,51 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 - _glRuntime centralized state object replaces scattered window._gl* flags
 - Debug panel at ?debug=true shows build, SW status, cache states
 - Preloads at init: setlists, blocked dates, lead singer, key/bpm (for triage accuracy)
+
+**Songs Command Center Refactor (PL-13X):**
+- Rows are clean — no inline editing, full row clickable → detail panel
+- "Play This Next" recommendation strip above search
+- Cleanup as guided queue (card-based step flow, not filtered table)
+- 4-column table: Song | Readiness | Focus | Band (table-layout:fixed)
+- Column header filters: Band + Status multi-pick dropdowns with active indicators
+- Active filter bar with per-chip ✕ removal + Clear All
+- Priority left-border per row (green/amber/red based on readiness)
+- Focus chips: actionable first (Needs work, Setlist) then contextual (Learning, Rotation)
+
+**Active vs Library Scope Model:**
+- Songs derive scope from lifecycle: prospect/learning/rotation = Active, shelved/none = Library
+- Intelligence engine only scores Active songs
+- Triage counts only consider Active songs
+- Songs page: Active/Library toggle in mode bar
+- Bulk imports default to Library — user activates subset
+- Helper: getSongScope(title), isSongActive(title)
+
+**Song Pitch System (Band Room):**
+- Structured song intake with anonymous voting
+- Pitch modal: title, reason, suggested replacement (auto-lowest-readiness)
+- Tradeoff preview: "If approved: X → Active · Y → Library"
+- Anonymous voting: 👍👎🤷 with majority threshold
+- Guards: can't pitch Active songs, can't duplicate pending pitches, warns on setlist replacements
+- Vote change allowed (buttons always visible, current vote highlighted)
+- Approval: new song → Prospect, replacement → Shelved
+- Rejection: moves to backlog, re-pitchable
+- Firebase: bands/{slug}/song_pitches
+
+**Bulk Import:**
+- js/features/bulk-import.js — browse by artist or paste song list
+- Chart search URLs auto-generated (Ultimate Guitar — URL only, no content)
+- Songs import to Library scope by default
+
+**Chart Flow:**
+- Unified "Get Chart" modal — guides user to Ultimate Guitar → paste → save
+- Single entry point from Practice Mode + Song Assets
+
+**Command Center:**
+- Simplified primary CTA: "Run the Set" (ready) or "Start Rehearsal" (not ready)
+- Setlist shows name + song count (not raw ID)
+- Coach text humanized ("You're gig-ready — tighten X and you're golden")
+- "Next Best Action" renamed to "Do This Next"
+- "Stoner Mode" renamed to "Easy Mode"
 
 **New Features:**
 - Recurring calendar events (weekly/biweekly/monthly)

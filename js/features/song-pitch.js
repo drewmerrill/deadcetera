@@ -155,6 +155,22 @@ window.submitPitch = async function() {
         if (_conflicting.length > 0) {
             if (!confirm(replaceSong.trim() + ' is already targeted for replacement in another pitch. Continue anyway?')) return;
         }
+        // Warn if replacement song is in an upcoming setlist
+        try {
+            var _sls = (typeof window._glCachedSetlists !== 'undefined') ? window._glCachedSetlists : [];
+            var _today = new Date().toISOString().split('T')[0];
+            var _inSetlist = false;
+            for (var _si = 0; _si < _sls.length && !_inSetlist; _si++) {
+                if ((_sls[_si].date || '') < _today) continue;
+                (_sls[_si].sets || []).forEach(function(set) {
+                    (set.songs || []).forEach(function(sg) {
+                        var st = typeof sg === 'string' ? sg : (sg.title || '');
+                        if (st.toLowerCase() === replaceSong.trim().toLowerCase()) _inSetlist = true;
+                    });
+                });
+            }
+            if (_inSetlist && !confirm(replaceSong.trim() + ' is in an upcoming setlist. Shelving it may affect your gig. Continue?')) return;
+        } catch(e) {}
     }
 
     var memberKey = typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : 'unknown';
@@ -218,8 +234,12 @@ window.votePitch = async function(pitchId, vote) {
         }
         if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
             GLStore.updateSongField(pitch.title, 'status', 'prospect');
-            if (pitch.replaceSong) GLStore.updateSongField(pitch.replaceSong, 'status', 'shelved');
+            // Only shelve replacement if it exists and is currently Active
+            if (pitch.replaceSong && typeof isSongActive === 'function' && isSongActive(pitch.replaceSong)) {
+                GLStore.updateSongField(pitch.replaceSong, 'status', 'shelved');
+            }
         }
+        if (typeof renderSongs === 'function') renderSongs(); // Update Songs page immediately
         if (typeof showToast === 'function') showToast('Approved! ' + pitch.title + ' is now Active.');
     } else if (noCount >= majority) {
         // REJECTED — move to backlog

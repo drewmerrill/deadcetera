@@ -1,6 +1,19 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-17 — Build 20260317-102808_
+_Last updated: 2026-03-17 — Build 20260317-200258_
+
+---
+
+## Bugs Fixed (20260317 Session — Late)
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| song-detail.js SyntaxError line 607 | Dangling try/catch from incomplete removal of Key/BPM from Song Assets | Removed empty try block | 20260317-200047 |
+| Dashboard "Cannot convert null to object" | Object.keys(_gigSongScope) when _gigSongScope undefined | Added null check | 20260317-200047 |
+| Column headers not rendering as grid | app.js .song-item had display:grid !important overriding songs.js | Removed legacy grid from app.js, used inline styles then unified table | 20260317-104843 |
+| renderSongs hoisting (again) | setupSearchAndFilters also a function declaration in app.js | Converted to var assignment | 20260317-101525 |
+| Heatmap button still showing | app.js setupSearchAndFilters injected it | Removed injection code | 20260317-101525 |
+| Reload banner 3x across reloads | sessionStorage used inconsistent keys for null vs version | Made guard version-agnostic, set immediately on creation | 20260317-091843 |
 
 ---
 
