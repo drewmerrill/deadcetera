@@ -144,11 +144,36 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // Show triage bar when active
     _renderTriageBar(dropdown, filtered.length);
 
-    // Precompute readiness + status for simplified rows
+    // Precompute readiness + status + priority signals for simplified rows
     var _rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
     var _sc = (typeof statusCache !== 'undefined') ? statusCache : {};
     var _statusDisplay = { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
     var _statusColor = { prospect:'#7c3aed', learning:'#2563eb', rotation:'#059669', shelved:'#6b7280', wip:'#2563eb', active:'#2563eb', gig_ready:'#2563eb', parked:'#6b7280', retired:'#6b7280' };
+
+    // Build upcoming setlist song set for priority signals
+    var _upcomingSongs = {};
+    try {
+        var _sls = (typeof window._glCachedSetlists !== 'undefined') ? window._glCachedSetlists : [];
+        var _today = new Date().toISOString().split('T')[0];
+        for (var _si = 0; _si < _sls.length && _si < 5; _si++) {
+            var _sl = _sls[_si];
+            if ((_sl.date || '') < _today) continue;
+            var _sets = _sl.sets || [];
+            for (var _sj = 0; _sj < _sets.length; _sj++) {
+                var _ssongs = _sets[_sj].songs || [];
+                for (var _sk = 0; _sk < _ssongs.length; _sk++) {
+                    var _st = typeof _ssongs[_sk] === 'string' ? _ssongs[_sk] : (_ssongs[_sk].title || '');
+                    if (_st) _upcomingSongs[_st] = _sl.name || 'Upcoming';
+                }
+            }
+        }
+    } catch(e) {}
+    // Top practice attention songs
+    var _topGaps = {};
+    try {
+        var _pr = (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention) ? GLStore.getPracticeAttention({ limit: 5 }) : [];
+        if (_pr) _pr.forEach(function(p) { _topGaps[p.songId] = true; });
+    } catch(e) {}
 
     dropdown.innerHTML = filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
@@ -167,14 +192,22 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
         var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
         var avgDisplay = avg > 0 ? '<span style="font-size:0.68em;font-weight:700;color:' + (avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'var(--text-dim)') + '">' + avg.toFixed(1) + '</span>' : '';
-        var needsWork = avg > 0 && avg < 3 ? '<span style="font-size:0.58em;color:#f59e0b;font-weight:600">Needs Work</span>' : '';
+        // Contextual priority signal (one per row max)
+        var signal = '';
+        if (_upcomingSongs[song.title]) {
+            signal = '<span style="font-size:0.58em;color:#818cf8;font-weight:600">🎯 In setlist</span>';
+        } else if (_topGaps[song.title]) {
+            signal = '<span style="font-size:0.58em;color:#f97316;font-weight:600">🔥 Priority gap</span>';
+        } else if (avg > 0 && avg < 3) {
+            signal = '<span style="font-size:0.58em;color:#f59e0b;font-weight:600">⚠️ Needs work</span>';
+        }
 
         var editBtn = '<button class="song-quick-edit-btn" title="Quick edit" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">✏️</button>';
 
         return '<div class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<span class="song-name">' + song.title + '</span>' +
-               '<span class="song-row-meta">' + statusBadge + avgDisplay + needsWork + '</span>' +
+               '<span class="song-row-meta">' + statusBadge + avgDisplay + signal + '</span>' +
                '<span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
                editBtn +
                '</div>';
@@ -443,7 +476,18 @@ function _renderTriageBar(dropdown, count) {
     if (!tf && _totalMissing > 0) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
-        html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.08);color:#fbbf24;margin-right:6px">Fix missing song data (' + _totalMissing + ')</button>';
+        html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
+            + '<span>⚡</span>Fix Your Library <span style="font-weight:500;opacity:0.8">(' + _totalMissing + ' issues)</span>'
+            + '<span style="font-size:0.85em">Start →</span></button>';
+    }
+    // Triage progress bar when active
+    if (tf && window._sqTriageDone > 0) {
+        var _pTotal = count + window._sqTriageDone;
+        var _pPct = _pTotal > 0 ? Math.round(window._sqTriageDone / _pTotal * 100) : 0;
+        html += '<div style="display:flex;align-items:center;gap:6px;width:100%;margin-bottom:4px">'
+            + '<span style="font-size:0.68em;font-weight:700;color:#22c55e">' + window._sqTriageDone + ' of ' + _pTotal + ' fixed</span>'
+            + '<div style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">'
+            + '<div style="width:' + _pPct + '%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.3s"></div></div></div>';
     }
 
     html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
