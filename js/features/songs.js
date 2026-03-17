@@ -49,21 +49,35 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var knownBands = ['GD','JGB','WSP','PHISH','ABB','GOOSE','DMB'];
 
     var filtered = allSongs.filter(function(song) {
-        var bandUpper = (song.band || '').toUpperCase();
-        var matchesFilter = filter === 'all'
-            ? true
-            : filter.toUpperCase() === 'OTHER'
+        var matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
+        if (!matchesSearch) return false;
+
+        // Multi-pick band filter (from column header)
+        var _bf = window._sqBandFilter || [];
+        if (_bf.length > 0) {
+            var songBand = (song.band || 'Other');
+            if (_bf.indexOf(songBand) === -1) return false;
+        }
+
+        // Legacy single-band filter (from old dropdown, if still called)
+        if (filter && filter !== 'all') {
+            var bandUpper = (song.band || '').toUpperCase();
+            var matchesBand = filter.toUpperCase() === 'OTHER'
                 ? !knownBands.includes(bandUpper)
                 : bandUpper === filter.toUpperCase();
+            if (!matchesBand) return false;
+        }
 
-        var matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
-        if (!matchesFilter || !matchesSearch) return false;
-
-        // When the user is actively searching, bypass status/harmony/northstar
-        // filters so search always finds everything in the library.
         var isSearching = searchTerm.length > 0;
 
-        // Status filter (data-level) — skipped during active search
+        // Multi-pick status filter (from column header)
+        var _sf = window._sqStatusFilter || [];
+        if (!isSearching && _sf.length > 0) {
+            var songStatus = (typeof statusCache !== 'undefined') ? (statusCache[song.title] || '') : '';
+            if (_sf.indexOf(songStatus) === -1) return false;
+        }
+
+        // Legacy status filter (from old dropdown)
         if (!isSearching &&
             typeof activeStatusFilter !== 'undefined' && activeStatusFilter &&
             typeof statusCacheLoaded !== 'undefined' && statusCacheLoaded) {
@@ -270,14 +284,36 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         + '<span style="margin-left:auto;font-size:0.62em;color:var(--text-dim)">Sorted by: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
         + '</div>';
 
-    // ── UNIFIED TABLE (header + rows in one <table> for perfect alignment) ──
+    // ── ACTIVE FILTER BAR (shows what's filtered + clear all) ──
+    var _bandFilter = window._sqBandFilter || [];
+    var _statusFilter = window._sqStatusFilter || [];
+    var _hasFilters = _bandFilter.length > 0 || _statusFilter.length > 0 || window._sqTriageFilter;
+    var _filterBarEl = document.getElementById('songActiveFilters');
+    if (_filterBarEl) {
+        if (_hasFilters) {
+            var _chips = [];
+            _bandFilter.forEach(function(b) { _chips.push('<span style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2)">' + b + ' ✕</span>'); });
+            _statusFilter.forEach(function(s) { _chips.push('<span style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">' + (_statusDisplay[s] || s) + ' ✕</span>'); });
+            _filterBarEl.style.display = 'flex';
+            _filterBarEl.innerHTML = '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">' + _chips.join('') +
+                '<button onclick="window._sqBandFilter=[];window._sqStatusFilter=[];window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#f87171;cursor:pointer;font-weight:700">Clear All</button></div>';
+        } else {
+            _filterBarEl.style.display = 'none';
+        }
+    }
+
+    // ── UNIFIED TABLE ──
     var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:8px 8px';
     var _tableStart = '<table style="width:100%;border-collapse:collapse;table-layout:fixed">';
+    // Band filter icon: multi-pick dropdown
+    var _bandFilterIcon = '<span onclick="event.stopPropagation();_sqToggleBandFilter()" style="cursor:pointer;margin-left:3px;font-size:1.1em;opacity:0.6" title="Filter by band">⏷</span>';
+    // Status filter icon: multi-pick dropdown
+    var _statusFilterIcon = '<span onclick="event.stopPropagation();_sqToggleStatusFilter()" style="cursor:pointer;margin-left:3px;font-size:1.1em;opacity:0.6" title="Filter by status">⏷</span>';
     var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
           + '<th style="' + _hd + ';text-align:left;width:40%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:30%" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Why it matters' + _arrow('status') + '</th>'
-          + '<th style="' + _hd + ';text-align:right;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:25%">Status' + _statusFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:right;width:20%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + _bandFilterIcon + '</th>'
           + '</tr></thead><tbody>';
 
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
@@ -337,8 +373,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                ' onclick="selectSong(\'' + titleOnclick + '\')" style="cursor:pointer">' +
                '<td style="padding:8px;font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:8px 4px"><div style="display:flex;align-items:center;gap:4px"><span style="width:50px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
-               '<td style="padding:8px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
-               '<td style="padding:8px;text-align:right"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
+               '<td style="padding:8px 4px;width:25%"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
+               '<td style="padding:8px;text-align:right;width:20%"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
                '</tr>';
     }).join('') + '</tbody></table>';
 
@@ -349,6 +385,70 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         }
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
     });
+};
+
+// ── Column filter dropdowns (band + status multi-pick) ───────────────────────
+window._sqBandFilter = [];
+window._sqStatusFilter = [];
+
+window._sqToggleBandFilter = function() {
+    var existing = document.getElementById('sqBandFilterDD');
+    if (existing) { existing.remove(); return; }
+    var bands = ['GD','JGB','WSP','Phish','ABB','Goose','DMB','Other'];
+    var selected = window._sqBandFilter || [];
+    var dd = document.createElement('div');
+    dd.id = 'sqBandFilterDD';
+    dd.style.cssText = 'position:fixed;z-index:999;background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5);max-height:300px;overflow-y:auto';
+    dd.innerHTML = bands.map(function(b) {
+        var checked = selected.indexOf(b) > -1 ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:0.82em;color:var(--text);cursor:pointer"><input type="checkbox" value="' + b + '"' + checked + ' onchange="_sqApplyBandFilter()" style="accent-color:var(--accent)">' + b + '</label>';
+    }).join('') + '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:4px;padding-top:4px;display:flex;gap:4px">'
+        + '<button onclick="window._sqBandFilter=[];document.getElementById(\'sqBandFilterDD\').remove();renderSongs()" style="font-size:0.7em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Clear</button>'
+        + '<button onclick="document.getElementById(\'sqBandFilterDD\').remove()" style="font-size:0.7em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer">Done</button></div>';
+    // Position near the Band header
+    var th = document.querySelector('th:last-child');
+    if (th) { var r = th.getBoundingClientRect(); dd.style.top = (r.bottom + 4) + 'px'; dd.style.right = (window.innerWidth - r.right) + 'px'; }
+    document.body.appendChild(dd);
+    document.addEventListener('click', function _closeBandDD(e) { if (!dd.contains(e.target) && e.target.closest('th') !== th) { dd.remove(); document.removeEventListener('click', _closeBandDD); } }, { capture: true });
+};
+
+window._sqApplyBandFilter = function() {
+    var dd = document.getElementById('sqBandFilterDD');
+    if (!dd) return;
+    var checks = dd.querySelectorAll('input[type="checkbox"]');
+    window._sqBandFilter = [];
+    checks.forEach(function(c) { if (c.checked) window._sqBandFilter.push(c.value); });
+    renderSongs();
+};
+
+window._sqToggleStatusFilter = function() {
+    var existing = document.getElementById('sqStatusFilterDD');
+    if (existing) { existing.remove(); return; }
+    var statuses = [['prospect','Prospect'],['learning','Learning'],['rotation','In Rotation'],['shelved','Shelved'],['','Unrated']];
+    var selected = window._sqStatusFilter || [];
+    var dd = document.createElement('div');
+    dd.id = 'sqStatusFilterDD';
+    dd.style.cssText = 'position:fixed;z-index:999;background:#1e293b;border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,0.5)';
+    dd.innerHTML = statuses.map(function(s) {
+        var checked = selected.indexOf(s[0]) > -1 ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:0.82em;color:var(--text);cursor:pointer"><input type="checkbox" value="' + s[0] + '"' + checked + ' onchange="_sqApplyStatusFilter()" style="accent-color:#fbbf24">' + s[1] + '</label>';
+    }).join('') + '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:4px;padding-top:4px;display:flex;gap:4px">'
+        + '<button onclick="window._sqStatusFilter=[];document.getElementById(\'sqStatusFilterDD\').remove();renderSongs()" style="font-size:0.7em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Clear</button>'
+        + '<button onclick="document.getElementById(\'sqStatusFilterDD\').remove()" style="font-size:0.7em;padding:2px 8px;border-radius:4px;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;cursor:pointer">Done</button></div>';
+    var ths = document.querySelectorAll('thead th');
+    var th = ths[2]; // Status is 3rd column
+    if (th) { var r = th.getBoundingClientRect(); dd.style.top = (r.bottom + 4) + 'px'; dd.style.left = r.left + 'px'; }
+    document.body.appendChild(dd);
+    document.addEventListener('click', function _closeStatusDD(e) { if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', _closeStatusDD); } }, { capture: true });
+};
+
+window._sqApplyStatusFilter = function() {
+    var dd = document.getElementById('sqStatusFilterDD');
+    if (!dd) return;
+    var checks = dd.querySelectorAll('input[type="checkbox"]');
+    window._sqStatusFilter = [];
+    checks.forEach(function(c) { if (c.checked) window._sqStatusFilter.push(c.value); });
+    renderSongs();
 };
 
 // ── Search + filter wiring ────────────────────────────────────────────────────
@@ -573,10 +673,11 @@ function _renderTriageBar(dropdown, count) {
         { id: 'needs_work', label: 'Needs Work' },
         { id: 'not_rotation', label: 'Not in Rotation' }
     ];
-    // Count missing data for entry CTA (check both allSongs cache + GLStore detail cache)
+    // Count missing data for entry CTA — respects active band filter
     var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
-    if (typeof allSongs !== 'undefined') {
-        allSongs.forEach(function(s) {
+    var _countPool = (window._sqBandFilter && window._sqBandFilter.length) ? allSongs.filter(function(s) { return window._sqBandFilter.indexOf(s.band || 'Other') > -1; }) : allSongs;
+    if (typeof _countPool !== 'undefined') {
+        _countPool.forEach(function(s) {
             var _mdc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(s.title) : null;
             var hasKey = s.key || (_mdc && _mdc.key && _mdc.key.key);
             var hasBpm = s.bpm || (_mdc && _mdc.song_bpm && _mdc.song_bpm.bpm);

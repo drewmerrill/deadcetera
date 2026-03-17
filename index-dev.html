@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260317-150156">
+    <meta name="build-version" content="20260317-155320">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx DEV — app-dev.js</title>
@@ -167,28 +167,8 @@
                 >
             </div>
             <!-- COMPACT FILTERS ROW -->
-            <div class="filter-row" style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;align-items:center">
-                <select id="bandFilter" class="app-select" onchange="filterByBand(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
-                    <option value="all">🎸 All Bands</option>
-                    <option value="GD">Grateful Dead</option>
-                    <option value="JGB">Jerry Garcia Band</option>
-                    <option value="WSP">Widespread Panic</option>
-                    <option value="Phish">Phish</option>
-                    <option value="ABB">Allman Brothers</option>
-                    <option value="Goose">Goose</option>
-                    <option value="DMB">Dave Matthews Band</option>
-                    <option value="Other">🎵 Other</option>
-                </select>
-                <select id="statusFilter" class="app-select" onchange="filterByStatus(this.value)" style="width:auto;min-width:140px;padding:7px 10px;font-size:0.85em;font-weight:600">
-                    <option value="all">📊 All Statuses</option>
-                    <option value="prospect">👀 Prospect</option>
-                    <option value="learning">📖 Learning</option>
-                    <option value="rotation">🔄 In Rotation</option>
-                    <option value="shelved">📦 Shelved</option>
-                </select>
-                <span title="🎯 This Week = songs you're actively rehearsing this week&#10;✅ Gig Ready = polished and ready to play live&#10;⚠️ Needs Polish = know it but needs work&#10;📚 On Deck = learning, not yet rehearsed" style="cursor:help;color:var(--text-dim,#64748b);font-size:0.9em;margin-left:-4px">ⓘ</span>
-                <!-- Harmonies + North Star moved to Song Assets in detail panel (PL-11) -->
-            </div>
+            <!-- Filters now in column headers (PL-13c) -->
+            <div id="songActiveFilters" style="display:none;margin:8px 0"></div>
             
             <div class="song-dropdown" id="songDropdown">
                 <!-- Songs populated here -->
@@ -675,52 +655,52 @@
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
-    <script src="js/core/utils.js?v=20260317-150156"></script>
-    <script src="js/core/firebase-service.js?v=20260317-150156"></script>
-    <script src="js/core/song-intelligence.js?v=20260317-150156"></script>
-    <script src="js/core/rehearsal_agenda_engine.js?v=20260317-150156"></script>
-    <script src="js/core/rehearsal_scorecard_engine.js?v=20260317-150156"></script>
-    <script src="js/core/rehearsal_segmentation_engine.js?v=20260317-150156"></script>
-    <script src="js/core/groovelinx_store.js?v=20260317-150156"></script>
-    <script src="js/core/worker-api.js?v=20260317-150156"></script>
-    <script src="js/core/wake-lock.js?v=20260317-150156"></script>
-    <script src="js/ui/navigation.js?v=20260317-150156"></script>
-    <script src="js/ui/gl-right-panel.js?v=20260317-150156"></script><!-- Phase C: right panel controller — dev only -->
-    <script src="js/ui/gl-left-rail.js?v=20260317-150156"></script><!-- Milestone 4: persistent left rail -->
-    <script src="js/ui/gl-now-playing.js?v=20260317-150156"></script><!-- Milestone 4: now playing bar -->
-    <script src="js/ui/gl-context-bar.js?v=20260317-150156"></script><!-- Navigation stability: persistent context bar -->
-    <script src="js/ui/gl-entity-picker.js?v=20260317-150156"></script><!-- Phase 1: venue picker + entity combobox -->
-    <script src="js/ui/gl-inline-help.js?v=20260317-150156"></script><!-- Help Layer 1: inline guidance -->
-    <script src="js/features/songs.js?v=20260317-150156"></script>
-    <script src="data.js?v=20260317-150156"></script>
-    <script src="data/starter_packs.js?v=20260317-150156"></script>
-    <script src="js/features/gigs.js?v=20260317-150156"></script>
-    <script src="js/features/rehearsal.js?v=20260317-150156"></script>
-    <script src="js/features/setlists.js?v=20260317-150156"></script>
-    <script src="js/features/live-gig.js?v=20260317-150156"></script>
-    <script src="js/features/practice.js?v=20260317-150156"></script>
-    <script src="js/features/calendar.js?v=20260317-150156"></script>
-    <script src="js/core/calendar-export.js?v=20260317-150156"></script>
-    <script src="js/features/notifications.js?v=20260317-150156"></script>
-    <script src="js/features/social.js?v=20260317-150156"></script>
-    <script src="js/features/finances.js?v=20260317-150156"></script>
-    <script src="js/features/bestshot.js?v=20260317-150156"></script>
-    <script src="js/features/playlists.js?v=20260317-150156"></script>
-    <script src="js/features/stoner-mode.js?v=20260317-150156"></script>
-    <script src="js/features/home-dashboard.js?v=20260317-150156"></script>
-    <script src="js/features/song-detail.js?v=20260317-150156"></script>
-    <script src="js/features/song-drawer.js?v=20260317-150156"></script>
-    <script src="js/features/harmony-lab.js?v=20260317-150156"></script>
-    <script src="js/features/home-dashboard-cc.js?v=20260317-150156"></script>
-    <script src="js/features/chart-import.js?v=20260317-150156"></script>
-    <script src="js/features/band-comms.js?v=20260317-150156"></script>
-    <script src="js/features/stage-plot.js?v=20260317-150156"></script>
-    <script src="app-dev.js?v=20260317-150156"></script><!-- ← DEV: loads app-dev.js instead of app.js -->
-    <script src="rehearsal-mode.js?v=20260317-150156"></script>
-    <script src="version-hub.js?v=20260317-150156"></script>
-    <script src="pocket-meter.js?v=20260317-150156"></script>
-    <script src="help.js?v=20260317-150156"></script>
-    <script src="js/ui/gl-help-v2.js?v=20260317-150156"></script>
+    <script src="js/core/utils.js?v=20260317-155320"></script>
+    <script src="js/core/firebase-service.js?v=20260317-155320"></script>
+    <script src="js/core/song-intelligence.js?v=20260317-155320"></script>
+    <script src="js/core/rehearsal_agenda_engine.js?v=20260317-155320"></script>
+    <script src="js/core/rehearsal_scorecard_engine.js?v=20260317-155320"></script>
+    <script src="js/core/rehearsal_segmentation_engine.js?v=20260317-155320"></script>
+    <script src="js/core/groovelinx_store.js?v=20260317-155320"></script>
+    <script src="js/core/worker-api.js?v=20260317-155320"></script>
+    <script src="js/core/wake-lock.js?v=20260317-155320"></script>
+    <script src="js/ui/navigation.js?v=20260317-155320"></script>
+    <script src="js/ui/gl-right-panel.js?v=20260317-155320"></script><!-- Phase C: right panel controller — dev only -->
+    <script src="js/ui/gl-left-rail.js?v=20260317-155320"></script><!-- Milestone 4: persistent left rail -->
+    <script src="js/ui/gl-now-playing.js?v=20260317-155320"></script><!-- Milestone 4: now playing bar -->
+    <script src="js/ui/gl-context-bar.js?v=20260317-155320"></script><!-- Navigation stability: persistent context bar -->
+    <script src="js/ui/gl-entity-picker.js?v=20260317-155320"></script><!-- Phase 1: venue picker + entity combobox -->
+    <script src="js/ui/gl-inline-help.js?v=20260317-155320"></script><!-- Help Layer 1: inline guidance -->
+    <script src="js/features/songs.js?v=20260317-155320"></script>
+    <script src="data.js?v=20260317-155320"></script>
+    <script src="data/starter_packs.js?v=20260317-155320"></script>
+    <script src="js/features/gigs.js?v=20260317-155320"></script>
+    <script src="js/features/rehearsal.js?v=20260317-155320"></script>
+    <script src="js/features/setlists.js?v=20260317-155320"></script>
+    <script src="js/features/live-gig.js?v=20260317-155320"></script>
+    <script src="js/features/practice.js?v=20260317-155320"></script>
+    <script src="js/features/calendar.js?v=20260317-155320"></script>
+    <script src="js/core/calendar-export.js?v=20260317-155320"></script>
+    <script src="js/features/notifications.js?v=20260317-155320"></script>
+    <script src="js/features/social.js?v=20260317-155320"></script>
+    <script src="js/features/finances.js?v=20260317-155320"></script>
+    <script src="js/features/bestshot.js?v=20260317-155320"></script>
+    <script src="js/features/playlists.js?v=20260317-155320"></script>
+    <script src="js/features/stoner-mode.js?v=20260317-155320"></script>
+    <script src="js/features/home-dashboard.js?v=20260317-155320"></script>
+    <script src="js/features/song-detail.js?v=20260317-155320"></script>
+    <script src="js/features/song-drawer.js?v=20260317-155320"></script>
+    <script src="js/features/harmony-lab.js?v=20260317-155320"></script>
+    <script src="js/features/home-dashboard-cc.js?v=20260317-155320"></script>
+    <script src="js/features/chart-import.js?v=20260317-155320"></script>
+    <script src="js/features/band-comms.js?v=20260317-155320"></script>
+    <script src="js/features/stage-plot.js?v=20260317-155320"></script>
+    <script src="app-dev.js?v=20260317-155320"></script><!-- ← DEV: loads app-dev.js instead of app.js -->
+    <script src="rehearsal-mode.js?v=20260317-155320"></script>
+    <script src="version-hub.js?v=20260317-155320"></script>
+    <script src="pocket-meter.js?v=20260317-155320"></script>
+    <script src="help.js?v=20260317-155320"></script>
+    <script src="js/ui/gl-help-v2.js?v=20260317-155320"></script>
 
     <script>
     // Hero gate — fires immediately on load, before Firebase resolves
