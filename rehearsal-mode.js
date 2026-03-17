@@ -27,6 +27,9 @@ var pmPalaceScenes = [];
 var pmPalaceAutoTimer = null;
 var _rmCache = {};        // In-memory cache: { title: { chart, meta, ts } }
 var _rmNavLock = 0;       // Throttle timestamp for rmNavigate
+var _rmSections = [];     // Current song's normalized sections from song_structure
+var _rmActiveSectionIdx = 0; // Index into _rmSections for active section
+var _rmScrollSyncEnabled = false; // True when chart has anchored sections
 
 // Archive.org optimized search query per band
 function rmArchiveQuery(title, bandCode) {
@@ -356,52 +359,219 @@ async function rmLoadChart() {
     }
 }
 
-// ── Band Notes strip in chart panel ──────────────────────────────────────────
+// ── Section Timeline + Active Band Notes ─────────────────────────────────────
+var _rmTypeIcons = {intro:'🎬',verse:'📝',pre_chorus:'📝',chorus:'🎶',post_chorus:'🎶',solo:'🎸',jam:'🌀',bridge:'🌉',outro:'🔚',ending:'🔚',breakdown:'💥',build:'📈',drop:'📉',vamp:'🔁',tag:'🏷',interlude:'🎵',turnaround:'↩️',head:'🎵',refrain:'🎶',other:'·'};
+
 function _rmLoadBandNotesStrip(songTitle) {
-    var stripId = 'rmBandNotesStrip';
-    var existing = document.getElementById(stripId);
-    if (existing) existing.remove();
+    // Clean up previous elements
+    ['rmSectionTimeline','rmActiveSectionPanel','rmBandNotesStrip'].forEach(function(id) {
+        var el = document.getElementById(id); if (el) el.remove();
+    });
+    _rmSections = [];
+    _rmActiveSectionIdx = 0;
+    _rmScrollSyncEnabled = false;
+
     if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
     GLStore.loadFieldMeta(songTitle, 'song_structure').then(function(data) {
         if (!data || !data.sections || !data.sections.length) return;
-        var typeIcons = {intro:'🎬',verse:'📝',chorus:'🎶',solo:'🎸',jam:'🌀',bridge:'🌉',outro:'🔚',ending:'🔚',breakdown:'💥',build:'📈',vamp:'🔁',tag:'🏷',other:'·'};
-        // Only show sections with band notes content
-        var lines = [];
-        data.sections.forEach(function(s) {
-            var parts = [];
-            if (s.starter) parts.push(s.starter + ' starts');
-            if (s.feel) parts.push(s.feel);
-            if (s.soloOrder && s.soloOrder.length) parts.push(s.soloOrder.join(' → '));
-            if (s.instrument && !(s.soloOrder && s.soloOrder.length)) parts.push(s.instrument);
-            if (s.dynamics) parts.push(s.dynamics);
-            if (s.stopCue) parts.push('Stop: ' + s.stopCue);
-            if (s.endCue) parts.push(s.endCue);
-            if (s.introType) parts.push(s.introType.replace(/_/g, ' '));
-            if (s.endingType) parts.push(s.endingType.replace(/_/g, ' '));
-            if (parts.length === 0 && s.notes) parts.push(s.notes);
-            if (parts.length === 0) return;
-            var icon = typeIcons[s.type] || typeIcons.other;
-            var label = s.label || s.name || '';
-            lines.push(icon + ' <strong>' + label + '</strong> — ' + parts.join(' · '));
-        });
-        if (lines.length === 0) return;
-        var strip = document.createElement('div');
-        strip.id = stripId;
-        strip.style.cssText = 'padding:6px 12px;font-size:0.72em;line-height:1.5;color:#94a3b8;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer';
-        strip.innerHTML = lines.slice(0, 3).join('<br>') + (lines.length > 3 ? '<br><span style="color:var(--text-dim);opacity:0.5">+' + (lines.length - 3) + ' more</span>' : '');
-        strip.title = 'Tap to expand';
-        strip.onclick = function() {
-            if (strip.dataset.expanded === 'true') {
-                strip.innerHTML = lines.slice(0, 3).join('<br>') + (lines.length > 3 ? '<br><span style="color:var(--text-dim);opacity:0.5">+' + (lines.length - 3) + ' more</span>' : '');
-                strip.dataset.expanded = 'false';
-            } else {
-                strip.innerHTML = lines.join('<br>');
-                strip.dataset.expanded = 'true';
-            }
-        };
-        var chartPanel = document.getElementById('rmChartText');
-        if (chartPanel && chartPanel.parentElement) chartPanel.parentElement.insertBefore(strip, chartPanel);
+        _rmSections = data.sections;
+        _rmActiveSectionIdx = 0;
+        _rmRenderTimeline();
+        _rmRenderActiveSectionPanel();
+        _rmSetupScrollSync();
     }).catch(function() {});
+}
+
+// Render the horizontal scrollable timeline: Intro → V1 → Chorus → Solo → Outro
+function _rmRenderTimeline() {
+    var existing = document.getElementById('rmSectionTimeline');
+    if (existing) existing.remove();
+    if (!_rmSections.length) return;
+
+    var timeline = document.createElement('div');
+    timeline.id = 'rmSectionTimeline';
+    timeline.style.cssText = 'display:flex;align-items:center;gap:2px;padding:5px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:rgba(0,0,0,0.2);border-bottom:1px solid rgba(255,255,255,0.06);scrollbar-width:none';
+
+    _rmSections.forEach(function(s, i) {
+        var isActive = i === _rmActiveSectionIdx;
+        var icon = _rmTypeIcons[s.type] || _rmTypeIcons.other;
+        var shortLabel = (s.label || s.name || '').replace(/\s*\d+$/, ''); // "Verse 1" → "Verse" for compact display
+        if (shortLabel.length > 8) shortLabel = shortLabel.slice(0, 7) + '…';
+
+        var pill = document.createElement('button');
+        pill.dataset.secIdx = i;
+        pill.style.cssText = 'flex-shrink:0;padding:3px 8px;border-radius:4px;font-size:0.68em;font-weight:' + (isActive ? '800' : '600')
+            + ';cursor:pointer;white-space:nowrap;border:1px solid ' + (isActive ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.06)')
+            + ';background:' + (isActive ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.02)')
+            + ';color:' + (isActive ? '#a5b4fc' : '#64748b')
+            + ';touch-action:manipulation;transition:all 0.15s';
+        pill.textContent = icon + ' ' + shortLabel;
+        pill.onclick = function() { _rmSetActiveSection(i); };
+        timeline.appendChild(pill);
+
+        // Arrow between pills (except last)
+        if (i < _rmSections.length - 1) {
+            var arrow = document.createElement('span');
+            arrow.style.cssText = 'color:rgba(255,255,255,0.15);font-size:0.6em;flex-shrink:0';
+            arrow.textContent = '›';
+            timeline.appendChild(arrow);
+        }
+    });
+
+    // Insert between sticky bar and chart
+    var chartEl = document.getElementById('rmChartText');
+    if (chartEl && chartEl.parentElement) chartEl.parentElement.insertBefore(timeline, chartEl);
+}
+
+// Render the active section's band notes (only non-null fields)
+function _rmRenderActiveSectionPanel() {
+    var existing = document.getElementById('rmActiveSectionPanel');
+    if (existing) existing.remove();
+    if (!_rmSections.length) return;
+
+    var s = _rmSections[_rmActiveSectionIdx];
+    if (!s) return;
+
+    // Collect non-null band notes
+    var fields = [];
+    if (s.starter) fields.push({ icon: '👤', label: s.starter + ' starts' });
+    if (s.feel) fields.push({ icon: '🎵', label: s.feel });
+    if (s.soloOrder && s.soloOrder.length) fields.push({ icon: '🎸', label: s.soloOrder.join(' → ') });
+    if (s.instrument && !(s.soloOrder && s.soloOrder.length)) fields.push({ icon: '🎸', label: s.instrument });
+    if (s.dynamics) fields.push({ icon: '📊', label: s.dynamics });
+    if (s.stopCue) fields.push({ icon: '✋', label: s.stopCue });
+    if (s.endCue) fields.push({ icon: '🔚', label: s.endCue });
+    if (s.introType) fields.push({ icon: '🎬', label: s.introType.replace(/_/g, ' ') });
+    if (s.endingType) fields.push({ icon: '🏁', label: s.endingType.replace(/_/g, ' ') });
+    if (fields.length === 0 && s.notes) fields.push({ icon: '📝', label: s.notes });
+
+    // Don't render panel if no band notes for this section
+    if (fields.length === 0) return;
+
+    var panel = document.createElement('div');
+    panel.id = 'rmActiveSectionPanel';
+    panel.style.cssText = 'padding:5px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(99,102,241,0.04);border-bottom:1px solid rgba(99,102,241,0.1);font-size:0.72em;color:#94a3b8';
+
+    // Section label
+    var sectionIcon = _rmTypeIcons[s.type] || '';
+    var labelSpan = document.createElement('span');
+    labelSpan.style.cssText = 'font-weight:700;color:#a5b4fc;flex-shrink:0';
+    labelSpan.textContent = sectionIcon + ' ' + (s.label || s.name || '');
+    panel.appendChild(labelSpan);
+
+    // Separator
+    var sep = document.createElement('span');
+    sep.style.cssText = 'color:rgba(255,255,255,0.1)';
+    sep.textContent = '│';
+    panel.appendChild(sep);
+
+    // Band note chips
+    fields.forEach(function(f) {
+        var chip = document.createElement('span');
+        chip.style.cssText = 'white-space:nowrap';
+        chip.textContent = f.icon + ' ' + f.label;
+        panel.appendChild(chip);
+    });
+
+    // Insert after timeline, before chart
+    var chartEl = document.getElementById('rmChartText');
+    if (chartEl && chartEl.parentElement) chartEl.parentElement.insertBefore(panel, chartEl);
+}
+
+// Set active section: update state, re-render timeline + panel, scroll chart
+function _rmSetActiveSection(idx) {
+    if (idx < 0 || idx >= _rmSections.length) return;
+    _rmActiveSectionIdx = idx;
+    _rmRenderTimeline();
+    _rmRenderActiveSectionPanel();
+    // Scroll active pill into view
+    var timeline = document.getElementById('rmSectionTimeline');
+    if (timeline) {
+        var activePill = timeline.querySelector('[data-sec-idx="' + idx + '"]');
+        if (activePill) activePill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+    // Scroll chart to anchor
+    _rmScrollChartToSection(idx);
+}
+
+// Scroll chart text to the section's chartAnchor
+function _rmScrollChartToSection(idx) {
+    var s = _rmSections[idx];
+    if (!s || !s.chartAnchor) return;
+    var chartEl = document.getElementById('rmChartText');
+    if (!chartEl) return;
+    var text = chartEl.textContent || '';
+    var anchor = '[' + s.chartAnchor + ']';
+    // Find the Nth occurrence (anchorIndex)
+    var anchorIdx = s.anchorIndex || 0;
+    var pos = -1;
+    for (var n = 0; n <= anchorIdx; n++) {
+        pos = text.indexOf(anchor, pos + 1);
+        if (pos === -1) break;
+    }
+    if (pos === -1) return;
+    // Find approximate scroll position: count newlines before the match
+    var linesBefore = text.substring(0, pos).split('\n').length - 1;
+    var lineHeight = parseFloat(getComputedStyle(chartEl).lineHeight) || (rmFontSize * 1.4);
+    var scrollTarget = linesBefore * lineHeight;
+    // Scroll the chart panel (parent is rm-panel which is the scrollable container)
+    var scrollContainer = chartEl.closest('.rm-panel') || chartEl.parentElement;
+    if (scrollContainer) scrollContainer.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+}
+
+// Lightweight scroll sync: detect which section anchor is visible and update active
+function _rmSetupScrollSync() {
+    _rmScrollSyncEnabled = false;
+    if (!_rmSections.length) return;
+    // Build anchor position map from chart text
+    var chartEl = document.getElementById('rmChartText');
+    if (!chartEl) return;
+    var text = chartEl.textContent || '';
+    var anchorPositions = []; // [{idx, linePos}]
+    _rmSections.forEach(function(s, i) {
+        if (!s.chartAnchor) return;
+        var anchor = '[' + s.chartAnchor + ']';
+        var aIdx = s.anchorIndex || 0;
+        var pos = -1;
+        for (var n = 0; n <= aIdx; n++) {
+            pos = text.indexOf(anchor, pos + 1);
+            if (pos === -1) break;
+        }
+        if (pos === -1) return;
+        var linesBefore = text.substring(0, pos).split('\n').length - 1;
+        anchorPositions.push({ sectionIdx: i, line: linesBefore });
+    });
+    if (anchorPositions.length < 2) return; // Not enough anchors to sync
+    _rmScrollSyncEnabled = true;
+
+    var scrollContainer = chartEl.closest('.rm-panel') || chartEl.parentElement;
+    if (!scrollContainer) return;
+
+    // Throttled scroll handler
+    var _lastSyncTs = 0;
+    scrollContainer.addEventListener('scroll', function() {
+        var now = Date.now();
+        if (now - _lastSyncTs < 200) return; // 200ms throttle
+        _lastSyncTs = now;
+        var lineHeight = parseFloat(getComputedStyle(chartEl).lineHeight) || (rmFontSize * 1.4);
+        var scrollLine = Math.round(scrollContainer.scrollTop / lineHeight);
+        // Find the section whose anchor is closest to (but before) current scroll
+        var bestIdx = 0;
+        for (var i = 0; i < anchorPositions.length; i++) {
+            if (anchorPositions[i].line <= scrollLine + 2) bestIdx = anchorPositions[i].sectionIdx;
+        }
+        if (bestIdx !== _rmActiveSectionIdx) {
+            _rmActiveSectionIdx = bestIdx;
+            _rmRenderTimeline();
+            _rmRenderActiveSectionPanel();
+            // Scroll timeline pill into view
+            var timeline = document.getElementById('rmSectionTimeline');
+            if (timeline) {
+                var pill = timeline.querySelector('[data-sec-idx="' + bestIdx + '"]');
+                if (pill) pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+    }, { passive: true });
 }
 
 function rmAdjustFont(delta) {
