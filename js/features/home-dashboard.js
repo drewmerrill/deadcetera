@@ -1607,6 +1607,8 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     }
 
     // Next Best Action — setlist-aware priority hierarchy
+    var agenda = (typeof GLStore !== 'undefined' && GLStore.generateRehearsalAgenda) ? GLStore.generateRehearsalAgenda() : null;
+    var tl = (typeof GLStore !== 'undefined' && GLStore.getLatestTimeline) ? GLStore.getLatestTimeline() : null;
     var _nba = '';
     var _nbaLabel = '', _nbaOnclick = '', _nbaSecondary = '';
     if (_hasScope && riskEntry) {
