@@ -82,6 +82,23 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             if (!nsc[song.title]) return false;
         }
 
+        // Triage filter — show only songs missing specific data
+        if (!isSearching && window._sqTriageFilter) {
+            var tf = window._sqTriageFilter;
+            if (tf === 'no_key' && song.key) return false;
+            if (tf === 'no_bpm' && song.bpm) return false;
+            if (tf === 'no_status') {
+                var _ts = (typeof statusCache !== 'undefined') ? statusCache[song.title] : null;
+                if (_ts) return false;
+            }
+            // no_lead requires async data — use cached songDetailCache if available
+            if (tf === 'no_lead') {
+                var _dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(song.title) : null;
+                var _hasLead = _dc && _dc.lead_singer && _dc.lead_singer.singer;
+                if (_hasLead) return false;
+            }
+        }
+
         return true;
     });
 
@@ -114,6 +131,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Show active filter chip so the user knows a filter is hiding songs
     _renderActiveFilterChip();
+    // Show triage bar when active
+    _renderTriageBar(dropdown, filtered.length);
 
     dropdown.innerHTML = filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
@@ -327,6 +346,44 @@ window.selectSong = function selectSong(songTitle) {
     }
 };
 
+// ── Triage Mode (missing data filters) ────────────────────────────────────────
+
+window._sqTriageFilter = null;
+window.sqTriageSet = function(filter) {
+    window._sqTriageFilter = (window._sqTriageFilter === filter) ? null : filter;
+    var searchTerm = (document.getElementById('songSearch') || {}).value || '';
+    renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
+};
+
+function _renderTriageBar(dropdown, count) {
+    var existing = document.getElementById('sqTriageBar');
+    if (existing) existing.remove();
+    var bar = document.createElement('div');
+    bar.id = 'sqTriageBar';
+    bar.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding:4px 0;margin-bottom:4px';
+    var tf = window._sqTriageFilter;
+    var items = [
+        { id: 'no_key', label: 'Missing Key' },
+        { id: 'no_bpm', label: 'Missing BPM' },
+        { id: 'no_status', label: 'No Status' },
+        { id: 'no_lead', label: 'No Lead' }
+    ];
+    var html = '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
+    items.forEach(function(it) {
+        var active = tf === it.id;
+        html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:600;padding:2px 8px;border-radius:10px;cursor:pointer;border:1px solid '
+            + (active ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:'
+            + (active ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.03)') + ';color:'
+            + (active ? '#fbbf24' : 'var(--text-dim)') + '">' + it.label + '</button>';
+    });
+    if (tf) {
+        html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs</span>';
+        html += '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;renderSongs()" style="font-size:0.62em;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px">Clear</button>';
+    }
+    bar.innerHTML = html;
+    dropdown.parentElement.insertBefore(bar, dropdown);
+}
+
 // ── Quick Song Setup (inline editing) ─────────────────────────────────────────
 
 (function() {
@@ -338,7 +395,8 @@ window.selectSong = function selectSong(songTitle) {
         + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
         + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
         + '.sq-label{font-size:0.62em;color:var(--text-dim);font-weight:700;white-space:nowrap}'
-        + '.sq-done{font-size:0.7em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;white-space:nowrap}';
+        + '.sq-done{font-size:0.7em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;white-space:nowrap}'
+        + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}';
     document.head.appendChild(style);
 })();
 
@@ -379,11 +437,15 @@ window.songQuickSetup = function songQuickSetup(title) {
     }).join('');
 
     row.innerHTML = titleLabel
-        + '<span class="sq-label">Lead</span><select class="sq-field" id="sq-lead-' + safeTitle + '" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'leadSinger\',this.value)">' + leadOpts + '</select>'
-        + '<span class="sq-label">Status</span><select class="sq-field" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'status\',this.value)">' + statusOpts + '</select>'
-        + '<span class="sq-label">Key</span><select class="sq-field" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'key\',this.value)">' + keyOpts + '</select>'
-        + '<span class="sq-label">BPM</span><input type="number" class="sq-field" style="width:55px" min="40" max="240" value="' + currentBpm + '" onchange="GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}">'
+        + '<span class="sq-label">Lead</span><select class="sq-field sq-tab" id="sq-lead-' + safeTitle + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'leadSinger\',this.value)">' + leadOpts + '</select>'
+        + '<span class="sq-label">Status</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'status\',this.value)">' + statusOpts + '</select>'
+        + '<span class="sq-label">Key</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'key\',this.value)">' + keyOpts + '</select>'
+        + '<span class="sq-label">BPM</span><input type="number" class="sq-field sq-tab" style="width:55px" min="40" max="240" value="' + currentBpm + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}">'
         + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>';
+
+    // Auto-focus first field
+    var firstField = row.querySelector('.sq-tab');
+    if (firstField) requestAnimationFrame(function() { firstField.focus(); });
 
     // Load lead singer async
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
@@ -398,6 +460,12 @@ window.songQuickSetup = function songQuickSetup(title) {
         if (e.key === 'Escape') _sqClose(title);
     };
     document.addEventListener('keydown', row._sqKeyHandler);
+};
+
+window._sqFieldSaved = function(el) {
+    if (!el) return;
+    el.classList.add('sq-field--saved');
+    setTimeout(function() { el.classList.remove('sq-field--saved'); }, 800);
 };
 
 window._sqClose = function(title) {

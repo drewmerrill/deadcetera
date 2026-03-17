@@ -14,19 +14,21 @@
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   var READINESS_TIERS = {
-    locked:    { min: 5, max: 5, label: 'Gig Ready' },
-    almost:    { min: 4, max: 4.99, label: 'Tightening' },
-    needsWork: { min: 2, max: 3.99, label: 'Rough' },
-    notReady:  { min: 1, max: 1.99, label: 'Learning' },
-    unrated:   { min: 0, max: 0, label: 'New Song' },
+    locked:      { min: 5, max: 5, label: 'Gig Ready' },
+    tightening:  { min: 4, max: 4.99, label: 'Tightening' },
+    gettingThere:{ min: 3, max: 3.99, label: 'Getting There' },
+    rough:       { min: 2, max: 2.99, label: 'Rough' },
+    learning:    { min: 1, max: 1.99, label: 'Learning' },
+    newSong:     { min: 0, max: 0.99, label: 'New Song' },
   };
 
   function _tierFor(avg) {
-    if (!avg || avg <= 0) return 'unrated';
+    if (!avg || avg < 1) return 'newSong';
     if (avg >= 5) return 'locked';
-    if (avg >= 4) return 'almost';
-    if (avg >= 2) return 'needsWork';
-    return 'notReady';
+    if (avg >= 4) return 'tightening';
+    if (avg >= 3) return 'gettingThere';
+    if (avg >= 2) return 'rough';
+    return 'learning';
   }
 
   function _avg(nums) {
@@ -106,7 +108,7 @@
     songs = songs || [];
     var keys = _memberKeys(members);
 
-    var tiers = { locked: [], almost: [], needsWork: [], notReady: [], unrated: [] };
+    var tiers = { locked: [], tightening: [], gettingThere: [], rough: [], learning: [], newSong: [] };
     var allAvgs = [];
     var songIntels = {};
     var weakest = [];
@@ -151,10 +153,11 @@
       unratedSongs: songs.length - allAvgs.length,
       tiers: {
         locked: tiers.locked.length,
-        almost: tiers.almost.length,
-        needsWork: tiers.needsWork.length,
-        notReady: tiers.notReady.length,
-        unrated: tiers.unrated.length,
+        tightening: tiers.tightening.length,
+        gettingThere: tiers.gettingThere.length,
+        rough: tiers.rough.length,
+        learning: tiers.learning.length,
+        newSong: tiers.newSong.length,
       },
       weakest: weakest,
       mismatches: mismatches,
@@ -474,6 +477,54 @@
     return results.slice(0, limit);
   }
 
+  // ── Lifecycle Suggestions (advisory only) ────────────────────────────────
+
+  /**
+   * Suggest a lifecycle stage for a song based on signals.
+   * Returns null if no strong signal, or { suggestion, reason }.
+   * Never auto-changes — advisory only.
+   */
+  function suggestLifecycle(title, avgReadiness, currentStatus) {
+    // Don't suggest if already in rotation or shelved (explicit user choice)
+    if (currentStatus === 'rotation' || currentStatus === 'shelved') return null;
+
+    // Check if song appears in recent setlists (signals rotation)
+    var inRecentSetlist = false;
+    try {
+      var setlists = (typeof window._glCachedSetlists !== 'undefined') ? window._glCachedSetlists : [];
+      var sixMonthsAgo = new Date(Date.now() - 180 * 86400000).toISOString().split('T')[0];
+      for (var i = 0; i < setlists.length; i++) {
+        var sl = setlists[i];
+        if ((sl.date || '') < sixMonthsAgo) continue;
+        var sets = sl.sets || [];
+        for (var j = 0; j < sets.length; j++) {
+          var songs = sets[j].songs || [];
+          for (var k = 0; k < songs.length; k++) {
+            var st = typeof songs[k] === 'string' ? songs[k] : (songs[k].title || '');
+            if (st === title) { inRecentSetlist = true; break; }
+          }
+          if (inRecentSetlist) break;
+        }
+        if (inRecentSetlist) break;
+      }
+    } catch(e) {}
+
+    // High readiness + in setlists → suggest rotation
+    if (inRecentSetlist && avgReadiness >= 4) {
+      return { suggestion: 'rotation', reason: 'In recent setlists with high readiness' };
+    }
+    if (inRecentSetlist && avgReadiness >= 2) {
+      return { suggestion: 'rotation', reason: 'Played in recent setlists' };
+    }
+
+    // Low readiness, not a prospect → suggest learning
+    if (avgReadiness > 0 && avgReadiness < 3 && currentStatus !== 'learning' && currentStatus !== 'prospect') {
+      return { suggestion: 'learning', reason: 'Readiness still developing' };
+    }
+
+    return null;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.SongIntelligence = {
@@ -482,6 +533,7 @@
     detectSongGaps: detectSongGaps,
     generatePracticeRecommendations: generatePracticeRecommendations,
     computePracticeAttention: computePracticeAttention,
+    suggestLifecycle: suggestLifecycle,
     READINESS_TIERS: READINESS_TIERS,
   };
 

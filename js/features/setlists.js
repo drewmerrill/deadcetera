@@ -25,6 +25,7 @@ function renderSetlistsPage(el) {
 
 async function loadSetlists() {
     const rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    window._glCachedSetlists = rawData; // Cache for lifecycle suggestions
     // Sort newest first; track original indices for edit/delete operations
     const data = rawData.map((sl, origIdx) => ({ ...sl, _origIdx: origIdx })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     window._cachedSetlists = rawData; // cache unsorted for live-gig.js index lookup

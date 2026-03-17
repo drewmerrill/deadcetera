@@ -2890,6 +2890,7 @@
     // Song data write (dual-path)
     saveSongData:          saveSongData,
     loadFieldMeta:         loadFieldMeta,
+    _getDetailCache:       function(title) { return _state.songDetailCache[title] || null; },
 
     // Onboarding / Band Activation
     evaluateOnboardingState: evaluateOnboardingState,

@@ -236,8 +236,8 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         '</div>';
     _sdBuildReadinessStrip(title);
-    // Load attribution for DNA fields
-    setTimeout(function() { _sdLoadAttribution(title); }, 300);
+    // Load attribution for DNA fields + lifecycle suggestion
+    setTimeout(function() { _sdLoadAttribution(title); _sdShowLifecycleSuggestion(title, status); }, 300);
     // Load song discussion + prospect votes
     setTimeout(function() {
         var discMount = document.getElementById('sd-discussion-mount');
@@ -527,6 +527,24 @@ function _sdLoadAttribution(title) {
             el.textContent = 'by ' + displayName + ' \u00B7 ' + _sdTimeAgo(data.updatedAt);
         }).catch(function() {});
     });
+}
+
+// ── Lifecycle suggestion (advisory) ───────────────────────────────────────────
+function _sdShowLifecycleSuggestion(title, currentStatus) {
+    var el = (_sdContainer || document).querySelector('#sd-attr-status');
+    if (!el) return;
+    if (typeof SongIntelligence === 'undefined' || !SongIntelligence.suggestLifecycle) return;
+    var _siIntel = (typeof GLStore !== 'undefined' && GLStore.getSongIntelligence) ? GLStore.getSongIntelligence(title) : null;
+    var avg = _siIntel ? _siIntel.avg : 0;
+    var result = SongIntelligence.suggestLifecycle(title, avg, currentStatus);
+    if (!result) return;
+    var labels = { rotation: '🔄 In Rotation', learning: '📖 Learning', shelved: '📦 Shelved' };
+    var lbl = labels[result.suggestion] || result.suggestion;
+    // Append suggestion below existing attribution
+    var existing = el.textContent || '';
+    el.innerHTML = (existing ? '<span>' + existing + '</span> · ' : '')
+        + '<span style="color:#fbbf24;cursor:pointer" title="' + result.reason + '" onclick="sdUpdateSongStatus(\'' + result.suggestion + '\');this.parentElement.innerHTML=\'Applied\'">'
+        + 'Suggested: ' + lbl + '</span>';
 }
 
 window.sdSaveReadiness = function(songTitle, memberKey, val) {
