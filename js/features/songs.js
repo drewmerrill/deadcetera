@@ -195,7 +195,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Lifecycle badge
         var status = _sc[song.title] || '';
         var statusBadge = status && _statusDisplay[status]
-            ? '<span style="font-size:0.62em;font-weight:700;padding:1px 6px;border-radius:8px;background:' + (_statusColor[status] || '#6b7280') + '22;color:' + (_statusColor[status] || '#6b7280') + ';border:1px solid ' + (_statusColor[status] || '#6b7280') + '44;white-space:nowrap">' + _statusDisplay[status] + '</span>'
+            ? '<span style="font-size:0.55em;font-weight:600;padding:1px 5px;border-radius:6px;background:' + (_statusColor[status] || '#6b7280') + '15;color:' + (_statusColor[status] || '#6b7280') + ';opacity:0.8;white-space:nowrap">' + _statusDisplay[status] + '</span>'
             : '';
 
         // Average readiness (bar + number)
@@ -203,11 +203,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
         var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
         var barPct = avg ? Math.round((avg / 5) * 100) : 0;
-        var barColor = avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.1)';
+        var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)';
         var readinessBar = avg > 0
             ? '<span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span>'
-              + '<span style="font-size:0.62em;font-weight:700;color:' + barColor + ';min-width:18px">' + avg.toFixed(1) + '</span>'
-            : '';
+              + '<span class="song-readiness-num" style="color:' + barColor + '">' + avg.toFixed(1) + '</span>'
+            : '<span class="song-readiness-bar"><span class="song-readiness-fill" style="width:0%;background:rgba(255,255,255,0.08)"></span></span>'
+              + '<span class="song-readiness-num" style="color:var(--text-dim)">—</span>';
         // Contextual priority signal (one per row max)
         var signal = '';
         if (_upcomingSongs[song.title]) {
@@ -222,8 +223,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<div class="song-row-line1"><span class="song-name">' + song.title + '</span>' +
+               '<span style="margin-left:auto;display:flex;align-items:center;gap:4px">' +
                '<span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
-               editBtn + '</div>' +
+               editBtn + '</span></div>' +
                '<div class="song-row-line2">' + readinessBar + statusBadge + signal + '</div>' +
                '</div>';
     }).join('');
@@ -519,14 +521,15 @@ function _renderTriageBar(dropdown, count) {
     // Inject styles once
     var style = document.createElement('style');
     style.textContent = '.song-row-line1{display:flex;align-items:center;gap:6px;min-width:0}'
-        + '.song-row-line2{display:flex;align-items:center;gap:6px;min-width:0;margin-top:1px}'
-        + '.song-readiness-bar{width:40px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;flex-shrink:0}'
-        + '.song-readiness-fill{height:100%;border-radius:2px;transition:width 0.3s}'
+        + '.song-row-line2{display:flex;align-items:center;gap:5px;min-width:0;margin-top:2px}'
+        + '.song-readiness-bar{width:56px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0}'
+        + '.song-readiness-fill{height:100%;border-radius:3px;transition:width 0.3s}'
+        + '.song-readiness-num{font-size:0.68em;font-weight:800;min-width:20px}'
         + '.song-row-meta{display:flex;align-items:center;gap:4px;flex-shrink:0}'
         + '.song-signal-needswork{font-size:0.58em;color:#f59e0b;font-weight:700;background:rgba(245,158,11,0.08);padding:1px 6px;border-radius:6px;border:1px solid rgba(245,158,11,0.2)}'
         + '.song-item--needswork{border-left:3px solid #f59e0b!important;background:rgba(245,158,11,0.02)!important}'
-        + '.song-quick-edit-btn{font-size:0.62em;opacity:0.2;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);padding:2px 8px;border-radius:4px;color:var(--text-dim);font-weight:600;transition:all 0.15s;flex-shrink:0}'
-        + '.song-item:hover .song-quick-edit-btn{opacity:0.9;border-color:rgba(99,102,241,0.3);color:var(--accent-light)}'
+        + '.song-quick-edit-btn{font-size:0.6em;opacity:0;cursor:pointer;border:1px solid transparent;background:none;padding:2px 6px;border-radius:4px;color:var(--text-dim);font-weight:600;transition:all 0.15s;flex-shrink:0}'
+        + '.song-item:hover .song-quick-edit-btn{opacity:0.8;border-color:rgba(99,102,241,0.25);color:var(--accent-light)}'
         + '.song-item--editing{border:2px solid rgba(99,102,241,0.4)!important;background:rgba(99,102,241,0.06)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important;box-shadow:0 0 12px rgba(99,102,241,0.1)}'
         + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
         + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
