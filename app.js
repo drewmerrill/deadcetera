@@ -7,9 +7,25 @@
 // ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
 var _loadedVersion = BUILD_VERSION;
-if (!window._glBuildLogged) {
+var DEBUG = location.search.includes('debug=true');
+
+// ── Centralized runtime state (replaces scattered window._gl* flags) ────────
+if (!window._glRuntime) {
+    window._glRuntime = {
+        buildVersion: BUILD_VERSION,
+        swInitialized: false,
+        reloadPromptShown: false,
+        buildLogged: false,
+        leadSingerCacheLoaded: false,
+        setlistsCached: false,
+        blockedDatesCached: false,
+        lastUpdateCheck: null
+    };
+}
+var _rt = window._glRuntime;
+if (!_rt.buildLogged) {
     console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
-    window._glBuildLogged = true;
+    _rt.buildLogged = true;
 }
 
 
@@ -496,13 +512,13 @@ function getFullBandName(bandAbbr) {
 // ============================================================================
 
 // ── PWA: Register service worker (single owner — PL-9.2) ───────────────────
-if ('serviceWorker' in navigator && !window._glSWInitDone) {
-    window._glSWInitDone = true;
+if ('serviceWorker' in navigator && !_rt.swInitialized) {
+    _rt.swInitialized = true;
     window.addEventListener('load', () => {
         const swPath = new URL('service-worker.js', window.location.href).href;
         navigator.serviceWorker.register(swPath)
             .then(reg => {
-                console.log('[PWA] Service worker registered:', reg.scope);
+                if (DEBUG) console.log('[PWA] Service worker registered:', reg.scope);
 
                 // ── Poll for updates every 60s (iOS PWAs need this) ──────────
                 setInterval(() => reg.update(), 60 * 1000);
@@ -510,7 +526,7 @@ if ('serviceWorker' in navigator && !window._glSWInitDone) {
                 // ── When a new SW is waiting, show the update banner ────────
                 // NEVER auto-reload — user clicks the banner when ready
                 function promptUpdate() {
-                    console.log('[PWA] New version detected — showing banner');
+                    if (DEBUG) console.log('[PWA] New version detected — showing banner');
                     showUpdateBanner(null);
                 }
 
@@ -532,7 +548,7 @@ if ('serviceWorker' in navigator && !window._glSWInitDone) {
                 // ── postMessage handler ────────────────────────────────────
                 navigator.serviceWorker.addEventListener('message', event => {
                     if (event.data?.type === 'SW_UPDATED') {
-                        console.log('[PWA] SW_UPDATED message — showing banner');
+                        if (DEBUG) console.log('[PWA] SW_UPDATED message — showing banner');
                         showUpdateBanner();
                         return;
                     }
@@ -666,9 +682,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
             window._glCachedSetlists = toArray(data || []);
+            _rt.setlistsCached = true;
         }).catch(function() {});
         loadBandDataFromDrive('_band', 'blocked_dates').then(function(data) {
             window._glCachedBlockedDates = toArray(data || []);
+            _rt.blockedDatesCached = true;
         }).catch(function() {});
         _preloadLeadSingerCache();
 
@@ -11460,14 +11478,15 @@ async function checkForAppUpdate() {
     try {
         var base = location.hostname === 'localhost' ? '' : '/deadcetera';
         var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
-        if (!res.ok) { console.log('[Update] version.json fetch failed:', res.status); return; }
+        if (!res.ok) { if (DEBUG) console.log('[Update] version.json fetch failed:', res.status); return; }
         var data = await res.json();
-        console.log('[Update] Server version:', data.version, '| Loaded:', _loadedVersion);
+        _rt.lastUpdateCheck = new Date().toISOString();
+        if (DEBUG) console.log('[Update] Server version:', data.version, '| Loaded:', _loadedVersion);
         if (data.version && data.version !== _loadedVersion) {
-            console.log('[Update] Version mismatch! Showing banner.');
+            if (DEBUG) console.log('[Update] Version mismatch! Showing banner.');
             showUpdateBanner(data.version);
         }
-    } catch(e) { console.log('[Update] Check failed:', e); }
+    } catch(e) { if (DEBUG) console.log('[Update] Check failed:', e); }
 }
 
 var _updateBannerShown = false;
@@ -11477,7 +11496,7 @@ var _GL_BANNER_KEY = 'gl_update_banner_dismissed';
 
 function showUpdateBanner(serverVersion) {
     // Hard guard: single prompt per page lifecycle (PL-9.2)
-    if (window._glReloadPromptShown) return;
+    if (_rt.reloadPromptShown) return;
     if (_updateBannerShown) return;
     // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
@@ -11487,8 +11506,8 @@ function showUpdateBanner(serverVersion) {
     var dismissed = sessionStorage.getItem(_GL_BANNER_KEY);
     if (dismissed && dismissed === (serverVersion || 'any')) return;
     _updateBannerShown = true;
-    window._glReloadPromptShown = true;
-    console.log('[Update] Creating banner');
+    _rt.reloadPromptShown = true;
+    if (DEBUG) console.log('[Update] Creating banner');
     var banner = document.createElement('div');
     banner.id = 'dc-update-banner';
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px 20px;font-size:0.9em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;gap:12px';
@@ -11533,12 +11552,41 @@ function showUpdateBanner(serverVersion) {
     banner.appendChild(reloadBtn);
     banner.appendChild(dismissBtn);
     document.body.appendChild(banner);
-    console.log('[Update] Banner appended. In DOM:', !!document.getElementById('dc-update-banner'));
+    if (DEBUG) console.log('[Update] Banner appended. In DOM:', !!document.getElementById('dc-update-banner'));
 }
 
 setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 60 * 1000); }, 10000);
 
-
+// ── Debug panel (visible only with ?debug=true) ──────────────────────────────
+if (DEBUG) {
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            var panel = document.createElement('div');
+            panel.id = 'gl-debug-panel';
+            panel.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:12px 16px;font-size:11px;color:#94a3b8;z-index:99999;max-width:320px;font-family:monospace;line-height:1.6;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
+            function _debugRefresh() {
+                var rt = window._glRuntime || {};
+                var swStatus = 'unknown';
+                try { swStatus = navigator.serviceWorker.controller ? 'active' : 'no controller'; } catch(e) { swStatus = 'unavailable'; }
+                panel.innerHTML = '<div style="font-weight:700;color:#a5b4fc;margin-bottom:6px">🔧 GrooveLinx Debug</div>'
+                    + '<div>Build: <span style="color:#22c55e">' + (rt.buildVersion || '?') + '</span></div>'
+                    + '<div>SW: ' + swStatus + ' (init: ' + rt.swInitialized + ')</div>'
+                    + '<div>Reload prompt: ' + rt.reloadPromptShown + '</div>'
+                    + '<div>Lead cache: ' + rt.leadSingerCacheLoaded + '</div>'
+                    + '<div>Setlists cached: ' + rt.setlistsCached + '</div>'
+                    + '<div>Blocked dates: ' + rt.blockedDatesCached + '</div>'
+                    + '<div>Last update check: ' + (rt.lastUpdateCheck || 'none') + '</div>'
+                    + '<div>Songs loaded: ' + (typeof allSongs !== 'undefined' ? allSongs.length : '?') + '</div>'
+                    + '<div>Status cache: ' + (typeof statusCacheLoaded !== 'undefined' ? statusCacheLoaded : '?') + '</div>'
+                    + '<div>Readiness cache: ' + (typeof readinessCacheLoaded !== 'undefined' ? readinessCacheLoaded : '?') + '</div>'
+                    + '<button onclick="document.getElementById(\'gl-debug-panel\').remove()" style="margin-top:6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px">Close</button>';
+            }
+            _debugRefresh();
+            setInterval(_debugRefresh, 5000);
+            document.body.appendChild(panel);
+        }, 3000);
+    });
+}
 
 // ── Stub page renderer (replaced by Phase 2) ─────────────────────────────────
 
@@ -13145,8 +13193,8 @@ async function preloadReadinessCache() {
 
 // ── Lead singer preload (for triage accuracy) ────────────────────────────────
 async function _preloadLeadSingerCache() {
-    if (window._glLeadSingerCacheLoaded) return;
-    window._glLeadSingerCacheLoaded = true;
+    if (_rt.leadSingerCacheLoaded) return;
+    _rt.leadSingerCacheLoaded = true;
     if (!allSongs || !allSongs.length) return;
     try {
         // Batch-load lead_singer for all songs into GLStore detail cache
