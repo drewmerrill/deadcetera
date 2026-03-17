@@ -3,7 +3,7 @@
 
 // ── VERSION: bump this string on every deploy to force cache refresh ────────
 // This is automatically kept fresh — the app writes a ?v= timestamp to bust cache
-const CACHE_NAME = 'groovelinx-20260317-021519';
+const CACHE_NAME = 'groovelinx-20260317-021931';
 const BASE = self.registration.scope;
 
 const CACHE_URLS = [
@@ -29,7 +29,7 @@ const CACHE_URLS = [
 // ── Install ─────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
     console.log('[SW] Installing', CACHE_NAME);
-    // Do NOT skipWaiting here — let the new SW wait until user clicks "Reload"
+    self.skipWaiting(); // Force immediate activation — old SW was stuck serving stale cache
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache =>
             Promise.allSettled(CACHE_URLS.map(url => cache.add(url).catch(() => {})))
