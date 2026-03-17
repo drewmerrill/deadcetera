@@ -1093,8 +1093,9 @@
     _intelligenceCache = null;
   }
 
-  // Auto-invalidate when readiness changes
+  // Auto-invalidate when readiness changes or song status changes (pitch approval, shelving)
   subscribe('readinessChanged', _invalidateIntelligence);
+  subscribe('songFieldUpdated', function (e) { if (e && e.field === 'status') _invalidateIntelligence(); });
 
   /**
    * Get intelligence for a single song.
@@ -1151,8 +1152,9 @@
   var _attentionCacheTs = 0;
   var ATTENTION_CACHE_TTL = 10000; // 10 seconds
 
-  // Auto-invalidate on readiness changes
+  // Auto-invalidate on readiness or status changes
   subscribe('readinessChanged', function () { _attentionCache = null; });
+  subscribe('songFieldUpdated', function (e) { if (e && e.field === 'status') _attentionCache = null; });
 
   /**
    * Build activity index: { songTitle: lastActivityISO } from the activity log.
@@ -1235,8 +1237,9 @@
 
   var _agendaCache = null;
 
-  // Auto-invalidate on readiness changes
+  // Auto-invalidate on readiness or status changes
   subscribe('readinessChanged', function () { _agendaCache = null; });
+  subscribe('songFieldUpdated', function (e) { if (e && e.field === 'status') _agendaCache = null; });
 
   /**
    * Build normalized input for the Rehearsal Agenda Engine.

@@ -428,7 +428,7 @@
       } else if (statusLower === 'wip' || statusLower === 'work in progress') {
         statusModifier = 2;
       } else if (statusLower === 'prospect') {
-        statusModifier = 0;
+        statusModifier = 3; // New song — prioritize for attention so band learns it
       }
 
       // ── 5. Upcoming exposure (0–10) ──
@@ -451,6 +451,7 @@
       // ── Top reason ──
       var reasons = [];
       if (exposureBoost >= 8) reasons.push('On upcoming setlist');
+      if (statusLower === 'prospect') reasons.push('Newly added');
       if (statusModifier >= 4) reasons.push('Gig Ready but avg ' + intel.avg + '/5');
       if (decayRisk >= 6) reasons.push(lastActivity ? Math.round(daysSince) + ' days since last practice' : 'Never practiced');
       if (readinessDeficit >= 6) reasons.push('Band avg ' + intel.avg + '/5');
