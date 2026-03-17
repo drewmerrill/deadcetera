@@ -4,7 +4,7 @@ _Updated: 2026-03-16_
 
 ## Active Phase: Operational + Intelligence Platform Build
 
-Build: **20260317-021519**
+Build: **20260317-100456**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -58,14 +58,24 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 
 ### Pre-Launch Priority Order (Revised)
 
-| Build | Focus | Sessions | Status |
-|-------|-------|----------|--------|
-| B1 | Band Room rename + Song Prospect Voting | Medium | ✅ DONE |
-| **PL-1** | **Invite Bandmates Flow** | Medium | ✅ DONE |
-| **PL-2** | **Onboarding Wizard** | Medium | 📋 **NEXT** |
-| **PL-3** | **Recurring Events** | Medium | ✅ DONE |
-| **PL-4** | **Starter Pack Auto-Offer** | Small | ✅ DONE |
-| **Infra** | **Stripe + Firebase Auth + Legal** | Larger | 📋 PLANNED |
+| Build | Focus | Status |
+|-------|-------|--------|
+| B1 | Band Room rename + Song Prospect Voting | ✅ DONE |
+| PL-1 | Invite Bandmates Flow | ✅ DONE |
+| PL-2 | Onboarding Wizard | 📋 PLANNED |
+| PL-3 | Recurring Events | ✅ DONE |
+| PL-4 | Starter Pack Auto-Offer | ✅ DONE |
+| PL-5 | Song Panel UX Cleanup + Readiness Labels | ✅ DONE |
+| PL-6 | Song Collaboration + Lifecycle Finalization | ✅ DONE |
+| PL-6.5 | Command Center Focus Pass | ✅ DONE |
+| PL-7 | Quick Song Setup + Rotation Intelligence | ✅ DONE |
+| PL-7.5 | Workflow Engine (Triage + Preloads) | ✅ DONE |
+| PL-8 | Songs Screen Simplification | ✅ DONE |
+| PL-9 | Strategic Layer (Availability + Confidence) | ✅ DONE |
+| PL-9.5+9.6 | Performance Coverage + Gig-Aware NBA | ✅ DONE |
+| PL-10 | Songs UX Polish + Triage Flow | ✅ DONE |
+| **PL-11** | **Songs Screen Finalization — Workbench** | ✅ **CURRENT** |
+| **Infra** | **Stripe + Firebase Auth + Legal** | 📋 PLANNED |
 
 ### Post-Launch Phases
 

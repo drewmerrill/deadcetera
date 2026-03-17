@@ -152,14 +152,57 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 - Startup commands: `gl`, `gldev`
 - Environment: tmux + iTerm2 + Rectangle
 
-## Current State (20260316)
+## Current State (20260317)
 
-**Build:** 20260317-021519
-**Active work:** Pre-launch features + operational UX + songId migration
-**Milestones 1-9:** Complete
-**Milestone 10:** Canonical Entity Model + Operational Features — deployed
+**Build:** 20260317-100456
+**Active work:** Songs screen finalization + update system reliability
+**Milestones 1-10:** Complete
+**PL-3 through PL-11:** Complete (see CURRENT_PHASE.md for full list)
 
-### What happened this session (20260316):
+### What happened this session (20260317):
+
+**Songs Screen Finalization (PL-8 through PL-11):**
+- Simplified song rows: 6-column soft grid (Song, Readiness, Status, Context, Band, Action)
+- Column headers with clickable sort (Readiness ↑↓, Status, Band) — sticky on desktop
+- Readiness bar as primary visual signal (76px, 6px, red/amber/green)
+- Triage mode: guided cleanup workflow with priority sort, progress bar, smart field focus
+- Quick Song Setup: inline editing with auto-focus, save feedback, Enter-to-advance
+- Mobile: 2-column layout, scroll snap, full-screen song detail with bottom CTA bar
+- Legacy row decorations fully removed (harmony/north star/heatmap/chains/dots)
+
+**Lifecycle Model (PL-6):**
+- Canonical: prospect / learning / rotation / shelved
+- Migration: wip/active/gig_ready → learning, parked/retired → shelved
+- Field attribution: updatedBy + updatedAt on all DNA writes, bounded history
+
+**Performance Intelligence (PL-9):**
+- Gig availability check (blocked members + affected songs)
+- Setlist-aware Next Best Action (3-tier priority, no global pool leak)
+- Private confidence input ("Would you put this in the set?")
+- Lifecycle suggestions (advisory only, never auto-change)
+
+**Command Center (PL-6.5):**
+- Next Best Action in gig hero (setlist-scoped)
+- Priority Queue promoted
+- Onboarding demoted to small banner
+- "What Changed" collapsed by default
+
+**Infrastructure:**
+- Service worker rewritten: network-first, skipWaiting, delete all caches
+- Single update system: version.json poll → one banner → reload
+- All script tags cache-busted with ?v=BUILD
+- BUILD_VERSION reads from <meta> tag (never hardcoded)
+- Preloads: setlists, blocked dates, lead singer, key/bpm at app init
+
+**New Features:**
+- Recurring calendar events (weekly/biweekly/monthly)
+- Starter Pack import (5 packs, 30 songs each)
+- @mention support in song discussions
+- Jam Structure section in song detail
+- Song Assets card (North Star, Harmonies, Chart, Key, BPM indicators)
+- Anonymous/private confidence input
+
+### What happened session (20260316):
 
 **Canonical entity model:**
 - Venue canonicalization: venueId, entity picker, duplicate detection, venue-aware matching/audit/repair
