@@ -146,7 +146,7 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 
 ## Current State (20260316)
 
-**Build:** 20260317-002644
+**Build:** 20260317-003154
 **Active work:** Pre-launch features + operational UX + songId migration
 **Milestones 1-9:** Complete
 **Milestone 10:** Canonical Entity Model + Operational Features — deployed

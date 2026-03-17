@@ -669,6 +669,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
+        // Preload setlists for lifecycle suggestions + lead singer data for triage accuracy
+        loadBandDataFromDrive('_band', 'setlists').then(function(data) {
+            window._glCachedSetlists = toArray(data || []);
+        }).catch(function() {});
+        if (typeof _preloadLeadSingerCache === 'function') _preloadLeadSingerCache();
 
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();

@@ -670,6 +670,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
+        // Preload setlists for lifecycle suggestions + lead singer data for triage accuracy
+        loadBandDataFromDrive('_band', 'setlists').then(function(data) {
+            window._glCachedSetlists = toArray(data || []);
+        }).catch(function() {});
+        _preloadLeadSingerCache();
 
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
@@ -13130,6 +13135,25 @@ async function preloadReadinessCache() {
     } catch(e) {
         readinessCacheLoaded = true;
     }
+}
+
+// ── Lead singer preload (for triage accuracy) ────────────────────────────────
+async function _preloadLeadSingerCache() {
+    if (!allSongs || !allSongs.length) return;
+    try {
+        // Batch-load lead_singer for all songs into GLStore detail cache
+        var batch = allSongs.slice(0, 200); // Cap to avoid excessive reads
+        for (var i = 0; i < batch.length; i++) {
+            var s = batch[i];
+            if (!s.title) continue;
+            // Use loadFieldMeta which populates detail cache as a side effect
+            if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+                GLStore.loadFieldMeta(s.title, 'lead_singer').catch(function() {});
+            }
+            // Yield to avoid blocking — process 10 at a time
+            if (i > 0 && i % 10 === 0) await new Promise(function(r) { setTimeout(r, 50); });
+        }
+    } catch(e) {}
 }
 
 // ── Chain link SVG (9x12px) ───────────────────────────────────────────────────

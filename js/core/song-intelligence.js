@@ -509,13 +509,35 @@
       }
     } catch(e) {}
 
-    // High readiness + in setlists → suggest rotation
+    // Only suggest rotation when readiness is strong (>= 4) AND in recent setlists
     if (inRecentSetlist && avgReadiness >= 4) {
       return { suggestion: 'rotation', reason: 'In recent setlists with high readiness' };
     }
-    if (inRecentSetlist && avgReadiness >= 2) {
-      return { suggestion: 'rotation', reason: 'Played in recent setlists' };
+    // Weak rotation signal: in setlists + readiness 3 — only if in multiple setlists
+    if (avgReadiness >= 3 && avgReadiness < 4) {
+      var _slCount = 0;
+      try {
+        var _sls = (typeof window._glCachedSetlists !== 'undefined') ? window._glCachedSetlists : [];
+        var _cutoff = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
+        for (var _si = 0; _si < _sls.length; _si++) {
+          if ((_sls[_si].date || '') < _cutoff) continue;
+          var _found = false;
+          var _sets = _sls[_si].sets || [];
+          for (var _sj = 0; _sj < _sets.length && !_found; _sj++) {
+            var _ssongs = _sets[_sj].songs || [];
+            for (var _sk = 0; _sk < _ssongs.length; _sk++) {
+              var _st = typeof _ssongs[_sk] === 'string' ? _ssongs[_sk] : (_ssongs[_sk].title || '');
+              if (_st === title) { _found = true; break; }
+            }
+          }
+          if (_found) _slCount++;
+        }
+      } catch(e) {}
+      if (_slCount >= 2) {
+        return { suggestion: 'rotation', reason: 'Appears in ' + _slCount + ' recent setlists' };
+      }
     }
+    // Never suggest rotation for readiness <= 2
 
     // Low readiness, not a prospect → suggest learning
     if (avgReadiness > 0 && avgReadiness < 3 && currentStatus !== 'learning' && currentStatus !== 'prospect') {

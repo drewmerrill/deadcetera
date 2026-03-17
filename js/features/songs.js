@@ -349,13 +349,73 @@ window.selectSong = function selectSong(songTitle) {
 // ── Triage Mode (missing data filters) ────────────────────────────────────────
 
 window._sqTriageFilter = null;
+window._sqTriageList = [];    // Ordered list of titles matching current triage
+window._sqTriageIndex = -1;   // Current position in triage list
+window._sqTriageDone = 0;     // Count of songs completed this session
+
 window.sqTriageSet = function(filter) {
     window._sqTriageFilter = (window._sqTriageFilter === filter) ? null : filter;
+    window._sqTriageDone = 0;
+    window._sqTriageIndex = -1;
     var searchTerm = (document.getElementById('songSearch') || {}).value || '';
     renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
 };
 
+// Start triage workflow: activate filter + open first incomplete song
+window.sqTriageStart = function(filter) {
+    window._sqTriageFilter = filter;
+    window._sqTriageDone = 0;
+    window._sqTriageIndex = -1;
+    var searchTerm = (document.getElementById('songSearch') || {}).value || '';
+    renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
+    // Auto-open first song after render
+    requestAnimationFrame(function() {
+        if (window._sqTriageList.length) {
+            window._sqTriageIndex = 0;
+            songQuickSetup(window._sqTriageList[0]);
+        }
+    });
+};
+
+// Advance to next song in triage list
+window._sqTriageAdvance = function(currentTitle) {
+    _sqClose(currentTitle);
+    window._sqTriageDone++;
+    // Re-render to update progress + re-filter (the song may now pass)
+    var searchTerm = (document.getElementById('songSearch') || {}).value || '';
+    renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
+    requestAnimationFrame(function() {
+        if (!window._sqTriageList.length) {
+            // All done — show completion
+            _renderTriageComplete();
+            return;
+        }
+        // Open next item
+        window._sqTriageIndex = 0;
+        songQuickSetup(window._sqTriageList[0]);
+    });
+};
+
+function _renderTriageComplete() {
+    var dropdown = document.getElementById('songDropdown');
+    if (!dropdown) return;
+    var bar = document.getElementById('sqTriageBar');
+    if (bar) {
+        bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;width:100%">'
+            + '<span style="font-size:1em">✅</span>'
+            + '<span style="font-size:0.82em;font-weight:700;color:#22c55e">All songs updated!</span>'
+            + '<span style="font-size:0.72em;color:var(--text-dim)">' + window._sqTriageDone + ' completed</span>'
+            + '<button onclick="sqTriageSet(null)" style="margin-left:auto;font-size:0.7em;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);padding:3px 10px;border-radius:6px;cursor:pointer">Exit Triage</button>'
+            + '</div>';
+    }
+}
+
 function _renderTriageBar(dropdown, count) {
+    // Build triage list from currently visible rows
+    window._sqTriageList = [];
+    var rows = dropdown.querySelectorAll('.song-item');
+    rows.forEach(function(r) { if (r.dataset.title) window._sqTriageList.push(r.dataset.title); });
+
     var existing = document.getElementById('sqTriageBar');
     if (existing) existing.remove();
     var bar = document.createElement('div');
@@ -368,16 +428,39 @@ function _renderTriageBar(dropdown, count) {
         { id: 'no_status', label: 'No Status' },
         { id: 'no_lead', label: 'No Lead' }
     ];
-    var html = '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
+    // Count missing data for entry CTA
+    var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
+    if (typeof allSongs !== 'undefined') {
+        allSongs.forEach(function(s) {
+            if (!s.key) _missingCounts.no_key++;
+            if (!s.bpm) _missingCounts.no_bpm++;
+            if (typeof statusCache !== 'undefined' && !statusCache[s.title]) _missingCounts.no_status++;
+        });
+    }
+    var _totalMissing = _missingCounts.no_key + _missingCounts.no_bpm + _missingCounts.no_status;
+
+    var html = '';
+    // Entry CTA when no triage active but missing data exists
+    if (!tf && _totalMissing > 0) {
+        var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
+        if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
+        html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.08);color:#fbbf24;margin-right:6px">Fix missing song data (' + _totalMissing + ')</button>';
+    }
+
+    html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
     items.forEach(function(it) {
         var active = tf === it.id;
+        var itemCount = _missingCounts[it.id] || '';
         html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:600;padding:2px 8px;border-radius:10px;cursor:pointer;border:1px solid '
             + (active ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:'
             + (active ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.03)') + ';color:'
-            + (active ? '#fbbf24' : 'var(--text-dim)') + '">' + it.label + '</button>';
+            + (active ? '#fbbf24' : 'var(--text-dim)') + '">' + it.label + (itemCount ? ' (' + itemCount + ')' : '') + '</button>';
     });
     if (tf) {
-        html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs</span>';
+        html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs need data</span>';
+        if (window._sqTriageDone > 0) {
+            html += '<span style="font-size:0.65em;color:#22c55e;margin-left:2px">(' + window._sqTriageDone + ' done)</span>';
+        }
         html += '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;renderSongs()" style="font-size:0.62em;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px">Clear</button>';
     }
     bar.innerHTML = html;
@@ -483,8 +566,13 @@ window._sqClose = function(title) {
 };
 
 window._sqAdvanceNext = function(title) {
+    // If triage is active, use triage-aware advance
+    if (window._sqTriageFilter) {
+        _sqTriageAdvance(title);
+        return;
+    }
     _sqClose(title);
-    // Find next song row
+    // Find next song row (non-triage)
     var row = document.querySelector('.song-item[data-title="' + title.replace(/"/g, '\\"') + '"]');
     if (row && row.nextElementSibling && row.nextElementSibling.classList.contains('song-item')) {
         var nextTitle = row.nextElementSibling.dataset.title;
