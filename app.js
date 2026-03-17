@@ -6660,7 +6660,8 @@ async function filterByStatus(status) {
 // Legacy - kept for backward compat but renderSongs now handles filtering at data level
 
 async function addSectionStatusDots() {
-    // Add a small section-health dot to each song row based on cached section ratings
+    // PL-8c: section dots removed from song rows — bail if no status-cell targets
+    if (!document.querySelector('.song-status-cell')) return;
     document.querySelectorAll('.song-item').forEach(function(item) {
         var title = item.dataset.title || '';
         if (!title) return;
@@ -6683,6 +6684,8 @@ async function addSectionStatusDots() {
 }
 
 function addStatusBadges() {
+    // PL-8c: status badges now inline in song row template — bail if no targets
+    if (!document.querySelector('.song-status-cell')) return;
     if (!statusCacheLoaded) {
         console.log('⏳ Status cache not loaded yet, skipping badges');
         return;
@@ -7045,6 +7048,8 @@ let activeNorthStarFilter = false;
 
 
 async function addHarmonyBadges() {
+    // PL-8c: badge slots removed from song rows — bail if no targets exist
+    if (!document.querySelector('.harmony-slot')) return;
     // Don't run multiple times simultaneously
     if (harmonyBadgeLoading) return;
     
@@ -7159,6 +7164,8 @@ function applyNorthStarBadges() {
 }
 
 async function addNorthStarBadges() {
+    // PL-8c: badge slots removed from song rows — bail if no targets exist
+    if (!document.querySelector('.northstar-slot')) return;
     if (!northStarCacheLoaded) {
         if (northStarCacheLoading) return;
         northStarCacheLoading = true;
@@ -13171,6 +13178,8 @@ function chainLinkSVG(color, tooltipTitle) {
 
 // ── Inject chain links into every song row ────────────────────────────────────
 function addReadinessChains() {
+    // PL-8c: chain strips removed from song rows — bail if no targets
+    if (!document.querySelector('.song-chain-strip')) return;
     document.querySelectorAll('.song-chain-strip').forEach(function(el) {
         var songTitle = el.dataset.song || '';
         var scores = readinessCache[songTitle] || {};
@@ -13466,6 +13475,7 @@ function toggleHeatmapMode() {
 }
 
 function renderHeatmapOverlay() {
+    // PL-8c: heatmap removed from song rows — clean up any residual and bail
     document.querySelectorAll('.song-heatmap-bar,.song-heatmap-stripe').forEach(function(el) { el.remove(); });
     document.querySelectorAll('.song-name[data-heatmap]').forEach(function(el) { el.style.removeProperty('--hm-color'); el.style.removeProperty('color'); el.style.removeProperty('font-weight'); el.classList.remove('song-name--heatmap'); el.removeAttribute('data-heatmap'); });
     if (!_heatmapMode) return;
