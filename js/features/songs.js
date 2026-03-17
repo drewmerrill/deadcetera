@@ -213,22 +213,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                '</div>';
     }).join('');
 
-    // Inject overlays after paint (simplified — badges now inline in row template)
+    // Post-paint: highlight + preload only (no badge injection — all inline now)
     requestAnimationFrame(function() {
-        // Re-apply song row highlight after DOM rebuild
         if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
             highlightSelectedSongRow(selectedSong.title);
         }
-
-        // Preload statuses if not loaded (for inline badges on next render)
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
-        if (typeof _heatmapMode !== 'undefined' && _heatmapMode &&
-            typeof renderHeatmapOverlay     === 'function') renderHeatmapOverlay();
-        if (window._sectionRatingsCache) {
-            if (typeof addSectionStatusDots === 'function') addSectionStatusDots();
-        } else {
-            if (typeof preloadSectionRatingsCache === 'function') preloadSectionRatingsCache();
-        }
     });
 };
 

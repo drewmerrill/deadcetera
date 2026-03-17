@@ -230,6 +230,12 @@ async function _sdPopulateBandLens(title) {
         (!chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>':'')+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
+        // ── Song Assets (progressive disclosure — moved from song list rows) ──
+        '<div class="sd-card" style="padding:10px 14px">' +
+        '<div class="sd-card-title" style="margin-bottom:8px">📦 Song Assets</div>' +
+        '<div id="sd-assets" style="display:flex;flex-wrap:wrap;gap:6px;font-size:0.75em">' +
+        '<span style="color:var(--text-dim)">Loading...</span>' +
+        '</div></div>' +
         '<div class="sd-card" id="sd-discussion-mount"><div style="font-size:0.82em;color:var(--text-dim);padding:4px">Loading discussion...</div></div>'+
         '<div class="sd-card">'+
         '<div class="sd-card-title">📋 Band Notes</div>'+
@@ -240,8 +246,8 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         '</div>';
     _sdBuildReadinessStrip(title);
-    // Load attribution for DNA fields + lifecycle suggestion
-    setTimeout(function() { _sdLoadAttribution(title); _sdShowLifecycleSuggestion(title, status); }, 300);
+    // Load attribution for DNA fields + lifecycle suggestion + assets
+    setTimeout(function() { _sdLoadAttribution(title); _sdShowLifecycleSuggestion(title, status); _sdLoadAssets(title); }, 300);
     // Load song discussion + prospect votes
     setTimeout(function() {
         var discMount = document.getElementById('sd-discussion-mount');
@@ -531,6 +537,35 @@ function _sdLoadAttribution(title) {
             el.textContent = 'by ' + displayName + ' \u00B7 ' + _sdTimeAgo(data.updatedAt);
         }).catch(function() {});
     });
+}
+
+// ── Song Assets (progressive disclosure) ──────────────────────────────────────
+function _sdLoadAssets(title) {
+    var el = (_sdContainer || document).querySelector('#sd-assets');
+    if (!el) return;
+    var items = [];
+    // Check North Star
+    var nsc = (typeof northStarCache !== 'undefined') ? northStarCache : {};
+    items.push(nsc[title]
+        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#22c55e;font-weight:600">⭐ North Star</span>'
+        : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">⭐ No North Star</span>');
+    // Check Harmonies
+    var hbc = (typeof harmonyBadgeCache !== 'undefined') ? harmonyBadgeCache : {};
+    var hc = (typeof harmonyCache !== 'undefined') ? harmonyCache : {};
+    items.push((hbc[title] || hc[title])
+        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8;font-weight:600">🎤 Harmonies</span>'
+        : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">🎤 No Harmonies</span>');
+    // Check Chart (from detail cache)
+    var dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(title) : null;
+    var hasChart = dc && dc.chart && dc.chart.text;
+    items.push(hasChart
+        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);color:#fbbf24;font-weight:600">📖 Chart</span>'
+        : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">📖 No Chart</span>');
+    // Check Key/BPM
+    var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
+    if (songObj && songObj.key) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🔑 ' + songObj.key + '</span>');
+    if (songObj && songObj.bpm) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🥁 ' + songObj.bpm + '</span>');
+    el.innerHTML = items.join('');
 }
 
 // ── Lifecycle suggestion (advisory) ───────────────────────────────────────────
