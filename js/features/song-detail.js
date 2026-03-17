@@ -238,6 +238,14 @@ async function _sdPopulateBandLens(title) {
         (!chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>':'')+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
+        // ── Song Structure (jam structure MVP) ──
+        '<div class="sd-card" style="padding:10px 14px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between">' +
+        '<div class="sd-card-title" style="margin-bottom:0">🎼 Song Structure</div>' +
+        '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\''+safeSong+'\')">Edit</button>' +
+        '</div>' +
+        '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
+        '</div>' +
         // ── Song Assets (progressive disclosure — moved from song list rows) ──
         '<div class="sd-card" style="padding:10px 14px">' +
         '<div class="sd-card-title" style="margin-bottom:8px">📦 Song Assets</div>' +
@@ -254,8 +262,8 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         '</div>';
     _sdBuildReadinessStrip(title);
-    // Load attribution for DNA fields + lifecycle suggestion + assets
-    setTimeout(function() { _sdLoadAttribution(title); _sdShowLifecycleSuggestion(title, status); _sdLoadAssets(title); }, 300);
+    // Load attribution for DNA fields + lifecycle suggestion + assets + structure
+    setTimeout(function() { _sdLoadAttribution(title); _sdShowLifecycleSuggestion(title, status); _sdLoadAssets(title); _sdLoadStructure(title); }, 300);
     // Load song discussion + prospect votes
     setTimeout(function() {
         var discMount = document.getElementById('sd-discussion-mount');
@@ -614,6 +622,80 @@ function _sdLoadAssets(title) {
     } catch(e) {}
     el.innerHTML = items.join('');
 }
+
+// ── Song Structure ────────────────────────────────────────────────────────────
+function _sdLoadStructure(title) {
+    var el = (_sdContainer || document).querySelector('#sd-structure');
+    if (!el) return;
+    if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
+            if (!data || !data.sections || !data.sections.length) {
+                el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined yet</span>';
+                return;
+            }
+            el.innerHTML = data.sections.map(function(s, i) {
+                var label = s.name || ('Section ' + (i + 1));
+                var who = s.who ? ' <span style="color:var(--accent-light);font-size:0.85em">(' + s.who + ')</span>' : '';
+                var notes = s.notes ? ' <span style="color:var(--text-dim);font-size:0.85em">— ' + _sdEsc(s.notes) + '</span>' : '';
+                return '<div style="padding:2px 0">' + (i + 1) + '. <strong>' + _sdEsc(label) + '</strong>' + who + notes + '</div>';
+            }).join('');
+        }).catch(function() {
+            el.innerHTML = '<span style="color:var(--text-dim);opacity:0.5">No structure defined yet</span>';
+        });
+    }
+}
+
+window.sdEditStructure = function(title) {
+    var el = (_sdContainer || document).querySelector('#sd-structure');
+    if (!el) return;
+    // Load existing or create default
+    var sections = [];
+    var defaultSections = ['Intro','Verse 1','Chorus','Verse 2','Chorus','Bridge','Solo','Chorus','Outro'];
+    if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
+            sections = (data && data.sections) ? data.sections : defaultSections.map(function(s) { return { name: s, who: '', notes: '' }; });
+            _sdRenderStructureEditor(el, title, sections);
+        }).catch(function() {
+            sections = defaultSections.map(function(s) { return { name: s, who: '', notes: '' }; });
+            _sdRenderStructureEditor(el, title, sections);
+        });
+    }
+};
+
+function _sdRenderStructureEditor(el, title, sections) {
+    var safeSong = title.replace(/'/g, "\\'");
+    var html = sections.map(function(s, i) {
+        return '<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px">'
+            + '<input style="width:80px;font-size:0.82em;padding:2px 4px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.name || '') + '" data-idx="' + i + '" data-field="name">'
+            + '<input style="width:50px;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)" value="' + _sdEsc(s.who || '') + '" placeholder="Who" data-idx="' + i + '" data-field="who">'
+            + '<input style="flex:1;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)" value="' + _sdEsc(s.notes || '') + '" placeholder="Notes" data-idx="' + i + '" data-field="notes">'
+            + '</div>';
+    }).join('');
+    html += '<div style="display:flex;gap:6px;margin-top:6px">'
+        + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdSaveStructure(\'' + safeSong + '\')">Save</button>'
+        + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="_sdLoadStructure(\'' + safeSong + '\')">Cancel</button>'
+        + '</div>';
+    el.innerHTML = html;
+}
+
+window.sdSaveStructure = function(title) {
+    var el = (_sdContainer || document).querySelector('#sd-structure');
+    if (!el) return;
+    var inputs = el.querySelectorAll('input[data-idx]');
+    var sections = [];
+    inputs.forEach(function(inp) {
+        var idx = parseInt(inp.dataset.idx, 10);
+        if (!sections[idx]) sections[idx] = { name: '', who: '', notes: '' };
+        sections[idx][inp.dataset.field] = inp.value.trim();
+    });
+    // Remove empty sections
+    sections = sections.filter(function(s) { return s && s.name; });
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        GLStore.saveSongData(title, 'song_structure', { sections: sections, updatedAt: new Date().toISOString() });
+    }
+    if (typeof showToast === 'function') showToast('Structure saved');
+    _sdLoadStructure(title);
+};
 
 // ── Lifecycle suggestion (advisory) ───────────────────────────────────────────
 function _sdShowLifecycleSuggestion(title, currentStatus) {

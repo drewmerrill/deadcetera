@@ -558,11 +558,9 @@ function _renderTriageBar(dropdown, count) {
     if (!tf && _totalMissing > 0) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
-        var _bestLabel = { no_bpm: 'Missing BPM', no_key: 'Missing Key', no_status: 'No Status' }[_bestFilter] || 'Missing data';
-        var _bestCount = _missingCounts[_bestFilter] || _totalMissing;
         html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
-            + '<span>⚡</span>Start cleanup → ' + _bestLabel
-            + '<span style="font-weight:500;opacity:0.7;font-size:0.85em">(' + _bestCount + ')</span></button>';
+            + '<span>⚡</span>Start cleanup → Fill missing song data'
+            + '<span style="font-weight:500;opacity:0.7;font-size:0.82em">(' + _totalMissing + ')</span></button>';
     }
     // Triage progress bar when active (always show when filter active)
     if (tf) {
@@ -649,7 +647,17 @@ function _renderTriageBar(dropdown, count) {
         + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}'
         + '.gl-triage-active #sd-readiness-card,.gl-triage-active #sd-discussion-mount,.gl-triage-active #sd-confidence-prompt,.gl-triage-active .sd-intel-card,.gl-triage-active #sd-assets,.gl-triage-active #sd-prospect-vote{display:none!important}'
         + '.gl-triage-active .sd-tab-bar{display:none!important}'
-        + '.gl-triage-active .sd-readiness-strip{display:none!important}';
+        + '.gl-triage-active .sd-readiness-strip{display:none!important}'
+        // Mobile: stack rows, hide band tag, full-width title
+        + '@media(max-width:640px){'
+        + '.song-row-grid{grid-template-columns:1fr auto!important;gap:2px 6px!important}'
+        + '.song-col-title{flex-wrap:wrap}'
+        + '.song-name{width:100%}'
+        + '.song-readiness-cluster{width:100%;margin-top:1px}'
+        + '.song-readiness-bar{width:60px}'
+        + '.song-col-actions .song-badge{display:none!important}'
+        + '.song-col-status{min-width:0!important}'
+        + '}';
     document.head.appendChild(style);
 })();
 
