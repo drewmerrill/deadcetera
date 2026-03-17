@@ -8,11 +8,13 @@
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-// Returns array of setlist names that contain the given song title (future-dated only)
+// Returns array of { name, date, daysAway, severity } for future setlists containing the song
+// severity: 'urgent' (≤14 days), 'upcoming' (>14 days)
 function _pitchFindSetlistsContaining(songTitle) {
     if (!songTitle) return [];
     var sls = (typeof window._glCachedSetlists !== 'undefined') ? window._glCachedSetlists : [];
     var today = new Date().toISOString().split('T')[0];
+    var nowMs = Date.now();
     var matches = [];
     var lower = songTitle.trim().toLowerCase();
     for (var i = 0; i < sls.length; i++) {
@@ -24,9 +26,33 @@ function _pitchFindSetlistsContaining(songTitle) {
                 if (t.toLowerCase() === lower) found = true;
             });
         });
-        if (found) matches.push(sls[i].name || sls[i].title || ('Setlist ' + (i + 1)));
+        if (found) {
+            var daysAway = sls[i].date ? Math.ceil((new Date(sls[i].date).getTime() - nowMs) / 86400000) : 999;
+            matches.push({
+                name: sls[i].name || sls[i].title || ('Setlist ' + (i + 1)),
+                date: sls[i].date || '',
+                daysAway: daysAway,
+                severity: daysAway <= 14 ? 'urgent' : 'upcoming'
+            });
+        }
     }
-    return matches;
+    return matches.sort(function(a, b) { return a.daysAway - b.daysAway; });
+}
+
+// Helper: format setlist match array into a human-readable warning string with severity
+function _pitchFormatSetlistWarning(slMatches) {
+    if (!slMatches || slMatches.length === 0) return '';
+    var urgent = slMatches.filter(function(s) { return s.severity === 'urgent'; });
+    var upcoming = slMatches.filter(function(s) { return s.severity === 'upcoming'; });
+    var parts = [];
+    if (urgent.length > 0) parts.push(urgent.map(function(s) { return s.name + (s.daysAway <= 7 ? ' (this week!)' : ' (' + s.daysAway + 'd)'); }).join(', '));
+    if (upcoming.length > 0) parts.push(upcoming.map(function(s) { return s.name + ' (' + s.daysAway + 'd)'; }).join(', '));
+    return parts.join('; ');
+}
+
+// Helper: does the song appear in any urgent (≤14 day) setlist?
+function _pitchHasUrgentSetlist(slMatches) {
+    return slMatches && slMatches.some(function(s) { return s.severity === 'urgent'; });
 }
 
 // Returns sorted array of { title, avg } for all Active songs
@@ -86,6 +112,35 @@ function _pitchActiveCount() {
     }).length;
 }
 
+// Brief approval overlay — richer than a toast, auto-dismisses
+function _pitchShowApprovalCard(pitch) {
+    document.getElementById('pitchApprovalCard')?.remove();
+    var lines = ['✅ <strong>' + pitch.title + '</strong> is now Active'];
+    if (pitch.replaceSong) {
+        lines.push('<span style="color:#f59e0b">' + pitch.replaceSong + '</span> → Shelved');
+    } else {
+        lines.push('Active set expanded — no song replaced');
+    }
+    lines.push('<span style="color:var(--text-dim)">The band has spoken. Time to learn it.</span>');
+    var card = document.createElement('div');
+    card.id = 'pitchApprovalCard';
+    card.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.97);border:1px solid rgba(34,197,94,0.3);border-radius:12px;padding:14px 20px;z-index:99999;box-shadow:0 4px 24px rgba(0,0,0,0.5);max-width:360px;width:90%;text-align:center;animation:pitchFadeIn 0.3s ease';
+    card.innerHTML = '<div style="font-size:0.88em;color:#f1f5f9;line-height:1.6">' + lines.join('<br>') + '</div>';
+    // Inject animation if not present
+    if (!document.getElementById('pitchApprovalAnim')) {
+        var style = document.createElement('style');
+        style.id = 'pitchApprovalAnim';
+        style.textContent = '@keyframes pitchFadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+        document.head.appendChild(style);
+    }
+    document.body.appendChild(card);
+    setTimeout(function() {
+        card.style.transition = 'opacity 0.4s';
+        card.style.opacity = '0';
+        setTimeout(function() { card.remove(); }, 400);
+    }, 4000);
+}
+
 // ── Render Pitch Section (called from Band Room page) ────────────────────────
 window.renderSongPitchSection = async function(container) {
     if (!container) return;
@@ -125,26 +180,40 @@ window.renderSongPitchSection = async function(container) {
             + '<div style="font-size:0.7em;color:var(--text-dim);margin-top:2px">Pitched by ' + (p.pitchedBy || 'someone') + ' · Vote choices are private</div>'
             + '</div>';
 
-        // Vote tally — stacked for readability on mobile
+        // Vote tally — progress toward pass/fail
+        var yesNeeded = Math.max(0, majority - yesCount);
+        var noNeeded = Math.max(0, majority - noCount);
+        var progressPct = Math.min(100, Math.round((yesCount / majority) * 100));
+        var progressColor = yesCount >= majority ? '#22c55e' : (yesCount > 0 ? '#a5b4fc' : 'rgba(255,255,255,0.1)');
+        var statusText = yesNeeded === 0 ? 'Passing!' : (noNeeded === 0 ? 'Blocked' : yesNeeded + ' more yes to pass');
+
         html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px">'
-            + '<div>' + totalVotes + ' of ' + memberCount + ' voted · needs ' + majority + ' yes</div>'
-            + '<div style="margin-top:2px"><span style="color:#22c55e">👍 ' + yesCount + '</span>&nbsp; <span style="color:#ef4444">👎 ' + noCount + '</span>&nbsp; <span style="color:var(--text-dim)">🤷 ' + deferCount + '</span></div>'
+            // Progress bar
+            + '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:4px;overflow:hidden">'
+            + '<div style="height:100%;width:' + progressPct + '%;background:' + progressColor + ';border-radius:2px;transition:width 0.3s"></div></div>'
+            // Counts + status
+            + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">'
+            + '<div><span style="color:#22c55e">👍 ' + yesCount + '</span>&nbsp; <span style="color:#ef4444">👎 ' + noCount + '</span>&nbsp; <span style="color:var(--text-dim)">🤷 ' + deferCount + '</span></div>'
+            + '<div style="font-size:0.9em;font-weight:600;color:' + (yesNeeded === 0 ? '#22c55e' : (noNeeded === 0 ? '#ef4444' : 'var(--text-dim)')) + '">' + statusText + '</div>'
+            + '</div>'
+            + '<div style="font-size:0.88em;color:var(--text-muted);margin-top:1px">' + totalVotes + ' of ' + memberCount + ' voted · ' + majority + ' yes to pass</div>'
             + '</div>';
 
         // Tradeoff preview
         if (p.replaceSong) {
             // Check if replacement is in a setlist or rehearsal
-            var _slNames = _pitchFindSetlistsContaining(p.replaceSong);
+            var _slMatches = _pitchFindSetlistsContaining(p.replaceSong);
             var _inAgenda = _pitchIsInRehearsalAgenda(p.replaceSong);
             html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px;padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:4px">'
-                + 'If approved: <strong style="color:#22c55e">' + (p.title || '') + '</strong> → Active · <strong style="color:#f59e0b">' + p.replaceSong + '</strong> → Library'
+                + 'If approved: <strong style="color:#22c55e">' + (p.title || '') + '</strong> → Active · <strong style="color:#f59e0b">' + p.replaceSong + '</strong> → Shelved'
                 + '</div>';
             var _cardWarnings = [];
-            if (_slNames.length > 0) _cardWarnings.push('in upcoming setlist' + (_slNames.length > 1 ? 's' : '') + ': ' + _slNames.join(', '));
-            if (_inAgenda) _cardWarnings.push('in the current rehearsal agenda');
+            if (_slMatches.length > 0) _cardWarnings.push((_pitchHasUrgentSetlist(_slMatches) ? '🔴 gig soon — ' : '') + 'in setlist: ' + _pitchFormatSetlistWarning(_slMatches));
+            if (_inAgenda) _cardWarnings.push('in current rehearsal agenda');
             if (_cardWarnings.length > 0) {
-                html += '<div style="font-size:0.72em;padding:5px 8px;margin-bottom:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:4px;color:#fca5a5">'
-                    + '⚠️ <strong>' + p.replaceSong + '</strong> is ' + _cardWarnings.join(' and ')
+                var _urgentCard = _pitchHasUrgentSetlist(_slMatches);
+                html += '<div style="font-size:0.72em;padding:5px 8px;margin-bottom:6px;background:rgba(' + (_urgentCard ? '239,68,68,0.12' : '245,158,11,0.08') + ');border:1px solid rgba(' + (_urgentCard ? '239,68,68,0.25' : '245,158,11,0.2') + ');border-radius:4px;color:' + (_urgentCard ? '#fca5a5' : '#fcd34d') + '">'
+                    + '<strong>' + p.replaceSong + '</strong> is ' + _cardWarnings.join(' · ')
                     + '</div>';
             }
         } else {
@@ -235,10 +304,11 @@ window.showPitchModal = function(prefillTitle) {
     activeSongs.forEach(function(s) {
         var excluded = _pendingTargets[s.title.toLowerCase()];
         var rdLabel = s.avg < 99 ? ' (' + Math.round(s.avg) + '%)' : '';
-        var slNames = _pitchFindSetlistsContaining(s.title);
+        var slMatches = _pitchFindSetlistsContaining(s.title);
         var inAgenda = _pitchIsInRehearsalAgenda(s.title);
         var flags = '';
-        if (slNames.length > 0) flags += ' [IN SETLIST]';
+        if (_pitchHasUrgentSetlist(slMatches)) flags += ' [GIG SOON]';
+        else if (slMatches.length > 0) flags += ' [IN SETLIST]';
         if (inAgenda) flags += ' [IN REHEARSAL]';
         if (excluded) {
             optionsHtml += '<option value="' + s.title.replace(/"/g, '&quot;') + '" disabled style="color:#666">⛔ ' + s.title + rdLabel + ' — already targeted</option>';
@@ -247,22 +317,17 @@ window.showPitchModal = function(prefillTitle) {
         }
     });
 
-    // Pre-select suggested replacement (lowest readiness, not already targeted)
+    // Pre-select suggested replacement: lowest readiness, not targeted, prefer no setlist, never urgent
     var suggestReplace = '';
+    var _suggestFallback = '';
     for (var si = 0; si < activeSongs.length; si++) {
-        if (activeSongs[si].avg < 99 && !_pendingTargets[activeSongs[si].title.toLowerCase()]) {
-            var _slCheck = _pitchFindSetlistsContaining(activeSongs[si].title);
-            if (_slCheck.length === 0) { suggestReplace = activeSongs[si].title; break; }
-        }
+        if (activeSongs[si].avg >= 99 || _pendingTargets[activeSongs[si].title.toLowerCase()]) continue;
+        var _slCheck = _pitchFindSetlistsContaining(activeSongs[si].title);
+        if (_slCheck.length === 0) { suggestReplace = activeSongs[si].title; break; }
+        // Allow non-urgent setlist songs as fallback only
+        if (!_suggestFallback && !_pitchHasUrgentSetlist(_slCheck)) _suggestFallback = activeSongs[si].title;
     }
-    // If all low-readiness songs are in setlists, still pick the lowest non-targeted one
-    if (!suggestReplace) {
-        for (var sj = 0; sj < activeSongs.length; sj++) {
-            if (activeSongs[sj].avg < 99 && !_pendingTargets[activeSongs[sj].title.toLowerCase()]) {
-                suggestReplace = activeSongs[sj].title; break;
-            }
-        }
-    }
+    if (!suggestReplace) suggestReplace = _suggestFallback;
 
     var activeCount = _pitchActiveCount();
 
@@ -275,17 +340,21 @@ window.showPitchModal = function(prefillTitle) {
         + '<button onclick="document.getElementById(\'pitchModal\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.4em;padding:8px;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center">✕</button>'
         + '</div>'
         + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">Propose a song for the band to learn. Band members will vote.</div>'
-        + '<div style="font-size:0.72em;color:#f59e0b;padding:6px 8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);border-radius:6px;margin-bottom:12px">Adding a song means the band has more to practice. Pick a replacement to keep the set focused, or skip to expand.</div>'
+        // Step 1: Song info
         + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Song Title</label>'
         + '<input id="pitchTitle" value="' + (prefillTitle || '').replace(/"/g, '&quot;') + '" placeholder="e.g. Green Eyed Lady" style="width:100%;padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.88em;box-sizing:border-box;margin-bottom:10px;min-height:44px">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Why this song?</label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Why this song? <span style="font-weight:400">(optional)</span></label>'
         + '<input id="pitchReason" placeholder="e.g. Great crowd-pleaser, easy to learn" style="width:100%;padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.85em;box-sizing:border-box;margin-bottom:10px;min-height:44px">'
+        // Step 2: Tradeoff — starts dimmed, reveals when title has content
+        + '<div id="pitchStep2" style="opacity:0.35;pointer-events:none;transition:opacity 0.2s">'
+        + '<div style="font-size:0.72em;color:#f59e0b;padding:6px 8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);border-radius:6px;margin-bottom:8px">Adding a song means more to practice. Pick a replacement to keep the set focused, or skip to expand.</div>'
         + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Replace which Active song? <span style="font-weight:400;color:var(--text-dim)">(' + activeCount + ' Active now)</span></label>'
         + '<select id="pitchReplace" style="width:100%;padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:var(--text);font-size:0.85em;box-sizing:border-box;margin-bottom:4px;min-height:44px;-webkit-appearance:menulist">'
         + optionsHtml
         + '</select>'
         + '<div id="pitchReplaceHint" style="font-size:0.68em;color:var(--text-dim);margin-bottom:10px;min-height:18px"></div>'
-        + '<button onclick="submitPitch()" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;font-weight:700;cursor:pointer;font-size:0.88em;min-height:48px">Submit Pitch for Vote</button>'
+        + '</div>'
+        + '<button id="pitchSubmitBtn" onclick="submitPitch()" disabled style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.06);color:rgba(165,180,252,0.4);font-weight:700;cursor:not-allowed;font-size:0.88em;min-height:48px;transition:all 0.2s">Submit Pitch for Vote</button>'
         + '</div>';
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
@@ -294,22 +363,33 @@ window.showPitchModal = function(prefillTitle) {
     var selectEl = document.getElementById('pitchReplace');
     if (selectEl && suggestReplace) selectEl.value = suggestReplace;
 
+    var ACTIVE_EXPANSION_THRESHOLD = 25;
+
     // Dynamic hint based on selection
     function _updateReplaceHint() {
         var hint = document.getElementById('pitchReplaceHint');
         if (!hint || !selectEl) return;
         var val = selectEl.value;
         if (!val) {
-            hint.innerHTML = '<span style="color:#86efac">No replacement selected — Active set will grow to ' + (activeCount + 1) + ' songs.</span>';
+            // No replacement — show expansion message, warn if above threshold
+            if (activeCount >= ACTIVE_EXPANSION_THRESHOLD) {
+                hint.innerHTML = '<span style="color:#fbbf24">You already have ' + activeCount + ' Active songs. Adding without replacing may spread the band thin.</span>';
+            } else {
+                hint.innerHTML = '<span style="color:#86efac">No replacement — Active set will grow to ' + (activeCount + 1) + '.</span>';
+            }
         } else {
             var warnings = [];
-            var slNames = _pitchFindSetlistsContaining(val);
-            if (slNames.length > 0) warnings.push('in upcoming setlist' + (slNames.length > 1 ? 's' : '') + ': ' + slNames.join(', '));
+            var slMatches = _pitchFindSetlistsContaining(val);
+            if (slMatches.length > 0) {
+                var slText = _pitchFormatSetlistWarning(slMatches);
+                var isUrgent = _pitchHasUrgentSetlist(slMatches);
+                warnings.push((isUrgent ? '🔴 gig soon — ' : '') + 'in setlist: ' + slText);
+            }
             if (_pitchIsInRehearsalAgenda(val)) warnings.push('in current rehearsal agenda');
             if (warnings.length > 0) {
-                hint.innerHTML = '<span style="color:#fca5a5">⚠️ ' + val + ' is ' + warnings.join(' and ') + '</span>';
+                hint.innerHTML = '<span style="color:#fca5a5">' + warnings.join(' · ') + '</span>';
             } else {
-                hint.textContent = 'Suggested: lowest readiness in Active set.';
+                hint.textContent = 'Lowest readiness in Active set — safe to replace.';
             }
         }
     }
@@ -342,9 +422,27 @@ window.showPitchModal = function(prefillTitle) {
             titleHint.textContent = '';
         }
     }
+    // Progressive disclosure: reveal step 2 + enable submit when title has content
+    var step2 = document.getElementById('pitchStep2');
+    var submitBtn = document.getElementById('pitchSubmitBtn');
+    function _updateProgressiveState() {
+        var hasTitle = titleEl && titleEl.value.trim().length > 0;
+        if (step2) {
+            step2.style.opacity = hasTitle ? '1' : '0.35';
+            step2.style.pointerEvents = hasTitle ? 'auto' : 'none';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = !hasTitle;
+            submitBtn.style.cursor = hasTitle ? 'pointer' : 'not-allowed';
+            submitBtn.style.borderColor = hasTitle ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.15)';
+            submitBtn.style.background = hasTitle ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)';
+            submitBtn.style.color = hasTitle ? '#a5b4fc' : 'rgba(165,180,252,0.4)';
+        }
+    }
     if (titleEl) {
-        titleEl.addEventListener('input', _updateTitleHint);
+        titleEl.addEventListener('input', function() { _updateTitleHint(); _updateProgressiveState(); });
         _updateTitleHint(); // check prefill
+        _updateProgressiveState(); // enable if prefilled
     }
 
     // Pre-load pitches for conflict exclusion in future opens
@@ -381,13 +479,23 @@ window.submitPitch = async function() {
             if (!confirm(replaceSong + ' is already targeted for replacement in another pitch. Continue anyway?')) return;
         }
 
-        // Warn clearly if replacement song is in an upcoming setlist or rehearsal agenda
-        var _submitWarnings = [];
-        var _slNames = _pitchFindSetlistsContaining(replaceSong);
-        if (_slNames.length > 0) _submitWarnings.push('in upcoming setlist' + (_slNames.length > 1 ? 's' : '') + ': ' + _slNames.join(', '));
-        if (_pitchIsInRehearsalAgenda(replaceSong)) _submitWarnings.push('in the current rehearsal agenda');
-        if (_submitWarnings.length > 0) {
-            if (!confirm('⚠️ ' + replaceSong + ' is ' + _submitWarnings.join(' and ') + '.\n\nShelving it will affect your plans. Continue?')) return;
+        // Warn if replacement is in setlist (severity-aware) or rehearsal agenda
+        var _slMatches = _pitchFindSetlistsContaining(replaceSong);
+        var _inAgenda = _pitchIsInRehearsalAgenda(replaceSong);
+        if (_slMatches.length > 0 || _inAgenda) {
+            var _warnParts = [];
+            if (_slMatches.length > 0) _warnParts.push('in setlist: ' + _pitchFormatSetlistWarning(_slMatches));
+            if (_inAgenda) _warnParts.push('in the current rehearsal agenda');
+            var _severity = _pitchHasUrgentSetlist(_slMatches) ? '🔴 GIG SOON: ' : '⚠️ ';
+            if (!confirm(_severity + replaceSong + ' is ' + _warnParts.join(' and ') + '.\n\nShelving it will affect your plans. Continue?')) return;
+        }
+    }
+
+    // Soft guard: warn if expanding an already-large Active set
+    if (!replaceSong) {
+        var _ac = _pitchActiveCount();
+        if (_ac >= 25) {
+            if (!confirm('Your Active set already has ' + _ac + ' songs. Adding without a replacement means more to practice.\n\nContinue without replacing?')) return;
         }
     }
 
@@ -446,11 +554,12 @@ window.votePitch = async function(pitchId, vote) {
         // APPROVED — but warn about setlist/rehearsal impact before finalizing
         if (pitch.replaceSong) {
             var _approveWarnings = [];
-            var slNames = _pitchFindSetlistsContaining(pitch.replaceSong);
-            if (slNames.length > 0) _approveWarnings.push('in upcoming setlist' + (slNames.length > 1 ? 's' : '') + ': ' + slNames.join(', '));
+            var slMatches = _pitchFindSetlistsContaining(pitch.replaceSong);
+            if (slMatches.length > 0) _approveWarnings.push('in setlist: ' + _pitchFormatSetlistWarning(slMatches));
             if (_pitchIsInRehearsalAgenda(pitch.replaceSong)) _approveWarnings.push('in the current rehearsal agenda');
             if (_approveWarnings.length > 0) {
-                if (!confirm('⚠️ Approving this will shelve "' + pitch.replaceSong + '", which is ' + _approveWarnings.join(' and ') + '.\n\nProceed with approval?')) {
+                var _appSev = _pitchHasUrgentSetlist(slMatches) ? '🔴 GIG SOON: ' : '⚠️ ';
+                if (!confirm(_appSev + 'Approving this will shelve "' + pitch.replaceSong + '", which is ' + _approveWarnings.join(' and ') + '.\n\nProceed with approval?')) {
                     // Undo this vote — don't lock in an approval the user backed away from
                     delete pitch.votes[memberKey];
                     await saveBandDataToDrive('_band', 'song_pitches', pitches);
@@ -479,9 +588,7 @@ window.votePitch = async function(pitchId, vote) {
             }
         }
         if (typeof renderSongs === 'function') renderSongs();
-        var toastMsg = 'Approved! ' + pitch.title + ' is now Active.';
-        if (!pitch.replaceSong) toastMsg += ' Active set expanded by 1.';
-        if (typeof showToast === 'function') showToast(toastMsg);
+        _pitchShowApprovalCard(pitch);
     } else if (noCount >= majority) {
         // REJECTED — move to backlog
         pitch.status = 'rejected';
