@@ -263,7 +263,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         return '';
     };
     var headerHTML = !window._sqTriageFilter
-        ? '<div class="song-header-row">'
+        ? '<div class="song-header-row" style="display:grid;grid-template-columns:1fr 100px 80px 90px 48px 36px;gap:0 8px;padding:6px 12px;border-bottom:2px solid rgba(255,255,255,0.12);background:#0f172a;position:sticky;top:0;z-index:5">'
           + '<span class="song-hdr" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</span>'
           + '<span class="song-hdr song-hdr-sm" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</span>'
           + '<span class="song-hdr song-hdr-sm" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Status' + _arrow('status') + '</span>'
@@ -779,6 +779,21 @@ window.songQuickSetup = function songQuickSetup(title) {
                 html += '<span style="margin-left:4px;font-size:0.85em;color:var(--text-dim)">' + structure.sections.map(function(s) { return s.name; }).join(' → ') + '</span>';
             } else {
                 html += '<span style="color:var(--text-dim);opacity:0.5">🎼 No structure</span>';
+            }
+            // North Star status
+            var nsc = (typeof northStarCache !== 'undefined') ? northStarCache : {};
+            if (nsc[title]) {
+                html += '<span style="color:#22c55e;margin-left:8px">⭐ North Star</span>';
+            } else {
+                html += '<span style="color:var(--text-dim);opacity:0.5;margin-left:8px;cursor:pointer" onclick="event.stopPropagation();selectSong(\'' + safeTitle + '\')">⭐ Add North Star</span>';
+            }
+            // Harmonies status
+            var hbc = (typeof harmonyBadgeCache !== 'undefined') ? harmonyBadgeCache : {};
+            var hc = (typeof harmonyCache !== 'undefined') ? harmonyCache : {};
+            if (hbc[title] || hc[title]) {
+                html += '<span style="color:#818cf8;margin-left:8px">🎤 Harmonies</span>';
+            } else {
+                html += '<span style="color:var(--text-dim);opacity:0.5;margin-left:8px">🎤 No harmonies</span>';
             }
             extrasEl.innerHTML = html;
         });

@@ -675,20 +675,40 @@ window.sdEditStructure = function(title) {
 
 function _sdRenderStructureEditor(el, title, sections) {
     var safeSong = title.replace(/'/g, "\\'");
-    var html = '<div style="font-size:0.7em;color:var(--text-dim);margin-bottom:4px">Section name + notes (solos: note how many, who takes them)</div>';
+    // Store sections on window for add/remove operations
+    window._sdEditSections = sections;
+    window._sdEditTitle = title;
+    var html = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:4px">Add/remove sections. For solos, note how many and who takes them.</div>';
+    html += '<div id="sd-structure-rows">';
     html += sections.map(function(s, i) {
-        return '<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px">'
-            + '<span style="font-size:0.7em;color:var(--text-dim);min-width:14px">' + (i + 1) + '</span>'
-            + '<input style="width:90px;font-size:0.82em;padding:3px 5px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.name || '') + '" data-idx="' + i + '" data-field="name" placeholder="Section">'
-            + '<input style="flex:1;font-size:0.78em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-muted)" value="' + _sdEsc(s.notes || '') + '" placeholder="Notes (who solos, # of solos, cues...)" data-idx="' + i + '" data-field="notes">'
+        return '<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px" data-row="' + i + '">'
+            + '<input style="width:85px;font-size:0.82em;padding:3px 5px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text)" value="' + _sdEsc(s.name || '') + '" data-idx="' + i + '" data-field="name" placeholder="Section">'
+            + '<input style="flex:1;font-size:0.78em;padding:3px 5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-muted)" value="' + _sdEsc(s.notes || '') + '" placeholder="Notes (who solos, # solos, cues...)" data-idx="' + i + '" data-field="notes">'
+            + '<button onclick="sdRemoveStructureRow(' + i + ')" style="background:none;border:none;color:var(--text-dim);opacity:0.4;cursor:pointer;font-size:0.8em;padding:2px 4px" title="Remove section">✕</button>'
             + '</div>';
     }).join('');
-    html += '<div style="display:flex;gap:6px;margin-top:6px">'
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+        + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdAddStructureRow()">+ Add Section</button>'
         + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdSaveStructure(\'' + safeSong + '\')">Save</button>'
         + '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="_sdLoadStructure(\'' + safeSong + '\')">Cancel</button>'
         + '</div>';
     el.innerHTML = html;
 }
+
+window.sdRemoveStructureRow = function(idx) {
+    if (!window._sdEditSections) return;
+    window._sdEditSections.splice(idx, 1);
+    var el = (_sdContainer || document).querySelector('#sd-structure');
+    if (el && window._sdEditTitle) _sdRenderStructureEditor(el, window._sdEditTitle, window._sdEditSections);
+};
+
+window.sdAddStructureRow = function() {
+    if (!window._sdEditSections) window._sdEditSections = [];
+    window._sdEditSections.push({ name: '', notes: '' });
+    var el = (_sdContainer || document).querySelector('#sd-structure');
+    if (el && window._sdEditTitle) _sdRenderStructureEditor(el, window._sdEditTitle, window._sdEditSections);
+};
 
 window.sdSaveStructure = function(title) {
     var el = (_sdContainer || document).querySelector('#sd-structure');
