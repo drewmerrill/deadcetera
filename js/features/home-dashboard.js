@@ -1561,40 +1561,86 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" title="Open gig details">Open Gig \u2192</button>';
     var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
     var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
-    // Next Best Action — single dominant CTA inside gig card
+    // ── Performance Coverage + Next Best Action (setlist-aware) ──
+    // Availability check: who's blocked on gig day?
+    var _unavailMembers = [];
+    try {
+        var _blocked = (typeof window._glCachedBlockedDates !== 'undefined') ? window._glCachedBlockedDates : [];
+        var _gigDate = gig.date || '';
+        if (_gigDate && _blocked.length) {
+            _unavailMembers = _blocked.filter(function(b) { return b.startDate && b.endDate && _gigDate >= b.startDate && _gigDate <= b.endDate; });
+        }
+    } catch(e) {}
+
+    // Coverage signal: combine availability + setlist + readiness
+    var _availLine = '';
+    if (_unavailMembers.length) {
+        var _names = _unavailMembers.map(function(b) { return (b.person || '').split(' ')[0]; }).join(', ');
+        // Count affected setlist songs (songs where unavailable member has a role/score)
+        var _affectedCount = 0;
+        if (_hasScope) {
+            var _unavailKeys = [];
+            _unavailMembers.forEach(function(b) {
+                if (typeof bandMembers !== 'undefined') {
+                    Object.entries(bandMembers).forEach(function(e) {
+                        if (e[1].name === b.person) _unavailKeys.push(e[0]);
+                    });
+                }
+            });
+            Object.keys(_gigSongScope).forEach(function(st) {
+                var _scores = rc2[st] || {};
+                var affected = _unavailKeys.some(function(k) { return _scores[k] && _scores[k] > 0; });
+                if (affected) _affectedCount++;
+            });
+        }
+        var _coverageDetail = _affectedCount > 0
+            ? _escHtml(_names) + ' unavailable — ' + _affectedCount + ' set song' + (_affectedCount !== 1 ? 's' : '') + ' affected'
+            : _escHtml(_names) + ' unavailable';
+        _availLine = '<div style="font-size:0.75em;padding:4px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;color:#f87171;margin:4px 0">⚠️ ' + _coverageDetail + '</div>';
+    }
+
+    // Next Best Action — setlist-aware priority hierarchy
     var _nba = '';
-    var _nbaLabel = '', _nbaOnclick = '';
-    if (riskEntry) {
+    var _nbaLabel = '', _nbaOnclick = '', _nbaSecondary = '';
+    if (_hasScope && riskEntry) {
+        // Tier 1: weakest song in this gig's setlist
+        _nbaLabel = 'Practice weakest setlist song: ' + riskEntry[0];
+        _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
+    } else if (_hasScope && !riskEntry) {
+        // Strong setlist: all songs above threshold
+        _nbaLabel = 'Setlist is strong';
+        // Find global weakest as optional secondary
+        var _globalRisk = Object.entries(rc2)
+            .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3; })
+            .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); })[0];
+        if (_globalRisk) {
+            _nbaSecondary = 'Optional: work on ' + _globalRisk[0];
+        }
+        _nbaOnclick = '';
+    } else if (riskEntry) {
+        // Tier 2/3: no setlist scope, use global weakest
         _nbaLabel = 'Practice weakest song: ' + riskEntry[0];
         _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
     } else if (!agenda || agenda.empty) {
         _nbaLabel = 'Generate rehearsal agenda';
         _nbaOnclick = "if(typeof GLStore!=='undefined'&&GLStore.regenerateRehearsalAgenda){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard==='function')renderHomeDashboard();}";
     } else if (!tl || !tl.summary) {
-        _nbaLabel = 'Upload rehearsal recording';
+        _nbaLabel = 'Upload rehearsal to improve readiness';
         _nbaOnclick = "if(typeof openRehearsalChopper==='function')openRehearsalChopper()";
     }
     if (_nbaLabel) {
-        _nba = '<div style="margin:8px 0;padding:10px 14px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;display:flex;align-items:center;gap:10px">'
-            + '<span style="font-size:1.1em">👉</span>'
+        var _nbaColor = (_hasScope && !riskEntry) ? 'rgba(34,197,94,0.08)' : 'rgba(99,102,241,0.08)';
+        var _nbaBorder = (_hasScope && !riskEntry) ? 'rgba(34,197,94,0.2)' : 'rgba(99,102,241,0.2)';
+        var _nbaIcon = (_hasScope && !riskEntry) ? '✅' : '👉';
+        _nba = '<div style="margin:8px 0;padding:10px 14px;background:' + _nbaColor + ';border:1px solid ' + _nbaBorder + ';border-radius:10px;display:flex;align-items:center;gap:10px">'
+            + '<span style="font-size:1.1em">' + _nbaIcon + '</span>'
             + '<div style="flex:1"><div style="font-size:0.68em;font-weight:700;letter-spacing:0.05em;color:var(--accent-light);text-transform:uppercase;margin-bottom:2px">Next Best Action</div>'
-            + '<div style="font-size:0.88em;font-weight:600;color:var(--text)">' + _escHtml(_nbaLabel) + '</div></div>'
-            + '<button onclick="' + _nbaOnclick + '" style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">Go →</button>'
+            + '<div style="font-size:0.88em;font-weight:600;color:var(--text)">' + _escHtml(_nbaLabel) + '</div>'
+            + (_nbaSecondary ? '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + _escHtml(_nbaSecondary) + '</div>' : '')
+            + '</div>'
+            + (_nbaOnclick ? '<button onclick="' + _nbaOnclick + '" style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">Go →</button>' : '')
             + '</div>';
     }
-    // Availability check: who's blocked on gig day?
-    var _availLine = '';
-    try {
-        var _blocked = (typeof window._glCachedBlockedDates !== 'undefined') ? window._glCachedBlockedDates : [];
-        var _gigDate = gig.date || '';
-        if (_gigDate && _blocked.length) {
-            var _unavail = _blocked.filter(function(b) { return b.startDate && b.endDate && _gigDate >= b.startDate && _gigDate <= b.endDate; });
-            if (_unavail.length) {
-                var _names = _unavail.map(function(b) { return (b.person || '').split(' ')[0]; }).join(', ');
-                _availLine = '<div style="font-size:0.75em;padding:4px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;color:#f87171;margin:4px 0">⚠️ Unavailable: ' + _escHtml(_names) + '</div>';
-            }
-        }
-    } catch(e) {}
     return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,confHTML,pctBar,riskLine,_availLine,_nba,coach?'<div class="hd-hero__coach">'+coach+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
   } catch(e) {
     console.warn('[Dashboard] Hero gig render error:', e.message);

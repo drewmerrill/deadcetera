@@ -200,12 +200,19 @@ async function _sdPopulateBandLens(title) {
         '</div></div>'+
         // ── Readiness (moved up for mobile prominence) ──
         '<div class="sd-card" id="sd-readiness-card">'+
-        '<div style="display:flex;align-items:center;justify-content:space-between"><div class="sd-card-title">📊 Your Readiness</div>'+
-        '<label style="display:flex;align-items:center;gap:4px;font-size:0.65em;color:var(--text-dim);cursor:pointer" title="Hide member names — scores show as anonymous"><input type="checkbox" id="sd-anon-toggle" onchange="sdToggleAnon(this.checked)" style="accent-color:var(--accent);width:12px;height:12px"'+(window._sdAnonMode?' checked':'')+'>Anonymous</label></div>'+
+        '<div class="sd-card-title">📊 Your Readiness</div>'+
         _sdRenderReadinessBlock(title,safeSong)+
         '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;line-height:1.5;display:flex;flex-wrap:wrap;gap:2px 10px">'+
         '<span>0 Never played</span><span>1 Learning</span><span>2 Rough</span><span>3 Getting there</span><span>4 Tight</span><span>5 Gig ready</span>'+
         '</div>'+
+        '<div id="sd-confidence-prompt" style="margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:6px">'+
+        '<div style="font-size:0.72em;font-weight:700;color:var(--accent-light);margin-bottom:4px">🔒 Private Confidence</div>'+
+        '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px">Would you put this song in the set this week?</div>'+
+        '<div style="display:flex;gap:6px">'+
+        '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'yes\')">Yes</button>'+
+        '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'maybe\')">Maybe</button>'+
+        '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'no\')">Not yet</button>'+
+        '</div></div>'+
         '</div>'+
         // ── Song DNA (moved up for mobile prominence) ──
         '<div class="sd-card" style="padding:10px 14px">'+
@@ -564,17 +571,20 @@ function _sdLoadAssets(title) {
     var el = (_sdContainer || document).querySelector('#sd-assets');
     if (!el) return;
     var items = [];
+    var _safeSong = title.replace(/'/g, "\\'");
+    var _pillPresent = function(icon, label) { return '<span style="padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#22c55e;font-weight:600">' + icon + ' ' + label + '</span>'; };
+    var _pillMissing = function(icon, label, action) { return '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer" onclick="' + action + '" title="Click to add">' + icon + ' Add ' + label + '</span>'; };
     // Check North Star
     var nsc = (typeof northStarCache !== 'undefined') ? northStarCache : {};
     items.push(nsc[title]
-        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#22c55e;font-weight:600">⭐ North Star</span>'
-        : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">⭐ No North Star</span>');
+        ? _pillPresent('⭐', 'North Star')
+        : _pillMissing('⭐', 'North Star', "selectSong('" + _safeSong + "')"));
     // Check Harmonies
     var hbc = (typeof harmonyBadgeCache !== 'undefined') ? harmonyBadgeCache : {};
     var hc = (typeof harmonyCache !== 'undefined') ? harmonyCache : {};
     items.push((hbc[title] || hc[title])
-        ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8;font-weight:600">🎤 Harmonies</span>'
-        : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">🎤 No Harmonies</span>');
+        ? _pillPresent('🎤', 'Harmonies')
+        : _pillMissing('🎤', 'Harmonies', "selectSong('" + _safeSong + "')"));
     // Check Chart (from detail cache) — with versioning info
     var dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(title) : null;
     var hasChart = dc && dc.chart && dc.chart.text;
@@ -584,7 +594,7 @@ function _sdLoadAssets(title) {
     }
     items.push(hasChart
         ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);color:#fbbf24;font-weight:600">📖 Chart' + chartMeta + '</span>'
-        : '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-dim)">📖 No Chart</span>');
+        : _pillMissing('📖', 'Chart', "openRehearsalMode('" + _safeSong + "')"));
     // Check Key/BPM
     var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
     if (songObj && songObj.key) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🔑 ' + songObj.key + '</span>');
@@ -622,6 +632,20 @@ function _sdShowLifecycleSuggestion(title, currentStatus) {
         + '<span style="color:#fbbf24;cursor:pointer" title="' + result.reason + '" onclick="sdUpdateSongStatus(\'' + result.suggestion + '\');this.parentElement.innerHTML=\'Applied\'">'
         + 'Suggested: ' + lbl + '</span>';
 }
+
+window.sdSaveConfidence = function(songTitle, value) {
+    var memberKey = typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null;
+    if (!memberKey || !songTitle) return;
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        GLStore.saveSongData(songTitle, 'confidence', { [memberKey]: value, updatedAt: new Date().toISOString() });
+    }
+    var el = (_sdContainer || document).querySelector('#sd-confidence-prompt');
+    if (el) {
+        var labels = { yes: '✅ Yes — ready to play', maybe: '🤔 Maybe — needs a run', no: '⏳ Not yet' };
+        el.innerHTML = '<div style="font-size:0.72em;color:#22c55e;font-weight:600">🔒 ' + (labels[value] || 'Saved') + '</div>';
+    }
+    if (typeof showToast === 'function') showToast('Confidence saved privately');
+};
 
 window.sdSaveReadiness = function(songTitle, memberKey, val) {
     if (typeof GLStore === 'undefined') { console.warn('[song-detail] GLStore not available'); return; }
