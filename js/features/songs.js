@@ -85,8 +85,15 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Triage filter — show only songs missing specific data
         if (!isSearching && window._sqTriageFilter) {
             var tf = window._sqTriageFilter;
-            if (tf === 'no_key' && song.key) return false;
-            if (tf === 'no_bpm' && song.bpm) return false;
+            var _tdc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(song.title) : null;
+            if (tf === 'no_key') {
+                if (song.key) return false;
+                if (_tdc && _tdc.key && _tdc.key.key) return false;
+            }
+            if (tf === 'no_bpm') {
+                if (song.bpm) return false;
+                if (_tdc && _tdc.song_bpm && _tdc.song_bpm.bpm) return false;
+            }
             if (tf === 'no_status') {
                 var _ts = (typeof statusCache !== 'undefined') ? statusCache[song.title] : null;
                 if (_ts) return false;
@@ -464,12 +471,15 @@ function _renderTriageBar(dropdown, count) {
         { id: 'needs_work', label: 'Needs Work' },
         { id: 'not_rotation', label: 'Not in Rotation' }
     ];
-    // Count missing data for entry CTA
+    // Count missing data for entry CTA (check both allSongs cache + GLStore detail cache)
     var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
     if (typeof allSongs !== 'undefined') {
         allSongs.forEach(function(s) {
-            if (!s.key) _missingCounts.no_key++;
-            if (!s.bpm) _missingCounts.no_bpm++;
+            var _mdc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(s.title) : null;
+            var hasKey = s.key || (_mdc && _mdc.key && _mdc.key.key);
+            var hasBpm = s.bpm || (_mdc && _mdc.song_bpm && _mdc.song_bpm.bpm);
+            if (!hasKey) _missingCounts.no_key++;
+            if (!hasBpm) _missingCounts.no_bpm++;
             if (typeof statusCache !== 'undefined' && !statusCache[s.title]) _missingCounts.no_status++;
         });
     }
@@ -571,11 +581,17 @@ window.songQuickSetup = function songQuickSetup(title) {
     row.removeAttribute('onclick');
     row.classList.add('song-item--editing');
 
-    // Load current values
+    // Load current values from in-memory cache (may be stale for key/bpm)
     var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
     var currentKey = (songObj && songObj.key) || '';
     var currentBpm = (songObj && songObj.bpm) ? String(songObj.bpm) : '';
     var currentStatus = (typeof statusCache !== 'undefined' && statusCache[title]) || '';
+    // Also check GLStore detail cache for Firebase-sourced key/bpm
+    var _dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(title) : null;
+    if (_dc) {
+        if (!currentKey && _dc.key && _dc.key.key) currentKey = _dc.key.key;
+        if (!currentBpm && _dc.song_bpm && _dc.song_bpm.bpm) currentBpm = String(_dc.song_bpm.bpm);
+    }
 
     var safeTitle = title.replace(/'/g, "\\'");
     var titleLabel = '<span style="font-weight:600;font-size:0.85em;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:1">' + (title.length > 25 ? title.substring(0, 25) + '...' : title) + '</span>';
@@ -622,11 +638,22 @@ window.songQuickSetup = function songQuickSetup(title) {
         if (target) target.focus();
     });
 
-    // Load lead singer async
+    // Load lead singer, key, bpm from Firebase async (fills in values not in allSongs cache)
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
         GLStore.loadFieldMeta(title, 'lead_singer').then(function(data) {
             var sel = document.getElementById('sq-lead-' + safeTitle);
             if (sel && data && data.singer) sel.value = data.singer;
+        }).catch(function() {});
+        GLStore.loadFieldMeta(title, 'key').then(function(data) {
+            if (!data || !data.key) return;
+            var keySelects = row.querySelectorAll('.sq-tab');
+            var keySel = keySelects[2]; // Key is 3rd field
+            if (keySel && !keySel.value) keySel.value = data.key;
+        }).catch(function() {});
+        GLStore.loadFieldMeta(title, 'song_bpm').then(function(data) {
+            if (!data || !data.bpm) return;
+            var bpmInput = row.querySelector('input[type="number"]');
+            if (bpmInput && !bpmInput.value) bpmInput.value = data.bpm;
         }).catch(function() {});
     }
 

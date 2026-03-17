@@ -679,6 +679,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
+        // Preload key/bpm from Firebase into allSongs[] for accurate triage counts
+        _preloadSongDNA();
         // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
             window._glCachedSetlists = toArray(data || []);
@@ -13189,6 +13191,32 @@ async function preloadReadinessCache() {
     } catch(e) {
         readinessCacheLoaded = true;
     }
+}
+
+// ── Song DNA preload (key/bpm from Firebase → allSongs[] for triage accuracy) ─
+async function _preloadSongDNA() {
+    if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
+    try {
+        // Batch-read songs_v2 key and bpm for songs missing them in allSongs[]
+        var missing = allSongs.filter(function(s) { return !s.key || !s.bpm; });
+        for (var i = 0; i < Math.min(missing.length, 300); i++) {
+            var s = missing[i];
+            if (!s.title) continue;
+            if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+                if (!s.key) {
+                    GLStore.loadFieldMeta(s.title, 'key').then(function(song, data) {
+                        if (data && data.key) song.key = data.key;
+                    }.bind(null, s)).catch(function() {});
+                }
+                if (!s.bpm) {
+                    GLStore.loadFieldMeta(s.title, 'song_bpm').then(function(song, data) {
+                        if (data && data.bpm) song.bpm = data.bpm;
+                    }.bind(null, s)).catch(function() {});
+                }
+            }
+            if (i > 0 && i % 20 === 0) await new Promise(function(r) { setTimeout(r, 50); });
+        }
+    } catch(e) {}
 }
 
 // ── Lead singer preload (for triage accuracy) ────────────────────────────────
