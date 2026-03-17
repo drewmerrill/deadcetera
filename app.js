@@ -1200,7 +1200,11 @@ window._songQuickAddToAgenda = function(title) {
     if (typeof invalidateHomeCache === 'function') invalidateHomeCache();
 };
 
-function setupSearchAndFilters() {
+// Legacy setupSearchAndFilters — canonical version in songs.js
+var _legacySetupSearchAndFilters = function setupSearchAndFilters() {
+    if (window.setupSearchAndFilters && window.setupSearchAndFilters !== _legacySetupSearchAndFilters) {
+        return window.setupSearchAndFilters();
+    }
     const searchInput = document.getElementById('songSearch');
     const filterBtns = document.querySelectorAll('.filter-btn');
     
@@ -1284,19 +1288,7 @@ function setupSearchAndFilters() {
         row.appendChild(bar);
     };
 
-    // Inject heatmap toggle button
-    if (!document.getElementById('heatmapToggleBtn')) {
-        const btn = document.createElement('button');
-        btn.id = 'heatmapToggleBtn';
-        btn.title = 'Show readiness heatmap';
-        btn.textContent = '🌡️ Heatmap';
-        btn.style.cssText = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:4px 9px;border-radius:20px;cursor:pointer;font-size:0.72em;font-weight:700;white-space:nowrap;transition:all 0.15s;flex-shrink:0;margin-left:4px;margin-top:8px;display:block';
-        btn.onclick = function() { if(typeof toggleHeatmapMode==='function') toggleHeatmapMode(); };
-        const harmoniesEl = document.getElementById('harmoniesOnlyFilter');
-        const target = harmoniesEl ? (harmoniesEl.closest('label')?.parentElement || harmoniesEl.parentElement) : null;
-        if (target && target.parentElement) target.parentElement.appendChild(btn);
-        else if (searchInput?.parentElement?.parentElement) searchInput.parentElement.parentElement.appendChild(btn);
-    }
+    // Heatmap button removed (PL-11) — heatmap no longer renders on song rows
 }
 
 // ============================================================================
