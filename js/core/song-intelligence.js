@@ -545,6 +545,11 @@
     }
     // Never suggest rotation for readiness <= 2
 
+    // Prospect with any readiness data → suggest learning (first run-through done)
+    if (currentStatus === 'prospect' && avgReadiness > 0) {
+      return { suggestion: 'learning', reason: 'Has been rated — ready to move to Learning' };
+    }
+
     // Low readiness, not a prospect → suggest learning
     if (avgReadiness > 0 && avgReadiness < 3 && currentStatus !== 'learning' && currentStatus !== 'prospect') {
       return { suggestion: 'learning', reason: 'Readiness still developing' };

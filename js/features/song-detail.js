@@ -238,6 +238,7 @@ async function _sdPopulateBandLens(title) {
         _sdRenderAttentionCard(title, safeSong)+
         _sdRenderGapsCard(_siGaps)+
         ((status === 'prospect' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
+        _sdRenderFirstRunCard(title, status)+
         '<div class="sd-card">'+
         '<div class="sd-card-title">🧠 Practice Mode</div>'+
         (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre>':'')+
@@ -332,6 +333,29 @@ function _sdRenderRehearsalNotes(notesData) {
                ((author||date)?'<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px">'+
                (author?_sdEsc(author)+' ':'')+(date?'· '+date:'')+'</div>':'')+'</div>';
     }).join('');
+}
+
+// ── First Run-Through Card (for newly-added Prospect songs) ──────────────────
+
+function _sdRenderFirstRunCard(title, status) {
+    if (status !== 'prospect') return '';
+    // Only show if song has no readiness data (never been run through)
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var scores = rc[title] || {};
+    var hasRating = Object.values(scores).some(function(v) { return typeof v === 'number' && v > 0; });
+    if (hasRating) {
+        // Song has been rated — offer transition to Learning
+        return '<div class="sd-card" style="padding:10px 14px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04)">'
+            + '<div style="font-size:0.82em;color:var(--text)">✅ First ratings are in. Ready to move this to <strong>Learning</strong>?</div>'
+            + '<button onclick="sdUpdateSongStatus(\'learning\');this.closest(\'.sd-card\').innerHTML=\'<div style=color:#22c55e;font-size:0.82em;padding:6px>Moved to Learning</div>\'" '
+            + 'style="margin-top:6px;font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.1);color:#86efac;min-height:36px">'
+            + '📖 Move to Learning</button></div>';
+    }
+    // No ratings yet — prompt first run-through
+    return '<div class="sd-card" style="padding:10px 14px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04)">'
+        + '<div style="font-size:0.82em;color:var(--text);font-weight:600">🎯 First run-through recommended</div>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">This song was just added. Play it once and rate it so the band can start tracking progress.</div>'
+        + '</div>';
 }
 
 // ── Practice Attention Card (Milestone 5 Phase 4) ────────────────────────────
