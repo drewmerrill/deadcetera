@@ -360,10 +360,10 @@ function _renderDashboard(bundle, context) {
         _renderCommandCenterHeader(bundle),
         _renderHeroNextBestStep(bundle, wf, isStoner),
         _renderSetupGuidance(bundle, wf),
+        _renderPriorityQueue(bundle),
         _renderBandHealthRow(bundle),
         _renderBandMomentum(),
         _renderNarrativeBridge(),
-        _renderPriorityQueue(bundle),
         '<div style="text-align:center;padding:4px 0"><button onclick="if(typeof toggleStonerMode===\'function\')toggleStonerMode()" style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);color:#c084fc;padding:10px 24px;border-radius:12px;font-size:0.85em;font-weight:700;cursor:pointer;transition:all 0.15s">\uD83C\uDF3F Stoner Mode<span style="display:block;font-size:0.75em;font-weight:500;color:#64748b;margin-top:2px">Low-brain rehearsal cockpit</span></button></div>',
         _renderRecentChanges(bundle),
         '<div id="hdPollCard"></div>',
@@ -425,19 +425,13 @@ function _renderSetupGuidance(bundle, wf) {
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var appUrl = window.location.origin + window.location.pathname;
 
-    // 3/3 complete — success state
+    // 3/3 complete — small dismissible banner (not a full card)
     if (ob.isComplete) {
-        return '<div class="app-card home-anim-cards" style="border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.04)">'
-            + '<div style="text-align:center;padding:16px 12px">'
-            + '<div style="font-size:2em;margin-bottom:8px">🎉</div>'
-            + '<div style="font-size:1.05em;font-weight:700;color:#22c55e;margin-bottom:4px">Your band is set up!</div>'
-            + '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:16px">GrooveLinx can now help you improve between rehearsals.</div>'
-            + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
-            + '<button onclick="if(typeof GLStore!==\'undefined\'&&GLStore.generateRehearsalAgenda)GLStore.generateRehearsalAgenda();showPage(\'rehearsal\')" class="btn btn-primary" style="font-weight:700">Generate First Rehearsal Agenda</button>'
-            + '<button onclick="if(typeof openRehearsalChopper===\'function\')openRehearsalChopper()" class="btn btn-ghost">Analyze a Recording</button>'
-            + '</div>'
-            + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.dismissOnboardingCard();renderHomeDashboard()" style="background:none;border:none;color:var(--text-dim);font-size:0.75em;cursor:pointer;margin-top:12px;padding:4px 8px">Dismiss</button>'
-            + '</div></div>';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.15);border-radius:8px;margin-bottom:8px">'
+            + '<span style="font-size:0.85em">🎉</span>'
+            + '<span style="flex:1;font-size:0.82em;color:#22c55e;font-weight:600">Band setup complete!</span>'
+            + '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.dismissOnboardingCard();renderHomeDashboard()" style="background:none;border:none;color:var(--text-dim);font-size:0.72em;cursor:pointer;padding:2px 6px">Dismiss</button>'
+            + '</div>';
     }
 
     // Incomplete — show setup card
@@ -878,7 +872,7 @@ function _renderPriorityQueue(bundle) {
         if (_weakCount > 0) _uploadReason = _weakCount + ' weak song' + (_weakCount !== 1 ? 's' : '') + ' \u2014 a recording would show where breakdowns happen';
         items.push({
             _pqKey: 'upload',
-            urgency: 40, label: 'Analyze a Rehearsal Recording',
+            urgency: 40, label: 'Upload rehearsal to improve readiness',
             desc: _uploadReason,
             badge: '', badgeColor: '',
             cta: 'Upload', onclick: "_pqClick('upload');if(typeof openRehearsalChopper==='function')openRehearsalChopper()"
@@ -1180,10 +1174,10 @@ function _renderRecentChanges(bundle) {
     }
 
     if (!sections.length) return '';
-    return '<div class="hd-changes home-anim-feed">'
-        + '<div class="hd-changes__header">What Changed ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('impact-feedback') : '') + '</div>'
+    return '<details class="hd-changes home-anim-feed" style="cursor:pointer">'
+        + '<summary class="hd-changes__header" style="list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer">▸ What Changed ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('impact-feedback') : '') + '</summary>'
         + sections.join('')
-        + '</div>';
+        + '</details>';
 }
 
 // ── Mission Board Helpers ────────────────────────────────────────────────────
@@ -1533,7 +1527,8 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var _slHelp = (typeof glInlineHelp !== 'undefined') ? glInlineHelp.renderHelpTrigger('setlist-readiness') : '';
     var pctBar = pct !== null ? '<div class="hd-hero__pct-row" onclick="'+pctClickAction+'" style="cursor:pointer" title="View setlist readiness">' +'<div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:var(--text-dim,#475569);text-transform:uppercase;margin-bottom:3px">'+pctScopeLabel+' '+_slHelp+'</div>' +'<div class="hd-hero__pct-val hd-score-pulse" style="color:'+pctColor+';font-size:32px;font-weight:900;line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px '+pctColor+'66;margin-bottom:6px">'+pct+'%</div>' +'<div class="hd-hero__pct-track"><div class="hd-hero__pct-fill" style="width:'+pct+'%;background:'+pctColor+';box-shadow:0 0 8px '+pctColor+'88"></div></div>' +'<div class="hd-hero__pct-state" style="color:'+pctColor+';font-size:11px;font-weight:700;margin-top:4px">'+rlLabel+'</div>' +'</div>' : '';
     var riskAvg = riskEntry ? _bandAvgForSong(riskEntry[1]) : null;
-    var riskLine = riskEntry ? '<div class="hd-hero__risk-pill">⚠️ <span class="hd-hero__risk-song">'+_escHtml(riskEntry[0])+'</span><span class="hd-hero__risk-label">BIGGEST RISK</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
+    var _riskSafeTitle = riskEntry ? riskEntry[0].replace(/'/g, "\\'") : '';
+    var riskLine = riskEntry ? '<div class="hd-hero__risk-pill" style="cursor:pointer" onclick="showPage(\'songs\');setTimeout(function(){if(typeof GLStore!==\'undefined\')GLStore.selectSong(\'' + _riskSafeTitle + '\');},200)" title="Open practice mode for this song">⚠️ <span class="hd-hero__risk-song">Practice next: '+_escHtml(riskEntry[0])+'</span>'+(riskAvg!==null?'<span class="hd-hero__risk-avg" style="color:#ef4444">'+riskAvg.toFixed(1)+'</span>':'')+'</div>' : '';
     // Gig Confidence Meter — executive summary
     var _scTrend = null;
     var _pkDelta = 0;
@@ -1566,7 +1561,28 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" title="Open gig details">Open Gig \u2192</button>';
     var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
     var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
-    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,confHTML,pctBar,riskLine,coach?'<div class="hd-hero__coach">'+coach+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
+    // Next Best Action — single dominant CTA inside gig card
+    var _nba = '';
+    var _nbaLabel = '', _nbaOnclick = '';
+    if (riskEntry) {
+        _nbaLabel = 'Practice weakest song: ' + riskEntry[0];
+        _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
+    } else if (!agenda || agenda.empty) {
+        _nbaLabel = 'Generate rehearsal agenda';
+        _nbaOnclick = "if(typeof GLStore!=='undefined'&&GLStore.regenerateRehearsalAgenda){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard==='function')renderHomeDashboard();}";
+    } else if (!tl || !tl.summary) {
+        _nbaLabel = 'Upload rehearsal recording';
+        _nbaOnclick = "if(typeof openRehearsalChopper==='function')openRehearsalChopper()";
+    }
+    if (_nbaLabel) {
+        _nba = '<div style="margin:8px 0;padding:10px 14px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;display:flex;align-items:center;gap:10px">'
+            + '<span style="font-size:1.1em">👉</span>'
+            + '<div style="flex:1"><div style="font-size:0.68em;font-weight:700;letter-spacing:0.05em;color:var(--accent-light);text-transform:uppercase;margin-bottom:2px">Next Best Action</div>'
+            + '<div style="font-size:0.88em;font-weight:600;color:var(--text)">' + _escHtml(_nbaLabel) + '</div></div>'
+            + '<button onclick="' + _nbaOnclick + '" style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">Go →</button>'
+            + '</div>';
+    }
+    return ['<div class="hd-hero '+urgency+' home-anim-header">','<div class="hd-hero__eyebrow">BAND MISSION '+badge+'</div>','<div class="hd-hero__title-row"><span class="hd-hero__title">'+venue+'</span>'+rb+'</div>','<div class="hd-hero__sub">'+dateLbl+(timeLbl?' \xb7 '+timeLbl:'')+cdInline+'</div>',slLine,cd,confHTML,pctBar,riskLine,_nba,coach?'<div class="hd-hero__coach">'+coach+'</div>':'','<div class="hd-hero__actions">'+primaryCTA+secondaryCTA+tertiaryCTA+'</div>','</div>'].join('');
   } catch(e) {
     console.warn('[Dashboard] Hero gig render error:', e.message);
     return '<div class="hd-hero home-anim-header"><div class="hd-hero__eyebrow">BAND MISSION</div><div class="hd-hero__title">' + _escHtml(gig.venue || 'Upcoming Gig') + '</div><div class="hd-hero__actions"><button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'gigs\')">Open Gigs \u2192</button></div></div>';
