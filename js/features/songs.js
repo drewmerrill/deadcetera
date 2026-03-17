@@ -97,6 +97,16 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 var _hasLead = _dc && _dc.lead_singer && _dc.lead_singer.singer;
                 if (_hasLead) return false;
             }
+            if (tf === 'needs_work') {
+                var _nwScores = (typeof readinessCache !== 'undefined' && readinessCache[song.title]) || {};
+                var _nwVals = Object.values(_nwScores).filter(function(v) { return typeof v === 'number' && v > 0; });
+                var _nwAvg = _nwVals.length ? _nwVals.reduce(function(a,b){return a+b;},0) / _nwVals.length : 0;
+                if (_nwAvg === 0 || _nwAvg >= 3) return false;
+            }
+            if (tf === 'not_rotation') {
+                var _nrStatus = (typeof statusCache !== 'undefined') ? statusCache[song.title] : '';
+                if (_nrStatus === 'rotation') return false;
+            }
         }
 
         return true;
@@ -134,63 +144,51 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // Show triage bar when active
     _renderTriageBar(dropdown, filtered.length);
 
+    // Precompute readiness + status for simplified rows
+    var _rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var _sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var _statusDisplay = { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
+    var _statusColor = { prospect:'#7c3aed', learning:'#2563eb', rotation:'#059669', shelved:'#6b7280', wip:'#2563eb', active:'#2563eb', gig_ready:'#2563eb', parked:'#6b7280', retired:'#6b7280' };
+
     dropdown.innerHTML = filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
         var titleOnclick = song.title.replace(/'/g, "\\'");
-        var bandClass  = (song.band || 'other').toLowerCase();
         var customAttr = song.isCustom ? ' data-custom="true"' : '';
         var customClass = song.isCustom ? ' custom-song' : '';
-        var drawerBtn = '<button class="song-drawer-btn" title="Quick view (S)" '+
-            'onclick="event.stopPropagation();openSongDrawer(\'' + titleOnclick + '\')">'+
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">'+
-            '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>'+
-            '</button>';
+
+        // Lifecycle badge
+        var status = _sc[song.title] || '';
+        var statusBadge = status && _statusDisplay[status]
+            ? '<span style="font-size:0.62em;font-weight:700;padding:1px 6px;border-radius:8px;background:' + (_statusColor[status] || '#6b7280') + '22;color:' + (_statusColor[status] || '#6b7280') + ';border:1px solid ' + (_statusColor[status] || '#6b7280') + '44;white-space:nowrap">' + _statusDisplay[status] + '</span>'
+            : '';
+
+        // Average readiness (compact)
+        var scores = _rc[song.title] || {};
+        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+        var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
+        var avgDisplay = avg > 0 ? '<span style="font-size:0.68em;font-weight:700;color:' + (avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'var(--text-dim)') + '">' + avg.toFixed(1) + '</span>' : '';
+        var needsWork = avg > 0 && avg < 3 ? '<span style="font-size:0.58em;color:#f59e0b;font-weight:600">Needs Work</span>' : '';
+
         var editBtn = '<button class="song-quick-edit-btn" title="Quick edit" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">✏️</button>';
+
         return '<div class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<span class="song-name">' + song.title + '</span>' +
-               '<span class="song-badges"><span class="harmony-slot"></span><span class="northstar-slot"></span></span>' +
-               '<span class="song-chain-strip" data-song="' + titleEsc + '"></span>' +
-               '<span class="song-status-cell"></span>' +
-               '<span class="song-badge ' + bandClass + '">' + (song.band || '') + '</span>' +
-               editBtn + drawerBtn +
+               '<span class="song-row-meta">' + statusBadge + avgDisplay + needsWork + '</span>' +
+               '<span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
+               editBtn +
                '</div>';
     }).join('');
 
-    // Inject badges and overlays after paint
+    // Inject overlays after paint (simplified — badges now inline in row template)
     requestAnimationFrame(function() {
         // Re-apply song row highlight after DOM rebuild
         if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
             highlightSelectedSongRow(selectedSong.title);
         }
-        if (typeof addHarmonyBadges         === 'function') addHarmonyBadges();
-        if (typeof addNorthStarBadges       === 'function') addNorthStarBadges();
 
-        // Quick-fill pencil for songs missing key/bpm
-        filtered.forEach(function(song) {
-            if (!song.key && !song.bpm) {
-                var titleEsc = song.title.replace(/"/g, '&quot;');
-                var slot = document.querySelector('.song-item[data-title="' + titleEsc + '"] .northstar-slot');
-                if (slot && !slot.nextSibling?.classList?.contains('qf-btn')) {
-                    var btn = document.createElement('span');
-                    btn.className = 'qf-btn';
-                    btn.title = 'Quick-fill key/BPM';
-                    btn.textContent = '✏️';
-                    btn.style.cssText = 'font-size:0.7em;opacity:0.4;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px solid rgba(255,255,255,0.08);transition:opacity 0.15s';
-                    btn.onmouseenter = function() { this.style.opacity = '1'; };
-                    btn.onmouseleave = function() { this.style.opacity = '0.4'; };
-                    var t = song.title;
-                    btn.onclick = function(e) { e.stopPropagation(); if (typeof songQuickFill === 'function') songQuickFill(t, e); };
-                    slot.after(btn);
-                }
-            }
-        });
-
-        if (typeof preloadAllStatuses       === 'function') preloadAllStatuses();
-        if (typeof statusCacheLoaded !== 'undefined' && statusCacheLoaded &&
-            typeof addStatusBadges          === 'function') addStatusBadges();
-        if (typeof readinessCacheLoaded !== 'undefined' && readinessCacheLoaded &&
-            typeof addReadinessChains       === 'function') addReadinessChains();
+        // Preload statuses if not loaded (for inline badges on next render)
+        if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
         if (typeof _heatmapMode !== 'undefined' && _heatmapMode &&
             typeof renderHeatmapOverlay     === 'function') renderHeatmapOverlay();
         if (window._sectionRatingsCache) {
@@ -332,14 +330,13 @@ window.selectSong = function selectSong(songTitle) {
     // GLStore also loads in index.html, so GLStore existence alone is NOT a
     // safe guard — it would break production song navigation.
 
-    if (window.glRightPanel && typeof window.glRightPanel.open === 'function') {
-        // Dev / BCC shell path (index-dev.html only).
-        // Fires gl-song-selected → gl-right-panel.js subscriber handles render.
-        // Does NOT call showPage(). Does NOT write glLastPage.
+    // Mobile: always use full-page detail (right panel too small)
+    var isMobile = window.innerWidth <= 768;
+    if (!isMobile && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
+        // Desktop BCC shell path (index-dev.html only).
         GLStore.selectSong(songTitle);
     } else {
-        // Production path (index.html) — gl-right-panel.js is not loaded here.
-        // Full-page navigation as before.
+        // Production path or mobile — full-page navigation.
         if (typeof showPage === 'function') {
             showPage('songdetail');
         }
@@ -426,7 +423,9 @@ function _renderTriageBar(dropdown, count) {
         { id: 'no_key', label: 'Missing Key' },
         { id: 'no_bpm', label: 'Missing BPM' },
         { id: 'no_status', label: 'No Status' },
-        { id: 'no_lead', label: 'No Lead' }
+        { id: 'no_lead', label: 'No Lead' },
+        { id: 'needs_work', label: 'Needs Work' },
+        { id: 'not_rotation', label: 'Not in Rotation' }
     ];
     // Count missing data for entry CTA
     var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
@@ -472,7 +471,8 @@ function _renderTriageBar(dropdown, count) {
 (function() {
     // Inject styles once
     var style = document.createElement('style');
-    style.textContent = '.song-quick-edit-btn{font-size:0.65em;opacity:0.25;cursor:pointer;border:none;background:none;padding:2px 4px;transition:opacity 0.15s;flex-shrink:0}'
+    style.textContent = '.song-row-meta{display:flex;align-items:center;gap:4px;flex-shrink:0}'
+        + '.song-quick-edit-btn{font-size:0.65em;opacity:0.25;cursor:pointer;border:none;background:none;padding:2px 4px;transition:opacity 0.15s;flex-shrink:0}'
         + '.song-item:hover .song-quick-edit-btn{opacity:0.8}'
         + '.song-item--editing{border:1px solid rgba(99,102,241,0.3)!important;background:rgba(99,102,241,0.04)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important}'
         + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
@@ -504,8 +504,8 @@ window.songQuickSetup = function songQuickSetup(title) {
     var titleLabel = '<span style="font-weight:600;font-size:0.85em;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:1">' + (title.length > 25 ? title.substring(0, 25) + '...' : title) + '</span>';
 
     // Lead options
-    var leadOpts = ['','drew','chris','brian','pierce'].map(function(v) {
-        var lbl = v === '' ? '—' : v.charAt(0).toUpperCase() + v.slice(1);
+    var leadOpts = ['','drew','chris','brian','pierce','shared','rotating'].map(function(v) {
+        var lbl = v === '' ? '—' : v === 'shared' ? 'Shared' : v === 'rotating' ? 'Rotating' : v.charAt(0).toUpperCase() + v.slice(1);
         return '<option value="' + v + '">' + lbl + '</option>';
     }).join('');
 

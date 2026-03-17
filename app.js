@@ -1672,8 +1672,12 @@ function resetWorkflow() {
 // ============================================================================
 
 function showBandResources(songTitle) {
+    // Legacy Song DNA panel removed — all DNA editing lives in the song detail panel.
+    // Keep step2 hidden. showBandResources is now a no-op.
     const step2 = document.getElementById('step2');
-    step2.classList.remove('hidden');
+    if (!step2) return;
+    step2.classList.add('hidden');
+    return;
     
     // Update title with song name
     const titleEl = document.getElementById('step2Title');
