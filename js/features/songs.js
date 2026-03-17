@@ -732,13 +732,18 @@ function _renderTriageBar(dropdown, count) {
     var _totalMissing = _missingCounts.no_key + _missingCounts.no_bpm + _missingCounts.no_status;
 
     var html = '';
-    // Entry CTA when no triage active but missing data exists
-    if (!tf && _totalMissing > 0) {
+    // Entry CTA — dynamic based on active triage or default
+    if (_totalMissing > 0) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
-        html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
-            + '<span>⚡</span>Get your songs rehearsal-ready'
-            + '<span style="font-weight:500;opacity:0.7;font-size:0.82em">(' + _totalMissing + ')</span></button>';
+        var _ctaLabel = tf
+            ? { no_key:'Fix Missing Key', no_bpm:'Fix Missing BPM', no_status:'Set Status', no_lead:'Set Lead', needs_work:'Focus on Weak Songs', not_rotation:'Review Rotation' }[tf] || 'Continue Cleanup'
+            : 'Get your songs rehearsal-ready';
+        var _ctaCount = tf ? count : _totalMissing;
+        var _ctaFilter = tf || _bestFilter;
+        html += '<button onclick="sqTriageStart(\'' + _ctaFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
+            + '<span>⚡</span>' + _ctaLabel
+            + '<span style="font-weight:500;opacity:0.7;font-size:0.82em">(' + _ctaCount + ')</span></button>';
     }
     // Triage progress bar when active (always show when filter active)
     if (tf) {
@@ -752,21 +757,18 @@ function _renderTriageBar(dropdown, count) {
             + '<div style="width:' + _pPct + '%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.3s"></div></div></div>';
     }
 
-    if (!tf) {
-        // No active triage — show chip strip
-        html += '<span style="font-size:0.65em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
-    }
+    var _triageIcons = { no_key:'🔑', no_bpm:'🥁', no_status:'🎯', no_lead:'🎤', needs_work:'⚠️', not_rotation:'🔄' };
     items.forEach(function(it) {
         var active = tf === it.id;
         var itemCount = _missingCounts[it.id] || '';
+        var icon = _triageIcons[it.id] || '';
         if (tf && !active) {
-            // During active triage, de-emphasize other chips
-            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.6em;font-weight:500;padding:1px 6px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);background:none;color:var(--text-dim);opacity:0.5">' + it.label + '</button>';
+            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.62em;font-weight:500;padding:2px 7px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);opacity:0.4;transition:opacity 0.15s" onmouseenter="this.style.opacity=0.8" onmouseleave="this.style.opacity=0.4">' + icon + ' ' + it.label + '</button>';
         } else {
-            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.65em;font-weight:' + (active ? '800' : '600') + ';padding:' + (active ? '3px 10px' : '2px 7px') + ';border-radius:10px;cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid '
-                + (active ? '#fbbf24' : 'rgba(255,255,255,0.08)') + ';background:'
-                + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.03)') + ';color:'
-                + (active ? '#fbbf24' : 'var(--text-dim)') + (active ? ';box-shadow:0 0 8px rgba(251,191,36,0.15)' : '') + '">' + it.label + (itemCount ? ' (' + itemCount + ')' : '') + '</button>';
+            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;border-radius:8px;cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid '
+                + (active ? '#fbbf24' : 'rgba(255,255,255,0.1)') + ';background:'
+                + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)') + ';color:'
+                + (active ? '#fbbf24' : '#94a3b8') + (active ? ';box-shadow:0 0 8px rgba(251,191,36,0.12)' : '') + ';transition:all 0.15s" onmouseenter="this.style.background=\'' + (active ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.08)') + '\'" onmouseleave="this.style.background=\'' + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)') + '\'">' + icon + ' ' + it.label + (itemCount ? ' <span style="opacity:0.6">(' + itemCount + ')</span>' : '') + '</button>';
         }
     });
     if (tf) {

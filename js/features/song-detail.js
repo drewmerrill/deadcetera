@@ -291,7 +291,7 @@ function _sdSectionDots(sectionRatings) {
 function _sdRenderCribNotes(tabs) {
     // personal_tabs is array of {url, label, notes, memberKey, addedBy}
     var arr = Array.isArray(tabs) ? tabs : (tabs ? Object.values(tabs) : []);
-    if (!arr.length) return '<div style="color:var(--text-dim);font-size:0.85em">No crib notes yet.</div>';
+    if (!arr.length) return '<div style="color:var(--text-dim);font-size:0.8em;opacity:0.6">No crib notes yet · <span style="color:var(--accent-light);cursor:pointer" onclick="if(typeof showAddCribNote===\'function\')showAddCribNote()">Add note</span></div>';
     var memberEmoji = {drew:'🎸',chris:'🎸',brian:'🎸',pierce:'🎹',jay:'🥁'};
     // Group by memberKey
     var byMember = {};
@@ -321,9 +321,9 @@ function _sdRenderCribNotes(tabs) {
 }
 
 function _sdRenderRehearsalNotes(notesData) {
-    if (!notesData) return '<div style="color:var(--text-dim);font-size:0.85em">No rehearsal notes yet.</div>';
+    if (!notesData) return '<div style="color:var(--text-dim);font-size:0.85em">No rehearsal notes yet · Add after next rehearsal</div>';
     var notes=Array.isArray(notesData)?notesData:Object.values(notesData||{});
-    if (!notes.length) return '<div style="color:var(--text-dim);font-size:0.85em">No rehearsal notes yet.</div>';
+    if (!notes.length) return '<div style="color:var(--text-dim);font-size:0.85em">No rehearsal notes yet · Add after next rehearsal</div>';
     return notes.slice(-5).reverse().map(function(n) {
         if (!n) return '';
         var text=typeof n==='string'?n:(n.note||n.text||'');

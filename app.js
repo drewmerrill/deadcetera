@@ -69,9 +69,9 @@ if (!_rt.buildLogged) {
         /* Unrated rows — neutral, slightly dimmer title */
         .song-item.song--unrated .song-name { color:#94a3b8 !important; font-weight:500; }
         /* Selected song anchor — visible dark background, not transparent */
-        .song-item.selected { background:#1e2d50 !important; border-left:3px solid #667eea !important; box-shadow:inset 0 0 0 1px rgba(99,102,241,0.12),0 1px 4px rgba(0,0,0,0.15); }
+        .song-item.selected { background:#1e2a48 !important; border-left:3px solid #667eea !important; }
         .song-item.selected td:first-child { color:#e0e7ff !important; font-weight:700 !important; }
-        .song-item.selected td { color:#cbd5e1 !important; }
+        .song-item.selected td { color:#c8d3e0 !important; }
         /* Title: visually first, slightly bolder than before */
         .song-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f1f5f9 !important; font-weight:600; font-size:0.9em; line-height:1.3; }
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
