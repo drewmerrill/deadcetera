@@ -312,8 +312,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
           + '<th style="' + _hd + ';text-align:left;width:38%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:28%">Status' + _statusFilterIcon + '</th>'
-          + '<th style="' + _hd + ';text-align:right;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:28%">So What?' + _statusFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
           + '</tr></thead><tbody>';
 
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
@@ -332,10 +332,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             var _sgSafe = _bestSuggest.title.replace(/'/g, "\\'");
             var _sgStatus = _statusDisplay[_bestSuggest.status] || '';
             var _sgWhy = (_sgStatus ? _sgStatus + ' · ' : '') + 'Avg ' + _bestSuggest.avg.toFixed(1);
-            _suggestHTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin-bottom:4px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.12);border-radius:6px">'
-                + '<span style="font-size:0.78em;font-weight:700;color:var(--text);white-space:nowrap">🎯 Suggested: <span style="color:#a5b4fc">' + _bestSuggest.title + '</span></span>'
-                + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto;white-space:nowrap">' + _sgWhy + '</span>'
-                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.68em;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap">Open →</button>'
+            _suggestHTML = '<div style="display:flex;align-items:center;gap:12px;padding:6px 12px;margin-bottom:4px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.12);border-radius:6px">'
+                + '<span style="font-size:0.78em;font-weight:700;color:var(--text)">🎯 Suggested: <span style="color:#a5b4fc">' + _bestSuggest.title + '</span></span>'
+                + '<span style="font-size:0.68em;color:var(--text-dim)">' + _sgWhy + '</span>'
+                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.68em;font-weight:700;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap;margin-left:auto">Open →</button>'
                 + '</div>';
         }
     }
@@ -355,13 +355,18 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
         var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
 
-        // Lifecycle + context as chips
+        // Lifecycle + context as chips (lifecycle ALWAYS first)
         var status = _sc[song.title] || '';
         var statusText = _statusDisplay[status] || '';
         var chips = [];
-        if (statusText) chips.push('<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>');
+        // 1. Lifecycle chip (always first when present)
+        if (statusText) {
+            chips.push('<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>');
+        }
+        // 2. Context signals
         if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">🎯 Setlist</span>');
         if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">⚠️ Needs work</span>');
+        // 3. Unrated (no scores AND no status)
         if (avg === 0 && !statusText) chips.push('<span class="song-chip song-chip--dim">Unrated</span>');
         var whyHTML = chips.join(' ');
 
@@ -373,7 +378,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                '<td style="padding:8px;font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:8px 4px"><div style="display:flex;align-items:center;gap:4px"><span style="width:50px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
                '<td style="padding:8px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
-               '<td style="padding:8px;text-align:right"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
+               '<td style="padding:8px"><div style="display:flex;align-items:center;gap:4px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
                '</tr>';
     }).join('') + '</tbody></table>';
 
