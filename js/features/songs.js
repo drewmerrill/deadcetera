@@ -204,15 +204,16 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
         var barPct = avg ? Math.round((avg / 5) * 100) : 0;
         var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)';
-        var readinessBar = avg > 0
+        // Readiness cluster (bar + number or "Unrated")
+        var readinessCluster = avg > 0
             ? '<span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span>'
               + '<span class="song-readiness-num" style="color:' + barColor + '">' + avg.toFixed(1) + '</span>'
-            : '<span class="song-readiness-bar"><span class="song-readiness-fill" style="width:0%;background:rgba(255,255,255,0.08)"></span></span>'
-              + '<span class="song-readiness-num" style="color:var(--text-dim)">—</span>';
+            : '<span class="song-readiness-bar"><span class="song-readiness-fill" style="width:0%"></span></span>'
+              + '<span class="song-readiness-num song-readiness-unrated">Unrated</span>';
         // Contextual priority signal (one per row max)
         var signal = '';
         if (_upcomingSongs[song.title]) {
-            signal = '<span style="font-size:0.58em;color:#818cf8;font-weight:600">🎯 In setlist</span>';
+            signal = '<span class="song-signal-context">🎯 In setlist</span>';
         } else if (_topGaps[song.title] || (avg > 0 && avg < 3)) {
             signal = '<span class="song-signal-needswork">⚠️ Needs work</span>';
         }
@@ -222,11 +223,13 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
         return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
-               '<div class="song-row-line1"><span class="song-name">' + song.title + '</span>' +
-               '<span style="margin-left:auto;display:flex;align-items:center;gap:4px">' +
+               '<div class="song-row-primary">' +
+               '<span class="song-name">' + song.title + '</span>' +
+               '<span class="song-readiness-cluster">' + readinessCluster + '</span>' +
+               '</div>' +
+               '<div class="song-row-secondary">' + statusBadge + signal +
                '<span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' +
-               editBtn + '</span></div>' +
-               '<div class="song-row-line2">' + readinessBar + statusBadge + signal + '</div>' +
+               editBtn + '</div>' +
                '</div>';
     }).join('');
 
@@ -495,14 +498,22 @@ function _renderTriageBar(dropdown, count) {
             + '<div style="width:' + _pPct + '%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.3s"></div></div></div>';
     }
 
-    html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
+    if (!tf) {
+        // No active triage — show chip strip
+        html += '<span style="font-size:0.65em;font-weight:700;color:var(--text-dim);margin-right:2px">Triage:</span>';
+    }
     items.forEach(function(it) {
         var active = tf === it.id;
         var itemCount = _missingCounts[it.id] || '';
-        html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:' + (active ? '3px 10px' : '2px 8px') + ';border-radius:10px;cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid '
-            + (active ? '#fbbf24' : 'rgba(255,255,255,0.08)') + ';background:'
-            + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.03)') + ';color:'
-            + (active ? '#fbbf24' : 'var(--text-dim)') + (active ? ';box-shadow:0 0 8px rgba(251,191,36,0.15)' : '') + '">' + it.label + (itemCount ? ' (' + itemCount + ')' : '') + '</button>';
+        if (tf && !active) {
+            // During active triage, de-emphasize other chips
+            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.6em;font-weight:500;padding:1px 6px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);background:none;color:var(--text-dim);opacity:0.5">' + it.label + '</button>';
+        } else {
+            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.65em;font-weight:' + (active ? '800' : '600') + ';padding:' + (active ? '3px 10px' : '2px 7px') + ';border-radius:10px;cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid '
+                + (active ? '#fbbf24' : 'rgba(255,255,255,0.08)') + ';background:'
+                + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.03)') + ';color:'
+                + (active ? '#fbbf24' : 'var(--text-dim)') + (active ? ';box-shadow:0 0 8px rgba(251,191,36,0.15)' : '') + '">' + it.label + (itemCount ? ' (' + itemCount + ')' : '') + '</button>';
+        }
     });
     if (tf) {
         html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs need data</span>';
@@ -520,23 +531,32 @@ function _renderTriageBar(dropdown, count) {
 (function() {
     // Inject styles once
     var style = document.createElement('style');
-    style.textContent = '.song-row-line1{display:flex;align-items:center;gap:6px;min-width:0}'
-        + '.song-row-line2{display:flex;align-items:center;gap:5px;min-width:0;margin-top:2px}'
-        + '.song-readiness-bar{width:56px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0}'
+    style.textContent = ''
+        // Row structure
+        + '.song-row-primary{display:flex;align-items:center;gap:8px;min-width:0}'
+        + '.song-row-secondary{display:flex;align-items:center;gap:5px;min-width:0;margin-top:2px}'
+        + '.song-readiness-cluster{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}'
+        // Readiness bar
+        + '.song-readiness-bar{width:76px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0}'
         + '.song-readiness-fill{height:100%;border-radius:3px;transition:width 0.3s}'
         + '.song-readiness-num{font-size:0.68em;font-weight:800;min-width:20px}'
-        + '.song-row-meta{display:flex;align-items:center;gap:4px;flex-shrink:0}'
-        + '.song-signal-needswork{font-size:0.58em;color:#f59e0b;font-weight:700;background:rgba(245,158,11,0.08);padding:1px 6px;border-radius:6px;border:1px solid rgba(245,158,11,0.2)}'
+        + '.song-readiness-unrated{font-size:0.58em;font-weight:600;color:var(--text-dim);opacity:0.5}'
+        // Signals
+        + '.song-signal-needswork{font-size:0.55em;color:#f59e0b;font-weight:700;background:rgba(245,158,11,0.08);padding:1px 5px;border-radius:5px;border:1px solid rgba(245,158,11,0.2)}'
+        + '.song-signal-context{font-size:0.55em;color:#818cf8;font-weight:600}'
         + '.song-item--needswork{border-left:3px solid #f59e0b!important;background:rgba(245,158,11,0.02)!important}'
-        + '.song-quick-edit-btn{font-size:0.6em;opacity:0;cursor:pointer;border:1px solid transparent;background:none;padding:2px 6px;border-radius:4px;color:var(--text-dim);font-weight:600;transition:all 0.15s;flex-shrink:0}'
-        + '.song-item:hover .song-quick-edit-btn{opacity:0.8;border-color:rgba(99,102,241,0.25);color:var(--accent-light)}'
+        // Edit button — visible at low opacity, stronger on hover
+        + '.song-quick-edit-btn{font-size:0.58em;opacity:0.25;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;padding:2px 6px;border-radius:4px;color:var(--text-dim);font-weight:600;transition:all 0.15s;flex-shrink:0;margin-left:auto}'
+        + '.song-item:hover .song-quick-edit-btn{opacity:0.9;border-color:rgba(99,102,241,0.3);color:var(--accent-light)}'
         + '.song-item--editing{border:2px solid rgba(99,102,241,0.4)!important;background:rgba(99,102,241,0.06)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important;box-shadow:0 0 12px rgba(99,102,241,0.1)}'
         + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
         + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
         + '.sq-label{font-size:0.62em;color:var(--text-dim);font-weight:700;white-space:nowrap}'
         + '.sq-done{font-size:0.7em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;white-space:nowrap}'
         + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}'
-        + '.gl-triage-active #sd-readiness-card,.gl-triage-active #sd-discussion-mount,.gl-triage-active #sd-confidence-prompt,.gl-triage-active .sd-intel-card,.gl-triage-active #sd-assets{display:none!important}';
+        + '.gl-triage-active #sd-readiness-card,.gl-triage-active #sd-discussion-mount,.gl-triage-active #sd-confidence-prompt,.gl-triage-active .sd-intel-card,.gl-triage-active #sd-assets,.gl-triage-active #sd-prospect-vote{display:none!important}'
+        + '.gl-triage-active .sd-tab-bar{display:none!important}'
+        + '.gl-triage-active .sd-readiness-strip{display:none!important}';
     document.head.appendChild(style);
 })();
 
