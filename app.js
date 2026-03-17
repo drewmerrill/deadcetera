@@ -66,17 +66,9 @@ var _loadedVersion = BUILD_VERSION;
         /* Title: visually first, slightly bolder than before */
         .song-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f1f5f9 !important; font-weight:600; font-size:0.9em; line-height:1.3; }
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
-        .song-status-cell { width:68px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-        /* Col 2: Icon badges — row layout so single badge stays vertically centered */
-        .song-badges { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:8px; width:48px; flex-shrink:0; overflow:hidden; }
-        .harmony-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
-        .northstar-slot { display:flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; }
-        .harmony-badge { font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; background:rgba(129,140,248,0.35); padding:1px 1px; border-radius:3px; border:1px solid rgba(129,140,248,0.6); overflow:hidden; flex-shrink:0; max-width:18px; -webkit-font-smoothing:antialiased; }
-        .northstar-badge { font-size:0.78em; line-height:1; cursor:default; }
-        /* Col 3: Chain strip */
-        .song-chain-strip { display:flex; align-items:center; justify-content:center; gap:1px; width:50px; height:12px; overflow:hidden; flex-shrink:0; }
-        /* Col 4: Status badge */
-        .status-badge { white-space:nowrap; font-size:0.45em; padding:3px 5px; border-radius:10px; font-weight:800; letter-spacing:0.03em; display:inline-flex; align-items:center; justify-content:center; width:100%; max-width:66px; text-align:center; box-sizing:border-box; overflow:hidden; }
+        /* Legacy row slots — hidden (PL-8c canonical row model) */
+        .song-status-cell, .song-badges, .harmony-slot, .northstar-slot,
+        .harmony-badge, .northstar-badge, .song-chain-strip, .status-badge { display:none !important; }
         /* Col 5: Band badge */
         .song-badge { font-size:0.58em; padding:3px 0; border-radius:20px; font-weight:700; text-align:center; width:48px; letter-spacing:0.03em; text-transform:uppercase; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; flex-shrink:0; }
         .song-badge.gd    { background:rgba(239,68,68,0.15);  color:#f87171; border:1px solid rgba(239,68,68,0.25); }
@@ -1120,7 +1112,15 @@ async function songQuickFillSave(title) {
     if (!GLStore || !GLStore.updateSongField) renderSongs(); // GLStore already triggers renderSongs
 }
 
-function renderSongs(filter = 'all', searchTerm = '') {
+// Legacy renderSongs — canonical version lives in js/features/songs.js.
+// Wrapped in var assignment to avoid function-declaration hoisting that would
+// shadow the songs.js version. songs.js sets window.renderSongs before app.js runs.
+var _legacyRenderSongs = function renderSongs(filter, searchTerm) {
+    // Delegate to songs.js canonical version if available
+    if (window.renderSongs && window.renderSongs !== _legacyRenderSongs) {
+        return window.renderSongs(filter, searchTerm);
+    }
+    filter = filter || 'all'; searchTerm = searchTerm || '';
     const dropdown = document.getElementById('songDropdown');
     
     // Pre-filter by status and harmony if active (do it at data level, not DOM level)
