@@ -173,10 +173,8 @@ async function _bulkDoImport(songs) {
         allSongs.push({ songId: songId, title: s.title, artist: s.artist || 'Other', band: s.artist || 'Other', isCustom: true, addedBy: newSong.addedBy, notes: '' });
         existingTitles.add(s.title.toLowerCase());
 
-        // Set status to "learning"
-        if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
-            GLStore.updateSongField(s.title, 'status', 'learning');
-        }
+        // Songs import to Library scope (no status = library)
+        // User activates songs they want to work on via Songs page
 
         // Generate chart URL (Ultimate Guitar search — stores URL, not content)
         var chartUrl = 'https://www.ultimate-guitar.com/search.php?search_type=title&value=' + encodeURIComponent(s.title + ' ' + (s.artist || ''));
@@ -198,8 +196,8 @@ async function _bulkDoImport(songs) {
         + '<div style="font-size:2em;margin-bottom:8px">🎉</div>'
         + '<div style="font-size:1.1em;font-weight:700;color:#22c55e;margin-bottom:4px">' + added + ' songs imported!</div>'
         + (skipped > 0 ? '<div style="font-size:0.82em;color:var(--text-dim)">' + skipped + ' duplicates skipped.</div>' : '')
-        + '<div style="font-size:0.82em;color:var(--text-dim);margin:8px 0">All songs set to "Learning" with chart search links.</div>'
-        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Next: use Cleanup mode to add Key, BPM, and structure.</div>'
+        + '<div style="font-size:0.82em;color:var(--text-dim);margin:8px 0">Songs added to your Library with chart search links.</div>'
+        + '<div style="font-size:0.78em;color:var(--accent-light);margin-bottom:12px">Next: switch to Library view and set songs you\'re working on to "Learning" to activate them.</div>'
         + '<div style="display:flex;gap:8px;justify-content:center">'
         + '<button onclick="document.getElementById(\'bulkImportModal\').remove();showPage(\'songs\')" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;font-weight:700;cursor:pointer">View Songs</button>'
         + '<button onclick="document.getElementById(\'bulkImportModal\').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Close</button>'

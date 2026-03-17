@@ -34,8 +34,18 @@
  * @param {string} [filter='all']    Band abbreviation or 'all'
  * @param {string} [searchTerm='']  Substring match against song title
  */
-// Restore persisted sort on load
+// Restore persisted sort + scope view on load
 try { window._sqSongSort = localStorage.getItem('gl_song_sort') || 'default'; } catch(e) {}
+window._sqScopeView = 'active'; // 'active' or 'library'
+
+// Derive scope from lifecycle status: prospect/learning/rotation = active, shelved/none = library
+window.getSongScope = function(title) {
+    var status = (typeof statusCache !== 'undefined') ? statusCache[title] : '';
+    if (status === 'prospect' || status === 'learning' || status === 'rotation') return 'active';
+    if (status === 'shelved') return 'library';
+    return 'library'; // no status = library (default for imports)
+};
+window.isSongActive = function(title) { return getSongScope(title) === 'active'; };
 
 window.renderSongs = function renderSongs(filter, searchTerm) {
     filter     = filter     || 'all';
@@ -49,6 +59,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var knownBands = ['GD','JGB','WSP','PHISH','ABB','GOOSE','DMB'];
 
     var filtered = allSongs.filter(function(song) {
+        // Scope filter: active vs library view
+        var _scope = getSongScope(song.title);
+        if (window._sqScopeView === 'active' && _scope !== 'active') return false;
+        if (window._sqScopeView === 'library' && _scope !== 'library') return false;
+
         var matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesSearch) return false;
 
@@ -281,8 +296,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var _modeBar = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
         + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
         + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
-        + '<span style="margin-left:auto;font-size:0.62em;color:var(--text-dim)">Sorted by: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
-        + '</div>';
+        + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">'
+        + '<button onclick="window._sqScopeView=\'active\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active</button>'
+        + '<button onclick="window._sqScopeView=\'library\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'library' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'library' ? '#a5b4fc' : 'var(--text-dim)') + '">Library</button>'
+        + '<span style="font-size:0.58em;color:var(--text-dim)">Sorted: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
+        + '</span></div>';
 
     // ── ACTIVE FILTER BAR (shows what's filtered + clear all) ──
     var _bandFilter = window._sqBandFilter || [];
@@ -716,9 +734,13 @@ function _renderTriageBar(dropdown, count) {
         { id: 'needs_work', label: 'Needs Work' },
         { id: 'not_rotation', label: 'Not in Rotation' }
     ];
-    // Count missing data for entry CTA — respects active band filter
+    // Count missing data — only active songs, respects band filter
     var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
-    var _countPool = (window._sqBandFilter && window._sqBandFilter.length) ? allSongs.filter(function(s) { return window._sqBandFilter.indexOf(s.band || 'Other') > -1; }) : allSongs;
+    var _countPool = allSongs.filter(function(s) {
+        if (!isSongActive(s.title)) return false;
+        if (window._sqBandFilter && window._sqBandFilter.length && window._sqBandFilter.indexOf(s.band || 'Other') === -1) return false;
+        return true;
+    });
     if (typeof _countPool !== 'undefined') {
         _countPool.forEach(function(s) {
             var _mdc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(s.title) : null;

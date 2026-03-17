@@ -106,6 +106,11 @@
     allReadiness = allReadiness || {};
     allStatus = allStatus || {};
     songs = songs || [];
+    // Only compute intelligence for active songs (not library)
+    songs = songs.filter(function(s) {
+        var st = allStatus[s.title] || '';
+        return st === 'prospect' || st === 'learning' || st === 'rotation';
+    });
     var keys = _memberKeys(members);
 
     var tiers = { locked: [], tightening: [], gettingThere: [], rough: [], learning: [], newSong: [] };
