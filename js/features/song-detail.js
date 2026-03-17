@@ -346,15 +346,15 @@ function _sdRenderFirstRunCard(title, status) {
     if (hasRating) {
         // Song has been rated — offer transition to Learning
         return '<div class="sd-card" style="padding:10px 14px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04)">'
-            + '<div style="font-size:0.82em;color:var(--text)">✅ First ratings are in. Ready to move this to <strong>Learning</strong>?</div>'
-            + '<button onclick="sdUpdateSongStatus(\'learning\');this.closest(\'.sd-card\').innerHTML=\'<div style=color:#22c55e;font-size:0.82em;padding:6px>Moved to Learning</div>\'" '
+            + '<div style="font-size:0.82em;color:var(--text)">✅ First run captured — this is now a working song.</div>'
+            + '<button onclick="sdUpdateSongStatus(\'learning\');this.closest(\'.sd-card\').innerHTML=\'<div style=color:#22c55e;font-size:0.82em;padding:6px>Locked in as Learning</div>\'" '
             + 'style="margin-top:6px;font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.1);color:#86efac;min-height:36px">'
-            + '📖 Move to Learning</button></div>';
+            + '📖 Lock this in as a learning song</button></div>';
     }
     // No ratings yet — prompt first run-through
     return '<div class="sd-card" style="padding:10px 14px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04)">'
         + '<div style="font-size:0.82em;color:var(--text);font-weight:600">🎯 First run-through recommended</div>'
-        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">This song was just added. Play it once and rate it so the band can start tracking progress.</div>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">Focus on getting through the structure — don\'t worry about polish yet. Play it once and rate it so the band can start tracking progress.</div>'
         + '</div>';
 }
 
