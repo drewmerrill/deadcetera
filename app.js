@@ -53,13 +53,8 @@ if (!_rt.buildLogged) {
         /* ===== SONG LIST ===== */
         .song-item {
             position: relative;
-            display: block;
-            padding: 8px 12px;
-            min-height: 36px;
             background: #1e293b;
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px;
-            margin-bottom: 3px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
             cursor: pointer;
             transition: background 0.12s, border-color 0.12s;
             color: #f1f5f9 !important;

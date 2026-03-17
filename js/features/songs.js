@@ -270,15 +270,17 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         + '<span style="margin-left:auto;font-size:0.62em;color:var(--text-dim)">Sorted by: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
         + '</div>';
 
-    // ── COLUMN HEADERS (4 columns: Song | Readiness | Why | Band+Action) ──
-    var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px';
+    // ── UNIFIED TABLE (header + rows in one <table> for perfect alignment) ──
+    var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:8px 8px';
+    var _tableStart = '<table style="width:100%;border-collapse:collapse;table-layout:fixed">';
     var headerHTML = !_isCleanup
-        ? '<table style="width:100%;border-collapse:collapse;border-bottom:2px solid rgba(255,255,255,0.1);background:#0f172a;position:sticky;top:0;z-index:5;margin-bottom:2px;table-layout:fixed"><tr>'
-          + '<td style="' + _hd + ';padding-left:12px;width:40%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</td>'
-          + '<td style="' + _hd + ';width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</td>'
-          + '<td style="' + _hd + ';width:30%" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Why it matters' + _arrow('status') + '</td>'
-          + '<td style="' + _hd + ';width:15%;text-align:right;padding-right:12px" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</td>'
-          + '</tr></table>' : '';
+        ? _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
+          + '<th style="' + _hd + ';text-align:left;width:40%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:30%" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Why it matters' + _arrow('status') + '</th>'
+          + '<th style="' + _hd + ';text-align:right;width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</th>'
+          + '</tr></thead><tbody>'
+        : _tableStart + '<tbody>';
 
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
     var _suggestHTML = '';
@@ -334,15 +336,14 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
         var needsWorkClass = chips.some(function(c) { return c.indexOf('warn') > -1; }) ? ' song-item--needswork' : '';
 
-        return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
-               ' onclick="selectSong(\'' + titleOnclick + '\')">' +
-               '<div style="display:grid;grid-template-columns:40% 15% 30% 15%;align-items:center;gap:0 6px">' +
-               '<span style="font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding-left:4px">' + song.title + '</span>' +
-               '<span style="display:flex;align-items:center;gap:3px"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>' + participation + '</span>' +
-               '<span style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</span>' +
-               '<span style="display:flex;align-items:center;gap:4px;justify-content:flex-end;padding-right:4px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</span>' +
-               '</div></div>';
-    }).join('');
+        return '<tr class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
+               ' onclick="selectSong(\'' + titleOnclick + '\')" style="cursor:pointer">' +
+               '<td style="padding:8px;font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
+               '<td style="padding:8px 4px"><div style="display:flex;align-items:center;gap:3px"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>' + participation + '</div></td>' +
+               '<td style="padding:8px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</div></td>' +
+               '<td style="padding:8px;text-align:right"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</div></td>' +
+               '</tr>';
+    }).join('') + '</tbody></table>';
 
     // Post-paint: highlight + preload only (no badge injection — all inline now)
     requestAnimationFrame(function() {
