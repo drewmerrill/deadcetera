@@ -11502,13 +11502,14 @@ function showUpdateBanner(serverVersion) {
     if (_updateBannerShown) return;
     // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
-    // Hard guard 3: sessionStorage — survives in-app navigation but NOT a true reload.
-    // If the user dismissed the banner for THIS server version, don't show again.
-    // When a DIFFERENT new version deploys, the stored value won't match → banner shows.
+    // Hard guard 3: sessionStorage — survives across reloads within same session.
+    // Once banner shown for ANY version this session, don't show again.
     var dismissed = sessionStorage.getItem(_GL_BANNER_KEY);
-    if (dismissed && dismissed === (serverVersion || 'any')) return;
+    if (dismissed) return;
     _updateBannerShown = true;
     _rt.reloadPromptShown = true;
+    // Mark session immediately so reloads within same session don't re-show
+    try { sessionStorage.setItem(_GL_BANNER_KEY, '1'); } catch(e) {}
     if (DEBUG) console.log('[Update] Creating banner');
     var banner = document.createElement('div');
     banner.id = 'dc-update-banner';
