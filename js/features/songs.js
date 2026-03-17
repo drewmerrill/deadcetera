@@ -37,6 +37,8 @@
 // Restore persisted sort + scope view on load
 try { window._sqSongSort = localStorage.getItem('gl_song_sort') || 'default'; } catch(e) {}
 window._sqScopeView = 'active'; // 'active' or 'library'
+window._sqSelectMode = false;
+window._sqSelected = {}; // { title: true }
 
 // Derive scope from lifecycle status: prospect/learning/rotation = active, shelved/none = library
 window.getSongScope = function(title) {
@@ -297,8 +299,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
         + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
         + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">'
-        + '<button onclick="window._sqScopeView=\'active\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active</button>'
-        + '<button onclick="window._sqScopeView=\'library\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'library' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'library' ? '#a5b4fc' : 'var(--text-dim)') + '">Library</button>'
+        + '<button onclick="window._sqScopeView=\'active\';window._sqSelectMode=false;window._sqSelected={};renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active</button>'
+        + '<button onclick="window._sqScopeView=\'library\';window._sqSelectMode=false;window._sqSelected={};renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'library' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'library' ? '#a5b4fc' : 'var(--text-dim)') + '">Library</button>'
+        + (window._sqScopeView === 'library' ? '<button onclick="window._sqSelectMode=!window._sqSelectMode;window._sqSelected={};renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqSelectMode ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqSelectMode ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqSelectMode ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (window._sqSelectMode ? '#fbbf24' : 'var(--text-dim)') + '">' + (window._sqSelectMode ? '✓ Done' : '☐ Select') + '</button>' : '')
         + '<span style="font-size:0.58em;color:var(--text-dim)">Sorted: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
         + '</span></div>';
 
@@ -327,8 +330,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var _sfActive = _statusFilter.length > 0;
     var _bandFilterIcon = '<span onclick="event.stopPropagation();_sqToggleBandFilter()" style="cursor:pointer;margin-left:3px;font-size:0.9em;color:' + (_bfActive ? '#a5b4fc' : '#64748b') + '" title="Filter by band">' + (_bfActive ? '▼' : '▾') + '</span>';
     var _statusFilterIcon = '<span onclick="event.stopPropagation();_sqToggleStatusFilter()" style="cursor:pointer;margin-left:3px;font-size:0.9em;color:' + (_sfActive ? '#fbbf24' : '#64748b') + '" title="Filter by status">' + (_sfActive ? '▼' : '▾') + '</span>';
+    var _isSelectMode = window._sqSelectMode && window._sqScopeView === 'library';
+    var _selCount = Object.keys(window._sqSelected).length;
+    var _selectAllChecked = _isSelectMode && _selCount > 0 && _selCount === filtered.length;
     var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
-          + '<th style="' + _hd + ';text-align:left;width:38%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
+          + (_isSelectMode ? '<th style="' + _hd + ';width:28px;padding:6px 2px 6px 8px"><input type="checkbox" ' + (_selectAllChecked ? 'checked ' : '') + 'onclick="_sqToggleAll()" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer" title="Select all"></th>' : '')
+          + '<th style="' + _hd + ';text-align:left;width:' + (_isSelectMode ? '36%' : '38%') + '" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:28%">Focus' + _statusFilterIcon + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
@@ -426,26 +433,111 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var _rowBorder = avg >= 3.5 ? '3px solid rgba(34,197,94,0.4)' : avg >= 2 ? '3px solid rgba(245,158,11,0.3)' : avg > 0 ? '3px solid rgba(239,68,68,0.4)' : '3px solid transparent';
         var _rowBg = needsWork ? 'rgba(245,158,11,0.02)' : '#1e293b';
 
+        var _isSelectMode = window._sqSelectMode && window._sqScopeView === 'library';
+        var _isChecked = _isSelectMode && window._sqSelected[song.title];
+        var _rowClick = _isSelectMode
+            ? '_sqToggleRow(\'' + titleOnclick + '\')'
+            : 'selectSong(\'' + titleOnclick + '\')';
+        var _checkCol = _isSelectMode
+            ? '<td style="padding:6px 2px 6px 8px;width:28px"><input type="checkbox" ' + (_isChecked ? 'checked ' : '') + 'onclick="event.stopPropagation();_sqToggleRow(\'' + titleOnclick + '\')" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer"></td>'
+            : '';
+
         return '<tr class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
-               ' onclick="selectSong(\'' + titleOnclick + '\')" style="cursor:pointer;border-left:' + _rowBorder + ';background:' + _rowBg + '">' +
-               '<td style="padding:8px 8px 8px 10px;font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
+               ' onclick="' + _rowClick + '" style="cursor:pointer;border-left:' + _rowBorder + ';background:' + (_isChecked ? 'rgba(251,191,36,0.06)' : _rowBg) + '">' +
+               _checkCol +
+               '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
                '<td style="padding:6px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.7em">' + chipHTML + '</div></td>' +
                '<td style="padding:6px 8px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></td>' +
                '</tr>';
     }).join('') + '</tbody></table>';
 
+    // Bulk action bar (Library select mode)
+    _sqRenderBulkBar();
+
     // Post-paint: highlight + preload only (no badge injection — all inline now)
     requestAnimationFrame(function() {
-        if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
-            highlightSelectedSongRow(selectedSong.title);
-        } else if (filtered.length > 0) {
-            // Auto-select first song if none selected (prevents blank right panel)
-            var firstTitle = filtered[0].title;
-            if (firstTitle && typeof selectSong === 'function') selectSong(firstTitle);
+        if (!_isSelectMode) {
+            if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
+                highlightSelectedSongRow(selectedSong.title);
+            } else if (filtered.length > 0) {
+                // Auto-select first song if none selected (prevents blank right panel)
+                var firstTitle = filtered[0].title;
+                if (firstTitle && typeof selectSong === 'function') selectSong(firstTitle);
+            }
         }
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
     });
+};
+
+// ── Bulk select helpers (Library → Active) ───────────────────────────────────
+
+window._sqToggleRow = function(title) {
+    if (window._sqSelected[title]) delete window._sqSelected[title];
+    else window._sqSelected[title] = true;
+    renderSongs();
+};
+
+window._sqToggleAll = function() {
+    var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var librarySongs = (typeof allSongs !== 'undefined') ? allSongs.filter(function(s) {
+        return getSongScope(s.title) === 'library';
+    }) : [];
+    var allSelected = Object.keys(window._sqSelected).length === librarySongs.length;
+    if (allSelected) {
+        window._sqSelected = {};
+    } else {
+        window._sqSelected = {};
+        librarySongs.forEach(function(s) { window._sqSelected[s.title] = true; });
+    }
+    renderSongs();
+};
+
+function _sqRenderBulkBar() {
+    var existing = document.getElementById('sqBulkBar');
+    if (existing) existing.remove();
+    if (!window._sqSelectMode || window._sqScopeView !== 'library') return;
+    var count = Object.keys(window._sqSelected).length;
+    if (count === 0) return;
+
+    var bar = document.createElement('div');
+    bar.id = 'sqBulkBar';
+    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(251,191,36,0.3);padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,0.4)';
+    bar.innerHTML = '<span style="font-size:0.82em;font-weight:700;color:#fbbf24">' + count + ' song' + (count > 1 ? 's' : '') + ' selected</span>'
+        + '<select id="sqBulkStatus" style="padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:var(--text);font-size:0.82em;min-height:40px;-webkit-appearance:menulist">'
+        + '<option value="learning" selected>📖 Learning</option>'
+        + '<option value="prospect">👀 Prospect</option>'
+        + '<option value="rotation">🔄 In Rotation</option>'
+        + '</select>'
+        + '<button onclick="_sqBulkActivate()" style="padding:8px 18px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.82em;cursor:pointer;min-height:40px;white-space:nowrap">Add to Rehearsal</button>'
+        + '<button onclick="window._sqSelected={};renderSongs()" style="padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.78em;cursor:pointer;min-height:40px">Cancel</button>';
+    document.body.appendChild(bar);
+}
+
+window._sqBulkActivate = async function() {
+    var titles = Object.keys(window._sqSelected);
+    if (titles.length === 0) return;
+    var statusEl = document.getElementById('sqBulkStatus');
+    var status = statusEl ? statusEl.value : 'learning';
+    var statusLabels = { prospect: 'Prospect', learning: 'Learning', rotation: 'In Rotation' };
+
+    for (var i = 0; i < titles.length; i++) {
+        if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+            await GLStore.updateSongField(titles[i], 'status', status);
+        }
+    }
+
+    var count = titles.length;
+    window._sqSelectMode = false;
+    window._sqSelected = {};
+    window._sqScopeView = 'active';
+    renderSongs();
+
+    // Remove bulk bar
+    var bar = document.getElementById('sqBulkBar');
+    if (bar) bar.remove();
+
+    if (typeof showToast === 'function') showToast(count + ' song' + (count > 1 ? 's' : '') + ' moved to Active as ' + (statusLabels[status] || status));
 };
 
 // ── Column filter dropdowns (band + status multi-pick) ───────────────────────
