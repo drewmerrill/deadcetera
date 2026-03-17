@@ -620,7 +620,7 @@ function _renderTriageBar(dropdown, count) {
         + '.song-col-band{text-align:center}'
         + '.song-col-action{text-align:right}'
         // Column headers
-        + '#songDropdown{background:transparent!important}'
+        + '#songDropdown{background:transparent!important;max-height:none!important;border:none!important}'
         + '.song-header-row{display:grid;grid-template-columns:1fr 100px 80px 90px 48px 36px;gap:0 8px;padding:6px 12px;border-bottom:2px solid rgba(255,255,255,0.12);margin-bottom:2px;position:sticky;top:0;z-index:5;background:#0f172a}'
         + '.song-hdr{font-size:0.65em;font-weight:800;color:var(--text-muted,#94a3b8);text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;user-select:none;padding:4px 0}'
         + '.song-hdr:hover{color:var(--accent-light)}'
@@ -637,11 +637,16 @@ function _renderTriageBar(dropdown, count) {
         // Edit button
         + '.song-quick-edit-btn{font-size:0.58em;opacity:0.2;cursor:pointer;border:1px solid transparent;background:none;padding:2px 5px;border-radius:4px;color:var(--text-dim);font-weight:600;transition:all 0.15s}'
         + '.song-item:hover .song-quick-edit-btn{opacity:0.9;border-color:rgba(99,102,241,0.3);color:var(--accent-light)}'
-        + '.song-item--editing{border:2px solid rgba(99,102,241,0.4)!important;background:rgba(99,102,241,0.06)!important;min-height:38px;display:flex;align-items:center;gap:6px;padding:4px 8px!important;box-shadow:0 0 12px rgba(99,102,241,0.1)}'
-        + '.sq-field{font-size:0.78em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text,#f1f5f9);font-family:inherit}'
-        + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
-        + '.sq-label{font-size:0.62em;color:var(--text-dim);font-weight:700;white-space:nowrap}'
-        + '.sq-done{font-size:0.7em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;white-space:nowrap}'
+        + '.song-item--editing{border:2px solid rgba(99,102,241,0.4)!important;background:rgba(99,102,241,0.06)!important;padding:8px 12px!important;box-shadow:0 0 12px rgba(99,102,241,0.1)}'
+        + '.sq-edit-form{width:100%}'
+        + '.sq-edit-title{font-weight:700;font-size:0.95em;margin-bottom:6px;color:var(--text,#f1f5f9)}'
+        + '.sq-edit-row{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}'
+        + '.sq-edit-field{display:flex;flex-direction:column;gap:2px}'
+        + '.sq-edit-label{font-size:0.6em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em}'
+        + '.sq-edit-extras{margin-top:6px;font-size:0.78em;color:var(--text-dim)}'
+        + '.sq-field{font-size:0.82em;padding:4px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:var(--text,#f1f5f9);font-family:inherit}'
+        + '.sq-field:focus{border-color:rgba(99,102,241,0.5);outline:none}'
+        + '.sq-done{font-size:0.75em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:5px;padding:5px 12px;cursor:pointer;font-weight:700;white-space:nowrap;align-self:flex-end}'
         + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}'
         + '.gl-triage-active #sd-readiness-card,.gl-triage-active #sd-discussion-mount,.gl-triage-active #sd-confidence-prompt,.gl-triage-active .sd-intel-card,.gl-triage-active #sd-assets,.gl-triage-active #sd-prospect-vote{display:none!important}'
         + '.gl-triage-active .sd-tab-bar{display:none!important}'
@@ -702,12 +707,17 @@ window.songQuickSetup = function songQuickSetup(title) {
         return '<option value="' + k + '"' + (currentKey === k ? ' selected' : '') + '>' + (k || '—') + '</option>';
     }).join('');
 
-    row.innerHTML = titleLabel
-        + '<span class="sq-label">Lead</span><select class="sq-field sq-tab" id="sq-lead-' + safeTitle + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'leadSinger\',this.value)">' + leadOpts + '</select>'
-        + '<span class="sq-label">Status</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'status\',this.value)">' + statusOpts + '</select>'
-        + '<span class="sq-label">Key</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'key\',this.value)">' + keyOpts + '</select>'
-        + '<span class="sq-label">BPM</span><input type="number" class="sq-field sq-tab" style="width:55px" min="40" max="240" value="' + currentBpm + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}">'
-        + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>';
+    row.innerHTML = '<div class="sq-edit-form">'
+        + '<div class="sq-edit-title">' + title + '</div>'
+        + '<div class="sq-edit-row">'
+        + '<label class="sq-edit-field"><span class="sq-edit-label">Lead</span><select class="sq-field sq-tab" id="sq-lead-' + safeTitle + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'leadSinger\',this.value)">' + leadOpts + '</select></label>'
+        + '<label class="sq-edit-field"><span class="sq-edit-label">Status</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'status\',this.value)">' + statusOpts + '</select></label>'
+        + '<label class="sq-edit-field"><span class="sq-edit-label">Key</span><select class="sq-field sq-tab" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'key\',this.value)">' + keyOpts + '</select></label>'
+        + '<label class="sq-edit-field"><span class="sq-edit-label">BPM</span><input type="number" class="sq-field sq-tab" style="width:60px" min="40" max="240" value="' + currentBpm + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}"></label>'
+        + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>'
+        + '</div>'
+        + '<div class="sq-edit-extras" id="sq-extras-' + safeTitle + '"></div>'
+        + '</div>';
 
     // Smart auto-focus: jump to the first MISSING field based on triage filter
     requestAnimationFrame(function() {
@@ -745,6 +755,33 @@ window.songQuickSetup = function songQuickSetup(title) {
             var bpmInput = row.querySelector('input[type="number"]');
             if (bpmInput && !bpmInput.value) bpmInput.value = data.bpm;
         }).catch(function() {});
+    }
+
+    // Load Chart + Jam Structure into extras area
+    var extrasEl = document.getElementById('sq-extras-' + safeTitle);
+    if (extrasEl && typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        var extras = [];
+        Promise.all([
+            GLStore.loadFieldMeta(title, 'chart').catch(function() { return null; }),
+            GLStore.loadFieldMeta(title, 'song_structure').catch(function() { return null; })
+        ]).then(function(results) {
+            var chart = results[0], structure = results[1];
+            var html = '';
+            // Chart status
+            if (chart && chart.text) {
+                html += '<span style="color:#fbbf24;margin-right:8px">📖 Chart loaded</span>';
+            } else {
+                html += '<span style="color:var(--text-dim);opacity:0.5;margin-right:8px">📖 No chart</span>';
+            }
+            // Jam Structure summary
+            if (structure && structure.sections && structure.sections.length) {
+                html += '<span style="color:var(--accent-light)">🎼 ' + structure.sections.length + ' sections</span>';
+                html += '<span style="margin-left:4px;font-size:0.85em;color:var(--text-dim)">' + structure.sections.map(function(s) { return s.name; }).join(' → ') + '</span>';
+            } else {
+                html += '<span style="color:var(--text-dim);opacity:0.5">🎼 No structure</span>';
+            }
+            extrasEl.innerHTML = html;
+        });
     }
 
     // Escape to close
