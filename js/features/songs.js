@@ -336,11 +336,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
         return '<div class="song-item' + customClass + needsWorkClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
-               '<div class="song-row-grid">' +
-               '<span class="song-col song-col-title">' + song.title + '</span>' +
-               '<span class="song-col song-col-readiness"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>' + participation + '</span>' +
-               '<span class="song-col song-col-why">' + whyHTML + '</span>' +
-               '<span class="song-col song-col-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</span>' +
+               '<div style="display:grid;grid-template-columns:40% 15% 30% 15%;align-items:center;gap:0 6px">' +
+               '<span style="font-weight:600;font-size:0.9em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding-left:4px">' + song.title + '</span>' +
+               '<span style="display:flex;align-items:center;gap:3px"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>' + participation + '</span>' +
+               '<span style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.72em">' + whyHTML + '</span>' +
+               '<span style="display:flex;align-items:center;gap:4px;justify-content:flex-end;padding-right:4px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</span>' +
                '</div></div>';
     }).join('');
 
