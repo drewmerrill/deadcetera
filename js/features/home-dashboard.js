@@ -364,7 +364,7 @@ function _renderDashboard(bundle, context) {
         _renderBandHealthRow(bundle),
         _renderBandMomentum(),
         _renderNarrativeBridge(),
-        '<div style="text-align:center;padding:4px 0"><button onclick="if(typeof toggleStonerMode===\'function\')toggleStonerMode()" style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);color:#c084fc;padding:10px 24px;border-radius:12px;font-size:0.85em;font-weight:700;cursor:pointer;transition:all 0.15s">\uD83C\uDF3F Stoner Mode<span style="display:block;font-size:0.75em;font-weight:500;color:#64748b;margin-top:2px">Low-brain rehearsal cockpit</span></button></div>',
+        '<div style="text-align:center;padding:4px 0"><button onclick="if(typeof toggleStonerMode===\'function\')toggleStonerMode()" style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);color:#a78bfa;padding:8px 20px;border-radius:10px;font-size:0.78em;font-weight:600;cursor:pointer;transition:all 0.15s">\uD83C\uDFB6 Easy Mode<span style="display:block;font-size:0.72em;font-weight:500;color:#64748b;margin-top:1px">Simplified rehearsal view</span></button></div>',
         _renderRecentChanges(bundle),
         '<div id="hdPollCard"></div>',
         '</div>'
@@ -400,7 +400,6 @@ function _renderCommandCenterHeader(bundle) {
         + '<div class="hd-cc-header__title">Command Center ' + _helpIcon + '</div>'
         + '<div class="hd-cc-header__date">' + dateStr + '</div>'
         + '</div>'
-        + chip
         + '</div>'
         + _orientBanner;
 }
@@ -1483,7 +1482,11 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
                 : isSoon ? '<span class="hd-hero__badge hd-hero__badge--soon">IN ' + diff + ' DAYS</span>' : '';
     var readHTML = isStoner ? '' : _renderSetlistReadinessBars(gig, bundle.readinessCache);
     var warnHTML = isStoner ? '' : _renderReadinessWarnings(gig, bundle.readinessCache);
-    var slLine   = ls ? '<div class="hd-hero__setlist">Setlist: ' + lsEsc + '</div>' : '';
+    // Show setlist name + song count (not raw ID)
+    var _slName = '';
+    var _slSongCount = Object.keys(_gigSongScope).length;
+    if (_slMatch) _slName = _slMatch.name || '';
+    var slLine = ls ? '<div class="hd-hero__setlist" style="font-size:0.78em;color:var(--text-muted)">' + (_slName ? _escHtml(_slName) : 'Setlist linked') + (_slSongCount ? ' · ' + _slSongCount + ' songs' : '') + '</div>' : '';
     // Build gig-scoped song set for readiness/risk computation.
     // Resolve setlist by setlistId first, then name fallback.
     var _gigSongScope = {};
@@ -1521,9 +1524,9 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     // Coach text — uses gig-scoped riskEntry
     var coach='';
     var _coachSong = riskEntry ? _escHtml(riskEntry[0]) : null;
-    if(rl&&rl.tone==='ready')coach=_coachSong?'Locked in. Tighten '+_coachSong+' and you\'re golden.':'Band is locked in. Go get \'em.';
-    else if(rl&&rl.tone==='caution')coach=_coachSong?'Almost there. Lock in '+_coachSong+' and the set is solid.':'One more run-through and you\'re ready.';
-    else if(rl)coach='Get a rehearsal in before this one.';
+    if(rl&&rl.tone==='ready')coach=_coachSong?'You\'re gig-ready — tighten '+_coachSong+' and you\'re golden.':'You\'re gig-ready. Go crush it.';
+    else if(rl&&rl.tone==='caution')coach=_coachSong?'Almost there — run '+_coachSong+' one more time.':'One more run-through and you\'re ready.';
+    else if(rl)coach='You need a rehearsal before this gig.';
     var cd='';
     var cdInline=diff!==null&&diff>1?' · <span class="hd-hero__days-away">'+diff+'d away</span>':diff===1?' · <span class="hd-hero__days-away">Tomorrow</span>':'';
     // Readiness progress bar
@@ -1565,9 +1568,19 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         pocketDelta: _pkDelta
     });
     var confHTML = _renderGigConfidence(_gigConf);
-    var primaryCTA=isToday?'<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Go Live \u2192</button>':'<button class="hd-hero__cta hd-hero__cta--primary" onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" title="Open gig details">Open Gig \u2192</button>';
-    var secondaryCTA=ls?'<button class="hd-hero__cta hd-hero__cta--secondary" onclick="_hdViewSetlist(\''+lsEsc+'\')" title="View setlist for this gig">View Setlist</button>':'';
-    var tertiaryCTA=!isToday?'<button class="hd-hero__cta hd-hero__cta--tertiary" onclick="showPage(\'rehearsal\')">Start Rehearsal Prep</button>':'';
+    // Simplified: one primary CTA based on state
+    var _isReady = pct !== null && pct >= 85;
+    var primaryCTA, secondaryCTA = '', tertiaryCTA = '';
+    if (isToday) {
+        primaryCTA = '<button class="hd-hero__cta hd-hero__cta--primary hd-hero__cta--golive" onclick="homeGoLive(\''+lsEsc+'\')">Run the Set \u2192</button>';
+    } else if (_isReady) {
+        primaryCTA = '<button class="hd-hero__cta hd-hero__cta--primary" onclick="homeGoLive(\''+lsEsc+'\')">Run the Set \u2192</button>';
+        secondaryCTA = '<a onclick="showPage(\'rehearsal\')" style="font-size:0.72em;color:var(--accent-light);cursor:pointer;text-decoration:underline">Start rehearsal</a>';
+    } else {
+        primaryCTA = '<button class="hd-hero__cta hd-hero__cta--primary" onclick="showPage(\'rehearsal\')">Start Rehearsal \u2192</button>';
+        secondaryCTA = '<a onclick="_hdOpenGig(\''+_escHtml((gig.venue||'').replace(/'/g,"\\'"))+'\')" style="font-size:0.72em;color:var(--text-dim);cursor:pointer">View gig details</a>';
+    }
+    if (ls) tertiaryCTA = '<a onclick="_hdViewSetlist(\''+lsEsc+'\')" style="font-size:0.72em;color:var(--text-dim);cursor:pointer">View setlist</a>';
     // ── Performance Coverage + Next Best Action (setlist-aware) ──
     // Availability check: who's blocked on gig day?
     var _unavailMembers = [];
@@ -1641,8 +1654,8 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         var _nbaIcon = (_hasScope && !riskEntry) ? '✅' : '👉';
         _nba = '<div style="margin:8px 0;padding:10px 14px;background:' + _nbaColor + ';border:1px solid ' + _nbaBorder + ';border-radius:10px;display:flex;align-items:center;gap:10px">'
             + '<span style="font-size:1.1em">' + _nbaIcon + '</span>'
-            + '<div style="flex:1"><div style="font-size:0.68em;font-weight:700;letter-spacing:0.05em;color:var(--accent-light);text-transform:uppercase;margin-bottom:2px">Next Best Action</div>'
-            + '<div style="font-size:0.88em;font-weight:600;color:var(--text)">' + _escHtml(_nbaLabel) + '</div>'
+            + '<div style="flex:1"><div style="font-size:0.6em;font-weight:800;letter-spacing:0.08em;color:var(--accent-light);text-transform:uppercase;margin-bottom:3px">Do This Next</div>'
+            + '<div style="font-size:0.92em;font-weight:700;color:var(--text)">' + _escHtml(_nbaLabel) + '</div>'
             + (_nbaSecondary ? '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + _escHtml(_nbaSecondary) + '</div>' : '')
             + '</div>'
             + (_nbaOnclick ? '<button onclick="' + _nbaOnclick + '" style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">Go →</button>' : '')
