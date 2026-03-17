@@ -29,16 +29,19 @@ window.renderSongPitchSection = async function(container) {
         var votes = p.votes || {};
         var yesCount = Object.values(votes).filter(function(v) { return v === 'yes'; }).length;
         var noCount = Object.values(votes).filter(function(v) { return v === 'no'; }).length;
+        var deferCount = Object.values(votes).filter(function(v) { return v === 'defer'; }).length;
         var totalVotes = Object.keys(votes).length;
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var majority = Math.ceil(memberCount / 2);
         var myVote = myKey ? (votes[myKey] || null) : null;
 
         html += '<div style="padding:10px 12px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:8px;margin-bottom:8px">'
             + '<div style="display:flex;align-items:center;justify-content:space-between">'
             + '<div><div style="font-weight:700;font-size:0.88em;color:var(--text)">' + (p.title || 'Untitled') + '</div>'
             + (p.reason ? '<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px">"' + p.reason + '"</div>' : '')
-            + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px">Pitched by ' + (p.pitchedBy || 'someone') + '</div></div>'
-            + '<div style="text-align:right"><div style="font-size:0.72em;color:var(--text-dim)">' + totalVotes + ' vote' + (totalVotes !== 1 ? 's' : '') + '</div>'
-            + '<div style="font-size:0.72em;margin-top:2px"><span style="color:#22c55e">👍 ' + yesCount + '</span> <span style="color:#ef4444">👎 ' + noCount + '</span></div></div>'
+            + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px">Pitched by ' + (p.pitchedBy || 'someone') + ' · Votes are anonymous</div></div>'
+            + '<div style="text-align:right"><div style="font-size:0.68em;color:var(--text-dim)">' + totalVotes + ' of ' + memberCount + ' voted · needs ' + majority + ' yes</div>'
+            + '<div style="font-size:0.72em;margin-top:2px"><span style="color:#22c55e">👍 ' + yesCount + '</span> <span style="color:#ef4444">👎 ' + noCount + '</span> <span style="color:var(--text-dim)">🤷 ' + deferCount + '</span></div></div>'
             + '</div>';
 
         // Tradeoff preview
@@ -48,15 +51,19 @@ window.renderSongPitchSection = async function(container) {
                 + '</div>';
         }
 
-        // Vote buttons (anonymous)
-        if (myKey && !myVote) {
+        // Vote buttons — always shown, current vote highlighted, can change
+        if (myKey) {
+            var _pid = (p.id || '').replace(/'/g, "\\'");
+            var _vStyle = function(type, isActive) {
+                var colors = { yes: ['34,197,94', '#22c55e'], no: ['239,68,68', '#ef4444'], defer: ['255,255,255', 'var(--text-dim)'] };
+                var c = colors[type] || colors.defer;
+                return 'font-size:0.72em;padding:3px 10px;border-radius:5px;cursor:pointer;border:' + (isActive ? '2px' : '1px') + ' solid rgba(' + c[0] + ',' + (isActive ? '0.6' : '0.2') + ');background:rgba(' + c[0] + ',' + (isActive ? '0.15' : '0.05') + ');color:' + c[1] + ';font-weight:' + (isActive ? '800' : '600');
+            };
             html += '<div style="display:flex;gap:6px;margin-top:6px">'
-                + '<button onclick="votePitch(\'' + (p.id || '').replace(/'/g, "\\'") + '\',\'yes\')" style="font-size:0.72em;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#22c55e">👍 Yes</button>'
-                + '<button onclick="votePitch(\'' + (p.id || '').replace(/'/g, "\\'") + '\',\'no\')" style="font-size:0.72em;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#ef4444">👎 No</button>'
-                + '<button onclick="votePitch(\'' + (p.id || '').replace(/'/g, "\\'") + '\',\'defer\')" style="font-size:0.72em;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim)">🤷 Not now</button>'
+                + '<button onclick="votePitch(\'' + _pid + '\',\'yes\')" style="' + _vStyle('yes', myVote === 'yes') + '">👍 Yes</button>'
+                + '<button onclick="votePitch(\'' + _pid + '\',\'no\')" style="' + _vStyle('no', myVote === 'no') + '">👎 No</button>'
+                + '<button onclick="votePitch(\'' + _pid + '\',\'defer\')" style="' + _vStyle('defer', myVote === 'defer') + '">🤷 Not now</button>'
                 + '</div>';
-        } else if (myVote) {
-            html += '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">You voted: ' + (myVote === 'yes' ? '👍' : myVote === 'no' ? '👎' : '🤷') + '</div>';
         }
         html += '</div>';
     });
@@ -128,6 +135,27 @@ window.submitPitch = async function() {
     var reason = (document.getElementById('pitchReason') || {}).value || '';
     var replaceSong = (document.getElementById('pitchReplace') || {}).value || '';
     if (!title.trim()) { alert('Enter a song title'); return; }
+
+    // Guard: check if song is already Active
+    if (typeof isSongActive === 'function' && isSongActive(title.trim())) {
+        alert(title.trim() + ' is already in your Active set.');
+        return;
+    }
+
+    // Guard: check if there's already a pending pitch for this song
+    var existingPitches = toArray(await loadBandDataFromDrive('_band', 'song_pitches') || []);
+    if (existingPitches.some(function(p) { return p.status === 'pending' && p.title.toLowerCase() === title.trim().toLowerCase(); })) {
+        alert('There is already a pending pitch for ' + title.trim());
+        return;
+    }
+
+    // Warn if replacement song is targeted by another pending pitch
+    if (replaceSong.trim()) {
+        var _conflicting = existingPitches.filter(function(p) { return p.status === 'pending' && p.replaceSong && p.replaceSong.toLowerCase() === replaceSong.trim().toLowerCase(); });
+        if (_conflicting.length > 0) {
+            if (!confirm(replaceSong.trim() + ' is already targeted for replacement in another pitch. Continue anyway?')) return;
+        }
+    }
 
     var memberKey = typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : 'unknown';
     var memberName = '';
