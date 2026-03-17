@@ -509,7 +509,7 @@ function _sqRenderBulkBar() {
         + '<option value="prospect">👀 Prospect</option>'
         + '<option value="rotation">🔄 In Rotation</option>'
         + '</select>'
-        + '<button onclick="_sqBulkActivate()" style="padding:8px 18px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.82em;cursor:pointer;min-height:40px;white-space:nowrap">Add to Rehearsal</button>'
+        + '<button onclick="_sqBulkActivate()" style="padding:8px 18px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.82em;cursor:pointer;min-height:40px;white-space:nowrap">Add to Active Set</button>'
         + '<button onclick="window._sqSelected={};renderSongs()" style="padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.78em;cursor:pointer;min-height:40px">Cancel</button>';
     document.body.appendChild(bar);
 }
@@ -528,6 +528,7 @@ window._sqBulkActivate = async function() {
     }
 
     var count = titles.length;
+    var firstTitle = titles[0];
     window._sqSelectMode = false;
     window._sqSelected = {};
     window._sqScopeView = 'active';
@@ -537,7 +538,19 @@ window._sqBulkActivate = async function() {
     var bar = document.getElementById('sqBulkBar');
     if (bar) bar.remove();
 
-    if (typeof showToast === 'function') showToast(count + ' song' + (count > 1 ? 's' : '') + ' moved to Active as ' + (statusLabels[status] || status));
+    // Toast with optional "Open first song" CTA
+    document.getElementById('sqActivateToast')?.remove();
+    var toast = document.createElement('div');
+    toast.id = 'sqActivateToast';
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.96);border:1px solid rgba(34,197,94,0.25);border-radius:14px;padding:10px 18px;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.5);text-align:center;max-width:85vw;animation:glToastIn 0.2s ease-out';
+    toast.innerHTML = '<div style="font-size:0.88em;font-weight:600;color:#f1f5f9">' + count + ' song' + (count > 1 ? 's' : '') + ' ready. Start with one now.</div>'
+        + (firstTitle ? '<button onclick="selectSong(\'' + firstTitle.replace(/'/g, "\\'") + '\');this.closest(\'#sqActivateToast\').remove()" style="margin-top:6px;font-size:0.78em;font-weight:700;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Open first song</button>' : '');
+    document.body.appendChild(toast);
+    setTimeout(function() {
+        toast.style.transition = 'opacity 0.4s';
+        toast.style.opacity = '0';
+        setTimeout(function() { toast.remove(); }, 400);
+    }, 5000);
 };
 
 // ── Column filter dropdowns (band + status multi-pick) ───────────────────────
