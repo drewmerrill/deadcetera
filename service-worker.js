@@ -1,19 +1,23 @@
 // GrooveLinx Service Worker — Simplified for reliable updates
 // Strategy: network-first for everything. Cache is offline fallback only.
 
-const CACHE_NAME = 'groovelinx-20260317-222919';
+const CACHE_NAME = 'groovelinx-20260317-223350';
 const BASE = self.registration.scope;
 
-// ── Install: skip waiting immediately so new SW activates instantly ──────────
+// ── Install: pre-cache index.html for offline nav, then activate immediately ─
 self.addEventListener('install', event => {
-    self.skipWaiting();
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache =>
+            cache.addAll(['./', './index.html'])
+        ).then(() => self.skipWaiting())
+    );
 });
 
 // ── Activate: delete ALL old caches, claim all clients ──────────────────────
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
-            Promise.all(keys.map(k => caches.delete(k)))
+            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
         ).then(() => self.clients.claim())
     );
 });
@@ -38,9 +42,16 @@ self.addEventListener('fetch', event => {
             // Offline: try cache
             return caches.match(event.request).then(cached => {
                 if (cached) return cached;
-                // Offline navigation: serve cached index.html
+                // Offline navigation: serve cached index.html (try all possible keys)
                 if (event.request.mode === 'navigate') {
-                    return caches.match(BASE + 'index.html');
+                    return caches.match(BASE + 'index.html')
+                        .then(r => r || caches.match(BASE))
+                        .then(r => r || caches.match('/index.html'))
+                        .then(r => r || caches.match('./index.html'))
+                        .then(r => r || new Response(
+                            '<html><body style="background:#0f172a;color:#f1f5f9;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>GrooveLinx is offline</h2><p>Check your connection and reload.</p></div></body></html>',
+                            { status: 503, headers: { 'Content-Type': 'text/html' } }
+                        ));
                 }
                 return new Response('', { status: 503 });
             });

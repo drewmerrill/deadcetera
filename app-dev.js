@@ -509,13 +509,20 @@ function getFullBandName(bandAbbr) {
 // ── PWA: Simple service worker registration ─────────────────────────────────
 if ('serviceWorker' in navigator && !_rt.swInitialized) {
     _rt.swInitialized = true;
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
-            .then(reg => {
-                setInterval(() => reg.update(), 60 * 1000);
-            })
-            .catch(() => {});
-    });
+    var _isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (_isLocalhost) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(r) { r.unregister(); });
+        });
+    } else {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
+                .then(reg => {
+                    setInterval(() => reg.update(), 60 * 1000);
+                })
+                .catch(() => {});
+        });
+    }
 }
 
 // ── PWA: Capture install prompt and show smart banner ───────────────────────
