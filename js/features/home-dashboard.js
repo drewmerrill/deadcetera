@@ -1614,15 +1614,9 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         _nbaLabel = 'Practice weakest setlist song: ' + riskEntry[0];
         _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
     } else if (_hasScope && !riskEntry) {
-        // Strong setlist: all songs above threshold
-        _nbaLabel = 'Setlist is strong';
-        // Find global weakest as optional secondary
-        var _globalRisk = Object.entries(rc2)
-            .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3; })
-            .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); })[0];
-        if (_globalRisk) {
-            _nbaSecondary = 'Optional: work on ' + _globalRisk[0];
-        }
+        // Strong setlist: all songs above threshold — no outside recommendations
+        _nbaLabel = 'Setlist is strong — run the full set';
+        _nbaSecondary = '';
         _nbaOnclick = '';
     } else if (ls && !_hasScope) {
         // Setlist linked but couldn't be resolved — safe fallback, don't use global pool
