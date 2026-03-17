@@ -262,16 +262,15 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_sm === field + '_desc' || (_sm === field)) return ' ↓';
         return '';
     };
-    var _hdrStyle = 'font-size:0.65em;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;user-select:none';
     var headerHTML = !window._sqTriageFilter
-        ? '<div style="display:flex;align-items:center;gap:0;padding:6px 12px;border-bottom:2px solid rgba(255,255,255,0.12);background:#0f172a;position:sticky;top:0;z-index:5;margin-bottom:2px">'
-          + '<span style="' + _hdrStyle + ';flex:1;min-width:0" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</span>'
-          + '<span style="' + _hdrStyle + ';width:100px;text-align:left" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</span>'
-          + '<span style="' + _hdrStyle + ';width:80px;text-align:left" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Status' + _arrow('status') + '</span>'
-          + '<span style="' + _hdrStyle + ';width:90px;text-align:left">Context</span>'
-          + '<span style="' + _hdrStyle + ';width:48px;text-align:center" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</span>'
-          + '<span style="width:36px"></span>'
-          + '</div>' : '';
+        ? '<table style="width:100%;border-collapse:collapse;padding:0 12px;border-bottom:2px solid rgba(255,255,255,0.12);background:#0f172a;position:sticky;top:0;z-index:5;margin-bottom:2px"><tr>'
+          + '<td style="font-size:11px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;padding:6px 8px 6px 12px" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</td>'
+          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px;width:100px" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</td>'
+          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px;width:80px" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Status' + _arrow('status') + '</td>'
+          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;padding:6px 4px;width:90px">Context</td>'
+          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px;width:48px;text-align:center" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</td>'
+          + '<td style="width:36px;padding:6px 4px"></td>'
+          + '</tr></table>' : '';
 
     dropdown.innerHTML = headerHTML + filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
