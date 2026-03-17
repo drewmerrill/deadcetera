@@ -242,8 +242,7 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-card-title">🧠 Practice Mode</div>'+
         (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre>':'')+
         '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-        (chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 View Chart</button>':'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Find Chart</button>')+
-        (!chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>':'')+
+        (chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 View Chart</button>':'<button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">📖 Get Chart</button>')+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
         // ── Song Assets (progressive disclosure — moved from song list rows) ──
@@ -602,26 +601,61 @@ function _sdLoadAssets(title) {
     }
     items.push(hasChart
         ? '<span style="padding:3px 8px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);color:#fbbf24;font-weight:600">📖 Chart' + chartMeta + '</span>'
-        : _pillMissing('📖', 'Chart', "openRehearsalMode('" + _safeSong + "')"));
-    // Check Key/BPM
-    var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
-    if (songObj && songObj.key) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🔑 ' + songObj.key + '</span>');
-    if (songObj && songObj.bpm) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">🥁 ' + songObj.bpm + '</span>');
-    // Last practiced indicator (from readiness history)
-    var _rhKey = (songObj && songObj.songId) ? songObj.songId : title;
+        : _pillMissing('📖', 'Chart', "sdShowGetChartModal('" + _safeSong + "')"));
+    // Key/BPM live in Song DNA — not shown here
     try {
-        var _rh = dc && dc.readiness_history;
-        if (!_rh) {
-            // Check if we have any readiness score as a proxy for "practiced"
-            var _rs = (typeof readinessCache !== 'undefined') ? readinessCache[title] : null;
-            if (_rs) {
-                var _anyScore = Object.values(_rs).some(function(v) { return typeof v === 'number' && v > 0; });
-                if (_anyScore) items.push('<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);font-weight:600">✅ Rated</span>');
             }
         }
     } catch(e) {}
     el.innerHTML = items.join('');
 }
+
+// ── Get Chart Modal ──────────────────────────────────────────────────────────
+window.sdShowGetChartModal = function(title) {
+    var existing = document.getElementById('sdGetChartModal');
+    if (existing) existing.remove();
+    var safeSong = title.replace(/'/g, "\\'");
+    var ugQuery = encodeURIComponent(title + ' chords');
+    var modal = document.createElement('div');
+    modal.id = 'sdGetChartModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text,#f1f5f9)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+        + '<h3 style="margin:0;font-size:1em;color:var(--accent-light)">📖 Get a Chart</h3>'
+        + '<button onclick="document.getElementById(\'sdGetChartModal\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>'
+        + '</div>'
+        + '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:16px">Find a chart for <strong>' + _sdEsc(title) + '</strong> and paste it here.</div>'
+        + '<div style="margin-bottom:14px">'
+        + '<button onclick="window.open(\'https://www.ultimate-guitar.com/search.php?search_type=title&value=' + ugQuery + '\',\'_blank\')" style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.85em;width:100%;text-align:center">Open Ultimate Guitar →</button>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px;text-align:center">We\'ll open a new tab. Copy the chart text and come back here.</div>'
+        + '</div>'
+        + '<div style="margin-bottom:12px">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Paste chart text or URL</label>'
+        + '<textarea id="sdChartPasteInput" placeholder="Paste chord chart here..." style="width:100%;height:120px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="sdSaveChartFromModal(\'' + safeSong + '\')" style="flex:1;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:8px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.85em">Save Chart</button>'
+        + '<button onclick="document.getElementById(\'sdGetChartModal\').remove()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-dim);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85em">Cancel</button>'
+        + '</div></div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+};
+
+window.sdSaveChartFromModal = function(title) {
+    var input = document.getElementById('sdChartPasteInput');
+    if (!input || !input.value.trim()) { alert('Please paste a chart first'); return; }
+    var chartText = input.value.trim();
+    if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        GLStore.saveSongData(title, 'chart', { text: chartText, importedAt: new Date().toISOString() });
+    }
+    document.getElementById('sdGetChartModal').remove();
+    if (typeof showToast === 'function') showToast('Chart saved for ' + title);
+    // Refresh song detail if currently viewing this song
+    if (_sdCurrentSong === title && typeof renderSongDetail === 'function') {
+        var container = _sdContainer || document.getElementById('page-songdetail');
+        if (container) renderSongDetail(title, container);
+    }
+};
 
 // ── Jam Structure ────────────────────────────────────────────────────────────
 function _sdLoadStructure(title) {
