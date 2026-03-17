@@ -331,17 +331,17 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_bestSuggest) {
             var _sgSafe = _bestSuggest.title.replace(/'/g, "\\'");
             var _sgStatus = _statusDisplay[_bestSuggest.status] || '';
-            var _sgWhy = (_sgStatus ? _sgStatus + ' · ' : '') + 'Avg ' + _bestSuggest.avg.toFixed(1);
-            var _sgChips = [];
-            if (_sgStatus) _sgChips.push('<span class="song-chip" style="color:' + (_statusColor[_bestSuggest.status] || '#6b7280') + ';border-color:' + (_statusColor[_bestSuggest.status] || '#6b7280') + '44;background:' + (_statusColor[_bestSuggest.status] || '#6b7280') + '15">' + _sgStatus + '</span>');
-            _sgChips.push('<span class="song-chip song-chip--warn">Avg ' + _bestSuggest.avg.toFixed(1) + '/5</span>');
-            _suggestHTML = '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;margin-bottom:8px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);border-radius:10px;border-left:4px solid #667eea">'
+            // Human-readable reason (not raw data)
+            var _sgReason = _bestSuggest.avg < 2 ? 'Low readiness · Good use of rehearsal time'
+                          : _bestSuggest.avg < 3 ? 'Needs tightening · Almost there'
+                          : 'Could be stronger · Worth a run-through';
+            _suggestHTML = '<div style="display:flex;align-items:center;gap:14px;padding:12px 18px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;border-left:4px solid #667eea;box-shadow:0 2px 12px rgba(99,102,241,0.06)">'
                 + '<div style="flex:1;min-width:0">'
-                + '<div style="font-size:0.6em;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#818cf8;margin-bottom:3px">Play This Next</div>'
-                + '<div style="font-size:0.92em;font-weight:700;color:var(--text)">' + _bestSuggest.title + '</div>'
-                + '<div style="display:flex;gap:4px;margin-top:4px;font-size:0.72em">' + _sgChips.join('') + '</div>'
+                + '<div style="font-size:0.58em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#818cf8;margin-bottom:4px">Play This Next</div>'
+                + '<div style="font-size:0.95em;font-weight:700;color:var(--text)">' + _bestSuggest.title + '</div>'
+                + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px">' + _sgReason + '</div>'
                 + '</div>'
-                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.78em;font-weight:700;padding:8px 16px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.35);background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap">Open →</button>'
+                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:linear-gradient(135deg,rgba(99,102,241,0.2),rgba(99,102,241,0.1));color:#a5b4fc;white-space:nowrap">Start Practice</button>'
                 + '</div>';
         }
     }
