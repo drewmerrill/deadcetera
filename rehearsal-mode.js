@@ -25,6 +25,8 @@ var pmSelectedAudioUrl = '';
 var pmPalaceSceneIndex = 0;
 var pmPalaceScenes = [];
 var pmPalaceAutoTimer = null;
+var _rmCache = {};        // In-memory cache: { title: { chart, meta, ts } }
+var _rmNavLock = 0;       // Throttle timestamp for rmNavigate
 
 // Archive.org optimized search query per band
 function rmArchiveQuery(title, bandCode) {
@@ -285,10 +287,23 @@ async function rmLoadChart() {
     document.getElementById('rmChartText').style.display = 'none';
     document.getElementById('rmNoChart').classList.add('hidden');
 
-    let crib = null;
-    try { const cd = await loadBandDataFromDrive(song.title, 'chart'); if (cd?.text?.trim()) crib = cd.text; } catch(e) {}
-    if (!crib) { try { crib = await loadBandDataFromDrive(song.title, 'rehearsal_crib'); } catch(e) {} }
-    if (!crib) { try { const gn = toArray(await loadBandDataFromDrive(song.title, 'gig_notes') || []); if (gn.length) crib = gn.join('\n'); } catch(e) {} }
+    var cached = _rmCache[song.title];
+    let crib = (cached && cached.chart !== undefined) ? cached.chart : null;
+    if (crib === null) {
+        // Load all chart sources in parallel, use first non-empty
+        var _cr = await Promise.all([
+            loadBandDataFromDrive(song.title, 'chart').catch(function(){return null;}),
+            loadBandDataFromDrive(song.title, 'rehearsal_crib').catch(function(){return null;}),
+            loadBandDataFromDrive(song.title, 'gig_notes').catch(function(){return null;})
+        ]);
+        if (_cr[0]?.text?.trim()) crib = _cr[0].text;
+        else if (_cr[1] && typeof _cr[1] === 'string' && _cr[1].trim()) crib = _cr[1];
+        else if (_cr[2]) { var _gn = toArray(_cr[2]); if (_gn.length) crib = _gn.join('\n'); }
+        // Cache result (even empty string = "no chart")
+        if (!_rmCache[song.title]) _rmCache[song.title] = {};
+        _rmCache[song.title].chart = crib || '';
+        _rmCache[song.title].ts = Date.now();
+    }
 
     document.getElementById('rmChartLoading').style.display = 'none';
     // Song coaching signal
@@ -435,6 +450,8 @@ async function rmSaveChart() {
             await saveBandDataToDrive(song.title, 'chart', text ? {text: text} : null);
         }
         rmOriginalChart = text; document.getElementById('rmChartText').textContent = text;
+        // Invalidate cache so next visit picks up the edit
+        if (_rmCache[song.title]) _rmCache[song.title].chart = text || '';
         rmCancelEdit();
         if (text) { document.getElementById('rmChartText').style.display = 'block'; document.getElementById('rmNoChart').classList.add('hidden'); rmAutoFitFont(); }
         else { document.getElementById('rmChartText').style.display = 'none'; document.getElementById('rmNoChart').classList.remove('hidden'); }
@@ -1222,16 +1239,41 @@ async function rmLoadSong() {
     document.getElementById('rmNextBtn').style.opacity = rmIndex<rmQueue.length-1?'1':'0.25';
     document.getElementById('rmSongMeta').textContent = '';
     rmLoadMeta(song.title);
-    rmLoadChart(); rmLoadKnow(); rmLoadMemory(); rmLoadHarmony(); rmLoadRecord();
+    rmLoadChart();
+    // Non-chart tabs use lazy-load on first switch (lines 216-228) — don't eagerly load all 5
+    // Reset tab content to loading state so lazy-load triggers on switch
+    ['rmKnowContent','rmMemoryContent','rmHarmonyContent','rmRecordContent'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="rm-loading" style="padding:20px;text-align:center;color:#64748b">Loading...</div>';
+    });
 }
 async function rmLoadMeta(st) {
+    // Check in-memory cache first
+    var cached = _rmCache[st];
+    if (cached && cached.meta) {
+        document.getElementById('rmSongMeta').textContent = cached.meta;
+        return;
+    }
     try {
-        const m=await loadBandDataFromDrive(st,'song_meta')||{}, b=await loadBandDataFromDrive(st,'song_bpm')||{}, k=(await loadBandDataFromDrive(st,'key'))||(await loadBandDataFromDrive(st,'song_key'))||{};
-        const p=[]; if(k.key||m.key)p.push('🔑 '+(k.key||m.key)); if(b.bpm||m.bpm)p.push('🥁 '+(b.bpm||m.bpm)+' BPM'); if(m.leadSinger)p.push('🎤 '+m.leadSinger.charAt(0).toUpperCase()+m.leadSinger.slice(1));
-        document.getElementById('rmSongMeta').textContent = p.join('  ·  ');
+        // Parallel reads instead of sequential
+        var results = await Promise.all([
+            loadBandDataFromDrive(st,'song_meta').catch(function(){return {};}),
+            loadBandDataFromDrive(st,'song_bpm').catch(function(){return {};}),
+            loadBandDataFromDrive(st,'key').catch(function(){return {};})
+        ]);
+        var m=results[0]||{}, b=results[1]||{}, k=results[2]||{};
+        // Fallback for legacy key path
+        if (!k.key) { try { k = (await loadBandDataFromDrive(st,'song_key'))||{}; } catch(e2){} }
+        var p=[]; if(k.key||m.key)p.push('🔑 '+(k.key||m.key)); if(b.bpm||m.bpm)p.push('🥁 '+(b.bpm||m.bpm)+' BPM'); if(m.leadSinger)p.push('🎤 '+m.leadSinger.charAt(0).toUpperCase()+m.leadSinger.slice(1));
+        var metaStr = p.join('  ·  ');
+        document.getElementById('rmSongMeta').textContent = metaStr;
+        // Cache
+        if (!_rmCache[st]) _rmCache[st] = {};
+        _rmCache[st].meta = metaStr;
+        _rmCache[st].ts = Date.now();
     } catch(e) {}
 }
-function rmNavigate(dir) { const n=rmIndex+dir; if(n<0||n>=rmQueue.length)return; rmIndex=n; rmLoadSong(); }
+function rmNavigate(dir) { var now=Date.now(); if(now-_rmNavLock<300)return; _rmNavLock=now; const n=rmIndex+dir; if(n<0||n>=rmQueue.length)return; rmIndex=n; rmLoadSong(); }
 function rmKeyHandler(e) {
     const ov=document.getElementById('rmOverlay'); if(!ov?.classList.contains('rm-visible'))return; if(rmEditing)return;
     if(e.key==='Escape'){closeRehearsalMode();e.preventDefault();} if(e.key==='ArrowRight'){rmNavigate(1);e.preventDefault();} if(e.key==='ArrowLeft'){rmNavigate(-1);e.preventDefault();}
