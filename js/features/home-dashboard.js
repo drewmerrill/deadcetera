@@ -1485,15 +1485,16 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var warnHTML = isStoner ? '' : _renderReadinessWarnings(gig, bundle.readinessCache);
     var slLine   = ls ? '<div class="hd-hero__setlist">Setlist: ' + lsEsc + '</div>' : '';
     // Build gig-scoped song set for readiness/risk computation.
-    // Use both bundle.setlists (always loaded by dashboard) and _cachedSetlists
-    // (populated when Gigs/Setlists pages render) to ensure scope works on
-    // first Home load before user visits other pages.
+    // Resolve setlist by setlistId first, then name fallback.
     var _gigSongScope = {};
     if (ls) {
         var _slSources = [];
         if (bundle && bundle.setlists && Array.isArray(bundle.setlists)) _slSources = _slSources.concat(bundle.setlists);
+        if (typeof window._glCachedSetlists !== 'undefined' && Array.isArray(window._glCachedSetlists)) _slSources = _slSources.concat(window._glCachedSetlists);
         if (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) _slSources = _slSources.concat(window._cachedSetlists);
-        var _slMatch = _slSources.find(function(sl) { return (sl.name||'') === ls; });
+        // Match by setlistId first (canonical), then by name (legacy fallback)
+        var _slMatch = _slSources.find(function(sl) { return sl.setlistId && sl.setlistId === ls; })
+                    || _slSources.find(function(sl) { return (sl.name||'') === ls; });
         if (_slMatch && _slMatch.sets) {
             for (var _si = 0; _si < _slMatch.sets.length; _si++) {
                 var _ss = _slMatch.sets[_si].songs || [];
@@ -1504,12 +1505,18 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     var _hasScope = Object.keys(_gigSongScope).length > 0;
     var pct=_computeBandReadinessPct(bundle, _hasScope ? _gigSongScope : null),rl=deriveHdReadinessLabel(pct);
     var rb=rl?'<span class="hd-hero__ready-badge" style="background:'+rl.color+'22;color:'+rl.color+';border-color:'+rl.color+'55">'+rl.short+'</span>':'' ;
-    // Biggest risk song — scoped to this gig's setlist. Must be computed
-    // BEFORE coach text which references riskEntry.
+    // Biggest risk song — strictly scoped to setlist when linked.
+    // If setlist linked but not resolved, show NO risk entry (don't leak global pool).
     var rc2 = bundle.readinessCache || {};
-    var riskEntries = Object.entries(rc2)
-        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!_hasScope || _gigSongScope[e[0]]); })
-        .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); });
+    var riskEntries = [];
+    if (ls && !_hasScope) {
+        // Setlist linked but resolution failed — no risk entry, safe fallback
+        riskEntries = [];
+    } else {
+        riskEntries = Object.entries(rc2)
+            .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3 && (!_hasScope || _gigSongScope[e[0]]); })
+            .sort(function(a,b) { return _bandAvgForSong(a[1]) - _bandAvgForSong(b[1]); });
+    }
     var riskEntry = riskEntries[0];
     // Coach text — uses gig-scoped riskEntry
     var coach='';
@@ -1617,8 +1624,12 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
             _nbaSecondary = 'Optional: work on ' + _globalRisk[0];
         }
         _nbaOnclick = '';
+    } else if (ls && !_hasScope) {
+        // Setlist linked but couldn't be resolved — safe fallback, don't use global pool
+        _nbaLabel = 'Review setlist for ' + _escHtml(gig.venue || 'upcoming gig');
+        _nbaOnclick = "showPage('setlists')";
     } else if (riskEntry) {
-        // Tier 2/3: no setlist scope, use global weakest
+        // Tier 2/3: no setlist linked at all, use global weakest
         _nbaLabel = 'Practice weakest song: ' + riskEntry[0];
         _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
     } else if (!agenda || agenda.empty) {

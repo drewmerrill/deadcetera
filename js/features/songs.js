@@ -207,13 +207,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var signal = '';
         if (_upcomingSongs[song.title]) {
             signal = '<span style="font-size:0.58em;color:#818cf8;font-weight:600">🎯 In setlist</span>';
-        } else if (_topGaps[song.title]) {
-            signal = '<span style="font-size:0.58em;color:#f97316;font-weight:600">🔥 Priority gap</span>';
-        } else if (avg > 0 && avg < 3) {
+        } else if (_topGaps[song.title] || (avg > 0 && avg < 3)) {
             signal = '<span style="font-size:0.58em;color:#f59e0b;font-weight:600">⚠️ Needs work</span>';
         }
 
-        var editBtn = '<button class="song-quick-edit-btn" title="Quick edit" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">✏️</button>';
+        var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
 
         return '<div class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
@@ -466,7 +464,7 @@ function _renderTriageBar(dropdown, count) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
         html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
-            + '<span>⚡</span>Fix Your Library <span style="font-weight:500;opacity:0.8">(' + _totalMissing + ' issues)</span>'
+            + '<span>⚡</span>Fix missing info <span style="font-weight:500;opacity:0.8">(' + _totalMissing + ')</span>'
             + '<span style="font-size:0.85em">Start →</span></button>';
     }
     // Triage progress bar when active
