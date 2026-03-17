@@ -255,32 +255,43 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_pr) _pr.forEach(function(p) { _topGaps[p.songId] = true; });
     } catch(e) {}
 
-    // Column headers (desktop only, not during triage)
+    // ── MODE TOGGLE + SORT INDICATOR ──
+    var _isCleanup = !!window._sqTriageFilter;
     var _sm = window._sqSongSort || 'default';
     var _arrow = function(field) {
         if (_sm === field + '_asc') return ' ↑';
-        if (_sm === field + '_desc' || (_sm === field)) return ' ↓';
+        if (_sm === field + '_desc' || _sm === field) return ' ↓';
         return '';
     };
-    var headerHTML = !window._sqTriageFilter
-        ? '<table style="width:100%;border-collapse:collapse;padding:0 12px;border-bottom:2px solid rgba(255,255,255,0.12);background:#0f172a;position:sticky;top:0;z-index:5;margin-bottom:2px"><tr>'
-          + '<td style="font-size:11px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;padding:6px 8px 6px 12px" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</td>'
-          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px;width:100px" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</td>'
-          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px;width:80px" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Status' + _arrow('status') + '</td>'
-          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;padding:6px 4px;width:90px">Context</td>'
-          + '<td style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px;width:48px;text-align:center" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</td>'
-          + '<td style="width:36px;padding:6px 4px"></td>'
+    var _sortLabels = { default:'Default', title_asc:'Song A→Z', title_desc:'Song Z→A', readiness_asc:'Readiness ↑', readiness_desc:'Readiness ↓', status:'Status', band:'Band' };
+    var _modeBar = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
+        + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
+        + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
+        + '<span style="margin-left:auto;font-size:0.62em;color:var(--text-dim)">Sorted by: <strong>' + (_sortLabels[_sm] || 'Default') + '</strong></span>'
+        + '</div>';
+
+    // ── COLUMN HEADERS (4 columns: Song | Readiness | Why | Band+Action) ──
+    var _hd = 'font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;padding:6px 4px';
+    var headerHTML = !_isCleanup
+        ? '<table style="width:100%;border-collapse:collapse;border-bottom:2px solid rgba(255,255,255,0.1);background:#0f172a;position:sticky;top:0;z-index:5;margin-bottom:2px;table-layout:fixed"><tr>'
+          + '<td style="' + _hd + ';padding-left:12px;width:40%" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</td>'
+          + '<td style="' + _hd + ';width:15%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</td>'
+          + '<td style="' + _hd + ';width:30%" onclick="window._sqSongSort=(window._sqSongSort===\'status\'?\'default\':\'status\');renderSongs()">Why it matters' + _arrow('status') + '</td>'
+          + '<td style="' + _hd + ';width:15%;text-align:right;padding-right:12px" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + '</td>'
           + '</tr></table>' : '';
 
-    dropdown.innerHTML = headerHTML + filtered.map(function(song) {
+    dropdown.innerHTML = _modeBar + headerHTML + filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
         var titleOnclick = song.title.replace(/'/g, "\\'");
         var customAttr = song.isCustom ? ' data-custom="true"' : '';
         var customClass = song.isCustom ? ' custom-song' : '';
 
-        // Lifecycle badge
+        // Lifecycle + context combined into "Why it matters"
         var status = _sc[song.title] || '';
         var statusText = _statusDisplay[status] || '';
+        var signal = '';
+        if (_upcomingSongs[song.title]) signal = '🎯 Setlist';
+        else if (_topGaps[song.title] || (avg > 0 && avg < 3)) signal = '⚠️ Needs work';
 
         // Average readiness
         var scores = _rc[song.title] || {};
@@ -288,11 +299,15 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
         var barPct = avg ? Math.round((avg / 5) * 100) : 0;
         var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)';
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var ratedCount = vals.length;
+        var participation = (avg > 0 && ratedCount < memberCount) ? ' <span style="font-size:0.7em;color:var(--text-dim);opacity:0.6">' + ratedCount + '/' + memberCount + '</span>' : '';
 
-        // Contextual signal
-        var signal = '';
-        if (_upcomingSongs[song.title]) signal = '🎯 In setlist';
-        else if (_topGaps[song.title] || (avg > 0 && avg < 3)) signal = '⚠️ Needs work';
+        // "Why it matters" = status + signal combined
+        var whyParts = [];
+        if (statusText) whyParts.push('<span style="color:' + (_statusColor[status] || '#6b7280') + '">' + statusText + '</span>');
+        if (signal) whyParts.push('<span class="' + (signal.indexOf('Needs') > -1 ? 'song-signal-needswork' : 'song-signal-context') + '">' + signal + '</span>');
+        var whyHTML = whyParts.join(' <span style="opacity:0.3">·</span> ');
 
         var editBtn = '<button class="song-quick-edit-btn" title="Edit song details" onclick="event.stopPropagation();songQuickSetup(\'' + titleOnclick + '\')">Edit</button>';
         var needsWorkClass = signal.indexOf('Needs work') > -1 ? ' song-item--needswork' : '';
@@ -301,11 +316,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                ' onclick="selectSong(\'' + titleOnclick + '\')">' +
                '<div class="song-row-grid">' +
                '<span class="song-col song-col-title">' + song.title + '</span>' +
-               '<span class="song-col song-col-readiness"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span></span>' +
-               '<span class="song-col song-col-status">' + (statusText ? '<span style="font-size:0.9em;color:' + (_statusColor[status] || '#6b7280') + '">' + statusText + '</span>' : '') + '</span>' +
-               '<span class="song-col song-col-context">' + (signal ? '<span class="' + (signal.indexOf('Needs') > -1 ? 'song-signal-needswork' : 'song-signal-context') + '">' + signal + '</span>' : '') + '</span>' +
-               '<span class="song-col song-col-band"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></span>' +
-               '<span class="song-col song-col-action">' + editBtn + '</span>' +
+               '<span class="song-col song-col-readiness"><span class="song-readiness-bar"><span class="song-readiness-fill" style="width:' + barPct + '%;background:' + barColor + '"></span></span><span class="song-readiness-num" style="color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>' + participation + '</span>' +
+               '<span class="song-col song-col-why">' + whyHTML + '</span>' +
+               '<span class="song-col song-col-end"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span>' + editBtn + '</span>' +
                '</div></div>';
     }).join('');
 
@@ -610,15 +623,13 @@ function _renderTriageBar(dropdown, count) {
     // Inject styles once
     var style = document.createElement('style');
     style.textContent = ''
-        // ── 6-column soft grid (PL-11 finalization) ──
-        + '.song-row-grid{display:grid;grid-template-columns:1fr 100px 80px 90px 48px 36px;align-items:center;gap:0 8px;min-width:0}'
+        // ── 4-column layout (PL-12: Song | Readiness | Why | Band+Action) ──
+        + '.song-row-grid{display:grid;grid-template-columns:40% 15% 30% 15%;align-items:center;gap:0 6px;min-width:0;padding:0 4px}'
         + '.song-col{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}'
-        + '.song-col-title{font-weight:600;font-size:0.9em;color:var(--text,#f1f5f9)}'
+        + '.song-col-title{font-weight:600;font-size:0.9em;color:var(--text,#f1f5f9);padding-left:8px}'
         + '.song-col-readiness{display:flex;align-items:center;gap:3px}'
-        + '.song-col-status{font-size:0.72em}'
-        + '.song-col-context{font-size:0.72em}'
-        + '.song-col-band{text-align:center}'
-        + '.song-col-action{text-align:right}'
+        + '.song-col-why{font-size:0.72em}'
+        + '.song-col-end{display:flex;align-items:center;gap:4px;justify-content:flex-end;padding-right:8px}'
         // Column headers
         + '#songDropdown{background:transparent!important;max-height:none!important;border:none!important}'
         + '.song-header-row{display:grid;grid-template-columns:1fr 100px 80px 90px 48px 36px;gap:0 8px;padding:6px 12px;border-bottom:2px solid rgba(255,255,255,0.12);margin-bottom:2px;position:sticky;top:0;z-index:5;background:#0f172a}'
@@ -654,12 +665,11 @@ function _renderTriageBar(dropdown, count) {
         // Scroll snap for smooth iPhone scrolling
         + '#songDropdown{scroll-snap-type:y proximity;-webkit-overflow-scrolling:touch}'
         + '.song-item{scroll-snap-align:start}'
-        // Mobile: 2-col layout, hide headers + band + context columns
+        // Mobile: 2-col layout (Song + Readiness), hide Why + Band columns
         + '@media(max-width:640px){'
-        + '.song-header-row{display:none!important}'
-        + '.song-row-grid{grid-template-columns:1fr 80px!important;gap:2px 4px!important}'
-        + '.song-col-status,.song-col-context,.song-col-band{display:none!important}'
-        + '.song-col-action{display:none!important}'
+        + 'table[style*="sticky"]{display:none!important}'
+        + '.song-row-grid{grid-template-columns:1fr auto!important;gap:2px 4px!important}'
+        + '.song-col-why,.song-col-end .song-badge{display:none!important}'
         + '.song-col-title{white-space:normal!important}'
         + '}';
     document.head.appendChild(style);

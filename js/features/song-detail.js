@@ -214,7 +214,15 @@ async function _sdPopulateBandLens(title) {
         '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'no\')">Not yet</button>'+
         '</div></div>'+
         '</div>'+
-        // ── Song DNA (moved up for mobile prominence) ──
+        // ── Jam Structure (PROMOTED — core differentiator) ──
+        '<div class="sd-card" style="padding:10px 14px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between">' +
+        '<div class="sd-card-title" style="margin-bottom:0">🎼 How We Play It</div>' +
+        '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\''+safeSong+'\')">Edit</button>' +
+        '</div>' +
+        '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
+        '</div>' +
+        // ── Song DNA ──
         '<div class="sd-card" style="padding:10px 14px">'+
         '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song DNA</div>'+
         '<div class="sd-dna-grid">'+
@@ -225,11 +233,10 @@ async function _sdPopulateBandLens(title) {
         '</div>'+
         _sdSectionDots(sectionRatings)+
         '</div>'+
-        // ── Intelligence detail cards ──
+        // ── Intelligence detail + practice ──
         _sdRenderAttentionCard(title, safeSong)+
         _sdRenderGapsCard(_siGaps)+
         ((status === 'prospect' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
-        // ── Practice Mode (chart-aware buttons) ──
         '<div class="sd-card">'+
         '<div class="sd-card-title">🧠 Practice Mode</div>'+
         (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre>':'')+
@@ -238,14 +245,6 @@ async function _sdPopulateBandLens(title) {
         (!chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\',\'paste\')">📋 Paste Chart</button>':'')+
         '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
         '</div></div>'+
-        // ── Jam Structure (jam structure MVP) ──
-        '<div class="sd-card" style="padding:10px 14px">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between">' +
-        '<div class="sd-card-title" style="margin-bottom:0">🎼 Jam Structure</div>' +
-        '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\''+safeSong+'\')">Edit</button>' +
-        '</div>' +
-        '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
-        '</div>' +
         // ── Song Assets (progressive disclosure — moved from song list rows) ──
         '<div class="sd-card" style="padding:10px 14px">' +
         '<div class="sd-card-title" style="margin-bottom:8px">📦 Song Assets</div>' +
