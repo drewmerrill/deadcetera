@@ -4,11 +4,13 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260315-222534', 'color:#667eea;font-weight:bold;font-size:14px');
-
-// ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260315-222534';
+// ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
+var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
 var _loadedVersion = BUILD_VERSION;
+if (!window._glBuildLogged) {
+    console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
+    window._glBuildLogged = true;
+}
 
 
 
@@ -381,7 +383,7 @@ var _loadedVersion = BUILD_VERSION;
     document.head.appendChild(style);
 })();
 
-console.log('🔗 GrooveLinx v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
+// Version logged once at top via _glBuildLogged guard
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -493,10 +495,10 @@ function getFullBandName(bandAbbr) {
 // INITIALIZE APP
 // ============================================================================
 
-// ── PWA: Register service worker ────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
+// ── PWA: Register service worker (single owner — PL-9.2) ───────────────────
+if ('serviceWorker' in navigator && !window._glSWInitDone) {
+    window._glSWInitDone = true;
     window.addEventListener('load', () => {
-        // Use relative path so it works whether hosted at root or in a subdirectory
         const swPath = new URL('service-worker.js', window.location.href).href;
         navigator.serviceWorker.register(swPath)
             .then(reg => {
@@ -7224,10 +7226,7 @@ async function loadBandDataFromDrive(songTitle, dataType) {
             const data = snapshot.val();
             
             if (data !== null) {
-                console.log(`✅ Loaded ${dataType} from Firebase`);
                 return data;
-            } else {
-                console.log(`No Firebase data for ${dataType}`);
             }
         } catch (error) {
             console.log(`⚠️ Firebase error for ${dataType}:`, error.message);
@@ -11477,7 +11476,8 @@ var _updateBannerShown = false;
 var _GL_BANNER_KEY = 'gl_update_banner_dismissed';
 
 function showUpdateBanner(serverVersion) {
-    // Hard guard 1: in-memory (prevents double-fire within same page lifecycle)
+    // Hard guard: single prompt per page lifecycle (PL-9.2)
+    if (window._glReloadPromptShown) return;
     if (_updateBannerShown) return;
     // Hard guard 2: DOM check (belt-and-suspenders)
     if (document.getElementById('dc-update-banner')) return;
@@ -11487,6 +11487,7 @@ function showUpdateBanner(serverVersion) {
     var dismissed = sessionStorage.getItem(_GL_BANNER_KEY);
     if (dismissed && dismissed === (serverVersion || 'any')) return;
     _updateBannerShown = true;
+    window._glReloadPromptShown = true;
     console.log('[Update] Creating banner');
     var banner = document.createElement('div');
     banner.id = 'dc-update-banner';
@@ -13144,6 +13145,8 @@ async function preloadReadinessCache() {
 
 // ── Lead singer preload (for triage accuracy) ────────────────────────────────
 async function _preloadLeadSingerCache() {
+    if (window._glLeadSingerCacheLoaded) return;
+    window._glLeadSingerCacheLoaded = true;
     if (!allSongs || !allSongs.length) return;
     try {
         // Batch-load lead_singer for all songs into GLStore detail cache

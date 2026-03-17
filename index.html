@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260317-014315">
+    <meta name="build-version" content="20260317-015156">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GrooveLinx — Where Bands Lock In</title>
@@ -750,27 +750,7 @@
     };
     </script>
     <script>
-    // Service Worker registration
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-            navigator.serviceWorker.register('service-worker.js')
-                .then(function(reg) {
-                    console.log('[SW] Registered:', reg.scope);
-                    reg.addEventListener('updatefound', function() {
-                        var newWorker = reg.installing;
-                        newWorker.addEventListener('statechange', function() {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                if (typeof showUpdateBanner === 'function') showUpdateBanner();
-                            }
-                        });
-                    });
-                })
-                .catch(function(err) { console.log('[SW] Registration failed:', err); });
-            navigator.serviceWorker.addEventListener('controllerchange', function() {
-                if (typeof showUpdateBanner === 'function') showUpdateBanner();
-            });
-        });
-    }
+    // Service Worker registration handled by app.js (single owner — PL-9.2)
     </script>
     <script>
     // Strip stale share params (?playlist=, ?pack=) from URL on every load.

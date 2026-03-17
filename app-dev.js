@@ -4,11 +4,13 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260315-222534', 'color:#667eea;font-weight:bold;font-size:14px');
-
-// ── Version baseline for update banner ───────────────────────────────────────
-var BUILD_VERSION = '20260315-222534';
+// ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
+var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
 var _loadedVersion = BUILD_VERSION;
+if (!window._glBuildLogged) {
+    console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
+    window._glBuildLogged = true;
+}
 
 
 
@@ -381,7 +383,7 @@ var _loadedVersion = BUILD_VERSION;
     document.head.appendChild(style);
 })();
 
-console.log('🔗 GrooveLinx v5.4 — Firebase · Playlists · Harmonies · Stage-ready!');
+// Version logged once at top via _glBuildLogged guard
 
 let selectedSong = null;
 let selectedVersion = null;
@@ -7151,10 +7153,7 @@ async function loadBandDataFromDrive(songTitle, dataType) {
             const data = snapshot.val();
             
             if (data !== null) {
-                console.log(`✅ Loaded ${dataType} from Firebase`);
                 return data;
-            } else {
-                console.log(`No Firebase data for ${dataType}`);
             }
         } catch (error) {
             console.log(`⚠️ Firebase error for ${dataType}:`, error.message);
