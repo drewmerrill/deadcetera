@@ -375,6 +375,9 @@ window.sqTriageSet = function(filter) {
     window._sqTriageFilter = (window._sqTriageFilter === filter) ? null : filter;
     window._sqTriageDone = 0;
     window._sqTriageIndex = -1;
+    // Toggle triage focus mode on body
+    if (window._sqTriageFilter) document.body.classList.add('gl-triage-active');
+    else document.body.classList.remove('gl-triage-active');
     var searchTerm = (document.getElementById('songSearch') || {}).value || '';
     renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
 };
@@ -384,6 +387,7 @@ window.sqTriageStart = function(filter) {
     window._sqTriageFilter = filter;
     window._sqTriageDone = 0;
     window._sqTriageIndex = -1;
+    document.body.classList.add('gl-triage-active');
     var searchTerm = (document.getElementById('songSearch') || {}).value || '';
     renderSongs(typeof currentFilter !== 'undefined' ? currentFilter : 'all', searchTerm);
     // Auto-open first song after render
@@ -466,16 +470,20 @@ function _renderTriageBar(dropdown, count) {
     if (!tf && _totalMissing > 0) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
+        var _bestLabel = { no_bpm: 'Missing BPM', no_key: 'Missing Key', no_status: 'No Status' }[_bestFilter] || 'Missing data';
+        var _bestCount = _missingCounts[_bestFilter] || _totalMissing;
         html += '<button onclick="sqTriageStart(\'' + _bestFilter + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24;margin-right:6px;display:inline-flex;align-items:center;gap:6px">'
-            + '<span>⚡</span>Start cleanup →'
-            + '<span style="font-weight:500;opacity:0.7;font-size:0.85em">' + _totalMissing + ' songs</span></button>';
+            + '<span>⚡</span>Start cleanup → ' + _bestLabel
+            + '<span style="font-weight:500;opacity:0.7;font-size:0.85em">(' + _bestCount + ')</span></button>';
     }
-    // Triage progress bar when active
-    if (tf && window._sqTriageDone > 0) {
+    // Triage progress bar when active (always show when filter active)
+    if (tf) {
         var _pTotal = count + window._sqTriageDone;
         var _pPct = _pTotal > 0 ? Math.round(window._sqTriageDone / _pTotal * 100) : 0;
         html += '<div style="display:flex;align-items:center;gap:6px;width:100%;margin-bottom:4px">'
-            + '<span style="font-size:0.68em;font-weight:700;color:#22c55e">' + window._sqTriageDone + ' of ' + _pTotal + ' fixed</span>'
+            + '<span style="font-size:0.68em;font-weight:700;color:#22c55e">' + window._sqTriageDone + ' fixed</span>'
+            + '<span style="font-size:0.62em;color:var(--text-dim)">—</span>'
+            + '<span style="font-size:0.68em;font-weight:600;color:var(--text-dim)">' + count + ' remaining</span>'
             + '<div style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">'
             + '<div style="width:' + _pPct + '%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.3s"></div></div></div>';
     }
@@ -515,7 +523,8 @@ function _renderTriageBar(dropdown, count) {
         + '.sq-field:focus{border-color:rgba(99,102,241,0.4);outline:none}'
         + '.sq-label{font-size:0.62em;color:var(--text-dim);font-weight:700;white-space:nowrap}'
         + '.sq-done{font-size:0.7em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;white-space:nowrap}'
-        + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}';
+        + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}'
+        + '.gl-triage-active #sd-readiness-card,.gl-triage-active #sd-discussion-mount,.gl-triage-active #sd-confidence-prompt,.gl-triage-active .sd-intel-card,.gl-triage-active #sd-assets{display:none!important}';
     document.head.appendChild(style);
 })();
 
@@ -562,9 +571,24 @@ window.songQuickSetup = function songQuickSetup(title) {
         + '<span class="sq-label">BPM</span><input type="number" class="sq-field sq-tab" style="width:55px" min="40" max="240" value="' + currentBpm + '" onchange="_sqFieldSaved(this);GLStore.updateSongField(\'' + safeTitle + '\',\'bpm\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_sqAdvanceNext(\'' + safeTitle + '\')}">'
         + '<button class="sq-done" onclick="event.stopPropagation();_sqClose(\'' + safeTitle + '\')">Done</button>';
 
-    // Auto-focus first field
-    var firstField = row.querySelector('.sq-tab');
-    if (firstField) requestAnimationFrame(function() { firstField.focus(); });
+    // Smart auto-focus: jump to the first MISSING field based on triage filter
+    requestAnimationFrame(function() {
+        var tf = window._sqTriageFilter;
+        var target = null;
+        if (tf === 'no_bpm') {
+            target = row.querySelector('input[type="number"]');
+        } else if (tf === 'no_key') {
+            var keySelects = row.querySelectorAll('.sq-tab');
+            target = keySelects[2]; // Lead=0, Status=1, Key=2
+        } else if (tf === 'no_status') {
+            var statusSelects = row.querySelectorAll('.sq-tab');
+            target = statusSelects[1]; // Status is second field
+        } else if (tf === 'no_lead') {
+            target = row.querySelector('.sq-tab'); // Lead is first
+        }
+        if (!target) target = row.querySelector('.sq-tab');
+        if (target) target.focus();
+    });
 
     // Load lead singer async
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
