@@ -13105,33 +13105,49 @@ async function preloadReadinessCache() {
     }
 }
 
-// ── Song DNA preload (key/bpm/lead from Firebase → allSongs[] for triage accuracy)
-// Fires batches of Promise.all to populate in-memory data, then re-renders once.
+// ── Song DNA preload + seed promotion ────────────────────────────────────────
+// Single source of truth: after this runs, allSongs[].key and .bpm reflect
+// Firebase data. If Firebase is empty but seed has a value, promote seed into
+// GLStore (one-time write). Filters and intelligence only check allSongs[].
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
     if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
+    var _promoted = 0;
     try {
-        var missing = allSongs.filter(function(s) { return !s.key || !s.bpm; });
-        var cap = Math.min(missing.length, 300);
-        // Process in batches of 20 with awaited Promise.all
+        var cap = Math.min(allSongs.length, 600);
         for (var batch = 0; batch < cap; batch += 20) {
             var promises = [];
             for (var i = batch; i < Math.min(batch + 20, cap); i++) {
-                var s = missing[i];
+                var s = allSongs[i];
                 if (!s || !s.title) continue;
-                if (!s.key) {
-                    promises.push(GLStore.loadFieldMeta(s.title, 'key').then(function(song, data) {
-                        if (data && data.key) song.key = data.key;
-                    }.bind(null, s)).catch(function() {}));
-                }
-                if (!s.bpm) {
-                    promises.push(GLStore.loadFieldMeta(s.title, 'song_bpm').then(function(song, data) {
-                        if (data && data.bpm) song.bpm = data.bpm;
-                    }.bind(null, s)).catch(function() {}));
-                }
+                // Key: load from Firebase → populate allSongs[].key
+                promises.push((function(song) {
+                    return GLStore.loadFieldMeta(song.title, 'key').then(function(data) {
+                        if (data && data.key) {
+                            song.key = data.key;
+                        } else if (song.key && !data) {
+                            // Seed has value, Firebase doesn't — promote seed into GLStore
+                            GLStore.saveSongData(song.title, 'key', { key: song.key, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
+                            _promoted++;
+                        }
+                    }).catch(function() {});
+                })(s));
+                // BPM: load from Firebase → populate allSongs[].bpm
+                promises.push((function(song) {
+                    return GLStore.loadFieldMeta(song.title, 'song_bpm').then(function(data) {
+                        if (data && data.bpm) {
+                            song.bpm = data.bpm;
+                        } else if (song.bpm && !data) {
+                            // Seed has value, Firebase doesn't — promote seed into GLStore
+                            GLStore.saveSongData(song.title, 'song_bpm', { bpm: song.bpm, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
+                            _promoted++;
+                        }
+                    }).catch(function() {});
+                })(s));
             }
             if (promises.length) await Promise.all(promises);
         }
+        if (_promoted > 0) console.log('[DNA preload] Promoted ' + _promoted + ' seed values into GLStore');
     } catch(e) {}
 }
 

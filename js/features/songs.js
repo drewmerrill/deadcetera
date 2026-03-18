@@ -122,13 +122,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (!isSearching && window._sqTriageFilter) {
             var tf = window._sqTriageFilter;
             var _tdc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(song.title) : null;
+            // allSongs[].key and .bpm are the single source of truth after preload
             if (tf === 'no_key') {
                 if (song.key) return false;
-                if (_tdc && _tdc.key && _tdc.key.key) return false;
             }
             if (tf === 'no_bpm') {
                 if (song.bpm) return false;
-                if (_tdc && _tdc.song_bpm && _tdc.song_bpm.bpm) return false;
             }
             if (tf === 'no_status') {
                 var _ts = (typeof statusCache !== 'undefined') ? statusCache[song.title] : null;
@@ -851,11 +850,9 @@ function _renderTriageBar(dropdown, count) {
     });
     if (typeof _countPool !== 'undefined') {
         _countPool.forEach(function(s) {
-            var _mdc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(s.title) : null;
-            var hasKey = s.key || (_mdc && _mdc.key && _mdc.key.key);
-            var hasBpm = s.bpm || (_mdc && _mdc.song_bpm && _mdc.song_bpm.bpm);
-            if (!hasKey) _missingCounts.no_key++;
-            if (!hasBpm) _missingCounts.no_bpm++;
+            // allSongs[].key and .bpm are single source after preload promotion
+            if (!s.key) _missingCounts.no_key++;
+            if (!s.bpm) _missingCounts.no_bpm++;
             if (typeof statusCache !== 'undefined' && !statusCache[s.title]) _missingCounts.no_status++;
         });
     }
