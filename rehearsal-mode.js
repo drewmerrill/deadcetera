@@ -144,7 +144,7 @@ function rmEnsureOverlay() {
                      <span class="rm-tb-sep"></span>
                      <button class="rm-tb" onclick="rmAdjustFont(-1)" title="Smaller text">A−</button>
                      <button class="rm-tb" onclick="rmAdjustFont(1)" title="Larger text">A+</button>
-                     <button class="rm-tb" onclick="rmSearchUG()" title="Search for chords online">🔍</button>
+                     <button class="rm-tb" onclick="rmSearchUG()" title="Search Ultimate Guitar">🎸</button>
                      <button class="rm-tb" id="rmEditToggle" onclick="rmToggleEdit()" title="Edit chart">✏️</button>
                      <span class="rm-tb-sep"></span>
                      <button class="rm-tb" onclick="rmOpenPocketMeter()" title="Pocket Meter — tap tempo &amp; metronome">🥁</button>
@@ -350,21 +350,16 @@ async function rmLoadChart() {
         document.getElementById('rmNoChart').classList.remove('hidden');
         rmLoadChartTools(song.title);
         // Populate no-chart actions
-        const googleQuery = encodeURIComponent(song.title + ' ' + band + ' chords lyrics');
         const actions = document.getElementById('rmNoChartActions');
         if (actions) actions.innerHTML = `
-            <button onclick="_rmStartFreshChart('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:10px;color:#86efac;font-weight:700;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
+            <button onclick="window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=${ugQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:rgba(255,165,0,0.12);border:1px solid rgba(255,165,0,0.3);border-radius:10px;color:#fbbf24;font-weight:700;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
+                <span style="font-size:1.3em">🎸</span>
+                <div><div>Find Chart on Ultimate Guitar</div><div style="font-size:0.75em;font-weight:400;color:rgba(251,191,36,0.6);margin-top:2px">Log in to UG Pro to copy — then come back and paste</div></div>
+            </button>
+            <button onclick="_rmStartFreshChart('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#94a3b8;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
                 <span style="font-size:1.3em">✏️</span>
-                <div><div>Write or Paste a Chart</div><div style="font-size:0.75em;font-weight:400;color:rgba(134,239,172,0.6);margin-top:2px">Type chords + structure, or paste from any source</div></div>
+                <div><div>Type or Paste a Chart</div><div style="font-size:0.75em;font-weight:400;color:rgba(148,163,184,0.6);margin-top:2px">Write it yourself or paste from any source</div></div>
             </button>
-            <button onclick="window.open('https://www.google.com/search?q=${googleQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;color:#a5b4fc;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
-                <span style="font-size:1.3em">🔍</span>
-                <div><div>Search for Chords Online</div><div style="font-size:0.75em;font-weight:400;color:rgba(165,180,252,0.5);margin-top:2px">Google — find a copyable source, then come back and paste</div></div>
-            </button>
-            <div style="display:flex;gap:8px;margin-top:2px">
-                <button onclick="window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=${ugQuery}','_blank')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:#64748b;font-size:0.75em;cursor:pointer;text-align:center">UG (view only)</button>
-                <button onclick="window.open('https://chordify.net/search/${chordifyQuery}','_blank')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:#64748b;font-size:0.75em;cursor:pointer;text-align:center">Chordify</button>
-            </div>
             <div id="rmPersonalTabsInChart" style="margin-top:8px"></div>`;
         // Load personal tabs into the chart panel
         rmLoadPersonalTabsInChart(song.title);
@@ -649,8 +644,8 @@ function rmAutoFitFont() {
 function rmSearchUG() {
     const song = rmQueue[rmIndex]; if (!song) return;
     const band = _rmFullBandName(song.band) || 'Grateful Dead';
-    const q = encodeURIComponent(song.title + ' ' + band + ' chords lyrics');
-    window.open('https://www.google.com/search?q=' + q, '_blank');
+    const q = encodeURIComponent(song.title + ' ' + band);
+    window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=' + q, '_blank');
     // Show paste-back banner when user returns
     _rmShowPasteBanner(song.title);
 }
