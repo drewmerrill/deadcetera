@@ -748,6 +748,7 @@ function _sdNormalizeSection(s, i) {
 }
 
 // Auto-derive sections from chart text headers
+window.deriveStructureFromChart = _sdDeriveFromChart;
 function _sdDeriveFromChart(chartText) {
     if (!chartText) return [];
     var re = /^\[(.+?)\]\s*$/gm;

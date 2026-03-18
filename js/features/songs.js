@@ -149,6 +149,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 var _nrStatus = (typeof statusCache !== 'undefined') ? statusCache[song.title] : '';
                 if (_nrStatus === 'rotation') return false;
             }
+            if (tf === 'no_structure') {
+                // Check if song has structure in GLStore detail cache
+                var _stDc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(song.title) : null;
+                if (_stDc && _stDc.song_structure && _stDc.song_structure.sections && _stDc.song_structure.sections.length > 0) return false;
+            }
         }
 
         return true;
@@ -838,6 +843,7 @@ function _renderTriageBar(dropdown, count) {
         { id: 'no_bpm', label: 'Missing BPM' },
         { id: 'no_status', label: 'No Status' },
         { id: 'no_lead', label: 'No Lead' },
+        { id: 'no_structure', label: 'No Structure' },
         { id: 'needs_work', label: 'Needs Work' },
         { id: 'not_rotation', label: 'Not in Rotation' }
     ];
@@ -864,7 +870,7 @@ function _renderTriageBar(dropdown, count) {
         var _bestFilter = _missingCounts.no_bpm >= _missingCounts.no_key ? 'no_bpm' : 'no_key';
         if (_missingCounts.no_status > _missingCounts[_bestFilter]) _bestFilter = 'no_status';
         var _ctaLabel = tf
-            ? { no_key:'Fix Missing Key', no_bpm:'Fix Missing BPM', no_status:'Set Status', no_lead:'Set Lead', needs_work:'Focus on Weak Songs', not_rotation:'Review Rotation' }[tf] || 'Continue Cleanup'
+            ? { no_key:'Fix Missing Key', no_bpm:'Fix Missing BPM', no_status:'Set Status', no_lead:'Set Lead', no_structure:'Add Structure', needs_work:'Focus on Weak Songs', not_rotation:'Review Rotation' }[tf] || 'Continue Cleanup'
             : 'Get your songs rehearsal-ready';
         var _ctaCount = tf ? count : _totalMissing;
         var _ctaFilter = tf || _bestFilter;
@@ -884,7 +890,7 @@ function _renderTriageBar(dropdown, count) {
             + '<div style="width:' + _pPct + '%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.3s"></div></div></div>';
     }
 
-    var _triageIcons = { no_key:'🔑', no_bpm:'🥁', no_status:'🎯', no_lead:'🎤', needs_work:'⚠️', not_rotation:'🔄' };
+    var _triageIcons = { no_key:'🔑', no_bpm:'🥁', no_status:'🎯', no_lead:'🎤', no_structure:'🎼', needs_work:'⚠️', not_rotation:'🔄' };
     items.forEach(function(it) {
         var active = tf === it.id;
         var itemCount = _missingCounts[it.id] || '';

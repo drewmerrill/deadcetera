@@ -878,6 +878,44 @@ function rmCancelEdit(silent) {
         else document.getElementById('rmNoChart').classList.remove('hidden');
     }
 }
+// After chart save: detect [Header] markers and auto-derive song_structure
+function _rmAutoStructureAfterSave(songTitle, chartText) {
+    if (!chartText || !songTitle) return;
+    if (typeof deriveStructureFromChart !== 'function') return;
+    if (typeof GLStore === 'undefined' || !GLStore.saveSongData || !GLStore.loadFieldMeta) return;
+    // Don't overwrite existing structure
+    GLStore.loadFieldMeta(songTitle, 'song_structure').then(function(existing) {
+        if (existing && existing.sections && existing.sections.length > 0) return; // already has structure
+        var derived = deriveStructureFromChart(chartText);
+        if (derived.length > 0) {
+            // Auto-save — no confirmation needed, structure is just derived from what they pasted
+            var who = (typeof getCurrentMemberKey === 'function' && getCurrentMemberKey()) || 'unknown';
+            GLStore.saveSongData(songTitle, 'song_structure', { sections: derived, updatedBy: who, updatedAt: new Date().toISOString() });
+            showToast(derived.length + ' sections detected — structure saved');
+            // Refresh timeline if visible
+            _rmLoadBandNotesStrip(songTitle);
+        } else {
+            // No headers found — subtle warning
+            _rmShowNoHeadersHint();
+        }
+    }).catch(function() {});
+}
+
+function _rmShowNoHeadersHint() {
+    var existing = document.getElementById('rmNoHeadersHint');
+    if (existing) existing.remove();
+    var hint = document.createElement('div');
+    hint.id = 'rmNoHeadersHint';
+    hint.style.cssText = 'padding:6px 12px;font-size:0.72em;color:#fbbf24;background:rgba(251,191,36,0.06);border-bottom:1px solid rgba(251,191,36,0.12);display:flex;align-items:center;gap:6px';
+    hint.innerHTML = '<span>⚠️ No [Section] headers found in chart.</span>'
+        + '<span style="color:var(--text-dim)">Add headers like [Verse], [Chorus], [Solo] for automatic structure.</span>'
+        + '<button onclick="this.parentElement.remove()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,0.2);cursor:pointer;padding:2px 6px">✕</button>';
+    var chartEl = document.getElementById('rmChartText');
+    if (chartEl && chartEl.parentElement) chartEl.parentElement.insertBefore(hint, chartEl);
+    // Auto-dismiss after 8 seconds
+    setTimeout(function() { var h = document.getElementById('rmNoHeadersHint'); if (h) h.remove(); }, 8000);
+}
+
 async function rmSaveChart() {
     const song = rmQueue[rmIndex];
     const text = document.getElementById('rmEditTextarea').value.trim();
@@ -894,6 +932,8 @@ async function rmSaveChart() {
         if (text) { document.getElementById('rmChartText').style.display = 'block'; document.getElementById('rmNoChart').classList.add('hidden'); rmAutoFitFont(); }
         else { document.getElementById('rmChartText').style.display = 'none'; document.getElementById('rmNoChart').classList.remove('hidden'); }
         showToast('✅ Chart saved!');
+        // Auto-derive structure from section headers
+        _rmAutoStructureAfterSave(song.title, text);
         // Chart queue: auto-advance to next missing song
         if (_rmChartQueueMode) {
             _rmChartQueueDone++;
