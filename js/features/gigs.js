@@ -385,6 +385,7 @@ async function loadGigs() {
             </div>
             <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
                 <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+                ${_gigAvailabilitySummaryChip(g)}
                 <button class="btn btn-sm btn-ghost" onclick="gigShowDirections(${g._origIdx})" title="Directions" style="color:#60a5fa">📍</button>
                 <button class="btn btn-sm btn-ghost" onclick="editGig(${g._origIdx})" title="Edit">✏️</button>
                 <button class="btn btn-sm btn-ghost" onclick="loadGigPayouts(${g._origIdx})" title="Payout" style="color:#22c55e">💰</button>
@@ -398,6 +399,7 @@ async function loadGigs() {
             <button onclick="gigLaunchLinkedSetlist('${(g.setlistId || '').replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
             <button onclick="showPage('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
         </div>` : ''}
+        ${_gigRenderAvailability(g)}
     </div>`).join('');
 }
 
@@ -1137,5 +1139,89 @@ async function gpSave(gigIdx) {
     loadGigs();
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GIG AVAILABILITY / RSVP
+// ══════════════════════════════════════════════════════════════════════════════
+
+function _gigAvailabilitySummaryChip(gig) {
+    var avail = gig.availability || {};
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var total = members.length || 5;
+    var yesCount = 0;
+    Object.values(avail).forEach(function(a) { if (a && a.status === 'yes') yesCount++; });
+    if (yesCount === 0 && Object.keys(avail).length === 0) return '';
+    var color = yesCount === total ? '#22c55e' : yesCount > 0 ? '#f59e0b' : '#64748b';
+    return '<span style="font-size:0.65em;font-weight:700;padding:2px 8px;border-radius:6px;background:' + color + '18;color:' + color + ';border:1px solid ' + color + '33">👥 ' + yesCount + '/' + total + '</span>';
+}
+
+function _gigRenderAvailability(gig) {
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    if (!members.length) return '';
+    var avail = gig.availability || {};
+    var myKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    var total = members.length;
+    var yesCount = 0;
+    Object.values(avail).forEach(function(a) { if (a && a.status === 'yes') yesCount++; });
+    var gigIdx = gig._origIdx;
+
+    var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        + '<span style="font-size:0.78em;font-weight:700;color:var(--text)">👥 Band Availability</span>'
+        + '<span style="font-size:0.72em;color:var(--text-dim)">' + yesCount + ' / ' + total + ' available</span>'
+        + '</div>';
+
+    // Member list
+    var memberEmoji = { drew:'🎸', chris:'🎸', brian:'🎸', pierce:'🎹', jay:'🥁' };
+    members.forEach(function(memberKey) {
+        var name = memberKey;
+        if (typeof bandMembers !== 'undefined' && bandMembers[memberKey]) name = bandMembers[memberKey].name || memberKey;
+        var a = avail[memberKey];
+        var status = a ? a.status : null;
+        var icon = status === 'yes' ? '✅' : status === 'maybe' ? '❓' : status === 'no' ? '❌' : '⏳';
+        var label = status === 'yes' ? 'Yes' : status === 'maybe' ? 'Maybe' : status === 'no' ? 'No' : 'No response';
+        var statusColor = status === 'yes' ? '#22c55e' : status === 'maybe' ? '#f59e0b' : status === 'no' ? '#ef4444' : '#64748b';
+        var isMe = memberKey === myKey;
+
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.82em' + (isMe ? ';font-weight:700' : '') + '">'
+            + '<span style="min-width:16px">' + (memberEmoji[memberKey] || '👤') + '</span>'
+            + '<span style="flex:1;color:var(--text)">' + name.charAt(0).toUpperCase() + name.slice(1) + (isMe ? ' (you)' : '') + '</span>'
+            + '<span style="font-size:0.85em;color:' + statusColor + '">' + icon + ' ' + label + '</span>'
+            + '</div>';
+    });
+
+    // My RSVP buttons
+    if (myKey) {
+        var myStatus = avail[myKey] ? avail[myKey].status : null;
+        html += '<div style="display:flex;gap:6px;margin-top:8px">';
+        ['yes', 'maybe', 'no'].forEach(function(s) {
+            var labels = { yes: "I'm In", maybe: 'Maybe', no: 'Out' };
+            var colors = { yes: '34,197,94', maybe: '245,158,11', no: '239,68,68' };
+            var active = myStatus === s;
+            html += '<button onclick="gigSetAvailability(' + gigIdx + ',\'' + s + '\')" style="flex:1;padding:6px;border-radius:6px;font-size:0.78em;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid rgba(' + colors[s] + ',' + (active ? '0.6' : '0.2') + ');background:rgba(' + colors[s] + ',' + (active ? '0.15' : '0.04') + ');color:rgba(' + colors[s] + ',1);min-height:36px">' + labels[s] + '</button>';
+        });
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+window.gigSetAvailability = async function(gigIdx, status) {
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!memberKey) return;
+    try {
+        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        var gig = gigs[gigIdx];
+        if (!gig) return;
+        if (!gig.availability) gig.availability = {};
+        gig.availability[memberKey] = { status: status, updatedAt: new Date().toISOString() };
+        await saveBandDataToDrive('_band', 'gigs', gigs);
+        if (typeof showToast === 'function') showToast(status === 'yes' ? "You're in!" : status === 'maybe' ? 'Marked as maybe' : 'Marked as out');
+        loadGigs(); // refresh
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Failed to update availability');
+    }
+};
 
 console.log('✅ gigs.js loaded');
