@@ -18,6 +18,10 @@
     height: calc(100vh - 52px); /* viewport minus topbar */
     overflow: hidden;           /* children are the scroll containers */
   }
+  /* Hide footer on desktop — shell is the full workspace */
+  #gl-shell ~ footer { display: none; }
+  /* Prevent body scroll — only column internals scroll */
+  html, body { overflow: hidden; height: 100vh; }
 }
 
 /* ── Left rail (Milestone 4 Phase 2) ───────────────────────────────────────── */
