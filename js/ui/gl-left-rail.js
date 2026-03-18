@@ -37,8 +37,8 @@
     { title: 'Band', items: [
       { page: 'songs',     icon: '🎵', label: 'Songs' },
       { page: 'setlists',  icon: '📋', label: 'Setlists' },
-      { page: 'rehearsal', icon: '📅', label: 'Rehearsal', tip: 'Live band rehearsal workspace' },
-      { page: 'ideas',     icon: '🎸', label: 'Band Room', tip: 'Polls, ideas, and band decisions' },
+      { page: 'rehearsal', icon: '🎸', label: 'Rehearsal', tip: 'Live band rehearsal workspace' },
+      { page: 'ideas',     icon: '💬', label: 'Band Room', tip: 'Polls, ideas, and band decisions' },
     ]},
     { title: 'Gigs', items: [
       { page: 'gigs',      icon: '🎤', label: 'Gigs' },
@@ -49,7 +49,7 @@
     { title: 'Tools', items: [
       { page: 'playlists',   icon: '🎧', label: 'Playlists' },
       { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter' },
-      { page: 'tuner',       icon: '🎸', label: 'Tuner' },
+      { page: 'tuner',       icon: '🔱', label: 'Tuner' },
       { page: 'metronome',   icon: '🥁', label: 'Metronome' },
     ]},
     { title: 'Admin', items: [
