@@ -13127,6 +13127,8 @@ async function _preloadSongDNA() {
             }
             if (i > 0 && i % 20 === 0) await new Promise(function(r) { setTimeout(r, 50); });
         }
+        // Re-render songs after preload so triage counts reflect Firebase data
+        if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
     } catch(e) {}
 }
 
