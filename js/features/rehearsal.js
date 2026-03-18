@@ -34,50 +34,184 @@ var _rhActiveTab = 'events';
 
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
-    el.innerHTML =
-        '<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div><h1 style="margin:0">📅 Rehearsal</h1><p style="margin:4px 0 0">Schedule sessions, build plans, and run rehearsals</p></div>'
-        + '<button onclick="renderRehearsalPlanner()" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.88em;cursor:pointer;white-space:nowrap">Plan Rehearsal</button></div>' +
-        '<div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">' +
-            '<button id="rhTab-events" class="btn" onclick="rhShowTab(\'events\')" style="flex:1;font-size:0.85em">📅 Sessions</button>' +
-            '<button id="rhTab-plans"  class="btn" onclick="rhShowTab(\'plans\')"  style="flex:1;font-size:0.85em">📋 Plans</button>' +
-            '<button id="rhTab-intel"  class="btn" onclick="rhShowTab(\'intel\')"  style="flex:1;font-size:0.85em">Intel</button>' +
-        '</div>' +
-        '<div id="rhTabContent"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
-    // Restore last sub-tab if set
-    setTimeout(function() {
-        try {
-            var saved = localStorage.getItem('glRhLastTab');
-            if (saved && saved !== 'events' && typeof rhShowTab === 'function') rhShowTab(saved);
-        } catch(e) {}
-    }, 0);
-    rhShowTab(_rhActiveTab);
+    el.innerHTML = '<div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
+    _rhActiveTab = 'tonight';
+    _rhRenderCommandFlow(el);
 }
 
-async function rhShowTab(tab) {
-    _rhActiveTab = tab;
-    ['events','plans','intel'].forEach(function(t) {
-        try { localStorage.setItem('glRhLastTab', t); } catch(e) {}
-    var btn = document.getElementById('rhTab-' + t);
-        if (!btn) return;
-        var active = t === tab;
-        btn.style.background = active ? 'var(--accent)' : 'rgba(255,255,255,0.04)';
-        btn.style.color      = active ? 'white' : 'var(--text-muted)';
-        btn.style.border     = active ? '1px solid var(--accent)' : '1px solid var(--border)';
-        btn.style.fontWeight = active ? '700' : '500';
-    });
+async function _rhRenderCommandFlow(el) {
+    var main = document.getElementById('rhMain');
+    if (!main) return;
+
+    // Load context
+    var ctx = null;
+    try { ctx = await buildRiContext(); } catch(e) {}
+    var focusSongs = ctx ? deriveRiFocusSongs(ctx) : [];
+    window._riLastCtx = ctx;
+    window._riLastFocusSongs = focusSongs;
+
+    // Next gig
+    var gigs = [];
+    try { gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []); } catch(e) {}
+    var today = new Date().toISOString().split('T')[0];
+    var nextGig = gigs.filter(function(g) { return g.date >= today; }).sort(function(a,b) { return a.date.localeCompare(b.date); })[0] || null;
+
+    // Availability for next gig
+    var availHtml = '';
+    if (nextGig) {
+        var avail = nextGig.availability || {};
+        var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+        var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        if (members.length > 0) {
+            availHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
+            members.forEach(function(ref) {
+                var mKey = (typeof ref === 'object') ? ref.key : ref;
+                var name = bm[mKey] ? bm[mKey].name : mKey;
+                var a = avail[mKey];
+                var status = a ? a.status : null;
+                var icon = status === 'yes' ? '✅' : status === 'maybe' ? '❓' : status === 'no' ? '❌' : '⏳';
+                var short = name.split(' ')[0]; // first name only
+                availHtml += '<span style="font-size:0.78em;color:var(--text-dim)">' + short + ' ' + icon + '</span>';
+            });
+            // Role gap check
+            if (typeof _gigComputeAvailability === 'function') {
+                var s = _gigComputeAvailability(nextGig);
+                if (s.missingRoles.length > 0) {
+                    var _rl = { drums:'Drums', bass:'Bass', keys:'Keys', guitar:'Guitar', vocals:'Vocals' };
+                    availHtml += '<span style="font-size:0.72em;color:#fca5a5;font-weight:700;margin-left:4px">⚠️ Missing ' + s.missingRoles.map(function(r){return _rl[r]||r;}).join(', ') + '</span>';
+                }
+            }
+            availHtml += '</div>';
+        }
+    }
+
+    // Gig context
+    var gigDaysAway = nextGig ? Math.round((new Date(nextGig.date).getTime() - Date.now()) / 86400000) : null;
+    var gigLabel = nextGig ? (nextGig.venue || 'Upcoming Gig') : null;
+
+    // Focus songs (active only)
+    var weakSongs = focusSongs.filter(function(s) {
+        return typeof isSongActive === 'function' && isSongActive(s.title);
+    }).slice(0, 5);
+
+    // Confidence level
+    var ci = (typeof GLStore !== 'undefined' && GLStore.getCatalogIntelligence) ? GLStore.getCatalogIntelligence() : null;
+    var confLabel = 'Unknown';
+    var confColor = '#64748b';
+    if (ci && ci.catalogAvg) {
+        var avg = parseFloat(ci.catalogAvg);
+        if (avg >= 4) { confLabel = 'Strong'; confColor = '#22c55e'; }
+        else if (avg >= 3) { confLabel = 'Moderate'; confColor = '#f59e0b'; }
+        else { confLabel = 'Needs Work'; confColor = '#ef4444'; }
+    }
+
+    var html = '';
+
+    // ── SECTION 1: Context ──
+    html += '<div style="margin-bottom:16px">';
+    if (nextGig) {
+        html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15)">'
+            + '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:rgba(99,102,241,0.6);text-transform:uppercase;margin-bottom:4px">Preparing for</div>'
+            + '<div style="font-size:1.1em;font-weight:800;color:var(--text)">' + gigLabel + ' <span style="font-weight:500;font-size:0.72em;color:var(--text-dim)">· ' + (gigDaysAway === 0 ? 'Today' : gigDaysAway === 1 ? 'Tomorrow' : gigDaysAway + ' days') + '</span></div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px">Confidence: <strong style="color:' + confColor + '">' + confLabel + '</strong>'
+            + (weakSongs.length > 0 ? ' · Focus on <strong>' + weakSongs[0].title + '</strong>' + (weakSongs.length > 1 ? ' + ' + (weakSongs.length - 1) + ' more' : '') : '')
+            + '</div>'
+            + (availHtml ? '<div style="margin-top:8px">' + availHtml + '</div>' : '')
+            + '</div>';
+    } else {
+        html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
+            + '<div style="font-size:0.82em;color:var(--text-dim)">No upcoming gig scheduled. <button onclick="showPage(\'gigs\')" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-weight:600;padding:0">Add a gig →</button></div>'
+            + '</div>';
+    }
+    html += '</div>';
+
+    // ── SECTION 2: Primary CTA ──
+    html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
+        + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Plan Rehearsal</button>'
+        + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">History</button>'
+        + '<button onclick="rhShowTab(\'sessions\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Sessions</button>'
+        + '</div>';
+
+    // ── SECTION 3: Tab content area ──
+    html += '<div id="rhTabContent"></div>';
+
+    main.innerHTML = html;
+
+    // Default: show tonight view (focus + readiness)
+    _rhRenderTonightTab();
+}
+
+async function _rhRenderTonightTab() {
     var content = document.getElementById('rhTabContent');
     if (!content) return;
-    if (tab === 'events') {
-        content.innerHTML =
-            '<div style="display:flex;gap:8px;margin-bottom:14px">' +
-            '<button class="btn btn-primary" onclick="rhOpenCreateModal()">+ New Rehearsal</button>' +
-            '</div>' +
-            '<div id="rhEventList"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
+
+    var ctx = window._riLastCtx;
+    var focusSongs = window._riLastFocusSongs || [];
+
+    // Filter to active songs only
+    var activeFocus = focusSongs.filter(function(s) {
+        return typeof isSongActive === 'function' && isSongActive(s.title);
+    });
+
+    var html = '';
+
+    // Focus songs
+    if (activeFocus.length > 0) {
+        html += '<div style="margin-bottom:14px">'
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">Focus Songs</div>';
+        activeFocus.slice(0, 6).forEach(function(s, i) {
+            var avg = s.readiness || 0;
+            var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : '#64748b';
+            var reason = (s.reasons && s.reasons[0]) || '';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
+                + '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1">' + s.title + '</span>'
+                + '<span style="font-size:0.68em;color:var(--text-dim)">' + reason + '</span>'
+                + '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>'
+                + '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Readiness breakdown (collapsed)
+    if (ctx) {
+        html += '<details style="margin-bottom:14px"><summary style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">Readiness Breakdown</summary>';
+        html += renderRiReadinessBreakdown(ctx);
+        html += '</details>';
+    }
+
+    content.innerHTML = html;
+}
+
+// Tab router for secondary views
+async function rhShowTab(tab) {
+    _rhActiveTab = tab;
+    try { localStorage.setItem('glRhLastTab', tab); } catch(e) {}
+    var content = document.getElementById('rhTabContent');
+    if (!content) return;
+
+    if (tab === 'sessions') {
+        content.innerHTML = '<div style="display:flex;gap:8px;margin-bottom:14px">'
+            + '<button class="btn btn-primary" onclick="rhOpenCreateModal()">+ New Rehearsal</button></div>'
+            + '<div id="rhEventList"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
         await rhLoadEvents();
-    } else if (tab === 'intel') {
-        await rhShowIntelTab(content);
+    } else if (tab === 'history') {
+        content.innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center">Session history coming soon.</div>';
+        // Future: completion history
+        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalCompletionHistory) {
+            var history = GLStore.getRehearsalCompletionHistory();
+            if (history && history.length > 0) {
+                content.innerHTML = '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Past Sessions</div>'
+                    + history.slice(0, 10).map(function(h) {
+                        return '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.82em;color:var(--text-dim)">'
+                            + (h.completedAt ? new Date(h.completedAt).toLocaleDateString() : '—')
+                            + ' · ' + (h.songsCompleted || 0) + ' songs · ' + (h.totalMinutes || 0) + ' min'
+                            + '</div>';
+                    }).join('');
+            }
+        }
     } else {
-        await rhShowPlansTab(content);
+        _rhRenderTonightTab();
     }
 }
 
