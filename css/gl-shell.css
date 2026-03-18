@@ -10,8 +10,14 @@
   flex-direction: row;
   align-items: stretch;
   width: 100%;
-  min-height: calc(100vh - 92px); /* match .main-content min-height */
   position: relative;
+}
+/* Desktop: fixed-height shell — each column scrolls independently */
+@media (min-width: 901px) {
+  #gl-shell {
+    height: calc(100vh - 52px); /* viewport minus topbar */
+    overflow: hidden;           /* children are the scroll containers */
+  }
 }
 
 /* ── Left rail (Milestone 4 Phase 2) ───────────────────────────────────────── */
@@ -25,6 +31,7 @@
   padding: 8px 0;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   transition: width 0.2s ease;
   scrollbar-width: none;
 }
@@ -152,9 +159,15 @@
   min-width: 0;          /* allow compression below max-width */
   max-width: none;       /* let flex control width, not a hard cap */
   margin: 0;             /* remove the auto-centering */
-  /* padding, min-height, and all other rules remain from app-shell.css */
   overflow-y: auto;
-  transition: flex-basis 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  -webkit-overflow-scrolling: touch; /* smooth scroll on iOS */
+  transition: flex-basis 0.3s cubic-bezier(0.32, 0, 0, 1);
+}
+/* Desktop: override min-height so center workspace scrolls within shell */
+@media (min-width: 901px) {
+  #gl-shell > .main-content {
+    min-height: 0;       /* let flex height control, not min-height */
+  }
 }
 
 /* ── Right context panel ───────────────────────────────────────────────────── */
@@ -232,6 +245,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   /* Isolate stacking context so sd-header sticky positioning cannot
      escape this container and paint over .gl-rp-header above it. */
   isolation: isolate;

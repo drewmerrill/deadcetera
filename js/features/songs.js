@@ -420,16 +420,17 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
         var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
 
-        // Focus chips — ACTIONABLE first, contextual second
+        // Focus chips — STATUS (identity) first, CONDITION (action) second
         var status = _sc[song.title] || '';
         var statusText = _statusDisplay[status] || '';
         var chips = [];
-        // 1. Actionable signals first (these tell you what to DO)
-        if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">⚠️ Needs work</span>');
-        if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">🎯 Setlist</span>');
-        // 2. Contextual (lifecycle status)
+        // 1. Lifecycle status — what the song IS (primary identity)
         if (statusText) chips.push('<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>');
-        // 3. Unrated
+        // 2. Attention conditions — what to DO about it (secondary, muted)
+        if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">⚠️ Needs work</span>');
+        else if (avg >= 3 && avg < 3.8) chips.push('<span class="song-chip song-chip--warm">🔥 Keep warm</span>');
+        if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">🎯 Setlist</span>');
+        // 3. Unrated fallback
         if (avg === 0 && !statusText) chips.push('<span class="song-chip song-chip--dim">Unrated</span>');
 
         var needsWork = chips.some(function(c) { return c.indexOf('warn') > -1; });
@@ -935,6 +936,7 @@ function _renderTriageBar(dropdown, count) {
         + '.song-chip{font-size:0.82em;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);white-space:nowrap}'
         + '.song-chip--setlist{color:#818cf8;border-color:rgba(129,140,248,0.3);background:rgba(129,140,248,0.08)}'
         + '.song-chip--warn{color:#f59e0b;border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.08)}'
+        + '.song-chip--warm{color:#94a3b8;border-color:rgba(148,163,184,0.2);background:rgba(148,163,184,0.06)}'
         + '.song-chip--dim{color:var(--text-dim);opacity:0.5;border-color:rgba(255,255,255,0.06)}'
         + '.song-col-end{display:flex;align-items:center;gap:4px;justify-content:flex-end;padding-right:8px}'
         // Column headers
