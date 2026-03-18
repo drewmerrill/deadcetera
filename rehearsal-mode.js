@@ -285,6 +285,7 @@ function closeRehearsalMode() {
 // ══════════════════════════════════════════════════════════════════════════════
 async function rmLoadChart() {
     const song = rmQueue[rmIndex]; if (!song) return;
+    const loadIdx = rmIndex; // snapshot index to detect stale results
     rmCancelEdit(true);
     document.getElementById('rmChartLoading').style.display = 'block';
     document.getElementById('rmChartText').style.display = 'none';
@@ -299,6 +300,8 @@ async function rmLoadChart() {
             loadBandDataFromDrive(song.title, 'rehearsal_crib').catch(function(){return null;}),
             loadBandDataFromDrive(song.title, 'gig_notes').catch(function(){return null;})
         ]);
+        // Stale check: if user navigated during async load, discard this result
+        if (rmIndex !== loadIdx) return;
         if (_cr[0]?.text?.trim()) crib = _cr[0].text;
         else if (_cr[1] && typeof _cr[1] === 'string' && _cr[1].trim()) crib = _cr[1];
         else if (_cr[2]) { var _gn = toArray(_cr[2]); if (_gn.length) crib = _gn.join('\n'); }
@@ -1504,7 +1507,7 @@ async function rmLoadSong() {
     document.getElementById('rmPrevBtn').style.opacity = rmIndex>0?'1':'0.25';
     document.getElementById('rmNextBtn').style.opacity = rmIndex<rmQueue.length-1?'1':'0.25';
     document.getElementById('rmSongMeta').textContent = '';
-    rmLoadMeta(song.title);
+    rmLoadMeta(song.title, rmIndex);
     rmLoadChart();
     // Non-chart tabs use lazy-load on first switch (lines 216-228) — don't eagerly load all 5
     // Reset tab content to loading state so lazy-load triggers on switch
@@ -1513,7 +1516,7 @@ async function rmLoadSong() {
         if (el) el.innerHTML = '<div class="rm-loading" style="padding:20px;text-align:center;color:#64748b">Loading...</div>';
     });
 }
-async function rmLoadMeta(st) {
+async function rmLoadMeta(st, snapshotIdx) {
     // Check in-memory cache first
     var cached = _rmCache[st];
     if (cached && cached.meta) {
@@ -1527,6 +1530,8 @@ async function rmLoadMeta(st) {
             loadBandDataFromDrive(st,'song_bpm').catch(function(){return {};}),
             loadBandDataFromDrive(st,'key').catch(function(){return {};})
         ]);
+        // Stale check: if user navigated during async load, discard
+        if (typeof snapshotIdx === 'number' && rmIndex !== snapshotIdx) return;
         var m=results[0]||{}, b=results[1]||{}, k=results[2]||{};
         // Fallback for legacy key path
         if (!k.key) { try { k = (await loadBandDataFromDrive(st,'song_key'))||{}; } catch(e2){} }
