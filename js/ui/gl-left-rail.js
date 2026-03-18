@@ -26,28 +26,33 @@
   // Full navigation schema — matches the hamburger slide-out menu in index.html.
   // Both surfaces must stay in sync. If you add a page here, add it to
   // the slide-out menu too (and vice versa).
+  // Top-level item (above all sections)
+  var NAV_TOP = { page: 'home', icon: '🏠', label: 'Home' };
+
+  // Intent-driven nav groups
   var NAV_SECTIONS = [
-    { title: 'Music', sub: 'Songs, practice, rehearsal', items: [
-      { page: 'home',      icon: '🏠', label: 'Home' },
+    { title: 'Solo', items: [
+      { page: 'practice',  icon: '🎯', label: 'Practice', tip: 'Your individual practice tools' },
+    ]},
+    { title: 'Band', items: [
       { page: 'songs',     icon: '🎵', label: 'Songs' },
       { page: 'setlists',  icon: '📋', label: 'Setlists' },
-      { page: 'practice',  icon: '🎯', label: 'Practice' },
-      { page: 'rehearsal', icon: '📅', label: 'Rehearsals' },
-      { page: 'ideas',     icon: '🎸', label: 'Band Room' },
+      { page: 'rehearsal', icon: '📅', label: 'Rehearsal', tip: 'Live band rehearsal workspace' },
+      { page: 'ideas',     icon: '🎸', label: 'Band Room', tip: 'Polls, ideas, and band decisions' },
     ]},
-    { title: 'Gigs', sub: 'Shows, venues, stage plots', items: [
+    { title: 'Gigs', items: [
       { page: 'gigs',      icon: '🎤', label: 'Gigs' },
       { page: 'calendar',  icon: '📆', label: 'Calendar' },
       { page: 'venues',    icon: '🏛️', label: 'Venues' },
       { page: 'stageplot', icon: '🎭', label: 'Stage Plot' },
     ]},
-    { title: 'Tools', sub: 'Tuner, meter, playlists', items: [
+    { title: 'Tools', items: [
       { page: 'playlists',   icon: '🎧', label: 'Playlists' },
       { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter' },
       { page: 'tuner',       icon: '🎸', label: 'Tuner' },
       { page: 'metronome',   icon: '🥁', label: 'Metronome' },
     ]},
-    { title: 'More', sub: 'Business, settings, help', items: [
+    { title: 'Admin', items: [
       { page: 'bestshot',      icon: '🏆', label: 'Best Shot' },
       { page: 'social',        icon: '📣', label: 'Social Media' },
       { page: 'finances',      icon: '💰', label: 'Finances' },
@@ -151,17 +156,23 @@
       + '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
       + '</svg></button>';
 
+    // Home — top-level, above all sections
+    html += '<button class="gl-rail-item gl-rail-item--home" data-page="' + NAV_TOP.page + '"'
+      + ' onclick="showPage(\'' + NAV_TOP.page + '\')" title="' + NAV_TOP.label + '">'
+      + '<span class="gl-rail-icon">' + NAV_TOP.icon + '</span>'
+      + '<span class="gl-rail-label">' + NAV_TOP.label + '</span></button>';
+
+    // Intent-based sections
     for (var s = 0; s < NAV_SECTIONS.length; s++) {
       var section = NAV_SECTIONS[s];
       html += '<div class="gl-rail-section">';
-      html += '<div class="gl-rail-section-title">' + section.title
-        + (section.sub ? '<span class="gl-rail-section-sub">' + section.sub + '</span>' : '')
-        + '</div>';
+      html += '<div class="gl-rail-section-title">' + section.title + '</div>';
       for (var i = 0; i < section.items.length; i++) {
         var item = section.items[i];
+        var tooltip = item.tip || item.label;
         html += '<button class="gl-rail-item" data-page="' + item.page + '"'
           + ' onclick="showPage(\'' + item.page + '\')"'
-          + ' title="' + item.label + '">'
+          + ' title="' + tooltip + '">'
           + '<span class="gl-rail-icon">' + item.icon + '</span>'
           + '<span class="gl-rail-label">' + item.label + '</span>'
           + (item.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;background:#fbbf24;color:#000;font-size:0.6em;font-weight:800;border-radius:8px;padding:0 5px;margin-left:4px;min-width:14px;text-align:center;line-height:16px"></span>' : '')

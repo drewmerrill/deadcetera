@@ -35,7 +35,7 @@ var _rhActiveTab = 'events';
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     el.innerHTML =
-        '<div class="page-header"><h1>📅 Rehearsals</h1><p>Schedule band sessions, track plans, RSVP, and review recordings</p></div>' +
+        '<div class="page-header"><h1>📅 Rehearsal</h1><p>Schedule sessions, build plans, and run rehearsals</p></div>' +
         '<div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">' +
             '<button id="rhTab-events" class="btn" onclick="rhShowTab(\'events\')" style="flex:1;font-size:0.85em">📅 Sessions</button>' +
             '<button id="rhTab-plans"  class="btn" onclick="rhShowTab(\'plans\')"  style="flex:1;font-size:0.85em">📋 Plans</button>' +
