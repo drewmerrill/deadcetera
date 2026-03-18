@@ -1141,69 +1141,177 @@ async function gpSave(gigIdx) {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GIG AVAILABILITY / RSVP
+// GIG AVAILABILITY / RSVP — Phase 1+2: UX refinement + role-aware gaps
 // ══════════════════════════════════════════════════════════════════════════════
 
-function _gigAvailabilitySummaryChip(gig) {
-    var avail = gig.availability || {};
-    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
-    var total = members.length || 5;
-    var yesCount = 0;
-    Object.values(avail).forEach(function(a) { if (a && a.status === 'yes') yesCount++; });
-    if (yesCount === 0 && Object.keys(avail).length === 0) return '';
-    var color = yesCount === total ? '#22c55e' : yesCount > 0 ? '#f59e0b' : '#64748b';
-    return '<span style="font-size:0.65em;font-weight:700;padding:2px 8px;border-radius:6px;background:' + color + '18;color:' + color + ';border:1px solid ' + color + '33">👥 ' + yesCount + '/' + total + '</span>';
+// Normalize role strings to canonical instrument categories
+function _gigNormalizeRole(role) {
+    if (!role) return 'other';
+    var r = role.toLowerCase();
+    if (r.indexOf('drum') > -1 || r.indexOf('percussion') > -1) return 'drums';
+    if (r.indexOf('bass') > -1) return 'bass';
+    if (r.indexOf('key') > -1 || r.indexOf('piano') > -1 || r.indexOf('organ') > -1) return 'keys';
+    if (r.indexOf('guitar') > -1) return 'guitar';
+    if (r.indexOf('vocal') > -1 || r.indexOf('singer') > -1) return 'vocals';
+    return 'other';
 }
 
+var _gigRoleLabels = { drums: 'Drums', bass: 'Bass', keys: 'Keys', guitar: 'Guitar', vocals: 'Vocals', other: 'Other' };
+var _gigRoleEmoji = { drums: '🥁', bass: '🎸', keys: '🎹', guitar: '🎸', vocals: '🎤', other: '👤' };
+
+// Compute availability stats + role gaps for a gig
+function _gigComputeAvailability(gig) {
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var avail = gig.availability || {};
+    var total = members.length;
+    var yesCount = 0, maybeCount = 0, noCount = 0, awaitingCount = 0;
+    var roleStatus = {}; // { drums: 'yes'|'maybe'|'no'|'awaiting' }
+
+    members.forEach(function(key) {
+        var mKey = (typeof key === 'object') ? key.key : key;
+        var a = avail[mKey];
+        var status = a ? a.status : null;
+        if (status === 'yes') yesCount++;
+        else if (status === 'maybe') maybeCount++;
+        else if (status === 'no') noCount++;
+        else awaitingCount++;
+
+        var role = bm[mKey] ? _gigNormalizeRole(bm[mKey].role) : 'other';
+        var existing = roleStatus[role];
+        // Best status for each role: yes > maybe > no > awaiting
+        var priority = { yes: 3, maybe: 2, no: 1 };
+        var curPri = priority[status] || 0;
+        var existPri = existing ? (priority[existing] || 0) : -1;
+        if (curPri > existPri) roleStatus[role] = status || 'awaiting';
+    });
+
+    // Identify missing/uncertain roles (exclude 'other')
+    var missingRoles = [];
+    var maybeRoles = [];
+    Object.keys(roleStatus).forEach(function(role) {
+        if (role === 'other') return;
+        if (roleStatus[role] === 'no' || roleStatus[role] === 'awaiting') missingRoles.push(role);
+        else if (roleStatus[role] === 'maybe') maybeRoles.push(role);
+    });
+
+    var coreRolesCovered = missingRoles.length === 0 && maybeRoles.length === 0;
+
+    return {
+        total: total, yesCount: yesCount, maybeCount: maybeCount, noCount: noCount, awaitingCount: awaitingCount,
+        missingRoles: missingRoles, maybeRoles: maybeRoles, coreRolesCovered: coreRolesCovered, roleStatus: roleStatus
+    };
+}
+
+// Header chip — priority: critical gap > under-covered > covered
+function _gigAvailabilitySummaryChip(gig) {
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    if (!members.length) return '';
+    var s = _gigComputeAvailability(gig);
+    if (s.yesCount === 0 && s.maybeCount === 0 && s.noCount === 0) return ''; // no responses
+
+    // Priority 1: critical role missing
+    if (s.missingRoles.length > 0) {
+        var roleLabel = s.missingRoles.map(function(r) { return _gigRoleLabels[r] || r; }).join(', ');
+        return '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(239,68,68,0.12);color:#fca5a5;border:1px solid rgba(239,68,68,0.25)">⚠️ Missing ' + roleLabel + '</span>';
+    }
+    // Priority 2: maybe roles (uncertain)
+    if (s.maybeRoles.length > 0) {
+        return '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(245,158,11,0.12);color:#fcd34d;border:1px solid rgba(245,158,11,0.25)">👥 ' + s.yesCount + ' confirmed · ' + s.maybeCount + ' maybe</span>';
+    }
+    // Priority 3: covered
+    if (s.coreRolesCovered && s.yesCount === s.total) {
+        return '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#86efac;border:1px solid rgba(34,197,94,0.25)">✅ Full lineup</span>';
+    }
+    if (s.coreRolesCovered) {
+        return '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(34,197,94,0.1);color:#86efac;border:1px solid rgba(34,197,94,0.2)">✅ Core covered</span>';
+    }
+    return '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(245,158,11,0.1);color:#fcd34d;border:1px solid rgba(245,158,11,0.2)">👥 ' + s.yesCount + ' confirmed</span>';
+}
+
+// Full availability section — collapsible based on gig date
 function _gigRenderAvailability(gig) {
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     if (!members.length) return '';
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     var avail = gig.availability || {};
     var myKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
-    var total = members.length;
-    var yesCount = 0;
-    Object.values(avail).forEach(function(a) { if (a && a.status === 'yes') yesCount++; });
     var gigIdx = gig._origIdx;
+    var s = _gigComputeAvailability(gig);
+    var isUpcoming = gig.date && gig.date >= new Date().toISOString().split('T')[0];
 
-    var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">'
-        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+    // Summary line: "3 confirmed · 1 maybe · 1 awaiting"
+    var summaryParts = [];
+    if (s.yesCount > 0) summaryParts.push(s.yesCount + ' confirmed');
+    if (s.maybeCount > 0) summaryParts.push(s.maybeCount + ' maybe');
+    if (s.awaitingCount > 0) summaryParts.push(s.awaitingCount + ' awaiting');
+    if (s.noCount > 0) summaryParts.push(s.noCount + ' out');
+    var summaryText = summaryParts.length > 0 ? summaryParts.join(' · ') : 'No responses yet';
+
+    // Role gap alerts
+    var roleAlerts = '';
+    if (s.missingRoles.length > 0) {
+        roleAlerts = s.missingRoles.map(function(r) {
+            return '<span style="font-size:0.72em;color:#fca5a5">⚠️ Missing ' + (_gigRoleLabels[r] || r) + '</span>';
+        }).join(' ');
+    } else if (s.maybeRoles.length > 0) {
+        roleAlerts = s.maybeRoles.map(function(r) {
+            return '<span style="font-size:0.72em;color:#fcd34d">❓ ' + (_gigRoleLabels[r] || r) + ' uncertain</span>';
+        }).join(' ');
+    } else if (s.yesCount > 0) {
+        roleAlerts = '<span style="font-size:0.72em;color:#86efac">✅ Core lineup covered</span>';
+    }
+
+    // Wrap in collapsible: upcoming=open, past=closed
+    var detailId = 'gigAvail_' + gigIdx;
+    var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">';
+
+    // Always-visible summary + RSVP buttons
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="var d=document.getElementById(\'' + detailId + '\');if(d)d.open=!d.open">'
         + '<span style="font-size:0.78em;font-weight:700;color:var(--text)">👥 Band Availability</span>'
-        + '<span style="font-size:0.72em;color:var(--text-dim)">' + yesCount + ' / ' + total + ' available</span>'
+        + '<span style="font-size:0.7em;color:var(--text-dim)">' + summaryText + '</span>'
         + '</div>';
+    if (roleAlerts) html += '<div style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">' + roleAlerts + '</div>';
 
-    // Member list
-    var memberEmoji = { drew:'🎸', chris:'🎸', brian:'🎸', pierce:'🎹', jay:'🥁' };
-    members.forEach(function(memberKey) {
-        var name = memberKey;
-        if (typeof bandMembers !== 'undefined' && bandMembers[memberKey]) name = bandMembers[memberKey].name || memberKey;
-        var a = avail[memberKey];
-        var status = a ? a.status : null;
-        var icon = status === 'yes' ? '✅' : status === 'maybe' ? '❓' : status === 'no' ? '❌' : '⏳';
-        var label = status === 'yes' ? 'Yes' : status === 'maybe' ? 'Maybe' : status === 'no' ? 'No' : 'No response';
-        var statusColor = status === 'yes' ? '#22c55e' : status === 'maybe' ? '#f59e0b' : status === 'no' ? '#ef4444' : '#64748b';
-        var isMe = memberKey === myKey;
-
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.82em' + (isMe ? ';font-weight:700' : '') + '">'
-            + '<span style="min-width:16px">' + (memberEmoji[memberKey] || '👤') + '</span>'
-            + '<span style="flex:1;color:var(--text)">' + name.charAt(0).toUpperCase() + name.slice(1) + (isMe ? ' (you)' : '') + '</span>'
-            + '<span style="font-size:0.85em;color:' + statusColor + '">' + icon + ' ' + label + '</span>'
-            + '</div>';
-    });
-
-    // My RSVP buttons
+    // My RSVP buttons — always visible (not inside collapsible)
     if (myKey) {
         var myStatus = avail[myKey] ? avail[myKey].status : null;
         html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        ['yes', 'maybe', 'no'].forEach(function(s) {
+        ['yes', 'maybe', 'no'].forEach(function(st) {
             var labels = { yes: "I'm In", maybe: 'Maybe', no: 'Out' };
             var colors = { yes: '34,197,94', maybe: '245,158,11', no: '239,68,68' };
-            var active = myStatus === s;
-            html += '<button onclick="gigSetAvailability(' + gigIdx + ',\'' + s + '\')" style="flex:1;padding:6px;border-radius:6px;font-size:0.78em;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid rgba(' + colors[s] + ',' + (active ? '0.6' : '0.2') + ');background:rgba(' + colors[s] + ',' + (active ? '0.15' : '0.04') + ');color:rgba(' + colors[s] + ',1);min-height:36px">' + labels[s] + '</button>';
+            var active = myStatus === st;
+            html += '<button onclick="event.stopPropagation();gigSetAvailability(' + gigIdx + ',\'' + st + '\')" style="flex:1;padding:6px;border-radius:6px;font-size:0.78em;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid rgba(' + colors[st] + ',' + (active ? '0.6' : '0.2') + ');background:rgba(' + colors[st] + ',' + (active ? '0.15' : '0.04') + ');color:rgba(' + colors[st] + ',1);min-height:36px">' + labels[st] + '</button>';
         });
         html += '</div>';
     }
 
-    html += '</div>';
+    // Collapsible member list
+    html += '<details id="' + detailId + '"' + (isUpcoming ? ' open' : '') + ' style="margin-top:8px">'
+        + '<summary style="font-size:0.68em;color:var(--text-dim);cursor:pointer;padding:4px 0">Member details</summary>';
+
+    members.forEach(function(memberRef) {
+        var mKey = (typeof memberRef === 'object') ? memberRef.key : memberRef;
+        var name = bm[mKey] ? bm[mKey].name : mKey;
+        var role = bm[mKey] ? (bm[mKey].role || '') : '';
+        var normalizedRole = _gigNormalizeRole(role);
+        var emoji = _gigRoleEmoji[normalizedRole] || '👤';
+        var a = avail[mKey];
+        var status = a ? a.status : null;
+        var icon = status === 'yes' ? '✅' : status === 'maybe' ? '❓' : status === 'no' ? '❌' : '⏳';
+        var label = status === 'yes' ? 'Confirmed' : status === 'maybe' ? 'Maybe' : status === 'no' ? 'Out' : 'No response';
+        var statusColor = status === 'yes' ? '#22c55e' : status === 'maybe' ? '#f59e0b' : status === 'no' ? '#ef4444' : '#64748b';
+        var isMe = mKey === myKey;
+
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.8em' + (isMe ? ';font-weight:700' : '') + '">'
+            + '<span style="min-width:16px">' + emoji + '</span>'
+            + '<span style="flex:1;color:var(--text)">' + name + (isMe ? ' (you)' : '') + '</span>'
+            + '<span style="font-size:0.72em;color:var(--text-dim)">' + role + '</span>'
+            + '<span style="font-size:0.82em;color:' + statusColor + '">' + icon + ' ' + label + '</span>'
+            + '</div>';
+    });
+
+    html += '</details></div>';
     return html;
 }
 
