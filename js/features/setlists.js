@@ -16,6 +16,37 @@
 // ============================================================================
 var _slFilter = 'all'; // 'all' | 'upcoming' | 'past'
 
+// Human-readable date formatting (display only — never changes stored data)
+function _slFormatDate(dateStr, compact) {
+    if (!dateStr) return 'No date';
+    try {
+        var d = new Date(dateStr + 'T12:00:00'); // noon to avoid timezone shift
+        if (isNaN(d.getTime())) return dateStr;
+        var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        var daysShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        if (compact) return daysShort[d.getDay()] + ', ' + monthsShort[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+        return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    } catch(e) { return dateStr; }
+}
+
+function _slDaysAway(dateStr) {
+    if (!dateStr) return null;
+    return Math.round((new Date(dateStr + 'T12:00:00').getTime() - Date.now()) / 86400000);
+}
+
+function _slCountdownLabel(dateStr) {
+    var diff = _slDaysAway(dateStr);
+    if (diff === null) return '';
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    if (diff > 1) return 'in ' + diff + ' days';
+    if (diff === -1) return 'Yesterday';
+    if (diff < -1) return Math.abs(diff) + ' days ago';
+    return '';
+}
+
 function renderSetlistsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
     el.innerHTML = '<div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>'
@@ -101,16 +132,8 @@ function _slRenderCard(sl, isNext) {
     var setCount = (sl.sets || []).length;
     var idx = sl._origIdx;
 
-    // Days until / since
-    var dateLabel = '';
-    if (sl.date) {
-        var diff = Math.round((new Date(sl.date).getTime() - Date.now()) / 86400000);
-        if (diff === 0) dateLabel = 'Today';
-        else if (diff === 1) dateLabel = 'Tomorrow';
-        else if (diff > 1 && diff <= 14) dateLabel = 'in ' + diff + ' days';
-        else if (diff === -1) dateLabel = 'Yesterday';
-        else if (diff < -1 && diff >= -7) dateLabel = Math.abs(diff) + ' days ago';
-    }
+    var dateDisplay = _slFormatDate(sl.date, true); // compact: "Fri, Jun 5, 2026"
+    var dateLabel = _slCountdownLabel(sl.date);
 
     // Set preview — first set, max 4 songs, truncated
     var preview = '';
@@ -127,10 +150,10 @@ function _slRenderCard(sl, isNext) {
     return '<div style="padding:10px 14px;border-radius:8px;border:1px solid ' + borderColor + ';background:' + bgColor + ';margin-bottom:6px;display:flex;align-items:center;gap:10px">'
         // Left: info
         + '<div style="flex:1;min-width:0">'
-        + (isNext ? '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px">NEXT UP' + (dateLabel ? ' · ' + dateLabel : '') + '</div>' : '')
+        + (isNext ? '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px">NEXT UP' + (dateLabel ? ' · ' + dateLabel : '') + ' · ' + dateDisplay + '</div>' : '')
         + '<div style="font-weight:700;font-size:0.9em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (sl.locked ? '🔒 ' : '') + (sl.name || 'Untitled') + '</div>'
         + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">'
-        + (sl.date || 'No date') + ' · ' + songCount + ' songs · ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
+        + dateDisplay + ' · ' + songCount + ' songs · ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
         + (!isNext && dateLabel ? ' · ' + dateLabel : '')
         + '</div>'
         + (preview ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + preview + '</div>' : '')

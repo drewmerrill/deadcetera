@@ -10936,12 +10936,34 @@ window._gigHistory = null;
 // loadGigHistory() → js/features/gigs.js
 
 function getSongHistoryTooltip(title) {
-    const h = window._gigHistory?.[title];
+    var h = window._gigHistory?.[title];
     if (!h || !h.length) return 'No gig history for this song yet';
-    return h.slice(0, 8).map(g => {
-        const posIcon = g.position === 'opener' ? '🟢' : g.position === 'closer' ? '🔴' : g.position === 'encore' ? '⭐' : '·';
-        return `${g.date||'?'} — ${g.venue||'?'} ${posIcon} ${g.position}`;
-    }).join('\n') + (h.length > 8 ? '\n... +' + (h.length-8) + ' more' : '');
+    // Exclude current setlist being edited (if any)
+    var editDate = null;
+    try {
+        var editIdx = window._slEditIdx;
+        if (typeof editIdx === 'number' && window._cachedSetlists && window._cachedSetlists[editIdx]) {
+            editDate = window._cachedSetlists[editIdx].date || null;
+            var editVenue = window._cachedSetlists[editIdx].venue || window._cachedSetlists[editIdx].name || null;
+        }
+    } catch(e) {}
+    var filtered = h.filter(function(g) {
+        if (editDate && editVenue && g.date === editDate && (g.venue === editVenue)) return false;
+        return true;
+    });
+    if (!filtered.length) return 'First time in a setlist';
+    // Human-readable dates
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function fmtDate(ds) {
+        if (!ds) return '?';
+        try { var d = new Date(ds + 'T12:00:00'); return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate(); } catch(e) { return ds; }
+    }
+    return 'Played ' + filtered.length + ' time' + (filtered.length > 1 ? 's' : '') + ':\n' +
+        filtered.slice(0, 8).map(function(g) {
+            var posIcon = g.position === 'opener' ? '🟢' : g.position === 'closer' ? '🔴' : g.position === 'encore' ? '⭐' : '·';
+            return fmtDate(g.date) + ' — ' + (g.venue || '?') + ' ' + posIcon + ' ' + g.position;
+        }).join('\n') + (filtered.length > 8 ? '\n... +' + (filtered.length-8) + ' more' : '');
 }
 
 // ---- TAB BAR CSS ----
