@@ -277,6 +277,11 @@
     var limit = opts.limit || 10;
     var memberFilter = opts.memberKey || null;
     var results = [];
+    // Only recommend Active songs (prospect/learning/rotation)
+    songs = (songs || []).filter(function(s) {
+        var st = (allStatus && allStatus[s.title]) || '';
+        return st === 'prospect' || st === 'learning' || st === 'rotation';
+    });
 
     for (var i = 0; i < songs.length; i++) {
       var title = songs[i].title;
@@ -390,6 +395,11 @@
     var limit = opts.limit || 20;
     var now = Date.now();
     var results = [];
+    // Only score Active songs (prospect/learning/rotation)
+    songs = (songs || []).filter(function(s) {
+        var st = (allStatus && allStatus[s.title]) || '';
+        return st === 'prospect' || st === 'learning' || st === 'rotation';
+    });
 
     for (var i = 0; i < songs.length; i++) {
       var title = songs[i].title;
