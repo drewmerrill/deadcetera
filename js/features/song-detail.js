@@ -637,7 +637,7 @@ window.sdShowGetChartModal = function(title) {
     var safeSong = title.replace(/'/g, "\\'");
     var _bandAbbr = (typeof allSongs !== 'undefined') ? ((allSongs.find(function(s) { return s.title === title; }) || {}).band || '') : '';
     var _bandFull = (typeof getFullBandName === 'function') ? getFullBandName(_bandAbbr) : _bandAbbr;
-    var ugQuery = encodeURIComponent(title + ' ' + _bandFull + ' chords');
+    var ugQuery = encodeURIComponent(title + ' ' + _bandFull);
     var modal = document.createElement('div');
     modal.id = 'sdGetChartModal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';

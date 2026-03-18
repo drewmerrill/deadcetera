@@ -333,7 +333,7 @@ async function rmLoadChart() {
     _rmLoadBandNotesStrip(song.title);
     const safeSong = song.title.replace(/'/g, "\\'");
     const band = _rmFullBandName(song.band) || 'Grateful Dead';
-    const ugQuery = encodeURIComponent(song.title + ' ' + band + ' chords');
+    const ugQuery = encodeURIComponent(song.title + ' ' + band);
     const chordifyQuery = encodeURIComponent(song.title + ' ' + band);
 
     if (crib && crib.trim()) {
@@ -647,7 +647,7 @@ function rmAutoFitFont() {
 function rmSearchUG() {
     const song = rmQueue[rmIndex]; if (!song) return;
     const band = _rmFullBandName(song.band) || 'Grateful Dead';
-    const q = encodeURIComponent(song.title + ' ' + band + ' chords');
+    const q = encodeURIComponent(song.title + ' ' + band);
     window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=' + q, '_blank');
     // Show paste-back banner when user returns
     _rmShowPasteBanner(song.title);
