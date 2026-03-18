@@ -780,8 +780,8 @@ function _rmRenderSyncBar() {
                 + '<span style="font-size:0.65em;color:var(--text-dim)">Last song: ' + songName + '</span>'
                 + '<button onclick="_rmLeaveSyncUI()" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">Leave</button>';
         } else if (following) {
-            bar.innerHTML = '<span style="font-size:0.72em;color:#86efac">🔗 Following ' + leaderName + '</span>'
-                + '<span style="font-size:0.65em;color:var(--text-dim)">' + songName + '</span>'
+            bar.innerHTML = '<span style="font-size:0.65em;color:#86efac">🔗 Following ' + leaderName + '</span>'
+                + '<span style="font-size:0.78em;font-weight:800;color:var(--text,#f1f5f9);letter-spacing:0.02em">NOW PLAYING: ' + songName + '</span>'
                 + '<button onclick="_rmPauseFollowUI()" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">Pause</button>'
                 + '<button onclick="_rmLeaveSyncUI()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">Leave</button>';
         } else {
@@ -823,6 +823,25 @@ window.endBandSyncFromUI = function() {
 
 function _rmPauseFollowUI() { if (typeof GLStore !== 'undefined') GLStore.pauseFollow(); }
 function _rmRejoinFollowUI() { if (typeof GLStore !== 'undefined') GLStore.rejoinFollow(); }
+// Brief transition overlay when leader changes song (follower sees this)
+function _rmShowSyncTransition(songTitle) {
+    document.getElementById('rmSyncTransition')?.remove();
+    var el = document.createElement('div');
+    el.id = 'rmSyncTransition';
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:rgba(15,23,42,0.92);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:16px 28px;text-align:center;pointer-events:none;animation:rmSyncFade 1.5s ease-out forwards';
+    el.innerHTML = '<div style="font-size:0.7em;color:#a5b4fc;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">NOW PLAYING</div>'
+        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9">→ ' + (songTitle || '') + '</div>';
+    // Inject keyframes if not present
+    if (!document.getElementById('rmSyncFadeStyle')) {
+        var style = document.createElement('style');
+        style.id = 'rmSyncFadeStyle';
+        style.textContent = '@keyframes rmSyncFade{0%{opacity:0;transform:translate(-50%,-50%) scale(0.95)}15%{opacity:1;transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}';
+        document.head.appendChild(style);
+    }
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 1600);
+}
+
 function _rmLeaveSyncUI() {
     if (typeof GLStore !== 'undefined') GLStore.leaveBandSync();
     if (typeof showToast === 'function') showToast('Left sync session');
@@ -835,8 +854,27 @@ if (typeof GLStore !== 'undefined' && GLStore.subscribe) {
     GLStore.subscribe('syncSongChanged', function(e) {
         if (!e || !e.songTitle) return;
         if (typeof GLStore !== 'undefined' && GLStore.isSyncFollowing && GLStore.isSyncFollowing()) {
+            // Brief transition flash
+            _rmShowSyncTransition(e.songTitle);
             openRehearsalMode(e.songTitle);
         }
+    });
+
+    // Leader: detect follower joins/pauses via state diffs
+    var _prevFollowerKeys = {};
+    GLStore.subscribe('syncStateChanged', function(evt) {
+        if (!evt || !evt.session || evt.role !== 'leader') return;
+        var followers = evt.session.followers || {};
+        Object.keys(followers).forEach(function(key) {
+            var f = followers[key];
+            var prev = _prevFollowerKeys[key];
+            if (!prev) {
+                // New joiner
+                if (typeof showToast === 'function') showToast('🔗 ' + (f.name || key) + ' joined', 1800);
+            }
+        });
+        _prevFollowerKeys = {};
+        Object.keys(followers).forEach(function(key) { _prevFollowerKeys[key] = followers[key]; });
     });
 }
 
