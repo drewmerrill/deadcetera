@@ -27,6 +27,11 @@ var pmPalaceScenes = [];
 var pmPalaceAutoTimer = null;
 var _rmCache = {};        // In-memory cache: { title: { chart, meta, ts } }
 var _rmNavLock = 0;       // Throttle timestamp for rmNavigate
+// Resolve band abbreviation to full name for external searches
+function _rmFullBandName(abbr) {
+    var map = { GD:'Grateful Dead', JGB:'Jerry Garcia Band', WSP:'Widespread Panic', Phish:'Phish', ABB:'Allman Brothers Band', Goose:'Goose', DMB:'Dave Matthews Band' };
+    return map[abbr] || abbr || '';
+}
 var _rmSections = [];     // Current song's normalized sections from song_structure
 var _rmActiveSectionIdx = 0; // Index into _rmSections for active section
 var _rmScrollSyncEnabled = false; // True when chart has anchored sections
@@ -327,8 +332,8 @@ async function rmLoadChart() {
     // Band Notes strip — load song_structure and render summary
     _rmLoadBandNotesStrip(song.title);
     const safeSong = song.title.replace(/'/g, "\\'");
-    const band = song.band || 'Grateful Dead';
-    const ugQuery = encodeURIComponent(song.title + ' ' + band);
+    const band = _rmFullBandName(song.band) || 'Grateful Dead';
+    const ugQuery = encodeURIComponent(song.title + ' ' + band + ' chords');
     const chordifyQuery = encodeURIComponent(song.title + ' ' + band);
 
     if (crib && crib.trim()) {
@@ -347,12 +352,14 @@ async function rmLoadChart() {
         // Populate no-chart actions
         const actions = document.getElementById('rmNoChartActions');
         if (actions) actions.innerHTML = `
-            <a href="https://www.ultimate-guitar.com/search.php?search_type=title&value=${ugQuery}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,165,0,0.12);border:1px solid rgba(255,165,0,0.3);border-radius:10px;text-decoration:none;color:#fbbf24;font-weight:600;font-size:0.9em">
-                <span style="font-size:1.3em">🎸</span> Search Ultimate Guitar
-            </a>
-            <a href="https://chordify.net/search/${chordifyQuery}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.3);border-radius:10px;text-decoration:none;color:#818cf8;font-weight:600;font-size:0.9em">
-                <span style="font-size:1.3em">🎹</span> Search Chordify
-            </a>
+            <button onclick="window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=${ugQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,165,0,0.12);border:1px solid rgba(255,165,0,0.3);border-radius:10px;color:#fbbf24;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left;border:1px solid rgba(255,165,0,0.3)">
+                <span style="font-size:1.3em">🎸</span>
+                <div><div>Search Ultimate Guitar</div><div style="font-size:0.75em;font-weight:400;color:rgba(251,191,36,0.6);margin-top:2px">Opens in new tab — paste chart when you come back</div></div>
+            </button>
+            <button onclick="window.open('https://chordify.net/search/${chordifyQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.3);border-radius:10px;color:#818cf8;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
+                <span style="font-size:1.3em">🎹</span>
+                <div><div>Search Chordify</div><div style="font-size:0.75em;font-weight:400;color:rgba(129,140,248,0.6);margin-top:2px">Opens in new tab — paste chart when you come back</div></div>
+            </button>
             <button onclick="rmStartEdit()" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#94a3b8;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
                 <span style="font-size:1.3em">✏️</span> Paste a Chart Manually
             </button>
@@ -639,9 +646,56 @@ function rmAutoFitFont() {
 }
 function rmSearchUG() {
     const song = rmQueue[rmIndex]; if (!song) return;
-    const band = song.band || 'Grateful Dead';
-    const q = encodeURIComponent(song.title + ' ' + band);
+    const band = _rmFullBandName(song.band) || 'Grateful Dead';
+    const q = encodeURIComponent(song.title + ' ' + band + ' chords');
     window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=' + q, '_blank');
+    // Show paste-back banner when user returns
+    _rmShowPasteBanner(song.title);
+}
+
+// Persistent paste-back banner — appears after opening UG, survives tab-switch
+function _rmShowPasteBanner(songTitle) {
+    var existing = document.getElementById('rmPasteBanner');
+    if (existing) existing.remove();
+    var banner = document.createElement('div');
+    banner.id = 'rmPasteBanner';
+    banner.style.cssText = 'position:sticky;top:0;z-index:10;padding:10px 14px;background:rgba(251,191,36,0.12);border-bottom:2px solid rgba(251,191,36,0.3);display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    var safeSong = songTitle.replace(/'/g, "\\'");
+    banner.innerHTML = '<span style="font-size:0.82em;color:#fbbf24;font-weight:700;flex:1">📋 Found a chart? Paste it here to replace the current one.</span>'
+        + '<button onclick="_rmOpenPasteFromBanner(\'' + safeSong + '\')" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.82em;cursor:pointer;white-space:nowrap;min-height:40px">Paste Chart</button>'
+        + '<button onclick="document.getElementById(\'rmPasteBanner\').remove()" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:1.1em;padding:4px 8px">✕</button>';
+    // Insert at top of chart panel, before sticky bar
+    var panel = document.getElementById('rmPanelChart');
+    if (panel) panel.insertBefore(banner, panel.firstChild);
+}
+
+// Open edit mode pre-focused for paste, from the banner
+function _rmOpenPasteFromBanner(songTitle) {
+    var banner = document.getElementById('rmPasteBanner');
+    if (banner) banner.remove();
+    // Open the edit textarea
+    if (typeof rmStartEdit === 'function') {
+        rmStartEdit();
+    } else {
+        // Fallback: toggle edit mode
+        var editPanel = document.getElementById('rmEditPanel');
+        if (editPanel) editPanel.classList.remove('hidden');
+        var textarea = document.getElementById('rmEditTextarea');
+        if (textarea) {
+            textarea.value = '';
+            textarea.placeholder = 'Paste the chart text here — chords, lyrics, structure — then hit Save';
+            textarea.focus();
+        }
+    }
+    // Focus textarea after a tick (edit mode animation)
+    setTimeout(function() {
+        var ta = document.getElementById('rmEditTextarea');
+        if (ta) {
+            ta.value = '';
+            ta.placeholder = 'Paste the chart text here — chords, lyrics, structure — then hit Save';
+            ta.focus();
+        }
+    }, 200);
 }
 
 // ── Auto-Scroll ──────────────────────────────────────────────────────────────
@@ -1556,7 +1610,7 @@ function rmCloseSheet(id){document.getElementById(id)?.classList.add('hidden');}
 async function rmSaveNote(){const s=rmQueue[rmIndex],t=document.getElementById('rmNoteInput').value.trim();if(!t)return;try{const n=toArray(await loadBandDataFromDrive(s.title,'rehearsal_notes')||[]);n.push({text:t,author:(typeof getCurrentMemberKey==='function'?getCurrentMemberKey():'drew'),date:new Date().toISOString(),priority:'normal'});if(typeof GLStore!=='undefined'&&GLStore.saveSongData){await GLStore.saveSongData(s.title,'rehearsal_notes',n);}else{await saveBandDataToDrive(s.title,'rehearsal_notes',n);}rmCloseSheet('rmNoteSheet');showToast('📋 Note saved!');}catch(e){showToast('❌ Note save failed');}}
 function rmAddSongToQueue(){const p=document.getElementById('rmQueuePicker');p.innerHTML='<option value="">— Pick a song —</option>';const iq=new Set(rmQueue.map(s=>s.title));(typeof allSongs!=='undefined'?allSongs:[]).forEach(s=>{if(!iq.has(s.title)){const o=document.createElement('option');o.value=s.title;o.textContent=s.title+(s.band?' · '+s.band:'');p.appendChild(o);}});document.getElementById('rmQueueSheet').classList.remove('hidden');}
 function rmConfirmAddSong(){const t=document.getElementById('rmQueuePicker').value;if(!t)return;const sd=(typeof allSongs!=='undefined'?allSongs:[]).find(s=>s.title===t);rmQueue.splice(rmIndex+1,0,{title:t,band:sd?.band||''});rmCloseSheet('rmQueueSheet');showToast(`✅ "${t}" added — next up`);document.getElementById('rmPosition').textContent=rmQueue.length>1?`${rmIndex+1} / ${rmQueue.length}`:'';document.getElementById('rmNextBtn').style.opacity='1';}
-function rmOpenYouTube(){const s=rmQueue[rmIndex];window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+(s.band||'')+' live'),'_blank');}
+function rmOpenYouTube(){const s=rmQueue[rmIndex];window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+_rmFullBandName(s.band)+' live'),'_blank');}
 function rmOpenPocketMeter() {
     var song = rmQueue[rmIndex] || {};
     var bpm  = rmSongBpm || 120;
