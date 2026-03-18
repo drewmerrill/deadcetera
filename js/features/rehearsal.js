@@ -35,7 +35,8 @@ var _rhActiveTab = 'events';
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     el.innerHTML =
-        '<div class="page-header"><h1>📅 Rehearsal</h1><p>Schedule sessions, build plans, and run rehearsals</p></div>' +
+        '<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div><h1 style="margin:0">📅 Rehearsal</h1><p style="margin:4px 0 0">Schedule sessions, build plans, and run rehearsals</p></div>'
+        + '<button onclick="renderRehearsalPlanner()" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.88em;cursor:pointer;white-space:nowrap">Plan Rehearsal</button></div>' +
         '<div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">' +
             '<button id="rhTab-events" class="btn" onclick="rhShowTab(\'events\')" style="flex:1;font-size:0.85em">📅 Sessions</button>' +
             '<button id="rhTab-plans"  class="btn" onclick="rhShowTab(\'plans\')"  style="flex:1;font-size:0.85em">📋 Plans</button>' +
@@ -851,6 +852,283 @@ function rhFormatDate(dateStr) {
 }
 
 console.log('Rehearsal Planner loaded');
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REHEARSAL PLANNER — gig-driven, time-aware, energy-blocked rehearsal builder
+// ══════════════════════════════════════════════════════════════════════════════
+
+var _rpState = {
+    step: 0,         // 0=gig, 1=select, 2=time, 3=plan, 4=launch
+    gigId: null,
+    setlistSongs: [],  // in setlist order: [{title, songId, band}]
+    buckets: { needsWork: [], keepWarm: [], ready: [] },
+    selected: {},      // { title: true }
+    duration: 120,     // minutes
+    blocks: { warmup: [], deepWork: [], flow: [], close: [] }
+};
+
+window.renderRehearsalPlanner = async function() {
+    _rpState.step = 0;
+    var container = document.getElementById('rhTabContent');
+    if (!container) { showPage('rehearsal'); setTimeout(renderRehearsalPlanner, 200); return; }
+    _rpRenderGigPicker(container);
+};
+
+// ── Step 0: Gig Picker ──────────────────────────────────────────────────────
+
+async function _rpRenderGigPicker(container) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading gigs...</div>';
+    var gigs = [];
+    try { gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []); } catch(e) {}
+    var today = new Date().toISOString().split('T')[0];
+    var upcoming = gigs.filter(function(g) { return g.date >= today && g.setlistId; })
+        .sort(function(a,b) { return a.date.localeCompare(b.date); });
+
+    var html = '<div style="max-width:520px;margin:0 auto;padding:16px 0">'
+        + '<div style="font-size:0.7em;font-weight:800;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Step 1</div>'
+        + '<h2 style="margin:0 0 4px;font-size:1.2em;color:var(--text)">Which gig are you preparing for?</h2>'
+        + '<p style="font-size:0.82em;color:var(--text-dim);margin:0 0 16px">Pick a gig to load its setlist.</p>';
+
+    if (upcoming.length === 0) {
+        html += '<div style="padding:20px;text-align:center;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px">No upcoming gigs with linked setlists.<br><button onclick="showPage(\'gigs\')" style="margin-top:8px;padding:6px 14px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.82em">Create a Gig →</button></div>';
+    } else {
+        upcoming.forEach(function(g) {
+            var safeId = (g.gigId || '').replace(/'/g, "\\'");
+            html += '<button onclick="_rpSelectGig(\'' + safeId + '\')" style="display:block;width:100%;text-align:left;padding:12px 16px;margin-bottom:6px;border-radius:10px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.04);cursor:pointer;color:var(--text)">'
+                + '<div style="font-weight:700;font-size:0.9em">' + (g.venue || 'TBD') + '</div>'
+                + '<div style="font-size:0.75em;color:var(--text-dim);margin-top:2px">📅 ' + (g.date || '') + (g.startTime ? ' · ' + g.startTime : '') + '</div>'
+                + '</button>';
+        });
+    }
+    html += '</div>';
+    container.innerHTML = html;
+    // Stash gigs for lookup
+    window._rpGigs = upcoming;
+}
+
+window._rpSelectGig = async function(gigId) {
+    var gig = (window._rpGigs || []).find(function(g) { return g.gigId === gigId; });
+    if (!gig) return;
+    _rpState.gigId = gigId;
+
+    // Load setlist
+    var setlists = window._glCachedSetlists || [];
+    var sl = setlists.find(function(s) { return s.setlistId === gig.setlistId; });
+    if (!sl) { try { setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []); sl = setlists.find(function(s) { return s.setlistId === gig.setlistId; }); } catch(e) {} }
+    if (!sl) { if (typeof showToast === 'function') showToast('Could not find linked setlist'); return; }
+
+    // Extract songs in setlist order
+    var songs = [];
+    (sl.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : (sg.title || '');
+            if (!title) return;
+            var songData = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
+            songs.push({ title: title, songId: songData ? (songData.songId || title) : title, band: songData ? songData.band : '' });
+        });
+    });
+    _rpState.setlistSongs = songs;
+
+    // Bucket songs
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    _rpState.buckets = { needsWork: [], keepWarm: [], ready: [] };
+    songs.forEach(function(s) {
+        var scores = rc[s.title] || {};
+        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+        var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0)/vals.length : 0;
+        s._avg = avg;
+        if (avg < 3) _rpState.buckets.needsWork.push(s);
+        else if (avg < 3.8) _rpState.buckets.keepWarm.push(s);
+        else _rpState.buckets.ready.push(s);
+    });
+
+    _rpState.selected = {};
+    _rpState.step = 1;
+    _rpRenderSelection(document.getElementById('rhTabContent'));
+};
+
+// ── Step 1: Song Selection ──────────────────────────────────────────────────
+
+function _rpRenderSelection(container) {
+    if (!container) return;
+    var b = _rpState.buckets;
+    var selCount = Object.keys(_rpState.selected).length;
+
+    var html = '<div style="max-width:520px;margin:0 auto;padding:16px 0">'
+        + '<div style="font-size:0.7em;font-weight:800;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Step 2</div>'
+        + '<h2 style="margin:0 0 4px;font-size:1.2em;color:var(--text)">Choose songs for this rehearsal</h2>'
+        + '<p style="font-size:0.82em;color:var(--text-dim);margin:0 0 12px">' + _rpState.setlistSongs.length + ' songs in setlist · <strong>Choose 6–8 for focused work</strong></p>'
+        + '<div style="font-size:0.78em;font-weight:700;color:' + (selCount >= 6 && selCount <= 8 ? '#22c55e' : selCount > 8 ? '#f59e0b' : 'var(--text-dim)') + ';margin-bottom:12px">' + selCount + ' selected</div>';
+
+    function renderBucket(label, color, emoji, songs) {
+        if (!songs.length) return '';
+        var out = '<div style="margin-bottom:12px"><div style="font-size:0.72em;font-weight:800;color:' + color + ';margin-bottom:4px">' + emoji + ' ' + label + ' (' + songs.length + ')</div>';
+        songs.forEach(function(s) {
+            var checked = _rpState.selected[s.title];
+            var safeTitle = s.title.replace(/'/g, "\\'");
+            out += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;background:' + (checked ? 'rgba(99,102,241,0.06)' : 'rgba(255,255,255,0.01)') + ';border:1px solid ' + (checked ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)') + ';margin-bottom:3px">'
+                + '<input type="checkbox" ' + (checked ? 'checked ' : '') + 'onchange="_rpToggleSong(\'' + safeTitle + '\')" style="accent-color:' + color + ';width:16px;height:16px">'
+                + '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1">' + s.title + '</span>'
+                + '<span style="font-size:0.68em;color:var(--text-dim)">' + (s._avg > 0 ? s._avg.toFixed(1) + '/5' : 'unrated') + '</span>'
+                + '</label>';
+        });
+        return out + '</div>';
+    }
+
+    html += renderBucket('NEEDS WORK', '#ef4444', '🔴', b.needsWork);
+    html += renderBucket('KEEP WARM', '#f59e0b', '🟡', b.keepWarm);
+    html += renderBucket('READY', '#22c55e', '🟢', b.ready);
+
+    html += '<div style="display:flex;gap:8px;margin-top:12px">'
+        + '<button onclick="_rpGoToTime()" ' + (selCount === 0 ? 'disabled ' : '') + 'style="flex:1;padding:10px;border-radius:8px;border:none;background:' + (selCount > 0 ? 'linear-gradient(135deg,#667eea,#764ba2)' : 'rgba(255,255,255,0.06)') + ';color:' + (selCount > 0 ? 'white' : '#64748b') + ';font-weight:700;cursor:' + (selCount > 0 ? 'pointer' : 'not-allowed') + ';font-size:0.88em">Next: Set Time →</button>'
+        + '<button onclick="_rpState.step=0;_rpRenderGigPicker(document.getElementById(\'rhTabContent\'))" style="padding:10px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em">Back</button>'
+        + '</div></div>';
+    container.innerHTML = html;
+}
+
+window._rpToggleSong = function(title) {
+    if (_rpState.selected[title]) delete _rpState.selected[title];
+    else _rpState.selected[title] = true;
+    _rpRenderSelection(document.getElementById('rhTabContent'));
+};
+
+// ── Step 2: Time Input ──────────────────────────────────────────────────────
+
+function _rpGoToTime() {
+    _rpState.step = 2;
+    var container = document.getElementById('rhTabContent');
+    if (!container) return;
+    var selCount = Object.keys(_rpState.selected).length;
+    var html = '<div style="max-width:520px;margin:0 auto;padding:16px 0">'
+        + '<div style="font-size:0.7em;font-weight:800;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Step 3</div>'
+        + '<h2 style="margin:0 0 4px;font-size:1.2em;color:var(--text)">How long is your rehearsal?</h2>'
+        + '<p style="font-size:0.82em;color:var(--text-dim);margin:0 0 16px">' + selCount + ' songs selected</p>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">';
+    [60, 90, 120, 150, 180].forEach(function(m) {
+        var active = _rpState.duration === m;
+        html += '<button onclick="_rpState.duration=' + m + ';_rpGoToTime()" style="padding:10px 18px;border-radius:8px;font-weight:700;font-size:0.88em;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + (m >= 60 ? Math.floor(m/60) + 'h' + (m%60 ? m%60 : '') : m + 'min') + '</button>';
+    });
+    html += '</div>';
+    var usable = Math.round(_rpState.duration * 0.75);
+    html += '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:16px">Usable rehearsal time: <strong style="color:var(--text)">' + usable + ' min</strong> <span style="opacity:0.5">(75% of total — accounts for setup, breaks, chat)</span></div>';
+    html += '<div style="display:flex;gap:8px">'
+        + '<button onclick="_rpBuildPlan()" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;cursor:pointer;font-size:0.88em">Build Plan →</button>'
+        + '<button onclick="_rpState.step=1;_rpRenderSelection(document.getElementById(\'rhTabContent\'))" style="padding:10px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em">Back</button>'
+        + '</div></div>';
+    container.innerHTML = html;
+}
+
+// ── Step 3: Auto-Build Plan ─────────────────────────────────────────────────
+
+function _rpBuildPlan() {
+    var selected = _rpState.setlistSongs.filter(function(s) { return _rpState.selected[s.title]; });
+    var b = _rpState.buckets;
+
+    // Warm-Up: 1-2 ready songs (from selected)
+    var warmup = selected.filter(function(s) { return s._avg >= 3.8; }).slice(0, 2);
+
+    // Deep Work: up to 2 needs-work songs (HARD LIMIT)
+    var deepWork = selected.filter(function(s) { return s._avg < 3; }).slice(0, 2);
+
+    // Flow: 3-4 consecutive songs from setlist order (exclude warmup + deep work)
+    var used = {};
+    warmup.concat(deepWork).forEach(function(s) { used[s.title] = true; });
+    var flowPool = selected.filter(function(s) { return !used[s.title]; });
+    // Find longest consecutive run in setlist order
+    var setlistTitles = _rpState.setlistSongs.map(function(s) { return s.title; });
+    var flowPoolSet = {};
+    flowPool.forEach(function(s) { flowPoolSet[s.title] = true; });
+    var bestRun = [], currentRun = [];
+    for (var i = 0; i < setlistTitles.length; i++) {
+        if (flowPoolSet[setlistTitles[i]]) {
+            currentRun.push(flowPool.find(function(s) { return s.title === setlistTitles[i]; }));
+            if (currentRun.length > bestRun.length) bestRun = currentRun.slice();
+        } else {
+            currentRun = [];
+        }
+    }
+    var flow = bestRun.slice(0, 4);
+
+    // Close: 1 high-energy ready song not yet used
+    flow.forEach(function(s) { used[s.title] = true; });
+    var close = selected.filter(function(s) { return !used[s.title] && s._avg >= 3.5; }).slice(0, 1);
+
+    _rpState.blocks = { warmup: warmup, deepWork: deepWork, flow: flow, close: close };
+    _rpState.step = 3;
+    _rpRenderPlan(document.getElementById('rhTabContent'));
+}
+
+function _rpRenderPlan(container) {
+    if (!container) return;
+    var blocks = _rpState.blocks;
+    var usable = Math.round(_rpState.duration * 0.75);
+
+    var html = '<div style="max-width:520px;margin:0 auto;padding:16px 0">'
+        + '<div style="font-size:0.7em;font-weight:800;letter-spacing:0.12em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Your Rehearsal Plan</div>'
+        + '<h2 style="margin:0 0 4px;font-size:1.2em;color:var(--text)">' + usable + ' min · ' + (blocks.warmup.length + blocks.deepWork.length + blocks.flow.length + blocks.close.length) + ' songs</h2>'
+        + '<p style="font-size:0.78em;color:var(--text-dim);margin:0 0 16px">Edit blocks or launch the rehearsal.</p>';
+
+    function renderBlock(emoji, label, guidance, color, songs) {
+        var out = '<div style="margin-bottom:14px;padding:12px;border-radius:10px;border:1px solid ' + color + '30;background:' + color + '08">'
+            + '<div style="font-size:0.78em;font-weight:800;color:' + color + ';margin-bottom:2px">' + emoji + ' ' + label + '</div>'
+            + '<div style="font-size:0.68em;color:' + color + ';opacity:0.7;margin-bottom:8px;font-style:italic">' + guidance + '</div>';
+        if (songs.length === 0) {
+            out += '<div style="font-size:0.75em;color:var(--text-dim);opacity:0.5">No songs assigned</div>';
+        } else {
+            songs.forEach(function(s, i) {
+                out += '<div style="font-size:0.85em;color:var(--text);padding:3px 0;display:flex;align-items:center;gap:6px">'
+                    + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
+                    + '<span style="font-weight:600">' + s.title + '</span>'
+                    + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + (s._avg > 0 ? s._avg.toFixed(1) : '—') + '</span></div>';
+            });
+        }
+        return out + '</div>';
+    }
+
+    html += renderBlock('🔥', 'WARM-UP', 'Start playing immediately — don\'t overtalk', '#f59e0b', blocks.warmup);
+    html += renderBlock('🛠️', 'DEEP WORK (max 2)', 'Agree on structure before playing', '#ef4444', blocks.deepWork);
+    html += renderBlock('🎸', 'FLOW — SET SIMULATION', 'Play continuously — simulate the gig', '#22c55e', blocks.flow);
+    html += renderBlock('🔚', 'CLOSE STRONG', 'Finish strong', '#818cf8', blocks.close);
+
+    html += '<div style="display:flex;gap:8px;margin-top:16px">'
+        + '<button onclick="_rpLaunchRehearsal()" style="flex:2;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer">▶ Start Rehearsal</button>'
+        + '<button onclick="_rpBuildPlan();_rpState.step=2;_rpGoToTime()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em">Back</button>'
+        + '</div></div>';
+    container.innerHTML = html;
+}
+
+// ── Step 4: Launch ──────────────────────────────────────────────────────────
+
+function _rpLaunchRehearsal() {
+    var blocks = _rpState.blocks;
+    // Build queue in block order with block-type tags
+    var queue = [];
+    var _addBlock = function(songs, blockType) {
+        songs.forEach(function(s) { queue.push({ title: s.title, band: s.band || '', _blockType: blockType }); });
+    };
+    _addBlock(blocks.warmup, 'warmup');
+    _addBlock(blocks.deepWork, 'deepWork');
+    _addBlock(blocks.flow, 'flow');
+    _addBlock(blocks.close, 'close');
+
+    if (queue.length === 0) { if (typeof showToast === 'function') showToast('No songs in plan'); return; }
+
+    // Store block guidance for dry-run overlay
+    window._rpBlockGuidance = {};
+    queue.forEach(function(q) {
+        var g = { warmup: '🔥 WARM-UP — Start playing immediately, don\'t overtalk',
+                  deepWork: '🛠️ DEEP WORK — Agree on structure before playing',
+                  flow: '🎸 FLOW — Play continuously, simulate the gig',
+                  close: '🔚 CLOSE — Finish strong' };
+        window._rpBlockGuidance[q.title] = g[q._blockType] || '';
+    });
+
+    // Launch rehearsal-mode with the full plan queue
+    if (typeof openRehearsalModeWithQueue === 'function') {
+        openRehearsalModeWithQueue(queue);
+    }
+    if (typeof showToast === 'function') showToast('Rehearsal started · ' + queue.length + ' songs');
+}
 
 console.log('✅ rehearsal.js loaded');
 

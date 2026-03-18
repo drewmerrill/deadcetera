@@ -549,7 +549,7 @@ function _renderWorkflowHero(wf) {
         + '<div class="hd-hero__actions">'
         + (onclick ? '<button class="hd-hero__cta hd-hero__cta--primary" onclick="' + onclick + '">Go</button>' : '')
         + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'gigs\')">Add Gig</button>'
-        + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'rehearsal\')">Plan Rehearsal</button>'
+        + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'rehearsal\');setTimeout(function(){if(typeof renderRehearsalPlanner===\'function\')renderRehearsalPlanner();},200)">Plan Rehearsal</button>'
         + '</div></div>';
 }
 

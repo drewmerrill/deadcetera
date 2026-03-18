@@ -75,6 +75,14 @@ function openRehearsalMode(songTitle, mode) {
     if (mode === 'paste') { setTimeout(function(){ if (typeof rmStartEdit === 'function') rmStartEdit(); }, 400); }
 }
 
+// Entry: from rehearsal planner — full queue with block metadata
+window.openRehearsalModeWithQueue = function(queue) {
+    if (!queue || !queue.length) return;
+    rmQueue = queue;
+    rmIndex = 0;
+    rmShow();
+};
+
 // Alias for PM v2 button
 function pmOpenPracticeMode(songTitle) { openRehearsalMode(songTitle); }
 
@@ -876,6 +884,23 @@ if (typeof GLStore !== 'undefined' && GLStore.subscribe) {
         _prevFollowerKeys = {};
         Object.keys(followers).forEach(function(key) { _prevFollowerKeys[key] = followers[key]; });
     });
+}
+
+// ── Rehearsal Planner: block guidance overlay ────────────────────────────────
+function _rmRenderBlockGuidance(songTitle) {
+    var existing = document.getElementById('rmBlockGuidance');
+    if (existing) existing.remove();
+    if (!window._rpBlockGuidance || !window._rpBlockGuidance[songTitle]) return;
+    var text = window._rpBlockGuidance[songTitle];
+    var colors = { '🔥': '#f59e0b', '🛠': '#ef4444', '🎸': '#22c55e', '🔚': '#818cf8' };
+    var color = '#94a3b8';
+    Object.keys(colors).forEach(function(k) { if (text.indexOf(k) === 0) color = colors[k]; });
+    var el = document.createElement('div');
+    el.id = 'rmBlockGuidance';
+    el.style.cssText = 'padding:8px 14px;font-size:0.78em;font-weight:700;color:' + color + ';background:' + color + '10;border-bottom:2px solid ' + color + '40;text-align:center';
+    el.textContent = text;
+    var panel = document.getElementById('rmPanelChart');
+    if (panel) panel.insertBefore(el, panel.querySelector('.rm-sticky-bar') || panel.firstChild);
 }
 
 function rmAdjustFont(delta) {
@@ -1887,6 +1912,8 @@ async function rmLoadSong() {
     }
     // Render sync bar (may have changed)
     _rmRenderSyncBar();
+    // Rehearsal planner: show block guidance if available
+    _rmRenderBlockGuidance(song.title);
     // Non-chart tabs use lazy-load on first switch (lines 216-228) — don't eagerly load all 5
     // Reset tab content to loading state so lazy-load triggers on switch
     ['rmKnowContent','rmMemoryContent','rmHarmonyContent','rmRecordContent'].forEach(function(id) {
