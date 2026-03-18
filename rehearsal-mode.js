@@ -91,6 +91,107 @@ async function openRehearsalModeFromPlan(dateStr, startIndex) {
     rmShow();
 }
 
+// ── Entry: Chart Queue — bulk chart entry for songs missing charts ────────────
+var _rmChartQueueMode = false;
+var _rmChartQueueTotal = 0;
+var _rmChartQueueDone = 0;
+
+window.openChartQueue = async function() {
+    if (typeof showToast === 'function') showToast('Scanning for missing charts...', 1500);
+    var activeSongs = (typeof allSongs !== 'undefined' ? allSongs : []).filter(function(s) {
+        return typeof isSongActive === 'function' && isSongActive(s.title);
+    });
+    // Check which active songs have no chart in Firebase
+    var missing = [];
+    var batchSize = 15;
+    for (var b = 0; b < activeSongs.length; b += batchSize) {
+        var checks = [];
+        for (var i = b; i < Math.min(b + batchSize, activeSongs.length); i++) {
+            checks.push((function(song) {
+                return loadBandDataFromDrive(song.title, 'chart').then(function(data) {
+                    if (!data || !data.text || !data.text.trim()) missing.push({ title: song.title, band: song.band || '' });
+                }).catch(function() {
+                    missing.push({ title: song.title, band: song.band || '' });
+                });
+            })(activeSongs[i]));
+        }
+        await Promise.all(checks);
+    }
+    if (missing.length === 0) {
+        if (typeof showToast === 'function') showToast('All active songs have charts!');
+        return;
+    }
+    // Sort alphabetically for predictable order
+    missing.sort(function(a, b) { return a.title.localeCompare(b.title); });
+    _rmChartQueueMode = true;
+    _rmChartQueueTotal = missing.length;
+    _rmChartQueueDone = 0;
+    rmQueue = missing;
+    rmIndex = 0;
+    rmShow();
+    // Auto-open UG + paste mode after overlay renders
+    setTimeout(function() { _rmChartQueueLoadCurrent(); }, 400);
+};
+
+function _rmChartQueueLoadCurrent() {
+    if (!_rmChartQueueMode || rmIndex >= rmQueue.length) {
+        _rmChartQueueFinish();
+        return;
+    }
+    var song = rmQueue[rmIndex];
+    var band = _rmFullBandName(song.band) || 'Grateful Dead';
+    var q = encodeURIComponent(song.title + ' ' + band);
+
+    // Show progress banner
+    var existing = document.getElementById('rmChartQueueBanner');
+    if (existing) existing.remove();
+    var banner = document.createElement('div');
+    banner.id = 'rmChartQueueBanner';
+    banner.style.cssText = 'position:sticky;top:0;z-index:10;padding:8px 14px;background:rgba(99,102,241,0.1);border-bottom:2px solid rgba(99,102,241,0.3);display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    var progress = _rmChartQueueDone + 1;
+    banner.innerHTML = '<span style="font-size:0.78em;color:#a5b4fc;font-weight:700">Chart Queue: ' + progress + ' of ' + _rmChartQueueTotal + '</span>'
+        + '<span style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;min-width:60px"><span style="display:block;height:100%;width:' + Math.round((_rmChartQueueDone / _rmChartQueueTotal) * 100) + '%;background:#a5b4fc;border-radius:2px"></span></span>'
+        + '<button onclick="window.open(\'https://www.ultimate-guitar.com/search.php?search_type=title&value=' + q + '\',\'_blank\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.08);color:#fbbf24;font-size:0.75em;font-weight:700;cursor:pointer;white-space:nowrap;min-height:36px">🎸 Open UG</button>'
+        + '<button onclick="_rmChartQueueSkip()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;font-size:0.75em;cursor:pointer;white-space:nowrap;min-height:36px">Skip</button>'
+        + '<button onclick="_rmChartQueueFinish()" style="background:none;border:none;color:rgba(255,255,255,0.2);cursor:pointer;font-size:1em;padding:4px">✕</button>';
+    var panel = document.getElementById('rmPanelChart');
+    if (panel) panel.insertBefore(banner, panel.firstChild);
+
+    // Open paste mode with empty textarea
+    rmEditing = true;
+    var ta = document.getElementById('rmEditTextarea');
+    if (ta) {
+        ta.value = '';
+        ta.placeholder = 'Paste chart for ' + song.title + ' here — then hit Save to advance';
+    }
+    document.getElementById('rmChartText').style.display = 'none';
+    document.getElementById('rmNoChart').classList.add('hidden');
+    document.getElementById('rmEditPanel').classList.remove('hidden');
+    document.getElementById('rmEditToggle').textContent = '✕ Cancel';
+    if (ta) ta.focus();
+}
+
+function _rmChartQueueSkip() {
+    _rmChartQueueDone++;
+    rmIndex++;
+    if (rmIndex < rmQueue.length) {
+        rmLoadSong();
+        setTimeout(function() { _rmChartQueueLoadCurrent(); }, 300);
+    } else {
+        _rmChartQueueFinish();
+    }
+}
+
+function _rmChartQueueFinish() {
+    _rmChartQueueMode = false;
+    var banner = document.getElementById('rmChartQueueBanner');
+    if (banner) banner.remove();
+    if (_rmChartQueueDone > 0) {
+        if (typeof showToast === 'function') showToast(_rmChartQueueDone + ' chart' + (_rmChartQueueDone > 1 ? 's' : '') + ' added!');
+    }
+    closeRehearsalMode();
+}
+
 // ── Build & inject the overlay DOM (once) ────────────────────────────────────
 function rmEnsureOverlay() {
     if (document.getElementById('rmOverlay')) return;
@@ -793,6 +894,17 @@ async function rmSaveChart() {
         if (text) { document.getElementById('rmChartText').style.display = 'block'; document.getElementById('rmNoChart').classList.add('hidden'); rmAutoFitFont(); }
         else { document.getElementById('rmChartText').style.display = 'none'; document.getElementById('rmNoChart').classList.remove('hidden'); }
         showToast('✅ Chart saved!');
+        // Chart queue: auto-advance to next missing song
+        if (_rmChartQueueMode) {
+            _rmChartQueueDone++;
+            rmIndex++;
+            if (rmIndex < rmQueue.length) {
+                setTimeout(function() { rmLoadSong(); setTimeout(_rmChartQueueLoadCurrent, 300); }, 200);
+            } else {
+                _rmChartQueueFinish();
+            }
+            return;
+        }
     } catch(e) { showToast('❌ Save failed — are you signed in?'); }
 }
 

@@ -905,6 +905,10 @@ function _renderTriageBar(dropdown, count) {
         }
         html += '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;renderSongs()" style="font-size:0.62em;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px">Clear</button>';
     }
+    // Chart queue launcher
+    if (!tf) {
+        html += '<button onclick="if(typeof openChartQueue===\'function\')openChartQueue()" style="font-size:0.68em;font-weight:600;padding:3px 10px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,165,0,0.2);background:rgba(255,165,0,0.06);color:#fbbf24;transition:all 0.15s">🎸 Fill Missing Charts</button>';
+    }
     // Sort now via column headers (PL-11) — dropdown removed
     bar.innerHTML = html;
     dropdown.parentElement.insertBefore(bar, dropdown);
