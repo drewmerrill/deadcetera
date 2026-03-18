@@ -68,6 +68,13 @@
 
     // Performance mode restore snapshot — captured on enter, applied on exit
     restoreState:         null,        // { page, songId, panelMode, scrollY } or null
+
+    // ── Band Sync state ────────────────────────────────────────────────────
+    syncSession:      null,       // full session object from Firebase
+    syncRole:         null,       // 'leader' | 'follower' | null
+    syncFollowing:    false,      // follower: auto-navigating with leader?
+    syncListener:     null,       // Firebase .on() unsubscribe fn
+    syncHeartbeat:    null,       // setInterval id for leader heartbeat
   };
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -2753,6 +2760,308 @@
 
   // ── Public API ────────────────────────────────────────────────────────────
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // BAND SYNC MODULE — leader-driven live rehearsal sync (V1: song-level)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  var SYNC_HEARTBEAT_INTERVAL = 12000;  // leader pings every 12s
+  var SYNC_STALE_THRESHOLD = 40000;     // follower considers leader stale after 40s
+  var _syncStaleCheckInterval = null;
+
+  function _syncGenCode() {
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1 to avoid confusion
+    var code = '';
+    for (var i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    return code;
+  }
+
+  function _syncGenId() { return 'sync_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
+
+  function _syncRef(path) {
+    var db = _db();
+    if (!db) return null;
+    return db.ref(bandPath('rehearsal_sync/' + path));
+  }
+
+  // ── Leader: start sync session ──────────────────────────────────────────
+
+  async function startBandSync(songId, songTitle) {
+    var db = _db(); if (!db) return null;
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!memberKey) return null;
+    var memberName = '';
+    if (typeof bandMembers !== 'undefined' && bandMembers[memberKey]) memberName = bandMembers[memberKey].name || memberKey;
+
+    // End any existing active session first
+    await _syncEndActiveSession();
+
+    var sessionId = _syncGenId();
+    var joinCode = _syncGenCode();
+    var now = new Date().toISOString();
+    var session = {
+      sessionId: sessionId,
+      leaderKey: memberKey,
+      leaderName: memberName || memberKey,
+      status: 'active',
+      syncMode: 'song',
+      songId: songId || null,
+      songTitle: songTitle || '',
+      sectionId: null,
+      joinCode: joinCode,
+      startedAt: now,
+      updatedAt: now,
+      leaderHeartbeatAt: now,
+      followers: {}
+    };
+
+    // Write session + active pointer + join code index
+    await db.ref(bandPath('rehearsal_sync/' + sessionId)).set(session);
+    await db.ref(bandPath('rehearsal_sync/_active_session')).set({
+      sessionId: sessionId, joinCode: joinCode, status: 'active', updatedAt: now
+    });
+    await db.ref(bandPath('rehearsal_sync/_active_code/' + joinCode)).set(sessionId);
+
+    // Update local state
+    _state.syncSession = session;
+    _state.syncRole = 'leader';
+    _state.syncFollowing = false;
+
+    // Start heartbeat
+    _syncStartHeartbeat(sessionId);
+
+    // Attach listener so leader sees follower changes
+    _syncAttachListener(sessionId);
+
+    emit('syncStateChanged', { session: session, role: 'leader' });
+    return { sessionId: sessionId, joinCode: joinCode };
+  }
+
+  // ── Leader: broadcast song change ───────────────────────────────────────
+
+  function syncBroadcastSong(songId, songTitle) {
+    if (_state.syncRole !== 'leader' || !_state.syncSession) return;
+    var ref = _syncRef(_state.syncSession.sessionId);
+    if (!ref) return;
+    var now = new Date().toISOString();
+    ref.update({ songId: songId, songTitle: songTitle || '', updatedAt: now });
+    _state.syncSession.songId = songId;
+    _state.syncSession.songTitle = songTitle || '';
+    _state.syncSession.updatedAt = now;
+  }
+
+  // ── Leader: end sync session ────────────────────────────────────────────
+
+  async function endBandSync() {
+    if (_state.syncRole === 'leader' && _state.syncSession) {
+      var ref = _syncRef(_state.syncSession.sessionId);
+      if (ref) await ref.update({ status: 'ended', updatedAt: new Date().toISOString() });
+      var codeRef = _syncRef('_active_code/' + _state.syncSession.joinCode);
+      if (codeRef) codeRef.remove();
+      var activeRef = _syncRef('_active_session');
+      if (activeRef) activeRef.remove();
+    }
+    _syncCleanup();
+    emit('syncStateChanged', { session: null, role: null });
+  }
+
+  // ── Leader: heartbeat ───────────────────────────────────────────────────
+
+  function _syncStartHeartbeat(sessionId) {
+    _syncStopHeartbeat();
+    _state.syncHeartbeat = setInterval(function() {
+      var ref = _syncRef(sessionId);
+      if (ref && _state.syncRole === 'leader') {
+        ref.update({ leaderHeartbeatAt: new Date().toISOString() });
+      }
+    }, SYNC_HEARTBEAT_INTERVAL);
+  }
+
+  function _syncStopHeartbeat() {
+    if (_state.syncHeartbeat) { clearInterval(_state.syncHeartbeat); _state.syncHeartbeat = null; }
+  }
+
+  // ── Follower: join via code ─────────────────────────────────────────────
+
+  async function joinBandSync(joinCode) {
+    var db = _db(); if (!db) return null;
+    joinCode = (joinCode || '').toUpperCase().trim();
+    if (!joinCode) return null;
+
+    // Look up session ID from join code
+    var codeSnap = await db.ref(bandPath('rehearsal_sync/_active_code/' + joinCode)).once('value');
+    var sessionId = codeSnap.val();
+    if (!sessionId) return null; // invalid code
+
+    // Read session
+    var sessionSnap = await db.ref(bandPath('rehearsal_sync/' + sessionId)).once('value');
+    var session = sessionSnap.val();
+    if (!session || session.status !== 'active') return null; // ended or missing
+
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'unknown';
+    var memberName = '';
+    if (typeof bandMembers !== 'undefined' && bandMembers[memberKey]) memberName = bandMembers[memberKey].name || memberKey;
+
+    // Register as follower
+    await db.ref(bandPath('rehearsal_sync/' + sessionId + '/followers/' + memberKey)).set({
+      name: memberName || memberKey,
+      following: true,
+      connectedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString()
+    });
+
+    _state.syncSession = session;
+    _state.syncRole = 'follower';
+    _state.syncFollowing = true;
+
+    // Attach real-time listener
+    _syncAttachListener(sessionId);
+
+    // Start stale-leader check
+    _syncStartStaleCheck();
+
+    emit('syncStateChanged', { session: session, role: 'follower' });
+    return session;
+  }
+
+  // ── Follower: leave session ─────────────────────────────────────────────
+
+  async function leaveBandSync() {
+    if (_state.syncRole === 'follower' && _state.syncSession) {
+      var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+      if (memberKey) {
+        var ref = _syncRef(_state.syncSession.sessionId + '/followers/' + memberKey);
+        if (ref) ref.remove();
+      }
+    }
+    _syncCleanup();
+    emit('syncStateChanged', { session: null, role: null });
+  }
+
+  // ── Follower: pause / rejoin ────────────────────────────────────────────
+
+  function pauseFollow() {
+    _state.syncFollowing = false;
+    _syncUpdateFollowerState(false);
+    emit('syncStateChanged', { session: _state.syncSession, role: 'follower' });
+  }
+
+  function rejoinFollow() {
+    _state.syncFollowing = true;
+    _syncUpdateFollowerState(true);
+    emit('syncStateChanged', { session: _state.syncSession, role: 'follower' });
+    // Jump to current leader song
+    if (_state.syncSession && _state.syncSession.songTitle) {
+      emit('syncSongChanged', { songId: _state.syncSession.songId, songTitle: _state.syncSession.songTitle });
+    }
+  }
+
+  function _syncUpdateFollowerState(following) {
+    if (!_state.syncSession || _state.syncRole !== 'follower') return;
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!memberKey) return;
+    var ref = _syncRef(_state.syncSession.sessionId + '/followers/' + memberKey);
+    if (ref) ref.update({ following: following, lastSeenAt: new Date().toISOString() });
+  }
+
+  // ── Firebase real-time listener ─────────────────────────────────────────
+
+  function _syncAttachListener(sessionId) {
+    _syncDetachListener();
+    var db = _db(); if (!db) return;
+    var ref = db.ref(bandPath('rehearsal_sync/' + sessionId));
+    var prevSongId = _state.syncSession ? _state.syncSession.songId : null;
+
+    var onValue = ref.on('value', function(snap) {
+      var data = snap.val();
+      if (!data) return;
+      var oldSession = _state.syncSession;
+      _state.syncSession = data;
+
+      // Detect session ended
+      if (data.status === 'ended') {
+        _syncCleanup();
+        emit('syncStateChanged', { session: null, role: null, reason: 'ended' });
+        return;
+      }
+
+      // Follower: detect song change
+      if (_state.syncRole === 'follower' && data.songId && data.songId !== prevSongId) {
+        prevSongId = data.songId;
+        if (_state.syncFollowing) {
+          emit('syncSongChanged', { songId: data.songId, songTitle: data.songTitle });
+        }
+      }
+
+      // Emit general state change (UI re-renders)
+      emit('syncStateChanged', { session: data, role: _state.syncRole });
+    });
+
+    _state.syncListener = function() { ref.off('value', onValue); };
+  }
+
+  function _syncDetachListener() {
+    if (_state.syncListener) { _state.syncListener(); _state.syncListener = null; }
+  }
+
+  // ── Follower: stale leader detection ────────────────────────────────────
+
+  function _syncStartStaleCheck() {
+    _syncStopStaleCheck();
+    _syncStaleCheckInterval = setInterval(function() {
+      if (_state.syncRole !== 'follower' || !_state.syncSession) return;
+      var hb = _state.syncSession.leaderHeartbeatAt;
+      if (!hb) return;
+      var age = Date.now() - new Date(hb).getTime();
+      var wasStale = _state.syncSession._leaderStale;
+      _state.syncSession._leaderStale = age > SYNC_STALE_THRESHOLD;
+      if (_state.syncSession._leaderStale !== wasStale) {
+        emit('syncStateChanged', { session: _state.syncSession, role: 'follower' });
+      }
+    }, 10000);
+  }
+
+  function _syncStopStaleCheck() {
+    if (_syncStaleCheckInterval) { clearInterval(_syncStaleCheckInterval); _syncStaleCheckInterval = null; }
+  }
+
+  // ── Cleanup (shared) ───────────────────────────────────────────────────
+
+  function _syncCleanup() {
+    _syncDetachListener();
+    _syncStopHeartbeat();
+    _syncStopStaleCheck();
+    _state.syncSession = null;
+    _state.syncRole = null;
+    _state.syncFollowing = false;
+  }
+
+  // ── End any existing active session (called before starting new one) ───
+
+  async function _syncEndActiveSession() {
+    var db = _db(); if (!db) return;
+    try {
+      var activeSnap = await db.ref(bandPath('rehearsal_sync/_active_session')).once('value');
+      var active = activeSnap.val();
+      if (active && active.sessionId && active.status === 'active') {
+        await db.ref(bandPath('rehearsal_sync/' + active.sessionId)).update({ status: 'ended', updatedAt: new Date().toISOString() });
+        if (active.joinCode) db.ref(bandPath('rehearsal_sync/_active_code/' + active.joinCode)).remove();
+        db.ref(bandPath('rehearsal_sync/_active_session')).remove();
+      }
+    } catch(e) {}
+  }
+
+  // ── Public getters ─────────────────────────────────────────────────────
+
+  function getSyncSession() { return _state.syncSession; }
+  function isSyncLeader() { return _state.syncRole === 'leader'; }
+  function isSyncFollower() { return _state.syncRole === 'follower'; }
+  function isSyncFollowing() { return _state.syncRole === 'follower' && _state.syncFollowing; }
+  function getSyncFollowerCount() {
+    if (!_state.syncSession || !_state.syncSession.followers) return 0;
+    return Object.values(_state.syncSession.followers).filter(function(f) { return f.following; }).length;
+  }
+  function getSyncJoinCode() { return _state.syncSession ? _state.syncSession.joinCode : null; }
+
   window.GLStore = {
     // Songs
     getSongs:          getSongs,
@@ -2922,6 +3231,21 @@
     createVenue:           createVenue,
     findDuplicateVenues:   findDuplicateVenues,
     getVenueById:          getVenueById,
+
+    // Band Sync (V1)
+    startBandSync:         startBandSync,
+    endBandSync:           endBandSync,
+    syncBroadcastSong:     syncBroadcastSong,
+    joinBandSync:          joinBandSync,
+    leaveBandSync:         leaveBandSync,
+    pauseFollow:           pauseFollow,
+    rejoinFollow:          rejoinFollow,
+    getSyncSession:        getSyncSession,
+    isSyncLeader:          isSyncLeader,
+    isSyncFollower:        isSyncFollower,
+    isSyncFollowing:       isSyncFollowing,
+    getSyncFollowerCount:  getSyncFollowerCount,
+    getSyncJoinCode:       getSyncJoinCode,
   };
 
   // ── Onboarding / Band Activation ────────────────────────────────────────

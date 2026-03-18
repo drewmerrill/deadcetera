@@ -212,6 +212,9 @@ function rmEnsureOverlay() {
             </div>
         </div>
 
+        <!-- BAND SYNC BAR (rendered dynamically) -->
+        <div id="rmSyncBar" style="display:none"></div>
+
         <!-- TAB BAR -->
         <div class="rm-tabs" id="rmTabBar">
             <button class="rm-tab active" data-tab="chart"   onclick="rmSwitchTab('chart',this)">📖 Chart</button>
@@ -726,6 +729,115 @@ function _rmSetupScrollSync() {
             }
         }
     }, { passive: true });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BAND SYNC — UI (leader controls, follower banner, song-change reaction)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function _rmRenderSyncBar() {
+    var bar = document.getElementById('rmSyncBar');
+    if (!bar) return;
+    if (typeof GLStore === 'undefined') { bar.style.display = 'none'; return; }
+    var session = GLStore.getSyncSession();
+    var isLeader = GLStore.isSyncLeader();
+    var isFollower = GLStore.isSyncFollower();
+
+    if (!session && !isLeader && !isFollower) {
+        // Not in sync — show start button (small, non-intrusive)
+        bar.style.display = 'flex';
+        bar.style.cssText = 'display:flex;align-items:center;justify-content:center;padding:4px 12px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04)';
+        bar.innerHTML = '<button onclick="_rmStartSync()" style="font-size:0.7em;font-weight:600;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc">🔗 Start Band Sync</button>'
+            + '<button onclick="_rmShowJoinSync()" style="font-size:0.7em;font-weight:600;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;margin-left:6px">Join Session</button>';
+        return;
+    }
+
+    bar.style.display = 'flex';
+
+    if (isLeader && session) {
+        var count = GLStore.getSyncFollowerCount();
+        bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(99,102,241,0.08);border-bottom:1px solid rgba(99,102,241,0.2);flex-wrap:wrap';
+        bar.innerHTML = '<span style="font-size:0.72em;font-weight:700;color:#a5b4fc">🔗 Band Sync ON</span>'
+            + '<span style="font-size:0.68em;color:var(--text-dim)">' + count + ' following</span>'
+            + '<span style="font-size:0.68em;font-weight:700;color:#fbbf24;background:rgba(251,191,36,0.1);padding:2px 8px;border-radius:4px;border:1px solid rgba(251,191,36,0.2);letter-spacing:0.1em">' + (session.joinCode || '') + '</span>'
+            + '<button onclick="endBandSyncFromUI()" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.06);color:#f87171;cursor:pointer">End Sync</button>';
+        return;
+    }
+
+    if (isFollower && session) {
+        var leaderName = session.leaderName || 'Leader';
+        var songName = session.songTitle || 'Unknown';
+        var stale = session._leaderStale;
+        var following = GLStore.isSyncFollowing();
+
+        bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid ' + (stale ? 'rgba(239,68,68,0.2)' : following ? 'rgba(34,197,94,0.2)' : 'rgba(251,191,36,0.2)') + ';background:' + (stale ? 'rgba(239,68,68,0.06)' : following ? 'rgba(34,197,94,0.04)' : 'rgba(251,191,36,0.04)') + ';flex-wrap:wrap';
+
+        if (session.status === 'ended') {
+            bar.innerHTML = '<span style="font-size:0.72em;color:var(--text-dim)">Session ended · Staying on last song</span>'
+                + '<button onclick="_rmLeaveSyncUI()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">Dismiss</button>';
+        } else if (stale) {
+            bar.innerHTML = '<span style="font-size:0.72em;color:#fca5a5">⚠️ Leader disconnected</span>'
+                + '<span style="font-size:0.65em;color:var(--text-dim)">Last song: ' + songName + '</span>'
+                + '<button onclick="_rmLeaveSyncUI()" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">Leave</button>';
+        } else if (following) {
+            bar.innerHTML = '<span style="font-size:0.72em;color:#86efac">🔗 Following ' + leaderName + '</span>'
+                + '<span style="font-size:0.65em;color:var(--text-dim)">' + songName + '</span>'
+                + '<button onclick="_rmPauseFollowUI()" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">Pause</button>'
+                + '<button onclick="_rmLeaveSyncUI()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">Leave</button>';
+        } else {
+            bar.innerHTML = '<span style="font-size:0.72em;color:#fbbf24">⏸ Paused</span>'
+                + '<span style="font-size:0.65em;color:var(--text-dim)">' + leaderName + ' is on ' + songName + '</span>'
+                + '<button onclick="_rmRejoinFollowUI()" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;cursor:pointer;font-weight:700">Rejoin</button>'
+                + '<button onclick="_rmLeaveSyncUI()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">Leave</button>';
+        }
+    }
+}
+
+// Leader: start sync with current song
+function _rmStartSync() {
+    var song = rmQueue[rmIndex];
+    if (!song || typeof GLStore === 'undefined') return;
+    var songData = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === song.title; }) : null;
+    var songId = songData ? (songData.songId || song.title) : song.title;
+    GLStore.startBandSync(songId, song.title).then(function(result) {
+        if (result && typeof showToast === 'function') showToast('Band Sync started · Code: ' + result.joinCode);
+    });
+}
+
+// Join modal
+function _rmShowJoinSync() {
+    var code = prompt('Enter the 6-character join code:');
+    if (!code || typeof GLStore === 'undefined') return;
+    GLStore.joinBandSync(code).then(function(session) {
+        if (!session) { if (typeof showToast === 'function') showToast('Invalid or expired code'); return; }
+        if (typeof showToast === 'function') showToast('Joined ' + (session.leaderName || 'Leader') + "'s session");
+        // Jump to current song
+        if (session.songTitle) openRehearsalMode(session.songTitle);
+    });
+}
+
+window.endBandSyncFromUI = function() {
+    if (typeof GLStore !== 'undefined') GLStore.endBandSync();
+    if (typeof showToast === 'function') showToast('Band Sync ended');
+};
+
+function _rmPauseFollowUI() { if (typeof GLStore !== 'undefined') GLStore.pauseFollow(); }
+function _rmRejoinFollowUI() { if (typeof GLStore !== 'undefined') GLStore.rejoinFollow(); }
+function _rmLeaveSyncUI() {
+    if (typeof GLStore !== 'undefined') GLStore.leaveBandSync();
+    if (typeof showToast === 'function') showToast('Left sync session');
+}
+
+// Subscribe to sync state changes — re-render bar
+if (typeof GLStore !== 'undefined' && GLStore.subscribe) {
+    GLStore.subscribe('syncStateChanged', function() { _rmRenderSyncBar(); });
+    // Follower song-change reaction
+    GLStore.subscribe('syncSongChanged', function(e) {
+        if (!e || !e.songTitle) return;
+        if (typeof GLStore !== 'undefined' && GLStore.isSyncFollowing && GLStore.isSyncFollowing()) {
+            openRehearsalMode(e.songTitle);
+        }
+    });
 }
 
 function rmAdjustFont(delta) {
@@ -1729,6 +1841,14 @@ async function rmLoadSong() {
     document.getElementById('rmSongMeta').textContent = '';
     rmLoadMeta(song.title, rmIndex);
     rmLoadChart();
+    // Band Sync: broadcast song change if leader
+    if (typeof GLStore !== 'undefined' && GLStore.isSyncLeader && GLStore.isSyncLeader()) {
+        var _songData = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === song.title; }) : null;
+        var _songId = _songData ? (_songData.songId || song.title) : song.title;
+        GLStore.syncBroadcastSong(_songId, song.title);
+    }
+    // Render sync bar (may have changed)
+    _rmRenderSyncBar();
     // Non-chart tabs use lazy-load on first switch (lines 216-228) — don't eagerly load all 5
     // Reset tab content to loading state so lazy-load triggers on switch
     ['rmKnowContent','rmMemoryContent','rmHarmonyContent','rmRecordContent'].forEach(function(id) {
