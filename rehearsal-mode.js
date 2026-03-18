@@ -144,7 +144,7 @@ function rmEnsureOverlay() {
                      <span class="rm-tb-sep"></span>
                      <button class="rm-tb" onclick="rmAdjustFont(-1)" title="Smaller text">A−</button>
                      <button class="rm-tb" onclick="rmAdjustFont(1)" title="Larger text">A+</button>
-                     <button class="rm-tb" onclick="rmSearchUG()" title="Search Ultimate Guitar">🎸</button>
+                     <button class="rm-tb" onclick="rmSearchUG()" title="Search for chords online">🔍</button>
                      <button class="rm-tb" id="rmEditToggle" onclick="rmToggleEdit()" title="Edit chart">✏️</button>
                      <span class="rm-tb-sep"></span>
                      <button class="rm-tb" onclick="rmOpenPocketMeter()" title="Pocket Meter — tap tempo &amp; metronome">🥁</button>
@@ -350,19 +350,21 @@ async function rmLoadChart() {
         document.getElementById('rmNoChart').classList.remove('hidden');
         rmLoadChartTools(song.title);
         // Populate no-chart actions
+        const googleQuery = encodeURIComponent(song.title + ' ' + band + ' chords lyrics');
         const actions = document.getElementById('rmNoChartActions');
         if (actions) actions.innerHTML = `
-            <button onclick="window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=${ugQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,165,0,0.12);border:1px solid rgba(255,165,0,0.3);border-radius:10px;color:#fbbf24;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left;border:1px solid rgba(255,165,0,0.3)">
-                <span style="font-size:1.3em">🎸</span>
-                <div><div>Search Ultimate Guitar</div><div style="font-size:0.75em;font-weight:400;color:rgba(251,191,36,0.6);margin-top:2px">Opens in new tab — paste chart when you come back</div></div>
+            <button onclick="_rmStartFreshChart('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:10px;color:#86efac;font-weight:700;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
+                <span style="font-size:1.3em">✏️</span>
+                <div><div>Write or Paste a Chart</div><div style="font-size:0.75em;font-weight:400;color:rgba(134,239,172,0.6);margin-top:2px">Type chords + structure, or paste from any source</div></div>
             </button>
-            <button onclick="window.open('https://chordify.net/search/${chordifyQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.3);border-radius:10px;color:#818cf8;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
-                <span style="font-size:1.3em">🎹</span>
-                <div><div>Search Chordify</div><div style="font-size:0.75em;font-weight:400;color:rgba(129,140,248,0.6);margin-top:2px">Opens in new tab — paste chart when you come back</div></div>
+            <button onclick="window.open('https://www.google.com/search?q=${googleQuery}','_blank');_rmShowPasteBanner('${safeSong}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;color:#a5b4fc;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
+                <span style="font-size:1.3em">🔍</span>
+                <div><div>Search for Chords Online</div><div style="font-size:0.75em;font-weight:400;color:rgba(165,180,252,0.5);margin-top:2px">Google — find a copyable source, then come back and paste</div></div>
             </button>
-            <button onclick="rmStartEdit()" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#94a3b8;font-weight:600;font-size:0.9em;cursor:pointer;width:100%;text-align:left">
-                <span style="font-size:1.3em">✏️</span> Paste a Chart Manually
-            </button>
+            <div style="display:flex;gap:8px;margin-top:2px">
+                <button onclick="window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=${ugQuery}','_blank')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:#64748b;font-size:0.75em;cursor:pointer;text-align:center">UG (view only)</button>
+                <button onclick="window.open('https://chordify.net/search/${chordifyQuery}','_blank')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:#64748b;font-size:0.75em;cursor:pointer;text-align:center">Chordify</button>
+            </div>
             <div id="rmPersonalTabsInChart" style="margin-top:8px"></div>`;
         // Load personal tabs into the chart panel
         rmLoadPersonalTabsInChart(song.title);
@@ -647,8 +649,8 @@ function rmAutoFitFont() {
 function rmSearchUG() {
     const song = rmQueue[rmIndex]; if (!song) return;
     const band = _rmFullBandName(song.band) || 'Grateful Dead';
-    const q = encodeURIComponent(song.title + ' ' + band);
-    window.open('https://www.ultimate-guitar.com/search.php?search_type=title&value=' + q, '_blank');
+    const q = encodeURIComponent(song.title + ' ' + band + ' chords lyrics');
+    window.open('https://www.google.com/search?q=' + q, '_blank');
     // Show paste-back banner when user returns
     _rmShowPasteBanner(song.title);
 }
@@ -669,33 +671,50 @@ function _rmShowPasteBanner(songTitle) {
     if (panel) panel.insertBefore(banner, panel.firstChild);
 }
 
+// Start a fresh chart — empty textarea with section template, ready for typing or pasting
+function _rmStartFreshChart(songTitle) {
+    rmEditing = true;
+    var template = '[Intro]\n\n\n[Verse 1]\n\n\n[Chorus]\n\n\n[Verse 2]\n\n\n[Chorus]\n\n\n[Solo]\n\n\n[Outro]\n';
+    var ta = document.getElementById('rmEditTextarea');
+    if (ta) {
+        ta.value = '';
+        ta.placeholder = 'Type or paste your chart here.\n\nTip: Use [Section] headers like [Verse], [Chorus], [Solo]\nfor automatic structure detection.';
+    }
+    document.getElementById('rmChartText').style.display = 'none';
+    document.getElementById('rmNoChart').classList.add('hidden');
+    document.getElementById('rmEditPanel').classList.remove('hidden');
+    document.getElementById('rmEditToggle').textContent = '✕ Cancel';
+    // Ask: start from template or blank?
+    if (ta) {
+        ta.value = '';
+        ta.focus();
+        // Show a small hint above textarea
+        var hint = document.createElement('div');
+        hint.id = 'rmChartTemplateHint';
+        hint.style.cssText = 'padding:6px 10px;font-size:0.72em;color:var(--text-dim);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+        hint.innerHTML = '<span>Start from scratch or</span>'
+            + '<button onclick="document.getElementById(\'rmEditTextarea\').value=\'' + template.replace(/\n/g, '\\n') + '\';document.getElementById(\'rmEditTextarea\').focus();this.parentElement.remove()" style="font-size:1em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">Load section template</button>';
+        var editPanel = document.getElementById('rmEditPanel');
+        if (editPanel) editPanel.insertBefore(hint, editPanel.firstChild);
+    }
+}
+
 // Open edit mode pre-focused for paste, from the banner
 function _rmOpenPasteFromBanner(songTitle) {
     var banner = document.getElementById('rmPasteBanner');
     if (banner) banner.remove();
-    // Open the edit textarea
-    if (typeof rmStartEdit === 'function') {
-        rmStartEdit();
-    } else {
-        // Fallback: toggle edit mode
-        var editPanel = document.getElementById('rmEditPanel');
-        if (editPanel) editPanel.classList.remove('hidden');
-        var textarea = document.getElementById('rmEditTextarea');
-        if (textarea) {
-            textarea.value = '';
-            textarea.placeholder = 'Paste the chart text here — chords, lyrics, structure — then hit Save';
-            textarea.focus();
-        }
+    // Open edit mode but clear the textarea for fresh paste
+    rmEditing = true;
+    document.getElementById('rmChartText').style.display = 'none';
+    document.getElementById('rmNoChart').classList.add('hidden');
+    document.getElementById('rmEditPanel').classList.remove('hidden');
+    document.getElementById('rmEditToggle').textContent = '✕ Cancel';
+    var ta = document.getElementById('rmEditTextarea');
+    if (ta) {
+        ta.value = '';
+        ta.placeholder = 'Paste the chart text here — then hit Save';
+        ta.focus();
     }
-    // Focus textarea after a tick (edit mode animation)
-    setTimeout(function() {
-        var ta = document.getElementById('rmEditTextarea');
-        if (ta) {
-            ta.value = '';
-            ta.placeholder = 'Paste the chart text here — chords, lyrics, structure — then hit Save';
-            ta.focus();
-        }
-    }, 200);
 }
 
 // ── Auto-Scroll ──────────────────────────────────────────────────────────────
