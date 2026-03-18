@@ -27,40 +27,40 @@
   // Both surfaces must stay in sync. If you add a page here, add it to
   // the slide-out menu too (and vice versa).
   // Top-level item (above all sections)
-  var NAV_TOP = { page: 'home', icon: '🏠', label: 'Home' };
+  var NAV_TOP = { page: 'home', icon: '🏠', label: 'Home', tip: 'See your band\'s current status and what to do next' };
 
-  // Intent-driven nav groups
+  // Intent-driven nav groups — every tip is action-oriented (verb + outcome)
   var NAV_SECTIONS = [
     { title: 'Solo', items: [
-      { page: 'practice',  icon: '🎯', label: 'Practice', tip: 'Your individual practice tools' },
+      { page: 'practice',  icon: '🎯', label: 'Practice', tip: 'Practice songs, improve readiness, and track progress' },
     ]},
     { title: 'Band', items: [
-      { page: 'songs',     icon: '🎵', label: 'Songs' },
-      { page: 'setlists',  icon: '📋', label: 'Setlists' },
-      { page: 'rehearsal', icon: '🎸', label: 'Rehearsal', tip: 'Live band rehearsal workspace' },
-      { page: 'ideas',     icon: '💬', label: 'Band Room', tip: 'Polls, ideas, and band decisions' },
+      { page: 'songs',     icon: '🎵', label: 'Songs',     tip: 'Manage your song library, charts, and song details' },
+      { page: 'setlists',  icon: '📋', label: 'Setlists',  tip: 'Build and organize setlists for upcoming gigs' },
+      { page: 'rehearsal', icon: '🎸', label: 'Rehearsal',  tip: 'Plan and run a structured band rehearsal' },
+      { page: 'ideas',     icon: '💬', label: 'Band Room',  tip: 'Pitch songs, vote, and make band decisions' },
     ]},
     { title: 'Gigs', items: [
-      { page: 'gigs',      icon: '🎤', label: 'Gigs' },
-      { page: 'calendar',  icon: '📆', label: 'Calendar' },
-      { page: 'venues',    icon: '🏛️', label: 'Venues' },
-      { page: 'stageplot', icon: '🎭', label: 'Stage Plot' },
+      { page: 'gigs',      icon: '🎤', label: 'Gigs',       tip: 'Manage gigs, link setlists, and track performance details' },
+      { page: 'calendar',  icon: '📆', label: 'Calendar',   tip: 'View and schedule gigs, rehearsals, and band events' },
+      { page: 'venues',    icon: '🏛️', label: 'Venues',     tip: 'Store venue details, notes, and logistics' },
+      { page: 'stageplot', icon: '🎭', label: 'Stage Plot',  tip: 'Design stage layouts and plan band setup' },
     ]},
     { title: 'Tools', items: [
-      { page: 'playlists',   icon: '🎧', label: 'Playlists' },
-      { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter' },
-      { page: 'tuner',       icon: '🔱', label: 'Tuner' },
-      { page: 'metronome',   icon: '🥁', label: 'Metronome' },
+      { page: 'playlists',   icon: '🎧', label: 'Playlists',    tip: 'Create playlists for practice, learning, and inspiration' },
+      { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter', tip: 'Measure timing, groove, and band tightness' },
+      { page: 'tuner',       icon: '🔱', label: 'Tuner',         tip: 'Tune your instrument with a live pitch detector' },
+      { page: 'metronome',   icon: '🥁', label: 'Metronome',     tip: 'Set tempo and practice with a steady click' },
     ]},
     { title: 'Admin', items: [
-      { page: 'bestshot',      icon: '🏆', label: 'Best Shot' },
-      { page: 'social',        icon: '📣', label: 'Social Media' },
-      { page: 'finances',      icon: '💰', label: 'Finances' },
-      { page: 'equipment',     icon: '🎛️', label: 'Equipment' },
-      { page: 'contacts',      icon: '👥', label: 'Contacts' },
-      { page: 'notifications', icon: '🔔', label: 'Notifications' },
-      { page: 'admin',         icon: '⚙️', label: 'Settings' },
-      { page: 'help',          icon: '❓', label: 'Help' },
+      { page: 'bestshot',      icon: '🏆', label: 'Best Shot',     tip: 'Capture and review your best performances' },
+      { page: 'social',        icon: '📣', label: 'Social Media',  tip: 'Manage posts and promote your band' },
+      { page: 'finances',      icon: '💰', label: 'Finances',      tip: 'Track band income, expenses, and payouts' },
+      { page: 'equipment',     icon: '🎛️', label: 'Equipment',    tip: 'Manage gear, setups, and equipment notes' },
+      { page: 'contacts',      icon: '👥', label: 'Contacts',      tip: 'Store and manage band and venue contacts' },
+      { page: 'notifications', icon: '🔔', label: 'Notifications', tip: 'View updates, alerts, and band activity' },
+      { page: 'admin',         icon: '⚙️', label: 'Settings',     tip: 'Customize your GrooveLinx experience' },
+      { page: 'help',          icon: '❓', label: 'Help',           tip: 'Get help and learn how to use GrooveLinx' },
     ]},
   ];
 
@@ -158,7 +158,7 @@
 
     // Home — top-level, above all sections
     html += '<button class="gl-rail-item gl-rail-item--home" data-page="' + NAV_TOP.page + '"'
-      + ' onclick="showPage(\'' + NAV_TOP.page + '\')" title="' + NAV_TOP.label + '">'
+      + ' onclick="showPage(\'' + NAV_TOP.page + '\')" title="' + (NAV_TOP.tip || NAV_TOP.label) + '">'
       + '<span class="gl-rail-icon">' + NAV_TOP.icon + '</span>'
       + '<span class="gl-rail-label">' + NAV_TOP.label + '</span></button>';
 
