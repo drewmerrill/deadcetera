@@ -469,9 +469,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
                 highlightSelectedSongRow(selectedSong.title);
             } else if (filtered.length > 0) {
-                // Auto-select first song if none selected (prevents blank right panel)
-                var firstTitle = filtered[0].title;
-                if (firstTitle && typeof selectSong === 'function') selectSong(firstTitle);
+                // Auto-select first song ONLY if Songs page is active (not Home or other pages)
+                var _activePage = (typeof GLStore !== 'undefined' && GLStore.getActivePage) ? GLStore.getActivePage() : null;
+                if (_activePage === 'songs') {
+                    var firstTitle = filtered[0].title;
+                    if (firstTitle && typeof selectSong === 'function') selectSong(firstTitle);
+                }
             }
         }
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
