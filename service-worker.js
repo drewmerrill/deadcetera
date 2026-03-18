@@ -1,7 +1,7 @@
 // GrooveLinx Service Worker — Simplified for reliable updates
 // Strategy: network-first for everything. Cache is offline fallback only.
 
-const CACHE_NAME = 'groovelinx-20260318-085408';
+const CACHE_NAME = 'groovelinx-20260318-141336';
 const BASE = self.registration.scope;
 
 // ── Install: pre-cache index.html for offline nav, then activate immediately ─
@@ -32,10 +32,12 @@ self.addEventListener('fetch', event => {
 
     event.respondWith(
         fetch(event.request).then(response => {
-            // Cache successful responses for offline use
-            if (response.ok) {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+            // Cache successful responses for offline use (guard against network errors during clone)
+            if (response.ok && response.status === 200) {
+                try {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone).catch(() => {}));
+                } catch(e) {}
             }
             return response;
         }).catch(() => {
