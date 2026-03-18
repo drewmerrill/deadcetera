@@ -14,46 +14,133 @@
 // ============================================================================
 // SETLIST BUILDER
 // ============================================================================
+var _slFilter = 'all'; // 'all' | 'upcoming' | 'past'
+
 function renderSetlistsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
-    el.innerHTML = `
-    <div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>
-    <div style="display:flex;gap:8px;margin-bottom:16px"><button class="btn btn-primary" onclick="createNewSetlist()">+ New Setlist</button></div>
-    <div id="setlistsList"></div>`;
-    if (typeof loadGigHistory === 'function') loadGigHistory().then(() => loadSetlists()); else loadSetlists();
+    el.innerHTML = '<div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>'
+        + '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">'
+        + '<button class="btn btn-primary" onclick="createNewSetlist()" style="font-size:0.85em">+ New Setlist</button>'
+        + '<div id="slFilterBar" style="display:flex;gap:4px;margin-left:auto"></div></div>'
+        + '<div id="setlistsList"></div>';
+    if (typeof loadGigHistory === 'function') loadGigHistory().then(function() { loadSetlists(); }); else loadSetlists();
 }
 
 async function loadSetlists() {
-    const rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    window._glCachedSetlists = rawData; // Cache for lifecycle suggestions
-    // Sort newest first; track original indices for edit/delete operations
-    const data = rawData.map((sl, origIdx) => ({ ...sl, _origIdx: origIdx })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    window._cachedSetlists = rawData; // cache unsorted for live-gig.js index lookup
-    const container = document.getElementById('setlistsList');
+    var rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    window._glCachedSetlists = rawData;
+    window._cachedSetlists = rawData;
+    var data = rawData.map(function(sl, origIdx) { return Object.assign({}, sl, { _origIdx: origIdx }); });
+    var container = document.getElementById('setlistsList');
     if (!container) return;
-    if (data.length === 0) { container.innerHTML = '<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No setlists yet. Create one for your next gig!</div>'; return; }
-    container.innerHTML = data.map((sl, i) => `<div class="app-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="flex:1;cursor:pointer" onclick="${sl.locked ? '' : 'editSetlist('+sl._origIdx+')'}">
-                <h3 style="margin-bottom:4px">${sl.locked ? '🔒 ' : ''}${sl.name||'Untitled'}</h3>
-                <div style="display:flex;gap:12px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">
-                    <span>📅 ${sl.date||'No date'}</span><span>🏛️ ${sl.venue||'No venue'}</span>
-                    <span>🎵 ${(sl.sets||[]).reduce((a,s)=>a+(s.songs||[]).length,0)} songs</span>
-                    <span>📋 ${(sl.sets||[]).length} set${(sl.sets||[]).length!==1?'s':''}</span>
-                    ${sl.locked ? '<span style="color:#fbbf24;font-weight:700">🔒 Locked</span>' : ''}
-                </div>
-                ${sl.locked ? '<div style="font-size:0.75em;color:#fbbf24;margin-top:4px;opacity:0.8">Locked for show readiness' + (sl.lockedBy ? ' by ' + sl.lockedBy : '') + (sl.lockedAt ? ' on ' + sl.lockedAt.substring(5,10).replace('-','/') : '') + ' — Go Live and Export still available</div>' : ''}
-            </div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
-                <button class="btn btn-sm btn-ghost" onclick="slToggleLock(${sl._origIdx})" title="${sl.locked ? 'Unlock setlist' : 'Lock setlist'}" style="color:${sl.locked ? '#fbbf24' : 'var(--text-dim)'}">${sl.locked ? '🔓' : '🔒'}</button>
-                ${sl.locked ? '' : '<button class="btn btn-sm btn-ghost" onclick="editSetlist('+sl._origIdx+')" title="Edit">✏️</button>'}
-                <button class="btn btn-sm btn-ghost" onclick="launchLiveGig('${sl.id || sl._origIdx}')" title="Go Live" style="color:#22c55e">🎤</button>
-                <button class="btn btn-sm btn-ghost" onclick="exportSetlistToiPad(${sl._origIdx})" title="Export for iPad" style="color:var(--accent-light)">📱</button>
-                ${sl.locked ? '' : '<button class="btn btn-sm btn-ghost" onclick="deleteSetlist('+sl._origIdx+')" title="Delete" style="color:var(--red,#f87171)">🗑️</button>'}
-            </div>
-        </div>
-        ${(sl.sets||[]).map(s => { const SA={'stop':'  ','flow':' → ','segue':' ~ ','cutoff':' | '}; return `<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px"><strong>${s.name}:</strong> ${(s.songs||[]).map((sg,i,arr)=>{ const t=typeof sg==='string'?sg:sg.title; const a=i<arr.length-1?(SA[(typeof sg==='object'&&sg.segue)||'stop']||'  '):''; return t+a; }).join('')}</div>`; }).join('')}
-    </div>`).join('');
+
+    // Render filter bar
+    var filterBar = document.getElementById('slFilterBar');
+    if (filterBar) {
+        filterBar.innerHTML = ['all','upcoming','past'].map(function(f) {
+            var active = _slFilter === f;
+            var label = f === 'all' ? 'All' : f === 'upcoming' ? 'Upcoming' : 'Past';
+            return '<button onclick="_slFilter=\'' + f + '\';loadSetlists()" style="font-size:0.72em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + label + '</button>';
+        }).join('');
+    }
+
+    if (data.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px">No setlists yet. Create one for your next gig!</div>'; return; }
+
+    var today = new Date().toISOString().split('T')[0];
+    var upcoming = data.filter(function(sl) { return (sl.date || '') >= today; }).sort(function(a,b) { return (a.date || '').localeCompare(b.date || ''); });
+    var past = data.filter(function(sl) { return (sl.date || '') < today && sl.date; }).sort(function(a,b) { return (b.date || '').localeCompare(a.date || ''); });
+    var noDate = data.filter(function(sl) { return !sl.date; });
+
+    // Apply filter
+    if (_slFilter === 'upcoming') { past = []; noDate = []; }
+    if (_slFilter === 'past') { upcoming = []; noDate = []; }
+
+    var html = '';
+
+    // Upcoming section
+    if (upcoming.length > 0) {
+        html += '<div style="margin-bottom:16px">'
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:#22c55e;text-transform:uppercase;margin-bottom:6px">Upcoming</div>';
+        upcoming.forEach(function(sl, i) {
+            html += _slRenderCard(sl, i === 0);
+        });
+        html += '</div>';
+    }
+
+    // Recent (last 5 past)
+    var recent = past.slice(0, 5);
+    var archive = past.slice(5);
+    if (recent.length > 0) {
+        html += '<div style="margin-bottom:16px">'
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">Recent</div>';
+        recent.forEach(function(sl) { html += _slRenderCard(sl, false); });
+        html += '</div>';
+    }
+
+    // Archive (collapsed)
+    if (archive.length > 0) {
+        html += '<details style="margin-bottom:16px"><summary style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">Archive (' + archive.length + ' more)</summary>';
+        archive.forEach(function(sl) { html += _slRenderCard(sl, false); });
+        html += '</details>';
+    }
+
+    // No date
+    if (noDate.length > 0) {
+        html += '<div style="margin-bottom:16px">'
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">No Date</div>';
+        noDate.forEach(function(sl) { html += _slRenderCard(sl, false); });
+        html += '</div>';
+    }
+
+    if (!html) html = '<div style="text-align:center;color:var(--text-dim);padding:20px">No setlists match this filter.</div>';
+    container.innerHTML = html;
+}
+
+function _slRenderCard(sl, isNext) {
+    var songCount = (sl.sets || []).reduce(function(a,s) { return a + (s.songs || []).length; }, 0);
+    var setCount = (sl.sets || []).length;
+    var idx = sl._origIdx;
+
+    // Days until / since
+    var dateLabel = '';
+    if (sl.date) {
+        var diff = Math.round((new Date(sl.date).getTime() - Date.now()) / 86400000);
+        if (diff === 0) dateLabel = 'Today';
+        else if (diff === 1) dateLabel = 'Tomorrow';
+        else if (diff > 1 && diff <= 14) dateLabel = 'in ' + diff + ' days';
+        else if (diff === -1) dateLabel = 'Yesterday';
+        else if (diff < -1 && diff >= -7) dateLabel = Math.abs(diff) + ' days ago';
+    }
+
+    // Set preview — first set, max 4 songs, truncated
+    var preview = '';
+    if (sl.sets && sl.sets[0] && sl.sets[0].songs && sl.sets[0].songs.length > 0) {
+        var songs = sl.sets[0].songs;
+        var shown = songs.slice(0, 4).map(function(sg) { return typeof sg === 'string' ? sg : (sg.title || ''); });
+        var more = songs.length > 4 ? ' +' + (songs.length - 4) + ' more' : '';
+        preview = shown.join(' · ') + more;
+    }
+
+    var borderColor = isNext ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)';
+    var bgColor = isNext ? 'rgba(99,102,241,0.04)' : 'rgba(255,255,255,0.02)';
+
+    return '<div style="padding:10px 14px;border-radius:8px;border:1px solid ' + borderColor + ';background:' + bgColor + ';margin-bottom:6px;display:flex;align-items:center;gap:10px">'
+        // Left: info
+        + '<div style="flex:1;min-width:0">'
+        + (isNext ? '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px">NEXT UP' + (dateLabel ? ' · ' + dateLabel : '') + '</div>' : '')
+        + '<div style="font-weight:700;font-size:0.9em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (sl.locked ? '🔒 ' : '') + (sl.name || 'Untitled') + '</div>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">'
+        + (sl.date || 'No date') + ' · ' + songCount + ' songs · ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
+        + (!isNext && dateLabel ? ' · ' + dateLabel : '')
+        + '</div>'
+        + (preview ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + preview + '</div>' : '')
+        + '</div>'
+        // Right: actions
+        + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center">'
+        + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">▶ Open</button>'
+        + (sl.locked ? '' : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>')
+        + (sl.locked ? '' : '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
+        + '</div></div>';
 }
 
 async function exportSetlistToiPad(setlistIndex) {
