@@ -640,8 +640,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
-        // Preload key/bpm from Firebase into allSongs[] for accurate triage counts
-        _preloadSongDNA();
+        // Preload key/bpm/lead from Firebase, then re-render for accurate triage
+        Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]).then(function() {
+            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
+        });
         // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
             window._glCachedSetlists = toArray(data || []);
@@ -651,7 +653,6 @@ document.addEventListener('DOMContentLoaded', function() {
             window._glCachedBlockedDates = toArray(data || []);
             _rt.blockedDatesCached = true;
         }).catch(function() {});
-        _preloadLeadSingerCache();
 
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
@@ -13104,31 +13105,33 @@ async function preloadReadinessCache() {
     }
 }
 
-// ── Song DNA preload (key/bpm from Firebase → allSongs[] for triage accuracy) ─
+// ── Song DNA preload (key/bpm/lead from Firebase → allSongs[] for triage accuracy)
+// Fires batches of Promise.all to populate in-memory data, then re-renders once.
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
     try {
-        // Batch-read songs_v2 key and bpm for songs missing them in allSongs[]
         var missing = allSongs.filter(function(s) { return !s.key || !s.bpm; });
-        for (var i = 0; i < Math.min(missing.length, 300); i++) {
-            var s = missing[i];
-            if (!s.title) continue;
-            if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        var cap = Math.min(missing.length, 300);
+        // Process in batches of 20 with awaited Promise.all
+        for (var batch = 0; batch < cap; batch += 20) {
+            var promises = [];
+            for (var i = batch; i < Math.min(batch + 20, cap); i++) {
+                var s = missing[i];
+                if (!s || !s.title) continue;
                 if (!s.key) {
-                    GLStore.loadFieldMeta(s.title, 'key').then(function(song, data) {
+                    promises.push(GLStore.loadFieldMeta(s.title, 'key').then(function(song, data) {
                         if (data && data.key) song.key = data.key;
-                    }.bind(null, s)).catch(function() {});
+                    }.bind(null, s)).catch(function() {}));
                 }
                 if (!s.bpm) {
-                    GLStore.loadFieldMeta(s.title, 'song_bpm').then(function(song, data) {
+                    promises.push(GLStore.loadFieldMeta(s.title, 'song_bpm').then(function(song, data) {
                         if (data && data.bpm) song.bpm = data.bpm;
-                    }.bind(null, s)).catch(function() {});
+                    }.bind(null, s)).catch(function() {}));
                 }
             }
-            if (i > 0 && i % 20 === 0) await new Promise(function(r) { setTimeout(r, 50); });
+            if (promises.length) await Promise.all(promises);
         }
-        // Re-render songs after preload so triage counts reflect Firebase data
-        if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
     } catch(e) {}
 }
 
@@ -13137,18 +13140,17 @@ async function _preloadLeadSingerCache() {
     if (_rt.leadSingerCacheLoaded) return;
     _rt.leadSingerCacheLoaded = true;
     if (!allSongs || !allSongs.length) return;
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
     try {
-        // Batch-load lead_singer for all songs into GLStore detail cache
-        var batch = allSongs.slice(0, 200); // Cap to avoid excessive reads
-        for (var i = 0; i < batch.length; i++) {
-            var s = batch[i];
-            if (!s.title) continue;
-            // Use loadFieldMeta which populates detail cache as a side effect
-            if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
-                GLStore.loadFieldMeta(s.title, 'lead_singer').catch(function() {});
+        var cap = Math.min(allSongs.length, 200);
+        for (var batch = 0; batch < cap; batch += 10) {
+            var promises = [];
+            for (var i = batch; i < Math.min(batch + 10, cap); i++) {
+                var s = allSongs[i];
+                if (!s || !s.title) continue;
+                promises.push(GLStore.loadFieldMeta(s.title, 'lead_singer').catch(function() {}));
             }
-            // Yield to avoid blocking — process 10 at a time
-            if (i > 0 && i % 10 === 0) await new Promise(function(r) { setTimeout(r, 50); });
+            if (promises.length) await Promise.all(promises);
         }
     } catch(e) {}
 }
