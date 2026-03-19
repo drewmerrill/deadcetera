@@ -2762,6 +2762,132 @@
 
   // ══════════════════════════════════════════════════════════════════════════
   // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCHEDULE BLOCKS — unified scheduling model (replaces blocked_dates)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  var SCHEDULE_BLOCK_STATUSES = ['unavailable','tentative','booked_elsewhere','vacation','travel','personal_block','hold'];
+
+  var _scheduleBlocksCache = null;
+
+  function _sbGenId() { return 'sb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
+
+  // Read schedule_blocks from Firebase
+  async function _sbLoadBlocks() {
+    if (_scheduleBlocksCache) return _scheduleBlocksCache;
+    var db = _db(); if (!db) return [];
+    try {
+      var snap = await db.ref(bandPath('schedule_blocks')).once('value');
+      var val = snap.val();
+      _scheduleBlocksCache = val ? Object.values(val) : [];
+      return _scheduleBlocksCache;
+    } catch(e) { return []; }
+  }
+
+  // Read legacy blocked_dates and convert to schedule_block shape
+  async function _sbLoadLegacyBlocked() {
+    try {
+      var raw = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+      return raw.map(function(b, i) {
+        // Map person name to member key
+        var ownerKey = null;
+        if (typeof bandMembers !== 'undefined') {
+          Object.entries(bandMembers).forEach(function(e) {
+            if (e[1].name === b.person) ownerKey = e[0];
+          });
+        }
+        return {
+          blockId: '_legacy_' + i,
+          ownerKey: ownerKey || null,
+          ownerName: b.person || '',
+          status: 'unavailable',
+          startDate: b.startDate || '',
+          endDate: b.endDate || '',
+          allDay: true,
+          summary: b.reason || '',
+          visibility: 'band_full',
+          sourceType: 'manual',
+          _legacy: true
+        };
+      });
+    } catch(e) { return []; }
+  }
+
+  // Get all schedule blocks (merged: new + legacy)
+  async function getScheduleBlocks() {
+    var blocks = await _sbLoadBlocks();
+    var legacy = await _sbLoadLegacyBlocked();
+    // Deduplicate: if a legacy block matches a migrated block (same owner+dates), skip it
+    var migrated = {};
+    blocks.forEach(function(b) { migrated[b.ownerKey + '|' + b.startDate + '|' + b.endDate] = true; });
+    var filtered = legacy.filter(function(lb) {
+      return !migrated[(lb.ownerKey || lb.ownerName) + '|' + lb.startDate + '|' + lb.endDate];
+    });
+    return blocks.concat(filtered);
+  }
+
+  // Get schedule blocks as blocked_dates-compatible format for availability matrix
+  function getScheduleBlocksAsRanges() {
+    return getScheduleBlocks().then(function(blocks) {
+      return blocks.map(function(b) {
+        return {
+          person: b.ownerName || b.ownerKey || '',
+          startDate: b.startDate,
+          endDate: b.endDate,
+          reason: b.summary || '',
+          status: b.status || 'unavailable',
+          _block: b
+        };
+      });
+    });
+  }
+
+  // CRUD
+  async function saveScheduleBlock(block) {
+    var db = _db(); if (!db) return;
+    if (!block.blockId) block.blockId = _sbGenId();
+    block.updatedAt = new Date().toISOString();
+    if (!block.createdAt) block.createdAt = block.updatedAt;
+    await db.ref(bandPath('schedule_blocks/' + block.blockId)).set(block);
+    _scheduleBlocksCache = null;
+    return block;
+  }
+
+  async function deleteScheduleBlock(blockId) {
+    var db = _db(); if (!db) return;
+    await db.ref(bandPath('schedule_blocks/' + blockId)).remove();
+    _scheduleBlocksCache = null;
+  }
+
+  // Get blocks for a specific member on a specific date
+  function getBlocksForMemberOnDate(blocks, memberName, dateStr) {
+    return blocks.filter(function(b) {
+      var matchesPerson = b.ownerName === memberName || b.ownerKey === memberName;
+      var inRange = b.startDate && b.endDate && dateStr >= b.startDate && dateStr <= b.endDate;
+      return matchesPerson && inRange;
+    });
+  }
+
+  // Get date strength for a given date (uses all blocks)
+  function computeDateStrength(blocks, members, dateStr) {
+    var total = members.length;
+    var available = 0;
+    var maybe = 0;
+    members.forEach(function(member) {
+      var memberBlocks = getBlocksForMemberOnDate(blocks, member, dateStr);
+      if (memberBlocks.length === 0) {
+        available++;
+      } else {
+        var hardBlock = memberBlocks.some(function(b) { return b.status === 'unavailable' || b.status === 'booked_elsewhere' || b.status === 'vacation'; });
+        if (!hardBlock) maybe++;
+      }
+    });
+    if (available === total) return { label: 'Strong', color: '#22c55e', available: available, maybe: maybe, total: total };
+    if (available + maybe >= total - 1) return { label: 'Workable', color: '#f59e0b', available: available, maybe: maybe, total: total };
+    if (available >= Math.ceil(total / 2)) return { label: 'Risky', color: '#ef4444', available: available, maybe: maybe, total: total };
+    return { label: 'Not viable', color: '#64748b', available: available, maybe: maybe, total: total };
+  }
+
   // BAND ROLES + BACKUP PLAYERS — role coverage intelligence
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -3388,6 +3514,15 @@
     createVenue:           createVenue,
     findDuplicateVenues:   findDuplicateVenues,
     getVenueById:          getVenueById,
+
+    // Schedule Blocks
+    SCHEDULE_BLOCK_STATUSES:   SCHEDULE_BLOCK_STATUSES,
+    getScheduleBlocks:         getScheduleBlocks,
+    getScheduleBlocksAsRanges: getScheduleBlocksAsRanges,
+    saveScheduleBlock:         saveScheduleBlock,
+    deleteScheduleBlock:       deleteScheduleBlock,
+    getBlocksForMemberOnDate:  getBlocksForMemberOnDate,
+    computeDateStrength:       computeDateStrength,
 
     // Band Roles + Backup Players
     BAND_ROLES:                BAND_ROLES,

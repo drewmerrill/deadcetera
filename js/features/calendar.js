@@ -174,7 +174,7 @@ function renderCalendarInner() {
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
-        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Block Dates</button>
+        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Add Conflict</button>
         <button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||'deadcetera')" style="color:var(--accent-light)" title="Subscribe to band calendar in Google/Apple Calendar">📅 Subscribe</button>
     </div>
     <div class="app-card" id="calEventFormArea"></div>
@@ -185,7 +185,7 @@ function renderCalendarInner() {
         <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">See when the band is free to rehearse. Click a day to schedule.</div>
         <div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading…</div></div>
     </div>
-    <div class="app-card"><h3>🚫 Blocked Dates</h3>
+    <div class="app-card"><h3>🚫 Conflicts &amp; Blocked Dates</h3>
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
     </div>`;
 
@@ -308,16 +308,33 @@ async function loadCalendarEvents() {
             </div>`;
         }).join('');
     }
-    // Blocked dates
-    const blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    // Schedule blocks (unified: new model + legacy blocked_dates)
+    var blocked = [];
+    if (typeof GLStore !== 'undefined' && GLStore.getScheduleBlocksAsRanges) {
+        blocked = await GLStore.getScheduleBlocksAsRanges();
+    } else {
+        blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+    }
     const bEl = document.getElementById('blockedDates');
     if (bEl && blocked.length > 0) {
-        bEl.innerHTML = blocked.map((b,i) => `<div class="list-item" style="padding:6px 12px;font-size:0.85em">
-            <span style="color:var(--red)">${b.startDate} → ${b.endDate}</span>
-            <span style="flex:1;color:var(--text-muted);margin-left:8px">${b.person||''}: ${b.reason||''}</span>
-            <button onclick="calEditBlocked(${i})" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;flex-shrink:0;margin-right:4px;">✏️</button>
-            <button onclick="calDeleteBlocked(${i})" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>
-        </div>`).join('');
+        var statusLabels = { unavailable:'Unavailable', tentative:'Tentative', booked_elsewhere:'Booked', vacation:'Vacation', travel:'Travel', personal_block:'Personal', hold:'Hold' };
+        bEl.innerHTML = blocked.map(function(b, i) {
+            var isLegacy = b._block && b._block._legacy;
+            var blockId = b._block ? b._block.blockId : null;
+            var statusChip = b.status && b.status !== 'unavailable'
+                ? '<span style="font-size:0.72em;padding:1px 5px;border-radius:3px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">' + (statusLabels[b.status] || b.status) + '</span> '
+                : '';
+            var startFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.startDate, true) : b.startDate;
+            var endFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.endDate, true) : b.endDate;
+            var deleteAction = isLegacy ? 'calDeleteBlocked(' + i + ')' : '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
+            var editAction = isLegacy ? 'calEditBlocked(' + i + ')' : '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
+            return '<div class="list-item" style="padding:6px 12px;font-size:0.85em">'
+                + '<span style="color:var(--red)">' + startFmt + ' → ' + endFmt + '</span>'
+                + '<span style="flex:1;color:var(--text-muted);margin-left:8px">' + statusChip + (b.person || '') + (b.reason ? ': ' + b.reason : '') + '</span>'
+                + '<button onclick="' + editAction + '" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;flex-shrink:0;margin-right:4px;">✏️</button>'
+                + '<button onclick="' + deleteAction + '" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>'
+                + '</div>';
+        }).join('');
     }
     return { dateMap, blockedRanges: blocked };
 }
@@ -459,31 +476,62 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
 }
 
 function calBlockDates() {
+    window._calEditingBlockId = null;
     const area = document.getElementById('calEventFormArea');
     if (!area) return;
-    area.innerHTML = `<h3 style="font-size:0.9em;color:var(--red);margin-bottom:12px">🚫 Block Dates — I'm Unavailable</h3>
-    <div class="form-grid">
-        <div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>
-        <div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>
-        <div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>'<option value="'+m.name+'">'+m.name+'</option>').join('')}</select></div>
-        <div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Block Dates</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('calEventFormArea').innerHTML=''">Cancel</button>
-    </div>`;
+    var statusOpts = [
+        ['unavailable','Unavailable'],['tentative','Tentative'],['booked_elsewhere','Booked Elsewhere'],
+        ['vacation','Vacation'],['travel','Travel'],['personal_block','Personal'],['hold','Hold']
+    ].map(function(s) { return '<option value="'+s[0]+'">'+s[1]+'</option>'; }).join('');
+    var memberOpts = Object.entries(bandMembers).map(function(e) { return '<option value="'+e[1].name+'" data-key="'+e[0]+'">'+e[1].name+'</option>'; }).join('');
+    area.innerHTML = '<h3 style="font-size:0.9em;color:var(--red);margin-bottom:12px">🚫 Add Conflict</h3>'
+        + '<div class="form-grid">'
+        + '<div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>'
+        + '<div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>'
+        + '<div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">' + memberOpts + '</select></div>'
+        + '<div class="form-row"><label class="form-label">Type</label><select class="app-select" id="blockStatus">' + statusOpts + '</select></div>'
+        + '<div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;margin-top:8px">'
+        + '<button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Save Conflict</button>'
+        + '<button class="btn btn-ghost" onclick="document.getElementById(\'calEventFormArea\').innerHTML=\'\'">Cancel</button>'
+        + '</div>';
     area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 async function saveBlockedDates() {
-    const b = { startDate: document.getElementById('blockStart')?.value, endDate: document.getElementById('blockEnd')?.value,
-        person: document.getElementById('blockPerson')?.value, reason: document.getElementById('blockReason')?.value };
-    if (!b.startDate || !b.endDate) { alert('Both dates required'); return; }
-    const ex = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
-    ex.push(b);
-    await saveBandDataToDrive('_band', 'blocked_dates', ex);
+    var startDate = (document.getElementById('blockStart') || {}).value || '';
+    var endDate = (document.getElementById('blockEnd') || {}).value || '';
+    if (!startDate || !endDate) { alert('Both dates required'); return; }
+    var personEl = document.getElementById('blockPerson');
+    var personName = personEl ? personEl.value : '';
+    var personKey = personEl ? (personEl.options[personEl.selectedIndex] || {}).dataset.key : null;
+    var status = (document.getElementById('blockStatus') || {}).value || 'unavailable';
+    var reason = (document.getElementById('blockReason') || {}).value || '';
+
+    if (typeof GLStore !== 'undefined' && GLStore.saveScheduleBlock) {
+        var block = {
+            blockId: window._calEditingBlockId || null,
+            ownerKey: personKey || null,
+            ownerName: personName,
+            status: status,
+            startDate: startDate,
+            endDate: endDate,
+            allDay: true,
+            summary: reason,
+            visibility: 'band_full',
+            sourceType: 'manual'
+        };
+        await GLStore.saveScheduleBlock(block);
+    } else {
+        // Fallback: save to legacy blocked_dates
+        var ex = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+        ex.push({ startDate: startDate, endDate: endDate, person: personName, reason: reason });
+        await saveBandDataToDrive('_band', 'blocked_dates', ex);
+    }
+    window._calEditingBlockId = null;
     document.getElementById('calEventFormArea').innerHTML = '';
-    loadCalendarEvents();
+    renderCalendarInner();
 }
 
 async function calDeleteBlocked(idx) {
@@ -524,6 +572,33 @@ async function saveBlockedDatesEdit(idx) {
     document.getElementById('calEventFormArea').innerHTML = '';
     renderCalendarInner();
 }
+
+// Schedule block CRUD (new model)
+window._calDeleteScheduleBlock = async function(blockId) {
+    if (!blockId || !confirm('Remove this schedule block?')) return;
+    if (typeof GLStore !== 'undefined' && GLStore.deleteScheduleBlock) {
+        await GLStore.deleteScheduleBlock(blockId);
+    }
+    renderCalendarInner();
+};
+
+window._calEditScheduleBlock = async function(blockId) {
+    if (!blockId || typeof GLStore === 'undefined') return;
+    var blocks = await GLStore.getScheduleBlocks();
+    var block = blocks.find(function(b) { return b.blockId === blockId; });
+    if (!block) return;
+    // Reuse the block dates form with pre-filled values
+    calBlockDates();
+    setTimeout(function() {
+        var s = document.getElementById('blockStart'); if (s) s.value = block.startDate || '';
+        var e = document.getElementById('blockEnd'); if (e) e.value = block.endDate || '';
+        var p = document.getElementById('blockPerson'); if (p) p.value = block.ownerName || '';
+        var r = document.getElementById('blockReason'); if (r) r.value = block.summary || '';
+        var st = document.getElementById('blockStatus'); if (st) st.value = block.status || 'unavailable';
+    }, 50);
+    // Swap save button to update mode
+    window._calEditingBlockId = blockId;
+};
 
 function calDayClick(y, m, d) {
     calViewYear = y; calViewMonth = m;
