@@ -377,8 +377,21 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         });
     }
 
-    // Compute per-day availability
+    // Build schedule blocks for status-aware evaluation
+    var useRichEval = typeof GLStore !== 'undefined' && GLStore.computeDateStrength && GLStore.evaluateMemberDateStatus;
+    var schedBlocks = [];
+    if (useRichEval) {
+        blockedRanges.forEach(function(br) {
+            schedBlocks.push(br._block || { ownerName: br.person, ownerKey: br.person, startDate: br.startDate, endDate: br.endDate, status: br.status || 'unavailable' });
+        });
+    }
+
+    // Compute per-day availability (status-aware when possible)
     var dayAvail = days.map(function(day) {
+        if (useRichEval) {
+            var strength = GLStore.computeDateStrength(schedBlocks, members, day.date);
+            return { day: day, freeCount: strength.available, allFree: strength.label === 'Strong', strength: strength };
+        }
         var freeCount = 0;
         members.forEach(function(member) {
             var blocked = blockedRanges.some(function(b) {
@@ -386,11 +399,11 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
             });
             if (!blocked) freeCount++;
         });
-        return { day: day, freeCount: freeCount, allFree: freeCount === members.length };
+        return { day: day, freeCount: freeCount, allFree: freeCount === members.length, strength: null };
     });
 
-    // Best rehearsal days summary
-    var allFreeDays = dayAvail.filter(function(d) { return d.allFree; });
+    // Best rehearsal days — prioritize Strong, then Workable
+    var allFreeDays = dayAvail.filter(function(d) { return d.allFree || (d.strength && d.strength.label === 'Strong'); });
     var bestHtml = '';
     if (allFreeDays.length > 0) {
         var bestList = allFreeDays.slice(0, 5).map(function(d) {
@@ -408,15 +421,27 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
             'style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:4px 12px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">+ Create Rehearsal</button>' +
             '</div></div>';
     } else {
-        var maxFree = Math.max.apply(null, dayAvail.map(function(d) { return d.freeCount; }));
-        if (maxFree > 0) {
-            var mostAvail = dayAvail.filter(function(d) { return d.freeCount === maxFree; }).slice(0, 3);
-            var mostList = mostAvail.map(function(d) {
-                return '<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 8px;border-radius:4px;font-weight:700">' +
-                    d.day.label + ' ' + d.day.dayNum + ' (' + d.freeCount + '/' + members.length + ')</span>';
+        // Try Workable days first (soft conflicts only)
+        var workableDays = dayAvail.filter(function(d) { return d.strength && d.strength.label === 'Workable'; });
+        if (workableDays.length > 0) {
+            var wkList = workableDays.slice(0, 4).map(function(d) {
+                return '<span style="background:rgba(132,204,22,0.12);color:#84cc16;padding:2px 8px;border-radius:4px;font-weight:700">' +
+                    d.day.label + ' ' + d.day.dayNum + ' <span style="font-size:0.8em;opacity:0.7">' + d.strength.label + '</span></span>';
             }).join(' ');
-            bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:8px;font-size:0.85em">' +
-                '<span style="color:#fbbf24;font-weight:700">Most available:</span> ' + mostList + '</div>';
+            bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(132,204,22,0.06);border:1px solid rgba(132,204,22,0.15);border-radius:8px;font-size:0.85em">' +
+                '<span style="color:#84cc16;font-weight:700">Workable days (soft conflicts only):</span> ' + wkList + '</div>';
+        } else {
+            var maxFree = Math.max.apply(null, dayAvail.map(function(d) { return d.freeCount; }));
+            if (maxFree > 0) {
+                var mostAvail = dayAvail.filter(function(d) { return d.freeCount === maxFree; }).slice(0, 3);
+                var mostList = mostAvail.map(function(d) {
+                    var strengthLabel = d.strength ? ' · ' + d.strength.label : '';
+                    return '<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 8px;border-radius:4px;font-weight:700">' +
+                        d.day.label + ' ' + d.day.dayNum + ' (' + d.freeCount + '/' + members.length + strengthLabel + ')</span>';
+                }).join(' ');
+                bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:8px;font-size:0.85em">' +
+                    '<span style="color:#fbbf24;font-weight:700">Most available:</span> ' + mostList + '</div>';
+            }
         }
     }
 
@@ -439,7 +464,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.08)' : '';
         html += '<th style="text-align:center;padding:4px 2px;color:' + (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') +
             ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg +
-            ';cursor:pointer" onclick="calDayClick(' + new Date(day.date).getFullYear() + ',' + new Date(day.date).getMonth() + ',' + new Date(day.date).getDate() + ')">' +
+            ';cursor:pointer" onclick="calDayClick(' + (glParseDate(day.date) || new Date()).getFullYear() + ',' + (glParseDate(day.date) || new Date()).getMonth() + ',' + (glParseDate(day.date) || new Date()).getDate() + ')">' +
             day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span></th>';
     });
     html += '</tr>';
@@ -448,23 +473,36 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         html += '<tr>';
         html += '<td style="padding:4px 6px;color:var(--text-muted);font-weight:600;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.04);position:sticky;left:0;background:#0f172a;z-index:1">' + member.split(' ')[0] + '</td>';
         days.forEach(function(day) {
-            var blocked = blockedRanges.some(function(b) {
-                return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate;
-            });
             var allFreeDay = dayAvail.find(function(d) { return d.day.date === day.date; });
             var bgCol = allFreeDay && allFreeDay.allFree ? 'rgba(34,197,94,0.05)' : '';
-            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + '">' +
-                (blocked ? '<span style="color:#ef4444;font-weight:700">✖</span>' : '<span style="color:#22c55e;opacity:0.4">✔</span>') +
-                '</td>';
+            var cellContent = '<span style="color:#22c55e;opacity:0.4">\u2714</span>';
+            if (useRichEval) {
+                var mStatus = GLStore.evaluateMemberDateStatus(schedBlocks, member, day.date);
+                if (mStatus.status === 'hard_conflict') {
+                    cellContent = '<span style="color:#ef4444;font-weight:700">\u2716</span>';
+                } else if (mStatus.status === 'soft_conflict') {
+                    cellContent = '<span style="color:#f59e0b;font-weight:600">~</span>';
+                }
+            } else {
+                var blocked = blockedRanges.some(function(b) { return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
+                if (blocked) cellContent = '<span style="color:#ef4444;font-weight:700">\u2716</span>';
+            }
+            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + '">' + cellContent + '</td>';
         });
         html += '</tr>';
     });
 
-    // Footer row: free count per day
-    html += '<tr><td style="padding:4px 6px;color:var(--text-dim);font-size:0.8em;font-weight:600;position:sticky;left:0;background:#0f172a;z-index:1">Free</td>';
+    // Footer row: strength label or free count
+    html += '<tr><td style="padding:4px 6px;color:var(--text-dim);font-size:0.8em;font-weight:600;position:sticky;left:0;background:#0f172a;z-index:1">Status</td>';
     dayAvail.forEach(function(d) {
-        var color = d.allFree ? '#22c55e' : d.freeCount >= members.length - 1 ? '#fbbf24' : 'var(--text-dim)';
-        html += '<td style="text-align:center;padding:4px 2px;font-size:0.8em;font-weight:700;color:' + color + '">' + d.freeCount + '</td>';
+        if (d.strength) {
+            var s = d.strength;
+            var shortLabel = { 'Strong':'\u2714', 'Workable':'~', 'Risky':'!', 'Not viable':'\u2716' }[s.label] || '?';
+            html += '<td style="text-align:center;padding:4px 2px;font-size:0.75em;font-weight:800;color:' + s.color + '" title="' + s.label + ': ' + s.available + ' free, ' + s.softConflictCount + ' soft, ' + s.hardConflictCount + ' hard">' + shortLabel + '</td>';
+        } else {
+            var color = d.allFree ? '#22c55e' : d.freeCount >= members.length - 1 ? '#fbbf24' : 'var(--text-dim)';
+            html += '<td style="text-align:center;padding:4px 2px;font-size:0.8em;font-weight:700;color:' + color + '">' + d.freeCount + '</td>';
+        }
     });
     html += '</tr>';
 

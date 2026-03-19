@@ -2868,24 +2868,73 @@
     });
   }
 
-  // Get date strength for a given date (uses all blocks)
+  // Status classification
+  var HARD_CONFLICT_STATUSES = { unavailable: true, booked_elsewhere: true, vacation: true, personal_block: true };
+  var SOFT_CONFLICT_STATUSES = { tentative: true, travel: true, hold: true };
+
+  function isHardConflict(status) { return HARD_CONFLICT_STATUSES[status] || false; }
+  function isSoftConflict(status) { return SOFT_CONFLICT_STATUSES[status] || false; }
+
+  // Evaluate a single member's status for a given date
+  function evaluateMemberDateStatus(blocks, memberName, dateStr) {
+    var memberBlocks = getBlocksForMemberOnDate(blocks, memberName, dateStr);
+    if (memberBlocks.length === 0) return { status: 'available', blocks: [] };
+    var hasHard = memberBlocks.some(function(b) { return isHardConflict(b.status); });
+    if (hasHard) return { status: 'hard_conflict', blocks: memberBlocks };
+    return { status: 'soft_conflict', blocks: memberBlocks };
+  }
+
+  // Rich date strength evaluator
   function computeDateStrength(blocks, members, dateStr) {
     var total = members.length;
     var available = 0;
-    var maybe = 0;
+    var hardConflictCount = 0;
+    var softConflictCount = 0;
+    var reasons = [];
+    var memberStatuses = {};
+
     members.forEach(function(member) {
-      var memberBlocks = getBlocksForMemberOnDate(blocks, member, dateStr);
-      if (memberBlocks.length === 0) {
+      var eval_ = evaluateMemberDateStatus(blocks, member, dateStr);
+      memberStatuses[member] = eval_;
+      if (eval_.status === 'available') {
         available++;
+      } else if (eval_.status === 'hard_conflict') {
+        hardConflictCount++;
+        var topBlock = eval_.blocks[0];
+        var statusLabel = { unavailable:'Unavailable', booked_elsewhere:'Booked elsewhere', vacation:'Vacation', personal_block:'Personal block' }[topBlock.status] || topBlock.status;
+        reasons.push(member.split(' ')[0] + ': ' + statusLabel);
       } else {
-        var hardBlock = memberBlocks.some(function(b) { return b.status === 'unavailable' || b.status === 'booked_elsewhere' || b.status === 'vacation'; });
-        if (!hardBlock) maybe++;
+        softConflictCount++;
+        var softBlock = eval_.blocks[0];
+        var softLabel = { tentative:'Tentative', travel:'Travel', hold:'Hold' }[softBlock.status] || softBlock.status;
+        reasons.push(member.split(' ')[0] + ': ' + softLabel);
       }
     });
-    if (available === total) return { label: 'Strong', color: '#22c55e', available: available, maybe: maybe, total: total };
-    if (available + maybe >= total - 1) return { label: 'Workable', color: '#f59e0b', available: available, maybe: maybe, total: total };
-    if (available >= Math.ceil(total / 2)) return { label: 'Risky', color: '#ef4444', available: available, maybe: maybe, total: total };
-    return { label: 'Not viable', color: '#64748b', available: available, maybe: maybe, total: total };
+
+    var conflictCount = hardConflictCount + softConflictCount;
+    var score = Math.round(((available + softConflictCount * 0.5) / total) * 100);
+
+    var label, color;
+    if (hardConflictCount === 0 && softConflictCount === 0) {
+      label = 'Strong'; color = '#22c55e';
+      reasons = ['No conflicts'];
+    } else if (hardConflictCount === 0 && softConflictCount > 0) {
+      label = 'Workable'; color = '#84cc16';
+      reasons.unshift(softConflictCount + ' soft conflict' + (softConflictCount > 1 ? 's' : '') + ' — may clear');
+    } else if (hardConflictCount === 1 && available >= Math.ceil(total / 2)) {
+      label = 'Workable'; color = '#f59e0b';
+    } else if (available >= Math.ceil(total / 2)) {
+      label = 'Risky'; color = '#ef4444';
+    } else {
+      label = 'Not viable'; color = '#64748b';
+    }
+
+    return {
+      label: label, color: color, score: score,
+      available: available, hardConflictCount: hardConflictCount, softConflictCount: softConflictCount,
+      conflictCount: conflictCount, total: total,
+      reasons: reasons, memberStatuses: memberStatuses
+    };
   }
 
   // BAND ROLES + BACKUP PLAYERS — role coverage intelligence
@@ -3522,7 +3571,10 @@
     saveScheduleBlock:         saveScheduleBlock,
     deleteScheduleBlock:       deleteScheduleBlock,
     getBlocksForMemberOnDate:  getBlocksForMemberOnDate,
+    evaluateMemberDateStatus:  evaluateMemberDateStatus,
     computeDateStrength:       computeDateStrength,
+    isHardConflict:            isHardConflict,
+    isSoftConflict:            isSoftConflict,
 
     // Band Roles + Backup Players
     BAND_ROLES:                BAND_ROLES,
