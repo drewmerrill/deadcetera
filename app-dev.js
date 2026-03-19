@@ -4,24 +4,28 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
+console.log('%c🔗 GrooveLinx BUILD: 20260319-204020', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
 var _loadedVersion = BUILD_VERSION;
 var DEBUG = location.search.includes('debug=true');
 
+// ── Centralized runtime state (replaces scattered window._gl* flags) ────────
 if (!window._glRuntime) {
     window._glRuntime = {
         buildVersion: BUILD_VERSION,
         swInitialized: false,
         reloadPromptShown: false,
         buildLogged: false,
+        leadSingerCacheLoaded: false,
+        setlistsCached: false,
+        blockedDatesCached: false,
         lastUpdateCheck: null
     };
 }
 var _rt = window._glRuntime;
 if (!_rt.buildLogged) {
-    console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
-    _rt.buildLogged = true;
+        _rt.buildLogged = true;
 }
 
 
@@ -49,15 +53,8 @@ if (!_rt.buildLogged) {
         /* ===== SONG LIST ===== */
         .song-item {
             position: relative;
-            display: block;
-            padding: 8px 12px;
-            gap: 4px;
-            padding: 10px 12px;
-            min-height: 42px;
-            background: #1e293b !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
-            border-radius: 8px;
-            margin-bottom: 3px;
+            background: #1e293b;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
             cursor: pointer;
             transition: background 0.12s, border-color 0.12s;
             color: #f1f5f9 !important;
@@ -72,10 +69,9 @@ if (!_rt.buildLogged) {
         /* Unrated rows — neutral, slightly dimmer title */
         .song-item.song--unrated .song-name { color:#94a3b8 !important; font-weight:500; }
         /* Selected song anchor — visible dark background, not transparent */
-        .song-item.selected { background:#262f48 !important; border-left:3px solid #667eea !important; border-color:rgba(99,102,241,0.3) !important; border-left-color:#667eea !important; }
-        .song-item.selected .song-name { color:#e0e7ff !important; font-weight:700 !important; }
-        .song-item.selected .song-badge, .song-item.selected .status-badge { opacity:1 !important; }
-        .song-item.selected.song--needs-work { border-left-color:#667eea !important; }
+        .song-item.selected { background:#1e2a48 !important; border-left:3px solid #667eea !important; }
+        .song-item.selected td:first-child { color:#e0e7ff !important; font-weight:700 !important; }
+        .song-item.selected td { color:#c8d3e0 !important; }
         /* Title: visually first, slightly bolder than before */
         .song-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f1f5f9 !important; font-weight:600; font-size:0.9em; line-height:1.3; }
         .song-item.song-item .song-name--heatmap { color:var(--hm-color) !important; font-weight:600 !important; }
@@ -93,7 +89,7 @@ if (!_rt.buildLogged) {
         .song-badge.dmb   { background:rgba(20,184,166,0.15); color:#2dd4bf; border:1px solid rgba(20,184,166,0.25); }
         /* Mobile: hide chain strip */
         @media (max-width:479px) {
-            /* song-item grid controlled by songs.js */
+            .song-item { grid-template-columns:1fr 32px 68px 44px !important; }
             .song-chain-strip { display:none !important; }
         }
         /* Connected button pulse */
@@ -506,11 +502,13 @@ function getFullBandName(bandAbbr) {
 // INITIALIZE APP
 // ============================================================================
 
+// ── PWA: Register service worker (single owner — PL-9.2) ───────────────────
 // ── PWA: Simple service worker registration ─────────────────────────────────
 if ('serviceWorker' in navigator && !_rt.swInitialized) {
     _rt.swInitialized = true;
     var _isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (_isLocalhost) {
+        // Dev: unregister any stale SW to avoid caching headaches
         navigator.serviceWorker.getRegistrations().then(function(regs) {
             regs.forEach(function(r) { r.unregister(); });
         });
@@ -518,6 +516,7 @@ if ('serviceWorker' in navigator && !_rt.swInitialized) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
                 .then(reg => {
+                    // Poll for SW updates every 60s
                     setInterval(() => reg.update(), 60 * 1000);
                 })
                 .catch(() => {});
@@ -580,6 +579,7 @@ function hidePWAInstallBanner() {
 
 async function pwaTriggerInstall() {
     if (!pwaInstallPrompt) {
+        // No install prompt available — guide user to manual install
         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         if (isIOS) {
             showToast('On iPhone: tap Share (□↑) in Safari → "Add to Home Screen"');
@@ -640,11 +640,19 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
-        // Preload setlists for lifecycle suggestions + lead singer data for triage accuracy
+        // Preload key/bpm/lead from Firebase, then re-render for accurate triage
+        Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]).then(function() {
+            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
+        });
+        // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
             window._glCachedSetlists = toArray(data || []);
+            _rt.setlistsCached = true;
         }).catch(function() {});
-        if (typeof _preloadLeadSingerCache === 'function') _preloadLeadSingerCache();
+        loadBandDataFromDrive('_band', 'blocked_dates').then(function(data) {
+            window._glCachedBlockedDates = toArray(data || []);
+            _rt.blockedDatesCached = true;
+        }).catch(function() {});
 
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
@@ -704,6 +712,7 @@ async function loadCustomSongs() {
         var needsResave = false;
         custom.forEach(s => {
             if (s.title && !builtInTitles.has(s.title.toLowerCase())) {
+                // Backfill songId and artist on legacy custom songs
                 if (!s.songId) { s.songId = 'c_' + generateShortId(8); needsResave = true; }
                 if (!s.artist) { s.artist = s.band || 'Other'; needsResave = true; }
                 allSongs.push({ songId: s.songId, title: s.title, artist: s.artist, band: s.band || 'Other', isCustom: true, addedBy: s.addedBy, notes: s.notes || '' });
@@ -711,6 +720,7 @@ async function loadCustomSongs() {
         });
         if (needsResave) await saveBandDataToDrive('_band', 'custom_songs', custom);
         customSongsLoaded = true;
+        // Rebuild song indexes after custom songs are merged
         if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
         updateCustomSongCount();
     } catch(e) {
@@ -864,6 +874,7 @@ async function importStarterPack(packId) {
     }
     var pack = STARTER_PACKS[packId];
     var songs = pack.songs;
+    // Close modal and show progress
     var modal = document.getElementById('starterPackModal');
     if (modal) modal.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:400px;width:100%;color:var(--text);text-align:center">'
         + '<div style="font-size:1.5em;margin-bottom:12px">📦</div>'
@@ -871,38 +882,78 @@ async function importStarterPack(packId) {
         + '<div style="font-size:0.82em;color:var(--text-dim)">Adding ' + songs.length + ' songs to your library</div>'
         + '</div>';
 
+    // Build set of existing titles for duplicate detection
     var existingTitles = new Set();
     allSongs.forEach(function(s) { existingTitles.add(s.title.toLowerCase()); });
+
+    // Load existing custom songs
     var customSongs = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
+
     var added = 0;
     var skipped = 0;
 
     for (var i = 0; i < songs.length; i++) {
         var s = songs[i];
         if (!s.title) continue;
-        if (existingTitles.has(s.title.toLowerCase())) { skipped++; continue; }
+
+        // Duplicate check
+        if (existingTitles.has(s.title.toLowerCase())) {
+            skipped++;
+            continue;
+        }
 
         var songId = 'c_' + generateShortId(8);
         var newSong = {
-            songId: songId, title: s.title, artist: s.artist || 'Other', band: s.artist || 'Other',
-            originType: 'pack', addedBy: currentUserEmail || 'unknown', addedAt: new Date().toISOString()
+            songId: songId,
+            title: s.title,
+            artist: s.artist || 'Other',
+            band: s.artist || 'Other',
+            originType: 'pack',
+            addedBy: currentUserEmail || 'unknown',
+            addedAt: new Date().toISOString()
         };
+
+        // Add to custom_songs array
         customSongs.push(newSong);
-        allSongs.push({ songId: songId, title: s.title, artist: s.artist || 'Other', band: s.artist || 'Other', isCustom: true, addedBy: newSong.addedBy, notes: '' });
+
+        // Add to in-memory allSongs
+        allSongs.push({
+            songId: songId,
+            title: s.title,
+            artist: s.artist || 'Other',
+            band: s.artist || 'Other',
+            isCustom: true,
+            addedBy: newSong.addedBy,
+            notes: ''
+        });
         existingTitles.add(s.title.toLowerCase());
 
-        if (s.bpm && typeof GLStore !== 'undefined' && GLStore.updateSongField) GLStore.updateSongField(s.title, 'bpm', s.bpm);
-        if (s.key && typeof GLStore !== 'undefined' && GLStore.updateSongField) GLStore.updateSongField(s.title, 'key', s.key);
+        // Dual-write BPM and Key via GLStore if available
+        if (s.bpm && typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+            GLStore.updateSongField(s.title, 'bpm', s.bpm);
+        }
+        if (s.key && typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+            GLStore.updateSongField(s.title, 'key', s.key);
+        }
+
         added++;
     }
 
+    // Save custom_songs in bulk
     await saveBandDataToDrive('_band', 'custom_songs', customSongs);
+
+    // Rebuild indexes
     if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
     if (typeof updateCustomSongCount === 'function') updateCustomSongCount();
+
+    // Emit event for UI refresh
     if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('songs:imported', { packId: packId, added: added, skipped: skipped });
+
+    // Refresh UI
     if (typeof renderSongs === 'function') renderSongs();
     if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
 
+    // Show confirmation
     var confirmModal = document.getElementById('starterPackModal');
     if (confirmModal) {
         confirmModal.innerHTML = '<div style="background:var(--bg-card);border:1px solid rgba(34,197,94,0.3);border-radius:14px;padding:32px;max-width:400px;width:100%;color:var(--text);text-align:center">'
@@ -1022,6 +1073,7 @@ async function songQuickFillSave(title) {
     var key = (document.getElementById('qfKey')?.value||''). trim();
     var bpm = (document.getElementById('qfBpm')?.value||''). trim();
     if (!key && !bpm) { showToast('Enter key or BPM'); return; }
+    // Route through GLStore for canonical persistence
     if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
         if (key) await GLStore.updateSongField(title, 'key', key);
         if (bpm) await GLStore.updateSongField(title, 'bpm', parseInt(bpm));
@@ -1031,19 +1083,24 @@ async function songQuickFillSave(title) {
             if (bpm) await saveBandDataToDrive(title, 'song_bpm', { bpm: parseInt(bpm), updatedAt: new Date().toISOString() });
         } catch(e) { showToast('Saved locally'); }
     }
+    // Sync in-memory allSongs cache
     var songIdx = allSongs.findIndex(function(s){return s.title===title;});
     if (songIdx >= 0) {
         if (key) allSongs[songIdx].key = key;
         if (bpm) allSongs[songIdx].bpm = parseInt(bpm);
     }
+    // Sync topbar inputs
     if (key) { var ks = document.getElementById('songKeySelect'); if (ks) ks.value = key; }
     if (bpm) { var bi = document.getElementById('songBpmInput'); if (bi) bi.value = parseInt(bpm); }
     document.getElementById('quickFillPopup')?.remove();
-    if (!GLStore || !GLStore.updateSongField) renderSongs();
+    if (!GLStore || !GLStore.updateSongField) renderSongs(); // GLStore already triggers renderSongs
 }
 
-// Legacy renderSongs — canonical version in songs.js. Var assignment avoids hoisting shadow.
+// Legacy renderSongs — canonical version lives in js/features/songs.js.
+// Wrapped in var assignment to avoid function-declaration hoisting that would
+// shadow the songs.js version. songs.js sets window.renderSongs before app.js runs.
 var _legacyRenderSongs = function renderSongs(filter, searchTerm) {
+    // Delegate to songs.js canonical version if available
     if (window.renderSongs && window.renderSongs !== _legacyRenderSongs) {
         return window.renderSongs(filter, searchTerm);
     }
@@ -1061,6 +1118,7 @@ var _legacyRenderSongs = function renderSongs(filter, searchTerm) {
                 : bandUpper === filter.toUpperCase();
         const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesFilter || !matchesSearch) return false;
+        // When user is actively searching, bypass status/harmony/northstar filters
         var isSearching = searchTerm.length > 0;
         // Status filter at data level
         if (!isSearching && activeStatusFilter && statusCacheLoaded) {
@@ -1142,6 +1200,7 @@ window._songQuickAddToAgenda = function(title) {
     if (typeof invalidateHomeCache === 'function') invalidateHomeCache();
 };
 
+// Legacy setupSearchAndFilters — canonical version in songs.js
 var _legacySetupSearchAndFilters = function setupSearchAndFilters() {
     if (window.setupSearchAndFilters && window.setupSearchAndFilters !== _legacySetupSearchAndFilters) {
         return window.setupSearchAndFilters();
@@ -1213,10 +1272,10 @@ var _legacySetupSearchAndFilters = function setupSearchAndFilters() {
         }
     });
 
-    // Quick action bar removed (PL-11)
+    // Quick action bar removed (PL-11) — CHART and AGENDA live in detail panel
     window._songInjectQuickActions = function() {};
 
-    // Heatmap button removed (PL-11)
+    // Heatmap button removed (PL-11) — heatmap no longer renders on song rows
 }
 
 // ============================================================================
@@ -1579,6 +1638,7 @@ function resetWorkflow() {
 
 function showBandResources(songTitle) {
     // Legacy Song DNA panel removed — all DNA editing lives in the song detail panel.
+    // Keep step2 hidden. showBandResources is now a no-op.
     const step2 = document.getElementById('step2');
     if (!step2) return;
     step2.classList.add('hidden');
@@ -3617,8 +3677,8 @@ async function renderRehearsalNotesWithStorage(songTitle) {
     const storedNotes = await loadRehearsalNotes(songTitle);
     
     // Combine and sort by date (newest first)
-    const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) => 
-        new Date(b.date) - new Date(a.date)
+    const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) =>
+        (b.date || '').localeCompare(a.date || '')
     );
     
     if (allNotes.length === 0) {
@@ -6420,7 +6480,8 @@ async function updateHasHarmonies(hasHarmonies) {
         console.log('Master harmonies file updated');
     });
     
-    // Update badge on song list
+    // Harmony badge on song list — handled inline by songs.js
+    
     // Show/hide harmony members row
     const membersRow = document.getElementById('harmonyMembersRow');
     if (membersRow) membersRow.style.display = hasHarmonies ? 'flex' : 'none';
@@ -6513,12 +6574,14 @@ async function updateSongStatus(status) {
         'gig_ready': 'Gig Ready'
     };
     
+    // Save via GLStore (dual-write to v2 + legacy)
     if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
         await GLStore.updateSongField(selectedSong.title, 'status', status);
     } else {
         await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
     }
 
+    // Update cache immediately
     statusCache[selectedSong.title] = status;
     
     // Save updated master file (so next page load is instant)
@@ -6558,6 +6621,7 @@ async function filterByStatus(status) {
 // Legacy - kept for backward compat but renderSongs now handles filtering at data level
 
 async function addSectionStatusDots() {
+    // PL-8c: section dots removed from song rows — bail if no status-cell targets
     if (!document.querySelector('.song-status-cell')) return;
     document.querySelectorAll('.song-item').forEach(function(item) {
         var title = item.dataset.title || '';
@@ -6581,6 +6645,7 @@ async function addSectionStatusDots() {
 }
 
 function addStatusBadges() {
+    // PL-8c: status badges now inline in song row template — bail if no targets
     if (!document.querySelector('.song-status-cell')) return;
     if (!statusCacheLoaded) {
         console.log('⏳ Status cache not loaded yet, skipping badges');
@@ -6641,18 +6706,22 @@ async function updateSongBpm(bpm) {
     }
 
     var songTitle = selectedSong.title;
+    // Route through GLStore for canonical persistence + cache invalidation
     if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
         await GLStore.updateSongField(songTitle, 'bpm', bpmNum);
     } else {
         await saveBandDataToDrive(songTitle, 'song_bpm', { bpm: bpmNum, updatedAt: new Date().toISOString() });
     }
+    // Sync in-memory allSongs cache
     var idx = allSongs.findIndex(function(s) { return s.title === songTitle; });
     if (idx >= 0) allSongs[idx].bpm = bpmNum;
+    // Sync panel overlay BPM input if open
     var sdBpmInput = document.querySelector('.sd-bpm-input');
     if (sdBpmInput) sdBpmInput.value = bpmNum;
 }
 
 async function loadSongBpm(songTitle) {
+    // Try v2 (songId-keyed) first, fall back to legacy (title-keyed)
     var song = (typeof GLStore !== 'undefined' && GLStore.getSongByTitle) ? GLStore.getSongByTitle(songTitle) : null;
     var songId = song ? song.songId : null;
     if (songId && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
@@ -6713,13 +6782,16 @@ async function populateSongMetadata(songTitle) {
 async function updateSongKey(key) {
     if (!selectedSong) return;
     const songTitle = typeof selectedSong === 'string' ? selectedSong : selectedSong.title;
+    // Route through GLStore for canonical persistence + cache invalidation
     if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
         await GLStore.updateSongField(songTitle, 'key', key);
     } else {
         await saveBandDataToDrive(songTitle, 'key', { key, updatedAt: new Date().toISOString() });
     }
+    // Sync in-memory allSongs cache
     var idx = allSongs.findIndex(function(s) { return s.title === songTitle; });
     if (idx >= 0) allSongs[idx].key = key;
+    // Sync panel overlay key select if open
     var sdKeySelects = document.querySelectorAll('.sd-lens-panel select');
     sdKeySelects.forEach(function(sel) {
         if (sel.onchange && String(sel.onchange).indexOf('sdUpdateSongKey') >= 0) sel.value = key || '';
@@ -6728,6 +6800,7 @@ async function updateSongKey(key) {
 
 async function loadSongKey(songTitle) {
     try {
+        // Try v2 (songId-keyed) first
         var song = (typeof GLStore !== 'undefined' && GLStore.getSongByTitle) ? GLStore.getSongByTitle(songTitle) : null;
         var songId = song ? song.songId : null;
         if (songId && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
@@ -6736,9 +6809,11 @@ async function loadSongKey(songTitle) {
             var v2Key = (v2 && typeof v2 === 'object') ? (v2.key || '') : (v2 || '');
             if (v2Key) return v2Key;
         }
+        // Legacy: title-keyed Drive path
         const data = await loadBandDataFromDrive(songTitle, 'key');
         var driveKey = (data && typeof data === 'object') ? (data.key || '') : (data || '');
         if (driveKey) return driveKey;
+        // Fallback: Firebase metadata
         if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof sanitizeFirebasePath === 'function') {
             var snap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/metadata/key')).once('value');
             if (snap.val()) return snap.val();
@@ -6930,7 +7005,9 @@ let activeNorthStarFilter = false;
 
 
 async function addHarmonyBadges() {
+    // PL-8c: badge slots removed from song rows — bail if no targets exist
     if (!document.querySelector('.harmony-slot')) return;
+    // Don't run multiple times simultaneously
     if (harmonyBadgeLoading) return;
     
     // Load master harmony file if not cached yet
@@ -7044,6 +7121,7 @@ function applyNorthStarBadges() {
 }
 
 async function addNorthStarBadges() {
+    // PL-8c: badge slots removed from song rows — bail if no targets exist
     if (!document.querySelector('.northstar-slot')) return;
     if (!northStarCacheLoaded) {
         if (northStarCacheLoading) return;
@@ -10135,6 +10213,11 @@ function settingsTab(tab, btn) {
                 <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">+ Add Member</button>
             </div>
         </div>
+        <div class="app-card"><h3>🔄 Backup Players</h3>
+            <p style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Subs who can cover when core members are out.</p>
+            <div id="backupPlayersList"><div style="color:var(--text-dim);font-size:0.82em;padding:8px">Loading...</div></div>
+            <button class="btn btn-primary btn-sm" onclick="showAddBackupPlayerModal()" style="margin-top:8px">+ Add Backup Player</button>
+        </div>
         <div class="app-card"><h3>&#127760; Multi-Band</h3>
             <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong> <span style="font-size:0.8em;color:var(--text-dim)">(${currentBandSlug})</span></div>
             <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:12px">All songs, readiness, setlists, and gigs are scoped to this band. To switch bands, select a different one below or create a new one.</div>
@@ -10317,6 +10400,129 @@ async function saveMemberRole(key) {
     showToast('✅ Role updated');
     settingsTab('band');
 }
+
+// ── Backup Players CRUD ──────────────────────────────────────────────────────
+
+async function _renderBackupPlayersList() {
+    var el = document.getElementById('backupPlayersList');
+    if (!el || typeof GLStore === 'undefined') return;
+    var players = await GLStore.getBackupPlayers();
+    if (!players.length) { el.innerHTML = '<div style="font-size:0.82em;color:var(--text-dim)">No backup players added yet.</div>'; return; }
+    var roles = GLStore.BAND_ROLES || [];
+    el.innerHTML = players.map(function(p) {
+        var roleChips = (p.coverageRoles || []).map(function(cr) {
+            var role = roles.find(function(r) { return r.id === cr.roleId; });
+            var color = cr.strength === 'partial' ? '#f59e0b' : '#22c55e';
+            return '<span style="font-size:0.68em;padding:1px 6px;border-radius:4px;background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + (role ? role.label : cr.roleId) + (cr.strength === 'partial' ? ' (partial)' : '') + '</span>';
+        }).join(' ');
+        return '<div class="list-item" style="padding:8px 10px;align-items:center">'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-weight:600;font-size:0.88em;color:var(--text)">' + (p.name || 'Unnamed') + (p.active === false ? ' <span style="font-size:0.7em;color:#64748b">(inactive)</span>' : '') + '</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + (roleChips || 'No roles assigned') + '</div>'
+            + (p.phone ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:1px">📞 ' + p.phone + '</div>' : '')
+            + '</div>'
+            + '<button class="btn btn-sm btn-ghost" onclick="showEditBackupPlayerModal(\'' + p.id + '\')" title="Edit">✏️</button>'
+            + '<button class="btn btn-sm btn-ghost" onclick="_deleteBackupPlayer(\'' + p.id + '\')" title="Remove" style="color:var(--red)">✕</button>'
+            + '</div>';
+    }).join('');
+}
+
+window.showAddBackupPlayerModal = function() { _showBackupPlayerModal(null); };
+window.showEditBackupPlayerModal = async function(playerId) {
+    var players = await GLStore.getBackupPlayers();
+    var player = players.find(function(p) { return p.id === playerId; });
+    if (player) _showBackupPlayerModal(player);
+};
+
+function _showBackupPlayerModal(existing) {
+    document.getElementById('bpModal')?.remove();
+    var roles = GLStore.BAND_ROLES || [];
+    var p = existing || { name: '', phone: '', email: '', notes: '', active: true, coverageRoles: [] };
+    var coverageMap = {};
+    (p.coverageRoles || []).forEach(function(cr) { coverageMap[cr.roleId] = cr; });
+
+    var roleCheckboxes = roles.map(function(r) {
+        var cr = coverageMap[r.id];
+        var checked = cr ? ' checked' : '';
+        var strength = cr ? cr.strength : 'full';
+        return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.82em;cursor:pointer">'
+            + '<input type="checkbox" data-role="' + r.id + '"' + checked + ' style="accent-color:var(--accent)">'
+            + r.label + (r.critical ? ' <span style="font-size:0.7em;color:#f59e0b">*</span>' : '')
+            + '<select data-role-strength="' + r.id + '" style="margin-left:auto;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)">'
+            + '<option value="full"' + (strength === 'full' ? ' selected' : '') + '>Full</option>'
+            + '<option value="partial"' + (strength === 'partial' ? ' selected' : '') + '>Partial</option>'
+            + '</select></label>';
+    }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'bpModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:420px;width:100%;color:var(--text)">'
+        + '<h3 style="margin:0 0 12px">' + (existing ? 'Edit' : 'Add') + ' Backup Player</h3>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Name</label>'
+        + '<input id="bpName" value="' + (p.name || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Phone</label>'
+        + '<input id="bpPhone" value="' + (p.phone || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box" placeholder="555-123-4567">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Email</label>'
+        + '<input id="bpEmail" value="' + (p.email || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Notes</label>'
+        + '<input id="bpNotes" value="' + (p.notes || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="e.g. available weekends only">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Roles Covered <span style="font-weight:400;color:var(--text-dim)">(* = critical)</span></label>'
+        + '<div id="bpRoleChecks" style="margin-bottom:10px">' + roleCheckboxes + '</div>'
+        + '<label style="display:flex;align-items:center;gap:6px;font-size:0.82em;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="bpActive"' + (p.active !== false ? ' checked' : '') + ' style="accent-color:var(--accent)"> Active</label>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
+        + '<button onclick="document.getElementById(\'bpModal\').remove()" class="btn btn-ghost">Cancel</button>'
+        + '</div></div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+window._saveBackupPlayer = async function(existingId) {
+    var name = (document.getElementById('bpName') || {}).value || '';
+    if (!name.trim()) { alert('Name is required'); return; }
+    var roles = [];
+    var checks = document.querySelectorAll('#bpRoleChecks input[type="checkbox"]');
+    checks.forEach(function(cb) {
+        if (!cb.checked) return;
+        var roleId = cb.dataset.role;
+        var strengthEl = document.querySelector('[data-role-strength="' + roleId + '"]');
+        roles.push({ roleId: roleId, strength: strengthEl ? strengthEl.value : 'full' });
+    });
+    var player = {
+        id: existingId || null,
+        name: name.trim(),
+        phone: (document.getElementById('bpPhone') || {}).value || '',
+        email: (document.getElementById('bpEmail') || {}).value || '',
+        notes: (document.getElementById('bpNotes') || {}).value || '',
+        active: document.getElementById('bpActive') ? document.getElementById('bpActive').checked : true,
+        coverageRoles: roles,
+        availabilityMode: 'manual'
+    };
+    await GLStore.saveBackupPlayer(player);
+    document.getElementById('bpModal').remove();
+    showToast('Backup player saved');
+    _renderBackupPlayersList();
+};
+
+window._deleteBackupPlayer = async function(playerId) {
+    if (!confirm('Remove this backup player?')) return;
+    await GLStore.deleteBackupPlayer(playerId);
+    showToast('Backup player removed');
+    _renderBackupPlayersList();
+};
+
+// Load backup players list when band tab opens
+var _origSettingsTab = typeof settingsTab === 'function' ? settingsTab : null;
+setTimeout(function() {
+    if (typeof settingsTab === 'function') {
+        var _realSettingsTab = settingsTab;
+        window.settingsTab = function(tab, btn) {
+            _realSettingsTab(tab, btn);
+            if (tab === 'band') setTimeout(_renderBackupPlayersList, 100);
+        };
+    }
+}, 0);
 
 function exportAllData() {
     const data = {};
@@ -10858,12 +11064,34 @@ window._gigHistory = null;
 // loadGigHistory() → js/features/gigs.js
 
 function getSongHistoryTooltip(title) {
-    const h = window._gigHistory?.[title];
+    var h = window._gigHistory?.[title];
     if (!h || !h.length) return 'No gig history for this song yet';
-    return h.slice(0, 8).map(g => {
-        const posIcon = g.position === 'opener' ? '🟢' : g.position === 'closer' ? '🔴' : g.position === 'encore' ? '⭐' : '·';
-        return `${g.date||'?'} — ${g.venue||'?'} ${posIcon} ${g.position}`;
-    }).join('\n') + (h.length > 8 ? '\n... +' + (h.length-8) + ' more' : '');
+    // Exclude current setlist being edited (if any)
+    var editDate = null;
+    try {
+        var editIdx = window._slEditIdx;
+        if (typeof editIdx === 'number' && window._cachedSetlists && window._cachedSetlists[editIdx]) {
+            editDate = window._cachedSetlists[editIdx].date || null;
+            var editVenue = window._cachedSetlists[editIdx].venue || window._cachedSetlists[editIdx].name || null;
+        }
+    } catch(e) {}
+    var filtered = h.filter(function(g) {
+        if (editDate && editVenue && g.date === editDate && (g.venue === editVenue)) return false;
+        return true;
+    });
+    if (!filtered.length) return 'First time in a setlist';
+    // Human-readable dates
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function fmtDate(ds) {
+        if (!ds) return '?';
+        try { var d = new Date(ds + 'T12:00:00'); return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate(); } catch(e) { return ds; }
+    }
+    return 'Played ' + filtered.length + ' time' + (filtered.length > 1 ? 's' : '') + ':\n' +
+        filtered.slice(0, 8).map(function(g) {
+            var posIcon = g.position === 'opener' ? '🟢' : g.position === 'closer' ? '🔴' : g.position === 'encore' ? '⭐' : '·';
+            return fmtDate(g.date) + ' — ' + (g.venue || '?') + ' ' + posIcon + ' ' + g.position;
+        }).join('\n') + (filtered.length > 8 ? '\n... +' + (filtered.length-8) + ' more' : '');
 }
 
 // ---- TAB BAR CSS ----
@@ -11339,6 +11567,7 @@ function onPartyEnded() {
 
 // ── VERSION CHECKER — single source of truth for update detection ────────────
 // ONE system: polls version.json. If mismatch, shows ONE banner. Reload = hard reload.
+// No SW-based detection. No duplicate triggers. No session gymnastics.
 
 async function checkForAppUpdate() {
     try {
@@ -11356,6 +11585,7 @@ async function checkForAppUpdate() {
 var _updateBannerShown = false;
 
 function showUpdateBanner() {
+    // ONE guard: if banner already shown this page load, done.
     if (_updateBannerShown) return;
     if (document.getElementById('dc-update-banner')) return;
     _updateBannerShown = true;
@@ -11383,15 +11613,44 @@ function showUpdateBanner() {
     dismissBtn.addEventListener('click', function() {
         banner.remove();
     });
-
     banner.appendChild(reloadBtn);
     banner.appendChild(dismissBtn);
     document.body.appendChild(banner);
+    if (DEBUG) console.log('[Update] Banner appended. In DOM:', !!document.getElementById('dc-update-banner'));
 }
 
 setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 60 * 1000); }, 10000);
 
-
+// ── Debug panel (visible only with ?debug=true) ──────────────────────────────
+if (DEBUG) {
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            var panel = document.createElement('div');
+            panel.id = 'gl-debug-panel';
+            panel.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:12px 16px;font-size:11px;color:#94a3b8;z-index:99999;max-width:320px;font-family:monospace;line-height:1.6;box-shadow:0 4px 20px rgba(0,0,0,0.5)';
+            function _debugRefresh() {
+                var rt = window._glRuntime || {};
+                var swStatus = 'unknown';
+                try { swStatus = navigator.serviceWorker.controller ? 'active' : 'no controller'; } catch(e) { swStatus = 'unavailable'; }
+                panel.innerHTML = '<div style="font-weight:700;color:#a5b4fc;margin-bottom:6px">🔧 GrooveLinx Debug</div>'
+                    + '<div>Build: <span style="color:#22c55e">' + (rt.buildVersion || '?') + '</span></div>'
+                    + '<div>SW: ' + swStatus + ' (init: ' + rt.swInitialized + ')</div>'
+                    + '<div>Reload prompt: ' + rt.reloadPromptShown + '</div>'
+                    + '<div>Lead cache: ' + rt.leadSingerCacheLoaded + '</div>'
+                    + '<div>Setlists cached: ' + rt.setlistsCached + '</div>'
+                    + '<div>Blocked dates: ' + rt.blockedDatesCached + '</div>'
+                    + '<div>Last update check: ' + (rt.lastUpdateCheck || 'none') + '</div>'
+                    + '<div>Songs loaded: ' + (typeof allSongs !== 'undefined' ? allSongs.length : '?') + '</div>'
+                    + '<div>Status cache: ' + (typeof statusCacheLoaded !== 'undefined' ? statusCacheLoaded : '?') + '</div>'
+                    + '<div>Readiness cache: ' + (typeof readinessCacheLoaded !== 'undefined' ? readinessCacheLoaded : '?') + '</div>'
+                    + '<button onclick="document.getElementById(\'gl-debug-panel\').remove()" style="margin-top:6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px">Close</button>';
+            }
+            _debugRefresh();
+            setInterval(_debugRefresh, 5000);
+            document.body.appendChild(panel);
+        }, 3000);
+    });
+}
 
 // ── Stub page renderer (replaced by Phase 2) ─────────────────────────────────
 
@@ -12996,6 +13255,72 @@ async function preloadReadinessCache() {
     }
 }
 
+// ── Song DNA preload + seed promotion ────────────────────────────────────────
+// Single source of truth: after this runs, allSongs[].key and .bpm reflect
+// Firebase data. If Firebase is empty but seed has a value, promote seed into
+// GLStore (one-time write). Filters and intelligence only check allSongs[].
+async function _preloadSongDNA() {
+    if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
+    var _promoted = 0;
+    try {
+        var cap = Math.min(allSongs.length, 600);
+        for (var batch = 0; batch < cap; batch += 20) {
+            var promises = [];
+            for (var i = batch; i < Math.min(batch + 20, cap); i++) {
+                var s = allSongs[i];
+                if (!s || !s.title) continue;
+                // Key: load from Firebase → populate allSongs[].key
+                promises.push((function(song) {
+                    return GLStore.loadFieldMeta(song.title, 'key').then(function(data) {
+                        if (data && data.key) {
+                            song.key = data.key;
+                        } else if (song.key && !data) {
+                            // Seed has value, Firebase doesn't — promote seed into GLStore
+                            GLStore.saveSongData(song.title, 'key', { key: song.key, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
+                            _promoted++;
+                        }
+                    }).catch(function() {});
+                })(s));
+                // BPM: load from Firebase → populate allSongs[].bpm
+                promises.push((function(song) {
+                    return GLStore.loadFieldMeta(song.title, 'song_bpm').then(function(data) {
+                        if (data && data.bpm) {
+                            song.bpm = data.bpm;
+                        } else if (song.bpm && !data) {
+                            // Seed has value, Firebase doesn't — promote seed into GLStore
+                            GLStore.saveSongData(song.title, 'song_bpm', { bpm: song.bpm, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
+                            _promoted++;
+                        }
+                    }).catch(function() {});
+                })(s));
+            }
+            if (promises.length) await Promise.all(promises);
+        }
+        if (_promoted > 0) console.log('[DNA preload] Promoted ' + _promoted + ' seed values into GLStore');
+    } catch(e) {}
+}
+
+// ── Lead singer preload (for triage accuracy) ────────────────────────────────
+async function _preloadLeadSingerCache() {
+    if (_rt.leadSingerCacheLoaded) return;
+    _rt.leadSingerCacheLoaded = true;
+    if (!allSongs || !allSongs.length) return;
+    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
+    try {
+        var cap = Math.min(allSongs.length, 200);
+        for (var batch = 0; batch < cap; batch += 10) {
+            var promises = [];
+            for (var i = batch; i < Math.min(batch + 10, cap); i++) {
+                var s = allSongs[i];
+                if (!s || !s.title) continue;
+                promises.push(GLStore.loadFieldMeta(s.title, 'lead_singer').catch(function() {}));
+            }
+            if (promises.length) await Promise.all(promises);
+        }
+    } catch(e) {}
+}
+
 // ── Chain link SVG (9x12px) ───────────────────────────────────────────────────
 function chainLinkSVG(color, tooltipTitle) {
     return '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="12" viewBox="0 0 9 12" style="display:block" title="' + tooltipTitle + '">'
@@ -13007,6 +13332,7 @@ function chainLinkSVG(color, tooltipTitle) {
 
 // ── Inject chain links into every song row ────────────────────────────────────
 function addReadinessChains() {
+    // PL-8c: chain strips removed from song rows — bail if no targets
     if (!document.querySelector('.song-chain-strip')) return;
     document.querySelectorAll('.song-chain-strip').forEach(function(el) {
         var songTitle = el.dataset.song || '';
@@ -13303,8 +13629,8 @@ function toggleHeatmapMode() {
 }
 
 function renderHeatmapOverlay() {
+    // PL-8c: heatmap removed from song rows — clean up any residual and bail
     document.querySelectorAll('.song-heatmap-bar,.song-heatmap-stripe').forEach(function(el) { el.remove(); });
-    // PL-8c: bail after cleanup — heatmap visuals no longer render in rows
     document.querySelectorAll('.song-name[data-heatmap]').forEach(function(el) { el.style.removeProperty('--hm-color'); el.style.removeProperty('color'); el.style.removeProperty('font-weight'); el.classList.remove('song-name--heatmap'); el.removeAttribute('data-heatmap'); });
     if (!_heatmapMode) return;
     document.querySelectorAll('.song-item').forEach(function(item) {
