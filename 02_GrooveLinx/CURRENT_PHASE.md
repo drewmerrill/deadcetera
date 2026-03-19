@@ -1,10 +1,10 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-16_
+_Updated: 2026-03-19_
 
-## Active Phase: Operational + Intelligence Platform Build
+## Active Phase: Rehearsal Workspace + Band Intelligence Platform
 
-Build: **20260317-200258**
+Build: **20260319-163417**
 Deploy workflow: auto-discover runtime assets, dev/prod synced
 
 ---
@@ -78,7 +78,19 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | PL-11b | Visible column headers + docs update | ✅ DONE |
 | PL-11c | Fix headers, remove Heatmap, hide Harmonies/NorthStar | ✅ DONE |
 | PL-11d | Remove Agenda+/Chart row actions, redesign Jam Structure | ✅ DONE |
-| **PL-11e** | **Redesign inline edit + Chart/Jam in edit extras** | ✅ **CURRENT** |
+| PL-11e | Redesign inline edit + Chart/Jam in edit extras | ✅ DONE |
+| PL-Pitch | Song Pitch QA — 4 passes, progressive disclosure, severity tiers | ✅ DONE |
+| PL-Struct | Structured song sections — 22-type schema, auto-derivation, editor | ✅ DONE |
+| PL-RW | Rehearsal Workspace — chart bridge, section timeline, scroll sync | ✅ DONE |
+| PL-Sync | Band Sync V1 — leader-driven song sync, heartbeat, join code | ✅ DONE |
+| PL-Plan | Rehearsal Planner V1 — gig-driven, energy blocks, block guidance | ✅ DONE |
+| PL-Avail | Gig Availability — role-aware RSVP, backup coverage | ✅ DONE |
+| PL-Backup | Backup Players Phase 1 — CRUD, coverage evaluator, gig integration | ✅ DONE |
+| PL-Nav | Left rail redesign — intent groups, deduplicated icons, tooltips | ✅ DONE |
+| PL-Sets | Setlists redesign — grouped, NEXT UP, human-readable dates | ✅ DONE |
+| PL-TZ | Timezone Phase 1 — shared date utils, 6 critical bug fixes | ✅ DONE |
+| PL-UX | Desktop 3-pane scroll, chip ordering, Keep Warm, lifecycle copy | ✅ DONE |
+| **Tuner** | **Premium tuner redesign** | 📋 **NEXT** |
 | **Infra** | **Stripe + Firebase Auth + Legal** | 📋 PLANNED |
 
 ### Post-Launch Phases
@@ -90,7 +102,12 @@ Goal: Establish canonical identity and source-of-truth patterns for venues, song
 | Rec | Recording asset model (unified recordings array) | 📋 PLANNED |
 | PL | Smart playlists (views over recordings + intelligence) | 📋 PLANNED |
 | TL | Band Timeline (chronological progress + shareable milestones) | 📋 PLANNED |
-| Nav | Workflow-based navigation restructure | 📋 PLANNED |
+| Nav | Workflow-based navigation restructure | ✅ DONE (intent groups shipped) |
+| Sync2 | Band Sync Phase 2 — section sync, QR join | 📋 PLANNED |
+| Plan2 | Rehearsal Planner Phase 2 — sandbox, AI suggestions | 📋 PLANNED |
+| Back2 | Backup Players Phase 2 — per-gig availability, nudge | 📋 PLANNED |
+| TZ2 | Timezone Phase 2 — IANA per event, venue inference | 📋 PLANNED |
+| Tuner | Premium tuner redesign — presets, calibration, reference tones | 📋 PLANNED |
 | 2B.4 | best_shot_takes dual-write | 📋 PLANNED |
 | 2C | Readiness + section_ratings migration | 📋 PLANNED |
 | UAT | Live band testing | 🟡 IN PROGRESS |

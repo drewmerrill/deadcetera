@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-16_
+_Last updated: 2026-03-19_
 
 ## Read This First
 
@@ -152,14 +152,108 @@ Auto-include: chord charts, key, BPM, North Star recordings. A new band should s
 - Startup commands: `gl`, `gldev`
 - Environment: tmux + iTerm2 + Rectangle
 
-## Current State (20260317)
+## Current State (20260319)
 
-**Build:** 20260317-200258
-**Active work:** Song Pitch system QA + Songs Command Center refactor
+**Build:** 20260319-163417
+**Active work:** Rehearsal Workspace + Backup Players + Availability Intelligence
 **Milestones 1-10:** Complete
 **PL-3 through PL-13.9:** Complete (see CURRENT_PHASE.md for full list)
 
-### What happened this session (20260317):
+### What happened this session (20260317-20260319):
+
+**Song Pitch QA (4 passes):**
+- Setlist replacement warnings (submit + approval + card)
+- Mobile proof (44px touch targets, flex-wrap, scrollable modal)
+- Blank replacement policy with "Active set expands" messaging
+- Controlled `<select>` picker for replacement songs
+- Edge case guards: library hint, vote feedback, recently decided section
+- Progressive disclosure: replacement picker reveals after title entered
+- Setlist warning severity tiers (urgent ≤14d vs future)
+- Vote clarity: progress bar + "X more yes to pass" + "Your vote" label
+- Active expansion soft guard (≥25 songs)
+- Rich approval feedback card (auto-dismissing overlay)
+
+**Rehearsal Workspace (Phase 1+2):**
+- Live rehearsal → chart bridge: "Open Chart" CTA, clickable queue rows
+- Song structure data model extended: id, type (22 types), label, instrument, chartAnchor, anchorIndex, starter, soloOrder, feel, dynamics, stopCue, endCue, introType, endingType
+- Auto-derivation from chart [Header] patterns
+- Structured section editor with expandable detail per section
+- Section timeline in rehearsal mode (horizontal scrollable pills)
+- Active section tracking with chart scroll sync
+- Context-aware band notes panel (shows current section only)
+- Section nav: prev/next buttons + swipe + jam stickiness (8-line threshold)
+
+**Song Pitch → Rehearsal Integration:**
+- Intelligence cache invalidation on songFieldUpdated (status changes)
+- Prospect statusModifier: 0 → 3 (newly-added songs surface in recommendations)
+- First run card: "First run-through recommended" → "Lock in as Learning"
+
+**Bulk Activate from Library:**
+- Multi-select mode in Library view
+- Lifecycle picker (Learning/Prospect/Rotation)
+- "Add to Active Set" with "Open first song" toast
+
+**Chart Queue Mode:**
+- Bulk chart entry for songs missing charts
+- Auto-derive structure on chart save
+- "No Structure" triage filter
+
+**Rehearsal Mode Friction Fixes:**
+- Parallel Firebase reads (rmLoadMeta + rmLoadChart)
+- Lazy tab loading (non-chart tabs load on first switch)
+- 300ms navigation throttle
+- In-memory cache (_rmCache) for revisited songs
+- Stale result guard (snapshot rmIndex before async load)
+
+**Band Sync Mode V1:**
+- Leader-driven song sync via Firebase real-time listener (first .on() in codebase)
+- Join code flow (6-char alphanumeric)
+- Leader heartbeat (12s interval, 40s stale threshold)
+- Follower states: following, paused, leader disconnected, session ended
+- "NOW PLAYING" emphasis on follower bar
+- Song-change transition flash (1.5s overlay)
+- Leader join notification toast
+
+**Rehearsal Planner V1:**
+- Gig-driven 4-step flow: pick gig → select songs → set time → build plan
+- Energy blocks: Warm-Up, Deep Work (max 2), Flow (setlist order), Close
+- Block guidance in rehearsal mode ("Start playing immediately — don't overtalk")
+- Integrated with openRehearsalModeWithQueue()
+
+**Gig Availability / RSVP:**
+- Per-member status (yes/maybe/no/awaiting)
+- Role-aware gap detection using bandMembers[key].role
+- Header chip priority: critical gap > under-covered > covered
+- Collapsible member list (expanded upcoming, collapsed past)
+- Backup Players Phase 1: CRUD UI, coverage evaluator, gig integration
+
+**UX / Layout:**
+- Left rail reorganized: Solo/Band/Gigs/Tools/Admin intent groups
+- Home separated as top-level nav item
+- Nav icons deduplicated: 🎸 Rehearsal only, 💬 Band Room, 🔱 Tuner
+- Action-oriented tooltips for all 22 nav items
+- Desktop 3-pane independent scroll (height: calc(100vh-52px))
+- Song row chip ordering: status first, condition second
+- "Keep Warm" condition chip (avg 3.0-3.8)
+- Setlists page redesigned: Upcoming/Recent/Archive grouping, NEXT UP emphasis
+- Human-readable dates (Fri, Jun 5, 2026) + countdown labels
+
+**Infrastructure:**
+- Service worker: pre-cache install, safe navigate fallback, skip on localhost
+- Seed data → GLStore promotion (eliminates dual source of truth)
+- Triage filter single-source (allSongs[] only after preload)
+- Timezone Phase 1: centralized date utils (glParseDate, glToday, glDaysAway, glIsUpcoming, glFormatDate, glCountdownLabel) + 6 critical bug fixes
+- glToday() guardrail: local date, not UTC
+- Intelligence scoping: all 3 engines now filter to Active songs only
+
+**Bug Fixes:**
+- Triage false positives (missing key/BPM/lead) — await preloads before render
+- Chart cross-contamination on rapid navigation — stale result guard
+- UG search: full band names, no "chords" suffix
+- Home right panel default → band snapshot (not "After Midnight")
+- Availability range toggle scroll-to-top → matrix-only re-render
+
+### What happened prior session (20260317):
 
 **Songs Screen Finalization (PL-8 through PL-11e):**
 - 6-column soft grid: Song, Readiness, Status, Context, Band, Action
@@ -370,14 +464,15 @@ Playlists are views over recording assets. Auto-generated playlists (Gig Prep, L
 
 ## Top Open Items (Priority Order)
 
-1. **Onboarding Wizard** (PL-2) — first-run: band name → pick catalog → add members → set rehearsal
-3. **Starter Pack Auto-Offer** (PL-4) — genre selection → auto-load charts + key + BPM + North Star
-4. **Firebase Auth migration** (Infra) — Google + Apple + email login, replaces GIS token client
-5. **Stripe payments** (Infra) — per-band subscriptions, free vs pro gating
-6. **Practice Mode chart card** — restore clickable chart preview (researched, not built)
-7. **Invite join-band flow** — token validation + user attachment (requires Firebase Auth)
-8. **Playlist linkedSetlistId** — stores name not ID, needs cleanup
-9. **best_shot_takes dual-write** — 5 write paths in bestshot.js not yet v2-migrated
+1. **Tuner Redesign** — premium UI, reference tones, presets, calibration, mic states (designed, not built)
+2. **Rehearsal Planner Phase 2** — sandbox block, gig-driven energy model refinements
+3. **Backup Players Phase 2** — per-gig backup availability, text/nudge integration
+4. **Band Sync Phase 2** — section sync, tempo/count-in sync, QR join
+5. **Onboarding Wizard** (PL-2) — first-run flow
+6. **Firebase Auth migration** (Infra) — Google + Apple + email login
+7. **Stripe payments** (Infra) — per-band subscriptions
+8. **Timezone Phase 2** — per-event IANA timezone, venue inference, "Your Time" display
+9. **best_shot_takes dual-write** — 5 write paths not yet v2-migrated
 
 ## Primary Docs To Review Next
 
@@ -387,7 +482,7 @@ Playlists are views over recording assets. Auto-generated playlists (Gig Prep, L
 
 ## RESTART PROMPT
 
-Continue GrooveLinx development. Milestones 1-10 deployed. Pre-launch features in progress.
+Continue GrooveLinx development. Milestones 1-10 deployed. Rehearsal Workspace, Band Sync, Backup Players, and Rehearsal Planner shipped.
 
 Please read these files first:
 1. `CLAUDE.md`
@@ -395,8 +490,8 @@ Please read these files first:
 3. `02_GrooveLinx/CURRENT_PHASE.md`
 4. `docs/song_record_schema.md`
 
-Current build: 20260316-221416. Dev and production are synced.
+Current build: 20260319-163417. Dev and production are synced.
 
-This session completed: venue canonicalization, BPM/Key unification, songId foundation with dual-path migration (10 field types), availability matrix, setlist lock, Band Room, song prospect voting, progressive onboarding card, invite bandmates flow.
+This session completed: Song Pitch QA (4 passes), Rehearsal Workspace (structured sections + timeline + scroll sync), Band Sync V1 (leader-driven song sync), Rehearsal Planner V1 (gig-driven energy blocks), Backup Players Phase 1 (CRUD + coverage evaluator), Gig Availability (role-aware), left rail redesign (intent groups + deduplicated icons), setlists redesign (grouped + NEXT UP), timezone Phase 1 (6 bug fixes + shared utils), desktop 3-pane scroll, lifecycle microcopy.
 
-Next priority: Onboarding Wizard (PL-2) or Recurring Events (PL-3). Ask Drew.
+Next priority: Tuner redesign, Rehearsal Planner Phase 2, or Backup Players Phase 2. Ask Drew.

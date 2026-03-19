@@ -1,6 +1,23 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-17 — Build 20260317-200258_
+_Last updated: 2026-03-19 — Build 20260319-163417_
+
+---
+
+## Bugs Fixed (20260317-20260319 Session)
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Triage "Missing Key/BPM/Lead" false positives | Preloads fire-and-forget — render before data arrives | Await Promise.all batches, single re-render after all complete | 20260318-001030 |
+| Seed data vs GLStore dual source of truth | UI shows seed key/BPM but filters check GLStore (empty) | Promote seed values into GLStore on first load | 20260318-001415 |
+| Chart cross-contamination on rapid navigation | rmLoadChart async result rendered for wrong song | Snapshot rmIndex before await, discard stale results | 20260318-002201 |
+| UG search returns wrong song ("Help on the Way" → "Friend of the Devil") | Band abbreviations (GD, WSP) used instead of full names; "chords" suffix confused UG | Full band names via _rmFullBandName(); removed "chords" suffix | 20260318-003517 |
+| Practice Priority showing shelved/library songs | generatePracticeRecommendations + computePracticeAttention had no Active filter | Added Active scope filter to both functions | 20260318-142559 |
+| Home right panel defaults to "After Midnight" | renderSongs() auto-selects filtered[0] at boot regardless of active page | Guard auto-select with GLStore.getActivePage() === 'songs' | 20260318-193201 |
+| Availability range toggle (7/14/30 days) scrolls to page top | calMatrixRange called renderCalendarInner (full page re-render) | Re-render only availability matrix with cached blocked ranges | 20260319-163417 |
+| glToday() returns wrong date at 10 PM Eastern | Used toISOString().split('T')[0] which returns UTC date | Changed to local date components (getFullYear/getMonth/getDate) | 20260319-145444 |
+| 6 timezone date-shift bugs across gigs/calendar/rehearsal/pitch/dashboard | new Date('YYYY-MM-DD') without time creates midnight UTC, shifts in US timezones | Centralized date utils with noon anchor; all comparisons use glParseDate/glIsUpcoming | 20260319-121227 |
+| SW cache.put throws on 503 responses during deploy | GitHub Pages transient 503 during deploy; response clone fails | Wrap cache.put in try/catch + .catch() | 20260318-141336 |
 
 ---
 
