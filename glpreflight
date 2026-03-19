@@ -1,0 +1,141 @@
+#!/bin/bash
+# glpreflight — Safety checks before deploy
+# Usage: ./glpreflight [--no-prompt]
+# Exit 0 = safe to proceed, Exit 1 = unsafe
+# Called automatically by glship, can also be run standalone
+# --no-prompt: skip interactive confirmation on warnings (for scripted use)
+
+set -e
+NO_PROMPT=false
+if [ "$1" = "--no-prompt" ]; then NO_PROMPT=true; fi
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+GL_DROP="${GL_DROP:-$HOME/ClaudeDrops}"
+ERRORS=0
+WARNINGS=0
+
+echo ""
+echo "╔══════════════════════════════════════════════════╗"
+echo "║  glpreflight — Deploy Safety Check              ║"
+echo "╚══════════════════════════════════════════════════╝"
+echo ""
+
+# 1. Repo exists and is git-controlled
+if [ ! -d "$REPO_ROOT/.git" ]; then
+    echo "  ❌ FAIL: Not a git repository: $REPO_ROOT"
+    exit 1
+fi
+echo "  ✅ Git repo: $REPO_ROOT"
+
+# 2. Current branch
+BRANCH=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null)
+if [ "$BRANCH" != "main" ]; then
+    echo "  ⚠️  WARN: On branch '$BRANCH' (expected 'main')"
+    WARNINGS=$((WARNINGS + 1))
+else
+    echo "  ✅ Branch: main"
+fi
+
+# 3. Working tree status
+DIRTY=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | head -5)
+if [ -n "$DIRTY" ]; then
+    DIRTY_COUNT=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    echo "  ⚠️  WARN: Working tree has $DIRTY_COUNT uncommitted change(s)"
+    echo "$DIRTY" | head -3 | sed 's/^/         /'
+    if [ "$DIRTY_COUNT" -gt 3 ]; then echo "         ... and more"; fi
+    WARNINGS=$((WARNINGS + 1))
+else
+    echo "  ✅ Working tree: clean"
+fi
+
+# 4. Fetch remote to check ahead/behind
+git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
+AHEAD=$(git -C "$REPO_ROOT" rev-list origin/main..HEAD 2>/dev/null | wc -l | tr -d ' ')
+BEHIND=$(git -C "$REPO_ROOT" rev-list HEAD..origin/main 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "$BEHIND" -gt 0 ] && [ "$AHEAD" -gt 0 ]; then
+    echo "  ❌ FAIL: Branch has DIVERGED ($AHEAD ahead, $BEHIND behind origin/main)"
+    echo "         Claude may have pushed. Run: git pull --rebase origin main"
+    ERRORS=$((ERRORS + 1))
+elif [ "$BEHIND" -gt 0 ]; then
+    echo "  ❌ FAIL: Branch is $BEHIND commit(s) BEHIND origin/main"
+    echo "         Claude likely pushed already. Run: git pull origin main"
+    ERRORS=$((ERRORS + 1))
+elif [ "$AHEAD" -gt 0 ]; then
+    echo "  ⚠️  WARN: Branch is $AHEAD commit(s) ahead of origin/main (not yet pushed)"
+    WARNINGS=$((WARNINGS + 1))
+else
+    echo "  ✅ Remote sync: up to date with origin/main"
+fi
+
+# 5. Check for stashes
+STASH_COUNT=$(git -C "$REPO_ROOT" stash list 2>/dev/null | wc -l | tr -d ' ')
+if [ "$STASH_COUNT" -gt 0 ]; then
+    echo "  ⚠️  WARN: $STASH_COUNT stash(es) exist — may contain unsaved work"
+    WARNINGS=$((WARNINGS + 1))
+else
+    echo "  ✅ Stash: empty"
+fi
+
+# 6. Recent push check — was a build pushed in the last 5 minutes?
+LAST_BUILD=$(grep '"version"' "$REPO_ROOT/version.json" 2>/dev/null | sed 's/.*"version":"//' | sed 's/".*//')
+if [ -n "$LAST_BUILD" ]; then
+    # Extract timestamp from build string (YYYYMMDD-HHMMSS)
+    BUILD_DATE=$(echo "$LAST_BUILD" | cut -d'-' -f1)
+    BUILD_TIME=$(echo "$LAST_BUILD" | cut -d'-' -f2)
+    if [ ${#BUILD_TIME} -eq 6 ]; then
+        BUILD_EPOCH=$(date -j -f "%Y%m%d%H%M%S" "${BUILD_DATE}${BUILD_TIME}" "+%s" 2>/dev/null || echo "0")
+        NOW_EPOCH=$(date "+%s")
+        AGE=$(( NOW_EPOCH - BUILD_EPOCH ))
+        if [ "$AGE" -lt 300 ] && [ "$AGE" -ge 0 ]; then
+            echo "  ⚠️  WARN: Last build was ${AGE}s ago ($LAST_BUILD) — may be a recent deploy"
+            WARNINGS=$((WARNINGS + 1))
+        else
+            echo "  ✅ Last build: $LAST_BUILD"
+        fi
+    else
+        echo "  ✅ Last build: $LAST_BUILD"
+    fi
+fi
+
+# 7. ClaudeDrops check
+if [ -d "$GL_DROP" ]; then
+    DROP_COUNT=$(find "$GL_DROP" -maxdepth 1 -type f \( -name "*.js" -o -name "*.css" -o -name "*.html" -o -name "*.json" -o -name "*.py" -o -name "*.md" \) 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$DROP_COUNT" -gt 0 ]; then
+        echo "  📦 ClaudeDrops: $DROP_COUNT file(s) waiting to install"
+    else
+        echo "  ✅ ClaudeDrops: empty"
+    fi
+else
+    echo "  ✅ ClaudeDrops: directory not found (nothing to install)"
+fi
+
+# Summary
+echo ""
+if [ "$ERRORS" -gt 0 ]; then
+    echo "  🛑 BLOCKED — $ERRORS error(s) must be resolved before deploy"
+    echo ""
+    echo "  Recommended actions:"
+    if [ "$BEHIND" -gt 0 ]; then
+        echo "    git pull --rebase origin main"
+    fi
+    echo ""
+    exit 1
+elif [ "$WARNINGS" -gt 0 ]; then
+    echo "  ⚠️  $WARNINGS warning(s) — review before proceeding"
+    echo ""
+    if [ "$NO_PROMPT" = true ]; then
+        echo "  (--no-prompt: continuing despite warnings)"
+        echo ""
+    else
+        read -p "  Continue anyway? (y/N) " REPLY
+        if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
+            echo "  Aborted."
+            exit 1
+        fi
+        echo ""
+    fi
+else
+    echo "  ✅ All clear — safe to deploy"
+    echo ""
+fi
