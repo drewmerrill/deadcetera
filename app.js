@@ -4,9 +4,9 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260319-230459', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
+console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
 var _loadedVersion = BUILD_VERSION;
 var DEBUG = location.search.includes('debug=true');
 
