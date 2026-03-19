@@ -182,8 +182,9 @@ function renderCalendarInner() {
         <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading…</div></div>
     </div>
     <div class="app-card"><h3>📊 Availability Matrix</h3>
-        <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">See when the band is free to rehearse. Click a day to schedule.</div>
+        <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">See when the band is free to rehearse. Click a column to see conflicts.</div>
         <div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading…</div></div>
+        <div id="calConflictResolver" style="display:none"></div>
     </div>
     <div class="app-card"><h3>🚫 Conflicts &amp; Blocked Dates</h3>
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
@@ -464,7 +465,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.08)' : '';
         html += '<th style="text-align:center;padding:4px 2px;color:' + (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') +
             ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg +
-            ';cursor:pointer" onclick="calDayClick(' + (glParseDate(day.date) || new Date()).getFullYear() + ',' + (glParseDate(day.date) || new Date()).getMonth() + ',' + (glParseDate(day.date) || new Date()).getDate() + ')">' +
+            ';cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')">' +
             day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span></th>';
     });
     html += '</tr>';
@@ -636,6 +637,140 @@ window._calEditScheduleBlock = async function(blockId) {
     }, 50);
     // Swap save button to update mode
     window._calEditingBlockId = blockId;
+};
+
+// ── Conflict Resolver Panel ──────────────────────────────────────────────────
+
+window.calShowDateConflicts = function(dateStr) {
+    var el = document.getElementById('calConflictResolver');
+    if (!el) return;
+    // Toggle off if same date clicked
+    if (el.style.display !== 'none' && el.dataset.date === dateStr) {
+        el.style.display = 'none';
+        return;
+    }
+    el.dataset.date = dateStr;
+
+    var dateDisplay = (typeof glFormatDate === 'function') ? glFormatDate(dateStr, false) : dateStr;
+    var dayLabel = (typeof glCountdownLabel === 'function') ? glCountdownLabel(dateStr) : '';
+
+    // Get members
+    var members = [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    if (typeof BAND_MEMBERS_ORDERED !== 'undefined') {
+        BAND_MEMBERS_ORDERED.forEach(function(ref) {
+            var key = (typeof ref === 'object') ? ref.key : ref;
+            members.push(bm[key] ? bm[key].name : key);
+        });
+    } else {
+        Object.entries(bm).forEach(function(e) { members.push(e[1].name || e[0]); });
+    }
+
+    // Get strength evaluation
+    var strength = null;
+    if (typeof GLStore !== 'undefined' && GLStore.computeDateStrength && _calCachedBlockedRanges.length >= 0) {
+        var blocks = _calCachedBlockedRanges.map(function(br) {
+            return br._block || { ownerName: br.person, ownerKey: br.person, startDate: br.startDate, endDate: br.endDate, status: br.status || 'unavailable' };
+        });
+        strength = GLStore.computeDateStrength(blocks, members, dateStr);
+    }
+
+    var html = '<div style="margin-top:10px;padding:14px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04)">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        + '<div>'
+        + '<div style="font-size:0.88em;font-weight:700;color:var(--text)">' + dateDisplay + '</div>'
+        + (dayLabel ? '<div style="font-size:0.72em;color:var(--text-dim)">' + dayLabel + '</div>' : '')
+        + '</div>'
+        + '<button onclick="document.getElementById(\'calConflictResolver\').style.display=\'none\'" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1.1em;padding:4px">✕</button>'
+        + '</div>';
+
+    // Strength badge
+    if (strength) {
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+            + '<span style="font-size:0.82em;font-weight:800;color:' + strength.color + '">' + strength.label + '</span>'
+            + '<span style="font-size:0.68em;color:var(--text-dim)">' + strength.available + ' available · ' + strength.softConflictCount + ' soft · ' + strength.hardConflictCount + ' hard</span>'
+            + '</div>';
+    }
+
+    // Per-member breakdown
+    if (strength && strength.memberStatuses) {
+        html += '<div style="margin-bottom:10px">';
+        var statusIcons = { available: '✅', hard_conflict: '❌', soft_conflict: '❓' };
+        var statusColors = { available: '#22c55e', hard_conflict: '#ef4444', soft_conflict: '#f59e0b' };
+        var statusLabels = { available: 'Available', hard_conflict: 'Unavailable', soft_conflict: 'Tentative' };
+        var conflictTypeLabels = { unavailable: 'Unavailable', booked_elsewhere: 'Booked elsewhere', vacation: 'Vacation', travel: 'Travel', tentative: 'Tentative', hold: 'Hold', personal_block: 'Personal' };
+
+        members.forEach(function(member) {
+            var ms = strength.memberStatuses[member];
+            if (!ms) return;
+            var icon = statusIcons[ms.status] || '?';
+            var color = statusColors[ms.status] || '#64748b';
+            var label = statusLabels[ms.status] || ms.status;
+            var detail = '';
+            if (ms.blocks && ms.blocks.length > 0) {
+                var b = ms.blocks[0];
+                detail = ' — ' + (conflictTypeLabels[b.status] || b.status);
+                if (b.summary) detail += ': ' + b.summary;
+            }
+            // Role info
+            var roleStr = '';
+            var memberKey = null;
+            if (typeof BAND_MEMBERS_ORDERED !== 'undefined') {
+                BAND_MEMBERS_ORDERED.forEach(function(ref) {
+                    var k = (typeof ref === 'object') ? ref.key : ref;
+                    if (bm[k] && bm[k].name === member) { memberKey = k; roleStr = bm[k].role || ''; }
+                });
+            }
+            html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.82em;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<span style="color:' + color + '">' + icon + '</span>'
+                + '<span style="font-weight:600;color:var(--text)">' + member.split(' ')[0] + '</span>'
+                + (roleStr ? '<span style="font-size:0.78em;color:var(--text-muted)">' + roleStr + '</span>' : '')
+                + '<span style="margin-left:auto;font-size:0.78em;color:' + color + '">' + label + detail + '</span>'
+                + '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Reasons summary
+    if (strength && strength.reasons && strength.reasons.length > 0 && strength.label !== 'Strong') {
+        html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:10px;padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:4px">';
+        strength.reasons.forEach(function(r) { html += '<div>· ' + r + '</div>'; });
+        html += '</div>';
+    }
+
+    // Suggestions
+    if (strength) {
+        if (strength.label === 'Strong') {
+            html += '<div style="font-size:0.78em;color:#22c55e;font-weight:600;margin-bottom:8px">Great day for rehearsal — everyone is free.</div>';
+        } else if (strength.label === 'Workable') {
+            html += '<div style="font-size:0.78em;color:#84cc16;margin-bottom:8px">Workable — soft conflicts may clear. Worth scheduling.</div>';
+        } else if (strength.label === 'Risky') {
+            html += '<div style="font-size:0.78em;color:#ef4444;margin-bottom:8px">Risky — multiple conflicts. Consider an alternative date.</div>';
+        } else {
+            html += '<div style="font-size:0.78em;color:#64748b;margin-bottom:8px">Not viable — too many conflicts for a productive rehearsal.</div>';
+        }
+    }
+
+    // Find better days (show top 3 Strong or Workable within the matrix range)
+    if (strength && strength.label !== 'Strong') {
+        var betterDays = [];
+        var _matrixEl = document.getElementById('calAvailabilityMatrix');
+        // Scan from cached dayAvail if available — simple: suggest from matrix data
+        html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:8px">Check the matrix above for Strong (✔) or Workable (~) days.</div>';
+    }
+
+    // Actions
+    var _pd = glParseDate(dateStr);
+    var _clickArgs = _pd ? _pd.getFullYear() + ',' + _pd.getMonth() + ',' + _pd.getDate() : '';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + '<button onclick="calDayClick(' + _clickArgs + ')" style="font-size:0.78em;padding:6px 14px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-weight:600">+ Schedule Event</button>'
+        + '<button onclick="document.getElementById(\'calConflictResolver\').style.display=\'none\'" style="font-size:0.78em;padding:6px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Close</button>'
+        + '</div>';
+
+    html += '</div>';
+    el.innerHTML = html;
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 
 function calDayClick(y, m, d) {
