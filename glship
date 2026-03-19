@@ -1,0 +1,113 @@
+#!/bin/bash
+# glship — Safe deploy pipeline for GrooveLinx
+# Usage: ./glship "deploy message"
+#
+# Pipeline:
+#   1. glpreflight (safety checks)
+#   2. ClaudeDrops install (if files exist)
+#   3. push.py (version bump + API push)
+#   4. Summary + smoke test reminder
+#
+# Ownership:
+#   - Version bump: push.py (stamps version.json, meta tags, SW, JS files)
+#   - Commit: push.py (single API commit via GitHub Data API, force:true)
+#   - Push: push.py (updates branch ref directly)
+#   - Local git: NOT used for deploy — local repo may diverge, glpreflight catches this
+
+set -e
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+GL_DROP="${GL_DROP:-$HOME/ClaudeDrops}"
+
+# ── Require deploy message ────────────────────────────────────────────────────
+if [ $# -eq 0 ]; then
+    echo 'Usage: ./glship "deploy message"'
+    echo ''
+    echo 'Pipeline: preflight → install → deploy → verify'
+    exit 1
+fi
+
+MSG="$*"
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  🚀 glship — GrooveLinx Deploy Pipeline"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Message: $MSG"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# ── Step 1: Pre-flight safety checks ──────────────────────────────────────────
+echo ""
+echo "┌─ STEP 1: Pre-flight checks ─────────────────────┐"
+if [ -x "$REPO_ROOT/glpreflight" ]; then
+    "$REPO_ROOT/glpreflight"
+    PREFLIGHT_EXIT=$?
+    if [ $PREFLIGHT_EXIT -ne 0 ]; then
+        echo ""
+        echo "  🛑 Deploy blocked by pre-flight. Fix issues above first."
+        exit 1
+    fi
+else
+    echo "  ⚠️  glpreflight not found — skipping safety checks"
+    echo ""
+fi
+
+# ── Step 2: ClaudeDrops install ───────────────────────────────────────────────
+echo "┌─ STEP 2: ClaudeDrops install ───────────────────┐"
+echo ""
+if [ -d "$GL_DROP" ]; then
+    DROP_FILES=$(find "$GL_DROP" -maxdepth 1 -type f \( -name "*.js" -o -name "*.css" -o -name "*.html" -o -name "*.json" -o -name "*.py" -o -name "*.md" \) 2>/dev/null)
+    if [ -n "$DROP_FILES" ]; then
+        DROP_COUNT=$(echo "$DROP_FILES" | wc -l | tr -d ' ')
+        echo "  📦 Found $DROP_COUNT file(s) in ClaudeDrops"
+        # Run installer if available
+        if [ -x "$HOME/install_claude_files.sh" ]; then
+            "$HOME/install_claude_files.sh"
+        else
+            echo "  ⚠️  No installer found ($HOME/install_claude_files.sh)"
+            echo "     Files in ClaudeDrops will NOT be installed automatically."
+        fi
+    else
+        echo "  ✅ ClaudeDrops: empty — nothing to install"
+    fi
+else
+    echo "  ✅ ClaudeDrops: not found — nothing to install"
+fi
+echo ""
+
+# ── Step 3: Deploy via push.py ────────────────────────────────────────────────
+echo "┌─ STEP 3: Deploy (push.py) ──────────────────────┐"
+echo ""
+echo "  push.py owns: version bump + file upload + commit + branch update"
+echo ""
+(
+    cd "$REPO_ROOT" || exit 1
+    python3 push.py "$MSG"
+)
+DEPLOY_EXIT=$?
+if [ $DEPLOY_EXIT -ne 0 ]; then
+    echo ""
+    echo "  ❌ Deploy failed — check push.py output above"
+    exit 1
+fi
+
+# ── Step 4: Summary ───────────────────────────────────────────────────────────
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ✅ Deploy complete"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "  ⚠️  Note: push.py force-pushes via GitHub API."
+echo "     Local git is now behind. Run:"
+echo "       git pull origin main"
+echo "     to sync local repo with remote."
+echo ""
+echo "  🔗 https://drewmerrill.github.io/deadcetera/"
+echo "  ⏱  Live in ~60 seconds"
+echo ""
+echo "  Quick smoke test:"
+echo "    1. Hard refresh production"
+echo "    2. Check console for build number"
+echo "    3. Verify changed feature works"
+echo "    4. Check adjacent pages for regressions"
+echo ""
