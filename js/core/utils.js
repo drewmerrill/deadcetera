@@ -192,7 +192,12 @@ window.glParseDate = function glParseDate(dateStr) {
  * Get today's date as YYYY-MM-DD string (UTC-based, consistent across timezones).
  */
 window.glToday = function glToday() {
-    return new Date().toISOString().split('T')[0];
+    // Use local date components (not UTC) so "today" matches the user's wall clock
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
 };
 
 /**

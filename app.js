@@ -10213,6 +10213,11 @@ function settingsTab(tab, btn) {
                 <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">+ Add Member</button>
             </div>
         </div>
+        <div class="app-card"><h3>🔄 Backup Players</h3>
+            <p style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Subs who can cover when core members are out.</p>
+            <div id="backupPlayersList"><div style="color:var(--text-dim);font-size:0.82em;padding:8px">Loading...</div></div>
+            <button class="btn btn-primary btn-sm" onclick="showAddBackupPlayerModal()" style="margin-top:8px">+ Add Backup Player</button>
+        </div>
         <div class="app-card"><h3>&#127760; Multi-Band</h3>
             <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong> <span style="font-size:0.8em;color:var(--text-dim)">(${currentBandSlug})</span></div>
             <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:12px">All songs, readiness, setlists, and gigs are scoped to this band. To switch bands, select a different one below or create a new one.</div>
@@ -10395,6 +10400,129 @@ async function saveMemberRole(key) {
     showToast('✅ Role updated');
     settingsTab('band');
 }
+
+// ── Backup Players CRUD ──────────────────────────────────────────────────────
+
+async function _renderBackupPlayersList() {
+    var el = document.getElementById('backupPlayersList');
+    if (!el || typeof GLStore === 'undefined') return;
+    var players = await GLStore.getBackupPlayers();
+    if (!players.length) { el.innerHTML = '<div style="font-size:0.82em;color:var(--text-dim)">No backup players added yet.</div>'; return; }
+    var roles = GLStore.BAND_ROLES || [];
+    el.innerHTML = players.map(function(p) {
+        var roleChips = (p.coverageRoles || []).map(function(cr) {
+            var role = roles.find(function(r) { return r.id === cr.roleId; });
+            var color = cr.strength === 'partial' ? '#f59e0b' : '#22c55e';
+            return '<span style="font-size:0.68em;padding:1px 6px;border-radius:4px;background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + (role ? role.label : cr.roleId) + (cr.strength === 'partial' ? ' (partial)' : '') + '</span>';
+        }).join(' ');
+        return '<div class="list-item" style="padding:8px 10px;align-items:center">'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-weight:600;font-size:0.88em;color:var(--text)">' + (p.name || 'Unnamed') + (p.active === false ? ' <span style="font-size:0.7em;color:#64748b">(inactive)</span>' : '') + '</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + (roleChips || 'No roles assigned') + '</div>'
+            + (p.phone ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:1px">📞 ' + p.phone + '</div>' : '')
+            + '</div>'
+            + '<button class="btn btn-sm btn-ghost" onclick="showEditBackupPlayerModal(\'' + p.id + '\')" title="Edit">✏️</button>'
+            + '<button class="btn btn-sm btn-ghost" onclick="_deleteBackupPlayer(\'' + p.id + '\')" title="Remove" style="color:var(--red)">✕</button>'
+            + '</div>';
+    }).join('');
+}
+
+window.showAddBackupPlayerModal = function() { _showBackupPlayerModal(null); };
+window.showEditBackupPlayerModal = async function(playerId) {
+    var players = await GLStore.getBackupPlayers();
+    var player = players.find(function(p) { return p.id === playerId; });
+    if (player) _showBackupPlayerModal(player);
+};
+
+function _showBackupPlayerModal(existing) {
+    document.getElementById('bpModal')?.remove();
+    var roles = GLStore.BAND_ROLES || [];
+    var p = existing || { name: '', phone: '', email: '', notes: '', active: true, coverageRoles: [] };
+    var coverageMap = {};
+    (p.coverageRoles || []).forEach(function(cr) { coverageMap[cr.roleId] = cr; });
+
+    var roleCheckboxes = roles.map(function(r) {
+        var cr = coverageMap[r.id];
+        var checked = cr ? ' checked' : '';
+        var strength = cr ? cr.strength : 'full';
+        return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.82em;cursor:pointer">'
+            + '<input type="checkbox" data-role="' + r.id + '"' + checked + ' style="accent-color:var(--accent)">'
+            + r.label + (r.critical ? ' <span style="font-size:0.7em;color:#f59e0b">*</span>' : '')
+            + '<select data-role-strength="' + r.id + '" style="margin-left:auto;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)">'
+            + '<option value="full"' + (strength === 'full' ? ' selected' : '') + '>Full</option>'
+            + '<option value="partial"' + (strength === 'partial' ? ' selected' : '') + '>Partial</option>'
+            + '</select></label>';
+    }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'bpModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:420px;width:100%;color:var(--text)">'
+        + '<h3 style="margin:0 0 12px">' + (existing ? 'Edit' : 'Add') + ' Backup Player</h3>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Name</label>'
+        + '<input id="bpName" value="' + (p.name || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Phone</label>'
+        + '<input id="bpPhone" value="' + (p.phone || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box" placeholder="555-123-4567">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Email</label>'
+        + '<input id="bpEmail" value="' + (p.email || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Notes</label>'
+        + '<input id="bpNotes" value="' + (p.notes || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="e.g. available weekends only">'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Roles Covered <span style="font-weight:400;color:var(--text-dim)">(* = critical)</span></label>'
+        + '<div id="bpRoleChecks" style="margin-bottom:10px">' + roleCheckboxes + '</div>'
+        + '<label style="display:flex;align-items:center;gap:6px;font-size:0.82em;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="bpActive"' + (p.active !== false ? ' checked' : '') + ' style="accent-color:var(--accent)"> Active</label>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
+        + '<button onclick="document.getElementById(\'bpModal\').remove()" class="btn btn-ghost">Cancel</button>'
+        + '</div></div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+window._saveBackupPlayer = async function(existingId) {
+    var name = (document.getElementById('bpName') || {}).value || '';
+    if (!name.trim()) { alert('Name is required'); return; }
+    var roles = [];
+    var checks = document.querySelectorAll('#bpRoleChecks input[type="checkbox"]');
+    checks.forEach(function(cb) {
+        if (!cb.checked) return;
+        var roleId = cb.dataset.role;
+        var strengthEl = document.querySelector('[data-role-strength="' + roleId + '"]');
+        roles.push({ roleId: roleId, strength: strengthEl ? strengthEl.value : 'full' });
+    });
+    var player = {
+        id: existingId || null,
+        name: name.trim(),
+        phone: (document.getElementById('bpPhone') || {}).value || '',
+        email: (document.getElementById('bpEmail') || {}).value || '',
+        notes: (document.getElementById('bpNotes') || {}).value || '',
+        active: document.getElementById('bpActive') ? document.getElementById('bpActive').checked : true,
+        coverageRoles: roles,
+        availabilityMode: 'manual'
+    };
+    await GLStore.saveBackupPlayer(player);
+    document.getElementById('bpModal').remove();
+    showToast('Backup player saved');
+    _renderBackupPlayersList();
+};
+
+window._deleteBackupPlayer = async function(playerId) {
+    if (!confirm('Remove this backup player?')) return;
+    await GLStore.deleteBackupPlayer(playerId);
+    showToast('Backup player removed');
+    _renderBackupPlayersList();
+};
+
+// Load backup players list when band tab opens
+var _origSettingsTab = typeof settingsTab === 'function' ? settingsTab : null;
+setTimeout(function() {
+    if (typeof settingsTab === 'function') {
+        var _realSettingsTab = settingsTab;
+        window.settingsTab = function(tab, btn) {
+            _realSettingsTab(tab, btn);
+            if (tab === 'band') setTimeout(_renderBackupPlayersList, 100);
+        };
+    }
+}, 0);
 
 function exportAllData() {
     const data = {};

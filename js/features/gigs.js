@@ -401,6 +401,40 @@ async function loadGigs() {
         </div>` : ''}
         ${_gigRenderAvailability(g)}
     </div>`).join('');
+    // Post-render: evaluate backup coverage for each gig
+    _gigLoadCoverageSummaries(data);
+}
+
+async function _gigLoadCoverageSummaries(gigs) {
+    if (typeof GLStore === 'undefined' || !GLStore.evaluateGigCoverage) return;
+    for (var i = 0; i < gigs.length; i++) {
+        var g = gigs[i];
+        if (!glIsUpcoming(g.date)) continue; // only for upcoming gigs
+        var el = document.getElementById('gigCoverage_' + g._origIdx);
+        if (!el) continue;
+        try {
+            var cov = await GLStore.evaluateGigCoverage(g);
+            if (!cov || cov.missingRoles.length === 0) {
+                el.innerHTML = '<span style="font-size:0.72em;color:#86efac">✅ All roles covered</span>';
+                continue;
+            }
+            var roles = (GLStore.BAND_ROLES || []);
+            var lines = cov.missingRoles.map(function(rid) {
+                var role = roles.find(function(r) { return r.id === rid; });
+                var label = role ? role.label : rid;
+                var bc = cov.backupCoverage[rid];
+                if (bc) {
+                    var strengthLabel = bc.strength === 'partial' ? ' (partial)' : '';
+                    return '<span style="font-size:0.72em;color:#fcd34d">🟡 ' + label + ' → ' + bc.playerName + strengthLabel + '</span>';
+                }
+                var isCritical = role && role.critical;
+                return '<span style="font-size:0.72em;color:' + (isCritical ? '#fca5a5' : '#fcd34d') + '">' + (isCritical ? '🔴' : '🟠') + ' ' + label + ' uncovered</span>';
+            });
+            var statusChip = { full_core: '✅ Core covered', covered_with_backup: '🟡 Backup needed', partial_risk: '🟠 Partial risk', not_covered: '🔴 Not covered' };
+            el.innerHTML = '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);margin-bottom:4px">' + (statusChip[cov.status] || '') + '</div>'
+                + lines.join('<br>');
+        } catch(e) {}
+    }
 }
 
 async function addGig() {
@@ -1238,7 +1272,7 @@ function _gigRenderAvailability(gig) {
     var myKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
     var gigIdx = gig._origIdx;
     var s = _gigComputeAvailability(gig);
-    var isUpcoming = gig.date && gig.date >= new Date().toISOString().split('T')[0];
+    var isUpcoming = (typeof glIsUpcoming === 'function') ? glIsUpcoming(gig.date) : (gig.date >= new Date().toISOString().split('T')[0]);
 
     // Summary line: "3 confirmed · 1 maybe · 1 awaiting"
     var summaryParts = [];
@@ -1262,6 +1296,9 @@ function _gigRenderAvailability(gig) {
         roleAlerts = '<span style="font-size:0.72em;color:#86efac">✅ Core lineup covered</span>';
     }
 
+    // Backup coverage placeholder (populated async after render)
+    var coverageHtml = isUpcoming ? '<div id="gigCoverage_' + gigIdx + '" style="margin-top:6px"></div>' : '';
+
     // Wrap in collapsible: upcoming=open, past=closed
     var detailId = 'gigAvail_' + gigIdx;
     var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">';
@@ -1272,6 +1309,7 @@ function _gigRenderAvailability(gig) {
         + '<span style="font-size:0.7em;color:var(--text-dim)">' + summaryText + '</span>'
         + '</div>';
     if (roleAlerts) html += '<div style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">' + roleAlerts + '</div>';
+    html += coverageHtml;
 
     // My RSVP buttons — always visible (not inside collapsible)
     if (myKey) {
