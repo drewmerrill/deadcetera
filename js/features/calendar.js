@@ -241,7 +241,8 @@ function renderCalendarInner() {
         g += '</div>';
         grid.innerHTML = g;
         // Render availability matrix from blocked ranges
-        _calRenderAvailabilityMatrix(result ? (result.blockedRanges || []) : []);
+        _calCachedBlockedRanges = result ? (result.blockedRanges || []) : [];
+        _calRenderAvailabilityMatrix(_calCachedBlockedRanges);
     });
 }
 
@@ -322,7 +323,12 @@ async function loadCalendarEvents() {
 }
 
 var _calMatrixDays = 14;
-window.calMatrixRange = function(n) { _calMatrixDays = n; renderCalendarInner(); };
+var _calCachedBlockedRanges = []; // cached for range toggle without full re-render
+window.calMatrixRange = function(n) {
+    _calMatrixDays = n;
+    // Re-render just the availability matrix, not the entire calendar page
+    _calRenderAvailabilityMatrix(_calCachedBlockedRanges);
+};
 
 function _calRenderAvailabilityMatrix(blockedRanges) {
     var el = document.getElementById('calAvailabilityMatrix');
