@@ -1,0 +1,143 @@
+#!/bin/bash
+# glprompt — Generate a Claude build packet from agents/state.md
+# Usage: ./glprompt
+# Output: agents/outbox/current-build.md + terminal summary
+
+set -e
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+STATE="$REPO_ROOT/agents/state.md"
+OUTBOX="$REPO_ROOT/agents/outbox"
+OUTPUT="$OUTBOX/current-build.md"
+HANDOFF="$REPO_ROOT/02_GrooveLinx/CLAUDE_HANDOFF.md"
+
+# Ensure state file exists
+if [ ! -f "$STATE" ]; then
+    echo "ERROR: agents/state.md not found"
+    exit 1
+fi
+
+mkdir -p "$OUTBOX"
+
+# Parse state.md — extract active feature fields from the table
+# Looks for lines matching: | **Field** | Value |
+extract_field() {
+    local field="$1"
+    grep -i "\\*\\*$field\\*\\*" "$STATE" | head -1 | sed 's/.*| *\*\*[^*]*\*\* *| *//' | sed 's/ *|.*//' | sed 's/^ *//' | sed 's/ *$//'
+}
+
+# Extract active feature name (### heading after ## Active Features)
+FEATURE=$(awk '/^## Active Feature/{found=1;next} found && /^###/{print; exit}' "$STATE" | sed 's/^### *//')
+if [ -z "$FEATURE" ]; then
+    FEATURE=$(awk '/^## Active Features/{found=1;next} found && /^###/{print; exit}' "$STATE" | sed 's/^### *//')
+fi
+
+if [ -z "$FEATURE" ]; then
+    echo "ERROR: No active feature found in agents/state.md"
+    echo "       Expected a ### heading under '## Active Feature(s)'"
+    exit 1
+fi
+
+PHASE=$(extract_field "Current Phase")
+GOAL=$(extract_field "Goal")
+CANONICAL=$(extract_field "Canonical Files")
+RISKS=$(extract_field "Risks")
+WATCHLIST=$(extract_field "Regression Watchlist")
+NEXT_STEP=$(extract_field "Next Exact Step")
+
+if [ -z "$NEXT_STEP" ]; then
+    echo "ERROR: No 'Next Exact Step' found in active feature table"
+    exit 1
+fi
+
+# Get current build number
+BUILD=$(grep '"version"' "$REPO_ROOT/version.json" 2>/dev/null | sed 's/.*"version":"//' | sed 's/".*//')
+
+# Check for regression manifest (match first word of feature name)
+REGRESSION_KEY=$(echo "$FEATURE" | awk '{print tolower($1)}')
+REGRESSION_FILE="$REPO_ROOT/agents/regressions/$REGRESSION_KEY.md"
+
+# Build the prompt
+cat > "$OUTPUT" <<PROMPT
+# Claude Build Packet — $FEATURE
+
+_Generated: $(date '+%Y-%m-%d %H:%M')_
+_Build: ${BUILD}_
+
+## Feature
+$FEATURE
+
+## Goal
+$GOAL
+
+## Current Phase
+$PHASE
+
+## Current Foundation
+Build $BUILD is deployed. Dev and production are synced.
+
+Read these files first:
+1. CLAUDE.md
+2. 02_GrooveLinx/CLAUDE_HANDOFF.md
+3. agents/state.md
+
+## Scope For This Phase Only
+$NEXT_STEP
+
+## Do Not
+- Redesign the page layout
+- Build features outside the stated scope
+- Refactor unrelated files
+- Duplicate logic that lives in a canonical file
+- Silently rename data structures or Firebase paths
+- Add frameworks, build tools, or TypeScript
+
+## Canonical File Ownership
+$CANONICAL
+
+## Implementation Order
+Follow the Next Exact Step above. Implement in this order:
+1. Store/logic layer changes (groovelinx_store.js)
+2. Rendering changes (feature files)
+3. Verify backward compatibility
+
+## Regression Watchlist
+$WATCHLIST
+
+$(if [ -f "$REGRESSION_FILE" ]; then echo "See also: agents/regressions/$(basename "$REGRESSION_FILE")"; fi)
+
+## CLI After Implementation
+\`\`\`bash
+# Validate
+node -c js/core/groovelinx_store.js
+node -c js/features/calendar.js
+
+# Build bump (4 sources atomic)
+# Commit with descriptive message + Co-Authored-By
+# Push to origin main
+\`\`\`
+
+## Expected Output From Claude
+- Exact file-by-file changes
+- Working code, not pseudocode
+- Minimal comments
+- Syntax validation passing
+- Build bumped and pushed
+- Smoke tests listed
+PROMPT
+
+# Terminal summary
+echo ""
+echo "╔══════════════════════════════════════════════════╗"
+echo "║  glprompt — GrooveLinx Build Packet Generator   ║"
+echo "╚══════════════════════════════════════════════════╝"
+echo ""
+echo "  Feature:  $FEATURE"
+echo "  Phase:    $PHASE"
+echo "  Next:     $NEXT_STEP"
+echo ""
+echo "  Output:   $OUTPUT"
+echo "  Build:    $BUILD"
+echo ""
+echo "  → Copy agents/outbox/current-build.md into Claude"
+echo ""

@@ -34,3 +34,4 @@ node_modules/
 
 # --- Safety guard ---
 /mnt/
+agents/outbox/

@@ -6,18 +6,16 @@ _Updated: 2026-03-19_
 
 ## Active Features
 
-### Calendar Architecture Evolution / Shared Scheduling System
+### Calendar Evolution
 
 | Field | Value |
 |-------|-------|
-| **Current Phase** | Planning — design approved, Phase 1 scoped |
-| **Goal** | Evolve band calendar into a musician-first scheduling system with conflict types, schedule blocks, and role-aware date strength |
-| **Why It Matters** | Current blocked_dates model is too binary (free/blocked). Bands need richer conflict types, and multi-band musicians need cross-band conflict visibility. |
-| **Canonical Files** | `js/features/calendar.js` (render + events), `js/core/groovelinx_store.js` (data + logic), `js/core/utils.js` (date helpers) |
-| **Dependencies** | Timezone Phase 1 (done), Backup Players Phase 1 (done), Gig Availability (done) |
-| **Risks** | Breaking existing blocked_dates consumers, calendar grid rendering stability, recurring event expansion correctness |
-| **Regression Watchlist** | Availability matrix, gig sync, rehearsal event links, export/subscribe, recurring events |
-| **Next Exact Step** | Implement schedule block data model in GLStore + backward-compatible read from blocked_dates. Upgrade "Block Dates" UI to "Add Conflict" with status types. |
+| **Current Phase** | Phase 2 COMPLETE — status-aware availability + date strength scoring |
+| **Goal** | Evolve band calendar into a musician-first scheduling system |
+| **Canonical Files** | `js/features/calendar.js` (render), `js/core/groovelinx_store.js` (logic), `js/core/utils.js` (dates) |
+| **Risks** | Adapter dedup edge cases, mixed legacy + new data, status expansion |
+| **Regression Watchlist** | Recurring events, gig sync, rehearsal links, subscribe/export, matrix render, schedule_blocks + legacy adapter |
+| **Next Exact Step** | Phase 3 — conflict resolver panel OR backup-aware date strength. Ask Drew. |
 
 ---
 
