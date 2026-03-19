@@ -11576,7 +11576,16 @@ async function checkForAppUpdate() {
         if (!res.ok) return;
         var data = await res.json();
         _rt.lastUpdateCheck = new Date().toISOString();
-        if (data.version && data.version !== _loadedVersion) {
+        if (!data.version) return;
+        // If this is the first check and meta tag is stale, sync _loadedVersion
+        // to prevent infinite reload loops when SW serves cached HTML
+        if (!_loadedVersion || _loadedVersion === '0') {
+            _loadedVersion = data.version;
+            return;
+        }
+        if (data.version !== _loadedVersion) {
+            // Only show banner once — after reload, accept the new version
+            _loadedVersion = data.version;
             showUpdateBanner();
         }
     } catch(e) {}
