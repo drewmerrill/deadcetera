@@ -11571,21 +11571,23 @@ function onPartyEnded() {
 
 async function checkForAppUpdate() {
     try {
-        var base = location.hostname === 'localhost' ? '' : '/deadcetera';
+        // Skip on localhost (SW disabled there, no deploy cycle)
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+        var base = '/deadcetera';
         var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
         if (!res.ok) return;
         var data = await res.json();
         _rt.lastUpdateCheck = new Date().toISOString();
         if (!data.version) return;
-        // If this is the first check and meta tag is stale, sync _loadedVersion
-        // to prevent infinite reload loops when SW serves cached HTML
-        if (!_loadedVersion || _loadedVersion === '0') {
+        // On first check, accept whatever version.json says as our baseline
+        // This prevents loops when meta tag and version.json are stamped by different systems
+        if (!_loadedVersion || _loadedVersion === '0' || !_rt._updateBaselineSet) {
             _loadedVersion = data.version;
+            _rt._updateBaselineSet = true;
             return;
         }
         if (data.version !== _loadedVersion) {
-            // Only show banner once — after reload, accept the new version
-            _loadedVersion = data.version;
+            _loadedVersion = data.version; // Accept new version so we don't re-trigger
             showUpdateBanner();
         }
     } catch(e) {}
