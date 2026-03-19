@@ -3677,8 +3677,8 @@ async function renderRehearsalNotesWithStorage(songTitle) {
     const storedNotes = await loadRehearsalNotes(songTitle);
     
     // Combine and sort by date (newest first)
-    const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) => 
-        new Date(b.date) - new Date(a.date)
+    const allNotes = [...dataJsNotes, ...storedNotes].sort((a, b) =>
+        (b.date || '').localeCompare(a.date || '')
     );
     
     if (allNotes.length === 0) {

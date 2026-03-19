@@ -371,15 +371,17 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
     var bestHtml = '';
     if (allFreeDays.length > 0) {
         var bestList = allFreeDays.slice(0, 5).map(function(d) {
+            var _bd = glParseDate(d.day.date);
             return '<span style="background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 8px;border-radius:4px;font-weight:700;cursor:pointer" onclick="calDayClick(' +
-                new Date(d.day.date).getFullYear() + ',' + new Date(d.day.date).getMonth() + ',' + new Date(d.day.date).getDate() + ')">' +
+                (_bd ? _bd.getFullYear() + ',' + _bd.getMonth() + ',' + _bd.getDate() : '') + ')">' +
                 d.day.label + ' ' + d.day.dayNum + '</span>';
         }).join(' ');
         var firstBest = allFreeDays[0].day;
+        var _fbd = glParseDate(firstBest.date);
         bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:0.85em">' +
             '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">' +
             '<div><span style="color:#22c55e;font-weight:700">Best rehearsal days:</span> ' + bestList + '</div>' +
-            '<button onclick="calDayClick(' + new Date(firstBest.date).getFullYear() + ',' + new Date(firstBest.date).getMonth() + ',' + new Date(firstBest.date).getDate() + ')" ' +
+            '<button onclick="calDayClick(' + (_fbd ? _fbd.getFullYear() + ',' + _fbd.getMonth() + ',' + _fbd.getDate() : '') + ')" ' +
             'style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:4px 12px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">+ Create Rehearsal</button>' +
             '</div></div>';
     } else {

@@ -174,4 +174,70 @@ window.generateShortId = function generateShortId(length) {
     return id;
 };
 
+// ── Timezone-safe date utilities ─────────────────────────────────────────────
+// RULE: Never pass a bare YYYY-MM-DD string to new Date() — it creates midnight
+// UTC which shifts to the wrong day in US timezones. Always use these helpers.
+
+/**
+ * Parse a YYYY-MM-DD date string safely (noon anchor prevents timezone drift).
+ * Returns a Date object or null if invalid.
+ */
+window.glParseDate = function glParseDate(dateStr) {
+    if (!dateStr) return null;
+    var d = new Date(dateStr + 'T12:00:00');
+    return isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * Get today's date as YYYY-MM-DD string (UTC-based, consistent across timezones).
+ */
+window.glToday = function glToday() {
+    return new Date().toISOString().split('T')[0];
+};
+
+/**
+ * Days between a YYYY-MM-DD date and today. Positive = future, negative = past.
+ */
+window.glDaysAway = function glDaysAway(dateStr) {
+    if (!dateStr) return null;
+    return Math.round((new Date(dateStr + 'T12:00:00').getTime() - Date.now()) / 86400000);
+};
+
+/**
+ * Human-readable countdown label: "Today", "Tomorrow", "in 5 days", "3 days ago"
+ */
+window.glCountdownLabel = function glCountdownLabel(dateStr) {
+    var diff = glDaysAway(dateStr);
+    if (diff === null) return '';
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    if (diff > 1) return 'in ' + diff + ' days';
+    if (diff === -1) return 'Yesterday';
+    if (diff < -1) return Math.abs(diff) + ' days ago';
+    return '';
+};
+
+/**
+ * Is a YYYY-MM-DD date in the future (>= today)?
+ */
+window.glIsUpcoming = function glIsUpcoming(dateStr) {
+    if (!dateStr) return false;
+    return dateStr >= glToday();
+};
+
+/**
+ * Format a YYYY-MM-DD date for display. compact=true: "Fri, Jun 5, 2026"
+ */
+window.glFormatDate = function glFormatDate(dateStr, compact) {
+    if (!dateStr) return 'No date';
+    var d = glParseDate(dateStr);
+    if (!d) return dateStr;
+    var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var daysS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var monthsS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    if (compact) return daysS[d.getDay()] + ', ' + monthsS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+};
+
 console.log('✅ utils.js loaded');

@@ -27,7 +27,7 @@ function _pitchFindSetlistsContaining(songTitle) {
             });
         });
         if (found) {
-            var daysAway = sls[i].date ? Math.ceil((new Date(sls[i].date).getTime() - nowMs) / 86400000) : 999;
+            var daysAway = sls[i].date ? ((typeof glDaysAway === 'function') ? glDaysAway(sls[i].date) : Math.ceil((new Date(sls[i].date + 'T12:00:00').getTime() - nowMs) / 86400000)) : 999;
             matches.push({
                 name: sls[i].name || sls[i].title || ('Setlist ' + (i + 1)),
                 date: sls[i].date || '',

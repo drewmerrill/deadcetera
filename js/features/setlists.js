@@ -16,36 +16,11 @@
 // ============================================================================
 var _slFilter = 'all'; // 'all' | 'upcoming' | 'past'
 
-// Human-readable date formatting (display only — never changes stored data)
-function _slFormatDate(dateStr, compact) {
-    if (!dateStr) return 'No date';
-    try {
-        var d = new Date(dateStr + 'T12:00:00'); // noon to avoid timezone shift
-        if (isNaN(d.getTime())) return dateStr;
-        var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-        var daysShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-        var monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        if (compact) return daysShort[d.getDay()] + ', ' + monthsShort[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
-        return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
-    } catch(e) { return dateStr; }
-}
-
-function _slDaysAway(dateStr) {
-    if (!dateStr) return null;
-    return Math.round((new Date(dateStr + 'T12:00:00').getTime() - Date.now()) / 86400000);
-}
-
-function _slCountdownLabel(dateStr) {
-    var diff = _slDaysAway(dateStr);
-    if (diff === null) return '';
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Tomorrow';
-    if (diff > 1) return 'in ' + diff + ' days';
-    if (diff === -1) return 'Yesterday';
-    if (diff < -1) return Math.abs(diff) + ' days ago';
-    return '';
-}
+// Date helpers — delegate to shared glFormatDate / glDaysAway / glCountdownLabel in utils.js
+// Local aliases for backward compat within this file
+function _slFormatDate(dateStr, compact) { return (typeof glFormatDate === 'function') ? glFormatDate(dateStr, compact) : (dateStr || 'No date'); }
+function _slDaysAway(dateStr) { return (typeof glDaysAway === 'function') ? glDaysAway(dateStr) : null; }
+function _slCountdownLabel(dateStr) { return (typeof glCountdownLabel === 'function') ? glCountdownLabel(dateStr) : ''; }
 
 function renderSetlistsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');

@@ -384,7 +384,7 @@ async function loadGigs() {
                 </div>
             </div>
             <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-                <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${new Date(g.date)>new Date()?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${new Date(g.date) > new Date() ? 'Upcoming' : 'Past'}</span>
+                <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${glIsUpcoming(g.date)?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${glIsUpcoming(g.date) ? 'Upcoming' : 'Past'}</span>
                 ${_gigAvailabilitySummaryChip(g)}
                 <button class="btn btn-sm btn-ghost" onclick="gigShowDirections(${g._origIdx})" title="Directions" style="color:#60a5fa">📍</button>
                 <button class="btn btn-sm btn-ghost" onclick="editGig(${g._origIdx})" title="Edit">✏️</button>

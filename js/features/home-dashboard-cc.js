@@ -256,8 +256,8 @@ async function _ccLoadNextRehearsal() {
 
     if (candidates.length) {
       var next = candidates[0];
-      var diff = Math.round((new Date(next.date) - new Date(today)) / 86400000);
-      var dateLabel = diff === 0 ? 'Tonight' : diff === 1 ? 'Tomorrow' : next.date.slice(5); // MM-DD
+      var diff = (typeof glDaysAway === 'function') ? glDaysAway(next.date) : Math.round((new Date(next.date + 'T12:00:00') - Date.now()) / 86400000);
+      var dateLabel = diff === 0 ? 'Tonight' : diff === 1 ? 'Tomorrow' : ((typeof glFormatDate === 'function') ? glFormatDate(next.date, true) : next.date.slice(5));
 
       // Count confirmed RSVPs
       var confirmedCount = Object.values(next.rsvps).filter(function(r) {

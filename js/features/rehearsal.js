@@ -86,7 +86,7 @@ async function _rhRenderCommandFlow(el) {
     }
 
     // Gig context
-    var gigDaysAway = nextGig ? Math.round((new Date(nextGig.date).getTime() - Date.now()) / 86400000) : null;
+    var gigDaysAway = nextGig ? glDaysAway(nextGig.date) : null;
     var gigLabel = nextGig ? (nextGig.venue || 'Upcoming Gig') : null;
 
     // Focus songs (active only)
