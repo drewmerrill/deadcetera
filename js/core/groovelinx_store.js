@@ -2884,8 +2884,9 @@
     return { status: 'soft_conflict', blocks: memberBlocks };
   }
 
-  // Rich date strength evaluator
+  // Rich date strength evaluator — role-aware (Phase 4)
   function computeDateStrength(blocks, members, dateStr) {
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     var total = members.length;
     var available = 0;
     var hardConflictCount = 0;
@@ -2893,35 +2894,95 @@
     var reasons = [];
     var memberStatuses = {};
 
+    // Track which roles are covered by available members
+    var coveredRoles = {};    // { roleId: true }
+    var missingRoles = {};    // { roleId: memberName }
+    var softRoles = {};       // { roleId: memberName }
+    var allRoleIds = {};
+
     members.forEach(function(member) {
       var eval_ = evaluateMemberDateStatus(blocks, member, dateStr);
       memberStatuses[member] = eval_;
+
+      // Resolve member key and roles
+      var memberKey = null;
+      Object.keys(bm).forEach(function(k) { if (bm[k].name === member) memberKey = k; });
+      var memberData = memberKey ? bm[memberKey] : null;
+      var roleIds = memberData ? _mapMemberToRoleIds(memberData.role) : [];
+      if (memberData && memberData.leadVocals) roleIds.push('lead_vocal');
+      if (memberData && memberData.harmonies) roleIds.push('harmony');
+      roleIds.forEach(function(r) { allRoleIds[r] = true; });
+
       if (eval_.status === 'available') {
         available++;
+        roleIds.forEach(function(r) { coveredRoles[r] = true; });
       } else if (eval_.status === 'hard_conflict') {
         hardConflictCount++;
         var topBlock = eval_.blocks[0];
         var statusLabel = { unavailable:'Unavailable', booked_elsewhere:'Booked elsewhere', vacation:'Vacation', personal_block:'Personal block' }[topBlock.status] || topBlock.status;
         reasons.push(member.split(' ')[0] + ': ' + statusLabel);
+        roleIds.forEach(function(r) { if (!coveredRoles[r]) missingRoles[r] = member; });
       } else {
         softConflictCount++;
         var softBlock = eval_.blocks[0];
         var softLabel = { tentative:'Tentative', travel:'Travel', hold:'Hold' }[softBlock.status] || softBlock.status;
         reasons.push(member.split(' ')[0] + ': ' + softLabel);
+        roleIds.forEach(function(r) { if (!coveredRoles[r]) softRoles[r] = member; });
       }
     });
 
+    // Remove roles that ARE covered by available members from missing/soft
+    Object.keys(coveredRoles).forEach(function(r) {
+      delete missingRoles[r];
+      delete softRoles[r];
+    });
+
+    // Identify critical missing roles
+    var missingCritical = [];
+    var missingNonCritical = [];
+    Object.keys(missingRoles).forEach(function(rid) {
+      var role = BAND_ROLES.find(function(r) { return r.id === rid; });
+      if (role && role.critical) missingCritical.push(role.label);
+      else if (role) missingNonCritical.push(role.label);
+    });
+
+    var softCritical = [];
+    Object.keys(softRoles).forEach(function(rid) {
+      var role = BAND_ROLES.find(function(r) { return r.id === rid; });
+      if (role && role.critical) softCritical.push(role.label);
+    });
+
+    // Add role gap reasons
+    if (missingCritical.length > 0) {
+      reasons.push('Missing critical: ' + missingCritical.join(', '));
+    }
+    if (missingNonCritical.length > 0) {
+      reasons.push('Missing: ' + missingNonCritical.join(', '));
+    }
+    if (softCritical.length > 0) {
+      reasons.push('Uncertain critical: ' + softCritical.join(', '));
+    }
+
     var conflictCount = hardConflictCount + softConflictCount;
     var score = Math.round(((available + softConflictCount * 0.5) / total) * 100);
+    // Penalize score for missing critical roles
+    if (missingCritical.length > 0) score = Math.max(0, score - missingCritical.length * 15);
 
     var label, color;
     if (hardConflictCount === 0 && softConflictCount === 0) {
       label = 'Strong'; color = '#22c55e';
-      reasons = ['No conflicts'];
+      reasons = ['No conflicts — all roles covered'];
+    } else if (missingCritical.length > 0) {
+      // Critical role missing is always at least Risky, regardless of headcount
+      if (available < Math.ceil(total / 2)) {
+        label = 'Not viable'; color = '#64748b';
+      } else {
+        label = 'Risky'; color = '#ef4444';
+      }
     } else if (hardConflictCount === 0 && softConflictCount > 0) {
       label = 'Workable'; color = '#84cc16';
       reasons.unshift(softConflictCount + ' soft conflict' + (softConflictCount > 1 ? 's' : '') + ' — may clear');
-    } else if (hardConflictCount === 1 && available >= Math.ceil(total / 2)) {
+    } else if (hardConflictCount === 1 && available >= Math.ceil(total / 2) && missingCritical.length === 0) {
       label = 'Workable'; color = '#f59e0b';
     } else if (available >= Math.ceil(total / 2)) {
       label = 'Risky'; color = '#ef4444';
@@ -2933,7 +2994,9 @@
       label: label, color: color, score: score,
       available: available, hardConflictCount: hardConflictCount, softConflictCount: softConflictCount,
       conflictCount: conflictCount, total: total,
-      reasons: reasons, memberStatuses: memberStatuses
+      reasons: reasons, memberStatuses: memberStatuses,
+      missingCritical: missingCritical, missingNonCritical: missingNonCritical, softCritical: softCritical,
+      coveredRoles: Object.keys(coveredRoles), missingRoles: Object.keys(missingRoles)
     };
   }
 

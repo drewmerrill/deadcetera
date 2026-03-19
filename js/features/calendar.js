@@ -738,12 +738,31 @@ window.calShowDateConflicts = function(dateStr) {
         html += '</div>';
     }
 
-    // Suggestions
+    // Role gap display
+    if (strength && (strength.missingCritical && strength.missingCritical.length > 0 || strength.softCritical && strength.softCritical.length > 0)) {
+        html += '<div style="margin-bottom:8px;padding:6px 8px;border-radius:6px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15)">';
+        if (strength.missingCritical && strength.missingCritical.length > 0) {
+            html += '<div style="font-size:0.78em;color:#fca5a5;font-weight:600">🔴 Missing critical roles: ' + strength.missingCritical.join(', ') + '</div>';
+        }
+        if (strength.missingNonCritical && strength.missingNonCritical.length > 0) {
+            html += '<div style="font-size:0.72em;color:#fcd34d;margin-top:2px">🟡 Missing: ' + strength.missingNonCritical.join(', ') + '</div>';
+        }
+        if (strength.softCritical && strength.softCritical.length > 0) {
+            html += '<div style="font-size:0.72em;color:#fcd34d;margin-top:2px">❓ Uncertain critical: ' + strength.softCritical.join(', ') + '</div>';
+        }
+        html += '</div>';
+    }
+
+    // Coaching
     if (strength) {
         if (strength.label === 'Strong') {
-            html += '<div style="font-size:0.78em;color:#22c55e;font-weight:600;margin-bottom:8px">Great day for rehearsal — everyone is free.</div>';
+            html += '<div style="font-size:0.78em;color:#22c55e;font-weight:600;margin-bottom:8px">Great day for rehearsal — all roles covered.</div>';
+        } else if (strength.label === 'Workable' && (!strength.missingCritical || strength.missingCritical.length === 0)) {
+            html += '<div style="font-size:0.78em;color:#84cc16;margin-bottom:8px">Workable — soft conflicts may clear. All critical roles covered.</div>';
         } else if (strength.label === 'Workable') {
-            html += '<div style="font-size:0.78em;color:#84cc16;margin-bottom:8px">Workable — soft conflicts may clear. Worth scheduling.</div>';
+            html += '<div style="font-size:0.78em;color:#f59e0b;margin-bottom:8px">Workable — but check role coverage before committing.</div>';
+        } else if (strength.label === 'Risky' && strength.missingCritical && strength.missingCritical.length > 0) {
+            html += '<div style="font-size:0.78em;color:#ef4444;margin-bottom:8px">Risky — critical role' + (strength.missingCritical.length > 1 ? 's' : '') + ' missing. Consider backup or alternative date.</div>';
         } else if (strength.label === 'Risky') {
             html += '<div style="font-size:0.78em;color:#ef4444;margin-bottom:8px">Risky — multiple conflicts. Consider an alternative date.</div>';
         } else {
