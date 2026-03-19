@@ -1,0 +1,132 @@
+#!/bin/bash
+# glhandoff — Generate a session closeout + continuation package
+# Usage: ./glhandoff
+# Output: agents/outbox/handoff.md + terminal summary
+
+set -e
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+STATE="$REPO_ROOT/agents/state.md"
+OUTBOX="$REPO_ROOT/agents/outbox"
+OUTPUT="$OUTBOX/handoff.md"
+HANDOFF="$REPO_ROOT/02_GrooveLinx/CLAUDE_HANDOFF.md"
+
+if [ ! -f "$STATE" ]; then
+    echo "ERROR: agents/state.md not found"
+    exit 1
+fi
+
+mkdir -p "$OUTBOX"
+
+# Parse state.md fields
+extract_field() {
+    local field="$1"
+    grep -i "\\*\\*$field\\*\\*" "$STATE" | head -1 | sed 's/.*| *\*\*[^*]*\*\* *| *//' | sed 's/ *|.*//' | sed 's/^ *//' | sed 's/ *$//'
+}
+
+# Extract active feature name
+FEATURE=$(awk '/^## Active Feature/{found=1;next} found && /^###/{print; exit}' "$STATE" | sed 's/^### *//')
+if [ -z "$FEATURE" ]; then
+    FEATURE=$(awk '/^## Active Features/{found=1;next} found && /^###/{print; exit}' "$STATE" | sed 's/^### *//')
+fi
+if [ -z "$FEATURE" ]; then
+    echo "ERROR: No active feature found in agents/state.md"
+    exit 1
+fi
+
+PHASE=$(extract_field "Current Phase")
+GOAL=$(extract_field "Goal")
+CANONICAL=$(extract_field "Canonical Files")
+RISKS=$(extract_field "Risks")
+WATCHLIST=$(extract_field "Regression Watchlist")
+NEXT_STEP=$(extract_field "Next Exact Step")
+LAST_SHIPPED=$(extract_field "Last Shipped")
+
+# Get current build
+BUILD=$(grep '"version"' "$REPO_ROOT/version.json" 2>/dev/null | sed 's/.*"version":"//' | sed 's/".*//')
+
+# Get recently completed (top 5)
+RECENT=$(awk '/^## Recently Completed/{found=1;next} found && /^\|[^-]/{print}' "$STATE" | head -7 | tail -5)
+
+# Get queued features
+QUEUED=$(awk '/^## Queued/{found=1;next} found && /^\|[^-]/{print}' "$STATE" | head -5)
+
+# Generate handoff
+cat > "$OUTPUT" <<HANDOFF
+# GrooveLinx Session Handoff
+
+_Generated: $(date '+%Y-%m-%d %H:%M')_
+_Build: ${BUILD}_
+
+---
+
+## Active Feature
+**${FEATURE}**
+
+## Current Phase
+${PHASE}
+
+## What Was Just Completed
+${LAST_SHIPPED:-No "Last Shipped" field in state.md}
+
+## Stable Systems (must not break)
+${WATCHLIST}
+
+## Known Risks
+${RISKS}
+
+## Canonical Files
+${CANONICAL}
+
+## Next Exact Step
+${NEXT_STEP}
+
+---
+
+## Recently Completed
+${RECENT}
+
+## Queued Features
+${QUEUED}
+
+---
+
+## Continuation Prompt
+
+\`\`\`
+Continue GrooveLinx development.
+
+Read these files first:
+1. CLAUDE.md
+2. 02_GrooveLinx/CLAUDE_HANDOFF.md
+3. agents/state.md
+
+Current build: ${BUILD}. Dev and production are synced.
+
+Active feature: ${FEATURE}
+Current phase: ${PHASE}
+Last shipped: ${LAST_SHIPPED:-see state.md}
+
+Next priority: ${NEXT_STEP}
+
+Regression watchlist: ${WATCHLIST}
+Known risks: ${RISKS}
+\`\`\`
+HANDOFF
+
+# Terminal summary
+echo ""
+echo "╔══════════════════════════════════════════════════╗"
+echo "║  glhandoff — GrooveLinx Session Closeout        ║"
+echo "╚══════════════════════════════════════════════════╝"
+echo ""
+echo "  Feature:    $FEATURE"
+echo "  Phase:      $PHASE"
+echo "  Shipped:    ${LAST_SHIPPED:-—}"
+echo "  Next:       $NEXT_STEP"
+echo ""
+echo "  Build:      $BUILD"
+echo "  Output:     $OUTPUT"
+echo ""
+echo "  → Paste continuation prompt into next session"
+echo ""

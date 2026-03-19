@@ -10,12 +10,13 @@ _Updated: 2026-03-19_
 
 | Field | Value |
 |-------|-------|
-| **Current Phase** | Phase 2 COMPLETE — status-aware availability + date strength scoring |
+| **Current Phase** | Phase 3 COMPLETE — conflict resolver panel |
 | **Goal** | Evolve band calendar into a musician-first scheduling system |
 | **Canonical Files** | `js/features/calendar.js` (render), `js/core/groovelinx_store.js` (logic), `js/core/utils.js` (dates) |
 | **Risks** | Adapter dedup edge cases, mixed legacy + new data, status expansion |
 | **Regression Watchlist** | Recurring events, gig sync, rehearsal links, subscribe/export, matrix render, schedule_blocks + legacy adapter |
-| **Next Exact Step** | Phase 3 — conflict resolver panel OR backup-aware date strength. Ask Drew. |
+| **Last Shipped** | Conflict resolver panel — per-date strength analysis with member breakdown, coaching, schedule CTA |
+| **Next Exact Step** | Phase 4 — backup-aware date strength OR My Schedule view. Ask Drew. |
 
 ---
 
@@ -38,6 +39,9 @@ _Updated: 2026-03-19_
 
 | Feature | Completed | Build |
 |---------|-----------|-------|
+| Calendar Phase 3 (conflict resolver) | 2026-03-19 | 20260319-224243 |
+| Calendar Phase 2 (status-aware availability) | 2026-03-19 | 20260319-204630 |
+| Calendar Phase 1 (schedule_blocks) | 2026-03-19 | 20260319-182813 |
 | Agent Workflow System | 2026-03-19 | — (docs only) |
 | Timezone Phase 1 (6 bug fixes + shared utils) | 2026-03-19 | 20260319-121227 |
 | Backup Players Phase 1 | 2026-03-19 | 20260319-145444 |
@@ -63,7 +67,6 @@ _Updated: 2026-03-19_
 | Feature | Priority | Notes |
 |---------|----------|-------|
 | Tuner Redesign | High | Premium UI, presets, calibration, reference tones. Full spec exists. |
-| Calendar Evolution Phase 1 | High | Schedule blocks, conflict types, matrix upgrade. Design approved. |
 | Rehearsal Planner Phase 2 | Medium | Sandbox block, energy model refinements. |
 | Backup Players Phase 2 | Medium | Per-gig backup availability, nudge integration. |
 | Band Sync Phase 2 | Medium | Section sync, tempo sync, QR join. |
