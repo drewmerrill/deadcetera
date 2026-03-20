@@ -578,7 +578,7 @@ function glShowOnboarding(pageId, force) {
     overlay.setAttribute('aria-label', 'Welcome to ' + entry.title);
     overlay.innerHTML = [
         '<div id="gl-onboard-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9998;backdrop-filter:blur(2px)" onclick="glDismissOnboarding(\'' + pageId + '\')"></div>',
-        '<div id="gl-onboard-card" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.95);opacity:0;transition:transform 0.22s cubic-bezier(.34,1.56,.64,1),opacity 0.18s ease;z-index:9999;width:min(440px,92vw);background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.4);border-radius:18px;padding:24px 22px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)">',
+        '<div id="gl-onboard-card" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.95);opacity:0;transition:transform 0.22s cubic-bezier(.34,1.56,.64,1),opacity 0.18s ease;z-index:9999;width:min(440px,92vw);max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.4);border-radius:18px;padding:24px 22px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)">',
         '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">',
         '    <span style="font-size:1.8em;line-height:1">' + entry.icon + '</span>',
         '    <div style="flex:1">',
