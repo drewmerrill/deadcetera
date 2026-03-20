@@ -528,13 +528,21 @@ function vhSelectSpotify() {
 // ── Paste URL Panel ──────────────────────────────────────────────────────────
 function vhRenderUrlPanel() {
     var panel = document.getElementById('vhPanelUrl');
+    // If launched for a specific destination, show a direct save button instead of generic ✓
+    var hasReturnTo = !!vhReturnTo;
+    var sendLabel = hasReturnTo
+        ? ({ northstar: '⭐ Save', coverme: '🎤 Save', fadr: '🎚️ Send', practice: '🎵 Load' }[vhReturnTo] || '→ Send')
+        : '✓';
+    var sendAction = hasReturnTo
+        ? 'vhSelectAndSend(\'' + vhReturnTo + '\')'
+        : 'vhSelectPastedUrl()';
     panel.innerHTML =
         '<div class="vh-url-info">' +
             '<p>Paste any URL — Spotify, YouTube, Archive.org, SoundCloud, or a direct MP3 link.</p>' +
         '</div>' +
         '<div class="vh-search-row">' +
-            '<input id="vhPasteUrl" type="text" class="vh-search-input" placeholder="https://..." onkeydown="if(event.key===\'Enter\')vhSelectPastedUrl()" oninput="vhDetectPlatform(this.value)">' +
-            '<button class="vh-search-btn" onclick="vhSelectPastedUrl()">✓</button>' +
+            '<input id="vhPasteUrl" type="text" class="vh-search-input" placeholder="https://..." onkeydown="if(event.key===\'Enter\')' + sendAction + '" oninput="vhDetectPlatform(this.value)">' +
+            '<button class="vh-search-btn" onclick="' + sendAction + '" style="' + (hasReturnTo ? 'min-width:60px;font-size:0.78em;font-weight:700' : '') + '">' + sendLabel + '</button>' +
         '</div>' +
         '<div id="vhUrlDetect" class="vh-url-detect"></div>' +
         '<div class="vh-url-fields">' +
@@ -545,6 +553,11 @@ function vhRenderUrlPanel() {
 function vhUrlPanelSendTo(btn) {
     var dest = btn.getAttribute('data-dest');
     if (!dest) return;
+    vhSelectAndSend(dest);
+}
+
+// Select pasted URL and immediately send to destination — one-click save
+function vhSelectAndSend(dest) {
     vhSelectPastedUrl();
     // vhSelectPastedUrl sets vhSelectedUrl — give it a tick then send
     setTimeout(function() { vhSendTo(dest); }, 0);
