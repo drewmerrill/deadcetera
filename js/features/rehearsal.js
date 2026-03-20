@@ -1051,17 +1051,27 @@ window._rpSelectGig = async function(gigId) {
     if (!sl) { try { setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []); sl = setlists.find(function(s) { return s.setlistId === gig.setlistId; }); } catch(e) {} }
     if (!sl) { if (typeof showToast === 'function') showToast('Could not find linked setlist'); return; }
 
-    // Extract songs in setlist order
+    // Extract songs in setlist order with transition data
     var songs = [];
     (sl.sets || []).forEach(function(set) {
         (set.songs || []).forEach(function(sg) {
             var title = typeof sg === 'string' ? sg : (sg.title || '');
             if (!title) return;
+            var segue = (typeof sg === 'object') ? (sg.segue || 'stop') : 'stop';
             var songData = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
-            songs.push({ title: title, songId: songData ? (songData.songId || title) : title, band: songData ? songData.band : '' });
+            songs.push({ title: title, songId: songData ? (songData.songId || title) : title, band: songData ? songData.band : '', _segue: segue });
         });
     });
     _rpState.setlistSongs = songs;
+
+    // Detect linked pairs from transition data (flow/segue = linked unit)
+    var linkedPairs = [];
+    for (var lpi = 0; lpi < songs.length - 1; lpi++) {
+        if (songs[lpi]._segue === 'flow' || songs[lpi]._segue === 'segue') {
+            linkedPairs.push({ from: songs[lpi], to: songs[lpi + 1], type: songs[lpi]._segue });
+        }
+    }
+    _rpState.linkedPairs = linkedPairs;
 
     // Bucket songs
     var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
@@ -1157,16 +1167,51 @@ function _rpGoToTime() {
 function _rpBuildPlan() {
     var selected = _rpState.setlistSongs.filter(function(s) { return _rpState.selected[s.title]; });
     var b = _rpState.buckets;
+    var linkedPairs = _rpState.linkedPairs || [];
 
     // Warm-Up: 1-2 ready songs (from selected)
     var warmup = selected.filter(function(s) { return s._avg >= 3.8; }).slice(0, 2);
 
-    // Deep Work: up to 2 needs-work songs (HARD LIMIT)
-    var deepWork = selected.filter(function(s) { return s._avg < 3; }).slice(0, 2);
+    // Deep Work: up to 2 UNITS (a unit = 1 song or 1 linked pair)
+    // First: find linked pairs where BOTH songs are selected and at least one needs work
+    var deepWorkUnits = [];
+    var deepWorkUsed = {};
+    linkedPairs.forEach(function(lp) {
+        if (deepWorkUnits.length >= 2) return;
+        if (!_rpState.selected[lp.from.title] || !_rpState.selected[lp.to.title]) return;
+        var fromAvg = lp.from._avg || 0;
+        var toAvg = lp.to._avg || 0;
+        var pairAvg = (fromAvg + toAvg) / 2;
+        if (pairAvg < 3 || fromAvg < 3 || toAvg < 3) {
+            deepWorkUnits.push({
+                isLinked: true,
+                songs: [lp.from, lp.to],
+                title: lp.from.title + ' → ' + lp.to.title,
+                _avg: pairAvg,
+                _segue: lp.type,
+                _blockType: 'deepWork'
+            });
+            deepWorkUsed[lp.from.title] = true;
+            deepWorkUsed[lp.to.title] = true;
+        }
+    });
+    // Fill remaining deep work slots with individual songs
+    var deepWorkSingles = selected.filter(function(s) {
+        return s._avg < 3 && !deepWorkUsed[s.title];
+    });
+    while (deepWorkUnits.length < 2 && deepWorkSingles.length > 0) {
+        deepWorkUnits.push(deepWorkSingles.shift());
+    }
+    // Flatten for the blocks array (linked units stored as-is, singles as normal songs)
+    var deepWork = deepWorkUnits;
 
     // Flow: 3-4 consecutive songs from setlist order (exclude warmup + deep work)
     var used = {};
-    warmup.concat(deepWork).forEach(function(s) { used[s.title] = true; });
+    warmup.forEach(function(s) { used[s.title] = true; });
+    deepWork.forEach(function(u) {
+        if (u.isLinked && u.songs) { u.songs.forEach(function(s) { used[s.title] = true; }); }
+        else { used[u.title] = true; }
+    });
     var flowPool = selected.filter(function(s) { return !used[s.title]; });
     // Find longest consecutive run in setlist order
     var setlistTitles = _rpState.setlistSongs.map(function(s) { return s.title; });
@@ -1202,25 +1247,38 @@ function _rpRenderPlan(container) {
         + '<h2 style="margin:0 0 4px;font-size:1.2em;color:var(--text)">' + usable + ' min · ' + (blocks.warmup.length + blocks.deepWork.length + blocks.flow.length + blocks.close.length) + ' songs</h2>'
         + '<p style="font-size:0.78em;color:var(--text-dim);margin:0 0 16px">Edit blocks or launch the rehearsal.</p>';
 
-    function renderBlock(emoji, label, guidance, color, songs) {
+    function renderBlock(emoji, label, guidance, color, items) {
         var out = '<div style="margin-bottom:14px;padding:12px;border-radius:10px;border:1px solid ' + color + '30;background:' + color + '08">'
             + '<div style="font-size:0.78em;font-weight:800;color:' + color + ';margin-bottom:2px">' + emoji + ' ' + label + '</div>'
             + '<div style="font-size:0.68em;color:' + color + ';opacity:0.7;margin-bottom:8px;font-style:italic">' + guidance + '</div>';
-        if (songs.length === 0) {
+        if (items.length === 0) {
             out += '<div style="font-size:0.75em;color:var(--text-dim);opacity:0.5">No songs assigned</div>';
         } else {
-            songs.forEach(function(s, i) {
-                out += '<div style="font-size:0.85em;color:var(--text);padding:3px 0;display:flex;align-items:center;gap:6px">'
-                    + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
-                    + '<span style="font-weight:600">' + s.title + '</span>'
-                    + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + (s._avg > 0 ? s._avg.toFixed(1) : '—') + '</span></div>';
+            items.forEach(function(item, i) {
+                if (item.isLinked && item.songs) {
+                    // Linked unit: show as pair with arrow
+                    var pairAvg = item._avg > 0 ? item._avg.toFixed(1) : '—';
+                    out += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;border-left:3px solid #818cf8;padding-left:8px;margin:2px 0">'
+                        + '<div style="display:flex;align-items:center;gap:6px">'
+                        + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
+                        + '<span style="font-weight:600">' + item.songs[0].title + ' <span style="color:#818cf8">→</span> ' + item.songs[1].title + '</span>'
+                        + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + pairAvg + '</span>'
+                        + '</div>'
+                        + '<div style="font-size:0.65em;color:#818cf8;margin-top:2px;margin-left:22px">Linked transition — rehearse segue, timing, and entry</div>'
+                        + '</div>';
+                } else {
+                    out += '<div style="font-size:0.85em;color:var(--text);padding:3px 0;display:flex;align-items:center;gap:6px">'
+                        + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
+                        + '<span style="font-weight:600">' + item.title + '</span>'
+                        + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + (item._avg > 0 ? item._avg.toFixed(1) : '—') + '</span></div>';
+                }
             });
         }
         return out + '</div>';
     }
 
     html += renderBlock('🔥', 'WARM-UP', 'Start playing immediately — don\'t overtalk', '#f59e0b', blocks.warmup);
-    html += renderBlock('🛠️', 'DEEP WORK (max 2)', 'Agree on structure before playing', '#ef4444', blocks.deepWork);
+    html += renderBlock('🛠️', 'DEEP WORK (max 2 units)', 'Agree on structure before playing — linked pairs count as 1 unit', '#ef4444', blocks.deepWork);
     html += renderBlock('🎸', 'FLOW — SET SIMULATION', 'Play continuously — simulate the gig', '#22c55e', blocks.flow);
     html += renderBlock('🔚', 'CLOSE STRONG', 'Finish strong', '#818cf8', blocks.close);
 
@@ -1237,8 +1295,17 @@ function _rpLaunchRehearsal() {
     var blocks = _rpState.blocks;
     // Build queue in block order with block-type tags
     var queue = [];
-    var _addBlock = function(songs, blockType) {
-        songs.forEach(function(s) { queue.push({ title: s.title, band: s.band || '', _blockType: blockType }); });
+    var _addBlock = function(items, blockType) {
+        items.forEach(function(item) {
+            if (item.isLinked && item.songs) {
+                // Flatten linked unit into individual songs with linked metadata
+                item.songs.forEach(function(s, si) {
+                    queue.push({ title: s.title, band: s.band || '', _blockType: blockType, _linkedUnit: item.title, _linkedPos: si });
+                });
+            } else {
+                queue.push({ title: item.title, band: item.band || '', _blockType: blockType });
+            }
+        });
     };
     _addBlock(blocks.warmup, 'warmup');
     _addBlock(blocks.deepWork, 'deepWork');
