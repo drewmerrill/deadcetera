@@ -78,6 +78,24 @@ var SP_PRESETS = {
 var _spMoveIdx = -1;
 var _spShowLabels = true; // labels toggle
 var _spShowDirections = true; // stage direction markers
+var _spShareMode = false; // share/send mode: compact, no editor chrome
+
+// Size classes: controls visual weight of each element type on the grid
+// 'sm' = small (gear, monitors, DI), 'md' = medium (musicians, amps), 'lg' = large (drums, risers)
+var SP_SIZE_CLASS = {
+  'Vocal': 'sm', 'Guitar': 'md', 'Bass': 'md', 'Keys': 'md', 'Drums': 'lg', 'Percussion': 'md',
+  'Guitar Amp': 'sm', 'Bass Amp': 'sm', 'Keyboard Rig': 'md', 'Drum Kit': 'lg', 'Pedalboard': 'sm', 'Laptop': 'sm', 'IEM Rack': 'sm',
+  'Vocal Mic': 'sm', 'Inst Mic': 'sm', 'DI Box': 'sm', 'Floor Monitor': 'sm', 'Side Fill': 'md', 'IEM Pack': 'sm',
+  'Riser': 'lg', 'Drum Riser': 'lg', 'Power Drop': 'sm'
+};
+
+// Compact labels for share mode
+var SP_COMPACT = {
+  'Vocal': 'Vox', 'Guitar': 'Gtr', 'Bass': 'Bass', 'Keys': 'Keys', 'Drums': 'Drums', 'Percussion': 'Perc',
+  'Guitar Amp': 'Gtr Amp', 'Bass Amp': 'Bass Amp', 'Keyboard Rig': 'Keys Rig', 'Drum Kit': 'Kit', 'Pedalboard': 'PB', 'Laptop': 'PC', 'IEM Rack': 'IEM',
+  'Vocal Mic': 'Vox Mic', 'Inst Mic': 'Mic', 'DI Box': 'DI', 'Floor Monitor': 'Mon', 'Side Fill': 'SF', 'IEM Pack': 'IEM',
+  'Riser': 'Riser', 'Drum Riser': 'Riser', 'Power Drop': 'Pwr'
+};
 
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
@@ -108,12 +126,13 @@ async function _spLoadPlots() {
 
 function _spCreateDefault() {
   var elements = [];
-  var col = 0;
+  var col = 1; // start at col 1 to leave margin
   if (typeof bandMembers !== 'undefined') {
     Object.entries(bandMembers).forEach(function(e) {
       var key = e[0], m = e[1];
       var icon = m.role === 'Drums' ? '🥁' : m.role === 'Keyboard' ? '🎹' : m.role === 'Bass' ? '🎸' : '🎸';
-      elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + m.role, x: col, y: 1 });
+      var row = m.role === 'Drums' ? 1 : 2; // drums upstage, others center
+      elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + m.role, x: col, y: row });
       col++;
     });
   }
@@ -136,81 +155,113 @@ function _spRender() {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) { container.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px">No stage plots</div>'; return; }
 
+  // Inject hover CSS for delete buttons (only once)
+  if (!document.getElementById('spHoverCSS')) {
+    var style = document.createElement('style');
+    style.id = 'spHoverCSS';
+    style.textContent = '.sp-cell .sp-del{opacity:0;transition:opacity 0.15s}.sp-cell:hover .sp-del{opacity:1}'
+      + '.sp-share .sp-cell .sp-del{display:none}';
+    document.head.appendChild(style);
+  }
+
+  var share = _spShareMode;
   var html = '';
 
-  // Plot selector + controls
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
-  html += '<select id="spPlotSelect" onchange="_spSwitchPlot(this.value)" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.85em">';
-  _spPlots.forEach(function(p, i) {
-    html += '<option value="' + i + '"' + (i === _spCurrentIdx ? ' selected' : '') + '>' + _spEsc(p.name) + '</option>';
-  });
-  html += '</select>';
-  html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New</button>';
-  html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Dup</button>';
-  html += '<select onchange="_spApplyPreset(this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:4px 6px;border-radius:6px;font-size:0.72em"><option value="">Presets...</option>' + Object.keys(SP_PRESETS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>';
-  html += '<div style="margin-left:auto;display:flex;gap:6px">';
-  html += '<button onclick="_spExportView()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">&#x1F4E4; Export</button>';
-  html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Save</button>';
-  html += '</div></div>';
+  if (!share) {
+    // ── Edit Mode Controls ──
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+    html += '<select id="spPlotSelect" onchange="_spSwitchPlot(this.value)" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.85em">';
+    _spPlots.forEach(function(p, i) {
+      html += '<option value="' + i + '"' + (i === _spCurrentIdx ? ' selected' : '') + '>' + _spEsc(p.name) + '</option>';
+    });
+    html += '</select>';
+    html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New</button>';
+    html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Dup</button>';
+    html += '<select onchange="_spApplyPreset(this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:4px 6px;border-radius:6px;font-size:0.72em"><option value="">Presets...</option>' + Object.keys(SP_PRESETS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>';
+    html += '<div style="margin-left:auto;display:flex;gap:6px">';
+    html += '<button onclick="_spToggleShareMode()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">&#x1F4E4; Share View</button>';
+    html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Save</button>';
+    html += '</div></div>';
 
-  // Display toggles
-  html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
-  html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
-  html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
-  html += '</div>';
+    // Display toggles
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+    html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
+    html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
+    html += '</div>';
+  } else {
+    // ── Share Mode Header ──
+    var bandName = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<div><div style="font-size:1.1em;font-weight:800;color:var(--text)">' + _spEsc(bandName) + '</div>'
+      + '<div style="font-size:0.72em;color:var(--text-dim)">' + _spEsc(plot.name) + ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'</div></div>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<button onclick="_spExportView()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Print / PDF</button>';
+    html += '<button onclick="_spToggleShareMode()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--text-dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">← Edit</button>';
+    html += '</div></div>';
+  }
 
-  // Stage canvas (grid-based)
+  // Stage canvas
   html += _spRenderStage(plot);
 
-  // Element palette
-  html += '<div style="margin-top:16px">';
-  html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Add to Stage</div>';
-  html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-  Object.keys(SP_ELEMENTS).forEach(function(cat) {
-    SP_ELEMENTS[cat].forEach(function(el) {
-      html += '<button onclick="_spAddElement(\'' + el.type + '\',\'' + _spEsc(el.icon) + '\',\'' + _spEsc(el.label) + '\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.72em;display:flex;align-items:center;gap:4px"><span>' + el.icon + '</span><span>' + el.label + '</span></button>';
+  if (!share) {
+    // Element palette
+    html += '<div style="margin-top:14px">';
+    html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">Add to Stage</div>';
+    html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+    Object.keys(SP_ELEMENTS).forEach(function(cat) {
+      SP_ELEMENTS[cat].forEach(function(el) {
+        html += '<button onclick="_spAddElement(\'' + el.type + '\',\'' + _spEsc(el.icon) + '\',\'' + _spEsc(el.label) + '\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 6px;border-radius:5px;cursor:pointer;font-size:0.68em;display:flex;align-items:center;gap:3px"><span style="font-size:0.9em">' + el.icon + '</span><span>' + el.label + '</span></button>';
+      });
     });
-  });
-  html += '</div></div>';
+    html += '</div></div>';
 
-  // Channel list
-  html += _spRenderChannelList(plot);
+    // Channel list
+    html += _spRenderChannelList(plot);
 
-  // Monitor mixes
-  html += _spRenderMonitorMixes(plot);
+    // Monitor mixes
+    html += _spRenderMonitorMixes(plot);
 
-  // Tech rider notes
-  html += '<div style="margin-top:20px">';
-  html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Tech Rider Notes</div>';
-  html += '<textarea id="spRiderNotes" onchange="_spUpdateRiderNotes(this.value)" placeholder="Power requirements, IEM notes, backline needs, FOH instructions..." style="width:100%;min-height:80px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82em;font-family:inherit;resize:vertical;box-sizing:border-box">' + _spEsc(plot.riderNotes || '') + '</textarea>';
-  html += '</div>';
+    // Tech rider notes
+    html += '<div style="margin-top:20px">';
+    html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Tech Rider Notes</div>';
+    html += '<textarea id="spRiderNotes" onchange="_spUpdateRiderNotes(this.value)" placeholder="Power requirements, IEM notes, backline needs, FOH instructions..." style="width:100%;min-height:80px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82em;font-family:inherit;resize:vertical;box-sizing:border-box">' + _spEsc(plot.riderNotes || '') + '</textarea>';
+    html += '</div>';
 
-  // Contact block
-  html += '<div style="margin-top:16px">';
-  html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Band Contact</div>';
-  html += '<input id="spContact" onchange="_spUpdateContact(this.value)" value="' + _spEsc(plot.contact || '') + '" placeholder="Name, phone, email for sound check coordination" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82em;box-sizing:border-box">';
-  html += '</div>';
+    // Contact block
+    html += '<div style="margin-top:16px">';
+    html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Band Contact</div>';
+    html += '<input id="spContact" onchange="_spUpdateContact(this.value)" value="' + _spEsc(plot.contact || '') + '" placeholder="Name, phone, email for sound check coordination" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82em;box-sizing:border-box">';
+    html += '</div>';
+  } else {
+    // Share mode: read-only channel list + monitors + rider
+    html += _spRenderShareDetails(plot);
+  }
 
   container.innerHTML = html;
 }
 
 function _spRenderStage(plot) {
-  var cols = Math.min(8, Math.max(4, plot.elements.length + 1));
-  var rows = 3; // front, middle, back
+  var share = _spShareMode;
+  // Wider grid: up to 10 cols for denser layout; 5 rows (back, mid-back, center, mid-front, front)
+  var cols = Math.min(10, Math.max(6, plot.elements.length + 2));
+  var rows = 5;
+  var gap = share ? '3px' : '4px';
+  var cellMin = share ? '22px' : '28px';
+  var iconSize = share ? '0.75em' : '0.8em';
+  var pad = share ? '2px 2px' : '3px 2px';
 
-  var html = '<div style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;min-height:200px">';
+  var html = '<div class="' + (share ? 'sp-share' : '') + '" style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:' + (share ? '10px 8px 6px' : '14px 10px 8px') + '">';
 
-  // Stage label + direction indicators
-  html += '<div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#1e293b;padding:0 8px;font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'</div>';
-  if (_spShowDirections) {
-    html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.5em;font-weight:700;color:rgba(255,255,255,0.08);letter-spacing:0.15em;text-transform:uppercase;white-space:nowrap">STAGE LEFT</div>';
-    html += '<div style="position:absolute;top:50%;right:-2px;transform:translateY(-50%) rotate(90deg);font-size:0.5em;font-weight:700;color:rgba(255,255,255,0.08);letter-spacing:0.15em;text-transform:uppercase;white-space:nowrap">STAGE RIGHT</div>';
-    html += '<div style="position:absolute;top:4px;left:50%;transform:translateX(-50%);font-size:0.48em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.1em;text-transform:uppercase">UPSTAGE</div>';
+  // Stage label
+  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'') + '</div>';
+  if (_spShowDirections && !share) {
+    html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SL</div>';
+    html += '<div style="position:absolute;top:50%;right:-2px;transform:translateY(-50%) rotate(90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SR</div>';
+    html += '<div style="position:absolute;top:3px;left:50%;transform:translateX(-50%);font-size:0.42em;font-weight:700;color:rgba(255,255,255,0.05);letter-spacing:0.08em;text-transform:uppercase">UPSTAGE</div>';
   }
 
-  // Grid of placed elements
-  html += '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:8px;min-height:160px">';
-  // Create grid cells
+  // Grid
+  html += '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:' + gap + '">';
   for (var r = 0; r < rows; r++) {
     for (var c = 0; c < cols; c++) {
       var el = plot.elements.find(function(e) { return e.x === c && e.y === r; });
@@ -219,57 +270,81 @@ function _spRenderStage(plot) {
         var isMoving = _spMoveIdx === elIdx;
         var rotation = el.rotation || 0;
         var rotStyle = rotation ? 'transform:rotate(' + rotation + 'deg)' : '';
-        // Find matching channel number
+
+        // Size class
+        var baseLabel = el.label.split(' – ')[0].trim();
+        var sc = SP_SIZE_CLASS[baseLabel] || 'sm';
+        var cellBg = isMoving ? 'rgba(245,158,11,0.15)' : sc === 'lg' ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)';
+        var cellBorder = isMoving ? 'rgba(245,158,11,0.4)' : sc === 'lg' ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.15)';
+
+        // Channel number
         var chNum = '';
         if (plot.channels) {
           for (var ci = 0; ci < plot.channels.length; ci++) {
-            if (plot.channels[ci].label && el.label && plot.channels[ci].label.toLowerCase().indexOf(el.label.split(' – ')[0].split(' ')[0].toLowerCase()) >= 0) {
+            if (plot.channels[ci].label && el.label && plot.channels[ci].label.toLowerCase().indexOf(baseLabel.toLowerCase()) >= 0) {
               chNum = String(ci + 1); break;
             }
           }
-          // Also match by exact label
           if (!chNum) {
             for (var cj = 0; cj < plot.channels.length; cj++) {
               if (plot.channels[cj].label && plot.channels[cj].label === el.label) { chNum = String(cj + 1); break; }
             }
           }
         }
-        // Allow manual input number on element
         if (el.inputNum) chNum = el.inputNum;
-        html += '<div style="background:' + (isMoving ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.08)') + ';border:1px solid ' + (isMoving ? 'rgba(245,158,11,0.4)' : 'rgba(99,102,241,0.2)') + ';border-radius:8px;padding:8px 4px;text-align:center;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;position:relative" onclick="_spClickElement(' + elIdx + ')">';
-        html += '<span style="font-size:1.2em;' + rotStyle + '">' + el.icon + '</span>';
-        if (_spShowLabels) {
-          // Show monitor mix number if this is a monitor/wedge element
-          var mixLabel = '';
-          if (el.type === 'audio' && (el.label.indexOf('Monitor') >= 0 || el.label.indexOf('Wedge') >= 0 || el.label.indexOf('Floor') >= 0)) {
-            if (plot.monitors) {
-              for (var mi = 0; mi < plot.monitors.length; mi++) {
-                if (plot.monitors[mi].label && el.label.indexOf(plot.monitors[mi].label.split(' ')[0]) >= 0) {
-                  mixLabel = ' (Mix ' + (mi + 1) + ')'; break;
-                }
+
+        // Display label
+        var displayLabel = share ? (SP_COMPACT[baseLabel] || baseLabel) : el.label;
+        // For musician elements with "Name – Role", keep name in share mode
+        if (share && el.label.indexOf(' – ') >= 0) {
+          var parts = el.label.split(' – ');
+          displayLabel = parts[0].split(' ')[0]; // first name only
+          var roleAbbr = SP_COMPACT[parts[1].trim()] || parts[1].trim();
+          displayLabel += ' ' + roleAbbr;
+        }
+
+        // Monitor mix label
+        var mixLabel = '';
+        if (_spShowLabels && !share && el.type === 'audio' && (el.label.indexOf('Monitor') >= 0 || el.label.indexOf('Wedge') >= 0 || el.label.indexOf('Floor') >= 0)) {
+          if (plot.monitors) {
+            for (var mi = 0; mi < plot.monitors.length; mi++) {
+              if (plot.monitors[mi].label && el.label.indexOf(plot.monitors[mi].label.split(' ')[0]) >= 0) {
+                mixLabel = ' M' + (mi + 1); break;
               }
             }
-            if (!mixLabel && el.inputNum) mixLabel = ' (Mix ' + el.inputNum + ')';
           }
-          html += '<span style="font-size:0.6em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + _spEsc(el.label) + mixLabel + '</span>';
+          if (!mixLabel && el.inputNum) mixLabel = ' M' + el.inputNum;
         }
-        if (chNum) html += '<span style="position:absolute;top:2px;left:2px;background:#667eea;color:white;font-size:0.5em;font-weight:800;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center">' + chNum + '</span>';
-        html += '<button onclick="event.stopPropagation();_spRemoveElement(' + elIdx + ')" style="position:absolute;top:2px;right:2px;background:none;border:none;color:#64748b;cursor:pointer;font-size:0.6em;padding:2px">✕</button>';
+
+        html += '<div class="sp-cell" style="background:' + cellBg + ';border:1px solid ' + cellBorder + ';border-radius:5px;padding:' + pad + ';text-align:center;min-height:' + cellMin + ';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:' + (share ? 'default' : 'pointer') + ';position:relative;overflow:hidden"' + (share ? '' : ' onclick="_spClickElement(' + elIdx + ')"') + '>';
+        html += '<span style="font-size:' + iconSize + ';line-height:1;' + rotStyle + '">' + el.icon + '</span>';
+        if (_spShowLabels || share) {
+          html += '<span style="font-size:' + (share ? '0.48em' : '0.52em') + ';font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:' + (share ? '60px' : '68px') + ';line-height:1.1">' + _spEsc(displayLabel) + mixLabel + '</span>';
+        }
+        if (chNum) html += '<span style="position:absolute;top:1px;left:1px;background:#667eea;color:white;font-size:0.42em;font-weight:800;width:12px;height:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;line-height:1">' + chNum + '</span>';
+        if (!share) {
+          html += '<button class="sp-del" onclick="event.stopPropagation();_spRemoveElement(' + elIdx + ')" style="position:absolute;top:0;right:1px;background:none;border:none;color:#64748b;cursor:pointer;font-size:0.5em;padding:1px">✕</button>';
+        }
         html += '</div>';
       } else {
-        var emptyLabel = _spMoveIdx >= 0 ? 'Move here' : (_spPendingElement ? 'Place here' : '+');
-        var emptyBg = _spMoveIdx >= 0 ? 'rgba(245,158,11,0.04)' : 'rgba(255,255,255,0.01)';
-        html += '<div style="background:' + emptyBg + ';border:1px dashed rgba(255,255,255,0.06);border-radius:8px;min-height:50px;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="_spPlaceAtCell(' + c + ',' + r + ')"><span style="color:rgba(255,255,255,0.15);font-size:0.6em">' + emptyLabel + '</span></div>';
+        // Empty cell
+        if (share) {
+          html += '<div style="min-height:' + cellMin + '"></div>';
+        } else {
+          var emptyLabel = _spMoveIdx >= 0 ? '↗' : (_spPendingElement ? '•' : '');
+          var emptyBg = _spMoveIdx >= 0 ? 'rgba(245,158,11,0.03)' : 'transparent';
+          html += '<div style="background:' + emptyBg + ';border:1px dashed rgba(255,255,255,0.04);border-radius:4px;min-height:' + cellMin + ';display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="_spPlaceAtCell(' + c + ',' + r + ')"><span style="color:rgba(255,255,255,0.1);font-size:0.5em">' + emptyLabel + '</span></div>';
+        }
       }
     }
   }
   html += '</div>';
 
-  // Audience marker + downstage indicator
-  html += '<div style="text-align:center;margin-top:12px;font-size:0.6em;font-weight:700;color:rgba(255,255,255,0.15);letter-spacing:0.2em;text-transform:uppercase">';
-  if (_spShowDirections) html += '<span style="font-size:0.85em;color:rgba(255,255,255,0.06);margin-right:12px">DOWNSTAGE</span>';
+  // Audience marker
+  html += '<div style="text-align:center;margin-top:6px;font-size:0.52em;font-weight:700;color:rgba(255,255,255,0.12);letter-spacing:0.15em;text-transform:uppercase">';
+  if (_spShowDirections && !share) html += '<span style="font-size:0.8em;color:rgba(255,255,255,0.05);margin-right:8px">DS</span>';
   html += '&#x25BC; AUDIENCE &#x25BC;';
-  if (_spShowDirections) html += '<span style="font-size:0.85em;color:rgba(255,255,255,0.06);margin-left:12px">DOWNSTAGE</span>';
+  if (_spShowDirections && !share) html += '<span style="font-size:0.8em;color:rgba(255,255,255,0.05);margin-left:8px">DS</span>';
   html += '</div>';
 
   html += '</div>';
@@ -495,12 +570,13 @@ function _spResetToDefault() {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
   plot.elements = [];
-  var col = 0;
+  var col = 1;
   if (typeof bandMembers !== 'undefined') {
     Object.entries(bandMembers).forEach(function(e) {
       var m = e[1];
       var icon = m.role === 'Drums' ? '🥁' : m.role === 'Keyboard' ? '🎹' : '🎸';
-      plot.elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + m.role, x: col, y: 1 });
+      var row = m.role === 'Drums' ? 1 : 2;
+      plot.elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + m.role, x: col, y: row });
       col++;
     });
   }
@@ -533,6 +609,39 @@ async function _spSave() {
   }
 }
 
+// ── Share Mode Details (read-only compact view) ─────────────────────────────
+
+function _spRenderShareDetails(plot) {
+  var html = '';
+  // Channel list (compact table)
+  if (plot.channels && plot.channels.length) {
+    html += '<div style="margin-top:12px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Input List</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:2px">';
+    plot.channels.forEach(function(ch, i) {
+      html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0"><span style="font-weight:700;color:var(--text-dim);margin-right:4px">' + (i + 1) + '.</span>' + _spEsc(ch.label || '—') + '</div>';
+    });
+    html += '</div></div>';
+  }
+  // Monitors (compact)
+  if (plot.monitors && plot.monitors.length) {
+    html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Monitor Mixes</div>';
+    plot.monitors.forEach(function(mon, i) {
+      html += '<div style="font-size:0.72em;color:var(--text-muted);padding:1px 0"><span style="font-weight:700;color:var(--text-dim)">Mix ' + (i + 1) + ':</span> ' + _spEsc(mon.label || '—') + '</div>';
+    });
+    html += '</div>';
+  }
+  // Rider notes
+  if (plot.riderNotes) {
+    html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Tech Notes</div>';
+    html += '<div style="font-size:0.72em;color:var(--text-muted);white-space:pre-wrap;line-height:1.4">' + _spEsc(plot.riderNotes) + '</div></div>';
+  }
+  // Contact
+  if (plot.contact) {
+    html += '<div style="margin-top:8px;font-size:0.68em;color:var(--text-dim)">Contact: ' + _spEsc(plot.contact) + '</div>';
+  }
+  return html;
+}
+
 // ── Export / Print View ──────────────────────────────────────────────────────
 
 function _spExportView() {
@@ -541,17 +650,19 @@ function _spExportView() {
   var bandName = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
   var date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // Build printable HTML
-  var cols = Math.min(8, Math.max(4, plot.elements.length + 1));
-  var rows = 3;
+  // Build printable HTML — compact grid matching share mode density
+  var cols = Math.min(10, Math.max(6, plot.elements.length + 2));
+  var rows = 5;
 
   var stageHTML = '<table style="width:100%;border-collapse:collapse;margin:12px 0">';
   for (var r = 0; r < rows; r++) {
     stageHTML += '<tr>';
     for (var c = 0; c < cols; c++) {
       var el = plot.elements.find(function(e) { return e.x === c && e.y === r; });
-      stageHTML += '<td style="border:1px solid #ddd;padding:12px 6px;text-align:center;min-width:80px;height:50px;vertical-align:middle">';
-      if (el) stageHTML += '<div style="font-size:1.2em">' + el.icon + '</div><div style="font-size:0.75em;font-weight:600">' + _spEsc(el.label) + '</div>';
+      var baseLabel = el ? el.label.split(' – ')[0].trim() : '';
+      var compactLabel = el ? (el.label.indexOf(' – ') >= 0 ? el.label.split(' – ')[0].split(' ')[0] + ' ' + (SP_COMPACT[el.label.split(' – ')[1].trim()] || el.label.split(' – ')[1].trim()) : (SP_COMPACT[baseLabel] || el.label)) : '';
+      stageHTML += '<td style="border:1px solid #ddd;padding:4px 3px;text-align:center;min-width:55px;height:32px;vertical-align:middle;font-size:11px">';
+      if (el) stageHTML += '<div style="font-size:1em">' + el.icon + '</div><div style="font-size:0.7em;font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _spEsc(compactLabel) + '</div>';
       stageHTML += '</td>';
     }
     stageHTML += '</tr>';
@@ -641,5 +752,6 @@ window._spClickElement = _spClickElement;
 window._spApplyPreset = _spApplyPreset;
 window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
 window._spToggleDirections = function(v) { _spShowDirections = v; _spRender(); };
+window._spToggleShareMode = function() { _spShareMode = !_spShareMode; _spRender(); };
 
 console.log('🎭 stage-plot.js loaded');
