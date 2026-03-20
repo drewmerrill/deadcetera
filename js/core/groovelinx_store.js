@@ -1424,6 +1424,11 @@
     var input = getRehearsalAgendaInput();
     var opts = Object.assign({}, options || {}, { previousSongIds: previousSongIds });
     _agendaCache = RehearsalAgendaEngine.generateRehearsalAgenda(input, opts);
+    // Persist regenerated agenda (same as initial generate)
+    if (_agendaCache && !_agendaCache.empty) {
+      _rehearsalAgenda.latestGenerated = _agendaCache;
+      _persistAgenda();
+    }
     return _agendaCache;
   }
 
