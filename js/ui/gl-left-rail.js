@@ -173,9 +173,10 @@
         html += '<button class="gl-rail-item" data-page="' + item.page + '"'
           + ' onclick="showPage(\'' + item.page + '\')"'
           + ' title="' + tooltip + '">'
-          + '<span class="gl-rail-icon">' + item.icon + '</span>'
+          + '<span class="gl-rail-icon" style="position:relative">' + item.icon
+          + (item.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#fbbf24;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
+          + '</span>'
           + '<span class="gl-rail-label">' + item.label + '</span>'
-          + (item.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;background:#fbbf24;color:#000;font-size:0.6em;font-weight:800;border-radius:8px;padding:0 5px;margin-left:4px;min-width:14px;text-align:center;line-height:16px"></span>' : '')
           + '</button>';
       }
       html += '</div>';
@@ -203,7 +204,7 @@
       }
       var badge = document.getElementById('glRailBandRoomBadge');
       if (badge) {
-        badge.textContent = count;
+        badge.textContent = count > 9 ? '9+' : count;
         badge.style.display = count > 0 ? '' : 'none';
       }
     } catch(e) {}

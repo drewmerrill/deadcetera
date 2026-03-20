@@ -299,6 +299,7 @@ function slAddSongToSet(setIdx, title) {
     if (!requireSignIn()) return;
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
     window._slSets[setIdx].songs.push({title: title, segue: 'stop'});
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
     slRenderSetSongs(setIdx);
     document.getElementById('slAddSong' + setIdx).value = '';
     document.getElementById('slSongResults' + setIdx).innerHTML = '';
@@ -318,19 +319,19 @@ function slRenderSetSongs(setIdx) {
         const segueColor = { stop:'#64748b', flow:'#818cf8', segue:'#34d399', cutoff:'#f87171' }[segue] || '#64748b';
         const histTip = typeof getSongHistoryTooltip === 'function' ? getSongHistoryTooltip(s) : '';
         return `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
-            style="padding:6px 10px;font-size:0.85em;gap:6px;align-items:center;cursor:default" title="${histTip.replace(/"/g,'&quot;')}">
-            <span style="color:#475569;cursor:grab;font-size:1em;flex-shrink:0" title="Drag to reorder">\u2807</span>
-            <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0">${i + 1}.</span>
+            style="padding:3px 6px;font-size:0.82em;gap:4px;align-items:center;cursor:default;min-height:28px" title="${histTip.replace(/"/g,'&quot;')}">
+            <span style="color:#475569;cursor:grab;font-size:0.9em;flex-shrink:0">\u2807</span>
+            <span style="color:var(--text-dim);min-width:16px;font-weight:600;flex-shrink:0;font-size:0.85em">${i + 1}</span>
             <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
-            ${keyStr}${bpmStr}<span id="slvote_${sanitizeFirebasePath(s).replace(/[^a-zA-Z0-9]/g,'_')}" style="display:inline-flex;align-items:center;gap:2px;margin-left:4px;vertical-align:middle"></span>
-            <select onchange="slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
-                style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:5px;padding:2px 4px;font-size:0.78em;font-weight:700;cursor:pointer;flex-shrink:0">
-                <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
-                <option value="flow" ${segue==='flow'?'selected':''}>\u2192 Flow</option>
-                <option value="segue" ${segue==='segue'?'selected':''}>~ Segue</option>
-                <option value="cutoff" ${segue==='cutoff'?'selected':''}>| Cut</option>
+            ${keyStr}${bpmStr}
+            <select onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:4px;padding:1px 3px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0">
+                <option value="stop" ${segue==='stop'?'selected':''}>·</option>
+                <option value="flow" ${segue==='flow'?'selected':''}>\u2192</option>
+                <option value="segue" ${segue==='segue'?'selected':''}>~</option>
+                <option value="cutoff" ${segue==='cutoff'?'selected':''}>|</option>
             </select>
-            <button class="btn btn-sm btn-ghost" onclick="slRemoveSong(${setIdx},${i})" style="padding:2px 6px;flex-shrink:0">\u2715</button>
+            <button class="btn btn-sm btn-ghost" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
         </div>`;
     }).join('');
     el.querySelectorAll('.sl-song-row').forEach(row => {
@@ -344,6 +345,7 @@ function slRenderSetSongs(setIdx) {
             if(from===to)return;
             const songs=window._slSets[setIdx].songs;
             const [moved]=songs.splice(from,1); songs.splice(to,0,moved);
+            if (typeof _slMarkDirty === 'function') _slMarkDirty();
             slRenderSetSongs(setIdx);
         });
     });
@@ -555,30 +557,48 @@ async function editSetlist(idx) {
     window._slSelectedVenueName = sl.venue || null;
 
     const container = document.getElementById('setlistsList');
-    container.innerHTML = `<div class="app-card"><h3>Edit: ${sl.name||'Untitled'}</h3>
-        <div class="form-grid" style="margin-bottom:12px">
-            <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" value="${(sl.name||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${sl.date||''}" style="max-width:100%;box-sizing:border-box;padding-right:36px;"></div>
-            <div class="form-row"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
-            <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" value="${(sl.notes||'').replace(/"/g,'&quot;')}"></div>
-        </div>
-        <div id="slLinkedGigRow" style="margin-bottom:8px"></div>
-        <div id="slReadinessMeter"></div>
-        <div id="slSets">${window._slSets.map((set, si) => `
-            <div class="app-card" style="background:rgba(255,255,255,0.02)">
-                <h3 style="color:var(--accent-light)">${set.name||'Set '+(si+1)}</h3>
-                <div id="slSet${si}Songs"></div>
-                <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${si}" placeholder="Type song name..." oninput="slSearchSong(this,${si})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults${si}"></div></div>
-            </div>`).join('')}
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
-            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
-            <button class="btn btn-ghost" onclick="slShareSetlist(${idx})" style="color:#94a3b8">📤 Share</button>
-            <button class="btn btn-ghost" onclick="carePackageSend('gig',${idx})" style="color:#fbbf24;font-size:0.82em">🪂 Pack</button>
-            <button class="btn btn-success" onclick="slSaveSetlistEdit(${idx})" style="margin-left:auto">💾 Save Changes</button>
-            <button class="btn btn-ghost" onclick="loadSetlists()">Cancel</button>
-        </div></div>`;
+    var safeName = (sl.name||'').replace(/"/g,'&quot;');
+    var safeNotes = (sl.notes||'').replace(/"/g,'&quot;');
+    container.innerHTML = '<div class="app-card" style="padding:10px 14px">'
+        // Compact header: row 1 = name + date + venue, row 2 = gig chip + notes
+        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
+        + '<input class="app-input" id="slName" value="' + safeName + '" placeholder="Setlist name" style="flex:2;min-width:120px;font-weight:700;font-size:0.9em;padding:5px 8px">'
+        + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:130px;padding:5px 8px;font-size:0.82em;box-sizing:border-box">'
+        + '<div id="slVenuePicker" style="flex:1;min-width:100px"></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">'
+        + '<div id="slLinkedGigRow" style="flex-shrink:0"></div>'
+        + '<input class="app-input" id="slNotes" value="' + safeNotes + '" placeholder="Notes..." style="flex:1;font-size:0.78em;padding:4px 8px;color:var(--text-dim)">'
+        + '</div>'
+        + '<div id="slReadinessMeter" style="margin-bottom:6px"></div>'
+        // Persistent sticky save bar (desktop: top sticky, mobile: bottom fixed)
+        + '<div id="slStickyActions" style="position:sticky;top:0;z-index:10;background:#1e293b;padding:6px 0;margin:0 -14px;padding-left:14px;padding-right:14px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+        + '<button class="btn btn-ghost btn-sm" onclick="slAddSet()" style="font-size:0.75em">+ Set</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="slAddSet(\'encore\')" style="font-size:0.75em">+ Encore</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">📤</button>'
+        + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700;margin-left:auto">● Unsaved</span>'
+        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">💾 Save</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
+        + '</div>'
+        // Sets
+        + '<div id="slSets">' + window._slSets.map(function(set, si) {
+            return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
+                + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '</div>'
+                + '<div id="slSet' + si + 'Songs"></div>'
+                + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
+                + '</div>';
+        }).join('') + '</div>'
+        // Mobile bottom save bar
+        + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;gap:8px">'
+        + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.82em">Cancel</button>'
+        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.88em;font-weight:700">💾 Save Changes</button>'
+        + '</div>'
+        + '</div>';
+    // Show mobile save bar on small screens
+    if (window.innerWidth <= 768) {
+        var mBar = document.getElementById('slMobileSaveBar');
+        if (mBar) mBar.style.display = 'flex';
+    }
     
     // Init venue picker for edit form
     var slVenues = await GLStore.getVenues();
@@ -1058,6 +1078,12 @@ window.slToggleTransition = slToggleTransition;
 window.slRemoveSong = slRemoveSong;
 window.slAddSet = slAddSet;
 window.slSaveSetlist = slSaveSetlist;
+
+// Dirty state tracking for persistent save indicator
+window._slMarkDirty = function() {
+    var ind = document.getElementById('slDirtyIndicator');
+    if (ind) ind.style.display = '';
+};
 window.editSetlist = editSetlist;
 window.slShareSetlist = slShareSetlist;
 window.slShareCopyText = slShareCopyText;
