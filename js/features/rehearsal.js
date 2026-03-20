@@ -1206,12 +1206,15 @@ window._rpSelectGig = async function(gigId) {
 
     // Detect linked pairs from transition data (flow/segue = linked unit)
     var linkedPairs = [];
+    console.log('[Planner] Setlist songs with segue data:', songs.map(function(s) { return s.title + ' (' + s._segue + ')'; }));
     for (var lpi = 0; lpi < songs.length - 1; lpi++) {
         if (songs[lpi]._segue === 'flow' || songs[lpi]._segue === 'segue') {
             linkedPairs.push({ from: songs[lpi], to: songs[lpi + 1], type: songs[lpi]._segue });
+            console.log('[Planner] Linked pair found:', songs[lpi].title, '→', songs[lpi+1].title, '(' + songs[lpi]._segue + ')');
         }
     }
     _rpState.linkedPairs = linkedPairs;
+    console.log('[Planner] Total linked pairs:', linkedPairs.length);
 
     // Bucket songs
     var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
