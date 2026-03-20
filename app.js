@@ -3081,18 +3081,26 @@ async function renderRefVersions(songTitle, bandData) {
         const isDefault = version.isDefault;
         const displayTitle = version.fetchedTitle || version.title;
         const hasVoted = version.votes && version.votes[currentUserEmail];
-        
+        const majority = Math.ceil(totalMembers / 2);
+        const votesNeeded = Math.max(0, majority - voteCount);
+
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
-                <button onclick="deleteRefVersion(${index})" 
-                    style="position: absolute; top: 10px; right: 10px; background: #ef4444!important; color: #ffffff!important; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
-                
+                <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px;z-index:10">
+                    <button onclick="editRefVersionUrl(${index})"
+                        style="background:rgba(102,126,234,0.15);color:#818cf8;border:1px solid rgba(102,126,234,0.3);border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:12px;line-height:26px;text-align:center" title="Edit URL">✏️</button>
+                    <button onclick="deleteRefVersion(${index})"
+                        style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:12px;line-height:26px;text-align:center;font-weight:700" title="Delete">✕</button>
+                </div>
+
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
-                    ${isDefault ? `<div class="version-badge">👑 BAND CHOICE (${voteCount}/${totalMembers})</div>` : ''}
+                    ${isDefault ? `<div class="version-badge">👑 BAND CHOICE (${voteCount}/${totalMembers})</div>` :
+                        voteCount > 0 ? `<div style="font-size:0.78em;color:var(--text-dim)">${voteCount}/${totalMembers} votes — ${votesNeeded} more for Band Choice</div>` : ''}
                 </div>
-                
+
                 <div class="votes-container">
+                    <div style="font-size:0.68em;color:var(--text-dim);margin-bottom:4px">Tap a name to vote:</div>
                     ${Object.entries(bandMembers).map(([email, member]) => {
                         const voted = version.votes && version.votes[email];
                         return `
@@ -3102,9 +3110,9 @@ async function renderRefVersions(songTitle, bandData) {
                         `;
                     }).join('')}
                 </div>
-                
+
                 ${version.notes ? `<p style="margin-bottom:12px;font-style:italic;color:var(--text-muted,#94a3b8);display:flex;align-items:center;gap:6px">${version.notes} <button onclick="editVersionNotes(${index})" style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.8em" title="Edit notes">✏️</button></p>` : ''}
-                
+
                 <button class="spotify-play-btn" onclick="window.open('${version.url || version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
                     ${getPlayButtonLabel(version)}
                 </button>
@@ -3118,6 +3126,9 @@ async function addRefVersion() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) { alert('Please select a song first!'); return; }
 
+    // Capture song title NOW — prevents race condition if selectedSong changes while modal is open
+    window._refModalSongTitle = songTitle;
+
     const existing = document.getElementById('addRefModal');
     if (existing) existing.remove();
     const modal = document.createElement('div');
@@ -3129,6 +3140,7 @@ async function addRefVersion() {
             <h3 style="margin:0;color:var(--accent-light)">⭐ Add Reference Version</h3>
             <button onclick="document.getElementById('addRefModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
         </div>
+        <div style="font-size:0.78em;color:var(--accent-light);font-weight:600;margin-bottom:12px;background:rgba(102,126,234,0.08);padding:6px 10px;border-radius:6px">Adding version for: ${songTitle}</div>
         <!-- Tab toggle -->
         <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px">
             <button id="refTabLink" onclick="refSwitchTab('link')"
@@ -3142,7 +3154,7 @@ async function addRefVersion() {
         </div>
         <!-- Link panel -->
         <div id="refPanelLink">
-            <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, or any URL.</p>
+            <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, MP3, or any URL.</p>
             <div id="refUrlDetect" style="height:24px;margin-bottom:6px;font-size:0.8em;color:var(--text-muted)"></div>
             <div class="form-row">
                 <label class="form-label">URL</label>
@@ -3208,7 +3220,8 @@ function refSwitchTab(tab) {
 }
 
 async function saveRefVersionUpload() {
-    const songTitle = selectedSong?.title || selectedSong;
+    // Use captured title from when modal opened — NOT current selectedSong (race condition fix)
+    const songTitle = window._refModalSongTitle || selectedSong?.title || selectedSong;
     if (!songTitle) return;
 
     const fileInput = document.getElementById('refAudioFile');
@@ -3298,7 +3311,8 @@ function detectRefPlatform(url) {
 
 async function saveRefVersionFromModal() {
     if (!requireSignIn()) return;
-    const songTitle = selectedSong?.title || selectedSong;
+    // Use captured title from when modal opened — NOT current selectedSong (race condition fix)
+    const songTitle = window._refModalSongTitle || selectedSong?.title || selectedSong;
     const url = document.getElementById('refUrl')?.value.trim();
     const title = document.getElementById('refTitle')?.value.trim();
     const notes = document.getElementById('refNotes')?.value.trim();
@@ -3437,6 +3451,35 @@ async function deleteRefVersion(versionIndex) {
     
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderRefVersions(songTitle, bandData);
+}
+
+async function editRefVersionUrl(versionIndex) {
+    if (!requireSignIn()) return;
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    let versions = await loadRefVersions(songTitle) || [];
+    if (!versions[versionIndex]) return;
+    const currentUrl = versions[versionIndex].url || versions[versionIndex].spotifyUrl || '';
+    const newUrl = prompt('Edit URL for this reference version:\n(Paste any link — YouTube, Spotify, Archive, SoundCloud, MP3, etc.)', currentUrl);
+    if (newUrl === null || newUrl.trim() === '' || newUrl.trim() === currentUrl) return;
+    const trimmed = newUrl.trim();
+    // Validate URL
+    try { new URL(trimmed); } catch(e) { alert('Please paste a valid URL'); return; }
+    versions[versionIndex].url = trimmed;
+    versions[versionIndex].spotifyUrl = trimmed; // backward compat
+    // Update platform detection
+    let platform = 'link';
+    if (trimmed.includes('spotify.com')) platform = 'spotify';
+    else if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) platform = 'youtube';
+    else if (trimmed.includes('music.apple.com')) platform = 'apple_music';
+    else if (trimmed.includes('tidal.com')) platform = 'tidal';
+    else if (trimmed.includes('soundcloud.com')) platform = 'soundcloud';
+    else if (trimmed.includes('archive.org')) platform = 'archive';
+    versions[versionIndex].platform = platform;
+    await saveRefVersions(songTitle, versions);
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderRefVersions(songTitle, bandData);
+    showToast('✅ URL updated');
 }
 
 async function saveRefVersions(songTitle, versions) {
