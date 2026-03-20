@@ -528,26 +528,28 @@ function vhSelectSpotify() {
 // ── Paste URL Panel ──────────────────────────────────────────────────────────
 function vhRenderUrlPanel() {
     var panel = document.getElementById('vhPanelUrl');
-    // If launched for a specific destination, show a direct save button instead of generic ✓
-    var hasReturnTo = !!vhReturnTo;
-    var sendLabel = hasReturnTo
-        ? ({ northstar: '⭐ Save', coverme: '🎤 Save', fadr: '🎚️ Send', practice: '🎵 Load' }[vhReturnTo] || '→ Send')
-        : '✓';
-    var sendAction = hasReturnTo
-        ? 'vhSelectAndSend(\'' + vhReturnTo + '\')'
-        : 'vhSelectPastedUrl()';
+    // Determine primary destination — use returnTo if set, default to northstar
+    var primaryDest = vhReturnTo || 'northstar';
+    var destLabels = { northstar: '⭐ Save as North Star', coverme: '🎤 Save to Cover Me', fadr: '🎚️ Send to Fadr', practice: '🎵 Load in Practice' };
+    var primaryLabel = destLabels[primaryDest] || '⭐ Save as North Star';
     panel.innerHTML =
         '<div class="vh-url-info">' +
-            '<p>Paste any URL — Spotify, YouTube, Archive.org, SoundCloud, or a direct MP3 link.</p>' +
+            '<p>Paste any URL — Spotify, YouTube, Archive.org, SoundCloud, MP3, or any link.</p>' +
         '</div>' +
         '<div class="vh-search-row">' +
-            '<input id="vhPasteUrl" type="text" class="vh-search-input" placeholder="https://..." onkeydown="if(event.key===\'Enter\')' + sendAction + '" oninput="vhDetectPlatform(this.value)">' +
-            '<button class="vh-search-btn" onclick="' + sendAction + '" style="' + (hasReturnTo ? 'min-width:60px;font-size:0.78em;font-weight:700' : '') + '">' + sendLabel + '</button>' +
+            '<input id="vhPasteUrl" type="text" class="vh-search-input" placeholder="https://..." onkeydown="if(event.key===\'Enter\')vhSelectAndSend(\'' + primaryDest + '\')" oninput="vhDetectPlatform(this.value)">' +
         '</div>' +
         '<div id="vhUrlDetect" class="vh-url-detect"></div>' +
         '<div class="vh-url-fields">' +
             '<input id="vhPasteTitle" type="text" class="vh-search-input" placeholder="Version title (optional)" style="margin-top:8px">' +
-        '</div>';
+        '</div>' +
+        '<button onclick="vhSelectAndSend(\'' + primaryDest + '\')" style="width:100%;margin-top:12px;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer">' + primaryLabel + '</button>' +
+        (primaryDest !== 'northstar' ? '' :
+            '<div style="display:flex;gap:6px;margin-top:8px;justify-content:center">' +
+            '<button onclick="vhSelectAndSend(\'coverme\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎤 Cover Me</button>' +
+            '<button onclick="vhSelectAndSend(\'fadr\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎚️ Fadr</button>' +
+            '<button onclick="vhSelectAndSend(\'practice\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎵 Practice</button>' +
+            '</div>');
 }
 
 function vhUrlPanelSendTo(btn) {
@@ -558,9 +560,32 @@ function vhUrlPanelSendTo(btn) {
 
 // Select pasted URL and immediately send to destination — one-click save
 function vhSelectAndSend(dest) {
-    vhSelectPastedUrl();
-    // vhSelectPastedUrl sets vhSelectedUrl — give it a tick then send
-    setTimeout(function() { vhSendTo(dest); }, 0);
+    console.log('[vh] vhSelectAndSend called:', dest);
+    var url = document.getElementById('vhPasteUrl')?.value?.trim();
+    if (!url) {
+        if (typeof showToast === 'function') showToast('Paste a URL first');
+        return;
+    }
+    try { new URL(url); } catch(e) {
+        if (typeof showToast === 'function') showToast('Enter a valid URL');
+        return;
+    }
+    // Set selected state directly (don't rely on vhSelectPastedUrl side effects)
+    var title = document.getElementById('vhPasteTitle')?.value?.trim() || '';
+    var platform = 'link';
+    if (url.includes('spotify.com')) platform = 'spotify';
+    else if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
+    else if (url.includes('archive.org')) platform = 'archive';
+    else if (url.includes('soundcloud.com')) platform = 'soundcloud';
+    else if (/\.(mp3|m4a|wav|ogg|flac)(\?|$)/i.test(url)) platform = 'audio';
+
+    vhSelectedUrl = url;
+    vhSelectedTitle = title || (vhSong ? vhSong.title : 'Version') + ' (' + platform + ')';
+    vhSelectedPlatform = platform;
+    console.log('[vh] URL set:', url, 'platform:', platform, 'title:', vhSelectedTitle);
+
+    // Send immediately
+    vhSendTo(dest);
 }
 
 function vhDetectPlatform(url) {
@@ -720,49 +745,61 @@ function vhSaveUrl(songTitle, url, title, platform) {
 }
 
 async function vhSendTo(dest) {
-    if (!vhSelectedUrl || !vhSong) return;
+    console.log('[vh] vhSendTo called:', dest, 'url:', vhSelectedUrl, 'song:', vhSong?.title);
+    if (!vhSelectedUrl || !vhSong) {
+        console.warn('[vh] vhSendTo aborted: no URL or no song', { url: vhSelectedUrl, song: vhSong });
+        if (typeof showToast === 'function') showToast('No URL selected — paste a URL first');
+        return;
+    }
     var songTitle = vhSong.title;
     var url = vhSelectedUrl;
     var title = vhSelectedTitle;
     // Persist URL to Firebase regardless of destination
-    vhSaveUrl(songTitle, url, title, vhSelectedPlatform);
+    try { vhSaveUrl(songTitle, url, title, vhSelectedPlatform); } catch(e) { console.warn('[vh] vhSaveUrl error:', e); }
 
     if (dest === 'northstar') {
-        // Add as reference version
-        var platform = vhSelectedPlatform || 'link';
-        var version = {
-            id: 'version_' + Date.now(),
-            title: title || 'Version from Hub',
-            url: url,
-            spotifyUrl: url,
-            platform: platform,
-            votes: {},
-            totalVotes: 0,
-            isDefault: false,
-            addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : '',
-            notes: 'Added via Find a Version',
-            dateAdded: new Date().toLocaleDateString()
-        };
-        if (typeof bandMembers !== 'undefined') {
-            Object.keys(bandMembers).forEach(function(email) { version.votes[email] = false; });
-        }
-        var versions = typeof loadRefVersions === 'function' ? (await loadRefVersions(songTitle) || []) : [];
-        if (!Array.isArray(versions)) versions = [];
-        versions.push(version);
-        if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
-        if (typeof renderRefVersions === 'function') {
-            var bd = (typeof bandKnowledgeBase !== 'undefined' ? bandKnowledgeBase[songTitle] : null) || {};
-            await renderRefVersions(songTitle, bd);
-        }
-        if (typeof showToast === 'function') showToast('⭐ Added to North Star!');
-        closeVersionHub();
-        // Re-render Listen lens in song-detail if it is currently open
-        setTimeout(function() {
-            var listenPanel = document.querySelector('.sd-lens-panel[data-lens="listen"]');
-            if (listenPanel && listenPanel.style.display !== 'none' && typeof _sdPopulateListenLensPublic === 'function') {
-                _sdPopulateListenLensPublic(songTitle);
+        try {
+            // Add as reference version
+            var platform = vhSelectedPlatform || 'link';
+            var version = {
+                id: 'version_' + Date.now(),
+                title: title || 'Version from Hub',
+                url: url,
+                spotifyUrl: url,
+                platform: platform,
+                votes: {},
+                totalVotes: 0,
+                isDefault: false,
+                addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : '',
+                notes: 'Added via Find a Version',
+                dateAdded: new Date().toLocaleDateString()
+            };
+            if (typeof bandMembers !== 'undefined') {
+                Object.keys(bandMembers).forEach(function(email) { version.votes[email] = false; });
             }
-        }, 300);
+            console.log('[vh] Loading existing versions for:', songTitle);
+            var versions = typeof loadRefVersions === 'function' ? (await loadRefVersions(songTitle) || []) : [];
+            if (!Array.isArray(versions)) versions = [];
+            versions.push(version);
+            console.log('[vh] Saving', versions.length, 'versions for:', songTitle);
+            if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
+            if (typeof renderRefVersions === 'function') {
+                var bd = (typeof bandKnowledgeBase !== 'undefined' ? bandKnowledgeBase[songTitle] : null) || {};
+                await renderRefVersions(songTitle, bd);
+            }
+            if (typeof showToast === 'function') showToast('⭐ Added to North Star!');
+            closeVersionHub();
+            // Re-render Listen lens in song-detail if it is currently open
+            setTimeout(function() {
+                var listenPanel = document.querySelector('.sd-lens-panel[data-lens="listen"]');
+                if (listenPanel && listenPanel.style.display !== 'none' && typeof _sdPopulateListenLensPublic === 'function') {
+                    _sdPopulateListenLensPublic(songTitle);
+                }
+            }, 300);
+        } catch(e) {
+            console.error('[vh] North Star save failed:', e);
+            if (typeof showToast === 'function') showToast('❌ Save failed: ' + e.message);
+        }
 
     } else if (dest === 'coverme') {
         // Add as cover version
