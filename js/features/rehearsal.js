@@ -160,29 +160,47 @@ async function _rhRenderTonightTab() {
     var ctx = window._riLastCtx;
     var focusSongs = window._riLastFocusSongs || [];
 
-    // Filter to active songs only
-    var activeFocus = focusSongs.filter(function(s) {
-        return typeof isSongActive === 'function' && isSongActive(s.title);
-    });
+    // Focus songs (already scoped to Active by buildRiContext — linked units included)
+    var activeFocus = focusSongs;
 
     var html = '';
 
-    // Focus songs
+    // Focus songs / deep work recommendations
     if (activeFocus.length > 0) {
         html += '<div style="margin-bottom:14px">'
-            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">Focus Songs</div>';
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">Deep Work Focus</div>';
         activeFocus.slice(0, 6).forEach(function(s, i) {
-            var avg = s.readiness || 0;
+            var avg = s.readiness || s.avg || 0;
             var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : '#64748b';
-            var reason = (s.reasons && s.reasons[0]) || '';
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
-                + '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1">' + s.title + '</span>'
-                + '<span style="font-size:0.68em;color:var(--text-dim)">' + reason + '</span>'
-                + '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>'
-                + '</div>';
+            var reasonChips = (s.reasons || []).map(function(r) {
+                var chipColor = r === 'Transition focus' ? '#818cf8' : r === 'Setlist priority' ? '#a5b4fc' : r === 'Low readiness' || r === 'Critical' ? '#f59e0b' : '#64748b';
+                return '<span style="font-size:0.6em;padding:1px 5px;border-radius:3px;background:' + chipColor + '15;color:' + chipColor + ';border:1px solid ' + chipColor + '30">' + r + '</span>';
+            }).join(' ');
+
+            if (s.isLinked) {
+                // Linked unit display
+                html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);border-left:3px solid #818cf8;padding-left:8px;margin:2px 0">'
+                    + '<div style="display:flex;align-items:center;gap:8px">'
+                    + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
+                    + '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1">' + s.title + '</span>'
+                    + '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>'
+                    + '</div>'
+                    + '<div style="display:flex;gap:4px;margin-top:3px;margin-left:24px;flex-wrap:wrap">' + reasonChips + '</div>'
+                    + '</div>';
+            } else {
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                    + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
+                    + '<div style="flex:1;min-width:0">'
+                    + '<div style="font-size:0.85em;font-weight:600;color:var(--text)">' + s.title + '</div>'
+                    + '<div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap">' + reasonChips + '</div>'
+                    + '</div>'
+                    + '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>'
+                    + '</div>';
+            }
         });
         html += '</div>';
+    } else {
+        html += '<div style="font-size:0.82em;color:var(--text-dim);padding:12px 0">No focus areas identified — all active songs are solid.</div>';
     }
 
     // Readiness breakdown (collapsed)
@@ -1998,25 +2016,97 @@ async function buildRiContext() {
         } catch(e) {}
     }
 
+    // Detect linked pairs from gig setlist transitions
+    var linkedUnits = [];
+    try {
+        var gigs2 = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        var todayStr2 = (typeof glToday === 'function') ? glToday() : new Date().toISOString().split('T')[0];
+        var nextGig2 = gigs2.filter(function(g) { return g.date >= todayStr2 && g.setlistId; }).sort(function(a,b) { return a.date.localeCompare(b.date); })[0];
+        if (nextGig2) {
+            var sls2 = window._glCachedSetlists || [];
+            var sl2 = sls2.find(function(s) { return s.setlistId === nextGig2.setlistId; });
+            if (sl2) {
+                (sl2.sets || []).forEach(function(set) {
+                    var songs = set.songs || [];
+                    for (var li = 0; li < songs.length - 1; li++) {
+                        var sg = songs[li];
+                        var segue = (typeof sg === 'object') ? (sg.segue || 'stop') : 'stop';
+                        if (segue === 'flow' || segue === 'segue') {
+                            var fromTitle = typeof sg === 'string' ? sg : (sg.title || '');
+                            var toTitle = typeof songs[li+1] === 'string' ? songs[li+1] : (songs[li+1].title || '');
+                            if (fromTitle && toTitle) {
+                                linkedUnits.push({ from: fromTitle, to: toTitle, type: segue });
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    } catch(e) {}
+
     return { rc: activeRc, events: events, upcoming: upcoming, past: past,
              nextEvent: nextEvent, lastEvent: lastEvent,
              planSongs: planSongs, gigSetlistSongs: gigSetlistSongs,
+             linkedUnits: linkedUnits,
              bandPct: bandPct, grooveData: grooveData };
 }
 
 // ── Derivation: Focus Songs ───────────────────────────────────────────────────
 function deriveRiFocusSongs(ctx) {
-    var rc = ctx.rc || {}; // Already filtered to Active by buildRiContext
+    var rc = ctx.rc || {};
     var planSongs = ctx.planSongs || new Set();
     var gigSetlistSongs = ctx.gigSetlistSongs || new Set();
+    var linkedUnits = ctx.linkedUnits || [];
     var candidates = [];
 
-    var grooveLow = ctx.grooveData && ctx.grooveData.stabilityScore !== undefined
-        && ctx.grooveData.stabilityScore < 60;
+    // Build linked lookup: title → linked pair info
+    var linkedLookup = {};
+    linkedUnits.forEach(function(lu) {
+        linkedLookup[lu.from] = lu;
+        linkedLookup[lu.to] = lu;
+    });
 
+    // Track which songs are already covered by a linked unit candidate
+    var coveredByLinked = {};
+
+    // First pass: create linked unit candidates
+    linkedUnits.forEach(function(lu) {
+        var fromRc = rc[lu.from] || {};
+        var toRc = rc[lu.to] || {};
+        var fromAvg = _riBandAvg(fromRc);
+        var toAvg = _riBandAvg(toRc);
+        var pairAvg = (fromAvg + toAvg) / 2;
+        var inSetlist = gigSetlistSongs.has(lu.from) || gigSetlistSongs.has(lu.to);
+
+        var score = (5 - pairAvg) * 10;
+        if (inSetlist) score += 30;
+        score += 25; // transition bonus
+        if (pairAvg < 3) score += 20;
+
+        var reasons = [];
+        if (inSetlist) reasons.push('Setlist priority');
+        reasons.push('Transition focus');
+        if (pairAvg < 3) reasons.push('Low readiness');
+
+        candidates.push({
+            title: lu.from + ' → ' + lu.to,
+            avg: pairAvg,
+            reasons: reasons,
+            score: score,
+            readiness: pairAvg,
+            isLinked: true,
+            songs: [lu.from, lu.to],
+            _inSetlist: inSetlist
+        });
+        coveredByLinked[lu.from] = true;
+        coveredByLinked[lu.to] = true;
+    });
+
+    // Second pass: individual song candidates (skip those covered by linked units)
     Object.entries(rc).forEach(function(entry) {
-        var title   = entry[0];
+        var title = entry[0];
         var ratings = entry[1] || {};
+        if (coveredByLinked[title]) return;
         var keys = Object.keys(ratings).filter(function(k) {
             return typeof ratings[k] === 'number' && ratings[k] > 0;
         });
@@ -2028,27 +2118,33 @@ function deriveRiFocusSongs(ctx) {
         var inPlan = planSongs.has(title);
 
         var reasons = [];
-        if (avg < 2)      reasons.push('Critical');
+        if (avg < 2) reasons.push('Critical');
         else if (avg < 3) reasons.push('Low readiness');
         else if (avg < 4) reasons.push('Needs polish');
-        if (inGigSetlist) reasons.push('Upcoming gig setlist');
+        if (inGigSetlist) reasons.push('Setlist priority');
         else if (inPlan) reasons.push('In rehearsal plan');
-        if (grooveLow && (inGigSetlist || inPlan)) reasons.push('Groove drift detected');
-        var vals = keys.map(function(k) { return ratings[k]; });
-        if (vals.length >= 2) {
-            var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
-            if (mx - mn >= 2) reasons.push('Uneven readiness');
-        }
-        // Score: gig setlist songs get highest boost, plan songs get medium boost
+
         var score = (5 - avg) * 10;
-        if (inGigSetlist) score += 25;
+        if (inGigSetlist) score += 30;
         else if (inPlan) score += 15;
-        if (reasons.indexOf('Uneven readiness') !== -1) score += 5;
+        if (avg < 3) score += 20;
+
         candidates.push({ title: title, avg: avg, reasons: reasons, score: score, readiness: avg, _inSetlist: inGigSetlist });
     });
 
     candidates.sort(function(a, b) { return b.score - a.score; });
-    return candidates.slice(0, 6);
+    var result = candidates.slice(0, 6);
+
+    // GUARANTEE: never return empty — if no candidates, pick lowest-readiness Active song
+    if (result.length === 0) {
+        var allActive = Object.entries(rc).map(function(e) {
+            var avg = _riBandAvg(e[1]);
+            return { title: e[0], avg: avg, reasons: ['Lowest readiness'], score: 0, readiness: avg };
+        }).filter(function(s) { return s.avg > 0; }).sort(function(a,b) { return a.avg - b.avg; });
+        if (allActive.length > 0) result = [allActive[0]];
+    }
+
+    return result;
 }
 
 // ── Derivation: Auto Plan ────────────────────────────────────────────────────
