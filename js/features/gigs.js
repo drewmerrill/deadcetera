@@ -310,12 +310,15 @@ function gigsMapSetFilter(f, btn) {
 }
 
 
+var _gigFilter = 'upcoming'; // 'all' | 'upcoming' | 'past'
+
 function renderGigsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'gigs');
     el.innerHTML = `
     <div class="page-header"><h1>🎤 Gigs</h1><p>Past and upcoming shows</p></div>
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-primary" onclick="addGig()">+ Add Gig</button>
+        <div id="gigFilterBar" style="display:flex;gap:4px;margin-left:auto"></div>
     </div>
     <div class="app-card" style="margin-bottom:16px;padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;user-select:none" onclick="toggleGigsMap()">
@@ -364,45 +367,74 @@ async function gigLaunchLinkedSetlist(setlistIdOrName) {
 }
 
 async function loadGigs() {
-    const rawData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-    const el = document.getElementById('gigsList');
-    if (!el || rawData.length === 0) return;
+    var rawData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var el = document.getElementById('gigsList');
+    if (!el) return;
     window._cachedGigs = rawData;
-    const data = rawData.map((g, origIdx) => ({...g, _origIdx: origIdx})).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    el.innerHTML = data.map((g, i) => `<div class="app-card" data-gig-idx="${g._origIdx}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="flex:1">
-                <h3 style="margin-bottom:4px">${g.venue || 'TBD'}</h3>
-                <div style="font-size:0.82em;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
-                    <span>📅 ${g.date || 'TBD'}</span>
-                    ${g.arrivalTime?`<span title="Arrival">🚗 ${g.arrivalTime}</span>`:''}
-                    ${g.soundcheckTime?`<span title="Soundcheck">🎛️ ${g.soundcheckTime}</span>`:''}
-                    ${g.startTime?`<span title="Start">⏰ ${g.startTime}</span>`:''}
-                    ${g.endTime?`<span title="End">⏹️ ${g.endTime}</span>`:''}
-                    ${g.pay?`<span>💰 ${g.pay}</span>`:''}
-                    ${g.soundPerson?`<span>🔊 ${g.soundPerson}</span>`:''}
-                </div>
-            </div>
-            <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-                <span style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:6px;background:${glIsUpcoming(g.date)?'rgba(16,185,129,0.15);color:var(--green)':'rgba(255,255,255,0.06);color:var(--text-dim)'}">${glIsUpcoming(g.date) ? 'Upcoming' : 'Past'}</span>
-                ${_gigAvailabilitySummaryChip(g)}
-                <button class="btn btn-sm btn-ghost" onclick="gigShowDirections(${g._origIdx})" title="Directions" style="color:#60a5fa">📍</button>
-                <button class="btn btn-sm btn-ghost" onclick="editGig(${g._origIdx})" title="Edit">✏️</button>
-                <button class="btn btn-sm btn-ghost" onclick="loadGigPayouts(${g._origIdx})" title="Payout" style="color:#22c55e">💰</button>
-                <button class="btn btn-sm btn-ghost" onclick="carePackageSend('gig')" title="Send Care Package" style="color:#fbbf24">🪂</button>
-                <button class="btn btn-sm btn-ghost" onclick="deleteGig(${g._origIdx})" title="Delete" style="color:var(--red,#f87171)">🗑️</button>
-            </div>
-        </div>
-        ${g.notes ? `<div style="margin-top:6px;font-size:0.82em;color:var(--text-muted)">${g.notes}</div>` : ''}
-        ${(g.setlistId || g.linkedSetlist) ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:0.78em;color:var(--accent-light)">📋 ${g.linkedSetlist || '(linked)'}</span>
-            <button onclick="gigLaunchLinkedSetlist('${(g.setlistId || '').replace(/'/g,'\\\'')}')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">🎤 Go Live</button>
-            <button onclick="showPage('setlists')" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;padding:4px 12px;border-radius:6px;font-size:0.75em;font-weight:700;cursor:pointer">📋 Open Setlist</button>
-        </div>` : ''}
-        ${_gigRenderAvailability(g)}
-    </div>`).join('');
-    // Post-render: evaluate backup coverage for each gig
+    if (!rawData.length) { el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div>'; return; }
+    var data = rawData.map(function(g, origIdx) { return Object.assign({}, g, { _origIdx: origIdx }); });
+
+    // Filter tabs
+    var filterBar = document.getElementById('gigFilterBar');
+    if (filterBar) {
+        filterBar.innerHTML = ['upcoming','all','past'].map(function(f) {
+            var active = _gigFilter === f;
+            var label = { upcoming: 'Upcoming', all: 'All', past: 'Past' }[f];
+            return '<button onclick="_gigFilter=\'' + f + '\';loadGigs()" style="font-size:0.72em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + label + '</button>';
+        }).join('');
+    }
+
+    // Split + sort
+    var upcoming = data.filter(function(g) { return glIsUpcoming(g.date); }).sort(function(a,b) { return (a.date || '').localeCompare(b.date || ''); });
+    var past = data.filter(function(g) { return !glIsUpcoming(g.date) && g.date; }).sort(function(a,b) { return (b.date || '').localeCompare(a.date || ''); });
+    var noDate = data.filter(function(g) { return !g.date; });
+
+    var html = '';
+    if (_gigFilter === 'upcoming' || _gigFilter === 'all') {
+        if (upcoming.length > 0) {
+            if (_gigFilter === 'all') html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:#22c55e;text-transform:uppercase;margin-bottom:6px">Upcoming</div>';
+            upcoming.forEach(function(g) { html += _gigRenderCard(g, true); });
+        } else if (_gigFilter === 'upcoming') {
+            html += '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:0.85em">No upcoming gigs. <button onclick="addGig()" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-weight:600">Add one →</button></div>';
+        }
+    }
+    if (_gigFilter === 'past' || _gigFilter === 'all') {
+        if (past.length > 0) {
+            if (_gigFilter === 'all') html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:var(--text-dim);text-transform:uppercase;margin:12px 0 6px">Past</div>';
+            past.forEach(function(g) { html += _gigRenderCard(g, false); });
+        }
+    }
+    if ((_gigFilter === 'all') && noDate.length > 0) {
+        html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.12em;color:var(--text-dim);text-transform:uppercase;margin:12px 0 6px">No Date</div>';
+        noDate.forEach(function(g) { html += _gigRenderCard(g, true); });
+    }
+    el.innerHTML = html;
     _gigLoadCoverageSummaries(data);
+}
+
+function _gigRenderCard(g, isUpcoming) {
+    var idx = g._origIdx;
+    var dateDisplay = (typeof glFormatDate === 'function') ? glFormatDate(g.date, true) : (g.date || 'TBD');
+    var countdown = (typeof glCountdownLabel === 'function') ? glCountdownLabel(g.date) : '';
+    return '<div class="app-card" data-gig-idx="' + idx + '" style="margin-bottom:8px;padding:10px 14px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        + '<div style="flex:1">'
+        + '<div style="font-weight:700;font-size:0.92em;margin-bottom:2px">' + (g.venue || 'TBD') + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">'
+        + '<span>📅 ' + dateDisplay + (countdown ? ' · ' + countdown : '') + '</span>'
+        + (g.startTime ? '<span>⏰ ' + g.startTime + '</span>' : '')
+        + (g.pay ? '<span>💰 ' + g.pay + '</span>' : '')
+        + '</div></div>'
+        + '<div style="display:flex;gap:3px;align-items:center;flex-shrink:0">'
+        + _gigAvailabilitySummaryChip(g)
+        + '<button class="btn btn-sm btn-ghost" onclick="editGig(' + idx + ')" title="Edit" style="font-size:0.78em">✏️</button>'
+        + '<button class="btn btn-sm btn-ghost" onclick="deleteGig(' + idx + ')" title="Delete" style="color:var(--red);font-size:0.78em">🗑️</button>'
+        + '</div></div>'
+        + (g.notes ? '<div style="font-size:0.78em;color:var(--text-muted);margin-top:4px">' + g.notes + '</div>' : '')
+        + ((g.setlistId || g.linkedSetlist) ? '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:0.75em;color:var(--accent-light)">📋 ' + (g.linkedSetlist || 'linked') + '</span>'
+            + '<button onclick="gigLaunchLinkedSetlist(\'' + (g.setlistId || '').replace(/'/g,'\\\'') + '\')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:3px 10px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer">🎤 Go Live</button></div>' : '')
+        + _gigRenderAvailability(g)
+        + '</div>';
 }
 
 async function _gigLoadCoverageSummaries(gigs) {
@@ -1311,17 +1343,37 @@ function _gigRenderAvailability(gig) {
     if (roleAlerts) html += '<div style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">' + roleAlerts + '</div>';
     html += coverageHtml;
 
-    // My RSVP buttons — always visible (not inside collapsible)
-    if (myKey) {
+    // My RSVP — compact if already voted, full if not; finalized for past gigs
+    if (myKey && isUpcoming) {
         var myStatus = avail[myKey] ? avail[myKey].status : null;
-        html += '<div style="display:flex;gap:6px;margin-top:8px">';
+        if (myStatus) {
+            // Compact post-vote state
+            var voteLabels = { yes: '✅ You\'re In', maybe: '❓ Maybe', no: '❌ Out' };
+            var voteColors = { yes: '#22c55e', maybe: '#f59e0b', no: '#ef4444' };
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">'
+                + '<span style="font-size:0.78em;font-weight:700;color:' + (voteColors[myStatus] || 'var(--text-dim)') + '">' + (voteLabels[myStatus] || myStatus) + '</span>'
+                + '<button onclick="event.stopPropagation();_gigShowFullRsvp(' + gigIdx + ')" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Change</button>'
+                + '</div>';
+            // Hidden full RSVP (revealed by Change button)
+            html += '<div id="gigFullRsvp_' + gigIdx + '" style="display:none;margin-top:4px">';
+        } else {
+            // No vote yet — show full buttons
+            html += '<div style="margin-top:6px">';
+        }
+        html += '<div style="display:flex;gap:6px">';
         ['yes', 'maybe', 'no'].forEach(function(st) {
             var labels = { yes: "I'm In", maybe: 'Maybe', no: 'Out' };
             var colors = { yes: '34,197,94', maybe: '245,158,11', no: '239,68,68' };
             var active = myStatus === st;
-            html += '<button onclick="event.stopPropagation();gigSetAvailability(' + gigIdx + ',\'' + st + '\')" style="flex:1;padding:6px;border-radius:6px;font-size:0.78em;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid rgba(' + colors[st] + ',' + (active ? '0.6' : '0.2') + ');background:rgba(' + colors[st] + ',' + (active ? '0.15' : '0.04') + ');color:rgba(' + colors[st] + ',1);min-height:36px">' + labels[st] + '</button>';
+            html += '<button onclick="event.stopPropagation();gigSetAvailability(' + gigIdx + ',\'' + st + '\')" style="flex:1;padding:5px;border-radius:6px;font-size:0.75em;font-weight:' + (active ? '800' : '600') + ';cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid rgba(' + colors[st] + ',' + (active ? '0.6' : '0.2') + ');background:rgba(' + colors[st] + ',' + (active ? '0.15' : '0.04') + ');color:rgba(' + colors[st] + ',1);min-height:34px">' + labels[st] + '</button>';
         });
-        html += '</div>';
+        html += '</div></div>';
+    } else if (!isUpcoming) {
+        // Past gig — show finalized attendance summary only
+        var myStatus = myKey && avail[myKey] ? avail[myKey].status : null;
+        if (s.yesCount > 0 || s.noCount > 0 || s.maybeCount > 0) {
+            html += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">Final: ' + summaryText + (myStatus ? ' · You: ' + ({ yes:'In', maybe:'Maybe', no:'Out' }[myStatus] || myStatus) : '') + '</div>';
+        }
     }
 
     // Collapsible member list
@@ -1352,6 +1404,11 @@ function _gigRenderAvailability(gig) {
     html += '</details></div>';
     return html;
 }
+
+window._gigShowFullRsvp = function(gigIdx) {
+    var el = document.getElementById('gigFullRsvp_' + gigIdx);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
 
 window.gigSetAvailability = async function(gigIdx, status) {
     var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
