@@ -274,13 +274,57 @@ async function _bcLoadIdeas() {
       html += '<span style="font-weight:700;font-size:0.9em;color:var(--text)">' + _bcEsc(p.title || 'Untitled') + '</span>';
       html += linkHTML;
       html += '</div>';
-      html += '<div style="font-size:0.72em;color:var(--text-dim)">' + _bcEsc(p.author || 'Anonymous') + ' · ' + _bcTimeAgo(p.ts) + '</div>';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+      html += '<span style="font-size:0.72em;color:var(--text-dim)">' + _bcEsc(p.author || 'Anonymous') + ' · ' + _bcTimeAgo(p.ts) + '</span>';
+      if (p.convertedToPitch) {
+        html += '<span style="font-size:0.65em;color:#22c55e;font-weight:600">✅ Pitched</span>';
+      } else {
+        var safeTitle = (p.title || '').replace(/'/g, "\\'");
+        var safeAuthor = (p.author || 'Ideas Board').replace(/'/g, "\\'");
+        var safeKey = (p._key || '').replace(/'/g, "\\'");
+        html += '<button onclick="_bcConvertToPitch(\'' + safeTitle + '\',\'' + safeAuthor + '\',\'' + safeKey + '\')" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600;white-space:nowrap">Convert to Pitch</button>';
+      }
+      html += '</div>';
       if (p.note) html += '<div style="font-size:0.8em;color:var(--text-muted);margin-top:4px">' + _bcEsc(p.note) + '</div>';
       html += '</div>';
     });
   }
 
   container.innerHTML = html;
+}
+
+// Convert an Ideas Board post to a formal Song Pitch
+window._bcConvertToPitch = function(title, originalAuthor, ideaKey) {
+    // Open pitch modal prefilled
+    if (typeof showPitchModal === 'function') {
+        showPitchModal(title);
+        // After modal opens, inject attribution into the reason field
+        setTimeout(function() {
+            var reasonEl = document.getElementById('pitchReason');
+            if (reasonEl && !reasonEl.value) {
+                reasonEl.value = 'Originally suggested by ' + (originalAuthor || 'a band member') + ' via Ideas Board';
+            }
+        }, 100);
+    }
+    // Store the idea key so we can mark it converted after pitch is submitted
+    window._bcConvertingIdeaKey = ideaKey || null;
+};
+
+// Hook: after a pitch is submitted, mark the source idea as converted
+var _origSubmitPitch = window.submitPitch;
+if (typeof _origSubmitPitch === 'function') {
+    window.submitPitch = async function() {
+        await _origSubmitPitch();
+        // If this pitch was converted from an idea, mark the idea
+        if (window._bcConvertingIdeaKey && typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+            try {
+                await firebaseDB.ref(bandPath('ideas/posts/' + window._bcConvertingIdeaKey + '/convertedToPitch')).set(true);
+            } catch(e) {}
+            window._bcConvertingIdeaKey = null;
+            // Refresh ideas list
+            _bcLoadIdeas();
+        }
+    };
 }
 
 window._bcPostIdea = async function() {
