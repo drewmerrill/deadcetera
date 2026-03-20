@@ -1312,8 +1312,17 @@ function _rpBuildPlan() {
     var b = _rpState.buckets;
     var linkedPairs = _rpState.linkedPairs || [];
 
-    // Warm-Up: 1-2 ready songs (from selected)
-    var warmup = selected.filter(function(s) { return s._avg >= 3.8; }).slice(0, 2);
+    // Build set of all songs that are part of a linked pair (protect from warm-up grab)
+    var inLinkedPair = {};
+    linkedPairs.forEach(function(lp) {
+        if (_rpState.selected[lp.from.title] && _rpState.selected[lp.to.title]) {
+            inLinkedPair[lp.from.title] = true;
+            inLinkedPair[lp.to.title] = true;
+        }
+    });
+
+    // Warm-Up: 1-2 ready songs that are NOT part of a linked pair
+    var warmup = selected.filter(function(s) { return s._avg >= 3.8 && !inLinkedPair[s.title]; }).slice(0, 2);
 
     // Deep Work: up to 2 UNITS (a unit = 1 song or 1 linked pair)
     // Priority: linked transitions > low readiness individuals > any non-ready song
@@ -1365,6 +1374,7 @@ function _rpBuildPlan() {
     }
 
     var deepWork = deepWorkUnits;
+    console.log('[Planner] Block assembly:', 'warmup:', warmup.map(function(s){return s.title;}), 'deepWork:', deepWork.map(function(u){return u.isLinked ? u.title : u.title;}), 'linked protected:', Object.keys(inLinkedPair));
 
     // Flow: 3-4 consecutive songs from setlist order (exclude warmup + deep work)
     var used = {};
