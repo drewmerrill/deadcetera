@@ -149,6 +149,8 @@ async function _rhRenderCommandFlow(el) {
         var blockLabels = { warmup: '🔥 Warm-Up', deepWork: '🛠️ Deep Work', flow: '🎸 Flow', close: '🔚 Close' };
         var blockColors = { warmup: '#f59e0b', deepWork: '#ef4444', flow: '#22c55e', close: '#818cf8' };
         var currentBlock = null;
+        var unitNum = 0;
+        var renderedLinkedUnits = {};
         savedQueue.forEach(function(item, i) {
             var bt = item._blockType || 'flow';
             if (bt !== currentBlock) {
@@ -156,7 +158,21 @@ async function _rhRenderCommandFlow(el) {
                 currentBlock = bt;
                 html += '<div style="margin-bottom:6px"><div style="font-size:0.65em;font-weight:700;color:' + (blockColors[bt] || '#64748b') + ';margin-bottom:2px">' + (blockLabels[bt] || bt) + '</div>';
             }
-            html += '<div style="font-size:0.82em;color:var(--text);padding:2px 0">' + (i+1) + '. ' + item.title + '</div>';
+            // Linked unit: render once as grouped pair, skip second song
+            if (item._linkedUnit && item._linkedPos === 0) {
+                unitNum++;
+                renderedLinkedUnits[item._linkedUnit] = true;
+                html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0;border-left:3px solid #818cf8;padding-left:8px;margin:1px 0">'
+                    + '<span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> '
+                    + '<strong>' + item._linkedUnit + '</strong>'
+                    + ' <span style="font-size:0.7em;color:#818cf8">🔁 Transition</span>'
+                    + '</div>';
+            } else if (item._linkedUnit && item._linkedPos > 0) {
+                // Skip — already rendered as part of the unit above
+            } else {
+                unitNum++;
+                html += '<div style="font-size:0.82em;color:var(--text);padding:2px 0"><span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> ' + item.title + '</div>';
+            }
         });
         if (currentBlock) html += '</div>';
 
@@ -1373,12 +1389,16 @@ function _rpBuildPlan() {
     _rpState.step = 3;
 
     // Auto-save plan to localStorage so it persists across refresh
+    // Preserve linked-unit metadata so the renderer can group them
     try {
         var planQueue = [];
         var _flatBlock = function(items, bt) {
             items.forEach(function(item) {
                 if (item.isLinked && item.songs) {
-                    item.songs.forEach(function(s) { planQueue.push({ title: s.title, band: s.band || '', _blockType: bt }); });
+                    var unitLabel = item.songs.map(function(s) { return s.title; }).join(' → ');
+                    item.songs.forEach(function(s, si) {
+                        planQueue.push({ title: s.title, band: s.band || '', _blockType: bt, _linkedUnit: unitLabel, _linkedPos: si, _linkedTotal: item.songs.length });
+                    });
                 } else {
                     planQueue.push({ title: item.title, band: item.band || '', _blockType: bt });
                 }
