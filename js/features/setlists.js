@@ -532,8 +532,12 @@ async function slSaveSetlist() {
     };
     const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     existing.push(sl);
-    await saveBandDataToDrive('_band', 'setlists', existing);
-    showToast('✅ Setlist saved!');
+    var saved = await saveBandDataToDrive('_band', 'setlists', existing);
+    if (saved === false) {
+        showToast('❌ Save failed — check your connection or sign in');
+        return;
+    }
+    showToast('✅ Setlist saved to band');
     window._cachedSetlists = null;
     loadSetlists();
 }
@@ -939,8 +943,12 @@ async function slSaveSetlistEdit(idx) {
         sets: window._slSets || [],
         updated: new Date().toISOString()
     };
-    await saveBandDataToDrive('_band', 'setlists', data);
-    showToast('✅ Setlist updated!');
+    var saved = await saveBandDataToDrive('_band', 'setlists', data);
+    if (saved === false) {
+        showToast('❌ Save failed — check your connection or sign in');
+        return;
+    }
+    showToast('✅ Setlist saved to band');
     window._cachedSetlists = null;
     loadSetlists();
 }

@@ -327,11 +327,11 @@ window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
  */
 window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataType, data) {
     var localKey = 'deadcetera_' + dataType + '_' + songTitle;
-    localStorage.setItem(localKey, JSON.stringify(data));
+    try { localStorage.setItem(localKey, JSON.stringify(data)); } catch(e) {}
 
     if (!firebaseDB) {
         console.warn('⚠️ Firebase not ready — saved to localStorage only');
-        if (typeof showSignInNudge === 'function') showSignInNudge();
+        if (typeof showToast === 'function') showToast('⚠️ Not signed in — changes saved locally only. Sign in to sync.');
         return false;
     }
 
@@ -340,8 +340,8 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
         await firebaseDB.ref(path).set(data);
         return true;
     } catch (error) {
-        console.error('❌ Failed to save to Firebase:', error);
-        if (typeof showToast === 'function') showToast('⚠️ Could not sync to band — check your connection');
+        console.error('❌ Failed to save to Firebase:', error.message || error);
+        if (typeof showToast === 'function') showToast('❌ Save failed — ' + (error.message || 'check your connection'));
         return false;
     }
 };
