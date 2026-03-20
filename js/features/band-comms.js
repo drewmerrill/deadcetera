@@ -277,7 +277,7 @@ async function _bcLoadIdeas() {
       html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
       html += '<span style="font-size:0.72em;color:var(--text-dim)">' + _bcEsc(p.author || 'Anonymous') + ' · ' + _bcTimeAgo(p.ts) + '</span>';
       if (p.convertedToPitch) {
-        html += '<span style="font-size:0.65em;color:#22c55e;font-weight:600">✅ Pitched</span>';
+        html += '<button onclick="_bcScrollToPitch(\'' + (p.convertedPitchId || '').replace(/'/g, "\\'") + '\')" style="font-size:0.65em;color:#22c55e;font-weight:600;background:none;border:none;cursor:pointer;padding:0">✅ Open Pitch ↑</button>';
       } else {
         var safeTitle = (p.title || '').replace(/'/g, "\\'");
         var safeAuthor = (p.author || 'Ideas Board').replace(/'/g, "\\'");
@@ -292,6 +292,18 @@ async function _bcLoadIdeas() {
 
   container.innerHTML = html;
 }
+
+// Scroll to a pitch card in the Song Pitches section
+window._bcScrollToPitch = function(pitchId) {
+    var pitchSection = document.getElementById('bcPitchSection');
+    if (pitchSection) {
+        pitchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight flash
+        pitchSection.style.outline = '2px solid rgba(34,197,94,0.4)';
+        pitchSection.style.outlineOffset = '4px';
+        setTimeout(function() { pitchSection.style.outline = ''; pitchSection.style.outlineOffset = ''; }, 1500);
+    }
+};
 
 // Convert an Ideas Board post to a formal Song Pitch
 window._bcConvertToPitch = function(title, originalAuthor, ideaKey) {
@@ -308,20 +320,27 @@ window._bcConvertToPitch = function(title, originalAuthor, ideaKey) {
     }
     // Store the idea key so we can mark it converted after pitch is submitted
     window._bcConvertingIdeaKey = ideaKey || null;
+    // Also store on window so submitPitch can embed the source idea reference in the pitch
+    window._bcConvertingIdeaTitle = title || null;
 };
 
-// Hook: after a pitch is submitted, mark the source idea as converted
+// Hook: after a pitch is submitted, mark the source idea with full metadata
 var _origSubmitPitch = window.submitPitch;
 if (typeof _origSubmitPitch === 'function') {
     window.submitPitch = async function() {
         await _origSubmitPitch();
-        // If this pitch was converted from an idea, mark the idea
         if (window._bcConvertingIdeaKey && typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
             try {
-                await firebaseDB.ref(bandPath('ideas/posts/' + window._bcConvertingIdeaKey + '/convertedToPitch')).set(true);
+                var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : 'unknown';
+                var pitchId = window._lastCreatedPitchId || null;
+                await firebaseDB.ref(bandPath('ideas/posts/' + window._bcConvertingIdeaKey)).update({
+                    convertedToPitch: true,
+                    convertedPitchId: pitchId,
+                    convertedAt: new Date().toISOString(),
+                    convertedBy: memberKey
+                });
             } catch(e) {}
             window._bcConvertingIdeaKey = null;
-            // Refresh ideas list
             _bcLoadIdeas();
         }
     };

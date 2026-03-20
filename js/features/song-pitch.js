@@ -514,8 +514,15 @@ window.submitPitch = async function() {
         status: 'pending',
         votes: {}
     };
+    // Link to source idea if converted from Ideas Board
+    if (window._bcConvertingIdeaKey) {
+        newPitch.sourceIdeaId = window._bcConvertingIdeaKey;
+    }
     pitches.push(newPitch);
     await saveBandDataToDrive('_band', 'song_pitches', pitches);
+
+    // Expose last created pitch ID for conversion tracking
+    window._lastCreatedPitchId = newPitch.id;
 
     // Cache for conflict exclusion
     window._spCachedPitches = pitches;
