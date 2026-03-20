@@ -132,15 +132,20 @@ async function _rhRenderCommandFlow(el) {
     if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
 
     if (hasSavedPlan) {
-        html += '<div style="margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;gap:8px">'
+        var savedTs = '';
+        try {
+            var pq = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
+            if (pq.length) savedTs = pq.length + ' songs';
+        } catch(e) {}
+        html += '<div id="rhSavedPlanBar" style="margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
             + '<span style="font-size:0.72em;font-weight:700;color:#86efac">✅ Saved Rehearsal Plan</span>'
-            + '<span style="font-size:0.68em;color:var(--text-dim)">Edit anytime before starting.</span>'
+            + '<span id="rhSaveStatus" style="font-size:0.65em;color:var(--text-dim)">Saved' + (savedTs ? ' · ' + savedTs : '') + '</span>'
             + '</div>';
     }
 
     html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
         + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">' + (hasSavedPlan ? '✏️ Edit Plan' : '▶ Plan Next Rehearsal') + '</button>'
-        + (hasSavedPlan ? '<button onclick="if(typeof openRehearsalModeWithQueue===\'function\'){var q=JSON.parse(localStorage.getItem(\'glPlannerQueue\')||\'[]\');if(q.length)openRehearsalModeWithQueue(q);}" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer">▶ Start Rehearsal</button>' : '')
+        + (hasSavedPlan ? '<button onclick="_rhLaunchSavedPlan()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer">▶ Start Rehearsal</button>' : '')
         + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
         + '</div>';
 
@@ -152,6 +157,33 @@ async function _rhRenderCommandFlow(el) {
     // Default: show tonight view (focus + readiness)
     _rhRenderTonightTab();
 }
+
+// Launch saved rehearsal plan
+window._rhLaunchSavedPlan = function() {
+    try {
+        var q = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
+        if (q.length && typeof openRehearsalModeWithQueue === 'function') {
+            // Also restore block guidance if available
+            var guidance = localStorage.getItem('glPlannerGuidance');
+            if (guidance) window._rpBlockGuidance = JSON.parse(guidance);
+            openRehearsalModeWithQueue(q);
+        } else {
+            if (typeof showToast === 'function') showToast('No saved plan found — build one first');
+        }
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Error loading plan');
+    }
+};
+
+// Update save status indicator
+window._rhUpdateSaveStatus = function(text) {
+    var el = document.getElementById('rhSaveStatus');
+    if (el) {
+        el.textContent = text;
+        el.style.color = '#86efac';
+        setTimeout(function() { if (el) el.style.color = 'var(--text-dim)'; }, 1500);
+    }
+};
 
 async function _rhRenderTonightTab() {
     var content = document.getElementById('rhTabContent');
@@ -1285,6 +1317,33 @@ function _rpBuildPlan() {
 
     _rpState.blocks = { warmup: warmup, deepWork: deepWork, flow: flow, close: close };
     _rpState.step = 3;
+
+    // Auto-save plan to localStorage so it persists across refresh
+    try {
+        var planQueue = [];
+        var _flatBlock = function(items, bt) {
+            items.forEach(function(item) {
+                if (item.isLinked && item.songs) {
+                    item.songs.forEach(function(s) { planQueue.push({ title: s.title, band: s.band || '', _blockType: bt }); });
+                } else {
+                    planQueue.push({ title: item.title, band: item.band || '', _blockType: bt });
+                }
+            });
+        };
+        _flatBlock(warmup, 'warmup');
+        _flatBlock(deepWork, 'deepWork');
+        _flatBlock(flow, 'flow');
+        _flatBlock(close, 'close');
+        if (planQueue.length) {
+            localStorage.setItem('glPlannerQueue', JSON.stringify(planQueue));
+            // Build guidance
+            var guid = {};
+            var gLabels = { warmup: '🔥 WARM-UP — Start playing immediately', deepWork: '🛠️ DEEP WORK — Agree on structure before playing', flow: '🎸 FLOW — Play continuously', close: '🔚 CLOSE — Finish strong' };
+            planQueue.forEach(function(q) { guid[q.title] = gLabels[q._blockType] || ''; });
+            localStorage.setItem('glPlannerGuidance', JSON.stringify(guid));
+        }
+    } catch(e) {}
+
     _rpRenderPlan(document.getElementById('rhTabContent'));
 }
 
