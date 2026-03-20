@@ -131,32 +131,67 @@ async function _rhRenderCommandFlow(el) {
     var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
     if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
 
+    // ── SECTION 2: Saved Plan (PRIMARY when exists) ──
     if (hasSavedPlan) {
-        var savedTs = '';
-        try {
-            var pq = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
-            if (pq.length) savedTs = pq.length + ' songs';
-        } catch(e) {}
-        html += '<div id="rhSavedPlanBar" style="margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-            + '<span style="font-size:0.72em;font-weight:700;color:#86efac">✅ Saved Rehearsal Plan</span>'
-            + '<span id="rhSaveStatus" style="font-size:0.65em;color:var(--text-dim)">Saved' + (savedTs ? ' · ' + savedTs : '') + '</span>'
+        var savedQueue = [];
+        try { savedQueue = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]'); } catch(e) {}
+        var savedCount = savedQueue.length;
+
+        html += '<div style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+            + '<span style="font-size:0.78em;font-weight:800;color:#86efac">✅ Next Rehearsal Plan</span>'
+            + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedCount + ' songs · persists until you replace or clear it</span>'
             + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
+            + '</div>';
+
+        // Render saved plan contents grouped by block type
+        var blockOrder = ['warmup', 'deepWork', 'flow', 'close'];
+        var blockLabels = { warmup: '🔥 Warm-Up', deepWork: '🛠️ Deep Work', flow: '🎸 Flow', close: '🔚 Close' };
+        var blockColors = { warmup: '#f59e0b', deepWork: '#ef4444', flow: '#22c55e', close: '#818cf8' };
+        var currentBlock = null;
+        savedQueue.forEach(function(item, i) {
+            var bt = item._blockType || 'flow';
+            if (bt !== currentBlock) {
+                if (currentBlock) html += '</div>';
+                currentBlock = bt;
+                html += '<div style="margin-bottom:6px"><div style="font-size:0.65em;font-weight:700;color:' + (blockColors[bt] || '#64748b') + ';margin-bottom:2px">' + (blockLabels[bt] || bt) + '</div>';
+            }
+            html += '<div style="font-size:0.82em;color:var(--text);padding:2px 0">' + (i+1) + '. ' + item.title + '</div>';
+        });
+        if (currentBlock) html += '</div>';
+
+        html += '</div>';
+
+        // Actions
+        html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
+            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Start Rehearsal</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer">✏️ Edit Plan</button>'
+            + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
+            + '</div>';
+    } else {
+        // No saved plan — show planner CTA
+        html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Plan Next Rehearsal</button>'
+            + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
             + '</div>';
     }
 
-    html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
-        + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">' + (hasSavedPlan ? '✏️ Edit Plan' : '▶ Plan Next Rehearsal') + '</button>'
-        + (hasSavedPlan ? '<button onclick="_rhLaunchSavedPlan()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer">▶ Start Rehearsal</button>' : '')
-        + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
-        + '</div>';
-
-    // ── SECTION 3: Tab content area ──
+    // ── SECTION 3: Tab content area (AI suggestions — secondary to saved plan) ──
     html += '<div id="rhTabContent"></div>';
 
     main.innerHTML = html;
 
-    // Default: show tonight view (focus + readiness)
-    _rhRenderTonightTab();
+    // Show AI focus below the saved plan (complementary, not competing)
+    if (hasSavedPlan) {
+        // When plan exists, show a collapsed AI suggestions section
+        var tabEl = document.getElementById('rhTabContent');
+        if (tabEl) {
+            tabEl.innerHTML = '<details style="margin-top:4px"><summary style="font-size:0.68em;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">AI Suggestions & Readiness</summary><div id="rhAISuggestions"></div></details>';
+            _rhRenderTonightTab_inner(document.getElementById('rhAISuggestions'));
+        }
+    } else {
+        _rhRenderTonightTab();
+    }
 }
 
 // Clear saved rehearsal plan (explicit user action)
@@ -201,6 +236,11 @@ window._rhUpdateSaveStatus = function(text) {
 
 async function _rhRenderTonightTab() {
     var content = document.getElementById('rhTabContent');
+    if (!content) return;
+    _rhRenderTonightTab_inner(content);
+}
+
+async function _rhRenderTonightTab_inner(content) {
     if (!content) return;
 
     var ctx = window._riLastCtx;
