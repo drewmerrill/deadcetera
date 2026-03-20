@@ -80,6 +80,11 @@ window.openRehearsalModeWithQueue = function(queue) {
     if (!queue || !queue.length) return;
     rmQueue = queue;
     rmIndex = 0;
+    // Persist planner queue so it survives refresh
+    try { localStorage.setItem('glPlannerQueue', JSON.stringify(queue)); } catch(e) {}
+    if (window._rpBlockGuidance) {
+        try { localStorage.setItem('glPlannerGuidance', JSON.stringify(window._rpBlockGuidance)); } catch(e) {}
+    }
     rmShow();
 };
 
@@ -353,6 +358,18 @@ function rmSwitchTab(tab, btn) {
 // ── Open / close ─────────────────────────────────────────────────────────────
 function rmShow() {
     rmEnsureOverlay();
+    // Restore planner queue from localStorage if current queue is empty (page refresh case)
+    if ((!rmQueue || !rmQueue.length) && localStorage.getItem('glPlannerQueue')) {
+        try {
+            var stored = JSON.parse(localStorage.getItem('glPlannerQueue'));
+            if (stored && stored.length) {
+                rmQueue = stored;
+                rmIndex = 0;
+                var storedGuidance = localStorage.getItem('glPlannerGuidance');
+                if (storedGuidance) window._rpBlockGuidance = JSON.parse(storedGuidance);
+            }
+        } catch(e) {}
+    }
     const overlay = document.getElementById('rmOverlay');
     overlay.classList.add('rm-visible');
     // Milestone 4: notify shell we're entering performance mode
@@ -395,6 +412,8 @@ function closeRehearsalMode() {
     clearInterval(pmPalaceAutoTimer);
     rmStopCountOff();
     if (rmScrollTimer) { clearInterval(rmScrollTimer); rmScrollTimer = null; }
+    // Clear planner queue persistence (session ended by user)
+    try { localStorage.removeItem('glPlannerQueue'); localStorage.removeItem('glPlannerGuidance'); } catch(e) {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
