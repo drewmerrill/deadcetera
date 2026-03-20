@@ -1206,16 +1206,20 @@ function _rpBuildPlan() {
     var warmup = selected.filter(function(s) { return s._avg >= 3.8; }).slice(0, 2);
 
     // Deep Work: up to 2 UNITS (a unit = 1 song or 1 linked pair)
-    // First: find linked pairs where BOTH songs are selected and at least one needs work
+    // Priority: linked transitions > low readiness individuals > any non-ready song
     var deepWorkUnits = [];
     var deepWorkUsed = {};
+
+    // Pass 1: linked pairs where BOTH songs are selected (transition = always deep work worthy)
     linkedPairs.forEach(function(lp) {
         if (deepWorkUnits.length >= 2) return;
         if (!_rpState.selected[lp.from.title] || !_rpState.selected[lp.to.title]) return;
-        var fromAvg = lp.from._avg || 0;
-        var toAvg = lp.to._avg || 0;
+        var fromAvg = lp.from._avg !== undefined ? lp.from._avg : 0;
+        var toAvg = lp.to._avg !== undefined ? lp.to._avg : 0;
         var pairAvg = (fromAvg + toAvg) / 2;
-        if (pairAvg < 3 || fromAvg < 3 || toAvg < 3) {
+        // Accept any linked transition where at least one song is below 4.0
+        // (transitions are ALWAYS harder than individual songs)
+        if (fromAvg < 4.0 || toAvg < 4.0 || pairAvg < 3.8) {
             deepWorkUnits.push({
                 isLinked: true,
                 songs: [lp.from, lp.to],
@@ -1228,14 +1232,28 @@ function _rpBuildPlan() {
             deepWorkUsed[lp.to.title] = true;
         }
     });
-    // Fill remaining deep work slots with individual songs
-    var deepWorkSingles = selected.filter(function(s) {
-        return s._avg < 3 && !deepWorkUsed[s.title];
-    });
-    while (deepWorkUnits.length < 2 && deepWorkSingles.length > 0) {
-        deepWorkUnits.push(deepWorkSingles.shift());
+
+    // Pass 2: individual songs with low readiness (< 3.5, sorted weakest first)
+    var deepWorkPool = selected.filter(function(s) {
+        return !deepWorkUsed[s.title] && s._avg < 3.5;
+    }).sort(function(a, b) { return (a._avg || 0) - (b._avg || 0); });
+    while (deepWorkUnits.length < 2 && deepWorkPool.length > 0) {
+        deepWorkUnits.push(deepWorkPool.shift());
     }
-    // Flatten for the blocks array (linked units stored as-is, singles as normal songs)
+
+    // Pass 3: GUARANTEE non-empty — if still empty, pick the weakest selected song
+    if (deepWorkUnits.length === 0) {
+        var fallback = selected.slice().sort(function(a, b) { return (a._avg || 0) - (b._avg || 0); });
+        // Don't pick from warmup
+        var warmupSet = {};
+        warmup.forEach(function(s) { warmupSet[s.title] = true; });
+        fallback = fallback.filter(function(s) { return !warmupSet[s.title]; });
+        if (fallback.length > 0) {
+            deepWorkUnits.push(fallback[0]);
+            deepWorkUsed[fallback[0].title] = true;
+        }
+    }
+
     var deepWork = deepWorkUnits;
 
     // Flow: 3-4 consecutive songs from setlist order (exclude warmup + deep work)
