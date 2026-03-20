@@ -529,11 +529,13 @@ window.renderRehearsalBrief = function(container) {
   var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px">Rehearsal Brief</div>';
   var sections = [];
 
-  // Songs needing work
+  // Songs needing work (Active songs only)
   if (typeof readinessCache !== 'undefined') {
     var weak = [];
     Object.entries(readinessCache).forEach(function(e) {
       var title = e[0], scores = e[1] || {};
+      // Only include Active songs (not Library/Shelved)
+      if (typeof isSongActive === 'function' && !isSongActive(title)) return;
       var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
       if (vals.length) {
         var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
