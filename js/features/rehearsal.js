@@ -140,6 +140,7 @@ async function _rhRenderCommandFlow(el) {
         html += '<div id="rhSavedPlanBar" style="margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
             + '<span style="font-size:0.72em;font-weight:700;color:#86efac">✅ Saved Rehearsal Plan</span>'
             + '<span id="rhSaveStatus" style="font-size:0.65em;color:var(--text-dim)">Saved' + (savedTs ? ' · ' + savedTs : '') + '</span>'
+            + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
     }
 
@@ -157,6 +158,19 @@ async function _rhRenderCommandFlow(el) {
     // Default: show tonight view (focus + readiness)
     _rhRenderTonightTab();
 }
+
+// Clear saved rehearsal plan (explicit user action)
+window._rhClearSavedPlan = function() {
+    if (!confirm('Clear your saved rehearsal plan? You can always build a new one.')) return;
+    try {
+        localStorage.removeItem('glPlannerQueue');
+        localStorage.removeItem('glPlannerGuidance');
+    } catch(e) {}
+    if (typeof showToast === 'function') showToast('Plan cleared');
+    // Re-render the command flow to reflect cleared state
+    var el = document.getElementById('rhMain');
+    if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
+};
 
 // Launch saved rehearsal plan
 window._rhLaunchSavedPlan = function() {

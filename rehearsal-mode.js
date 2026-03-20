@@ -412,8 +412,9 @@ function closeRehearsalMode() {
     clearInterval(pmPalaceAutoTimer);
     rmStopCountOff();
     if (rmScrollTimer) { clearInterval(rmScrollTimer); rmScrollTimer = null; }
-    // Clear planner queue persistence (session ended by user)
-    try { localStorage.removeItem('glPlannerQueue'); localStorage.removeItem('glPlannerGuidance'); } catch(e) {}
+    // NOTE: saved plan (glPlannerQueue) is intentionally NOT cleared here.
+    // Closing rehearsal mode ends the active session UI, not the saved plan.
+    // Use _rhClearSavedPlan() to explicitly clear the saved plan.
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
