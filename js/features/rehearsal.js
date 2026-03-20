@@ -125,11 +125,23 @@ async function _rhRenderCommandFlow(el) {
     }
     html += '</div>';
 
-    // ── SECTION 2: Primary CTA ──
+    // ── SECTION 2: Saved Plan indicator + Primary CTA ──
+    var hasSavedPlan = false;
+    try { hasSavedPlan = !!localStorage.getItem('glPlannerQueue'); } catch(e) {}
+    var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
+    if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
+
+    if (hasSavedPlan) {
+        html += '<div style="margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;gap:8px">'
+            + '<span style="font-size:0.72em;font-weight:700;color:#86efac">✅ Saved Rehearsal Plan</span>'
+            + '<span style="font-size:0.68em;color:var(--text-dim)">Edit anytime before starting.</span>'
+            + '</div>';
+    }
+
     html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
-        + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Plan Rehearsal</button>'
-        + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">History</button>'
-        + '<button onclick="rhShowTab(\'sessions\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Sessions</button>'
+        + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">' + (hasSavedPlan ? '✏️ Edit Plan' : '▶ Plan Next Rehearsal') + '</button>'
+        + (hasSavedPlan ? '<button onclick="if(typeof openRehearsalModeWithQueue===\'function\'){var q=JSON.parse(localStorage.getItem(\'glPlannerQueue\')||\'[]\');if(q.length)openRehearsalModeWithQueue(q);}" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer">▶ Start Rehearsal</button>' : '')
+        + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
         + '</div>';
 
     // ── SECTION 3: Tab content area ──
@@ -609,7 +621,10 @@ async function rhRenderScoreboard(eventId) {
             h2 += '</div>';
             container.innerHTML = h2;
         } else {
-            container.innerHTML = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 14px;font-size:0.82em;color:#86efac;margin-bottom:12px">🏆 All songs looking solid! No major weak spots.</div>';
+            var solidMsg = planSongs.length > 0
+                ? '🏆 Plan songs are looking solid — no major weak spots.'
+                : '🏆 No major weak spots in active rotation.';
+            container.innerHTML = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 14px;font-size:0.82em;color:#86efac;margin-bottom:12px">' + solidMsg + '</div>';
         }
         return;
     }
@@ -1941,8 +1956,34 @@ async function buildRiContext() {
         });
     }
 
-    // Overall readiness pct
-    var rcVals = Object.values(rc).filter(function(r) {
+    // Filter rc to Active songs only
+    var activeRc = {};
+    Object.entries(rc).forEach(function(e) {
+        if (typeof isSongActive === 'function' && !isSongActive(e[0])) return;
+        activeRc[e[0]] = e[1];
+    });
+
+    // Load upcoming gig setlist songs for relevance scoping
+    var gigSetlistSongs = new Set();
+    try {
+        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        var todayStr = (typeof glToday === 'function') ? glToday() : new Date().toISOString().split('T')[0];
+        var nextGig = gigs.filter(function(g) { return g.date >= todayStr && g.setlistId; }).sort(function(a,b) { return a.date.localeCompare(b.date); })[0];
+        if (nextGig) {
+            var setlists = window._glCachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+            var sl = setlists.find(function(s) { return s.setlistId === nextGig.setlistId; });
+            if (sl) {
+                (sl.sets || []).forEach(function(set) {
+                    (set.songs || []).forEach(function(sg) {
+                        gigSetlistSongs.add(typeof sg === 'string' ? sg : (sg.title || ''));
+                    });
+                });
+            }
+        }
+    } catch(e) {}
+
+    // Overall readiness pct (Active songs only)
+    var rcVals = Object.values(activeRc).filter(function(r) {
         return r && typeof r === 'object' && Object.keys(r).length > 0;
     });
     var readyCount = rcVals.filter(function(r) { return _riBandAvg(r) >= 3; }).length;
@@ -1957,15 +1998,17 @@ async function buildRiContext() {
         } catch(e) {}
     }
 
-    return { rc: rc, events: events, upcoming: upcoming, past: past,
+    return { rc: activeRc, events: events, upcoming: upcoming, past: past,
              nextEvent: nextEvent, lastEvent: lastEvent,
-             planSongs: planSongs, bandPct: bandPct, grooveData: grooveData };
+             planSongs: planSongs, gigSetlistSongs: gigSetlistSongs,
+             bandPct: bandPct, grooveData: grooveData };
 }
 
 // ── Derivation: Focus Songs ───────────────────────────────────────────────────
 function deriveRiFocusSongs(ctx) {
-    var rc       = ctx.rc || {};
+    var rc = ctx.rc || {}; // Already filtered to Active by buildRiContext
     var planSongs = ctx.planSongs || new Set();
+    var gigSetlistSongs = ctx.gigSetlistSongs || new Set();
     var candidates = [];
 
     var grooveLow = ctx.grooveData && ctx.grooveData.stabilityScore !== undefined
@@ -1979,26 +2022,33 @@ function deriveRiFocusSongs(ctx) {
         });
         if (!keys.length) return;
         var avg = keys.reduce(function(s, k) { return s + ratings[k]; }, 0) / keys.length;
-        if (avg >= 4.5) return; // already excellent
+        if (avg >= 4.5) return;
+
+        var inGigSetlist = gigSetlistSongs.has(title);
+        var inPlan = planSongs.has(title);
 
         var reasons = [];
         if (avg < 2)      reasons.push('Critical');
         else if (avg < 3) reasons.push('Low readiness');
         else if (avg < 4) reasons.push('Needs polish');
-        if (planSongs.has(title)) reasons.push('Upcoming setlist song');
-        if (grooveLow && planSongs.has(title)) reasons.push('Groove drift detected');
+        if (inGigSetlist) reasons.push('Upcoming gig setlist');
+        else if (inPlan) reasons.push('In rehearsal plan');
+        if (grooveLow && (inGigSetlist || inPlan)) reasons.push('Groove drift detected');
         var vals = keys.map(function(k) { return ratings[k]; });
         if (vals.length >= 2) {
             var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
-            if (mx - mn >= 2) reasons.push('Harmony instability');
+            if (mx - mn >= 2) reasons.push('Uneven readiness');
         }
-        var score = (5 - avg) * 10 + (planSongs.has(title) ? 15 : 0);
-        if (reasons.indexOf('Harmony instability') !== -1) score += 5;
-        candidates.push({ title: title, avg: avg, reasons: reasons, score: score });
+        // Score: gig setlist songs get highest boost, plan songs get medium boost
+        var score = (5 - avg) * 10;
+        if (inGigSetlist) score += 25;
+        else if (inPlan) score += 15;
+        if (reasons.indexOf('Uneven readiness') !== -1) score += 5;
+        candidates.push({ title: title, avg: avg, reasons: reasons, score: score, readiness: avg, _inSetlist: inGigSetlist });
     });
 
     candidates.sort(function(a, b) { return b.score - a.score; });
-    return candidates.slice(0, 5);
+    return candidates.slice(0, 6);
 }
 
 // ── Derivation: Auto Plan ────────────────────────────────────────────────────
@@ -2078,7 +2128,10 @@ function _riStatPill(text, color) {
 
 function deriveRiSessionGoal(ctx, focusSongs) {
     var pct = ctx.bandPct;
-    if (!focusSongs || !focusSongs.length) return 'Maintain peak readiness — band is solid';
+    if (!focusSongs || !focusSongs.length) {
+        var hasSetlist = ctx.gigSetlistSongs && ctx.gigSetlistSongs.size > 0;
+        return hasSetlist ? 'Setlist songs are solid — run the set for flow' : 'Active songs are solid — maintain readiness';
+    }
     if (pct !== null && pct < 50) return 'Critical session — rebuild weak songs before next gig';
     var topSong = focusSongs[0].title;
     if (focusSongs.length === 1) return 'Lock in ' + topSong + ' this session';
@@ -2089,7 +2142,7 @@ function deriveRiSessionGoal(ctx, focusSongs) {
 function renderRiRehearsalFocus(focusSongs, ctx) {
     var inner = '';
     if (!focusSongs.length) {
-        inner = '<div style="color:var(--text-dim);font-style:italic;padding:10px 0">Band readiness is strong — no critical songs right now.</div>';
+        inner = '<div style="color:var(--text-dim);font-style:italic;padding:10px 0">No critical weak spots in upcoming songs.</div>';
     } else {
         inner = focusSongs.map(function(s, i) {
             var bar = _riBar(s.avg, 5);
