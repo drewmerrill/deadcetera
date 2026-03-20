@@ -168,10 +168,22 @@ async function _rhRenderCommandFlow(el) {
             unitNum++;
             if (unit.type === 'linked' && unit.songs && unit.songs.length > 1) {
                 var pairLabel = unit.songs.map(function(s) { return s.title; }).join(' → ');
+                var fr = unit.focusReason || 'Transition Focus';
+                var frColor = fr === 'Transition Focus' ? '#a5b4fc' : fr === 'Song Focus' ? '#fca5a5' : '#fbbf24';
+                var frIcon = fr === 'Transition Focus' ? '🔗' : fr === 'Song Focus' ? '🎵' : '🔀';
+                // Per-song mini status
+                var _miniChip = function(st) {
+                    if (st === 'ready') return '<span style="color:#86efac">✓</span>';
+                    if (st === 'polish') return '<span style="color:#fbbf24">~</span>';
+                    return '<span style="color:#fca5a5">✗</span>';
+                };
+                var fromSt = unit.fromStatus || 'polish';
+                var toSt = unit.toStatus || 'polish';
                 html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0;border-left:3px solid #818cf8;padding-left:8px;margin:1px 0">'
                     + '<span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> '
-                    + '<strong>' + pairLabel + '</strong>'
-                    + ' <span style="font-size:0.7em;color:#818cf8">🔁 Transition</span>'
+                    + _miniChip(fromSt) + ' <strong>' + pairLabel + '</strong> ' + _miniChip(toSt)
+                    + ' <span style="font-size:0.65em;color:' + frColor + ';font-weight:700">' + frIcon + ' ' + fr + '</span>'
+                    + (unit.guidance ? '<div style="font-size:0.62em;color:#818cf8;margin-left:22px;margin-top:1px">' + unit.guidance + '</div>' : '')
                     + '</div>';
             } else {
                 var title = unit.title || (unit.songs && unit.songs[0] ? unit.songs[0].title : '?');
@@ -1330,21 +1342,46 @@ function _rpBuildPlan() {
     var deepWorkUsed = {};
 
     // Pass 1: linked pairs where BOTH songs are selected
-    // Transitions ALWAYS go to Deep Work — the transition itself is the practice target,
-    // regardless of individual song readiness
+    // Transitions ALWAYS go to Deep Work — the transition itself is the practice target.
+    // Focus reason: Song Focus / Transition Focus / Mixed Focus
     linkedPairs.forEach(function(lp) {
         if (deepWorkUnits.length >= 2) return;
         if (!_rpState.selected[lp.from.title] || !_rpState.selected[lp.to.title]) return;
         var fromAvg = lp.from._avg !== undefined ? lp.from._avg : 0;
         var toAvg = lp.to._avg !== undefined ? lp.to._avg : 0;
         var pairAvg = (fromAvg + toAvg) / 2;
+
+        // Per-song readiness status
+        var fromStatus = fromAvg >= 3.8 ? 'ready' : fromAvg >= 3.0 ? 'polish' : 'needsWork';
+        var toStatus = toAvg >= 3.8 ? 'ready' : toAvg >= 3.0 ? 'polish' : 'needsWork';
+
+        // Determine focus reason
+        var bothStrong = fromAvg >= 3.8 && toAvg >= 3.8;
+        var eitherWeak = fromAvg < 3.0 || toAvg < 3.0;
+        var focusReason = bothStrong ? 'Transition Focus'
+            : eitherWeak ? 'Song Focus'
+            : 'Mixed Focus';
+
+        // Transition-specific guidance
+        var guidance = focusReason === 'Transition Focus'
+            ? 'Both songs solid — focus on handoff, entry timing, and groove lock'
+            : focusReason === 'Song Focus'
+            ? 'Work the weaker song first, then drill the transition'
+            : 'Polish songs and tighten the transition together';
+
         deepWorkUnits.push({
             isLinked: true,
             songs: [lp.from, lp.to],
             title: lp.from.title + ' → ' + lp.to.title,
             _avg: pairAvg,
             _segue: lp.type,
-            _blockType: 'deepWork'
+            _blockType: 'deepWork',
+            _focusReason: focusReason,
+            _guidance: guidance,
+            _fromStatus: fromStatus,
+            _toStatus: toStatus,
+            _fromAvg: fromAvg,
+            _toAvg: toAvg
         });
         deepWorkUsed[lp.from.title] = true;
         deepWorkUsed[lp.to.title] = true;
@@ -1411,7 +1448,19 @@ function _rpBuildPlan() {
         var _saveBlock = function(items, bt) {
             items.forEach(function(item) {
                 if (item.isLinked && item.songs) {
-                    planUnits.push({ type: 'linked', songs: item.songs.map(function(s) { return { title: s.title, band: s.band || '' }; }), block: bt });
+                    var linkedUnit = {
+                        type: 'linked',
+                        songs: item.songs.map(function(s) { return { title: s.title, band: s.band || '' }; }),
+                        block: bt,
+                        focusReason: item._focusReason || 'Transition Focus',
+                        guidance: item._guidance || '',
+                        fromStatus: item._fromStatus || 'polish',
+                        toStatus: item._toStatus || 'polish',
+                        fromAvg: item._fromAvg || 0,
+                        toAvg: item._toAvg || 0,
+                        segue: item._segue || 'flow'
+                    };
+                    planUnits.push(linkedUnit);
                 } else {
                     planUnits.push({ type: 'single', title: item.title, band: item.band || '', block: bt });
                 }
@@ -1465,15 +1514,30 @@ function _rpRenderPlan(container) {
         } else {
             items.forEach(function(item, i) {
                 if (item.isLinked && item.songs) {
-                    // Linked unit: show as pair with arrow
-                    var pairAvg = item._avg > 0 ? item._avg.toFixed(1) : '—';
-                    out += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;border-left:3px solid #818cf8;padding-left:8px;margin:2px 0">'
-                        + '<div style="display:flex;align-items:center;gap:6px">'
+                    // Linked unit: show as pair with focus reason and per-song status
+                    var focusReason = item._focusReason || 'Transition Focus';
+                    var guidance = item._guidance || 'Rehearse segue, timing, and entry';
+                    var fromStatus = item._fromStatus || 'polish';
+                    var toStatus = item._toStatus || 'polish';
+                    var _statusChip = function(st) {
+                        if (st === 'ready') return '<span style="font-size:0.62em;padding:1px 5px;border-radius:3px;background:rgba(34,197,94,0.15);color:#86efac;font-weight:700">Ready</span>';
+                        if (st === 'polish') return '<span style="font-size:0.62em;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:700">Polish</span>';
+                        return '<span style="font-size:0.62em;padding:1px 5px;border-radius:3px;background:rgba(239,68,68,0.15);color:#fca5a5;font-weight:700">Needs Work</span>';
+                    };
+                    var _focusChip = function(fr) {
+                        if (fr === 'Transition Focus') return '<span style="font-size:0.62em;padding:1px 5px;border-radius:3px;background:rgba(129,140,248,0.18);color:#a5b4fc;font-weight:700">🔗 Transition Focus</span>';
+                        if (fr === 'Song Focus') return '<span style="font-size:0.62em;padding:1px 5px;border-radius:3px;background:rgba(239,68,68,0.15);color:#fca5a5;font-weight:700">🎵 Song Focus</span>';
+                        return '<span style="font-size:0.62em;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:700">🔀 Mixed Focus</span>';
+                    };
+                    out += '<div style="font-size:0.85em;color:var(--text);padding:6px 0;border-left:3px solid #818cf8;padding-left:8px;margin:2px 0">'
+                        + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
                         + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
                         + '<span style="font-weight:600">' + item.songs[0].title + ' <span style="color:#818cf8">→</span> ' + item.songs[1].title + '</span>'
-                        + '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + pairAvg + '</span>'
                         + '</div>'
-                        + '<div style="font-size:0.65em;color:#818cf8;margin-top:2px;margin-left:22px">Linked transition — rehearse segue, timing, and entry</div>'
+                        + '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:3px 0 1px 22px">'
+                        + _statusChip(fromStatus) + ' ' + _focusChip(focusReason) + ' ' + _statusChip(toStatus)
+                        + '</div>'
+                        + '<div style="font-size:0.65em;color:#818cf8;margin-top:2px;margin-left:22px">' + guidance + '</div>'
                         + '</div>';
                 } else {
                     out += '<div style="font-size:0.85em;color:var(--text);padding:3px 0;display:flex;align-items:center;gap:6px">'
@@ -2246,23 +2310,36 @@ function deriveRiFocusSongs(ctx) {
     var coveredByLinked = {};
 
     // First pass: create linked unit candidates
+    // Scoring: transition risk = strong weight, weaker song = medium, setlist = strong
     linkedUnits.forEach(function(lu) {
         var fromRc = rc[lu.from] || {};
         var toRc = rc[lu.to] || {};
         var fromAvg = _riBandAvg(fromRc);
         var toAvg = _riBandAvg(toRc);
         var pairAvg = (fromAvg + toAvg) / 2;
+        var weakerAvg = Math.min(fromAvg, toAvg);
         var inSetlist = gigSetlistSongs.has(lu.from) || gigSetlistSongs.has(lu.to);
 
-        var score = (5 - pairAvg) * 10;
-        if (inSetlist) score += 30;
-        score += 25; // transition bonus
-        if (pairAvg < 3) score += 20;
+        // Focus reason
+        var bothStrong = fromAvg >= 3.8 && toAvg >= 3.8;
+        var eitherWeak = fromAvg < 3.0 || toAvg < 3.0;
+        var focusReason = bothStrong ? 'Transition Focus'
+            : eitherWeak ? 'Song Focus'
+            : 'Mixed Focus';
+
+        // Weighted scoring: transition risk (strong) + weaker song (medium) + setlist (strong)
+        var transitionRisk = 30; // transitions always carry inherent risk
+        if (lu.type === 'segue') transitionRisk += 10; // segues are harder than flows
+        var songWeakness = (5 - weakerAvg) * 6; // medium weight on weaker song
+        var setlistBoost = inSetlist ? 35 : 0; // strong weight on setlist priority
+
+        var score = transitionRisk + songWeakness + setlistBoost;
+        if (eitherWeak) score += 15; // extra bump when a song actually needs work
 
         var reasons = [];
         if (inSetlist) reasons.push('Setlist priority');
-        reasons.push('Transition focus');
-        if (pairAvg < 3) reasons.push('Low readiness');
+        reasons.push(focusReason);
+        if (eitherWeak) reasons.push('Low readiness');
 
         candidates.push({
             title: lu.from + ' → ' + lu.to,
@@ -2272,7 +2349,8 @@ function deriveRiFocusSongs(ctx) {
             readiness: pairAvg,
             isLinked: true,
             songs: [lu.from, lu.to],
-            _inSetlist: inSetlist
+            _inSetlist: inSetlist,
+            _focusReason: focusReason
         });
         coveredByLinked[lu.from] = true;
         coveredByLinked[lu.to] = true;
