@@ -1329,27 +1329,25 @@ function _rpBuildPlan() {
     var deepWorkUnits = [];
     var deepWorkUsed = {};
 
-    // Pass 1: linked pairs where BOTH songs are selected (transition = always deep work worthy)
+    // Pass 1: linked pairs where BOTH songs are selected
+    // Transitions ALWAYS go to Deep Work — the transition itself is the practice target,
+    // regardless of individual song readiness
     linkedPairs.forEach(function(lp) {
         if (deepWorkUnits.length >= 2) return;
         if (!_rpState.selected[lp.from.title] || !_rpState.selected[lp.to.title]) return;
         var fromAvg = lp.from._avg !== undefined ? lp.from._avg : 0;
         var toAvg = lp.to._avg !== undefined ? lp.to._avg : 0;
         var pairAvg = (fromAvg + toAvg) / 2;
-        // Accept any linked transition where at least one song is below 4.0
-        // (transitions are ALWAYS harder than individual songs)
-        if (fromAvg < 4.0 || toAvg < 4.0 || pairAvg < 3.8) {
-            deepWorkUnits.push({
-                isLinked: true,
-                songs: [lp.from, lp.to],
-                title: lp.from.title + ' → ' + lp.to.title,
-                _avg: pairAvg,
-                _segue: lp.type,
-                _blockType: 'deepWork'
-            });
-            deepWorkUsed[lp.from.title] = true;
-            deepWorkUsed[lp.to.title] = true;
-        }
+        deepWorkUnits.push({
+            isLinked: true,
+            songs: [lp.from, lp.to],
+            title: lp.from.title + ' → ' + lp.to.title,
+            _avg: pairAvg,
+            _segue: lp.type,
+            _blockType: 'deepWork'
+        });
+        deepWorkUsed[lp.from.title] = true;
+        deepWorkUsed[lp.to.title] = true;
     });
 
     // Pass 2: individual songs with low readiness (< 3.5, sorted weakest first)
