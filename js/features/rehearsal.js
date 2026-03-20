@@ -127,51 +127,55 @@ async function _rhRenderCommandFlow(el) {
 
     // ── SECTION 2: Saved Plan indicator + Primary CTA ──
     var hasSavedPlan = false;
-    try { hasSavedPlan = !!localStorage.getItem('glPlannerQueue'); } catch(e) {}
+    try { hasSavedPlan = !!localStorage.getItem('glPlannerUnits') || !!localStorage.getItem('glPlannerQueue'); } catch(e) {}
     var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
     if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
 
     // ── SECTION 2: Saved Plan (PRIMARY when exists) ──
     if (hasSavedPlan) {
-        var savedQueue = [];
-        try { savedQueue = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]'); } catch(e) {}
-        var savedCount = savedQueue.length;
+        // Read GROUPED units (primary) or fall back to flat queue
+        var savedUnits = [];
+        try { savedUnits = JSON.parse(localStorage.getItem('glPlannerUnits') || '[]'); } catch(e) {}
+        // Fallback: if no grouped units, read flat queue for backward compat
+        if (!savedUnits.length) {
+            try {
+                var fallbackQ = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
+                fallbackQ.forEach(function(q) { savedUnits.push({ type: 'single', title: q.title, band: q.band || '', block: q._blockType || 'flow' }); });
+            } catch(e) {}
+        }
+        var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
+        console.log('[Planner] Rendering saved plan:', savedUnits.length, 'units,', songCount, 'songs', savedUnits);
 
         html += '<div style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<span style="font-size:0.78em;font-weight:800;color:#86efac">✅ Next Rehearsal Plan</span>'
-            + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedCount + ' songs · persists until you replace or clear it</span>'
+            + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
             + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
 
-        // Render saved plan contents grouped by block type
-        var blockOrder = ['warmup', 'deepWork', 'flow', 'close'];
+        // Render grouped units by block
         var blockLabels = { warmup: '🔥 Warm-Up', deepWork: '🛠️ Deep Work', flow: '🎸 Flow', close: '🔚 Close' };
         var blockColors = { warmup: '#f59e0b', deepWork: '#ef4444', flow: '#22c55e', close: '#818cf8' };
         var currentBlock = null;
         var unitNum = 0;
-        var renderedLinkedUnits = {};
-        savedQueue.forEach(function(item, i) {
-            var bt = item._blockType || 'flow';
+        savedUnits.forEach(function(unit) {
+            var bt = unit.block || 'flow';
             if (bt !== currentBlock) {
                 if (currentBlock) html += '</div>';
                 currentBlock = bt;
                 html += '<div style="margin-bottom:6px"><div style="font-size:0.65em;font-weight:700;color:' + (blockColors[bt] || '#64748b') + ';margin-bottom:2px">' + (blockLabels[bt] || bt) + '</div>';
             }
-            // Linked unit: render once as grouped pair, skip second song
-            if (item._linkedUnit && item._linkedPos === 0) {
-                unitNum++;
-                renderedLinkedUnits[item._linkedUnit] = true;
+            unitNum++;
+            if (unit.type === 'linked' && unit.songs && unit.songs.length > 1) {
+                var pairLabel = unit.songs.map(function(s) { return s.title; }).join(' → ');
                 html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0;border-left:3px solid #818cf8;padding-left:8px;margin:1px 0">'
                     + '<span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> '
-                    + '<strong>' + item._linkedUnit + '</strong>'
+                    + '<strong>' + pairLabel + '</strong>'
                     + ' <span style="font-size:0.7em;color:#818cf8">🔁 Transition</span>'
                     + '</div>';
-            } else if (item._linkedUnit && item._linkedPos > 0) {
-                // Skip — already rendered as part of the unit above
             } else {
-                unitNum++;
-                html += '<div style="font-size:0.82em;color:var(--text);padding:2px 0"><span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> ' + item.title + '</div>';
+                var title = unit.title || (unit.songs && unit.songs[0] ? unit.songs[0].title : '?');
+                html += '<div style="font-size:0.82em;color:var(--text);padding:2px 0"><span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> ' + title + '</div>';
             }
         });
         if (currentBlock) html += '</div>';
@@ -216,6 +220,7 @@ window._rhClearSavedPlan = function() {
     try {
         localStorage.removeItem('glPlannerQueue');
         localStorage.removeItem('glPlannerGuidance');
+        localStorage.removeItem('glPlannerUnits');
     } catch(e) {}
     if (typeof showToast === 'function') showToast('Plan cleared');
     // Re-render the command flow to reflect cleared state
@@ -1388,34 +1393,43 @@ function _rpBuildPlan() {
     _rpState.blocks = { warmup: warmup, deepWork: deepWork, flow: flow, close: close };
     _rpState.step = 3;
 
-    // Auto-save plan to localStorage so it persists across refresh
-    // Preserve linked-unit metadata so the renderer can group them
+    // Auto-save plan as GROUPED UNITS (not flat songs)
+    // Each unit is either { type:"single", title, block } or { type:"linked", songs:[], block }
     try {
-        var planQueue = [];
-        var _flatBlock = function(items, bt) {
+        var planUnits = [];
+        var _saveBlock = function(items, bt) {
             items.forEach(function(item) {
                 if (item.isLinked && item.songs) {
-                    var unitLabel = item.songs.map(function(s) { return s.title; }).join(' → ');
-                    item.songs.forEach(function(s, si) {
-                        planQueue.push({ title: s.title, band: s.band || '', _blockType: bt, _linkedUnit: unitLabel, _linkedPos: si, _linkedTotal: item.songs.length });
-                    });
+                    planUnits.push({ type: 'linked', songs: item.songs.map(function(s) { return { title: s.title, band: s.band || '' }; }), block: bt });
                 } else {
-                    planQueue.push({ title: item.title, band: item.band || '', _blockType: bt });
+                    planUnits.push({ type: 'single', title: item.title, band: item.band || '', block: bt });
                 }
             });
         };
-        _flatBlock(warmup, 'warmup');
-        _flatBlock(deepWork, 'deepWork');
-        _flatBlock(flow, 'flow');
-        _flatBlock(close, 'close');
-        if (planQueue.length) {
-            localStorage.setItem('glPlannerQueue', JSON.stringify(planQueue));
-            // Build guidance
-            var guid = {};
-            var gLabels = { warmup: '🔥 WARM-UP — Start playing immediately', deepWork: '🛠️ DEEP WORK — Agree on structure before playing', flow: '🎸 FLOW — Play continuously', close: '🔚 CLOSE — Finish strong' };
-            planQueue.forEach(function(q) { guid[q.title] = gLabels[q._blockType] || ''; });
+        _saveBlock(warmup, 'warmup');
+        _saveBlock(deepWork, 'deepWork');
+        _saveBlock(flow, 'flow');
+        _saveBlock(close, 'close');
+
+        // Save grouped units for render
+        localStorage.setItem('glPlannerUnits', JSON.stringify(planUnits));
+
+        // Also save flat queue for Start Rehearsal (execution needs individual songs in order)
+        var flatQueue = [];
+        var guid = {};
+        var gLabels = { warmup: '🔥 WARM-UP — Start playing immediately', deepWork: '🛠️ DEEP WORK — Agree on structure before playing', flow: '🎸 FLOW — Play continuously', close: '🔚 CLOSE — Finish strong' };
+        planUnits.forEach(function(u) {
+            if (u.type === 'linked') {
+                u.songs.forEach(function(s) { flatQueue.push({ title: s.title, band: s.band, _blockType: u.block }); guid[s.title] = gLabels[u.block] || ''; });
+            } else {
+                flatQueue.push({ title: u.title, band: u.band, _blockType: u.block }); guid[u.title] = gLabels[u.block] || '';
+            }
+        });
+        if (flatQueue.length) {
+            localStorage.setItem('glPlannerQueue', JSON.stringify(flatQueue));
             localStorage.setItem('glPlannerGuidance', JSON.stringify(guid));
         }
+        console.log('[Planner] Saved ' + planUnits.length + ' units (' + flatQueue.length + ' songs)', planUnits);
     } catch(e) {}
 
     _rpRenderPlan(document.getElementById('rhTabContent'));
