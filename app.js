@@ -646,7 +646,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
-            window._glCachedSetlists = toArray(data || []);
+            var _slArr = toArray(data || []);
+            if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slArr);
+            else { window._glCachedSetlists = _slArr; window._cachedSetlists = _slArr; }
             _rt.setlistsCached = true;
         }).catch(function() {});
         loadBandDataFromDrive('_band', 'blocked_dates').then(function(data) {

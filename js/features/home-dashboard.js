@@ -1493,8 +1493,9 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
     if (ls) {
         var _slSources = [];
         if (bundle && bundle.setlists && Array.isArray(bundle.setlists)) _slSources = _slSources.concat(bundle.setlists);
-        if (typeof window._glCachedSetlists !== 'undefined' && Array.isArray(window._glCachedSetlists)) _slSources = _slSources.concat(window._glCachedSetlists);
-        if (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) _slSources = _slSources.concat(window._cachedSetlists);
+        // Use centralized setlist cache (both window globals now point to same reference via GLStore)
+        var _centralSl = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : (window._glCachedSetlists || window._cachedSetlists || []);
+        if (_centralSl.length) _slSources = _slSources.concat(_centralSl);
         // Match by setlistId first (canonical), then by name (legacy fallback)
         var _slMatch = _slSources.find(function(sl) { return sl.setlistId && sl.setlistId === ls; })
                     || _slSources.find(function(sl) { return (sl.name||'') === ls; });

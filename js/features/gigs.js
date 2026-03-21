@@ -52,7 +52,9 @@ async function editGig(idx) {
     const g = gigData[idx];
     if (!g) return;
     const venues = await GLStore.getVenues();
-    window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var _slData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slData);
+    else { window._cachedSetlists = _slData; window._glCachedSetlists = _slData; }
     window._gigSelectedVenueId = g.venueId || null;
     window._gigSelectedVenueName = g.venue || null;
     // Find pre-selected venue by venueId or name match
@@ -137,7 +139,8 @@ async function saveGigEdit(idx) {
         gigData[idx].linkedSetlist = prev.linkedSetlist || '';
     }
     await saveBandDataToDrive('_band', 'setlists', allSetlists);
-    window._cachedSetlists = null;
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    else { window._cachedSetlists = null; window._glCachedSetlists = null; }
 
     await saveBandDataToDrive('_band', 'gigs', gigData);
     // Sync updated gig to calendar
@@ -472,7 +475,9 @@ async function _gigLoadCoverageSummaries(gigs) {
 async function addGig() {
     const el = document.getElementById('gigsList');
     const venues = await GLStore.getVenues();
-    window._cachedSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var _slData2 = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slData2);
+    else { window._cachedSetlists = _slData2; window._glCachedSetlists = _slData2; }
     window._gigSelectedVenueId = null;
     window._gigSelectedVenueName = null;
     el.innerHTML = `<div class="app-card">
@@ -644,7 +649,8 @@ async function saveGig() {
         allSetlists.push(newSl);
         await saveBandDataToDrive('_band', 'setlists', allSetlists);
     }
-    window._cachedSetlists = null;
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    else { window._cachedSetlists = null; window._glCachedSetlists = null; }
 
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);

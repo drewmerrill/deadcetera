@@ -80,6 +80,11 @@
     // { [key]: { key, fromSongId, toSongId, linked, confidence, targetConfidence,
     //            practiceCount, lastPracticedAt, issueFlags, notes, derivedPriority } }
     transitionIntelligence: {},
+
+    // ── Setlist Cache (centralized) ──────────────────────────────────────
+    // Single source of truth for setlist data. Both window._glCachedSetlists
+    // and window._cachedSetlists are kept in sync via setSetlistCache().
+    setlistCache: null,  // array or null (unloaded)
   };
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -844,9 +849,10 @@
 
   function _upcomingSongs() {
     var up = {};
-    if (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists)) {
+    var _sls = _state.setlistCache || [];
+    if (_sls.length) {
       var today = new Date().toISOString().slice(0,10);
-      window._cachedSetlists.forEach(function(sl) {
+      _sls.forEach(function(sl) {
         if (sl.date && sl.date >= today && sl.sets) {
           sl.sets.forEach(function(set) { (set.songs||[]).forEach(function(s) { var t = typeof s === 'string' ? s : s.title; if (t) up[t] = true; }); });
         }
@@ -1196,8 +1202,7 @@
     var today = new Date().toISOString().slice(0, 10);
 
     // Upcoming setlists (strongest signal)
-    var setlists = (typeof window._cachedSetlists !== 'undefined' && Array.isArray(window._cachedSetlists))
-      ? window._cachedSetlists : [];
+    var setlists = _state.setlistCache || [];
     for (var s = 0; s < setlists.length; s++) {
       var sl = setlists[s];
       if (!sl.date || sl.date < today) continue;
@@ -1243,6 +1248,30 @@
     _attentionCacheTs = now;
     var returnLimit = (opts && opts.limit) || 20;
     return _attentionCache.slice(0, returnLimit);
+  }
+
+  // ── Setlist Cache (centralized) ────────────────────────────────────────────
+  // Consolidates the dual-key problem: window._glCachedSetlists vs window._cachedSetlists
+  // Both window globals are kept in sync for backward compatibility with all consumers.
+
+  function getSetlists() {
+    return _state.setlistCache || [];
+  }
+
+  function setSetlistCache(data) {
+    var arr = Array.isArray(data) ? data : [];
+    _state.setlistCache = arr;
+    // Sync both legacy window globals so all existing consumers see the same reference
+    window._glCachedSetlists = arr;
+    window._cachedSetlists = arr;
+    emit('setlistsChanged', { count: arr.length });
+  }
+
+  function clearSetlistCache() {
+    _state.setlistCache = null;
+    window._glCachedSetlists = null;
+    window._cachedSetlists = null;
+    emit('setlistsChanged', { count: 0 });
   }
 
   // ── Transition Intelligence ──────────────────────────────────────────────
@@ -1381,7 +1410,7 @@
 
     // Also detect linked pairs from setlists for songs that have no transition record yet
     try {
-      var setlists = window._glCachedSetlists || [];
+      var setlists = _state.setlistCache || [];
       setlists.forEach(function(sl) {
         (sl.sets || []).forEach(function(set) {
           var setSongs = set.songs || [];
@@ -3787,6 +3816,11 @@
     evaluateGigCoverage:       evaluateGigCoverage,
     getBackupOptionsForRole:   getBackupOptionsForRole,
 
+    // Setlist Cache (centralized)
+    getSetlists:                 getSetlists,
+    setSetlistCache:             setSetlistCache,
+    clearSetlistCache:           clearSetlistCache,
+
     // Transition Intelligence
     getTransitionIntelligence:   getTransitionIntelligence,
     getTransitionBySongs:        getTransitionBySongs,
@@ -4528,7 +4562,7 @@
       await saveBandDataToDrive('_band', 'setlists', finalSetlists);
       await saveBandDataToDrive('_band', 'calendar_events', calEvts);
       if (typeof window._cachedGigs !== 'undefined') window._cachedGigs = null;
-      if (typeof window._cachedSetlists !== 'undefined') window._cachedSetlists = null;
+      clearSetlistCache();
       console.log('%c✅ Repair complete! Relinked ' + relinked + ', removed ' + blanksRemoved + ' blanks.', 'color:#22c55e;font-weight:bold');
     } else {
       console.log('%cDry run — no data written. Run with { dryRun: false } to apply.', 'color:#f59e0b;font-weight:bold');
@@ -4648,7 +4682,7 @@
       await saveBandDataToDrive('_band', 'gigs', gigs);
       await saveBandDataToDrive('_band', 'setlists', finalSetlists);
       if (typeof window._cachedGigs !== 'undefined') window._cachedGigs = null;
-      if (typeof window._cachedSetlists !== 'undefined') window._cachedSetlists = null;
+      clearSetlistCache();
       console.log('%c✅ Repaired ' + fixed + ' bad links, removed ' + blanksToRemove.length + ' blank setlists.', 'color:#22c55e;font-weight:bold');
     } else if (!dryRun) {
       console.log('%cNo bad links found — data looks clean.', 'color:#22c55e;font-weight:bold');

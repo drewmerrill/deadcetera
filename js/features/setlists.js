@@ -34,8 +34,8 @@ function renderSetlistsPage(el) {
 
 async function loadSetlists() {
     var rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    window._glCachedSetlists = rawData;
-    window._cachedSetlists = rawData;
+    if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(rawData);
+    else { window._glCachedSetlists = rawData; window._cachedSetlists = rawData; }
     var data = rawData.map(function(sl, origIdx) { return Object.assign({}, sl, { _origIdx: origIdx }); });
     var container = document.getElementById('setlistsList');
     if (!container) return;
@@ -540,7 +540,8 @@ async function slSaveSetlist() {
         return;
     }
     showToast('✅ Setlist saved to band');
-    window._cachedSetlists = null;
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     loadSetlists();
 }
 
@@ -969,7 +970,8 @@ async function slSaveSetlistEdit(idx) {
         return;
     }
     showToast('✅ Setlist saved to band');
-    window._cachedSetlists = null;
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     loadSetlists();
 }
 
@@ -1056,7 +1058,8 @@ async function slToggleLock(idx) {
         data[idx].lockedBy = null;
     }
     await saveBandDataToDrive('_band', 'setlists', data);
-    window._cachedSetlists = null;
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     showToast(willLock ? '🔒 Setlist locked for show readiness' : '🔓 Setlist unlocked');
     loadSetlists();
 }
