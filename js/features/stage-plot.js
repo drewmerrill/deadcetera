@@ -153,6 +153,9 @@ function _spRenderStation(station, idx, share) {
   var pad = share ? '3px 2px' : '4px 3px';
   var roleIcon = SP_ROLE_ICONS[station.role] || '🎵';
   var comps = station.components || {};
+  if (!comps.mic) comps.mic = { enabled: false };
+  if (!comps.pedalboard) comps.pedalboard = { enabled: false };
+  if (!comps.monitor) comps.monitor = { enabled: false, kind: 'wedge' };
   var shortName = share ? (station.musicianName || '').split(' ')[0] : (station.musicianName || '');
   var roleLabel = share ? (SP_COMPACT[station.role] || station.role || '') : (station.role || '');
 
@@ -233,6 +236,18 @@ function _spClickStation(idx) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot || !plot.stations || !plot.stations[idx]) return;
   var st = plot.stations[idx];
+  // Guard: ensure components exist (may be missing from old Firebase data)
+  if (!st.components) {
+    st.components = {
+      instrument: { enabled: true, kind: (st.role || 'guitar').toLowerCase() },
+      pedalboard: { enabled: false, position: 'downstage' },
+      mic: { enabled: false, position: 'front_center' },
+      monitor: { enabled: true, kind: 'wedge', position: 'front_left' }
+    };
+  }
+  if (!st.components.pedalboard) st.components.pedalboard = { enabled: false, position: 'downstage' };
+  if (!st.components.mic) st.components.mic = { enabled: false, position: 'front_center' };
+  if (!st.components.monitor) st.components.monitor = { enabled: true, kind: 'wedge', position: 'front_left' };
 
   var action = prompt(
     st.musicianName + ' (' + st.role + ')\n\n1 = Edit name/role\n2 = Move\n3 = Toggle pedalboard\n4 = Toggle mic\n5 = Toggle monitor\n6 = Change monitor type\n7 = Change size\n8 = Cancel',
@@ -274,9 +289,12 @@ function _spAddStation() {
   if (!name) return;
   var role = prompt('Role (Guitar, Bass, Keys, Drums, Vocals, Percussion):', 'Guitar');
   if (!role) return;
-  // Find next open cell
+  // Find next open cell (account for lg stations spanning 2 cols)
   var occupied = {};
-  plot.stations.forEach(function(s) { occupied[s.x + ',' + s.y] = true; });
+  plot.stations.forEach(function(s) {
+    occupied[s.x + ',' + s.y] = true;
+    if (s.sizeClass === 'lg') occupied[(s.x + 1) + ',' + s.y] = true;
+  });
   var x = 1, y = 2;
   for (var c = 0; c < 10; c++) {
     if (!occupied[c + ',2']) { x = c; break; }
