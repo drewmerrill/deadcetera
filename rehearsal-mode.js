@@ -705,10 +705,19 @@ function _rmScrollChartToSection(idx) {
     var lineHeight = parseFloat(getComputedStyle(chartEl).lineHeight) || (rmFontSize * 1.4);
     var scrollTarget = linesBefore * lineHeight;
     var scrollContainer = chartEl.closest('.rm-panel') || chartEl.parentElement;
-    if (scrollContainer) scrollContainer.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+    if (scrollContainer) {
+        // Suppress scroll sync while programmatic scroll is happening
+        _rmScrollSyncProgrammatic = true;
+        scrollContainer.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+        // Re-enable after scroll settles
+        setTimeout(function() { _rmScrollSyncProgrammatic = false; }, 600);
+    }
 }
 
 // Lightweight scroll sync: detect which section anchor is visible and update active
+// IMPORTANT: This only updates the timeline pill highlight — it must NEVER scroll the chart,
+// or it creates a scroll fight loop (scroll → detect section → scroll to section → repeat).
+var _rmScrollSyncProgrammatic = false; // true when code is scrolling (suppress sync)
 function _rmSetupScrollSync() {
     _rmScrollSyncEnabled = false;
     if (!_rmSections.length) return;
@@ -733,21 +742,22 @@ function _rmSetupScrollSync() {
 
     var _lastSyncTs = 0;
     scrollContainer.addEventListener('scroll', function() {
+        // Skip sync when code is doing the scrolling (prevents fight loop)
+        if (_rmScrollSyncProgrammatic) return;
         var now = Date.now();
-        if (now - _lastSyncTs < 250) return; // 250ms throttle (slightly longer for stability)
+        if (now - _lastSyncTs < 300) return; // 300ms throttle
         _lastSyncTs = now;
         var lineHeight = parseFloat(getComputedStyle(chartEl).lineHeight) || (rmFontSize * 1.4);
         var scrollLine = Math.round(scrollContainer.scrollTop / lineHeight);
         var bestIdx = 0;
         for (var i = 0; i < anchorPositions.length; i++) {
             var ap = anchorPositions[i];
-            // For jam/solo/vamp sections: require scrolling well past the anchor (8 lines)
-            // to avoid premature advance out of the jam
             var threshold = ap.isJam ? 8 : 2;
             if (ap.line <= scrollLine + threshold) bestIdx = ap.sectionIdx;
         }
         if (bestIdx !== _rmActiveSectionIdx) {
             _rmActiveSectionIdx = bestIdx;
+            // Only update the timeline pill — do NOT scroll chart or call _rmSetActiveSection
             _rmRenderTimeline();
             _rmRenderActiveSectionPanel();
             var timeline = document.getElementById('rmSectionTimeline');
@@ -1016,6 +1026,7 @@ function rmToggleAutoScroll() {
     // show/hide scroll speed controls
     if (rmScrollTimer) {
         clearInterval(rmScrollTimer); rmScrollTimer = null;
+        _rmScrollSyncProgrammatic = false; // re-enable scroll sync
         btn.textContent = '📜 Scroll'; btn.style.background = ''; btn.style.color = '';
         document.getElementById('rmScrollMinus')?.classList.add('hidden');document.getElementById('rmScrollSpeedVal')?.classList.add('hidden');document.getElementById('rmScrollPlus')?.classList.add('hidden');
         return;
@@ -1030,6 +1041,8 @@ function rmStartScrolling() {
     if (!panel) return;
     const speeds = [0.8, 1.5, 2.5, 4.0, 6.0];
     const pxPerTick = speeds[Math.min(rmScrollSpeedLevel - 1, 4)];
+    // Suppress scroll sync during auto-scroll to prevent fight
+    _rmScrollSyncProgrammatic = true;
     rmScrollTimer = setInterval(() => {
         panel.scrollTop += pxPerTick;
         if (panel.scrollTop >= panel.scrollHeight - panel.clientHeight - 5) rmToggleAutoScroll();
