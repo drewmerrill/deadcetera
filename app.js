@@ -11644,9 +11644,9 @@ async function checkForAppUpdate() {
         _rt.lastUpdateCheck = new Date().toISOString();
         if (!data.version) { console.log('[Update] version.json missing version field'); return; }
         // Compare server version against the immutable client baseline.
-        // _loadedVersion is set once at boot from meta tag or ?v= param and never changes.
+        // Both are now the same short SHA, stamped atomically by GitHub Actions.
         if (_loadedVersion === '0') { console.log('[Update] No client version — skipping'); return; }
-        var same = data.version === _loadedVersion || data.version.startsWith(_loadedVersion);
+        var same = data.version === _loadedVersion;
         console.log('[Update] client=' + _loadedVersion + ' server=' + data.version + ' → ' + (same ? 'current' : 'NEW'));
         if (!same) {
             showUpdateBanner();
