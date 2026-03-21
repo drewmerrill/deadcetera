@@ -32,6 +32,17 @@ var rhCurrentEventId = null; // which event is open in detail view
 // ── Page entry point ──────────────────────────────────────────────────────────
 var _rhActiveTab = 'events';
 
+// Compact confidence badge for transition practice units (0–5 scale)
+function _renderTransitionConfBadge(confidence) {
+    var c = (confidence !== undefined && confidence !== null) ? confidence : 2.5;
+    var color = c >= 3.5 ? '#22c55e' : c >= 2.0 ? '#f59e0b' : '#ef4444';
+    var label = c >= 4.0 ? 'Solid' : c >= 3.0 ? 'OK' : c >= 2.0 ? 'Weak' : 'New';
+    var pct = Math.round(Math.min(100, (c / 5) * 100));
+    return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.62em;padding:1px 6px;border-radius:4px;background:' + color + '15;border:1px solid ' + color + '30;color:' + color + ';font-weight:700;white-space:nowrap">'
+        + '<span style="display:inline-block;width:20px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden"><span style="display:block;width:' + pct + '%;height:100%;background:' + color + ';border-radius:2px"></span></span>'
+        + label + '</span>';
+}
+
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     el.innerHTML = '<div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
@@ -179,10 +190,17 @@ async function _rhRenderCommandFlow(el) {
                 };
                 var fromSt = unit.fromStatus || 'polish';
                 var toSt = unit.toStatus || 'polish';
+                // Read live transition confidence from GLStore
+                var _tcBadge = '';
+                if (typeof GLStore !== 'undefined' && GLStore.getTransitionBySongs && unit.songs.length >= 2) {
+                    var _tcRec = GLStore.getTransitionBySongs(unit.songs[0].title, unit.songs[1].title);
+                    _tcBadge = ' ' + _renderTransitionConfBadge(_tcRec.confidence);
+                }
                 html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0;border-left:3px solid #818cf8;padding-left:8px;margin:1px 0">'
                     + '<span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> '
                     + _miniChip(fromSt) + ' <strong>' + pairLabel + '</strong> ' + _miniChip(toSt)
                     + ' <span style="font-size:0.65em;color:' + frColor + ';font-weight:700">' + frIcon + ' ' + fr + '</span>'
+                    + _tcBadge
                     + (unit.guidance ? '<div style="font-size:0.62em;color:#818cf8;margin-left:22px;margin-top:1px">' + unit.guidance + '</div>' : '')
                     + '</div>';
             } else {
@@ -2887,8 +2905,12 @@ function _renderAgendaOverlay() {
     if (item.type === 'transition') {
         var _dimStyle = 'opacity:0.5;font-weight:400';
         var _activeStyle = 'font-weight:700;color:var(--text)';
+        var _tConf = item.transitionConfidence !== undefined ? item.transitionConfidence : 2.5;
         h += '<div style="margin-bottom:6px;border-left:3px solid #a78bfa;padding-left:8px">';
-        h += '<div style="font-size:0.65em;font-weight:700;color:#a78bfa;text-transform:uppercase;margin-bottom:3px">🔗 Transition Practice · ' + item.minutes + ' min</div>';
+        h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
+        h += '<span style="font-size:0.65em;font-weight:700;color:#a78bfa;text-transform:uppercase">🔗 Transition Practice · ' + item.minutes + ' min</span>';
+        h += _renderTransitionConfBadge(_tConf);
+        h += '</div>';
         h += '<div style="font-size:0.85em;' + (item.fromSongReady ? _dimStyle : _activeStyle) + '">' + (item.fromTitle || '') + (item.fromSongReady ? ' <span style="font-size:0.65em;color:#22c55e">✓ Ready</span>' : '') + '</div>';
         h += '<div style="font-size:0.72em;color:#a78bfa;margin:1px 0">↓ handoff</div>';
         h += '<div style="font-size:0.85em;' + (item.toSongReady ? _dimStyle : _activeStyle) + '">' + (item.toTitle || '') + (item.toSongReady ? ' <span style="font-size:0.65em;color:#22c55e">✓ Ready</span>' : '') + '</div>';
