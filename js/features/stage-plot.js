@@ -97,6 +97,242 @@ var SP_COMPACT = {
   'Riser': 'Riser', 'Drum Riser': 'Riser', 'Power Drop': 'Pwr'
 };
 
+// ── Station Model (Phase B) ──────────────────────────────────────────────────
+
+var SP_ROLE_ICONS = {
+  'Guitar': '🎸', 'Bass': '🎸', 'Keys': '🎹', 'Keyboard': '🎹',
+  'Drums': '🥁', 'Percussion': '🪘', 'Vocal': '🎤', 'Vocals': '🎤'
+};
+
+var SP_COMPONENT_ICONS = {
+  instrument: { guitar: '🎸', bass: '🎸', keys: '🎹', drums: '🥁', percussion: '🪘', vocal: '🎤' },
+  pedalboard: '🎛️',
+  mic: '🎙️',
+  monitor: { wedge: '🔊', iem: '🎧', sidefill: '🔈' }
+};
+
+function _spMakeDefaultStation(name, role, x, y) {
+  var kind = (role || '').toLowerCase();
+  if (kind === 'keyboard') kind = 'keys';
+  return {
+    id: 'station_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    type: 'station',
+    musicianName: name || '',
+    role: role || '',
+    x: x || 0,
+    y: y || 2,
+    sizeClass: kind === 'drums' ? 'lg' : 'md',
+    orientation: 'front',
+    components: {
+      instrument: { enabled: true, kind: kind || 'guitar' },
+      pedalboard: { enabled: kind === 'guitar' || kind === 'bass', position: 'downstage' },
+      mic: { enabled: kind !== 'drums', position: 'front_center' },
+      monitor: { enabled: true, kind: 'wedge', position: 'front_left' }
+    }
+  };
+}
+
+function _spGetComponentOffsets(station) {
+  // Returns relative positions for child components within a station cell
+  // Offsets are percentages from station anchor
+  var o = station.orientation || 'front';
+  return {
+    instrument: { dx: 0, dy: 0 },  // center
+    mic:        { dx: 0, dy: -28 }, // above/front
+    pedalboard: { dx: 22, dy: 18 }, // below-right
+    monitor:    { dx: -22, dy: 22 } // below-left
+  };
+}
+
+function _spRenderStation(station, idx, share) {
+  var sc = station.sizeClass || 'md';
+  var cellSpan = sc === 'lg' ? 2 : 1;
+  var minH = share ? (sc === 'lg' ? '52px' : '38px') : (sc === 'lg' ? '60px' : '44px');
+  var bgColor = 'rgba(99,102,241,0.08)';
+  var borderColor = 'rgba(99,102,241,0.2)';
+  var pad = share ? '3px 2px' : '4px 3px';
+  var roleIcon = SP_ROLE_ICONS[station.role] || '🎵';
+  var comps = station.components || {};
+  var shortName = share ? (station.musicianName || '').split(' ')[0] : (station.musicianName || '');
+  var roleLabel = share ? (SP_COMPACT[station.role] || station.role || '') : (station.role || '');
+
+  // Build sub-icons for enabled components
+  var subIcons = '';
+  if (comps.mic && comps.mic.enabled) subIcons += '<span style="font-size:0.5em">🎙️</span>';
+  if (comps.pedalboard && comps.pedalboard.enabled) subIcons += '<span style="font-size:0.5em">🎛️</span>';
+  if (comps.monitor && comps.monitor.enabled) {
+    var monIcon = comps.monitor.kind === 'iem' ? '🎧' : comps.monitor.kind === 'sidefill' ? '🔈' : '🔊';
+    subIcons += '<span style="font-size:0.5em">' + monIcon + '</span>';
+  }
+
+  var html = '<div class="sp-cell" style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-radius:6px;padding:' + pad + ';text-align:center;min-height:' + minH + ';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:' + (share ? 'default' : 'pointer') + ';position:relative;overflow:hidden'
+    + (cellSpan > 1 ? ';grid-column:span ' + cellSpan : '') + '"'
+    + (share ? '' : ' onclick="_spClickStation(' + idx + ')"') + '>';
+
+  html += '<span style="font-size:' + (share ? '0.7em' : '0.75em') + ';line-height:1">' + roleIcon + '</span>';
+  html += '<span style="font-size:' + (share ? '0.44em' : '0.48em') + ';font-weight:700;color:var(--text);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:' + (share ? '58px' : '66px') + '">' + _spEsc(shortName) + '</span>';
+  if (subIcons) html += '<div style="display:flex;gap:1px;margin-top:1px">' + subIcons + '</div>';
+
+  if (!share) {
+    html += '<button class="sp-del" onclick="event.stopPropagation();_spRemoveStation(' + idx + ')" style="position:absolute;top:0;right:1px;background:none;border:none;color:#64748b;cursor:pointer;font-size:0.5em;padding:1px;opacity:0;transition:opacity 0.15s">✕</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _spRenderStationLayout(plot) {
+  var share = _spShareMode;
+  var stations = plot.stations || [];
+  var cols = Math.min(10, Math.max(6, stations.length + 3));
+  var rows = 5;
+  var gap = share ? '3px' : '4px';
+  var cellMin = share ? '22px' : '28px';
+
+  var html = '<div class="' + (share ? 'sp-share' : '') + '" style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:' + (share ? '10px 8px 6px' : '14px 10px 8px') + '">';
+  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'') + '</div>';
+
+  // Build station placement map
+  var cellMap = {}; // 'x,y' → station index
+  stations.forEach(function(st, i) {
+    cellMap[st.x + ',' + st.y] = i;
+    if (st.sizeClass === 'lg') cellMap[(st.x + 1) + ',' + st.y] = -1; // occupied by span
+  });
+
+  html += '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:' + gap + '">';
+  for (var r = 0; r < rows; r++) {
+    for (var c = 0; c < cols; c++) {
+      var key = c + ',' + r;
+      var stIdx = cellMap[key];
+      if (stIdx !== undefined && stIdx >= 0) {
+        html += _spRenderStation(stations[stIdx], stIdx, share);
+      } else if (stIdx === -1) {
+        // Cell occupied by span — skip
+        continue;
+      } else {
+        // Empty cell
+        if (share) {
+          html += '<div style="min-height:' + cellMin + '"></div>';
+        } else {
+          var emptyLabel = _spMoveIdx >= 0 ? '↗' : '';
+          html += '<div style="border:1px dashed rgba(255,255,255,0.04);border-radius:4px;min-height:' + cellMin + ';display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="_spPlaceStationAtCell(' + c + ',' + r + ')"><span style="color:rgba(255,255,255,0.1);font-size:0.5em">' + emptyLabel + '</span></div>';
+        }
+      }
+    }
+  }
+  html += '</div>';
+
+  // Audience
+  html += '<div style="text-align:center;margin-top:6px;font-size:0.52em;font-weight:700;color:rgba(255,255,255,0.12);letter-spacing:0.15em;text-transform:uppercase">&#x25BC; AUDIENCE &#x25BC;</div>';
+  html += '</div>';
+  return html;
+}
+
+// ── Station Editor ──────────────────────────────────────────────────────────
+
+function _spClickStation(idx) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.stations || !plot.stations[idx]) return;
+  var st = plot.stations[idx];
+
+  var action = prompt(
+    st.musicianName + ' (' + st.role + ')\n\n1 = Edit name/role\n2 = Move\n3 = Toggle pedalboard\n4 = Toggle mic\n5 = Toggle monitor\n6 = Change monitor type\n7 = Change size\n8 = Cancel',
+    '1'
+  );
+  if (action === '1') {
+    var name = prompt('Musician name:', st.musicianName);
+    if (name !== null) st.musicianName = name;
+    var role = prompt('Role (Guitar, Bass, Keys, Drums, Vocals, Percussion):', st.role);
+    if (role !== null) st.role = role;
+    _spDirty = true; _spRender();
+  } else if (action === '2') {
+    _spMoveIdx = idx;
+    if (typeof showToast === 'function') showToast('Tap an empty cell to move ' + st.musicianName);
+    _spRender();
+  } else if (action === '3') {
+    st.components.pedalboard.enabled = !st.components.pedalboard.enabled;
+    _spDirty = true; _spRender();
+  } else if (action === '4') {
+    st.components.mic.enabled = !st.components.mic.enabled;
+    _spDirty = true; _spRender();
+  } else if (action === '5') {
+    st.components.monitor.enabled = !st.components.monitor.enabled;
+    _spDirty = true; _spRender();
+  } else if (action === '6') {
+    var kind = prompt('Monitor type (wedge, iem, sidefill):', st.components.monitor.kind || 'wedge');
+    if (kind !== null) { st.components.monitor.kind = kind.toLowerCase(); _spDirty = true; _spRender(); }
+  } else if (action === '7') {
+    st.sizeClass = st.sizeClass === 'lg' ? 'md' : 'lg';
+    _spDirty = true; _spRender();
+  }
+}
+
+function _spAddStation() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (!plot.stations) plot.stations = [];
+  var name = prompt('Musician name:', '');
+  if (!name) return;
+  var role = prompt('Role (Guitar, Bass, Keys, Drums, Vocals, Percussion):', 'Guitar');
+  if (!role) return;
+  // Find next open cell
+  var occupied = {};
+  plot.stations.forEach(function(s) { occupied[s.x + ',' + s.y] = true; });
+  var x = 1, y = 2;
+  for (var c = 0; c < 10; c++) {
+    if (!occupied[c + ',2']) { x = c; break; }
+  }
+  var station = _spMakeDefaultStation(name, role, x, y);
+  plot.stations.push(station);
+  _spDirty = true;
+  _spRender();
+}
+
+function _spRemoveStation(idx) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.stations) return;
+  plot.stations.splice(idx, 1);
+  _spDirty = true;
+  _spRender();
+}
+
+function _spPlaceStationAtCell(x, y) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  // Move mode for stations
+  if (_spMoveIdx >= 0 && plot.stations && plot.stations[_spMoveIdx]) {
+    plot.stations[_spMoveIdx].x = x;
+    plot.stations[_spMoveIdx].y = y;
+    _spMoveIdx = -1;
+    _spDirty = true;
+    _spRender();
+    return;
+  }
+  // For legacy item placement
+  _spPlaceAtCell(x, y);
+}
+
+function _spConvertToStations() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (!confirm('Convert this layout to station mode? Existing items will be preserved as legacy.')) return;
+  plot.layoutMode = 'stations';
+  if (!plot.stations) {
+    plot.stations = [];
+    // Auto-create stations from musician elements
+    (plot.elements || []).forEach(function(el) {
+      if (el.type === 'musician') {
+        var parts = el.label.split(' – ');
+        var name = parts[0] || el.label;
+        var role = parts[1] || 'Guitar';
+        plot.stations.push(_spMakeDefaultStation(name, role, el.x, el.y));
+      }
+    });
+  }
+  _spDirty = true;
+  _spRender();
+  if (typeof showToast === 'function') showToast('Converted to station layout');
+}
+
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
 function renderStagePlotPage(el) {
@@ -125,22 +361,28 @@ async function _spLoadPlots() {
 }
 
 function _spCreateDefault() {
+  var stations = [];
   var elements = [];
-  var col = 1; // start at col 1 to leave margin
+  var col = 1;
   if (typeof bandMembers !== 'undefined') {
     Object.entries(bandMembers).forEach(function(e) {
       var key = e[0], m = e[1];
-      var icon = m.role === 'Drums' ? '🥁' : m.role === 'Keyboard' ? '🎹' : m.role === 'Bass' ? '🎸' : '🎸';
-      var row = m.role === 'Drums' ? 1 : 2; // drums upstage, others center
-      elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + m.role, x: col, y: row });
+      var role = m.role || 'Guitar';
+      var row = role === 'Drums' ? 1 : 2;
+      stations.push(_spMakeDefaultStation(m.name, role, col, row));
+      // Also create legacy elements for backward compat
+      var icon = role === 'Drums' ? '🥁' : role === 'Keyboard' ? '🎹' : role === 'Bass' ? '🎸' : '🎸';
+      elements.push({ type: 'musician', icon: icon, label: m.name + ' – ' + role, x: col, y: row });
       col++;
     });
   }
   _spPlots = [{
     id: 'default',
     name: 'Default Setup',
+    layoutMode: 'stations',
     stageWidth: 24,
     stageDepth: 16,
+    stations: stations,
     elements: elements,
     channels: [],
     monitors: [],
@@ -200,20 +442,32 @@ function _spRender() {
     html += '</div></div>';
   }
 
-  // Stage canvas
-  html += _spRenderStage(plot);
+  // Stage canvas — branch by layout mode
+  var isStationMode = plot.layoutMode === 'stations' && plot.stations && plot.stations.length > 0;
+  html += isStationMode ? _spRenderStationLayout(plot) : _spRenderStage(plot);
 
   if (!share) {
-    // Element palette
-    html += '<div style="margin-top:14px">';
-    html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">Add to Stage</div>';
-    html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
-    Object.keys(SP_ELEMENTS).forEach(function(cat) {
-      SP_ELEMENTS[cat].forEach(function(el) {
-        html += '<button onclick="_spAddElement(\'' + el.type + '\',\'' + _spEsc(el.icon) + '\',\'' + _spEsc(el.label) + '\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 6px;border-radius:5px;cursor:pointer;font-size:0.68em;display:flex;align-items:center;gap:3px"><span style="font-size:0.9em">' + el.icon + '</span><span>' + el.label + '</span></button>';
+    if (isStationMode) {
+      // Station mode controls
+      html += '<div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap">';
+      html += '<button onclick="_spAddStation()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ Add Station</button>';
+      html += '<button onclick="_spConvertToLegacy()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.68em">Switch to Item Mode</button>';
+      html += '</div>';
+    } else {
+      // Legacy element palette
+      html += '<div style="margin-top:14px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+      html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">Add to Stage</span>';
+      html += '<button onclick="_spConvertToStations()" style="margin-left:auto;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.65em;font-weight:600">⬆ Station Mode</button>';
+      html += '</div>';
+      html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+      Object.keys(SP_ELEMENTS).forEach(function(cat) {
+        SP_ELEMENTS[cat].forEach(function(el) {
+          html += '<button onclick="_spAddElement(\'' + el.type + '\',\'' + _spEsc(el.icon) + '\',\'' + _spEsc(el.label) + '\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 6px;border-radius:5px;cursor:pointer;font-size:0.68em;display:flex;align-items:center;gap:3px"><span style="font-size:0.9em">' + el.icon + '</span><span>' + el.label + '</span></button>';
+        });
       });
-    });
-    html += '</div></div>';
+      html += '</div></div>';
+    }
 
     // Channel list
     html += _spRenderChannelList(plot);
@@ -753,5 +1007,17 @@ window._spApplyPreset = _spApplyPreset;
 window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
 window._spToggleDirections = function(v) { _spShowDirections = v; _spRender(); };
 window._spToggleShareMode = function() { _spShareMode = !_spShareMode; _spRender(); };
+window._spAddStation = _spAddStation;
+window._spRemoveStation = _spRemoveStation;
+window._spClickStation = _spClickStation;
+window._spPlaceStationAtCell = _spPlaceStationAtCell;
+window._spConvertToStations = _spConvertToStations;
+window._spConvertToLegacy = function() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  plot.layoutMode = 'legacy';
+  _spDirty = true;
+  _spRender();
+};
 
 console.log('🎭 stage-plot.js loaded');

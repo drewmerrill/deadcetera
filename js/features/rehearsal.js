@@ -2872,8 +2872,8 @@ function _renderAgendaOverlay() {
     var slotNum = session.currentIndex + 1;
     var totalSlots = session.items.length;
 
-    var typeColors = { warmup: '#22c55e', repair: '#f59e0b', learn: '#818cf8', closer: '#60a5fa' };
-    var typeIcons = { warmup: '🔥', repair: '🔧', learn: '📖', closer: '🎯' };
+    var typeColors = { warmup: '#22c55e', repair: '#f59e0b', learn: '#818cf8', closer: '#60a5fa', transition: '#a78bfa' };
+    var typeIcons = { warmup: '🔥', repair: '🔧', learn: '📖', closer: '🎯', transition: '🔗' };
     var color = typeColors[item.type] || '#94a3b8';
     var icon = typeIcons[item.type] || '🎵';
 
@@ -2883,18 +2883,32 @@ function _renderAgendaOverlay() {
     h += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim,#475569)">Slot ' + slotNum + ' of ' + totalSlots + '</span>';
     h += '</div>';
 
-    // Current item context
-    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
-    h += '<span style="font-size:1em">' + icon + '</span>';
-    h += '<div style="flex:1;min-width:0">';
-    h += '<span style="font-size:0.72em;font-weight:700;color:' + color + ';text-transform:uppercase">' + (item.type || '') + '</span>';
-    h += '<span style="font-size:0.68em;color:var(--text-dim,#475569);margin-left:6px">' + item.minutes + ' min</span>';
-    h += '</div>';
-    h += '</div>';
+    // Transition item: special two-song display
+    if (item.type === 'transition') {
+        var _dimStyle = 'opacity:0.5;font-weight:400';
+        var _activeStyle = 'font-weight:700;color:var(--text)';
+        h += '<div style="margin-bottom:6px;border-left:3px solid #a78bfa;padding-left:8px">';
+        h += '<div style="font-size:0.65em;font-weight:700;color:#a78bfa;text-transform:uppercase;margin-bottom:3px">🔗 Transition Practice · ' + item.minutes + ' min</div>';
+        h += '<div style="font-size:0.85em;' + (item.fromSongReady ? _dimStyle : _activeStyle) + '">' + (item.fromTitle || '') + (item.fromSongReady ? ' <span style="font-size:0.65em;color:#22c55e">✓ Ready</span>' : '') + '</div>';
+        h += '<div style="font-size:0.72em;color:#a78bfa;margin:1px 0">↓ handoff</div>';
+        h += '<div style="font-size:0.85em;' + (item.toSongReady ? _dimStyle : _activeStyle) + '">' + (item.toTitle || '') + (item.toSongReady ? ' <span style="font-size:0.65em;color:#22c55e">✓ Ready</span>' : '') + '</div>';
+        h += '</div>';
+        if (item.reason) h += '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-bottom:4px;font-style:italic">' + item.reason + '</div>';
+        if (item.focus) h += '<div style="font-size:0.75em;color:var(--text-muted,#94a3b8);margin-bottom:6px">Focus: ' + item.focus + '</div>';
+    } else {
+        // Standard item display
+        h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+        h += '<span style="font-size:1em">' + icon + '</span>';
+        h += '<div style="flex:1;min-width:0">';
+        h += '<span style="font-size:0.72em;font-weight:700;color:' + color + ';text-transform:uppercase">' + (item.type || '') + '</span>';
+        h += '<span style="font-size:0.68em;color:var(--text-dim,#475569);margin-left:6px">' + item.minutes + ' min</span>';
+        h += '</div>';
+        h += '</div>';
 
-    // Focus
-    if (item.focus) {
-        h += '<div style="font-size:0.75em;color:var(--text-muted,#94a3b8);margin-bottom:6px">Focus: ' + item.focus + '</div>';
+        // Focus
+        if (item.focus) {
+            h += '<div style="font-size:0.75em;color:var(--text-muted,#94a3b8);margin-bottom:6px">Focus: ' + item.focus + '</div>';
+        }
     }
 
     // Next up preview
@@ -2976,18 +2990,60 @@ function _renderAgendaComplete() {
 
 window.agendaCompleteAndNext = function() {
     if (typeof GLStore === 'undefined') return;
+
+    // Check if current item is a transition — show feedback capture first
+    var currentItem = GLStore.getCurrentRehearsalAgendaItem();
+    if (currentItem && currentItem.type === 'transition') {
+        _showTransitionFeedback(currentItem);
+        return;
+    }
+
+    _agendaAdvance();
+};
+
+function _agendaAdvance() {
     var nextItem = GLStore.advanceRehearsalAgendaSession();
     if (nextItem) {
-        // Load the new song into the live rehearsal view
         _riLive.songIdx = _findSongIndex(nextItem.songId);
         _riLive.songStartTime = Date.now();
         var container = document.getElementById('rhTabContent');
         if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
     } else {
-        // Agenda complete — re-render to show completion state
         var container = document.getElementById('rhTabContent');
         if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
     }
+}
+
+function _showTransitionFeedback(item) {
+    var existing = document.getElementById('transitionFeedbackOverlay');
+    if (existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'transitionFeedbackOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(167,139,250,0.3);border-radius:14px;padding:24px;max-width:380px;width:100%;color:var(--text,#e2e8f0);text-align:center">'
+        + '<div style="font-size:1.2em;margin-bottom:6px">🔗</div>'
+        + '<div style="font-size:0.92em;font-weight:700;margin-bottom:4px">' + (item.fromTitle || '') + ' → ' + (item.toTitle || '') + '</div>'
+        + '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:16px">How did the transition feel?</div>'
+        + '<div style="display:flex;flex-direction:column;gap:8px">'
+        + '<button onclick="_submitTransitionFeedback(\'nailed_it\')" style="padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.1);color:#86efac;font-weight:700;cursor:pointer;font-size:0.88em">🎯 Nailed it</button>'
+        + '<button onclick="_submitTransitionFeedback(\'felt_tighter\')" style="padding:12px;border-radius:10px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.1);color:#fbbf24;font-weight:700;cursor:pointer;font-size:0.88em">📈 Felt tighter</button>'
+        + '<button onclick="_submitTransitionFeedback(\'still_rough\')" style="padding:12px;border-radius:10px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#fca5a5;font-weight:700;cursor:pointer;font-size:0.88em">🔄 Still rough</button>'
+        + '</div></div>';
+    document.body.appendChild(ov);
+}
+
+window._submitTransitionFeedback = function(outcome) {
+    var item = GLStore.getCurrentRehearsalAgendaItem();
+    if (item && item.type === 'transition' && typeof GLStore.saveTransitionPracticeResult === 'function') {
+        GLStore.saveTransitionPracticeResult({
+            fromSongId: item.fromSongId,
+            toSongId: item.toSongId,
+            outcome: outcome
+        });
+    }
+    var ov = document.getElementById('transitionFeedbackOverlay');
+    if (ov) ov.remove();
+    _agendaAdvance();
 };
 
 window.agendaSkip = function() {

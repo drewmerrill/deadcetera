@@ -526,6 +526,50 @@
       totalMinutes += slot.minutes;
     }
 
+    // ── Inject transition practice units ──────────────────────────────────
+    var transitionCandidates = buildTransitionCandidates(input);
+    if (transitionCandidates.length > 0) {
+      var maxTransitions = items.length >= 5 ? 2 : 1;
+      var selectedTransitions = selectTransitionCandidates(transitionCandidates, usedSongIds, maxTransitions);
+      selectedTransitions.forEach(function(tc) {
+        var fromReady = tc.fromReadiness >= 3.8;
+        var toReady = tc.toReadiness >= 3.8;
+        items.push({
+          slot: items.length + 1,
+          type: 'transition',
+          unitType: 'transition_practice',
+          label: 'Transition Practice',
+          fromSongId: tc.fromSongId,
+          toSongId: tc.toSongId,
+          fromTitle: tc.fromTitle,
+          toTitle: tc.toTitle,
+          songId: tc.fromSongId + '→' + tc.toSongId,
+          title: tc.fromTitle + ' → ' + tc.toTitle,
+          minutes: tc.minutes,
+          priorityScore: tc.score,
+          roleScore: tc.score,
+          reason: buildTransitionReasonText(tc),
+          focus: buildTransitionFocusText(tc),
+          transitionConfidence: tc.transitionConfidence,
+          fromSongReady: fromReady,
+          toSongReady: toReady,
+          readySongDisplayMode: 'dimmed',
+          metadata: {
+            fromReadiness: tc.fromReadiness,
+            toReadiness: tc.toReadiness,
+            transitionConfidence: tc.transitionConfidence,
+            practiceCount: tc.practiceCount,
+            issueFlags: tc.issueFlags,
+          },
+        });
+        usedSongIds[tc.fromSongId] = true;
+        usedSongIds[tc.toSongId] = true;
+        totalMinutes += tc.minutes;
+      });
+      // Suppress duplicate standalone practice for ready songs covered by transitions
+      items = applyTransitionOverlapSuppression(items);
+    }
+
     if (!items.length) {
       return createEmptyAgendaState('Could not fill any agenda slots from available data.');
     }
@@ -562,10 +606,12 @@
   function buildAgendaSummary(items, sessionSig) {
     var repairs = items.filter(function (i) { return i.type === 'repair'; }).length;
     var learns = items.filter(function (i) { return i.type === 'learn'; }).length;
+    var transitions = items.filter(function (i) { return i.type === 'transition'; }).length;
     var base = '';
     if (repairs >= 2) base = repairs + ' songs need tightening — focused repair session.';
     else if (learns >= 1) base = 'Mix of repair and new material — balanced session.';
     else base = 'Varied practice session across ' + items.length + ' songs.';
+    if (transitions > 0) base += ' Includes ' + transitions + ' transition practice unit' + (transitions > 1 ? 's' : '') + '.';
     return base;
   }
 
@@ -579,6 +625,142 @@
       emptyReason: reason || 'No data available',
       summary: '',
     };
+  }
+
+  // ── Transition Candidate Support ──────────────────────────────────────────
+
+  function buildTransitionCandidates(input) {
+    var transitions = input.transitionsBySongPair || {};
+    var readiness = input.readinessBySongId || {};
+    var candidates = [];
+
+    Object.keys(transitions).forEach(function(key) {
+      var tr = transitions[key];
+      if (!tr || !tr.fromSongId || !tr.toSongId) return;
+
+      // Compute per-song readiness averages
+      var fromRc = readiness[tr.fromSongId] || {};
+      var toRc = readiness[tr.toSongId] || {};
+      var fromAvg = _bandAvg(fromRc);
+      var toAvg = _bandAvg(toRc);
+
+      var candidate = {
+        type: 'transition',
+        key: key,
+        fromSongId: tr.fromSongId,
+        toSongId: tr.toSongId,
+        fromTitle: tr.fromSongId,
+        toTitle: tr.toSongId,
+        fromReadiness: fromAvg,
+        toReadiness: toAvg,
+        transitionConfidence: tr.confidence !== undefined ? tr.confidence : 2.5,
+        targetConfidence: tr.targetConfidence || 4.0,
+        issueFlags: tr.issueFlags || [],
+        practiceCount: tr.practiceCount || 0,
+        lastPracticedAt: tr.lastPracticedAt || null,
+        linked: tr.linked !== false,
+        minutes: 8,
+        score: 0
+      };
+
+      candidate.score = scoreTransitionCandidate(candidate, input);
+      if (candidate.score > 10) candidates.push(candidate);
+    });
+
+    candidates.sort(function(a, b) { return b.score - a.score; });
+    return candidates;
+  }
+
+  function scoreTransitionCandidate(candidate, input) {
+    var score = 0;
+    var conf = candidate.transitionConfidence;
+    var target = candidate.targetConfidence;
+    var deficit = Math.max(0, target - conf);
+
+    // Transition confidence deficit — STRONG weight
+    score += deficit * 18;
+
+    // Neglect: days since last transition practice — MEDIUM weight
+    if (candidate.lastPracticedAt) {
+      var daysSince = Math.floor((Date.now() - new Date(candidate.lastPracticedAt).getTime()) / 86400000);
+      score += Math.min(20, daysSince * 1.5);
+    } else {
+      score += 25; // never practiced = high neglect
+    }
+
+    // Issue flags — each flag adds weight
+    score += (candidate.issueFlags.length || 0) * 5;
+
+    // STRONG bonus when both songs are ready but transition is weak
+    // This is the core product insight — don't hide weak transitions behind strong songs
+    var bothReady = candidate.fromReadiness >= 3.8 && candidate.toReadiness >= 3.8;
+    if (bothReady && conf < 3.5) {
+      score += 30;
+    }
+
+    // Linked pair bonus (setlist adjacency)
+    if (candidate.linked) score += 10;
+
+    // Low practice count boost (new transitions get a bump)
+    if (candidate.practiceCount < 3) score += 10;
+
+    return clampScore(score);
+  }
+
+  function selectTransitionCandidates(transitionCandidates, usedSongIds, maxItems) {
+    var selected = [];
+    for (var i = 0; i < transitionCandidates.length && selected.length < maxItems; i++) {
+      var tc = transitionCandidates[i];
+      // Don't select if both songs are already in the agenda as individual items
+      if (usedSongIds[tc.fromSongId] && usedSongIds[tc.toSongId]) continue;
+      selected.push(tc);
+    }
+    return selected;
+  }
+
+  function applyTransitionOverlapSuppression(items) {
+    // If a transition covers a song that's also a standalone item AND that song is ready,
+    // remove the standalone item to avoid redundant practice
+    var transitionSongs = {};
+    items.forEach(function(item) {
+      if (item.type === 'transition') {
+        if (item.fromSongReady) transitionSongs[item.fromSongId] = true;
+        if (item.toSongReady) transitionSongs[item.toSongId] = true;
+      }
+    });
+    return items.filter(function(item) {
+      if (item.type === 'transition') return true;
+      // Keep standalone items for songs NOT marked as "ready in a transition"
+      return !transitionSongs[item.songId];
+    });
+  }
+
+  function buildTransitionReasonText(candidate) {
+    var bothReady = candidate.fromReadiness >= 3.8 && candidate.toReadiness >= 3.8;
+    if (bothReady) {
+      return 'Both songs are individually ready, but the handoff still needs work.';
+    }
+    var weakSong = candidate.fromReadiness < candidate.toReadiness ? candidate.fromTitle : candidate.toTitle;
+    if (candidate.fromReadiness < 3.0 || candidate.toReadiness < 3.0) {
+      return weakSong + ' needs work, and the transition between them is also weak.';
+    }
+    return 'The transition between these songs needs focused practice.';
+  }
+
+  function buildTransitionFocusText(candidate) {
+    var flags = candidate.issueFlags || [];
+    if (flags.length) {
+      var flagMap = { timing: 'timing', entry: 'entry cue', groove_lock: 'groove lock', count_in: 'count-in' };
+      var labels = flags.map(function(f) { return flagMap[f] || f; });
+      return 'Focus on ' + labels.join(', ');
+    }
+    return 'Work the cue, handoff, count-in, and entry';
+  }
+
+  function _bandAvg(rc) {
+    if (!rc || typeof rc !== 'object') return 0;
+    var vals = Object.values(rc).filter(function(v) { return typeof v === 'number' && v > 0; });
+    return vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -595,6 +777,8 @@
     normalizeRecencyScore: normalizeRecencyScore,
     classifySongStage: classifySongStage,
     getAgendaCandidates: getAgendaCandidates,
+    buildTransitionCandidates: buildTransitionCandidates,
+    scoreTransitionCandidate: scoreTransitionCandidate,
   };
 
   console.log('✅ RehearsalAgendaEngine loaded');

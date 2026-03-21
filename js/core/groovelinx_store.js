@@ -75,6 +75,11 @@
     syncFollowing:    false,      // follower: auto-navigating with leader?
     syncListener:     null,       // Firebase .on() unsubscribe fn
     syncHeartbeat:    null,       // setInterval id for leader heartbeat
+
+    // ── Transition Intelligence ──────────────────────────────────────────
+    // { [key]: { key, fromSongId, toSongId, linked, confidence, targetConfidence,
+    //            practiceCount, lastPracticedAt, issueFlags, notes, derivedPriority } }
+    transitionIntelligence: {},
   };
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -1240,6 +1245,99 @@
     return _attentionCache.slice(0, returnLimit);
   }
 
+  // ── Transition Intelligence ──────────────────────────────────────────────
+
+  function _makeTransitionKey(fromSongId, toSongId) {
+    return (fromSongId || '') + '→' + (toSongId || '');
+  }
+
+  function _getDefaultTransitionRecord(fromSongId, toSongId) {
+    return {
+      key: _makeTransitionKey(fromSongId, toSongId),
+      fromSongId: fromSongId,
+      toSongId: toSongId,
+      linked: true,
+      confidence: 2.5,        // 0-5 scale, starts mid-low
+      targetConfidence: 4.0,
+      practiceCount: 0,
+      lastPracticedAt: null,
+      issueFlags: [],          // e.g. ['timing', 'entry', 'groove_lock', 'count_in']
+      notes: '',
+      derivedPriority: 0
+    };
+  }
+
+  function getTransitionIntelligence() {
+    return _state.transitionIntelligence || {};
+  }
+
+  function getTransitionBySongs(fromSongId, toSongId) {
+    var key = _makeTransitionKey(fromSongId, toSongId);
+    return _state.transitionIntelligence[key] || _getDefaultTransitionRecord(fromSongId, toSongId);
+  }
+
+  function upsertTransitionIntelligence(record) {
+    if (!record || !record.key) return;
+    _state.transitionIntelligence[record.key] = record;
+    _persistTransitionIntelligence();
+    emit('transitionIntelligenceChanged', { key: record.key });
+  }
+
+  function saveTransitionPracticeResult(payload) {
+    if (!payload || !payload.fromSongId || !payload.toSongId) return;
+    var key = _makeTransitionKey(payload.fromSongId, payload.toSongId);
+    var rec = _state.transitionIntelligence[key] || _getDefaultTransitionRecord(payload.fromSongId, payload.toSongId);
+
+    rec.practiceCount = (rec.practiceCount || 0) + 1;
+    rec.lastPracticedAt = new Date().toISOString();
+
+    // Map outcome to confidence adjustment
+    var outcome = payload.outcome || 'still_rough';
+    if (outcome === 'nailed_it') rec.confidence = Math.min(5, (rec.confidence || 2.5) + 0.6);
+    else if (outcome === 'felt_tighter') rec.confidence = Math.min(5, (rec.confidence || 2.5) + 0.3);
+    else if (outcome === 'still_rough') rec.confidence = Math.max(0, (rec.confidence || 2.5) - 0.1);
+
+    if (payload.issueFlags) rec.issueFlags = payload.issueFlags;
+    if (payload.notes !== undefined) rec.notes = payload.notes;
+
+    _state.transitionIntelligence[key] = rec;
+    _persistTransitionIntelligence();
+    _agendaCache = null;
+    emit('transitionIntelligenceChanged', { key: key, outcome: outcome });
+  }
+
+  function _persistTransitionIntelligence() {
+    try {
+      localStorage.setItem('glTransitionIntelligence', JSON.stringify(_state.transitionIntelligence));
+    } catch (e) {}
+    // Also persist to Firebase if available
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      try { firebaseDB.ref(bandPath('transition_intelligence')).set(_state.transitionIntelligence); } catch (e) {}
+    }
+  }
+
+  function _loadTransitionIntelligence() {
+    try {
+      var stored = localStorage.getItem('glTransitionIntelligence');
+      if (stored) _state.transitionIntelligence = JSON.parse(stored);
+    } catch (e) {}
+    // Firebase load (async, overwrites localStorage if present)
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+      try {
+        firebaseDB.ref(bandPath('transition_intelligence')).once('value').then(function(snap) {
+          var val = snap.val();
+          if (val && typeof val === 'object') {
+            _state.transitionIntelligence = val;
+            try { localStorage.setItem('glTransitionIntelligence', JSON.stringify(val)); } catch (e) {}
+          }
+        });
+      } catch (e) {}
+    }
+  }
+
+  // Load on init
+  _loadTransitionIntelligence();
+
   // ── Rehearsal Agenda (Milestone 6 Phase 1) ───────────────────────────────
 
   var _agendaCache = null;
@@ -1271,6 +1369,41 @@
       attentionBySongId[attentionList[i].songId] = attentionList[i];
     }
 
+    // Build transition intelligence for linked pairs
+    var transitionsBySongPair = {};
+    var ti = _state.transitionIntelligence || {};
+    Object.keys(ti).forEach(function(key) {
+      var rec = ti[key];
+      if (rec && rec.fromSongId && rec.toSongId) {
+        transitionsBySongPair[key] = rec;
+      }
+    });
+
+    // Also detect linked pairs from setlists for songs that have no transition record yet
+    try {
+      var setlists = window._glCachedSetlists || [];
+      setlists.forEach(function(sl) {
+        (sl.sets || []).forEach(function(set) {
+          var setSongs = set.songs || [];
+          for (var si = 0; si < setSongs.length - 1; si++) {
+            var sg = setSongs[si];
+            var segue = (typeof sg === 'object') ? (sg.segue || 'stop') : 'stop';
+            if (segue === 'flow' || segue === 'segue') {
+              var fromTitle = typeof sg === 'string' ? sg : (sg.title || '');
+              var toSg = setSongs[si + 1];
+              var toTitle = typeof toSg === 'string' ? toSg : (toSg.title || '');
+              if (fromTitle && toTitle) {
+                var pairKey = _makeTransitionKey(fromTitle, toTitle);
+                if (!transitionsBySongPair[pairKey]) {
+                  transitionsBySongPair[pairKey] = _getDefaultTransitionRecord(fromTitle, toTitle);
+                }
+              }
+            }
+          }
+        });
+      });
+    } catch (e) {}
+
     return {
       songs: songs,
       readinessBySongId: allReadiness,
@@ -1281,6 +1414,7 @@
       rehearsalSignalsBySongId: _buildRehearsalSignalIndex(),
       rehearsalSessionSignals: _buildRehearsalSessionSignals(),
       attemptSignalsBySongId: _buildAttemptSignalIndex(),
+      transitionsBySongPair: transitionsBySongPair,
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,
@@ -3652,6 +3786,12 @@
     deleteBackupPlayer:        deleteBackupPlayer,
     evaluateGigCoverage:       evaluateGigCoverage,
     getBackupOptionsForRole:   getBackupOptionsForRole,
+
+    // Transition Intelligence
+    getTransitionIntelligence:   getTransitionIntelligence,
+    getTransitionBySongs:        getTransitionBySongs,
+    upsertTransitionIntelligence: upsertTransitionIntelligence,
+    saveTransitionPracticeResult: saveTransitionPracticeResult,
 
     // Band Sync (V1)
     startBandSync:         startBandSync,
