@@ -6875,9 +6875,13 @@ async function loadSongKey(songTitle) {
 let harmonyCache = {};
 
 // Cache for song statuses - loaded from single master file
-let statusCache = {};
-let statusCacheLoaded = false;
-let statusPreloadRunning = false;
+// NOTE: must be var (not let) so statusCache is a window-accessible global.
+// groovelinx_store.js loads before app.js and references statusCache —
+// let creates a script-scoped binding invisible to other <script> tags,
+// causing ReferenceError in getAllStatus() / getStatus().
+var statusCache = {};
+var statusCacheLoaded = false;
+var statusPreloadRunning = false;
 
 // ============================================================================
 // MASTER STATUS FILE - Single Drive file for ALL song statuses (FAST!)

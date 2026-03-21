@@ -469,7 +469,7 @@
       status:     function () {
         var p = _saveDual(title, realSongId, 'song_status', { status: value, updatedBy: _who, updatedAt: _now() });
         // Keep statusCache in sync
-        if (typeof statusCache !== 'undefined') statusCache[title] = value;
+        try { if (typeof statusCache !== 'undefined') statusCache[title] = value; } catch(e) {}
         if (typeof addStatusBadges === 'function') addStatusBadges();
         return p;
       },
@@ -754,12 +754,14 @@
   }
 
   function getAllStatus() {
-    if (typeof statusCache !== 'undefined') return statusCache || {};
+    // try/catch guards against ReferenceError if statusCache is let-scoped
+    // in another script tag and hasn't been declared yet at call time.
+    try { if (typeof statusCache !== 'undefined' && statusCache) return statusCache; } catch(e) {}
     return {};
   }
 
   function getStatus(songId) {
-    if (typeof statusCache !== 'undefined') return (statusCache && statusCache[songId]) || null;
+    try { if (typeof statusCache !== 'undefined' && statusCache && statusCache[songId]) return statusCache[songId]; } catch(e) {}
     return null;
   }
 
@@ -867,7 +869,7 @@
       _globals: {
         selectedSong:      (typeof selectedSong !== 'undefined') ? selectedSong : undefined,
         readinessCache:    (typeof readinessCache !== 'undefined') ? readinessCache : undefined,
-        statusCache:       (typeof statusCache !== 'undefined') ? statusCache : undefined,
+        statusCache:       (function(){ try { return (typeof statusCache !== 'undefined') ? statusCache : undefined; } catch(e) { return undefined; } })(),
         northStarCache:    (typeof northStarCache !== 'undefined') ? northStarCache : undefined,
         lastPocketScore:   window._lastPocketScore,
         lastPocketTrend:   window._lastPocketTrend,
@@ -914,7 +916,7 @@
   };
 
   function auditLegacyStatuses() {
-    var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var sc = getAllStatus();
     var entries = Object.entries(sc);
     var legacy = [];
     var valid = [];
@@ -961,7 +963,7 @@
 
     var migrated = 0;
     var skipped = 0;
-    var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var sc = getAllStatus();
 
     for (var i = 0; i < audit.legacy.length; i++) {
       var item = audit.legacy[i];
