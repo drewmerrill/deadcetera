@@ -661,7 +661,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Auto-re-authenticate if user was previously signed in
         var savedEmail = localStorage.getItem('deadcetera_google_email');
         var savedName  = localStorage.getItem('deadcetera_google_name');
-        if (savedEmail || savedName) {
+        if (window.__glDevAuthBypass) {
+            // Dev preview: skip auto-reconnect entirely — mock user already active
+            console.log('%c⚡ Skipping auto-reconnect (preview)', 'color:#fbbf24');
+            var _h = document.getElementById('page-hero');
+            if (_h) _h.classList.add('hidden');
+            updateSignInStatus(true);
+        } else if (savedEmail || savedName) {
             // Either full session or partial (email cleared but name present) — attempt reconnect
             console.log('🔑 Auto-reconnecting (was signed in)...');
             handleGoogleDriveAuth(true);
@@ -5610,10 +5616,15 @@ async function initFirebaseOnly() {
 }
 
 function loadGoogleDriveAPI() {
+    // Dev bypass: skip GIS entirely — only load Firebase
+    if (window.__glDevAuthBypass) {
+        console.log('%c⚡ loadGoogleDriveAPI: skipping Google Identity (preview)', 'color:#fbbf24');
+        return initFirebaseOnly();
+    }
     // Now loads Firebase SDK + Google Identity Services for sign-in
     return new Promise((resolve, reject) => {
         console.log('🔥 Loading Firebase + Google Identity...');
-        
+
         const loadScript = (src) => new Promise((res, rej) => {
             const s = document.createElement('script');
             s.src = src; s.onload = res; s.onerror = rej;
