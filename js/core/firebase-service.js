@@ -92,11 +92,54 @@ var currentUserPicture  = localStorage.getItem('deadcetera_google_picture') || '
   // Global flag so app.js can skip OAuth triggers
   window.__glDevAuthBypass = true;
 
+  // ── GLOBAL OAUTH KILL SWITCH ──────────────────────────────────────────
+  // Intercept google.accounts.oauth2.initTokenClient so no real OAuth
+  // client is ever created. This catches ALL call sites — even ones that
+  // bypass our handleGoogleDriveAuth wrapper.
+  var _mockTokenClient = {
+    requestAccessToken: function(opts) {
+      console.log('%c⚡ Blocked Google OAuth requestAccessToken (preview)', 'color:#fbbf24');
+    }
+  };
+
+  // If google API is already loaded, override now
+  if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+    window.google.accounts.oauth2.initTokenClient = function() {
+      console.log('%c⚡ Blocked Google OAuth initTokenClient (preview)', 'color:#fbbf24');
+      return _mockTokenClient;
+    };
+  }
+
+  // Trap: if google API loads LATER, intercept it via property descriptor
+  // This handles the case where the script loads asynchronously after boot
+  var _origGoogle = window.google;
+  Object.defineProperty(window, 'google', {
+    configurable: true,
+    get: function() { return _origGoogle; },
+    set: function(val) {
+      _origGoogle = val;
+      // When Google API sets itself up, immediately override initTokenClient
+      try {
+        if (val && val.accounts && val.accounts.oauth2) {
+          val.accounts.oauth2.initTokenClient = function() {
+            console.log('%c⚡ Blocked Google OAuth initTokenClient (preview — late load)', 'color:#fbbf24');
+            return _mockTokenClient;
+          };
+        }
+      } catch(e) {}
+    }
+  });
+
+  // Also override tokenClient globally if it exists
+  if (typeof tokenClient !== 'undefined' && tokenClient) {
+    tokenClient = _mockTokenClient;
+  }
+
   // Seed localStorage so auto-reconnect flow picks it up
   localStorage.setItem('deadcetera_google_email', currentUserEmail);
   localStorage.setItem('deadcetera_google_name', currentUserName);
 
-  console.log('%c⚡ Dev auth bypass active — preview mode', 'color:#fbbf24;font-weight:bold');
+  console.log('%c⚡ Dev auth bypass active — preview mode (OAuth kill switch armed)', 'color:#fbbf24;font-weight:bold');
 })();
 
 // ── Multi-band routing ───────────────────────────────────────────────────────

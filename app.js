@@ -5998,6 +5998,7 @@ async function handleGoogleDriveAuth(silent) {
             } else {
                 var prompt = window._justSignedOut ? 'select_account' : '';
                 window._justSignedOut = false;
+                if (window.__glDevAuthBypass) { console.log('%c⚡ Blocked requestAccessToken (preview)', 'color:#fbbf24'); return; }
                 tokenClient.requestAccessToken({ prompt: prompt });
             }
         } catch (error) {
