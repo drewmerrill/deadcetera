@@ -1,0 +1,31 @@
+name: Validate JS
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check all JS files
+        run: |
+          failed=0
+          while IFS= read -r file; do
+            if ! node -c "$file" 2>/dev/null; then
+              echo "FAIL: $file"
+              node -c "$file" 2>&1 || true
+              failed=1
+            fi
+          done < <(find . -name '*.js' -not -path './node_modules/*' -not -path './.git/*')
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::One or more JS files have syntax errors"
+            exit 1
+          fi
+          echo "All JS files pass syntax check"
