@@ -5547,6 +5547,7 @@ function showSignInNudge() {
  */
 window.requireSignIn = function requireSignIn() {
     if (isUserSignedIn) return true;
+    if (window.__glDevAuthBypass) return true; // dev bypass: never block
 
     document.getElementById('glAuthGate')?.remove();
 
@@ -5929,6 +5930,11 @@ function avatarClearCustom() {
 // ============================================================================
 
 async function handleGoogleDriveAuth(silent) {
+    // Dev bypass: skip all Google OAuth in preview environments
+    if (window.__glDevAuthBypass) {
+        if (!silent) console.log('[dev] handleGoogleDriveAuth skipped — dev bypass active');
+        return;
+    }
     // Guard: onclick handlers pass Event as first arg — treat non-boolean as interactive
     if (typeof silent !== 'boolean') silent = false;
     if (!isGoogleDriveInitialized) {

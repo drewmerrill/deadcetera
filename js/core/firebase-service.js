@@ -87,6 +87,10 @@ var currentUserPicture  = localStorage.getItem('deadcetera_google_picture') || '
   currentUserName    = 'Drew Dev';
   currentUserPicture = '';
   isUserSignedIn     = true;
+  isGoogleDriveInitialized = true; // prevent loadGoogleDriveAPI from running
+
+  // Global flag so app.js can skip OAuth triggers
+  window.__glDevAuthBypass = true;
 
   // Seed localStorage so auto-reconnect flow picks it up
   localStorage.setItem('deadcetera_google_email', currentUserEmail);
