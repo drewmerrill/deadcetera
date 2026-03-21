@@ -2,8 +2,8 @@
   "name": "GrooveLinx — Where Bands Lock In",
   "short_name": "GrooveLinx",
   "description": "Where bands lock in — songs, setlists, rehearsals, harmonies, and more",
-  "start_url": "/deadcetera/",
-  "scope": "/deadcetera/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0f1628",
@@ -41,21 +41,21 @@
       "name": "Song Library",
       "short_name": "Songs",
       "description": "Browse all songs",
-      "url": "/deadcetera/?page=songs",
+      "url": "/?page=songs",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Practice Plan",
       "short_name": "Practice",
       "description": "View rehearsal plans",
-      "url": "/deadcetera/?page=practice",
+      "url": "/?page=practice",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Calendar",
       "short_name": "Calendar",
       "description": "Band schedule",
-      "url": "/deadcetera/?page=calendar",
+      "url": "/?page=calendar",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ]
