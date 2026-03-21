@@ -1685,6 +1685,8 @@ function rmLoadHarmony() {
         var html = '';
 
         // ── North Star card ──
+        var totalMembers = (typeof bandMembers !== 'undefined') ? Object.keys(bandMembers).length : 5;
+        var nsMajority = Math.ceil(totalMembers / 2);
         if (northStar) {
             var nsUrl = (northStar.url || northStar.spotifyUrl || '').replace(/'/g, "\\'");
             var nsTitle = _e(northStar.fetchedTitle || northStar.title || 'Reference Version');
@@ -1692,17 +1694,26 @@ function rmLoadHarmony() {
             var nsDate = northStar.dateAdded || '';
             var nsNotes = _e(northStar.notes || '');
             var nsMeta = [nsAdded, nsDate].filter(Boolean).join(' · ');
+            var nsIsBandChoice = (northStar._voteCount || 0) >= nsMajority;
+            var nsVotesNeeded = Math.max(0, nsMajority - (northStar._voteCount || 0));
+            var nsVoteLabel = nsIsBandChoice ? '👑 Band Choice' : nsVotesNeeded + ' more vote' + (nsVotesNeeded !== 1 ? 's' : '') + ' for Band Choice';
+            // Check if current user already voted
+            var nsUserVoted = false;
+            try { var _ce = typeof currentUserEmail !== 'undefined' ? currentUserEmail.replace(/\./g,'_').replace(/[#$\/\[\]]/g,'_') : ''; nsUserVoted = northStar.votes && northStar.votes[_ce]; } catch(e){}
             html += '<div style="padding:10px 12px;background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;margin-bottom:8px">'
                 + '<div style="display:flex;align-items:center;gap:10px">'
                 + '<span style="font-size:1.2em">⭐</span>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + nsTitle + '</div>'
-                + '<div style="font-size:0.65em;color:#64748b">' + (northStar._voteCount || 0) + ' votes' + (nsMeta ? ' · ' + nsMeta : '') + '</div>'
+                + '<div style="font-size:0.65em;color:#64748b">' + (northStar._voteCount || 0) + '/' + totalMembers + ' votes · ' + nsVoteLabel + (nsMeta ? ' · ' + nsMeta : '') + '</div>'
                 + '</div>'
                 + (nsUrl ? '<button onclick="window.open(\'' + nsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>' : '')
                 + '</div>'
                 + (nsNotes ? '<div style="font-size:0.72em;color:#94a3b8;margin-top:4px;font-style:italic;padding-left:30px">' + nsNotes + '</div>' : '')
-                + '<button onclick="rmVoteNorthStar(\'' + _songTitle + '\')" style="margin-top:6px;margin-left:30px;padding:3px 10px;background:none;border:1px solid rgba(102,126,234,0.3);color:#a5b4fc;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">Vote ⭐</button>'
+                + '<div style="display:flex;gap:6px;margin-top:6px;margin-left:30px;flex-wrap:wrap">'
+                + '<button onclick="rmVoteNorthStar(\'' + _songTitle + '\')" style="padding:3px 10px;background:' + (nsUserVoted ? 'rgba(102,126,234,0.2)' : 'none') + ';border:1px solid rgba(102,126,234,0.3);color:#a5b4fc;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">' + (nsUserVoted ? '✅ Voted' : 'Vote ⭐') + '</button>'
+                + '<button onclick="rmEditNorthStarUrl(\'' + _songTitle + '\')" style="padding:3px 10px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:6px;cursor:pointer;font-size:0.68em">✏️ Edit URL</button>'
+                + '</div>'
                 + '</div>';
         } else {
             html += '<div style="padding:8px 12px;background:rgba(102,126,234,0.04);border:1px solid rgba(102,126,234,0.1);border-radius:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
@@ -1730,7 +1741,9 @@ function rmLoadHarmony() {
         } else {
             html += '<div style="padding:8px 12px;background:rgba(245,158,11,0.03);border:1px solid rgba(245,158,11,0.1);border-radius:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
                 + '<span style="font-size:1em">🏆</span>'
-                + '<span style="font-size:0.78em;color:#64748b">No Best Shot yet — record a take from the Songs page</span></div>';
+                + '<span style="font-size:0.78em;color:#64748b">No Best Shot yet</span>'
+                + '<button onclick="closeRehearsalMode();setTimeout(function(){if(typeof showPage===\'function\')showPage(\'songs\');if(typeof GLStore!==\'undefined\')GLStore.selectSong(\'' + _songTitle + '\');},300)" style="margin-left:auto;padding:3px 10px;background:none;border:1px solid rgba(245,158,11,0.3);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">Upload a Take →</button>'
+                + '</div>';
         }
 
         container.innerHTML = html;
@@ -2106,15 +2119,46 @@ window.rmVoteNorthStar = async function(songTitle) {
         var idx = versions.indexOf(best);
         var email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
         if (!email) { if (typeof showToast === 'function') showToast('Sign in to vote'); return; }
+        // Sanitize email for Firebase key (no . # $ / [ ])
+        var safeEmail = email.replace(/\./g, '_').replace(/[#$\/\[\]]/g, '_');
         if (!versions[idx].votes) versions[idx].votes = {};
-        versions[idx].votes[email] = !versions[idx].votes[email];
+        versions[idx].votes[safeEmail] = !versions[idx].votes[safeEmail];
         versions[idx].totalVotes = Object.values(versions[idx].votes).filter(Boolean).length;
         await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
-        if (typeof showToast === 'function') showToast(versions[idx].votes[email] ? '⭐ Voted!' : 'Vote removed');
+        if (typeof showToast === 'function') showToast(versions[idx].votes[safeEmail] ? '⭐ Voted!' : 'Vote removed');
         // Refresh the Listen tab
         rmLoadHarmony();
     } catch(e) {
         if (typeof showToast === 'function') showToast('Vote failed');
+    }
+};
+
+// Edit North Star URL from Practice Mode
+window.rmEditNorthStarUrl = async function(songTitle) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    try {
+        var versions = toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
+        if (!versions.length) { if (typeof showToast === 'function') showToast('No North Star to edit'); return; }
+        var best = versions[0], bestVotes = 0;
+        versions.forEach(function(v, i) {
+            var vc = v.votes ? Object.keys(v.votes).filter(function(k){ return v.votes[k]; }).length : 0;
+            if (vc > bestVotes || i === 0) { best = v; bestVotes = vc; }
+        });
+        var idx = versions.indexOf(best);
+        var currentUrl = versions[idx].url || versions[idx].spotifyUrl || '';
+        var newUrl = prompt('Edit North Star URL:\n(Paste any link — YouTube, Spotify, Archive, etc.)', currentUrl);
+        if (newUrl === null || newUrl.trim() === '' || newUrl.trim() === currentUrl) return;
+        var trimmed = newUrl.trim();
+        try { new URL(trimmed); } catch(e) { alert('Please paste a valid URL'); return; }
+        versions[idx].url = trimmed;
+        versions[idx].spotifyUrl = trimmed;
+        versions[idx].editedBy = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
+        versions[idx].editedAt = new Date().toISOString();
+        await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+        if (typeof showToast === 'function') showToast('✅ North Star URL updated');
+        rmLoadHarmony();
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Edit failed');
     }
 };
 
