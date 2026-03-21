@@ -648,7 +648,7 @@
     <script>
     // ── HARD DEV AUTH BYPASS — runs before ANY JS file loads ──────────────
     // Detects Vercel preview URLs (subdomain with 2+ hyphens) or localhost.
-    // Sets global flags that all auth code checks before doing anything.
+    // Installs non-overwritable function stubs that later scripts cannot replace.
     (function() {
         var h = window.location.hostname;
         var isLocalhost = h === 'localhost' || h === '127.0.0.1';
@@ -659,11 +659,49 @@
         }
         if (!isLocalhost && !isVercelPreview) return;
         window.__glDevAuthBypass = true;
-        window.isUserSignedIn = true;
-        // Seed localStorage so hero gate and auto-reconnect see a session
+
+        // Seed localStorage so hero gate sees a session
         localStorage.setItem('deadcetera_google_email', 'dev@groovelinx.local');
         localStorage.setItem('deadcetera_google_name', 'Drew Dev');
-        // Kill google object so GIS can never initialize
+
+        // ── Lock handleGoogleDriveAuth as a no-op ────────────────────────
+        // Use defineProperty so firebase-service.js and app.js CANNOT overwrite it.
+        var _authNoop = function() {
+            console.log('%c⚡ handleGoogleDriveAuth blocked (preview)', 'color:#fbbf24');
+            return Promise.resolve();
+        };
+        Object.defineProperty(window, 'handleGoogleDriveAuth', {
+            configurable: false, enumerable: true,
+            get: function() { return _authNoop; },
+            set: function() { /* silently ignore overwrites */ }
+        });
+
+        // ── Lock loadGoogleDriveAPI as a no-op ───────────────────────────
+        var _loadNoop = function() {
+            console.log('%c⚡ loadGoogleDriveAPI blocked (preview)', 'color:#fbbf24');
+            return Promise.resolve();
+        };
+        Object.defineProperty(window, 'loadGoogleDriveAPI', {
+            configurable: false, enumerable: true,
+            get: function() { return _loadNoop; },
+            set: function() { /* silently ignore overwrites */ }
+        });
+
+        // ── Lock requireSignIn to always return true ─────────────────────
+        var _requireNoop = function() { return true; };
+        Object.defineProperty(window, 'requireSignIn', {
+            configurable: false, enumerable: true,
+            get: function() { return _requireNoop; },
+            set: function() { /* silently ignore overwrites */ }
+        });
+
+        // ── Mock tokenClient globally ────────────────────────────────────
+        var _mockTC = { requestAccessToken: function() {
+            console.log('%c⚡ tokenClient.requestAccessToken blocked (preview)', 'color:#fbbf24');
+        }};
+        window.tokenClient = _mockTC;
+
+        // ── Trap window.google to neuter GIS ─────────────────────────────
         Object.defineProperty(window, 'google', {
             configurable: true,
             get: function() { return window.__glMockGoogle; },
@@ -671,11 +709,7 @@
                 window.__glMockGoogle = v;
                 try {
                     if (v && v.accounts && v.accounts.oauth2) {
-                        v.accounts.oauth2.initTokenClient = function() {
-                            return { requestAccessToken: function() {
-                                console.log('%c⚡ OAuth blocked (preview)', 'color:#fbbf24');
-                            }};
-                        };
+                        v.accounts.oauth2.initTokenClient = function() { return _mockTC; };
                     }
                 } catch(e) {}
             }
