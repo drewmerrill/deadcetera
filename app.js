@@ -11634,23 +11634,26 @@ async function checkForAppUpdate() {
         if (window.__glDevAuthBypass) return;
         // GitHub Pages serves at /deadcetera/, Vercel serves at /
         var base = location.hostname.indexOf('github.io') !== -1 ? '/deadcetera' : '';
-        var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
-        if (!res.ok) return;
+        var url = base + '/version.json?t=' + Date.now();
+        var res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) {
+            console.log('[Update] version.json fetch failed:', res.status, url);
+            return;
+        }
         var data = await res.json();
         _rt.lastUpdateCheck = new Date().toISOString();
-        if (!data.version) return;
+        if (!data.version) { console.log('[Update] version.json missing version field'); return; }
         // Compare server version against the immutable client baseline.
         // _loadedVersion is set once at boot from meta tag or ?v= param and never changes.
-        // If the client has no version ('0'), skip — can't compare meaningfully.
-        if (_loadedVersion === '0') return;
-        // Server version differs from what this client loaded → new deploy available.
-        // Use startsWith check: server may be "20260321-142328-abc1234" while client
-        // has "20260321-142328" (timestamp only). If server starts with client stamp,
-        // it's the same deploy with an appended hash — not a new version.
-        if (data.version !== _loadedVersion && !data.version.startsWith(_loadedVersion)) {
+        if (_loadedVersion === '0') { console.log('[Update] No client version — skipping'); return; }
+        var same = data.version === _loadedVersion || data.version.startsWith(_loadedVersion);
+        console.log('[Update] client=' + _loadedVersion + ' server=' + data.version + ' → ' + (same ? 'current' : 'NEW'));
+        if (!same) {
             showUpdateBanner();
         }
-    } catch(e) {}
+    } catch(e) {
+        console.log('[Update] Error:', e.message || e);
+    }
 }
 
 var _updateBannerShown = false;
