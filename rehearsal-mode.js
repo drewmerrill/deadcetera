@@ -1680,36 +1680,59 @@ function rmLoadHarmony() {
         var container = document.getElementById(quickListenId);
         if (!container) return;
 
+        var _e = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+        var _songTitle = song.title.replace(/'/g, "\\'");
         var html = '';
+
+        // ── North Star card ──
         if (northStar) {
             var nsUrl = (northStar.url || northStar.spotifyUrl || '').replace(/'/g, "\\'");
-            var nsTitle = (northStar.fetchedTitle || northStar.title || 'Reference Version').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-            html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;margin-bottom:8px">'
+            var nsTitle = _e(northStar.fetchedTitle || northStar.title || 'Reference Version');
+            var nsAdded = northStar.addedBy ? northStar.addedBy.split('@')[0] : '';
+            var nsDate = northStar.dateAdded || '';
+            var nsNotes = _e(northStar.notes || '');
+            var nsMeta = [nsAdded, nsDate].filter(Boolean).join(' · ');
+            html += '<div style="padding:10px 12px;background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;margin-bottom:8px">'
+                + '<div style="display:flex;align-items:center;gap:10px">'
                 + '<span style="font-size:1.2em">⭐</span>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + nsTitle + '</div>'
-                + '<div style="font-size:0.65em;color:#64748b">North Star · ' + (northStar._voteCount || 0) + ' votes</div></div>'
+                + '<div style="font-size:0.65em;color:#64748b">' + (northStar._voteCount || 0) + ' votes' + (nsMeta ? ' · ' + nsMeta : '') + '</div>'
+                + '</div>'
                 + (nsUrl ? '<button onclick="window.open(\'' + nsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>' : '')
+                + '</div>'
+                + (nsNotes ? '<div style="font-size:0.72em;color:#94a3b8;margin-top:4px;font-style:italic;padding-left:30px">' + nsNotes + '</div>' : '')
+                + '<button onclick="rmVoteNorthStar(\'' + _songTitle + '\')" style="margin-top:6px;margin-left:30px;padding:3px 10px;background:none;border:1px solid rgba(102,126,234,0.3);color:#a5b4fc;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">Vote ⭐</button>'
                 + '</div>';
+        } else {
+            html += '<div style="padding:8px 12px;background:rgba(102,126,234,0.04);border:1px solid rgba(102,126,234,0.1);border-radius:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
+                + '<span style="font-size:1em">⭐</span>'
+                + '<span style="font-size:0.78em;color:#64748b">No North Star set — find a reference version below</span></div>';
         }
+
+        // ── Best Shot card ──
         if (bestShot) {
-            var bsLabel = (bestShot.label || 'Best Take').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-            html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;margin-bottom:8px">'
+            var bsLabel = _e(bestShot.label || 'Best Take');
+            var bsBy = bestShot.uploadedByName || (bestShot.uploadedBy ? bestShot.uploadedBy.split('@')[0] : '');
+            html += '<div style="padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;margin-bottom:8px">'
+                + '<div style="display:flex;align-items:center;gap:10px">'
                 + '<span style="font-size:1.2em">🏆</span>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + bsLabel + (bestShot.crowned ? ' 👑' : '') + '</div>'
-                + '<div style="font-size:0.65em;color:#64748b">Best Shot</div></div>';
+                + '<div style="font-size:0.65em;color:#64748b">Best Shot' + (bsBy ? ' · ' + _e(bsBy) : '') + '</div></div>';
             if (bestShot.audioUrl) {
                 html += '<audio controls src="' + bestShot.audioUrl.replace(/"/g,'&quot;') + '" style="height:32px;max-width:120px"></audio>';
             } else if (bestShot.externalUrl) {
                 var bsUrl = bestShot.externalUrl.replace(/'/g, "\\'");
                 html += '<button onclick="window.open(\'' + bsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>';
             }
-            html += '</div>';
+            html += '</div></div>';
+        } else {
+            html += '<div style="padding:8px 12px;background:rgba(245,158,11,0.03);border:1px solid rgba(245,158,11,0.1);border-radius:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
+                + '<span style="font-size:1em">🏆</span>'
+                + '<span style="font-size:0.78em;color:#64748b">No Best Shot yet — record a take from the Songs page</span></div>';
         }
-        if (!northStar && !bestShot) {
-            html = '<div style="font-size:0.78em;color:#64748b;padding:8px 0;margin-bottom:8px">No North Star or Best Shot yet — use the tools below to find and save one.</div>';
-        }
+
         container.innerHTML = html;
     })();
 
@@ -2067,5 +2090,32 @@ function rmOpenMoises(){window.open('https://studio.moises.ai/library/','_blank'
 
 // ── Touch swipe ──────────────────────────────────────────────────────────────
 (function(){let sx=0;document.addEventListener('touchstart',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;sx=e.touches[0].clientX;},{passive:true});document.addEventListener('touchend',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>60)rmNavigate(dx<0?1:-1);},{passive:true});})();
+
+// Vote on North Star from Practice Mode Listen tab
+window.rmVoteNorthStar = async function(songTitle) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    try {
+        var versions = toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
+        if (!versions.length) { if (typeof showToast === 'function') showToast('No North Star to vote on'); return; }
+        // Find the top-voted version (same logic as the loader)
+        var best = versions[0], bestVotes = 0;
+        versions.forEach(function(v, i) {
+            var vc = v.votes ? Object.keys(v.votes).filter(function(k){ return v.votes[k]; }).length : 0;
+            if (vc > bestVotes || i === 0) { best = v; bestVotes = vc; }
+        });
+        var idx = versions.indexOf(best);
+        var email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
+        if (!email) { if (typeof showToast === 'function') showToast('Sign in to vote'); return; }
+        if (!versions[idx].votes) versions[idx].votes = {};
+        versions[idx].votes[email] = !versions[idx].votes[email];
+        versions[idx].totalVotes = Object.values(versions[idx].votes).filter(Boolean).length;
+        await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+        if (typeof showToast === 'function') showToast(versions[idx].votes[email] ? '⭐ Voted!' : 'Vote removed');
+        // Refresh the Listen tab
+        rmLoadHarmony();
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Vote failed');
+    }
+};
 
 console.log('🎸 Practice Mode 5-Tab loaded (Chart · Know · Memory · Harmony · Record)');
