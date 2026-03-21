@@ -73,13 +73,17 @@
     var safeTitle = _esc(songId);
     var safeTitleAttr = songId.replace(/'/g, "\\'");
 
+    // Readiness color
+    var avgVal = intel && intel.avg > 0 ? intel.avg : 0;
+    var readColor = avgVal >= 3.5 ? '#22c55e' : avgVal >= 2 ? '#f59e0b' : avgVal > 0 ? '#ef4444' : '#64748b';
+    var readChip = avgVal > 0 ? '<span style="font-size:0.7em;font-weight:700;color:' + readColor + ';margin-left:4px">' + avgVal.toFixed(1) + '</span>' : '';
+
     _bar.innerHTML =
       '<div class="gl-np-song" onclick="glNowPlaying._openSong(\'' + safeTitleAttr + '\')">'
       + '<span class="gl-np-icon">🎵</span>'
-      + '<span class="gl-np-title">' + safeTitle + '</span>'
+      + '<span class="gl-np-title">' + safeTitle + readChip + '</span>'
       + '</div>'
       + (metaStr ? '<span class="gl-np-meta">' + _esc(metaStr) + '</span>' : '')
-      + '<button class="gl-np-action" onclick="glNowPlaying._openSong(\'' + safeTitleAttr + '\')">Open</button>'
       + '<button class="gl-np-close" onclick="event.stopPropagation();glNowPlaying._clear()" title="Clear now playing">✕</button>';
 
     _bar.style.display = 'flex';
