@@ -10323,7 +10323,7 @@ function settingsTab(tab, btn) {
                 <div style="font-size:0.85em;color:var(--text-dim);margin-top:4px">Band HQ — Less admin. More jams. 🤘</div>
             </div>
             <div style="font-size:0.85em;line-height:2;color:var(--text-muted)">
-                ${[['Version','3.1.0'],['Build', (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'unknown')],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+                ${[['Version','3.2.0'],['Build', (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'unknown')],['Created by','Drew Merrill'],['Platform','Firebase + Vercel'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
             </div>
             <div style="margin-top:16px;text-align:center;font-size:0.78em;color:var(--text-dim);line-height:1.6">
                 © 2025–2026 Drew Merrill. All rights reserved.<br>

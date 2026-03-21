@@ -13,8 +13,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Stamp version across all sources
         run: |
-          SHA=$(git rev-parse --short HEAD)
-          STAMP="${SHA}"
+          STAMP=$(date -u +"%Y%m%d-%H%M%S")
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
           # 1. version.json
