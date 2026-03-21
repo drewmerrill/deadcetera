@@ -2805,14 +2805,16 @@
   function setNowPlaying(songId) {
     var prev = _state.nowPlayingSongId;
     _state.nowPlayingSongId = songId || null;
+    // Always persist to localStorage (even if same value — ensures freshness on reload)
+    try {
+      if (_state.nowPlayingSongId) {
+        localStorage.setItem('glNowPlaying', _state.nowPlayingSongId);
+      } else {
+        localStorage.removeItem('glNowPlaying');
+      }
+    } catch(e) {}
+    // Only emit event if value actually changed (avoid duplicate renders)
     if (prev !== _state.nowPlayingSongId) {
-      try {
-        if (_state.nowPlayingSongId) {
-          localStorage.setItem('glNowPlaying', _state.nowPlayingSongId);
-        } else {
-          localStorage.removeItem('glNowPlaying');
-        }
-      } catch(e) {}
       emit('nowPlayingChanged', { songId: _state.nowPlayingSongId, previousSongId: prev });
     }
   }
