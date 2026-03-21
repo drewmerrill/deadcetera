@@ -11620,9 +11620,11 @@ function onPartyEnded() {
 
 async function checkForAppUpdate() {
     try {
-        // Skip on localhost (SW disabled there, no deploy cycle)
+        // Skip on localhost and preview environments
         if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
-        var base = '/deadcetera';
+        if (window.__glDevAuthBypass) return;
+        // GitHub Pages serves at /deadcetera/, Vercel serves at /
+        var base = location.hostname.indexOf('github.io') !== -1 ? '/deadcetera' : '';
         var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
         if (!res.ok) return;
         var data = await res.json();

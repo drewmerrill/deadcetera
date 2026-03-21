@@ -1,0 +1,24 @@
+name: Stamp Version
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  stamp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update version.json with commit hash
+        run: |
+          STAMP=$(date -u +"%Y%m%d-%H%M%S")
+          SHA=$(git rev-parse --short HEAD)
+          echo "{\"version\":\"${STAMP}-${SHA}\",\"deployed\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > version.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git diff --cached --quiet && echo "No change" && exit 0
+          git commit -m "chore: auto-stamp version.json [skip ci]"
+          git push
