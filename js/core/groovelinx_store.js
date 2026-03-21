@@ -1048,6 +1048,8 @@
     // Save current workspace scroll so close can restore it
     var page = typeof currentPage !== 'undefined' ? currentPage : 'songs';
     _navScrollCache[page] = window.scrollY;
+    // Auto-set Now Playing when a song is selected (makes the bar visible naturally)
+    setNowPlaying(title);
     // Only emit if the selection actually changed (avoid double-render)
     if (prev !== title) {
       emit('gl-song-selected', { title: title });
