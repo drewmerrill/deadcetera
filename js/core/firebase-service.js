@@ -271,6 +271,11 @@ window.initFirebaseOnly = async function initFirebaseOnly() {
 // ── Full init with Google Identity (triggered on first "Connect" click) ──────
 
 window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
+    // Dev bypass: skip GIS, load Firebase only
+    if (window.__glDevAuthBypass) {
+        console.log('%c⚡ loadGoogleDriveAPI: skipping Google Identity (preview)', 'color:#fbbf24');
+        return typeof initFirebaseOnly === 'function' ? initFirebaseOnly() : Promise.resolve();
+    }
     return new Promise((resolve, reject) => {
         console.log('🔥 Loading Firebase + Google Identity...');
 
@@ -371,6 +376,12 @@ window.getCurrentUserEmail = async function getCurrentUserEmail() {
  * Called by the topbar Connect button and the sign-in nudge banner.
  */
 window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
+    // Dev bypass: block ALL auth actions — sign-in AND sign-out
+    if (window.__glDevAuthBypass) {
+        console.log('%c⚡ handleGoogleDriveAuth blocked (preview)', 'color:#fbbf24');
+        return;
+    }
+
     if (isUserSignedIn) {
         // Sign out
         isUserSignedIn = false;
@@ -399,6 +410,7 @@ window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
 
     try {
         console.log('🔑 Requesting sign-in...' + (silent ? ' (auto-reconnect)' : ''));
+        if (window.__glDevAuthBypass) { console.log('%c⚡ Blocked requestAccessToken (preview)', 'color:#fbbf24'); return; }
         tokenClient.requestAccessToken({ prompt: silent ? 'none' : '' });
     } catch (error) {
         console.error('Sign-in failed:', error);
