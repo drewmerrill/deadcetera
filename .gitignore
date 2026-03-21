@@ -31,6 +31,7 @@ node_modules/
 
 # --- macOS junk ---
 .DS_Store
+._*
 
 # --- Safety guard ---
 /mnt/
