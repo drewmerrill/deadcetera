@@ -4,8 +4,17 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-// ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
-var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
+// ── Version baseline — immutable client build stamp ───────────────────────────
+// Try meta tag first, then fall back to ?v= param on the app.js script tag.
+var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
+if (!BUILD_VERSION) {
+    try {
+        var _appScript = document.querySelector('script[src*="app.js"]');
+        var _vMatch = _appScript && _appScript.src.match(/[?&]v=([^&]+)/);
+        if (_vMatch) BUILD_VERSION = _vMatch[1];
+    } catch(e) {}
+}
+if (!BUILD_VERSION) BUILD_VERSION = '0';
 console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
 var _loadedVersion = BUILD_VERSION;
 var DEBUG = location.search.includes('debug=true');
@@ -11630,15 +11639,15 @@ async function checkForAppUpdate() {
         var data = await res.json();
         _rt.lastUpdateCheck = new Date().toISOString();
         if (!data.version) return;
-        // On first check, accept whatever version.json says as our baseline
-        // This prevents loops when meta tag and version.json are stamped by different systems
-        if (!_loadedVersion || _loadedVersion === '0' || !_rt._updateBaselineSet) {
-            _loadedVersion = data.version;
-            _rt._updateBaselineSet = true;
-            return;
-        }
-        if (data.version !== _loadedVersion) {
-            _loadedVersion = data.version; // Accept new version so we don't re-trigger
+        // Compare server version against the immutable client baseline.
+        // _loadedVersion is set once at boot from meta tag or ?v= param and never changes.
+        // If the client has no version ('0'), skip — can't compare meaningfully.
+        if (_loadedVersion === '0') return;
+        // Server version differs from what this client loaded → new deploy available.
+        // Use startsWith check: server may be "20260321-142328-abc1234" while client
+        // has "20260321-142328" (timestamp only). If server starts with client stamp,
+        // it's the same deploy with an appended hash — not a new version.
+        if (data.version !== _loadedVersion && !data.version.startsWith(_loadedVersion)) {
             showUpdateBanner();
         }
     } catch(e) {}
