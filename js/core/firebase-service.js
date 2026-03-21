@@ -58,10 +58,26 @@ var currentUserPicture  = localStorage.getItem('deadcetera_google_picture') || '
 // ── Dev/Preview Auth Bypass ──────────────────────────────────────────────────
 // Injects mock authenticated user on Vercel preview deploys and localhost ONLY.
 // NEVER activates on production domain. Does not modify real auth logic.
+//
+// Vercel preview hostnames: {project}-{hash}-{scope}.vercel.app
+//   e.g. deadcetera-abc123xy-drewmerrills-projects.vercel.app
+//   The subdomain (before .vercel.app) always contains 2+ hyphens.
+// Vercel production hostnames: {project}.vercel.app
+//   e.g. deadcetera.vercel.app, groovelinx.vercel.app
+//   The subdomain has 0 hyphens (simple project name).
+// Custom domains: groovelinx.com, etc. — no vercel.app at all.
+//
+// Detection: hostname ends with .vercel.app AND subdomain has 2+ hyphens.
 (function() {
   var h = window.location.hostname;
-  var isPreview = (h.indexOf('vercel.app') !== -1 && h.indexOf('deadcetera.vercel.app') !== 0)
-               || h === 'localhost' || h === '127.0.0.1';
+  var isLocalhost = h === 'localhost' || h === '127.0.0.1';
+  var isVercelPreview = false;
+  if (h.indexOf('vercel.app') !== -1) {
+    var subdomain = h.replace('.vercel.app', '');
+    var hyphenCount = (subdomain.match(/-/g) || []).length;
+    isVercelPreview = hyphenCount >= 2;
+  }
+  var isPreview = isVercelPreview || isLocalhost;
   if (!isPreview) return;
 
   // Only inject if no real session exists
