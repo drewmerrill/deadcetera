@@ -1661,8 +1661,6 @@ function rmLoadHarmony() {
     var quickListenPlaceholder = '<div id="' + quickListenId + '" style="margin-bottom:14px"><div style="color:#64748b;font-size:0.78em;padding:8px 0">Loading reference versions...</div></div>';
 
     (async function() {
-        var container = document.getElementById(quickListenId);
-        if (!container) return;
         var northStar = null, bestShot = null;
         try {
             var res = await Promise.all([
@@ -1677,6 +1675,10 @@ function rmLoadHarmony() {
             });
             bestShot = shots.find(function(s){ return s.crowned; }) || (shots.length ? shots[shots.length - 1] : null);
         } catch(e) {}
+
+        // Look up container AFTER await — innerHTML is set by then
+        var container = document.getElementById(quickListenId);
+        if (!container) return;
 
         var html = '';
         if (northStar) {
