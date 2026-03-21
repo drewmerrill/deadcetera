@@ -55,6 +55,30 @@ var currentUserEmail    = localStorage.getItem('deadcetera_google_email')   || n
 var currentUserName     = localStorage.getItem('deadcetera_google_name')    || '';
 var currentUserPicture  = localStorage.getItem('deadcetera_google_picture') || '';
 
+// ── Dev/Preview Auth Bypass ──────────────────────────────────────────────────
+// Injects mock authenticated user on Vercel preview deploys and localhost ONLY.
+// NEVER activates on production domain. Does not modify real auth logic.
+(function() {
+  var h = window.location.hostname;
+  var isPreview = (h.indexOf('vercel.app') !== -1 && h.indexOf('deadcetera.vercel.app') !== 0)
+               || h === 'localhost' || h === '127.0.0.1';
+  if (!isPreview) return;
+
+  // Only inject if no real session exists
+  if (currentUserEmail && currentUserEmail !== 'dev@groovelinx.local') return;
+
+  currentUserEmail   = 'dev@groovelinx.local';
+  currentUserName    = 'Drew Dev';
+  currentUserPicture = '';
+  isUserSignedIn     = true;
+
+  // Seed localStorage so auto-reconnect flow picks it up
+  localStorage.setItem('deadcetera_google_email', currentUserEmail);
+  localStorage.setItem('deadcetera_google_name', currentUserName);
+
+  console.log('%c⚡ Dev auth bypass active — preview mode', 'color:#fbbf24;font-weight:bold');
+})();
+
 // ── Multi-band routing ───────────────────────────────────────────────────────
 
 var currentBandSlug = localStorage.getItem('deadcetera_current_band') || 'deadcetera';
