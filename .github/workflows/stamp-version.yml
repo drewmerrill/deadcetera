@@ -19,9 +19,9 @@ jobs:
           # 1. version.json
           echo "{\"version\":\"${STAMP}\",\"deployed\":\"${NOW}\"}" > version.json
 
-          # 2. index.html: meta tag + all ?v= params
-          sed -i "s/content=\"[^\"]*\"/content=\"${STAMP}\"/" index.html
-          sed -i "s/\?v=[^\"]*/\?v=${STAMP}/g" index.html
+          # 2. index.html: ONLY the build-version meta tag + all ?v= params
+          sed -i "s/\(name=\"build-version\" content=\"\)[^\"]*/\1${STAMP}/" index.html
+          sed -i "s/\?v=[0-9][0-9a-zA-Z_-]*/\?v=${STAMP}/g" index.html
 
           # 3. service-worker.js: cache name
           sed -i "s/groovelinx-[^']*/groovelinx-${STAMP}/" service-worker.js
