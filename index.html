@@ -645,6 +645,44 @@
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
+    <script>
+    // ── HARD DEV AUTH BYPASS — runs before ANY JS file loads ──────────────
+    // Detects Vercel preview URLs (subdomain with 2+ hyphens) or localhost.
+    // Sets global flags that all auth code checks before doing anything.
+    (function() {
+        var h = window.location.hostname;
+        var isLocalhost = h === 'localhost' || h === '127.0.0.1';
+        var isVercelPreview = false;
+        if (h.indexOf('vercel.app') !== -1) {
+            var sub = h.replace('.vercel.app', '');
+            isVercelPreview = (sub.match(/-/g) || []).length >= 2;
+        }
+        if (!isLocalhost && !isVercelPreview) return;
+        window.__glDevAuthBypass = true;
+        window.isUserSignedIn = true;
+        // Seed localStorage so hero gate and auto-reconnect see a session
+        localStorage.setItem('deadcetera_google_email', 'dev@groovelinx.local');
+        localStorage.setItem('deadcetera_google_name', 'Drew Dev');
+        // Kill google object so GIS can never initialize
+        Object.defineProperty(window, 'google', {
+            configurable: true,
+            get: function() { return window.__glMockGoogle; },
+            set: function(v) {
+                window.__glMockGoogle = v;
+                try {
+                    if (v && v.accounts && v.accounts.oauth2) {
+                        v.accounts.oauth2.initTokenClient = function() {
+                            return { requestAccessToken: function() {
+                                console.log('%c⚡ OAuth blocked (preview)', 'color:#fbbf24');
+                            }};
+                        };
+                    }
+                } catch(e) {}
+            }
+        });
+        console.log('%c⚡ HARD DEV AUTH BYPASS ENABLED', 'color:#fbbf24;font-weight:bold;font-size:14px');
+    })();
+    </script>
     <script src="js/core/utils.js?v=20260321-142328"></script>
     <script src="js/core/firebase-service.js?v=20260321-142328"></script>
     <script src="js/core/song-intelligence.js?v=20260321-142328"></script>

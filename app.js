@@ -10,6 +10,13 @@ console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-wei
 var _loadedVersion = BUILD_VERSION;
 var DEBUG = location.search.includes('debug=true');
 
+// ── Hard dev auth bypass confirmation ─────────────────────────────────────────
+// If the inline <script> in index.html set __glDevAuthBypass, ensure auth globals are set.
+if (window.__glDevAuthBypass) {
+    if (typeof isUserSignedIn !== 'undefined') isUserSignedIn = true;
+    window.isUserSignedIn = true;
+}
+
 // ── Centralized runtime state (replaces scattered window._gl* flags) ────────
 if (!window._glRuntime) {
     window._glRuntime = {
