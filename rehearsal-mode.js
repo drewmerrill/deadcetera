@@ -1656,6 +1656,61 @@ function rmLoadHarmony() {
     var isPhish = /phish/i.test(band);
     rmHarmonyCache = {}; rmJamChartData = null; rmHarmonySourceFilter = 'all';
 
+    // ── North Star + Best Shot (load async, render at top) ──────────────
+    var quickListenId = 'rmQuickListen_' + Date.now();
+    var quickListenPlaceholder = '<div id="' + quickListenId + '" style="margin-bottom:14px"><div style="color:#64748b;font-size:0.78em;padding:8px 0">Loading reference versions...</div></div>';
+
+    (async function() {
+        var container = document.getElementById(quickListenId);
+        if (!container) return;
+        var northStar = null, bestShot = null;
+        try {
+            var res = await Promise.all([
+                loadBandDataFromDrive(song.title, 'spotify_versions').catch(function(){ return null; }),
+                loadBandDataFromDrive(song.title, 'best_shot_takes').catch(function(){ return null; })
+            ]);
+            var refs = toArray(res[0] || []);
+            var shots = toArray(res[1] || []);
+            refs.forEach(function(v) {
+                var votes = v.votes ? Object.keys(v.votes).filter(function(k){ return v.votes[k]; }).length : 0;
+                if (!northStar || votes > (northStar._voteCount || 0)) northStar = Object.assign({}, v, { _voteCount: votes });
+            });
+            bestShot = shots.find(function(s){ return s.crowned; }) || (shots.length ? shots[shots.length - 1] : null);
+        } catch(e) {}
+
+        var html = '';
+        if (northStar) {
+            var nsUrl = (northStar.url || northStar.spotifyUrl || '').replace(/'/g, "\\'");
+            var nsTitle = (northStar.fetchedTitle || northStar.title || 'Reference Version').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px;margin-bottom:8px">'
+                + '<span style="font-size:1.2em">⭐</span>'
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + nsTitle + '</div>'
+                + '<div style="font-size:0.65em;color:#64748b">North Star · ' + (northStar._voteCount || 0) + ' votes</div></div>'
+                + (nsUrl ? '<button onclick="window.open(\'' + nsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>' : '')
+                + '</div>';
+        }
+        if (bestShot) {
+            var bsLabel = (bestShot.label || 'Best Take').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;margin-bottom:8px">'
+                + '<span style="font-size:1.2em">🏆</span>'
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + bsLabel + (bestShot.crowned ? ' 👑' : '') + '</div>'
+                + '<div style="font-size:0.65em;color:#64748b">Best Shot</div></div>';
+            if (bestShot.audioUrl) {
+                html += '<audio controls src="' + bestShot.audioUrl.replace(/"/g,'&quot;') + '" style="height:32px;max-width:120px"></audio>';
+            } else if (bestShot.externalUrl) {
+                var bsUrl = bestShot.externalUrl.replace(/'/g, "\\'");
+                html += '<button onclick="window.open(\'' + bsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>';
+            }
+            html += '</div>';
+        }
+        if (!northStar && !bestShot) {
+            html = '<div style="font-size:0.78em;color:#64748b;padding:8px 0;margin-bottom:8px">No North Star or Best Shot yet — use the tools below to find and save one.</div>';
+        }
+        container.innerHTML = html;
+    })();
+
     var srcTabs = '<button class="rm-src-tab active" onclick="rmSrcTab2(\'archive\',this)" style="padding:6px 10px;border:none;border-radius:8px;cursor:pointer;font-size:0.78em;background:#667eea;color:white">🏛️ Archive</button>' +
         '<button class="rm-src-tab" onclick="rmSrcTab2(\'relisten\',this)" style="padding:6px 10px;border:none;border-radius:8px;cursor:pointer;font-size:0.78em;background:rgba(255,255,255,0.05);color:#94a3b8">🔄 Relisten</button>';
     if (isPhish) srcTabs += '<button class="rm-src-tab" onclick="rmSrcTab2(\'phishin\',this)" style="padding:6px 10px;border:none;border-radius:8px;cursor:pointer;font-size:0.78em;background:rgba(255,255,255,0.05);color:#94a3b8">🐟 Phish.in</button>';
@@ -1677,7 +1732,8 @@ function rmLoadHarmony() {
     var nugsQ = encodeURIComponent((band||'') + ' ' + song.title);
     extLinks += '<a href="https://play.nugs.net/#/search/' + nugsQ + '" target="_blank" style="padding:4px 8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#94a3b8;font-size:0.7em;text-decoration:none">🎧 nugs.net</a></div>';
 
-    el.innerHTML = '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">' + srcTabs + '</div>' +
+    el.innerHTML = quickListenPlaceholder +
+        '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">' + srcTabs + '</div>' +
         '<button onclick="rmSearchAllSources()" style="width:100%;padding:8px;background:linear-gradient(135deg,rgba(102,126,234,0.2),rgba(118,75,162,0.2));color:#c4b5fd;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;margin-bottom:10px">🔍 Search All Sources</button>' +
         filterPills + extLinks +
         '<div id="rmSrcArchive"><div style="display:flex;gap:6px;margin-bottom:8px">' +
