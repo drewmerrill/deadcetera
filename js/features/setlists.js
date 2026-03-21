@@ -264,7 +264,7 @@ async function createNewSetlist() {
             <div class="form-row"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
         </div>
-        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
+        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
             <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
@@ -586,7 +586,7 @@ async function editSetlist(idx) {
             return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
                 + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '</div>'
                 + '<div id="slSet' + si + 'Songs"></div>'
-                + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
+                + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
                 + '</div>';
         }).join('') + '</div>'
         // Mobile bottom save bar
@@ -1064,6 +1064,145 @@ async function slToggleLock(idx) {
     loadSetlists();
 }
 window.slToggleLock = slToggleLock;
+
+// ── Song Picker Modal ────────────────────────────────────────────────────────
+// Checkbox-based song selection for fast setlist building.
+
+function _slIsActive(title) {
+    // Use GLStore first (canonical), then isSongActive fallback
+    if (typeof GLStore !== 'undefined' && GLStore.getStatus) {
+        var st = GLStore.getStatus(title);
+        if (st === 'prospect' || st === 'learning' || st === 'rotation') return true;
+        if (st === 'shelved') return false;
+        // If status is null and cache hasn't loaded, treat as active (offline/slow-load fallback)
+        if (!st && typeof statusCacheLoaded !== 'undefined' && !statusCacheLoaded) return true;
+    }
+    if (typeof isSongActive === 'function') return isSongActive(title);
+    return true;
+}
+
+function slOpenSongPicker(setIdx) {
+    var existing = document.getElementById('slSongPickerOverlay');
+    if (existing) existing.remove();
+
+    var inSet = {};
+    var setSongs = (window._slSets[setIdx] && window._slSets[setIdx].songs) || [];
+    setSongs.forEach(function(item) {
+        var t = typeof item === 'string' ? item : (item.title || '');
+        if (t) inSet[t] = true;
+    });
+
+    var songList = (typeof allSongs !== 'undefined' ? allSongs : []).slice();
+    songList.sort(function(a, b) {
+        var aActive = _slIsActive(a.title);
+        var bActive = _slIsActive(b.title);
+        if (aActive && !bActive) return -1;
+        if (!aActive && bActive) return 1;
+        return (a.title || '').localeCompare(b.title || '');
+    });
+
+    var ov = document.createElement('div');
+    ov.id = 'slSongPickerOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+
+    var activeCount = songList.filter(function(s) { return _slIsActive(s.title); }).length;
+
+    var html = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:14px;max-width:480px;width:100%;max-height:85vh;display:flex;flex-direction:column;color:var(--text,#e2e8f0)">';
+    html += '<div style="padding:16px 16px 10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<h3 style="margin:0;font-size:1em;color:var(--accent-light,#818cf8)">📋 Pick Songs</h3>';
+    html += '<button onclick="document.getElementById(\'slSongPickerOverlay\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>';
+    html += '</div>';
+    html += '<input id="slPickerSearch" type="text" placeholder="Search songs..." oninput="slPickerFilter(this.value)" style="width:100%;padding:6px 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:0.85em;box-sizing:border-box">';
+    html += '<div style="display:flex;gap:6px;margin-top:6px">';
+    html += '<button onclick="slPickerSelectAll(true)" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">Select All Active (' + activeCount + ')</button>';
+    html += '<button onclick="slPickerSelectAll(false)" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Clear All</button>';
+    html += '<span id="slPickerCount" style="font-size:0.68em;color:var(--text-dim);margin-left:auto;align-self:center">' + Object.keys(inSet).length + ' selected</span>';
+    html += '</div></div>';
+
+    html += '<div id="slPickerList" style="overflow-y:auto;flex:1;padding:8px 16px">';
+    songList.forEach(function(s) {
+        var isActive = _slIsActive(s.title);
+        var checked = inSet[s.title] ? 'checked' : '';
+        var dimStyle = !isActive ? 'opacity:0.45' : '';
+        var safeTitle = s.title.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        html += '<label data-title="' + safeTitle + '" data-active="' + (isActive ? '1' : '0') + '" style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;' + dimStyle + '">';
+        html += '<input type="checkbox" class="sl-picker-cb" data-song="' + safeTitle + '" ' + checked + ' onchange="slPickerUpdateCount()" style="accent-color:#667eea;width:16px;height:16px;flex-shrink:0">';
+        html += '<span style="font-size:0.85em;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.title + '</span>';
+        html += '<span style="font-size:0.68em;color:var(--text-dim);flex-shrink:0">' + (s.band || '') + '</span>';
+        if (isActive) html += '<span style="font-size:0.55em;padding:1px 4px;border-radius:3px;background:rgba(34,197,94,0.15);color:#86efac;font-weight:700;flex-shrink:0">Active</span>';
+        html += '</label>';
+    });
+    html += '</div>';
+
+    html += '<div style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:8px;flex-shrink:0">';
+    html += '<button onclick="slPickerConfirm(' + setIdx + ')" style="flex:2;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.9em;cursor:pointer">Add Selected</button>';
+    html += '<button onclick="document.getElementById(\'slSongPickerOverlay\').remove()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.85em">Cancel</button>';
+    html += '</div></div>';
+
+    ov.innerHTML = html;
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    document.getElementById('slPickerSearch').focus();
+}
+
+function slPickerFilter(q) {
+    var lower = q.toLowerCase();
+    document.querySelectorAll('#slPickerList label').forEach(function(label) {
+        var title = (label.dataset.title || '').toLowerCase();
+        label.style.display = (!q || title.indexOf(lower) !== -1) ? 'flex' : 'none';
+    });
+}
+
+function slPickerSelectAll(selectActive) {
+    document.querySelectorAll('.sl-picker-cb').forEach(function(cb) {
+        var label = cb.closest('label');
+        cb.checked = selectActive ? (label && label.dataset.active === '1') : false;
+    });
+    slPickerUpdateCount();
+}
+
+function slPickerUpdateCount() {
+    var el = document.getElementById('slPickerCount');
+    if (el) el.textContent = document.querySelectorAll('.sl-picker-cb:checked').length + ' selected';
+}
+
+function slPickerConfirm(setIdx) {
+    if (!window._slSets[setIdx]) window._slSets[setIdx] = { name: 'Set ' + (setIdx + 1), songs: [] };
+    var existingTitles = {};
+    (window._slSets[setIdx].songs || []).forEach(function(item) {
+        var t = typeof item === 'string' ? item : (item.title || '');
+        if (t) existingTitles[t] = true;
+    });
+
+    var checkboxes = document.querySelectorAll('.sl-picker-cb:checked');
+    var added = 0;
+    checkboxes.forEach(function(cb) {
+        var title = cb.dataset.song;
+        if (title && !existingTitles[title]) {
+            window._slSets[setIdx].songs.push({ title: title, segue: 'stop' });
+            added++;
+        }
+    });
+
+    var checkedTitles = {};
+    checkboxes.forEach(function(cb) { if (cb.dataset.song) checkedTitles[cb.dataset.song] = true; });
+    window._slSets[setIdx].songs = window._slSets[setIdx].songs.filter(function(item) {
+        var t = typeof item === 'string' ? item : (item.title || '');
+        return checkedTitles[t];
+    });
+
+    document.getElementById('slSongPickerOverlay').remove();
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    slRenderSetSongs(setIdx);
+    if (typeof showToast === 'function') showToast(added > 0 ? added + ' song' + (added > 1 ? 's' : '') + ' added' : 'Setlist updated');
+}
+
+window.slOpenSongPicker = slOpenSongPicker;
+window.slPickerFilter = slPickerFilter;
+window.slPickerSelectAll = slPickerSelectAll;
+window.slPickerUpdateCount = slPickerUpdateCount;
+window.slPickerConfirm = slPickerConfirm;
 
 window.renderSetlistsPage = renderSetlistsPage;
 window.loadSetlists = loadSetlists;
