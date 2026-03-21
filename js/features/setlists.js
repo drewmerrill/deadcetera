@@ -534,12 +534,18 @@ async function slSaveSetlist() {
     };
     const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     existing.push(sl);
-    var saved = await saveBandDataToDrive('_band', 'setlists', existing);
-    if (saved === false) {
-        showToast('❌ Save failed — check your connection or sign in');
-        return;
+    var saved = false;
+    try {
+        saved = await saveBandDataToDrive('_band', 'setlists', existing);
+    } catch(e) {
+        console.log('[Setlist] Save error:', e.message || e);
     }
-    showToast('✅ Setlist saved to band');
+    if (saved === false) {
+        // Data is in localStorage via saveBandDataToDrive's first line — show soft warning
+        showToast('⚠️ Saved locally — will sync when connected');
+    } else {
+        showToast('✅ Setlist saved');
+    }
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     loadSetlists();
@@ -1068,17 +1074,20 @@ window.slToggleLock = slToggleLock;
 // ── Song Picker Modal ────────────────────────────────────────────────────────
 // Checkbox-based song selection for fast setlist building.
 
+// Active statuses: canonical + legacy values that haven't been migrated yet
+var _slActiveStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+var _slInactiveStatuses = { shelved:1, parked:1, retired:1 };
+
 function _slIsActive(title) {
-    // Use GLStore first (canonical), then isSongActive fallback
-    if (typeof GLStore !== 'undefined' && GLStore.getStatus) {
-        var st = GLStore.getStatus(title);
-        if (st === 'prospect' || st === 'learning' || st === 'rotation') return true;
-        if (st === 'shelved') return false;
-        // If status is null and cache hasn't loaded, treat as active (offline/slow-load fallback)
-        if (!st && typeof statusCacheLoaded !== 'undefined' && !statusCacheLoaded) return true;
-    }
-    if (typeof isSongActive === 'function') return isSongActive(title);
-    return true;
+    var st = null;
+    // Try GLStore first (canonical)
+    if (typeof GLStore !== 'undefined' && GLStore.getStatus) st = GLStore.getStatus(title);
+    // Fallback: direct statusCache
+    if (!st) { try { if (typeof statusCache !== 'undefined' && statusCache) st = statusCache[title]; } catch(e) {} }
+    if (st) return !!_slActiveStatuses[st];
+    // No status at all — treat as active if cache hasn't loaded, otherwise library
+    try { if (typeof statusCacheLoaded !== 'undefined' && !statusCacheLoaded) return true; } catch(e) {}
+    return false;
 }
 
 function slOpenSongPicker(setIdx) {

@@ -43,8 +43,10 @@ window._sqSelected = {}; // { title: true }
 // Derive scope from lifecycle status: prospect/learning/rotation = active, shelved/none = library
 window.getSongScope = function(title) {
     var status = (typeof statusCache !== 'undefined') ? statusCache[title] : '';
-    if (status === 'prospect' || status === 'learning' || status === 'rotation') return 'active';
-    if (status === 'shelved') return 'library';
+    // Canonical + legacy active statuses
+    if (status === 'prospect' || status === 'learning' || status === 'rotation' ||
+        status === 'wip' || status === 'active' || status === 'gig_ready') return 'active';
+    if (status === 'shelved' || status === 'parked' || status === 'retired') return 'library';
     return 'library'; // no status = library (default for imports)
 };
 window.isSongActive = function(title) { return getSongScope(title) === 'active'; };
