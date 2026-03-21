@@ -84,6 +84,7 @@
       + '<span class="gl-np-title">' + safeTitle + readChip + '</span>'
       + '</div>'
       + (metaStr ? '<span class="gl-np-meta">' + _esc(metaStr) + '</span>' : '')
+      + '<button class="gl-np-action" onclick="event.stopPropagation();glNowPlaying._practice(\'' + safeTitleAttr + '\')" title="Open Practice Mode — chart, transpose, metronome, memory trainer">▶ Practice</button>'
       + '<button class="gl-np-close" onclick="event.stopPropagation();glNowPlaying._clear()" title="Clear now playing">✕</button>';
 
     _bar.style.display = 'flex';
@@ -102,6 +103,15 @@
     if (typeof GLStore !== 'undefined' && GLStore.selectSong) {
       GLStore.selectSong(title);
       if (typeof highlightSelectedSongRow === 'function') highlightSelectedSongRow(title);
+    }
+  };
+
+  window.glNowPlaying._practice = function (title) {
+    if (!title) return;
+    if (typeof openRehearsalMode === 'function') {
+      openRehearsalMode(title);
+    } else {
+      if (typeof showToast === 'function') showToast('Practice mode not available');
     }
   };
 
