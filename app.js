@@ -9693,42 +9693,68 @@ function addVenue() {
 }
 
 async function vInitPlacesAutocomplete() {
-    var input = document.getElementById('vPlacesSearch');
-    if (!input) return;
+    var container = document.getElementById('vPlacesSearch');
+    if (!container) return;
     try {
         if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
     } catch(e) {}
     if (!window.google || !window.google.maps || !window.google.maps.places) {
-        input.placeholder = 'Google Maps not loaded — fill fields manually';
+        container.placeholder = 'Google Maps not loaded — fill fields manually';
         return;
     }
-    var ac = new google.maps.places.Autocomplete(input, {
-        types: ['establishment'],
-        fields: ['name','formatted_address','formatted_phone_number','website','geometry']
-    });
-    ac.addListener('place_changed', function() {
-        var place = ac.getPlace();
-        if (!place) return;
-        var setVal = function(id, val) {
-            var el = document.getElementById(id);
-            if (el && val) el.value = val;
-        };
-        setVal('vName',    place.name || '');
-        setVal('vAddress', place.formatted_address || '');
-        setVal('vPhone',   place.formatted_phone_number || '');
-        setVal('vWebsite', place.website || '');
-        // Store placeId for later directions use
-        if (place.geometry && place.geometry.location) {
-            var inp = document.getElementById('vName');
-            if (inp) {
-                inp.dataset.lat = place.geometry.location.lat();
-                inp.dataset.lng = place.geometry.location.lng();
+    // Use new PlaceAutocompleteElement API (replaces deprecated Autocomplete)
+    if (container._acInit) return;
+    container._acInit = true;
+    try {
+        var acEl = new google.maps.places.PlaceAutocompleteElement({
+            types: ['establishment']
+        });
+        acEl.style.cssText = 'width:100%;font-size:0.9em';
+        // Replace the input placeholder with the autocomplete element
+        container.style.display = 'none';
+        container.parentNode.insertBefore(acEl, container.nextSibling);
+        acEl.addEventListener('gmp-placeselect', async function(ev) {
+            var place = ev.place;
+            if (!place) return;
+            try { await place.fetchFields({ fields: ['displayName','formattedAddress','nationalPhoneNumber','websiteURI','location'] }); } catch(e) {}
+            var setVal = function(id, val) {
+                var el = document.getElementById(id);
+                if (el && val) el.value = val;
+            };
+            setVal('vName',    (place.displayName || '') + '');
+            setVal('vAddress', (place.formattedAddress || '') + '');
+            setVal('vPhone',   (place.nationalPhoneNumber || '') + '');
+            setVal('vWebsite', (place.websiteURI || '') + '');
+            if (place.location) {
+                var inp = document.getElementById('vName');
+                if (inp) {
+                    inp.dataset.lat = place.location.lat();
+                    inp.dataset.lng = place.location.lng();
+                }
             }
-        }
-        // Scroll to form
-        var card = document.getElementById('addVenueCard');
-        if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
-    });
+            var card = document.getElementById('addVenueCard');
+            if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+        });
+    } catch(e) {
+        // Fallback: if PlaceAutocompleteElement not available, use legacy
+        console.log('[Places] PlaceAutocompleteElement not available, using legacy Autocomplete');
+        container.style.display = '';
+        var ac = new google.maps.places.Autocomplete(container, {
+            types: ['establishment'],
+            fields: ['name','formatted_address','formatted_phone_number','website','geometry']
+        });
+        ac.addListener('place_changed', function() {
+            var place = ac.getPlace();
+            if (!place) return;
+            var setVal = function(id, val) { var el = document.getElementById(id); if (el && val) el.value = val; };
+            setVal('vName', place.name || ''); setVal('vAddress', place.formatted_address || '');
+            setVal('vPhone', place.formatted_phone_number || ''); setVal('vWebsite', place.website || '');
+            if (place.geometry && place.geometry.location) {
+                var inp = document.getElementById('vName');
+                if (inp) { inp.dataset.lat = place.geometry.location.lat(); inp.dataset.lng = place.geometry.location.lng(); }
+            }
+        });
+    }
 }
 
 function searchVenueGoogle() {
@@ -10399,14 +10425,36 @@ async function initSettingsAddressAutocomplete() {
     if (!window.google || !window.google.maps || !window.google.maps.places) return;
     if (input._acInit) return;
     input._acInit = true;
-    var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });
-    ac.addListener('place_changed', function() {
-        var place = ac.getPlace();
-        if (place && place.formatted_address) {
-            input.value = place.formatted_address;
-            localStorage.setItem('deadcetera_home_address', place.formatted_address);
-        }
-    });
+    // Use new PlaceAutocompleteElement API (replaces deprecated Autocomplete)
+    try {
+        var acEl = new google.maps.places.PlaceAutocompleteElement({
+            types: ['address']
+        });
+        acEl.style.cssText = 'width:100%;font-size:0.9em';
+        input.style.display = 'none';
+        input.parentNode.insertBefore(acEl, input.nextSibling);
+        acEl.addEventListener('gmp-placeselect', async function(ev) {
+            var place = ev.place;
+            if (!place) return;
+            try { await place.fetchFields({ fields: ['formattedAddress'] }); } catch(e) {}
+            var addr = (place.formattedAddress || '') + '';
+            if (addr) {
+                input.value = addr;
+                localStorage.setItem('deadcetera_home_address', addr);
+            }
+        });
+    } catch(e) {
+        // Fallback: legacy Autocomplete if new API not available
+        input.style.display = '';
+        var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });
+        ac.addListener('place_changed', function() {
+            var place = ac.getPlace();
+            if (place && place.formatted_address) {
+                input.value = place.formatted_address;
+                localStorage.setItem('deadcetera_home_address', place.formatted_address);
+            }
+        });
+    }
 }
 
 function addNewMember() {
