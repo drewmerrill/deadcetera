@@ -155,7 +155,7 @@ async function _rhRenderCommandFlow(el) {
         console.log('[Planner] Rendering saved plan:', savedUnits.length, 'units,', songCount, 'songs', savedUnits);
 
         var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Next Rehearsal';
-        html += '<div style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
+        html += '<div id="rhPlanCard" style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<span onclick="_rhEditPlanName()" style="font-size:0.78em;font-weight:800;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">✅ ' + escHtml(planName) + '</span>'
             + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
@@ -367,17 +367,17 @@ async function _rhRenderCommandFlow(el) {
     // First-visit walkthrough (only when a saved plan exists)
     if (hasSavedPlan && typeof glSpotlight !== 'undefined') {
         setTimeout(function() {
-            glSpotlight.run('rehearsal-plan', [
-                { target: function() { var rows = document.querySelectorAll('.rh-unit-row'); return rows.length ? rows[0] : null; },
-                  text: 'This is your starting plan — you can edit everything. Add, remove, or reorder any block.' },
+            glSpotlight.run('rehearsal-plan-v2', [
+                { target: '#rhPlanCard',
+                  text: 'This is your rehearsal plan. It\'s a starting point — edit it to match how you actually want to run practice.' },
                 { target: '#rhAddBlockBtn',
-                  text: 'Add songs, exercises, jam time, band business, or section dividers.' },
-                { target: function() { var h = document.querySelector('.rh-drag-handle'); return h; },
-                  text: 'Drag the handle to reorder blocks. You can also use the ↑↓ buttons.' },
-                { target: function() { var chips = document.querySelectorAll('[onclick^="_rhEditBlockTime"]'); return chips.length ? chips[0] : null; },
-                  text: 'Click the time chip to adjust how long you spend on each item.' },
-                { target: function() { var btn = document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); return btn; },
-                  text: 'When you\'re ready, hit Start Rehearsal to launch practice mode with your plan.' }
+                  text: 'Build your flow: add songs to work on, exercises, jam time, band business, or section breaks to organize it all.' },
+                { target: function() { return document.querySelector('.rh-drag-handle'); },
+                  text: 'Grab the handle to drag blocks into the order you want. Your rehearsal, your sequence.' },
+                { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
+                  text: 'Tap the time to budget how long each block gets. The total at the top updates automatically.' },
+                { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
+                  text: 'All set? Hit Start Rehearsal to kick off practice mode with charts, notes, and your plan loaded.' }
             ]);
         }, 800);
     }
