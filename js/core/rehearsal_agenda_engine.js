@@ -289,6 +289,7 @@
     for (var i = 0; i < songs.length; i++) {
       var songId = songs[i].title || songs[i];
       if (!songId) continue;
+      if (typeof isStructuralTitle === 'function' && isStructuralTitle(songId)) continue;
 
       var sig = normalizeSongSignals(songId, input);
 

@@ -277,8 +277,9 @@
     var limit = opts.limit || 10;
     var memberFilter = opts.memberKey || null;
     var results = [];
-    // Only recommend Active songs (prospect/learning/rotation)
+    // Only recommend Active songs (prospect/learning/rotation), exclude structural titles
     songs = (songs || []).filter(function(s) {
+        if (typeof isStructuralTitle === 'function' && isStructuralTitle(s.title)) return false;
         var st = (allStatus && allStatus[s.title]) || '';
         return st === 'prospect' || st === 'learning' || st === 'rotation';
     });
@@ -395,8 +396,9 @@
     var limit = opts.limit || 20;
     var now = Date.now();
     var results = [];
-    // Only score Active songs (prospect/learning/rotation)
+    // Only score Active songs (prospect/learning/rotation), exclude structural titles
     songs = (songs || []).filter(function(s) {
+        if (typeof isStructuralTitle === 'function' && isStructuralTitle(s.title)) return false;
         var st = (allStatus && allStatus[s.title]) || '';
         return st === 'prospect' || st === 'learning' || st === 'rotation';
     });

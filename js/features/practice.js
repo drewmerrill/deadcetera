@@ -80,6 +80,7 @@ function _pmGetTodayPracticeSongs(songList, statusMap, rc) {
     var result = [];
     function add(title) {
         if (seen[title] || result.length >= 5) return;
+        if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return;
         if (!_pmIsActive(title)) return;
         seen[title] = true;
         var ratings = rc[title] || {};
@@ -246,6 +247,7 @@ async function _fillPracticeWeakSongs() {
     });
     var scored=[];
     Object.keys(rc).forEach(function(title){
+        if(typeof isStructuralTitle==='function'&&isStructuralTitle(title))return;
         var ratings=rc[title];
         var keys=Object.keys(ratings).filter(function(k){return typeof ratings[k]==='number'&&ratings[k]>0;});
         if(!keys.length)return;

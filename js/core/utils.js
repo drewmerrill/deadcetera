@@ -245,4 +245,17 @@ window.glFormatDate = function glFormatDate(dateStr, compact) {
     return days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
 };
 
+// ── Structural title guard ────────────────────────────────────────────────────
+// Titles that represent setlist structure, not real playable songs.
+// Used to exclude fake entries from practice, readiness, recommendations, etc.
+var _structuralTitles = {
+    'soundcheck':1, 'set 1':1, 'set 2':1, 'set 3':1, 'set 4':1,
+    'set break':1, 'encore':1, 'break':1, 'intermission':1,
+    'all songs':1, 'full show':1
+};
+window.isStructuralTitle = function(title) {
+    if (!title) return false;
+    return !!_structuralTitles[title.toLowerCase().trim()];
+};
+
 console.log('✅ utils.js loaded');
