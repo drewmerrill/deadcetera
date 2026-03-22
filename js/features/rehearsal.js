@@ -226,6 +226,16 @@ async function _rhRenderCommandFlow(el) {
             }
         })();
 
+        // Build member list for assignment
+        var _rhMembers = [];
+        if (typeof BAND_MEMBERS_ORDERED !== 'undefined' && typeof bandMembers !== 'undefined') {
+            BAND_MEMBERS_ORDERED.forEach(function(ref) {
+                var k = (typeof ref === 'object') ? ref.key : ref;
+                var m = bandMembers[k];
+                if (m) _rhMembers.push({ key: k, name: m.name || k, initial: (m.name || k).charAt(0).toUpperCase() });
+            });
+        }
+
         // Render editable units with block type awareness
         var unitNum = 0;
         var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:2px 4px;line-height:1';
@@ -241,11 +251,13 @@ async function _rhRenderCommandFlow(el) {
                 var secTitle = unit.title || 'Section';
                 var secMin = _sectionSubtotals[idx];
                 var secLabel = secMin !== undefined && secMin > 0 ? ' · ' + secMin + ' min' : '';
+                var secAssignChip = _rhAssignChip(unit, idx);
                 html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="display:flex;align-items:center;gap:6px;margin:8px 0 2px;padding:5px 8px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
                     + dragHandle
                     + '<span style="font-size:0.7em">▬</span>'
                     + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.78em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;border-bottom:1px dashed rgba(96,165,250,0.3)">' + escHtml(secTitle) + '</span>'
                     + (secLabel ? '<span style="font-size:0.65em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
+                    + secAssignChip
                     + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                     + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                     + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
@@ -271,13 +283,14 @@ async function _rhRenderCommandFlow(el) {
             var blockMin = _rhBlockMinutes(unit);
             var isOverridden = unit.durationMinOverride > 0;
             var minChip = '<span onclick="_rhEditBlockTime(' + idx + ')" style="font-size:0.7em;color:' + (isOverridden ? '#a5b4fc' : 'var(--text-dim)') + ';white-space:nowrap;margin-left:4px;cursor:pointer;padding:1px 3px;border-radius:3px;border-bottom:1px dashed ' + (isOverridden ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)') + '" title="' + (isOverridden ? 'Custom override — click to change' : 'Click to set custom time') + '">' + blockMin + 'm</span>';
+            var assignChip = _rhAssignChip(unit, idx);
 
             html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
                 + dragHandle
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
                 + typeChip
                 + '<span' + editClick + editTitle + ' style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)' : '') + '">' + unitLabel + '</span>'
-                + minChip
+                + minChip + assignChip
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
@@ -667,6 +680,80 @@ window._rhEditBlockTitle = function(idx) {
     units[idx].title = newTitle.trim() || current;
     _rhSaveUnits(units);
     _rhReRender();
+};
+
+// ── Block assignment ─────────────────────────────────────────────────────────
+function _rhAssignChip(unit, idx) {
+    var assigned = unit.assignedTo || [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    if (assigned.length === 0) {
+        return '<span onclick="_rhShowAssignMenu(' + idx + ',this)" style="font-size:0.6em;color:#475569;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px dashed rgba(255,255,255,0.08)" title="Assign members">+👤</span>';
+    }
+    // Show initials of assigned members
+    var initials = assigned.map(function(key) {
+        var m = bm[key];
+        return (m && m.name) ? m.name.charAt(0).toUpperCase() : key.charAt(0).toUpperCase();
+    }).join('');
+    return '<span onclick="_rhShowAssignMenu(' + idx + ',this)" style="font-size:0.6em;color:#86efac;cursor:pointer;padding:1px 4px;border-radius:3px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);font-weight:700" title="' + assigned.map(function(k) { var m = bm[k]; return m ? m.name : k; }).join(', ') + '">' + initials + '</span>';
+}
+
+window._rhShowAssignMenu = function(idx, anchor) {
+    // Remove existing menu
+    var old = document.getElementById('rhAssignMenu');
+    if (old) { old.remove(); return; }
+
+    var units = _rhGetUnits();
+    if (!units[idx]) return;
+    var assigned = units[idx].assignedTo || [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var members = [];
+    if (typeof BAND_MEMBERS_ORDERED !== 'undefined') {
+        BAND_MEMBERS_ORDERED.forEach(function(ref) {
+            var k = (typeof ref === 'object') ? ref.key : ref;
+            var m = bm[k];
+            if (m) members.push({ key: k, name: m.name || k });
+        });
+    }
+    if (!members.length) return;
+
+    var menu = document.createElement('div');
+    menu.id = 'rhAssignMenu';
+    menu.style.cssText = 'position:absolute;z-index:9999;background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,0.5);min-width:140px';
+
+    var html = '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;padding:2px 4px;margin-bottom:4px">Assign to</div>';
+    members.forEach(function(m) {
+        var checked = assigned.indexOf(m.key) >= 0;
+        html += '<label style="display:flex;align-items:center;gap:6px;padding:3px 4px;cursor:pointer;font-size:0.78em;color:' + (checked ? '#86efac' : 'var(--text-muted)') + ';border-radius:4px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">'
+            + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="_rhToggleAssign(' + idx + ',\'' + m.key + '\',this.checked)" style="accent-color:#22c55e">'
+            + '<span style="font-weight:600">' + escHtml(m.name) + '</span></label>';
+    });
+    html += '<div style="margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:4px">'
+        + '<button onclick="document.getElementById(\'rhAssignMenu\').remove()" style="width:100%;font-size:0.68em;padding:3px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Done</button></div>';
+    menu.innerHTML = html;
+
+    // Position near the anchor
+    var rect = anchor.getBoundingClientRect();
+    menu.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = Math.max(8, rect.left + window.scrollX - 60) + 'px';
+    document.body.appendChild(menu);
+
+    // Close on outside click
+    setTimeout(function() {
+        function _close(e) { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', _close); } }
+        document.addEventListener('mousedown', _close);
+    }, 50);
+};
+
+window._rhToggleAssign = function(idx, memberKey, checked) {
+    var units = _rhGetUnits();
+    if (!units[idx]) return;
+    if (!units[idx].assignedTo) units[idx].assignedTo = [];
+    var arr = units[idx].assignedTo;
+    var pos = arr.indexOf(memberKey);
+    if (checked && pos < 0) arr.push(memberKey);
+    if (!checked && pos >= 0) arr.splice(pos, 1);
+    _rhSaveUnits(units);
+    // Update chip without full re-render (keeps menu open)
 };
 
 window._rhEditPlanName = function() {
