@@ -5464,15 +5464,13 @@ function generateSheetMusic(sectionIndex, section) {
 // Default: 'deadcetera' (the original band). Future: band switcher sets this.
 // var currentBandSlug → js/core/firebase-service.js (Wave-1 refactor)
 
-// bandPath → canonical version in js/core/firebase-service.js (window.bandPath)
-// This stub delegates to the window version to prevent shadowing.
-function bandPath(subpath) {
-    return window.bandPath(subpath);
-}
+// bandPath → js/core/firebase-service.js (window.bandPath)
+// Declaration removed — global window.bandPath is used directly via scope chain.
 
-// ── One-time migration: copy flat /songs and /master to /bands/deadcetera/ ──
-// Runs once per device. Safe to re-run (checks for existing data first).
-async function migrateToMultiBand() {
+// migrateToMultiBand → js/core/firebase-service.js (window.migrateToMultiBand)
+// Duplicate declaration removed — was overwriting the canonical window.* version.
+// Original kept as dead code reference (commented out):
+/* REMOVED: async function migrateToMultiBand() {
     if (!firebaseDB) return;
     var migrationKey = 'deadcetera_migrated_to_multiband';
     if (localStorage.getItem(migrationKey) === 'done') return;
@@ -5528,9 +5526,8 @@ async function migrateToMultiBand() {
         showToast('Data migrated to multi-band format');
     } catch (err) {
         console.error('Migration error:', err);
-        // Don't mark done so it retries next load
     }
-}
+} */
 
 // ============================================================================
 // FIREBASE INITIALIZATION
@@ -5608,138 +5605,13 @@ window.requireSignIn = function requireSignIn() {
     return false;
 };
 
-// ── Lightweight Firebase-only init (no Google Identity) ─────────────────────
-// Called automatically on page load so firebaseDB is ready immediately.
-// loadGoogleDriveAPI() (full init including Google Identity) is called on 
-// first "Connect" click and handles sign-in + email attribution.
-async function initFirebaseOnly() {
-    if (firebaseDB) return; // Already initialized
-    
-    const loadScript = (src) => new Promise((res, rej) => {
-        // Check if already loaded
-        if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-        const s = document.createElement('script');
-        s.src = src; s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-    });
+// ── REMOVED: initFirebaseOnly, loadGoogleDriveAPI, initFirebase ──────────────
+// These functions are now ONLY defined in js/core/firebase-service.js.
+// The app.js duplicates were overwriting the canonical versions, which blocked
+// the _band routing fix and migrateBandLevelData() from running.
+// ~100 lines of duplicate code deleted.
 
-    // Load Firebase app compat then database compat
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js');
-    
-    if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
-    }
-    firebaseDB = firebase.database();
-    
-    // Also try storage
-    try {
-        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js');
-        if (firebase.storage) firebaseStorage = firebase.storage();
-    } catch(e) { /* storage optional */ }
-
-    console.log('🔥 Firebase DB ready (auto-init)');
-    
-    // Run one-time data migration to multi-band structure
-    migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
-}
-
-function loadGoogleDriveAPI() {
-    // Now loads Firebase SDK + Google Identity Services for sign-in
-    return new Promise((resolve, reject) => {
-        console.log('🔥 Loading Firebase + Google Identity...');
-        
-        const loadScript = (src) => new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = src; s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
-
-        const loadGIS = new Promise((res, rej) => {
-            if (window.google?.accounts?.oauth2) { res(); return; }
-            loadScript('https://accounts.google.com/gsi/client').then(res).catch(rej);
-        });
-
-        // CRITICAL: firebase-app-compat MUST fully execute before database/storage load
-        // Do NOT create DB/Storage script elements until after app-compat onload fires
-        const firebaseAppReady = window.firebase?.apps !== undefined
-            ? Promise.resolve()
-            : loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-
-        firebaseAppReady
-            .then(() => Promise.all([
-                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js'),
-                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js'),
-                loadGIS
-            ]))
-            .then(() => {
-                console.log('✅ Firebase + Google scripts loaded');
-                initFirebase().then(resolve).catch(reject);
-            })
-            .catch(reject);
-    });
-}
-
-async function initFirebase() {
-    try {
-        console.log('⚙️ Initializing Firebase...');
-        
-        // Initialize Firebase app if not already done (may have been done by initFirebaseOnly)
-        if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-        }
-        
-        // Re-use existing firebaseDB if already set by initFirebaseOnly
-        if (!firebaseDB) {
-            firebaseDB = firebase.database();
-        }
-        
-        // Firebase Storage is optional - we primarily use RTDB for audio (base64)
-        try {
-            if (firebase.storage && !firebaseStorage) {
-                firebaseStorage = firebase.storage();
-            }
-        } catch(e) {
-            console.log('⚠️ Firebase Storage not available (not critical - using RTDB for audio)');
-        }
-        
-        console.log('✅ Firebase initialized');
-        
-        // Initialize Google Identity Services for sign-in (identity only, no Drive)
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: GOOGLE_DRIVE_CONFIG.clientId,
-            scope: GOOGLE_DRIVE_CONFIG.scope,
-            callback: async (response) => {
-                if (response.error) {
-                    console.error('Token error:', response);
-                    updateSignInStatus(false);
-                    return;
-                }
-                accessToken = response.access_token;
-                updateSignInStatus(true);
-                console.log('✅ User signed in');
-
-                // Get user email from Google
-                await getCurrentUserEmail();
-
-                // No shared folder init needed - Firebase is always ready!
-                console.log('🔥 Firebase ready - no folder sharing needed!');
-            }
-        });
-        
-        isGoogleDriveInitialized = true;
-        console.log('✅ Backend initialized (Firebase + Google Identity)');
-        
-        // Run one-time data migration to multi-band structure
-        migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Firebase initialization failed:', error);
-        throw error;
-    }
-}
-
+// updateSignInStatus — KEEP: extends firebase-service.js version with hero hide logic
 function updateSignInStatus(signedIn) {
     isUserSignedIn = signedIn;
     updateDriveAuthButton();
@@ -6050,14 +5922,8 @@ async function handleGoogleDriveAuth(silent) {
 // Firebase converts arrays to objects with numeric keys - this normalizes them back
 // toArray() → js/core/utils.js (Wave-1 refactor)
 
-// songPath, masterPath → canonical versions in js/core/firebase-service.js
-// These stubs delegate to prevent shadowing the fixed window.* versions.
-function songPath(songTitle, dataType) {
-    return window.songPath(songTitle, dataType);
-}
-function masterPath(fileName) {
-    return window.masterPath(fileName);
-}
+// songPath, masterPath → js/core/firebase-service.js (window.songPath, window.masterPath)
+// Declarations removed — global window.* versions used directly via scope chain.
 
 // ============================================================================
 // UPLOAD AUDIO TO FIREBASE STORAGE
@@ -7239,68 +7105,23 @@ const BAND_DATA_TYPES = {
 // SAVE TO FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
-// saveBandDataToDrive → canonical version in js/core/firebase-service.js
-// This stub delegates to the window version which has the _band routing fix.
-async function saveBandDataToDrive(songTitle, dataType, data) {
-    return window.saveBandDataToDrive(songTitle, dataType, data);
-}
+// saveBandDataToDrive → js/core/firebase-service.js (window.saveBandDataToDrive)
+// Declaration removed — was overwriting window.* and causing infinite recursion.
 
 // ============================================================================
 // LOAD FROM FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
-// loadBandDataFromDrive, loadFromLocalStorageFallback → canonical in firebase-service.js
-// These stubs delegate to the window versions which have _band routing + legacy fallback.
-async function loadBandDataFromDrive(songTitle, dataType) {
-    return window.loadBandDataFromDrive(songTitle, dataType);
-}
-function loadFromLocalStorageFallback(songTitle, dataType) {
-    return window.loadFromLocalStorageFallback(songTitle, dataType);
-}
+// loadBandDataFromDrive, loadFromLocalStorageFallback → js/core/firebase-service.js
+// Declarations removed — were overwriting window.* and causing infinite recursion.
+// All callers resolve to window.* via global scope chain.
 
 // ============================================================================
 // MASTER FILES (aggregated data like all statuses, all harmonies)
 // ============================================================================
 
-async function loadMasterFile(fileName) {
-    if (firebaseDB) {
-        try {
-            const path = masterPath(fileName);
-            const snapshot = await firebaseDB.ref(path).once('value');
-            const data = snapshot.val();
-            if (data !== null) return data;
-        } catch (error) {
-            console.log(`Could not load master file from Firebase: ${fileName}`);
-        }
-    }
-    
-    // Try localStorage
-    const key = `deadcetera_${fileName}`;
-    const localData = localStorage.getItem(key);
-    return localData ? JSON.parse(localData) : null;
-}
-
-async function saveMasterFile(fileName, data) {
-    // Always save to localStorage as backup (with original keys)
-    const key = `deadcetera_${fileName}`;
-    localStorage.setItem(key, JSON.stringify(data));
-    
-    if (!firebaseDB) return false;
-    
-    try {
-        // Sanitize all object keys for Firebase (no . # $ / [ ])
-        const sanitized = (typeof data === 'object' && data !== null && !Array.isArray(data))
-            ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k.replace(/[.#$\[\]\/]/g, '_'), v]))
-            : data;
-        const path = masterPath(fileName);
-        await firebaseDB.ref(path).set(sanitized);
-        console.log(`Saved master file: ${fileName}`);
-        return true;
-    } catch (error) {
-        console.error('Error saving master file:', error);
-        return false;
-    }
-}
+// loadMasterFile, saveMasterFile → js/core/firebase-service.js (window.*)
+// Duplicate declarations removed — were overwriting the canonical window.* versions.
 
 // ============================================================================
 // PRACTICE TRACKS / REHEARSAL NOTES / SPOTIFY URLS / PART NOTES
