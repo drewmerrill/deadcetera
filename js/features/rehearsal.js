@@ -137,6 +137,12 @@ async function _rhRenderCommandFlow(el) {
     html += '</div>';
 
     // ── SECTION 2: Saved Plan indicator + Primary CTA ──
+    // Try Firebase first, then fall back to localStorage
+    var fbPlan = await _rhLoadPlanFromFirebase();
+    if (fbPlan && fbPlan.units && fbPlan.units.length) {
+        // Sync Firebase plan to localStorage
+        try { localStorage.setItem('glPlannerUnits', JSON.stringify(fbPlan.units)); } catch(e) {}
+    }
     var hasSavedPlan = false;
     try { hasSavedPlan = !!localStorage.getItem('glPlannerUnits') || !!localStorage.getItem('glPlannerQueue'); } catch(e) {}
     var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
@@ -144,22 +150,15 @@ async function _rhRenderCommandFlow(el) {
 
     // ── SECTION 2: Saved Plan (PRIMARY when exists) ──
     if (hasSavedPlan) {
-        // Read GROUPED units (primary) or fall back to flat queue
-        var savedUnits = [];
-        try { savedUnits = JSON.parse(localStorage.getItem('glPlannerUnits') || '[]'); } catch(e) {}
-        // Fallback: if no grouped units, read flat queue for backward compat
-        if (!savedUnits.length) {
-            try {
-                var fallbackQ = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
-                fallbackQ.forEach(function(q) { savedUnits.push({ type: 'single', title: q.title, band: q.band || '', block: q._blockType || 'flow' }); });
-            } catch(e) {}
-        }
+        var savedUnits = _rhGetUnits();
         var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
         console.log('[Planner] Rendering saved plan:', savedUnits.length, 'units,', songCount, 'songs', savedUnits);
 
+        var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Next Rehearsal';
         html += '<div style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-            + '<span style="font-size:0.78em;font-weight:800;color:#86efac">✅ Next Rehearsal Plan</span><span style="font-size:0.58em;color:var(--text-dim);margin-left:6px">Suggested Draft — Edit Freely</span>'
+            + '<span onclick="_rhEditPlanName()" style="font-size:0.78em;font-weight:800;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">✅ ' + escHtml(planName) + '</span>'
+            + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
             + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
             + '<span style="font-size:0.65em;font-weight:700;color:#a5b4fc;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">⏱ ' + totalLabel + '</span>'
             + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
@@ -357,28 +356,93 @@ window._rhClearSavedPlan = function() {
         localStorage.removeItem('glPlannerGuidance');
         localStorage.removeItem('glPlannerUnits');
     } catch(e) {}
+    _rhDeletePlanFromFirebase();
     if (typeof showToast === 'function') showToast('Plan cleared');
-    // Re-render the command flow to reflect cleared state
     var el = document.getElementById('rhMain');
     if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
 };
 
+// ── Firebase rehearsal plan persistence ───────────────────────────────────────
+
+var _rhPlanCache = null;       // cached plan object from Firebase
+var _rhSaveTimer = null;       // debounce timer
+var _rhSaveDebounceMs = 1500;  // debounce delay
+
+function _rhGenPlanId() {
+    return 'rp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// Load the latest rehearsal plan from Firebase (or cache)
+async function _rhLoadPlanFromFirebase() {
+    if (_rhPlanCache) return _rhPlanCache;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return null;
+    try {
+        var snap = await db.ref(bandPath('rehearsal_plans')).orderByChild('updatedAt').limitToLast(1).once('value');
+        var val = snap.val();
+        if (val) {
+            var plans = Object.values(val);
+            _rhPlanCache = plans[0] || null;
+            return _rhPlanCache;
+        }
+    } catch(e) { console.warn('[RhPlan] Firebase load failed:', e.message); }
+    return null;
+}
+
+// Save plan to Firebase (called by debounce)
+async function _rhPersistToFirebase(plan) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return false;
+    try {
+        await db.ref(bandPath('rehearsal_plans/' + plan.planId)).set(plan);
+        _rhPlanCache = plan;
+        _rhShowSaveState('saved');
+        return true;
+    } catch(e) {
+        console.warn('[RhPlan] Firebase save failed:', e.message);
+        _rhShowSaveState('error');
+        return false;
+    }
+}
+
+// Delete plan from Firebase
+async function _rhDeletePlanFromFirebase() {
+    if (!_rhPlanCache || !_rhPlanCache.planId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        await db.ref(bandPath('rehearsal_plans/' + _rhPlanCache.planId)).remove();
+    } catch(e) { console.warn('[RhPlan] Firebase delete failed:', e.message); }
+    _rhPlanCache = null;
+}
+
+// Show save state indicator
+function _rhShowSaveState(state) {
+    var el = document.getElementById('rhSaveState');
+    if (!el) return;
+    if (state === 'saving') { el.textContent = 'Saving…'; el.style.color = '#fbbf24'; }
+    else if (state === 'saved') { el.textContent = '✓ Saved'; el.style.color = '#22c55e'; setTimeout(function() { if (el.textContent === '✓ Saved') el.textContent = ''; }, 2000); }
+    else if (state === 'error') { el.textContent = '✕ Save failed'; el.style.color = '#f87171'; }
+    else { el.textContent = ''; }
+}
+
 // ── Inline agenda editing ─────────────────────────────────────────────────────
 
 function _rhGetUnits() {
-    // Try grouped units first, then fall back to flat queue (old format)
+    // 1. Firebase cache (primary when available)
+    if (_rhPlanCache && _rhPlanCache.units && _rhPlanCache.units.length) return _rhPlanCache.units;
+    // 2. localStorage grouped units
     try {
         var units = JSON.parse(localStorage.getItem('glPlannerUnits') || '[]');
         if (units.length) return units;
     } catch(e) {}
-    // Fallback: build units from flat queue
+    // 3. Fallback: build units from flat queue (old format)
     try {
         var q = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
         if (q.length) {
             var built = q.map(function(item) {
                 return { type: 'single', title: item.title, band: item.band || '', block: item._blockType || 'flow' };
             });
-            // Persist so future edits use the grouped format
             localStorage.setItem('glPlannerUnits', JSON.stringify(built));
             return built;
         }
@@ -387,12 +451,12 @@ function _rhGetUnits() {
 }
 
 function _rhSaveUnits(units) {
+    // Always save to localStorage immediately
     try {
         localStorage.setItem('glPlannerUnits', JSON.stringify(units));
         // Rebuild flat queue for Start Rehearsal
         var flatQueue = [];
         units.forEach(function(u) {
-            // Only playable types go into the song queue
             var _playable = { single:1, song:1, multi_song:1, linked:1 };
             if (u.type === 'linked' && u.songs) {
                 u.songs.forEach(function(s) { flatQueue.push({ title: s.title, band: s.band || '', _blockType: u.block || 'flow' }); });
@@ -402,6 +466,22 @@ function _rhSaveUnits(units) {
         });
         localStorage.setItem('glPlannerQueue', JSON.stringify(flatQueue));
     } catch(e) {}
+
+    // Debounced Firebase save
+    _rhShowSaveState('saving');
+    if (_rhSaveTimer) clearTimeout(_rhSaveTimer);
+    _rhSaveTimer = setTimeout(function() {
+        var now = new Date().toISOString();
+        var plan = _rhPlanCache || {};
+        plan.planId = plan.planId || _rhGenPlanId();
+        plan.name = plan.name || 'Next Rehearsal';
+        plan.createdAt = plan.createdAt || now;
+        plan.createdBy = plan.createdBy || (typeof currentUserEmail !== 'undefined' ? currentUserEmail : '');
+        plan.updatedAt = now;
+        plan.units = units;
+        _rhPlanCache = plan;
+        _rhPersistToFirebase(plan);
+    }, _rhSaveDebounceMs);
 }
 
 function _rhReRender() {
@@ -586,6 +666,17 @@ window._rhEditBlockTitle = function(idx) {
     if (newTitle === null || newTitle === current) return;
     units[idx].title = newTitle.trim() || current;
     _rhSaveUnits(units);
+    _rhReRender();
+};
+
+window._rhEditPlanName = function() {
+    var current = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Next Rehearsal';
+    var newName = prompt('Rehearsal plan name:', current);
+    if (newName === null || newName.trim() === current) return;
+    if (!_rhPlanCache) _rhPlanCache = { planId: _rhGenPlanId(), units: _rhGetUnits() };
+    _rhPlanCache.name = newName.trim() || 'Next Rehearsal';
+    // Trigger a save with current units
+    _rhSaveUnits(_rhGetUnits());
     _rhReRender();
 };
 
