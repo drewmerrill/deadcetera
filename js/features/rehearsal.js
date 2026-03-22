@@ -27,19 +27,23 @@
 
 // ── Rehearsal Planner block (app.js 18121–18801) ────────────────────────────
 
-// Register rehearsal walkthrough (runs on first visit with a saved plan)
+// Register rehearsal walkthrough v3 — teaches workflow, not just controls
 if (typeof glSpotlight !== 'undefined') {
-    glSpotlight.register('rehearsal-plan-v2', [
+    glSpotlight.register('rehearsal-plan-v3', [
         { target: '#rhPlanCard',
-          text: 'This is your rehearsal plan. Edit it to match how you actually want to run practice.' },
+          text: 'This is your draft rehearsal plan. Think of it like a text you\'d send the band — but structured so everyone\'s on the same page.' },
         { target: '#rhAddBlockBtn',
-          text: 'Add songs, exercises, jam time, or section breaks to build your flow.' },
+          text: 'Build your plan block by block: songs to work on, exercises, jam time, band business, or notes.' },
+        { target: function() { return document.querySelector('[onclick*="_rhInsertTemplate"]'); },
+          text: 'Templates are the fastest way to add common blocks like "Cold starts" or "Band business." One tap.' },
+        { target: function() { return document.querySelector('[onclick*="_rhAddBlock(\\\'section"]') || document.querySelector('.rh-unit-row'); },
+          text: 'Use Sections to organize your rehearsal into phases — like Warm-Up, Song Work, and Run-Through.' },
         { target: function() { return document.querySelector('.rh-drag-handle'); },
-          text: 'Drag to reorder. Your rehearsal, your sequence.' },
+          text: 'Drag blocks into the order you want. Build the flow the way you\'d actually run practice.' },
         { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
-          text: 'Tap the time to set how long each block gets. Total updates automatically.' },
+          text: 'Tap the time to make the plan realistic. If you only have 2 hours, the total at the top keeps you honest.' },
         { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
-          text: 'Hit Start Rehearsal to launch practice mode with your plan loaded.' }
+          text: 'When the plan looks right, hit Start Rehearsal. Charts, notes, and your sequence load automatically.' }
     ]);
 }
 
@@ -333,6 +337,7 @@ async function _rhRenderCommandFlow(el) {
         // Add Block picker
         html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'
             + '<div id="rhAddBlockMenu" style="display:none;margin-top:4px;flex-direction:column;gap:6px">'
+            + '<div style="font-size:0.6em;color:var(--text-dim);padding:0 2px 3px;font-style:italic">Start with a section, then add songs, exercises, or business beneath it.</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:4px">'
             + '<button onclick="_rhAddBlock(\'song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵 Song</button>'
             + '<button onclick="_rhAddBlock(\'multi_song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵🎵 Multi-Song</button>'
@@ -342,7 +347,8 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="_rhAddBlock(\'jam\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.25);background:none;color:#22c55e;cursor:pointer;font-size:0.68em">🔥 Jam</button>'
             + '<button onclick="_rhAddBlock(\'section\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.06);color:#60a5fa;cursor:pointer;font-size:0.68em;font-weight:700">▬ Section</button>'
             + '</div>'
-            + '<div style="border-top:1px solid rgba(255,255,255,0.04);padding-top:4px"><div style="font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px">Quick Templates</div>'
+            + '<div id="rhTemplateArea" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:4px"><div style="font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:1px">Quick Templates</div>'
+            + '<div style="font-size:0.55em;color:var(--text-dim);margin-bottom:3px;font-style:italic">One tap to add common rehearsal blocks.</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:3px">'
             + '<button onclick="_rhInsertTemplate(\'jam\',\'Open with jam\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.62em">🔥 Open with jam</button>'
             + '<button onclick="_rhInsertTemplate(\'exercise\',\'Cold starts — all songs\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.04);color:#c4b5fd;cursor:pointer;font-size:0.62em">🎓 Cold starts</button>'
@@ -358,8 +364,29 @@ async function _rhRenderCommandFlow(el) {
 
         html += '</div>';
 
+        // Example helper panel
+        html += '<details style="margin-bottom:10px"><summary style="font-size:0.65em;font-weight:600;color:var(--text-dim);cursor:pointer;padding:4px 0">💡 How to build a rehearsal plan</summary>'
+            + '<div style="margin-top:4px;padding:10px 12px;border-radius:8px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);font-size:0.72em;color:var(--text-muted)">'
+            + '<div style="margin-bottom:6px;color:var(--text);font-weight:600">Example: A typical 2-hour rehearsal</div>'
+            + '<div style="display:flex;flex-direction:column;gap:2px;margin-bottom:8px">'
+            + '<div><span style="color:#60a5fa;font-weight:700">▬ WARM-UP</span></div>'
+            + '<div style="padding-left:12px">🔥 Open with jam</div>'
+            + '<div style="padding-left:12px">🎓 Cold starts — all songs</div>'
+            + '<div><span style="color:#60a5fa;font-weight:700">▬ SONG WORK</span></div>'
+            + '<div style="padding-left:12px">🎵 Jack Straw <span style="color:var(--text-dim)">9m</span></div>'
+            + '<div style="padding-left:12px">🎵 After Midnight <span style="color:var(--text-dim)">9m</span></div>'
+            + '<div style="padding-left:12px">🎓 Transitions — Jack Straw → After Midnight</div>'
+            + '<div><span style="color:#60a5fa;font-weight:700">▬ BUSINESS</span></div>'
+            + '<div style="padding-left:12px">📋 Band business <span style="color:var(--text-dim)">15m</span></div>'
+            + '<div><span style="color:#60a5fa;font-weight:700">▬ RUN-THROUGH</span></div>'
+            + '<div style="padding-left:12px">🎵 Full set run <span style="color:var(--text-dim)">45m</span></div>'
+            + '</div>'
+            + '<div style="font-size:0.9em;color:var(--text-dim);font-style:italic">Use sections to organize, templates to add fast, and drag to reorder. Tap the time on any block to adjust.</div>'
+            + '</div></details>';
+
         // Actions
-        html += '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
+        html += '<div style="font-size:0.6em;color:var(--text-dim);padding:2px 0 4px;font-style:italic">Tap minutes on any block to make the plan realistic. Total: ' + totalLabel + '</div>'
+            + '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
             + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Start Rehearsal</button>'
             + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer">🔄 Rebuild</button>'
             + '</div>'
@@ -394,7 +421,7 @@ async function _rhRenderCommandFlow(el) {
 
     // First-visit walkthrough (only when a saved plan exists)
     if (hasSavedPlan && typeof glSpotlight !== 'undefined') {
-        setTimeout(function() { glSpotlight.run('rehearsal-plan-v2'); }, 800);
+        setTimeout(function() { glSpotlight.run('rehearsal-plan-v3'); }, 800);
     }
 
     // Render last rehearsal session review + history
