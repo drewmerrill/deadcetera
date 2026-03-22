@@ -61,6 +61,53 @@ window.pmSwitchTab = function pmSwitchTab(tab) {
     document.getElementById('pm-panel-mixes').style.display = tab === 'mixes' ? 'block' : 'none';
 };
 
+// ── Active filter — canonical check for practice-eligible songs ───────────────
+var _pmActiveStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+function _pmIsActiveStatus(st) { return !!_pmActiveStatuses[st]; }
+
+function _pmIsActive(title) {
+    if (typeof GLStore !== 'undefined' && GLStore.getStatus) {
+        var st = GLStore.getStatus(title);
+        if (st) return _pmIsActiveStatus(st);
+    }
+    if (typeof isSongActive === 'function') return isSongActive(title);
+    return false;
+}
+
+// ── Today's Practice — answers "what should I practice right now?" ────────────
+function _pmGetTodayPracticeSongs(songList, statusMap, rc) {
+    var seen = {};
+    var result = [];
+    function add(title) {
+        if (seen[title] || result.length >= 5) return;
+        if (!_pmIsActive(title)) return;
+        seen[title] = true;
+        var ratings = rc[title] || {};
+        var vals = Object.values(ratings).filter(function(v){ return typeof v === 'number' && v > 0; });
+        var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0)/vals.length : 0;
+        var safeTitle = title.replace(/'/g, "\\'");
+        result.push({ title: title, avg: avg, safeTitle: safeTitle });
+    }
+    // 1. Weakest songs (readiness < 3)
+    var weak = [];
+    Object.keys(rc).forEach(function(title) {
+        var ratings = rc[title] || {};
+        var vals = Object.values(ratings).filter(function(v){ return typeof v === 'number' && v > 0; });
+        if (!vals.length) return;
+        var avg = vals.reduce(function(a,b){return a+b;},0)/vals.length;
+        if (avg < 3 && _pmIsActive(title)) weak.push({ title: title, avg: avg });
+    });
+    weak.sort(function(a,b){ return a.avg - b.avg; });
+    weak.forEach(function(s){ add(s.title); });
+    // 2. This Week
+    songList.forEach(function(s){ if (statusMap[s.title] === 'this_week') add(s.title); });
+    // 3. Needs Polish (wip)
+    songList.forEach(function(s){ var st = statusMap[s.title]; if (st === 'needs_polish' || st === 'wip' || st === 'needsPolish' || st === 'learning') add(s.title); });
+    // 4. On Deck
+    songList.forEach(function(s){ var st = statusMap[s.title]; if (st === 'on_deck' || st === 'prospect' || st === 'onDeck') add(s.title); });
+    return result;
+}
+
 // ── Focus Tab ─────────────────────────────────────────────────────────────────
 async function _pmRenderFocusTab() {
     var el = document.getElementById('pm-panel-focus');
@@ -69,23 +116,22 @@ async function _pmRenderFocusTab() {
 
     var statusMap = await loadSongStatusMap();
     var songList  = typeof allSongs !== 'undefined' ? allSongs : [];
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
 
-    // App status values: '' | 'prospect' | 'wip' | 'gig_ready'
-    // Map to Focus buckets:
-    //   'wip'       → needsPolish  (work in progress = needs polish)
-    //   'prospect'  → onDeck       (on the radar but not yet active)
-    //   'gig_ready' → gigReady
-    //   legacy values kept for forward compat
-    var thisWeek    = songList.filter(function(s){return statusMap[s.title]==='this_week';});
+    // Filter ALL buckets to active songs only
+    var thisWeek    = songList.filter(function(s){ return statusMap[s.title]==='this_week' && _pmIsActive(s.title); });
     var needsPolish = songList.filter(function(s){
         var st = statusMap[s.title];
-        return st === 'needs_polish' || st === 'wip' || st === 'needsPolish';
+        return (st === 'needs_polish' || st === 'wip' || st === 'needsPolish' || st === 'learning') && _pmIsActive(s.title);
     });
-    var gigReady    = songList.filter(function(s){return statusMap[s.title]==='gig_ready';});
+    var gigReady    = songList.filter(function(s){ return (statusMap[s.title]==='gig_ready' || statusMap[s.title]==='rotation') && _pmIsActive(s.title); });
     var onDeck      = songList.filter(function(s){
         var st = statusMap[s.title];
-        return st === 'on_deck' || st === 'prospect' || st === 'onDeck';
+        return (st === 'on_deck' || st === 'prospect' || st === 'onDeck') && _pmIsActive(s.title);
     });
+
+    // Today's Practice
+    var todaysSongs = _pmGetTodayPracticeSongs(songList, statusMap, rc);
 
     function songRow(s, badge) {
         badge = badge || '';
@@ -95,14 +141,37 @@ async function _pmRenderFocusTab() {
     }
 
     var html = '';
+
+    // ── PRIMARY: Start Practice Session button ──
+    if (todaysSongs.length) {
+        html += '<button onclick="_pmStartSession()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:1em;cursor:pointer;margin-bottom:16px;box-shadow:0 4px 16px rgba(102,126,234,0.3)">▶ Start Practice Session · ' + todaysSongs.length + ' songs</button>';
+    }
+
+    // ── TODAY'S PRACTICE ──
+    if (todaysSongs.length) {
+        html += '<div class="app-card" style="margin-bottom:16px;border:1px solid rgba(102,126,234,0.2);background:rgba(102,126,234,0.04)">' +
+                '<div style="font-weight:700;font-size:0.95em;margin-bottom:10px">🔥 Today\'s Practice</div>';
+        todaysSongs.forEach(function(s, i) {
+            var avgColor = s.avg >= 3.5 ? '#4ade80' : s.avg >= 2 ? '#fbbf24' : s.avg > 0 ? '#f87171' : '#64748b';
+            var avgLabel = s.avg > 0 ? s.avg.toFixed(1) : '—';
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer" onclick="selectSong(\'' + s.safeTitle + '\')">' +
+                    '<span style="color:var(--text-dim);font-size:0.75em;min-width:18px">' + (i+1) + '</span>' +
+                    '<span style="flex:1;font-size:0.88em;font-weight:500;color:var(--text)">' + s.title + '</span>' +
+                    '<span style="font-size:0.75em;font-weight:700;color:' + avgColor + '">' + avgLabel + '</span>' +
+                    '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + s.safeTitle + '\')" style="padding:3px 10px;background:rgba(102,126,234,0.15);color:#a5b4fc;border:1px solid rgba(102,126,234,0.25);border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600;white-space:nowrap">▶ Practice</button>' +
+                    '</div>';
+        });
+        html += '</div>';
+    }
+
+    // ── WEAK SONGS (async-filled) ──
     html += '<div id="practice-weak-songs"></div>';
 
     if (thisWeek.length || needsPolish.length) {
         html += '<div class="app-card" style="margin-bottom:16px">'+
                 '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🔥 This Week\'s Focus</div>'+
                 thisWeek.map(function(s){return songRow(s,'<span style="background:rgba(239,68,68,0.15);color:#f87171;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">THIS WEEK</span>');}).join('')+
-                needsPolish.map(function(s){var st=statusMap[s.title];var badge=st==='wip'?'<span style="background:rgba(245,158,11,0.15);color:#fbbf24;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">WIP</span>':'<span style="background:rgba(245,158,11,0.15);color:#fbbf24;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">NEEDS POLISH</span>';return songRow(s,badge);}).join('')+
-                '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:10px;padding-top:10px;font-size:0.78em;color:var(--text-dim)">Tap any song to open it.</div>'+
+                needsPolish.map(function(s){return songRow(s,'<span style="background:rgba(245,158,11,0.15);color:#fbbf24;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">WIP</span>');}).join('')+
                 '</div>';
     }
     if (gigReady.length) {
@@ -117,23 +186,14 @@ async function _pmRenderFocusTab() {
                 onDeck.map(function(s){return songRow(s);}).join('')+
                 '</div>';
     }
-    if (!thisWeek.length && !needsPolish.length && !gigReady.length && !onDeck.length) {
+    if (!todaysSongs.length && !thisWeek.length && !needsPolish.length && !gigReady.length && !onDeck.length) {
         html += '<div class="app-card" style="margin-bottom:16px;text-align:center;padding:32px 20px">'+
                 '<div style="font-size:2em;margin-bottom:10px">🎸</div>'+
                 '<div style="font-weight:700;margin-bottom:6px">No songs in the queue yet</div>'+
-                '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Open any song → set status to <b>Work in Progress</b>, <b>Prospect</b>, or <b>Gig Ready</b> to see it here.</div>'+
+                '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Open any song → set status to <b>Learning</b> or <b>In Rotation</b> to see it here.</div>'+
                 '<button class="btn btn-primary" onclick="showPage(\'songs\')">Browse Song Library →</button>'+
                 '</div>';
     }
-
-    html += '<div class="app-card" style="margin-bottom:16px">'+
-            '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🎧 Practice Resources</div>'+
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'pocketmeter\')">🎚️ Tuner / Metronome</button>'+
-            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'bestshot\')">🏆 Best Versions</button>'+
-            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'songs\')">🎸 Song Library</button>'+
-            '<button class="btn btn-ghost" style="text-align:left;padding:10px 12px;font-size:0.82em" onclick="showPage(\'playlists\')">🎧 Playlists</button>'+
-            '</div></div>';
 
     html += '<div class="app-card" style="margin-bottom:16px">'+
             '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
@@ -147,6 +207,29 @@ async function _pmRenderFocusTab() {
     _fillPracticeWeakSongs();
     _fillPracticeReadiness();
 }
+
+// ── Start Practice Session — launches practice mode with Today's songs ───────
+window._pmStartSession = function() {
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
+    var songList = typeof allSongs !== 'undefined' ? allSongs : [];
+    // Re-derive (fast, sync) using cached status
+    var statusMap = {};
+    try {
+        var cached = (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+        Object.keys(cached).forEach(function(k) { statusMap[k] = (cached[k] || '').toLowerCase().replace(/\s+/g,'_'); });
+    } catch(e) {}
+    var today = _pmGetTodayPracticeSongs(songList, statusMap, rc);
+    if (!today.length) { if (typeof showToast === 'function') showToast('No songs to practice'); return; }
+    if (today.length === 1) {
+        if (typeof openRehearsalMode === 'function') openRehearsalMode(today[0].title);
+        return;
+    }
+    var queue = today.map(function(s) {
+        var songObj = songList.find(function(x){ return x.title === s.title; });
+        return { title: s.title, band: songObj ? (songObj.band || '') : '' };
+    });
+    if (typeof openRehearsalModeWithQueue === 'function') openRehearsalModeWithQueue(queue);
+};
 
 async function _fillPracticeWeakSongs() {
     var el = document.getElementById('practice-weak-songs');
@@ -168,6 +251,7 @@ async function _fillPracticeWeakSongs() {
         if(!keys.length)return;
         var avg=keys.reduce(function(s,k){return s+ratings[k];},0)/keys.length;
         if(avg>=THRESH)return;
+        if(!_pmIsActive(title))return;
         var ds=lastSeen[title]?Math.floor((now-lastSeen[title])/86400000):null;
         scored.push({title:title,avg:avg,score:Math.max(0,THRESH-avg)*2+(ds===null?3:ds>21?Math.min(3,Math.floor(ds/7)):0)});
     });
@@ -197,7 +281,7 @@ async function _fillPracticeReadiness() {
     }
     var songs = typeof allSongs !== 'undefined' ? allSongs : [];
     var rows = songs.map(function(s){return{title:s.title,score:((rc[s.title]||{})[myKey]||0)};})
-        .filter(function(r){return r.score>0;})
+        .filter(function(r){return r.score>0 && _pmIsActive(r.title);})
         .sort(function(a,b){return a.score-b.score;})
         .slice(0,8);
     if (!rows.length) {
