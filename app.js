@@ -674,11 +674,18 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         
-        // ── Dev mode: auto-seed test data ──
+        // ── Dev mode: auto-seed test data, then reload caches ──
         if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.autoSeedIfNeeded === 'function') {
             GLT.autoSeedIfNeeded().then(function() {
+                // Re-render with seeded data
                 renderSongs();
                 if (typeof addStatusBadges === 'function') addStatusBadges();
+                // Re-load setlists from the seeded data
+                loadBandDataFromDrive('_band', 'setlists').then(function(data) {
+                    var _slArr = toArray(data || []);
+                    if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slArr);
+                    else { window._glCachedSetlists = _slArr; window._cachedSetlists = _slArr; }
+                }).catch(function() {});
             });
         }
 
@@ -13331,6 +13338,10 @@ var BAND_MEMBERS_ORDERED = [
 ];
 
 function getCurrentMemberReadinessKey() {
+    // Dev mode: test user bypasses email lookup
+    if (typeof GLT !== 'undefined' && GLT.ACTIVE && currentUserEmail === 'test@groovelinx.com') {
+        return 'test_user';
+    }
     var emailToKey = {
         'drewmerrill1029@gmail.com': 'drew',
         'cmjalbert@gmail.com': 'chris',
