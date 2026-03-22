@@ -186,7 +186,7 @@ function renderCalendarInner() {
         <div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading…</div></div>
         <div id="calConflictResolver" style="display:none"></div>
     </div>
-    <div class="app-card"><h3>🚫 Conflicts &amp; Blocked Dates</h3>
+    <div class="app-card"><h3 id="calBlockedHeader">🚫 Conflicts &amp; Blocked Dates</h3>
         <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
     </div>`;
 
@@ -316,6 +316,9 @@ async function loadCalendarEvents() {
     } else {
         blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     }
+    // Update header count
+    var bHeader = document.getElementById('calBlockedHeader');
+    if (bHeader) bHeader.textContent = '🚫 Conflicts & Blocked Dates' + (blocked.length > 0 ? ' (' + blocked.length + ')' : '');
     const bEl = document.getElementById('blockedDates');
     if (bEl && blocked.length > 0) {
         var statusLabels = { unavailable:'Unavailable', tentative:'Tentative', booked_elsewhere:'Booked', vacation:'Vacation', travel:'Travel', personal_block:'Personal', hold:'Hold' };
@@ -677,6 +680,7 @@ window.calShowDateConflicts = function(dateStr) {
         return;
     }
     el.dataset.date = dateStr;
+    el.style.display = 'block';
 
     var dateDisplay = (typeof glFormatDate === 'function') ? glFormatDate(dateStr, false) : dateStr;
     var dayLabel = (typeof glCountdownLabel === 'function') ? glCountdownLabel(dateStr) : '';
