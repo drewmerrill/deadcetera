@@ -69,8 +69,12 @@ Example for `deadcetera`:
 /bands/deadcetera/venues/
 /bands/deadcetera/setlists/
 /bands/deadcetera/calendar_events/
-/bands/deadcetera/rehearsal_plans/
+/bands/deadcetera/rehearsal_plans/       — shared rehearsal plans (Firebase-synced)
+/bands/deadcetera/rehearsal_history/     — plan snapshots for reuse
+/bands/deadcetera/rehearsal_sessions/    — session timing summaries (actual vs budget)
 /bands/deadcetera/rehearsals/
+/bands/deadcetera/schedule_blocks/       — member availability/conflicts
+/bands/deadcetera/song_pitches/          — structured song intake with voting
 /bands/deadcetera/care_packages_public/
 ```
 
@@ -144,21 +148,24 @@ app.js                    — core app, auth, global state
 worker.js                 — Cloudflare Worker
 version-hub.js            — version/media browser
 help.js                   — help system
-rehearsal-mode.js         — rehearsal/practice overlay
+rehearsal-mode.js         — rehearsal/practice overlay + live timing
+pocket-meter.js           — BPM detection, groove analysis (2,281 lines)
 js/core/
   firebase-service.js     — Firebase helpers + GOOGLE_DRIVE_CONFIG
   worker-api.js           — Worker API helpers
-  utils.js                — shared helpers
-  groovelinx_store.js     — shared state layer (important structural direction)
+  utils.js                — shared helpers, song runtime estimation
+  groovelinx_store.js     — shared state layer (gigs, status, readiness, setlists, schedule blocks)
 js/ui/
   navigation.js           — showPage() routing
+  gl-spotlight.js         — spotlight walkthrough system (registry, prepare hooks)
+  gl-now-playing.js       — Now Playing bar (session-only)
 js/features/
   songs.js
   gigs.js
   setlists.js
-  rehearsal.js
+  rehearsal.js            — plan editor, snapshots, sessions, walkthrough
   practice.js
-  calendar.js
+  calendar.js             — availability matrix, conflict resolver, date validation
   notifications.js
   social.js
   finances.js
@@ -166,10 +173,13 @@ js/features/
   playlists.js
   stoner-mode.js
   home-dashboard.js
-  song-detail.js
+  song-detail.js          — song lenses (Listen, Learn, Sing, Play) + lesson bridge
   harmony-lab.js
   chart-import.js
-  pocket-meter.js
+  song-pitch.js
+  bulk-import.js
+  band-comms.js
+  stage-plot.js
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-22_
+_Last updated: 2026-03-22 (end of session)_
 
 ## Read This First
 
@@ -44,37 +44,92 @@ It is not just a collection of music tools. The UX should guide each band member
 | File | Purpose |
 |------|---------|
 | `app.js` | Main app (~14K lines) — auth, settings, reference versions |
-| `js/core/groovelinx_store.js` | Central shared state (~5K lines) |
+| `js/core/groovelinx_store.js` | Central shared state (~5K lines) — caches, events, song data |
 | `js/core/song-intelligence.js` | Practice recommendations, readiness scoring |
 | `js/core/rehearsal_agenda_engine.js` | AI rehearsal agenda generation |
-| `js/features/rehearsal.js` | Rehearsal planner, agenda UI, transition practice |
+| `js/core/utils.js` | Shared helpers, structural title guard, song runtime estimation |
+| `js/features/rehearsal.js` | Rehearsal planner, plan editor, snapshots, sessions, walkthrough |
 | `js/features/setlists.js` | Setlist CRUD, song picker, show builder, lock system |
 | `js/features/songs.js` | Song list, active/library scope, triage |
 | `js/features/practice.js` | Practice Command Center, Today's Practice |
+| `js/features/calendar.js` | Calendar, availability matrix, conflict resolver |
+| `js/features/song-detail.js` | Song detail panel, lenses (Listen, Learn, Sing, Play) |
 | `js/features/stage-plot.js` | Stage plot builder with station model |
-| `rehearsal-mode.js` | Practice Mode (5 tabs), Listen tab cockpit |
-| `js/ui/gl-now-playing.js` | Now Playing bar |
-| `js/core/utils.js` | Shared helpers, structural title guard |
+| `rehearsal-mode.js` | Practice Mode (5 tabs), Listen tab cockpit, live timing |
+| `pocket-meter.js` | Pocket Meter — BPM detection, groove analysis, mic/file modes |
+| `js/ui/gl-spotlight.js` | Spotlight walkthrough system (registry, prepare hooks, back button) |
+| `js/ui/gl-now-playing.js` | Now Playing bar (session-only, not persisted) |
 
-## Current State (2026-03-22)
+## Current State (2026-03-22 end of session)
 
-### What's Working
+### Rehearsal System (Major — shipped this session)
+- **Plan editor**: mixed block types (song, exercise, jam, business, note, section)
+- **Section dividers**: organize plan into phases (Warm-Up, Song Work, etc.) with subtotals
+- **Quick templates**: one-tap common blocks (Cold starts, Band business, Warm-Up)
+- **Drag-and-drop reorder**: HTML5 drag + touch support + ↑↓ fallback buttons
+- **Time budgeting**: auto-calculated per block (song runtime × 1.5), manual override via click
+- **Per-block assignments**: assign band members to any block
+- **Per-block notes**: collaborative prep notes on any block
+- **Plan name editing**: click header to rename
+- **Firebase shared plans**: `bands/{slug}/rehearsal_plans/{planId}` — whole band sees same plan
+- **Debounced save**: localStorage immediate + Firebase 1.5s debounce, save state indicator
+- **Snapshots**: save/load reusable plans, auto-save before Clear/Rebuild
+- **Live rehearsal timing**: actual vs budgeted time per block during execution
+- **Post-session review card**: total time, per-block bars, pacing takeaway
+- **Past rehearsals list**: last 10 sessions with expand/collapse detail
+- **Guided walkthrough**: 10-step workflow coach with back button, prepare hooks, highlight ring
+
+### Practice System
 - Practice Command Center with Today's Practice + session launch
-- Editable rehearsal agendas (reorder, remove, add, band business)
-- Setlist song picker with checkbox bulk selection
-- Setlist show builder (All Songs → ✂ split into sets)
 - Practice Mode Listen tab with North Star, Best Shot, Lessons
-- One-click ⭐ and 🎓 assignment from all search sources
+- **Lesson bridge**: Practice Mode lessons now visible in Song Detail Learn Lens
+- One-click ⭐ and 🎓 assignment from search sources
 - Inline YouTube preview player
-- Now Playing bar with ▶ Practice action
-- Transition practice units with confidence tracking
-- Update banner with reliable deploy detection
-- Auto version stamping via GitHub Actions
+- Now Playing bar — **session-only** (no longer persists across refreshes)
 
-### Known Issues
-- Google Maps Places requires Vercel domains in API key referrers
+### Setlist System
+- Song picker with checkbox bulk selection, active/library filter
+- Show builder (All Songs → ✂ split into sets)
+- Duration estimates per set and total
+- Set merge, rename, reorder, type picker (Soundcheck/Encore/Custom)
+- Lock/unlock with warnings and notifications
+
+### Calendar System
+- Availability matrix with month headers and visual month boundary lines
+- Conflict resolver with per-member breakdown and scroll-into-view
+- **Date validation**: year range 2020-2099, end-before-start check, long range warning
+- **Conflict option in day-click dropdown**: switches to conflict form with date pre-filled
+- **Blocked dates sorted chronologically**
+- **Unified edit/delete**: all schedule blocks route through `_calEditScheduleBlock`/`_calDeleteScheduleBlock`
+
+### Store Centralization (shipped this session)
+- **Gigs cache**: `GLStore.getGigs()`, `setGigsCache()`, `clearGigsCache()`
+- **Status cache**: `GLStore.setStatus()`, `setAllStatus()` (setters added, getters existed)
+- **Readiness cache**: `GLStore.setReadiness()`, `setAllReadiness()` (setters added)
+- **Schedule blocks cache**: `GLStore._clearScheduleBlocksCache()` for calendar refresh
+- All setters emit events for future reactive UI
+
+### Spotlight / Onboarding System
+- `gl-spotlight.js`: reusable registry-based walkthrough system
+- `register(key, steps)` / `run(key)` / `reset(key)` / `prev()` / `next()` / `skip()`
+- `prepare()` hooks per step to set UI state before highlighting
+- Clip-path overlay with highlight ring, scroll-to-center positioning
+- Dialog placed in opposite half of screen from target
+- `?` button on Rehearsal page to re-trigger walkthrough on demand
+
+### Other
+- Pocket Meter: fully implemented (2,281 lines), production-ready
+- North Star / Best Shot: **unified** — same Firebase path in Practice Mode and Song Detail
+- Chart scroll fight: **fixed** — stable DOM container + scoped scrollIntoView
+
+### Known Issues (remaining)
+- Google Maps Places requires Vercel domains in API key referrers (unverified)
 - Notification system stores data but has no UI inbox yet
-- Lessons lack instrument tags and member assignment
+- Lessons lack instrument tags and member assignment (bridge shipped, unification pending)
+- Setlist drag between sets not implemented
+- Per-song setlist duration override UI missing
+- GitHub Pages redirect page not created (old links may be broken)
+- 5 doc files still reference old GitHub Pages URL
 - `app-dev.js` has stale preload patterns (dev-only, not production)
 
 ### What NOT to Touch Without Good Reason
@@ -82,10 +137,24 @@ It is not just a collection of music tools. The UX should guide each band member
 - Firebase data paths (`bands/deadcetera/...`)
 - Service worker (network-first, cache fallback only)
 - The `?v=` param system (auto-stamped by GitHub Actions)
+- Pocket Meter internals (complete, working)
 
-## Next Recommended Step
+## Firebase Data Paths Added This Session
 
-Build instrument tags + member assignment for Practice Mode lessons, so Drew can save a drums lesson and assign it to Jay.
+```
+bands/{slug}/rehearsal_plans/{planId}     — shared rehearsal plans
+bands/{slug}/rehearsal_history/{snapId}   — plan snapshots
+bands/{slug}/rehearsal_sessions/{sessId}  — session timing summaries
+```
+
+## Next Recommended Steps
+
+1. **Notification inbox UI** — data stored, no UI to read notifications
+2. **Lesson unification (Phase 2)** — merge `my_lessons_{email}` + shared collections into unified `learning_resources/` model
+3. **Setlist Phase B** — drag songs between sets, per-song duration override
+4. **GitHub Pages redirect** — create gh-pages branch with redirect to app.groovelinx.com
+5. **Update stale docs** — replace GitHub Pages URLs in 5 files with app.groovelinx.com
+6. **Store centralization (remaining)** — northStarCache, pitchCache, blockedDates
 
 ## Restart Prompt
 

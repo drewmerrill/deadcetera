@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-22_
+_Updated: 2026-03-22 (end of session)_
 
-## Active Phase: Practice Intelligence + Setlist Authoring + SaaS Infrastructure
+## Active Phase: Rehearsal System Complete + System Hardening
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main)
@@ -25,52 +25,125 @@ CI: GitHub Actions syntax validation on all branch pushes
 
 ---
 
-## Recently Shipped (2026-03-20 → 2026-03-22)
+## Shipped This Session (2026-03-22)
 
-### Infrastructure
-- Vercel hosting cutover (from GitHub Pages)
-- Custom domain: app.groovelinx.com
-- GitHub Actions: auto version stamping + JS syntax validation
-- Update banner: reliable deploy detection for open clients
-- Dev auth bypass (preview-only, not on main)
+### Rehearsal System (30+ patches)
+- Mixed block types: song, exercise, jam, business, note, section divider
+- Section dividers with subtotals, quick templates
+- Drag-and-drop reordering (HTML5 + touch) with ↑↓ fallback
+- Time budgeting: auto-calculated + manual override per block
+- Per-block assignments (band member checkboxes)
+- Per-block notes (collaborative prep)
+- Editable plan name
+- Firebase shared plans (`rehearsal_plans/{planId}`) — whole band sees same plan
+- Debounced save with "Saving…" / "✓ Saved" indicator
+- Plan snapshots: save/load/delete, auto-save before Clear/Rebuild
+- Live rehearsal timing: actual vs budgeted per block
+- Post-session review card with per-block bars + pacing takeaway
+- Past rehearsals list (last 10 sessions, expand/collapse)
+- 10-step guided walkthrough with back button, prepare hooks, highlight ring
+- `?` button to re-trigger walkthrough on demand
+- Example "How to build a rehearsal plan" helper panel
 
-### Practice System
-- Practice Command Center: Today's Practice, active filter, session launch
-- Now Playing bar: auto-set on song click, persistent, ▶ Practice button
-- Practice Cockpit (Listen tab): North Star + Best Shot + Lessons at top
-- Inline YouTube player for North Star and search result previews
-- One-click ⭐ North Star and 🎓 Lesson from YouTube/Archive/Relisten results
-- Per-user lessons (each member sees their own instrument-specific content)
-- Transition confidence indicator in rehearsal agenda
+### Calendar System
+- Date validation (year range, end-before-start, long range warning)
+- Conflict option in day-click dropdown
+- Blocked dates sorted chronologically
+- Unified edit/delete for legacy + new-model schedule blocks
+- Stronger month boundary line in availability matrix
+- Conflict resolver scroll-into-view + header count
 
-### Setlist System
-- Song Picker: checkbox-based bulk song selection with active/library filter
-- Show Builder: "All Songs" default → ✂ set break to split into sets
-- Duration estimates per set and total (6 min/song)
-- Set merge (↑ Merge to undo a break)
-- Setlist lock/unlock with warnings, full names, and notification to locker
-- Structural title guard (Soundcheck, Set 1, etc. excluded from practice logic)
+### Store Centralization
+- Gigs cache: GLStore getter/setter/clear
+- Status cache: GLStore setter + event
+- Readiness cache: GLStore setter + event
+- Schedule blocks cache clear for calendar refresh
 
-### Rehearsal System
-- Editable rehearsal agendas: reorder, remove, add song, add Band Business
-- Transition practice units in agenda engine
-- Chart scroll fix (scroll sync no longer fights manual scrolling)
+### Lesson Bridge (Phase 1)
+- Practice Mode lessons (`my_lessons_{email}`) now visible in Song Detail Learn Lens
+- Remove button works from Song Detail side
+- North Star and Best Shot confirmed UNIFIED (no split-brain)
 
-### Other
-- North Star: edit URL, vote from Practice Mode, race condition fix
-- Stage Plot: compact grid, station model, share mode
-- iPhone notch/Dynamic Island safe area fixes
-- Hero splash fix for Samsung S24
-- Google Places API migration to PlaceAutocompleteElement
-- statusCache let→var scoping fix
-- Setlist cache centralization in GLStore
+### Spotlight / Onboarding
+- Reusable registry-based walkthrough system (`gl-spotlight.js`)
+- Clip-path overlay, scroll-to-center, dialog in opposite half
+- `prepare()` hooks, back button, highlight ring
+
+### Bug Fixes
+- Chart scroll fight: stable DOM container + scoped scrollIntoView
+- Now Playing bar: session-only (no longer persists "After Midnight" across refreshes)
+- Calendar block edit: unified blockId routing (no more wrong-entry bug)
+- Firebase index warnings: removed orderByChild queries (client-side sort)
 
 ---
 
-## Next Priorities
+## Smoke Test Plan
 
-1. Setlist authoring Phase B: drag songs between sets, per-song duration
-2. Practice lessons: instrument tags + member assignment
-3. Notification inbox (notifications are being stored but no UI reads them yet)
-4. Store centralization: gig cache, pitch cache, calendar blocked ranges
-5. GitHub Pages redirect page (retire old URL)
+Full 65-test plan at: `02_GrooveLinx/notes/smoke_test_plan.md`
+
+Covers: Rehearsal Planning (25), Firebase Sync (6), Snapshots (7), Rehearsal Execution (11), Session Review (8), Past Rehearsals (8), Spotlight (10)
+
+---
+
+## Audit Results (confirmed this session)
+
+| System | Status |
+|--------|--------|
+| Lessons | BRIDGED (Phase 1 — Practice Mode visible in Song Detail) |
+| North Star | UNIFIED (same Firebase path everywhere) |
+| Best Shot | UNIFIED (same Firebase path everywhere) |
+| Pocket Meter | FULLY BUILT (2,281 lines, production-ready) |
+| Bug queue | CLEAN (no active bugs) |
+| TODO/FIXME comments | NONE in codebase |
+
+---
+
+## Pending Work (prioritized)
+
+### HIGH
+1. Notification inbox UI — data stored, no reader UI
+2. GitHub Pages redirect — old links go to dead page
+3. Stale docs — 5 files reference old GitHub Pages URL
+
+### MEDIUM
+4. Lesson unification (Phase 2) — unified `learning_resources/` model with instrument tags
+5. Setlist Phase B — drag songs between sets, per-song duration override
+6. Store centralization — northStarCache, pitchCache, blockedDates
+7. Google Maps API key — verify Vercel domains in referrers
+
+### LOW
+8. Groove personality profiles (Pocket Meter v2)
+9. Marketing site "Launch App" link
+10. app-dev.js cleanup
+
+---
+
+## Phase 2 Lesson Unification (proposed, not implemented)
+
+```
+bands/{slug}/songs/{title}/learning_resources/{resourceId}
+{
+  resourceId: "lr_abc123",
+  type: "lesson" | "tab" | "track" | "cover",
+  title: "Jerry Garcia — Eyes solo breakdown",
+  url: "https://youtube.com/...",
+  addedBy: "drew",
+  addedAt: "2026-03-22T...",
+  visibility: "personal" | "band",
+  assignedTo: ["jay"],
+  instrument: "guitar",
+  notes: "Focus on the chromatic run at 2:15"
+}
+```
+
+Migration: adapter reads both old + new paths → new writes to unified path → background migration → drop old paths.
+
+---
+
+## Firebase Paths Added This Session
+
+```
+bands/{slug}/rehearsal_plans/{planId}        — shared rehearsal plans
+bands/{slug}/rehearsal_history/{snapshotId}  — plan snapshots for reuse
+bands/{slug}/rehearsal_sessions/{sessionId}  — session timing summaries
+```
