@@ -464,9 +464,11 @@ window.saveMasterFile = async function saveMasterFile(fileName, data) {
 var BAND_LEVEL_MIGRATION_FLAG = '_meta/band_level_migration_v1';
 
 var BAND_LEVEL_DATA_TYPES = [
-    'custom_songs', 'calendar_events', 'blocked_dates', 'gig_history',
-    'setlists', 'equipment', 'contacts', 'playlists', 'finances',
-    'finances_meta', 'social_profiles', 'best_shots'
+    'setlists', 'gigs', 'custom_songs', 'calendar_events', 'blocked_dates',
+    'equipment', 'contacts', 'playlists', 'finances', 'finances_meta',
+    'social_profiles', 'venues', 'notifications', 'notif_log', 'notif_members',
+    'feedback', 'band_contacts', 'song_pitches', 'playlist_listens', 'best_shots',
+    'gig_history'
 ];
 
 window.migrateBandLevelData = async function migrateBandLevelData() {
@@ -502,7 +504,10 @@ window.migrateBandLevelData = async function migrateBandLevelData() {
 
     var updates = {};
     Object.keys(legacyData).forEach(function(dataType) {
-        if (BAND_LEVEL_DATA_TYPES.indexOf(dataType) !== -1) {
+        // Match known types OR pattern-prefixed types (practice_plan_*, rehearsal_plan_*, notif_member_*)
+        var isKnown = BAND_LEVEL_DATA_TYPES.indexOf(dataType) !== -1;
+        var isPattern = /^(practice_plan_|rehearsal_plan_|notif_member_)/.test(dataType);
+        if (isKnown || isPattern) {
             updates[dataType] = legacyData[dataType];
             stats.migrated++;
             stats.types.push(dataType);
