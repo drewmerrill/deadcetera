@@ -1,13 +1,13 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260319-163417
-**Last Updated:** 2026-03-19
+**Build Under Test:** 20260322-155826 (approx)
+**Last Updated:** 2026-03-22
 
 ---
 
 ## Session Focus
 
-Rehearsal Workspace, Band Sync, Backup Players, Rehearsal Planner. All critical bugs from this session already fixed and deployed. Queue is clean.
+Rehearsal system buildout, calendar fixes, store centralization, lesson bridge, spotlight/onboarding, system hardening. All bugs from this session fixed and deployed. Queue is clean.
 
 
 

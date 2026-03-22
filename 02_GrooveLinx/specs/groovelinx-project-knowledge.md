@@ -1,5 +1,5 @@
 # GrooveLinx — Durable Project Knowledge
-_Extracted from all sessions. Last updated: 2026-03-09_
+_Extracted from all sessions. Last updated: 2026-03-22_
 _This document replaces session notes. It contains only timeless, actionable knowledge._
 
 ---
@@ -8,7 +8,9 @@ _This document replaces session notes. It contains only timeless, actionable kno
 
 ### Stack (intentionally simple, do not change)
 - **Frontend:** Vanilla JavaScript SPA, no framework, no build toolchain
-- **Hosting:** GitHub Pages (`drewmerrill.github.io/deadcetera`)
+- **Hosting:** Vercel (`app.groovelinx.com`) — auto-deploys on push to main
+- **CI:** GitHub Actions — JS syntax validation + auto version stamping
+- **Legacy hosting:** GitHub Pages (retired, needs redirect page)
 - **Database:** Firebase Realtime Database (`deadcetera-35424`)
 - **Auth:** Google Identity Services — `initTokenClient` with `email profile` scope only
 - **API proxy:** Cloudflare Worker (`deadcetera-proxy.drewmerrill.workers.dev`)
@@ -23,8 +25,12 @@ All band data is namespaced under `/bands/{slug}/`:
 /bands/deadcetera/venues/
 /bands/deadcetera/setlists/
 /bands/deadcetera/calendar_events/
-/bands/deadcetera/rehearsal_plans/
+/bands/deadcetera/rehearsal_plans/       ← shared rehearsal plans (Firebase-synced)
+/bands/deadcetera/rehearsal_history/     ← plan snapshots for reuse
+/bands/deadcetera/rehearsal_sessions/    ← session timing summaries
 /bands/deadcetera/rehearsals/
+/bands/deadcetera/schedule_blocks/       ← member availability/conflicts
+/bands/deadcetera/song_pitches/          ← song intake with anonymous voting
 /bands/deadcetera/care_packages_public/  ← public read, no auth required
 ```
 `bandPath()` is the single helper that routes all refs — always use it, never hardcode paths.
@@ -43,7 +49,7 @@ All band data is namespaced under `/bands/{slug}/`:
 - Scope is `email profile` only — adding Drive scopes triggers "unverified app" screen
 - OAuth client lives in GCP project "Deadcetera YouTube" (not "deadcetera-35424")
   - Client ID: `177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com`
-  - Authorized origins: `https://drewmerrill.github.io`, `http://localhost:8000`
+  - Authorized origins: `https://app.groovelinx.com`, `https://drewmerrill.github.io`, `http://localhost:8000`
 
 ### Cloudflare Worker
 - Deployed as `deadcetera-proxy`, compatibility-date `2024-01-01`

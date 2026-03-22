@@ -1,6 +1,6 @@
 # GrooveLinx Project Index
 
-_Last updated: 2026-03-09_
+_Last updated: 2026-03-22_
 
 This file is the fastest high-level map of the GrooveLinx repo. Any AI assistant or human contributor should read this before proposing structural changes.
 
@@ -16,7 +16,8 @@ GrooveLinx is a **vanilla JavaScript single-page application** for band manageme
 - No build step
 - No TypeScript
 - No backend application server
-- Hosted on **GitHub Pages**
+- Hosted on **Vercel** (app.groovelinx.com) — auto-deploys on push to main
+- **GitHub Actions** — JS syntax validation + auto version stamping
 - **Firebase Realtime Database** is the primary data store
 - **Cloudflare Worker** is used only as a proxy / integration layer
 
@@ -68,7 +69,14 @@ deadcetera/
 │ │ ├── worker-api.js
 │ │ └── calendar-export.js
 │ ├── ui/
-│ │ └── navigation.js
+│ │ ├── navigation.js
+│ │ ├── gl-spotlight.js
+│ │ ├── gl-now-playing.js
+│ │ ├── gl-left-rail.js
+│ │ ├── gl-right-panel.js
+│ │ ├── gl-context-bar.js
+│ │ ├── gl-entity-picker.js
+│ │ └── gl-inline-help.js
 │ └── features/
 │ ├── songs.js
 │ ├── gigs.js
@@ -86,7 +94,13 @@ deadcetera/
 │ ├── home-dashboard-cc.js
 │ ├── chart-import.js
 │ ├── song-detail.js
-│ └── harmony-lab.js
+│ ├── harmony-lab.js
+│ ├── song-pitch.js
+│ ├── bulk-import.js
+│ ├── band-comms.js
+│ ├── stage-plot.js
+│ ├── song-drawer.js
+│ └── live-gig.js
 └── 02_GrooveLinx/
 ├── CLAUDE_HANDOFF.md
 ├── DEV_WORKFLOW.md
@@ -213,11 +227,13 @@ Files:
 
 ## Rehearsals / Plans
 
-Rehearsal plans, rehearsal records, suggested plans, and readiness.
+Full rehearsal system: plan editor, shared Firebase plans, sections, time budgeting, assignments, notes, snapshots, live timing, session review, past rehearsals, guided walkthrough.
 
 Files:
 
-- `js/features/rehearsal.js`
+- `js/features/rehearsal.js` — plan editor, snapshots, sessions, walkthrough
+- `rehearsal-mode.js` — practice mode execution, live timing
+- `js/ui/gl-spotlight.js` — walkthrough system
 
 ---
 
@@ -324,18 +340,20 @@ gldeploy "message"
 
 # 7. Current High-Value Open Areas
 
-Important near-term issues:
+Pending work (prioritized):
 
-- Edit Gig blank/wrong venue after save
-- Practice queue empty despite statuses
-- Global mid-scroll navigation behavior
-- Setlist Add Song broken
-- Rehearsal Plan add-songs / save / visibility issues
-- Feedback inbox close-loop workflow
+1. Notification inbox UI (data stored, no reader)
+2. Lesson unification Phase 2 (unified learning_resources model)
+3. Setlist Phase B (drag between sets, per-song duration)
+4. GitHub Pages redirect page
+5. Update stale doc URLs (5 files still reference GitHub Pages)
+
+Bug queue: **CLEAN** — no active bugs as of 2026-03-22.
 
 Source of truth:
 
-`02_GrooveLinx/notes/uat_bug_log.md`
+- `02_GrooveLinx/uat/bug_queue.md`
+- `02_GrooveLinx/notes/uat_bug_log.md`
 
 ---
 
