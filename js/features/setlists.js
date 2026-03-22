@@ -136,8 +136,11 @@ function _slRenderCard(sl, isNext) {
         // Right: actions
         + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center">'
         + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">▶ Open</button>'
-        + (sl.locked ? '' : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>')
-        + (sl.locked ? '' : '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
+        + (sl.locked
+            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓 Unlock</button>'
+            : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>'
+              + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Lock setlist">🔒</button>'
+              + '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
         + '</div></div>';
 }
 
@@ -1171,6 +1174,45 @@ function slMergeSets(setIdx) {
     _slReRenderSets();
     if (typeof showToast === 'function') showToast('Sets merged — now ' + window._slSets.length + (window._slSets.length === 1 ? ' set' : ' sets'));
 }
+
+// Unlock a locked setlist with warning + notification to the locker
+window.slUnlockWithWarning = async function(idx) {
+    if (!requireSignIn()) return;
+    var data = window._cachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var sl = data[idx];
+    if (!sl) return;
+    var lockedBy = sl.lockedBy || 'someone';
+    var lockedAt = sl.lockedAt ? new Date(sl.lockedAt).toLocaleDateString() : 'unknown date';
+    var ok = confirm(
+        '⚠️ This setlist was locked by ' + lockedBy + ' on ' + lockedAt + '.\n\n'
+        + 'Unlocking will allow editing. ' + lockedBy + ' will be notified.\n\n'
+        + 'Are you sure you want to unlock it?'
+    );
+    if (!ok) return;
+    // Log the unlock event
+    var unlockEvent = {
+        action: 'setlist_unlocked',
+        setlistName: sl.name || 'Untitled',
+        unlockedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : 'unknown',
+        previouslyLockedBy: sl.lockedBy || '',
+        unlockedAt: new Date().toISOString()
+    };
+    // Save notification for the locker
+    try {
+        var notifications = toArray(await loadBandDataFromDrive('_band', 'notifications') || []);
+        notifications.push({
+            id: 'notif_' + Date.now(),
+            type: 'setlist_unlocked',
+            message: (unlockEvent.unlockedBy.split('@')[0] || 'Someone') + ' unlocked the setlist "' + (sl.name || 'Untitled') + '"',
+            for: sl.lockedBy || '',
+            createdAt: new Date().toISOString(),
+            read: false
+        });
+        await saveBandDataToDrive('_band', 'notifications', notifications);
+    } catch(e) {}
+    // Unlock
+    await slToggleLock(idx);
+};
 
 window.slInsertSetBreak = slInsertSetBreak;
 window.slMergeSets = slMergeSets;
