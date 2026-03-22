@@ -604,12 +604,14 @@ function _rmRenderTimeline() {
 
 // Render the active section's band notes (only non-null fields)
 function _rmRenderActiveSectionPanel() {
+    // Suppress scroll sync during DOM mutation (prevents scroll fight loop)
+    _rmScrollSyncProgrammatic = true;
+
     var existing = document.getElementById('rmActiveSectionPanel');
-    if (existing) existing.remove();
-    if (!_rmSections.length) return;
+    if (!_rmSections.length) { if (existing) existing.innerHTML = ''; _rmScrollSyncProgrammatic = false; return; }
 
     var s = _rmSections[_rmActiveSectionIdx];
-    if (!s) return;
+    if (!s) { if (existing) existing.innerHTML = ''; _rmScrollSyncProgrammatic = false; return; }
 
     // Collect non-null band notes
     var fields = [];
@@ -624,42 +626,37 @@ function _rmRenderActiveSectionPanel() {
     if (s.endingType) fields.push({ icon: '🏁', label: s.endingType.replace(/_/g, ' ') });
     if (fields.length === 0 && s.notes) fields.push({ icon: '📝', label: s.notes });
 
-    // Don't render panel if no band notes for this section
-    if (fields.length === 0) return;
+    // Use a STABLE container — update innerHTML instead of remove/insert
+    // This avoids DOM reflow that shifts chart scroll position
+    if (!existing) {
+        existing = document.createElement('div');
+        existing.id = 'rmActiveSectionPanel';
+        existing.style.cssText = 'font-size:0.72em;color:#94a3b8';
+        var chartEl = document.getElementById('rmChartText');
+        if (chartEl && chartEl.parentElement) chartEl.parentElement.insertBefore(existing, chartEl);
+    }
 
-    var panel = document.createElement('div');
-    panel.id = 'rmActiveSectionPanel';
-    panel.style.cssText = 'padding:5px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(99,102,241,0.04);border-bottom:1px solid rgba(99,102,241,0.1);font-size:0.72em;color:#94a3b8';
+    if (fields.length === 0) {
+        existing.innerHTML = '';
+        existing.style.display = 'none';
+        setTimeout(function() { _rmScrollSyncProgrammatic = false; }, 100);
+        return;
+    }
 
-    // "ACTIVE" badge + section label
-    var badge = document.createElement('span');
-    badge.style.cssText = 'font-size:0.6em;font-weight:800;letter-spacing:0.08em;color:rgba(99,102,241,0.5);text-transform:uppercase;flex-shrink:0';
-    badge.textContent = 'NOW';
-    panel.appendChild(badge);
+    existing.style.display = 'flex';
+    existing.style.cssText = 'padding:5px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(99,102,241,0.04);border-bottom:1px solid rgba(99,102,241,0.1);font-size:0.72em;color:#94a3b8';
 
     var sectionIcon = _rmTypeIcons[s.type] || '';
-    var labelSpan = document.createElement('span');
-    labelSpan.style.cssText = 'font-weight:700;color:#a5b4fc;flex-shrink:0';
-    labelSpan.textContent = sectionIcon + ' ' + (s.label || s.name || '');
-    panel.appendChild(labelSpan);
-
-    // Separator
-    var sep = document.createElement('span');
-    sep.style.cssText = 'color:rgba(255,255,255,0.1)';
-    sep.textContent = '│';
-    panel.appendChild(sep);
-
-    // Band note chips
+    var html = '<span style="font-size:0.6em;font-weight:800;letter-spacing:0.08em;color:rgba(99,102,241,0.5);text-transform:uppercase;flex-shrink:0">NOW</span>'
+        + '<span style="font-weight:700;color:#a5b4fc;flex-shrink:0">' + sectionIcon + ' ' + (s.label || s.name || '') + '</span>'
+        + '<span style="color:rgba(255,255,255,0.1)">│</span>';
     fields.forEach(function(f) {
-        var chip = document.createElement('span');
-        chip.style.cssText = 'white-space:nowrap';
-        chip.textContent = f.icon + ' ' + f.label;
-        panel.appendChild(chip);
+        html += '<span style="white-space:nowrap">' + f.icon + ' ' + f.label + '</span>';
     });
+    existing.innerHTML = html;
 
-    // Insert after timeline, before chart
-    var chartEl = document.getElementById('rmChartText');
-    if (chartEl && chartEl.parentElement) chartEl.parentElement.insertBefore(panel, chartEl);
+    // Re-enable scroll sync after DOM settles
+    setTimeout(function() { _rmScrollSyncProgrammatic = false; }, 100);
 }
 
 // Set active section: update state, re-render timeline + panel, scroll chart
@@ -772,10 +769,17 @@ function _rmSetupScrollSync() {
             // Only update the timeline pill — do NOT scroll chart or call _rmSetActiveSection
             _rmRenderTimeline();
             _rmRenderActiveSectionPanel();
+            // Scroll the active pill into view WITHIN the timeline container only
+            // (do not use scrollIntoView — it can scroll the entire page)
             var timeline = document.getElementById('rmSectionTimeline');
             if (timeline) {
                 var pill = timeline.querySelector('[data-sec-idx="' + bestIdx + '"]');
-                if (pill) pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                if (pill) {
+                    var tlRect = timeline.getBoundingClientRect();
+                    var pillRect = pill.getBoundingClientRect();
+                    var offset = pillRect.left - tlRect.left - (tlRect.width / 2) + (pillRect.width / 2);
+                    timeline.scrollLeft += offset;
+                }
             }
         }
     }, { passive: true });
