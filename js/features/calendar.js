@@ -574,10 +574,34 @@ function calBlockDates() {
     area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
+// ── Date validation ──────────────────────────────────────────────────────────
+function _calValidateDate(dateStr, label) {
+    if (!dateStr) return label + ' is required.';
+    var d = new Date(dateStr + 'T12:00:00');
+    if (isNaN(d.getTime())) return label + ' is not a valid date.';
+    var year = d.getFullYear();
+    if (year < 2020 || year > 2099) return label + ' has an unlikely year (' + year + '). Please double-check.';
+    return null; // valid
+}
+
+function _calValidateDateRange(startDate, endDate) {
+    var err = _calValidateDate(startDate, 'Start date');
+    if (err) return err;
+    err = _calValidateDate(endDate, 'End date');
+    if (err) return err;
+    if (endDate < startDate) return 'End date (' + endDate + ') is before start date (' + startDate + ').';
+    // Warn if range is very long (> 60 days)
+    var days = Math.round((new Date(endDate + 'T12:00:00') - new Date(startDate + 'T12:00:00')) / 86400000);
+    if (days > 60) return 'Date range spans ' + days + ' days. Is that intentional?';
+    return null;
+}
+
 async function saveBlockedDates() {
     var startDate = (document.getElementById('blockStart') || {}).value || '';
     var endDate = (document.getElementById('blockEnd') || {}).value || '';
     if (!startDate || !endDate) { alert('Both dates required'); return; }
+    var rangeErr = _calValidateDateRange(startDate, endDate);
+    if (rangeErr) { alert(rangeErr); return; }
     var personEl = document.getElementById('blockPerson');
     var personName = personEl ? personEl.value : '';
     var personKey = personEl ? (personEl.options[personEl.selectedIndex] || {}).dataset.key : null;
@@ -1059,6 +1083,8 @@ async function calSaveEvent(editIdx) {
     else if (repeatVal === 'monthly') ev.repeatRule = { frequency: 'monthly', interval: 1, endsAt: null };
     else ev.repeatRule = null;
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
+    var dateErr = _calValidateDate(ev.date, 'Event date');
+    if (dateErr) { alert(dateErr); return; }
     if (ev.type === 'gig' && !ev.venue) { alert('Gig events require a venue'); return; }
     let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     if (editIdx !== undefined) {
