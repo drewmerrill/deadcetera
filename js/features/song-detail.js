@@ -1137,21 +1137,55 @@ async function _sdPopulateListenLens(title) {
 }
 
 // ── Learn Lens ────────────────────────────────────────────────────────────────
+// Build per-user lesson key (same pattern as rehearsal-mode.js _rmLessonKey)
+function _sdMyLessonKey() {
+    try {
+        var email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
+        if (email) return 'my_lessons_' + email.replace(/[.#$/\[\]]/g, '_');
+    } catch(e) {}
+    return 'my_lessons';
+}
+
 async function _sdPopulateLearnLens(title) {
     var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="learn"]');
     if (!panel) return;
-    var tracks=null, tabs=null, covers=null;
+    var tracks=null, tabs=null, covers=null, myLessons=null;
     try {
         var res=await Promise.all([
             loadBandDataFromDrive(title,'practice_tracks').catch(function(){return null;}),
             loadBandDataFromDrive(title,'personal_tabs').catch(function(){return null;}),
             loadBandDataFromDrive(title,'cover_me').catch(function(){return null;}),
+            loadBandDataFromDrive(title,_sdMyLessonKey()).catch(function(){return null;}),
         ]);
-        tracks=_sdArr(res[0]); tabs=_sdArr(res[1]); covers=_sdArr(res[2]);
+        tracks=_sdArr(res[0]); tabs=_sdArr(res[1]); covers=_sdArr(res[2]); myLessons=_sdArr(res[3]);
     } catch(e){}
     var safeSong = title.replace(/'/g,"\\'");
+
+    // My Lessons card (per-user, from Practice Mode)
+    var lessonsHtml = '';
+    if (myLessons && myLessons.length) {
+        lessonsHtml = '<div class="sd-card"><div class="sd-card-title">🎓 My Lessons</div>'
+            + myLessons.map(function(item, i) {
+                var label = item.title || item.url || 'Lesson';
+                var url = item.url || '';
+                var addedAt = item.addedAt ? new Date(item.addedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
+                    + '<span style="font-size:1.2em">🎓</span>'
+                    + '<div style="flex:1;min-width:0">'
+                    + '<div style="font-size:0.85em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(label) + '</div>'
+                    + (addedAt ? '<div style="font-size:0.72em;color:var(--text-dim)">Added ' + addedAt + '</div>' : '')
+                    + '</div>'
+                    + (url ? '<a href="' + _sdEsc(url) + '" target="_blank" style="color:var(--accent-light);font-size:0.78em;white-space:nowrap;text-decoration:none">Open →</a>' : '')
+                    + '<button onclick="_sdRemoveMyLesson(\'' + safeSong + '\',' + i + ')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:0.72em;padding:2px 4px" title="Remove">✕</button>'
+                    + '</div>';
+            }).join('')
+            + '<div style="font-size:0.65em;color:var(--text-dim);padding:4px 0;font-style:italic">Saved from Practice Mode — only visible to you</div>'
+            + '</div>';
+    }
+
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
+        lessonsHtml+
         '<div class="sd-card"><div class="sd-card-title">🎧 Practice Tracks</div>'+
             _sdLinkList(tracks,'🎧','')+
             ((!tracks||!tracks.length)?_sdEmptyAdd('No practice tracks yet','_sdAddTrackForm',''+safeSong+''):'')+
@@ -1176,6 +1210,21 @@ function _sdEmptyAdd(msg, fn, safeSong) {
         + '<button onclick="' + fn + '(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.75em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;white-space:nowrap">+ Add</button>'
         + '</div>';
 }
+
+// Remove a per-user lesson (bridge to Practice Mode lessons)
+window._sdRemoveMyLesson = async function(songTitle, idx) {
+    try {
+        var key = _sdMyLessonKey();
+        var lessons = _sdArr(await loadBandDataFromDrive(songTitle, key).catch(function(){ return null; }));
+        if (idx >= 0 && idx < lessons.length) {
+            lessons.splice(idx, 1);
+            if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle, key, lessons); }
+            else { await saveBandDataToDrive(songTitle, key, lessons); }
+            if (typeof showToast === 'function') showToast('Lesson removed');
+            _sdPopulateLearnLens(songTitle);
+        }
+    } catch(e) {}
+};
 
 window._sdAddTrackForm = function(songTitle) {
     var el = (_sdContainer||document).querySelector('#sd-learn-track-form');
