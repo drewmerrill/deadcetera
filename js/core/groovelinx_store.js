@@ -3805,6 +3805,7 @@
 
     // Schedule Blocks
     SCHEDULE_BLOCK_STATUSES:   SCHEDULE_BLOCK_STATUSES,
+    _clearScheduleBlocksCache: function() { _scheduleBlocksCache = null; },
     getScheduleBlocks:         getScheduleBlocks,
     getScheduleBlocksAsRanges: getScheduleBlocksAsRanges,
     saveScheduleBlock:         saveScheduleBlock,

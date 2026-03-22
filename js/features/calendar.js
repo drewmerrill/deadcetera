@@ -142,6 +142,8 @@ function renderCalendarPage(el) {
 }
 
 function renderCalendarInner() {
+    // Clear schedule blocks cache so we get fresh data on each render
+    if (typeof GLStore !== 'undefined' && GLStore._clearScheduleBlocksCache) GLStore._clearScheduleBlocksCache();
     // Mobile: pull grid card edge-to-edge to fit 7 columns
     if (window.innerWidth <= 640) {
         var style = document.getElementById('_calGridStyle');
@@ -318,6 +320,8 @@ async function loadCalendarEvents() {
     } else {
         blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     }
+    // Sort blocked dates chronologically
+    blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
     // Update header count
     var bHeader = document.getElementById('calBlockedHeader');
     if (bHeader) bHeader.textContent = '🚫 Conflicts & Blocked Dates' + (blocked.length > 0 ? ' (' + blocked.length + ')' : '');
@@ -886,6 +890,7 @@ async function calAddEvent(date, editIdx, existing) {
             <option value="gig" ${ev.type==='gig'?'selected':''}>&#127908; Gig</option>
             <option value="meeting" ${ev.type==='meeting'?'selected':''}>&#128101; Meeting</option>
             <option value="other" ${ev.type==='other'?'selected':''}>&#128204; Other</option>
+            <option value="_conflict">&#128683; Conflict / Blocked</option>
         </select></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
             <label class="form-label">Venue</label>
@@ -921,6 +926,18 @@ async function calAddEvent(date, editIdx, existing) {
 }
 
 function calTypeChanged(sel) {
+    // If user selects "Conflict / Blocked", switch to the conflict form
+    if (sel.value === '_conflict') {
+        var dateVal = (document.getElementById('calDate') || {}).value || '';
+        calBlockDates();
+        if (dateVal) {
+            setTimeout(function() {
+                var s = document.getElementById('blockStart'); if (s) s.value = dateVal;
+                var e = document.getElementById('blockEnd'); if (e) e.value = dateVal;
+            }, 50);
+        }
+        return;
+    }
     var slRow = document.getElementById('calSetlistRow');
     var vRow  = document.getElementById('calVenueRow');
     var isGig = sel.value === 'gig';
