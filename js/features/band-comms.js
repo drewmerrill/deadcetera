@@ -379,9 +379,20 @@ window._bcPostIdea = async function() {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function _bcGetName() {
+  // 1. Try explicit member selection (Settings → "Who are you?")
   var cu = localStorage.getItem('deadcetera_current_user') || '';
   if (typeof bandMembers !== 'undefined' && bandMembers[cu]) return bandMembers[cu].name;
+  // 2. Try email → member lookup (works if signed in with Google)
+  if (typeof currentUserEmail !== 'undefined' && currentUserEmail && typeof getCurrentMemberKey === 'function') {
+    var key = getCurrentMemberKey();
+    if (key && typeof bandMembers !== 'undefined' && bandMembers[key]) return bandMembers[key].name;
+  }
+  // 3. Try Google display name
   if (typeof currentUserName !== 'undefined' && currentUserName) return currentUserName;
+  // 4. Try email prefix as last resort
+  if (typeof currentUserEmail !== 'undefined' && currentUserEmail && currentUserEmail !== 'unknown') {
+    return currentUserEmail.split('@')[0];
+  }
   return 'Anonymous';
 }
 
