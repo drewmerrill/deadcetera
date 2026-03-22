@@ -137,7 +137,8 @@ function _slRenderCard(sl, isNext) {
         + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center">'
         + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">▶ Open</button>'
         + (sl.locked
-            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓 Unlock</button>'
+            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;cursor:pointer;opacity:0.4" title="Locked — click to unlock and edit">✏️</button>'
+              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓</button>'
             : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>'
               + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#22c55e;cursor:pointer" title="Lock setlist">🔒</button>'
               + '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
@@ -1079,7 +1080,7 @@ async function slToggleLock(idx) {
     data[idx].locked = willLock;
     if (willLock) {
         data[idx].lockedAt = new Date().toISOString();
-        data[idx].lockedBy = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
+        data[idx].lockedBy = (typeof currentUserName !== 'undefined' && currentUserName) ? currentUserName : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
     }
     await saveBandDataToDrive('_band', 'setlists', data);
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
@@ -1172,12 +1173,17 @@ function slMergeSets(setIdx) {
 function _slMemberName(key) {
     if (!key) return 'someone';
     if (typeof bandMembers !== 'undefined') {
-        // Try exact match first
+        // Try exact key match
         if (bandMembers[key] && bandMembers[key].name) return bandMembers[key].name;
-        // Try matching by email prefix
         for (var k in bandMembers) {
-            if (k.split('@')[0] === key || k === key) return bandMembers[k].name || key;
+            var m = bandMembers[k];
+            // Match by: key, email prefix, name (case-insensitive), or partial email
+            if (k === key || k.split('@')[0] === key || (m.name && m.name.toLowerCase() === key.toLowerCase())) return m.name || key;
         }
+    }
+    // Last resort: try currentUserName if the key matches current user's email prefix
+    if (typeof currentUserEmail !== 'undefined' && currentUserEmail && currentUserEmail.split('@')[0] === key) {
+        return (typeof currentUserName !== 'undefined' && currentUserName) ? currentUserName : key;
     }
     return key;
 }
@@ -1215,9 +1221,13 @@ window.slUnlockWithWarning = async function(idx) {
     data[idx].unlockedBy = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
     data[idx].unlockedAt = new Date().toISOString();
     // Keep lockedBy/lockedAt for history
-    await saveBandDataToDrive('_band', 'setlists', data);
+    var saved = false;
+    try { saved = await saveBandDataToDrive('_band', 'setlists', data); } catch(e) { console.log('[Setlist] Unlock save error:', e); }
+    if (saved === false) {
+        showToast('⚠️ Unlock saved locally — will sync when connected');
+    }
 
-    // Save notification for the locker
+    // Save notification for the locker (best-effort, don't block unlock)
     var unlockerName = _slMemberName(typeof currentUserEmail !== 'undefined' ? currentUserEmail.split('@')[0] : '');
     try {
         var notifications = toArray(await loadBandDataFromDrive('_band', 'notifications') || []);
@@ -1229,12 +1239,15 @@ window.slUnlockWithWarning = async function(idx) {
             createdAt: new Date().toISOString(),
             read: false
         });
-        await saveBandDataToDrive('_band', 'notifications', notifications);
+        saveBandDataToDrive('_band', 'notifications', notifications).catch(function(){});
     } catch(e) {}
 
+    // Force clear ALL caches so the list reflects the change
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    window._cachedSetlists = null;
+    window._glCachedSetlists = null;
     showToast('🔓 Setlist unlocked');
-    loadSetlists();
+    await loadSetlists();
 };
 
 window.slInsertSetBreak = slInsertSetBreak;
