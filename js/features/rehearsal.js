@@ -164,58 +164,48 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
 
-        // Render grouped units by block
-        var blockLabels = { warmup: '🔥 Warm-Up', deepWork: '🛠️ Deep Work', flow: '🎸 Flow', close: '🔚 Close' };
-        var blockColors = { warmup: '#f59e0b', deepWork: '#ef4444', flow: '#22c55e', close: '#818cf8' };
-        var currentBlock = null;
+        // Render editable units — each with move/remove controls
         var unitNum = 0;
-        savedUnits.forEach(function(unit) {
-            var bt = unit.block || 'flow';
-            if (bt !== currentBlock) {
-                if (currentBlock) html += '</div>';
-                currentBlock = bt;
-                html += '<div style="margin-bottom:6px"><div style="font-size:0.65em;font-weight:700;color:' + (blockColors[bt] || '#64748b') + ';margin-bottom:2px">' + (blockLabels[bt] || bt) + '</div>';
-            }
+        var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:2px 4px;line-height:1';
+        savedUnits.forEach(function(unit, idx) {
             unitNum++;
+            var unitLabel = '';
+            var isBusiness = unit.type === 'business';
             if (unit.type === 'linked' && unit.songs && unit.songs.length > 1) {
-                var pairLabel = unit.songs.map(function(s) { return s.title; }).join(' → ');
-                var fr = unit.focusReason || 'Transition Focus';
-                var frColor = fr === 'Transition Focus' ? '#a5b4fc' : fr === 'Song Focus' ? '#fca5a5' : '#fbbf24';
-                var frIcon = fr === 'Transition Focus' ? '🔗' : fr === 'Song Focus' ? '🎵' : '🔀';
-                // Per-song mini status
-                var _miniChip = function(st) {
-                    if (st === 'ready') return '<span style="color:#86efac">✓</span>';
-                    if (st === 'polish') return '<span style="color:#fbbf24">~</span>';
-                    return '<span style="color:#fca5a5">✗</span>';
-                };
-                var fromSt = unit.fromStatus || 'polish';
-                var toSt = unit.toStatus || 'polish';
-                // Read live transition confidence from GLStore
-                var _tcBadge = '';
-                if (typeof GLStore !== 'undefined' && GLStore.getTransitionBySongs && unit.songs.length >= 2) {
-                    var _tcRec = GLStore.getTransitionBySongs(unit.songs[0].title, unit.songs[1].title);
-                    _tcBadge = ' ' + _renderTransitionConfBadge(_tcRec.confidence);
-                }
-                html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0;border-left:3px solid #818cf8;padding-left:8px;margin:1px 0">'
-                    + '<span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> '
-                    + _miniChip(fromSt) + ' <strong>' + pairLabel + '</strong> ' + _miniChip(toSt)
-                    + ' <span style="font-size:0.65em;color:' + frColor + ';font-weight:700">' + frIcon + ' ' + fr + '</span>'
-                    + _tcBadge
-                    + (unit.guidance ? '<div style="font-size:0.62em;color:#818cf8;margin-left:22px;margin-top:1px">' + unit.guidance + '</div>' : '')
-                    + '</div>';
+                unitLabel = unit.songs.map(function(s) { return s.title; }).join(' → ');
+            } else if (isBusiness) {
+                unitLabel = '📋 ' + (unit.title || 'Band Business');
             } else {
-                var title = unit.title || (unit.songs && unit.songs[0] ? unit.songs[0].title : '?');
-                html += '<div style="font-size:0.82em;color:var(--text);padding:2px 0"><span style="color:var(--text-dim);min-width:16px;display:inline-block">' + unitNum + '.</span> ' + title + '</div>';
+                unitLabel = unit.title || (unit.songs && unit.songs[0] ? unit.songs[0].title : '?');
             }
+            var blockChip = '';
+            if (unit.block) {
+                var _bc = { warmup:'#f59e0b', deepWork:'#ef4444', flow:'#22c55e', close:'#818cf8' };
+                var _bl = { warmup:'W', deepWork:'D', flow:'F', close:'C' };
+                blockChip = '<span style="font-size:0.55em;padding:1px 4px;border-radius:3px;background:' + (_bc[unit.block] || '#64748b') + '20;color:' + (_bc[unit.block] || '#64748b') + ';font-weight:700;margin-right:4px">' + (_bl[unit.block] || '') + '</span>';
+            }
+            html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em">'
+                + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
+                + blockChip
+                + '<span style="flex:1;color:' + (isBusiness ? '#fbbf24' : 'var(--text)') + ';font-weight:' + (isBusiness ? '600' : '400') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + unitLabel + '</span>'
+                + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
+                + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
+                + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
+                + '</div>';
         });
-        if (currentBlock) html += '</div>';
+
+        // Add buttons
+        html += '<div style="display:flex;gap:6px;margin-top:8px">'
+            + '<button onclick="_rhAddSongToplan()" style="flex:1;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Song</button>'
+            + '<button onclick="_rhAddBusiness()" style="flex:1;padding:6px;border-radius:6px;border:1px dashed rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">+ Band Business</button>'
+            + '</div>';
 
         html += '</div>';
 
         // Actions
         html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
             + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Start Rehearsal</button>'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer">✏️ Edit Plan</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer">🔄 Rebuild</button>'
             + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
             + '</div>';
     } else {
@@ -256,6 +246,113 @@ window._rhClearSavedPlan = function() {
     // Re-render the command flow to reflect cleared state
     var el = document.getElementById('rhMain');
     if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
+};
+
+// ── Inline agenda editing ─────────────────────────────────────────────────────
+
+function _rhGetUnits() {
+    try { return JSON.parse(localStorage.getItem('glPlannerUnits') || '[]'); } catch(e) { return []; }
+}
+
+function _rhSaveUnits(units) {
+    try {
+        localStorage.setItem('glPlannerUnits', JSON.stringify(units));
+        // Rebuild flat queue for Start Rehearsal
+        var flatQueue = [];
+        units.forEach(function(u) {
+            if (u.type === 'linked' && u.songs) {
+                u.songs.forEach(function(s) { flatQueue.push({ title: s.title, band: s.band || '', _blockType: u.block || 'flow' }); });
+            } else if (u.type === 'business') {
+                // Band business items don't go into the song queue
+            } else {
+                flatQueue.push({ title: u.title, band: u.band || '', _blockType: u.block || 'flow' });
+            }
+        });
+        localStorage.setItem('glPlannerQueue', JSON.stringify(flatQueue));
+    } catch(e) {}
+}
+
+function _rhReRender() {
+    var el = document.getElementById('rhMain');
+    if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
+}
+
+window._rhMoveUnit = function(idx, dir) {
+    var units = _rhGetUnits();
+    var newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= units.length) return;
+    var tmp = units[idx];
+    units[idx] = units[newIdx];
+    units[newIdx] = tmp;
+    _rhSaveUnits(units);
+    _rhReRender();
+};
+
+window._rhRemoveUnit = function(idx) {
+    var units = _rhGetUnits();
+    if (!units[idx]) return;
+    units.splice(idx, 1);
+    _rhSaveUnits(units);
+    if (typeof showToast === 'function') showToast('Removed');
+    _rhReRender();
+};
+
+window._rhAddBusiness = function() {
+    var label = prompt('Band Business item:', 'Band Business');
+    if (!label) return;
+    var units = _rhGetUnits();
+    units.push({ type: 'business', title: label, block: 'flow' });
+    _rhSaveUnits(units);
+    _rhReRender();
+};
+
+window._rhAddSongToplan = function() {
+    // Quick song picker — reuse the same pattern as setlist picker but simpler
+    var songList = (typeof allSongs !== 'undefined' ? allSongs : []).filter(function(s) {
+        return typeof isSongActive === 'function' ? isSongActive(s.title) : true;
+    });
+    var existing = document.getElementById('rhSongPickerOverlay');
+    if (existing) existing.remove();
+
+    var ov = document.createElement('div');
+    ov.id = 'rhSongPickerOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+
+    var h = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:14px;max-width:420px;width:100%;max-height:70vh;display:flex;flex-direction:column;color:var(--text,#e2e8f0)">';
+    h += '<div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">';
+    h += '<span style="font-weight:700;font-size:0.92em">Add Song to Rehearsal</span>';
+    h += '<button onclick="document.getElementById(\'rhSongPickerOverlay\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button></div>';
+    h += '<input id="rhPickerSearch" type="text" placeholder="Search..." oninput="_rhFilterPicker(this.value)" style="margin:8px 16px;padding:6px 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:0.85em;box-sizing:border-box">';
+    h += '<div id="rhPickerList" style="overflow-y:auto;flex:1;padding:4px 16px">';
+    songList.forEach(function(s) {
+        var safe = s.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        h += '<div data-title="' + safe.toLowerCase() + '" style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;font-size:0.85em;display:flex;align-items:center;gap:8px" onclick="_rhPickSong(\'' + safe + '\')">';
+        h += '<span style="flex:1">' + s.title + '</span>';
+        h += '<span style="font-size:0.68em;color:var(--text-dim)">' + (s.band || '') + '</span></div>';
+    });
+    h += '</div></div>';
+
+    ov.innerHTML = h;
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    document.getElementById('rhPickerSearch').focus();
+};
+
+window._rhFilterPicker = function(q) {
+    var lower = q.toLowerCase();
+    document.querySelectorAll('#rhPickerList > div').forEach(function(row) {
+        row.style.display = (!q || (row.dataset.title || '').indexOf(lower) !== -1) ? 'flex' : 'none';
+    });
+};
+
+window._rhPickSong = function(title) {
+    document.getElementById('rhSongPickerOverlay').remove();
+    var units = _rhGetUnits();
+    var songObj = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === title; });
+    units.push({ type: 'single', title: title, band: songObj ? (songObj.band || '') : '', block: 'flow' });
+    _rhSaveUnits(units);
+    if (typeof showToast === 'function') showToast(title + ' added');
+    _rhReRender();
 };
 
 // Launch saved rehearsal plan
