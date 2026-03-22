@@ -205,13 +205,24 @@ async function _rhRenderCommandFlow(el) {
 
         // Add Block picker
         html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'
-            + '<div id="rhAddBlockMenu" style="display:none;margin-top:4px;display:none;flex-wrap:wrap;gap:4px">'
+            + '<div id="rhAddBlockMenu" style="display:none;margin-top:4px;flex-direction:column;gap:6px">'
+            + '<div style="display:flex;flex-wrap:wrap;gap:4px">'
             + '<button onclick="_rhAddBlock(\'song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵 Song</button>'
             + '<button onclick="_rhAddBlock(\'multi_song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵🎵 Multi-Song</button>'
             + '<button onclick="_rhAddBlock(\'exercise\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(167,139,250,0.25);background:none;color:#a78bfa;cursor:pointer;font-size:0.68em">🎓 Exercise</button>'
             + '<button onclick="_rhAddBlock(\'note\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(148,163,184,0.2);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em">💬 Note</button>'
             + '<button onclick="_rhAddBlock(\'business\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:none;color:#fbbf24;cursor:pointer;font-size:0.68em">📋 Business</button>'
             + '<button onclick="_rhAddBlock(\'jam\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.25);background:none;color:#22c55e;cursor:pointer;font-size:0.68em">🔥 Jam</button>'
+            + '</div>'
+            + '<div style="border-top:1px solid rgba(255,255,255,0.04);padding-top:4px"><div style="font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px">Quick Templates</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:3px">'
+            + '<button onclick="_rhInsertTemplate(\'jam\',\'Open with jam\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.62em">🔥 Open with jam</button>'
+            + '<button onclick="_rhInsertTemplate(\'exercise\',\'Cold starts — all songs\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.04);color:#c4b5fd;cursor:pointer;font-size:0.62em">🎓 Cold starts</button>'
+            + '<button onclick="_rhInsertTemplate(\'exercise\',\'Endings — all songs\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.04);color:#c4b5fd;cursor:pointer;font-size:0.62em">🎓 Endings</button>'
+            + '<button onclick="_rhInsertTemplate(\'exercise\',\'Quick run-through — full set\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.04);color:#c4b5fd;cursor:pointer;font-size:0.62em">🎓 Run-through</button>'
+            + '<button onclick="_rhInsertTemplate(\'business\',\'Band business\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-size:0.62em">📋 Band business</button>'
+            + '<button onclick="_rhInsertTemplate(\'note\',\'Set break — 15 min\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(148,163,184,0.15);background:rgba(148,163,184,0.03);color:#94a3b8;cursor:pointer;font-size:0.62em">💬 Set break</button>'
+            + '</div></div>'
             + '</div></div>';
 
         html += '</div>';
@@ -330,6 +341,17 @@ window._rhRemoveUnit = function(idx) {
 
 window._rhAddBusiness = function() {
     _rhAddBlock('business');
+};
+
+// Quick template insert — one click, no prompt
+window._rhInsertTemplate = function(type, title) {
+    var menu = document.getElementById('rhAddBlockMenu');
+    if (menu) menu.style.display = 'none';
+    var units = _rhGetUnits();
+    units.push({ type: type, title: title, block: 'flow' });
+    _rhSaveUnits(units);
+    if (typeof showToast === 'function') showToast(title + ' added');
+    _rhReRender();
 };
 
 window._rhShowAddBlock = function() {
