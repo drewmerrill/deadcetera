@@ -128,30 +128,45 @@ window.glSpotlight = (function() {
                 + '<button class="gl-spot-btn ' + (isLast ? 'gl-spot-btn-done' : 'gl-spot-btn-next') + '" onclick="glSpotlight.next()">' + (isLast ? 'Got it!' : 'Next →') + '</button>'
                 + '</div>';
 
-            // Render offscreen to measure actual height
+            // Render offscreen to measure actual dimensions
             _box.style.top = '-9999px';
-            _box.style.left = '-9999px';
+            _box.style.left = '12px';
+            _box.style.maxWidth = Math.min(300, window.innerWidth - 24) + 'px';
             _overlay.appendChild(_box);
-            var boxH = _box.offsetHeight || 140;
-            var gap = 16;
+            var boxH = _box.offsetHeight;
+            var boxW = _box.offsetWidth;
+            var gap = 14;
+            var margin = 12; // minimum distance from viewport edge
+            var vh = window.innerHeight;
+            var vw = window.innerWidth;
 
-            // Position: prefer ABOVE target so highlighted content stays visible
-            // Fall back to below if not enough room above
-            var posHint = step.position || 'auto';
-            var boxTop, boxLeft;
-            boxLeft = Math.max(12, Math.min(rect.left, window.innerWidth - 320));
+            // Target edges (with padding)
+            var tTop = rect.top - pad;
+            var tBot = rect.bottom + pad;
+            var tLeft = rect.left;
 
-            if (posHint === 'above' || (posHint === 'auto' && rect.top > boxH + gap + 20)) {
-                // Above target
-                boxTop = rect.top - pad - boxH - gap;
-                if (boxTop < 12) boxTop = 12;
+            // Calculate available space above and below the target
+            var spaceAbove = tTop - margin;
+            var spaceBelow = vh - tBot - margin;
+
+            // Pick placement: whichever side has room, prefer above
+            var boxTop;
+            if (spaceAbove >= boxH + gap) {
+                // Fits above — anchor bottom of box to top of target
+                boxTop = tTop - gap - boxH;
+            } else if (spaceBelow >= boxH + gap) {
+                // Fits below — anchor top of box to bottom of target
+                boxTop = tBot + gap;
+            } else if (spaceAbove >= spaceBelow) {
+                // Neither fits perfectly — use above, clamp to viewport
+                boxTop = Math.max(margin, tTop - gap - boxH);
             } else {
-                // Below target
-                boxTop = rect.bottom + pad + gap;
-                if (boxTop + boxH > window.innerHeight - 12) {
-                    boxTop = Math.max(12, rect.top - pad - boxH - gap);
-                }
+                // Use below, clamp to viewport
+                boxTop = Math.min(vh - boxH - margin, tBot + gap);
             }
+
+            // Horizontal: center on target, clamp to viewport
+            var boxLeft = Math.max(margin, Math.min(tLeft, vw - boxW - margin));
 
             _box.style.top = boxTop + 'px';
             _box.style.left = boxLeft + 'px';
