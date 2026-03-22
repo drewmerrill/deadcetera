@@ -104,6 +104,13 @@
         _ensureRail();
         if (_rail) _rail.style.display = (payload.mode === 'performance') ? 'none' : '';
       });
+      GLStore.subscribe('productModeChanged', function () {
+        _ensureRail();
+        _renderNav();
+        _applyCollapsedState();
+        var current = GLStore.getActivePage();
+        if (current) updateActive(current);
+      });
       // Set initial active from current page
       var current = GLStore.getActivePage();
       if (current) updateActive(current);
@@ -151,10 +158,33 @@
     }
     if (!_rail) return;
 
+    var currentMode = (typeof GLStore !== 'undefined' && GLStore.getProductMode)
+      ? GLStore.getProductMode() : 'sharpen';
+    var modePages = (typeof GLStore !== 'undefined' && GLStore.getModePages)
+      ? GLStore.getModePages(currentMode) : null;
+
     var html = '<button class="gl-rail-toggle" title="Collapse navigation">'
       + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">'
       + '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
       + '</svg></button>';
+
+    // ── Mode Switcher ──────────────────────────────────────────────────────
+    var modes = [
+      { key: 'sharpen', icon: '\uD83D\uDD25', label: 'Sharpen' },
+      { key: 'lockin',  icon: '\uD83C\uDFAF', label: 'Lock In' },
+      { key: 'play',    icon: '\uD83C\uDFA4', label: 'Play' }
+    ];
+    html += '<div class="gl-mode-bar">';
+    for (var m = 0; m < modes.length; m++) {
+      var md = modes[m];
+      var active = (md.key === currentMode) ? ' gl-mode-btn--active' : '';
+      html += '<button class="gl-mode-btn' + active + '" data-mode="' + md.key + '"'
+        + ' onclick="GLStore.setProductMode(\'' + md.key + '\')" title="' + md.label + ' mode">'
+        + '<span class="gl-mode-icon">' + md.icon + '</span>'
+        + '<span class="gl-mode-label">' + md.label + '</span>'
+        + '</button>';
+    }
+    html += '</div>';
 
     // Home — top-level, above all sections
     html += '<button class="gl-rail-item gl-rail-item--home" data-page="' + NAV_TOP.page + '"'
@@ -162,21 +192,31 @@
       + '<span class="gl-rail-icon">' + NAV_TOP.icon + '</span>'
       + '<span class="gl-rail-label">' + NAV_TOP.label + '</span></button>';
 
-    // Intent-based sections
+    // Intent-based sections — filtered by current mode
     for (var s = 0; s < NAV_SECTIONS.length; s++) {
       var section = NAV_SECTIONS[s];
-      html += '<div class="gl-rail-section">';
-      html += '<div class="gl-rail-section-title">' + section.title + '</div>';
+      // Filter items to only those visible in current mode
+      var visibleItems = [];
       for (var i = 0; i < section.items.length; i++) {
         var item = section.items[i];
-        var tooltip = item.tip || item.label;
-        html += '<button class="gl-rail-item" data-page="' + item.page + '"'
-          + ' onclick="showPage(\'' + item.page + '\')"'
+        if (!modePages || modePages.indexOf(item.page) !== -1) {
+          visibleItems.push(item);
+        }
+      }
+      if (visibleItems.length === 0) continue; // skip empty sections
+
+      html += '<div class="gl-rail-section">';
+      html += '<div class="gl-rail-section-title">' + section.title + '</div>';
+      for (var vi = 0; vi < visibleItems.length; vi++) {
+        var vitem = visibleItems[vi];
+        var tooltip = vitem.tip || vitem.label;
+        html += '<button class="gl-rail-item" data-page="' + vitem.page + '"'
+          + ' onclick="showPage(\'' + vitem.page + '\')"'
           + ' title="' + tooltip + '">'
-          + '<span class="gl-rail-icon" style="position:relative">' + item.icon
-          + (item.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#fbbf24;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
+          + '<span class="gl-rail-icon" style="position:relative">' + vitem.icon
+          + (vitem.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#fbbf24;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
           + '</span>'
-          + '<span class="gl-rail-label">' + item.label + '</span>'
+          + '<span class="gl-rail-label">' + vitem.label + '</span>'
           + '</button>';
       }
       html += '</div>';

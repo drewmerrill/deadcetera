@@ -1060,3 +1060,65 @@ input[type="time"].app-input {
 ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
 html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
 body{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
+
+/* ============================================================================
+   PRODUCT MODE — Sharpen / Lock In / Play
+   Hides hamburger menu items that don't belong in the current mode.
+   Left rail filtering is handled in JS (gl-left-rail.js _renderNav).
+   ============================================================================ */
+
+/* Sharpen: show practice, songs, tools; hide setlist editing, rehearsal, gigs */
+body[data-gl-mode="sharpen"] .menu-item[data-page="setlists"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="rehearsal"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="ideas"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="gigs"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="calendar"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="venues"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="stageplot"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="social"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="finances"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="equipment"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="contacts"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="bestshot"],
+body[data-gl-mode="sharpen"] .menu-item[data-page="notifications"] { display:none; }
+
+/* Lock In: show rehearsal, songs, band tools; hide solo practice, gig logistics */
+body[data-gl-mode="lockin"] .menu-item[data-page="practice"],
+body[data-gl-mode="lockin"] .menu-item[data-page="gigs"],
+body[data-gl-mode="lockin"] .menu-item[data-page="venues"],
+body[data-gl-mode="lockin"] .menu-item[data-page="stageplot"],
+body[data-gl-mode="lockin"] .menu-item[data-page="playlists"],
+body[data-gl-mode="lockin"] .menu-item[data-page="tuner"],
+body[data-gl-mode="lockin"] .menu-item[data-page="metronome"],
+body[data-gl-mode="lockin"] .menu-item[data-page="pocketmeter"],
+body[data-gl-mode="lockin"] .menu-item[data-page="social"],
+body[data-gl-mode="lockin"] .menu-item[data-page="finances"],
+body[data-gl-mode="lockin"] .menu-item[data-page="equipment"],
+body[data-gl-mode="lockin"] .menu-item[data-page="contacts"],
+body[data-gl-mode="lockin"] .menu-item[data-page="bestshot"],
+body[data-gl-mode="lockin"] .menu-item[data-page="notifications"] { display:none; }
+
+/* Play: show gigs, setlists, venues; hide everything else */
+body[data-gl-mode="play"] .menu-item[data-page="songs"],
+body[data-gl-mode="play"] .menu-item[data-page="practice"],
+body[data-gl-mode="play"] .menu-item[data-page="rehearsal"],
+body[data-gl-mode="play"] .menu-item[data-page="ideas"],
+body[data-gl-mode="play"] .menu-item[data-page="playlists"],
+body[data-gl-mode="play"] .menu-item[data-page="tuner"],
+body[data-gl-mode="play"] .menu-item[data-page="metronome"],
+body[data-gl-mode="play"] .menu-item[data-page="pocketmeter"],
+body[data-gl-mode="play"] .menu-item[data-page="social"],
+body[data-gl-mode="play"] .menu-item[data-page="finances"],
+body[data-gl-mode="play"] .menu-item[data-page="equipment"],
+body[data-gl-mode="play"] .menu-item[data-page="contacts"],
+body[data-gl-mode="play"] .menu-item[data-page="bestshot"],
+body[data-gl-mode="play"] .menu-item[data-page="notifications"] { display:none; }
+
+/* Mobile mode switcher — highlight active button */
+.gl-mobile-mode-btn[data-mode] { transition: all 0.15s; }
+body[data-gl-mode="sharpen"] .gl-mobile-mode-btn[data-mode="sharpen"],
+body[data-gl-mode="lockin"] .gl-mobile-mode-btn[data-mode="lockin"],
+body[data-gl-mode="play"] .gl-mobile-mode-btn[data-mode="play"] {
+  background: var(--accent-glow, rgba(102,126,234,0.15)) !important;
+  color: var(--accent-light, #818cf8) !important;
+}

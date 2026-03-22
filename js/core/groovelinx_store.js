@@ -52,6 +52,10 @@
     // UI state
     songDetailLens:    'band', // 'band'|'listen'|'learn'|'sing'|'inspire'
 
+    // ── Product Mode (Sharpen / Lock In / Play) ──
+    // Controls what the app shows. Persisted in localStorage.
+    productMode: localStorage.getItem('gl_product_mode') || 'sharpen',
+
     // ── Shell state (Milestone 4) ──────────────────────────────────────────
     // activePage mirrors the currentPage global. showPage() writes both.
     // selectedSongId is activeSongId above (already exists).
@@ -5058,6 +5062,53 @@
     };
   }
 
-  console.log('✅ GLStore loaded');
+  // ── Product Mode ──────────────────────────────────────────────────────────
+  // 'sharpen' = solo practice focus
+  // 'lockin'  = band rehearsal focus
+  // 'play'    = gig / performance focus
+
+  var VALID_MODES = ['sharpen', 'lockin', 'play'];
+
+  // Pages visible per mode (pages NOT in the list are hidden from nav)
+  var MODE_PAGES = {
+    sharpen: ['home', 'songs', 'practice', 'playlists', 'pocketmeter', 'tuner', 'metronome', 'admin', 'help'],
+    lockin:  ['home', 'songs', 'rehearsal', 'setlists', 'ideas', 'calendar', 'admin', 'help'],
+    play:    ['home', 'setlists', 'gigs', 'calendar', 'venues', 'stageplot', 'admin', 'help']
+  };
+
+  function setProductMode(mode) {
+    if (VALID_MODES.indexOf(mode) === -1) return;
+    _state.productMode = mode;
+    localStorage.setItem('gl_product_mode', mode);
+    emit('productModeChanged', { mode: mode });
+    // Apply body class for CSS filtering
+    document.body.setAttribute('data-gl-mode', mode);
+  }
+
+  function getProductMode() {
+    return _state.productMode;
+  }
+
+  function getModePages(mode) {
+    return MODE_PAGES[mode || _state.productMode] || MODE_PAGES.sharpen;
+  }
+
+  function isPageVisibleInMode(page, mode) {
+    var pages = getModePages(mode);
+    return pages.indexOf(page) !== -1;
+  }
+
+  // Apply initial body attribute on load
+  document.body.setAttribute('data-gl-mode', _state.productMode);
+
+  // Expose on GLStore
+  window.GLStore.setProductMode = setProductMode;
+  window.GLStore.getProductMode = getProductMode;
+  window.GLStore.getModePages   = getModePages;
+  window.GLStore.isPageVisibleInMode = isPageVisibleInMode;
+  window.GLStore.PRODUCT_MODES  = VALID_MODES;
+  window.GLStore.MODE_PAGES     = MODE_PAGES;
+
+  console.log('✅ GLStore loaded (mode: ' + _state.productMode + ')');
 
 })();

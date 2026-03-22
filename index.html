@@ -88,6 +88,12 @@
     <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
     <nav class="slide-menu" id="slideMenu">
         <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
+        <!-- Mode Switcher (mobile) -->
+        <div id="glMobileModeSwitcher" style="display:flex;gap:4px;padding:8px 12px 4px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08));margin-bottom:4px">
+            <button class="gl-mobile-mode-btn" data-mode="sharpen" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('sharpen')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🔥 Sharpen</button>
+            <button class="gl-mobile-mode-btn" data-mode="lockin" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('lockin')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🎯 Lock In</button>
+            <button class="gl-mobile-mode-btn" data-mode="play" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('play')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🎤 Play</button>
+        </div>
         <div class="menu-section">
             <div class="menu-section-title">Music</div>
             <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
