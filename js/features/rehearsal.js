@@ -159,46 +159,60 @@ async function _rhRenderCommandFlow(el) {
 
         html += '<div style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-            + '<span style="font-size:0.78em;font-weight:800;color:#86efac">✅ Next Rehearsal Plan</span>'
+            + '<span style="font-size:0.78em;font-weight:800;color:#86efac">✅ Next Rehearsal Plan</span><span style="font-size:0.58em;color:var(--text-dim);margin-left:6px">Suggested Draft — Edit Freely</span>'
             + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
             + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
 
-        // Render editable units — each with move/remove controls
+        // Block type config
+        var _btConfig = {
+            single:   { icon:'🎵', label:'Song',     color:'var(--text)',  bg:'' },
+            linked:   { icon:'🔗', label:'Linked',   color:'#818cf8',     bg:'' },
+            song:     { icon:'🎵', label:'Song',     color:'var(--text)',  bg:'' },
+            multi_song:{icon:'🎵', label:'Songs',    color:'var(--text)',  bg:'' },
+            exercise: { icon:'🎓', label:'Exercise', color:'#a78bfa',     bg:'rgba(167,139,250,0.06)' },
+            note:     { icon:'💬', label:'Note',     color:'#94a3b8',     bg:'rgba(148,163,184,0.04)' },
+            business: { icon:'📋', label:'Business', color:'#fbbf24',     bg:'rgba(245,158,11,0.05)' },
+            jam:      { icon:'🔥', label:'Jam',      color:'#22c55e',     bg:'rgba(34,197,94,0.05)' }
+        };
+
+        // Render editable units with block type awareness
         var unitNum = 0;
         var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:2px 4px;line-height:1';
         savedUnits.forEach(function(unit, idx) {
             unitNum++;
+            var bt = unit.type || 'single';
+            var cfg = _btConfig[bt] || _btConfig.single;
             var unitLabel = '';
-            var isBusiness = unit.type === 'business';
-            if (unit.type === 'linked' && unit.songs && unit.songs.length > 1) {
+            if (bt === 'linked' && unit.songs && unit.songs.length > 1) {
                 unitLabel = unit.songs.map(function(s) { return s.title; }).join(' → ');
-            } else if (isBusiness) {
-                unitLabel = '📋 ' + (unit.title || 'Band Business');
             } else {
                 unitLabel = unit.title || (unit.songs && unit.songs[0] ? unit.songs[0].title : '?');
             }
-            var blockChip = '';
-            if (unit.block) {
-                var _bc = { warmup:'#f59e0b', deepWork:'#ef4444', flow:'#22c55e', close:'#818cf8' };
-                var _bl = { warmup:'W', deepWork:'D', flow:'F', close:'C' };
-                blockChip = '<span style="font-size:0.55em;padding:1px 4px;border-radius:3px;background:' + (_bc[unit.block] || '#64748b') + '20;color:' + (_bc[unit.block] || '#64748b') + ';font-weight:700;margin-right:4px">' + (_bl[unit.block] || '') + '</span>';
-            }
-            html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em">'
+            var typeChip = '<span style="font-size:0.6em;margin-right:3px" title="' + cfg.label + '">' + cfg.icon + '</span>';
+            var rowBg = cfg.bg ? 'background:' + cfg.bg + ';' : '';
+            var isPlayable = bt === 'single' || bt === 'song' || bt === 'multi_song' || bt === 'linked';
+
+            html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
-                + blockChip
-                + '<span style="flex:1;color:' + (isBusiness ? '#fbbf24' : 'var(--text)') + ';font-weight:' + (isBusiness ? '600' : '400') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + unitLabel + '</span>'
+                + typeChip
+                + '<span style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic' : '') + '">' + unitLabel + '</span>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                 + '</div>';
         });
 
-        // Add buttons
-        html += '<div style="display:flex;gap:6px;margin-top:8px">'
-            + '<button onclick="_rhAddSongToplan()" style="flex:1;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Song</button>'
-            + '<button onclick="_rhAddBusiness()" style="flex:1;padding:6px;border-radius:6px;border:1px dashed rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">+ Band Business</button>'
-            + '</div>';
+        // Add Block picker
+        html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'
+            + '<div id="rhAddBlockMenu" style="display:none;margin-top:4px;display:none;flex-wrap:wrap;gap:4px">'
+            + '<button onclick="_rhAddBlock(\'song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵 Song</button>'
+            + '<button onclick="_rhAddBlock(\'multi_song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵🎵 Multi-Song</button>'
+            + '<button onclick="_rhAddBlock(\'exercise\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(167,139,250,0.25);background:none;color:#a78bfa;cursor:pointer;font-size:0.68em">🎓 Exercise</button>'
+            + '<button onclick="_rhAddBlock(\'note\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(148,163,184,0.2);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em">💬 Note</button>'
+            + '<button onclick="_rhAddBlock(\'business\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:none;color:#fbbf24;cursor:pointer;font-size:0.68em">📋 Business</button>'
+            + '<button onclick="_rhAddBlock(\'jam\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.25);background:none;color:#22c55e;cursor:pointer;font-size:0.68em">🔥 Jam</button>'
+            + '</div></div>';
 
         html += '</div>';
 
@@ -277,11 +291,11 @@ function _rhSaveUnits(units) {
         // Rebuild flat queue for Start Rehearsal
         var flatQueue = [];
         units.forEach(function(u) {
+            // Only playable types go into the song queue
+            var _playable = { single:1, song:1, multi_song:1, linked:1 };
             if (u.type === 'linked' && u.songs) {
                 u.songs.forEach(function(s) { flatQueue.push({ title: s.title, band: s.band || '', _blockType: u.block || 'flow' }); });
-            } else if (u.type === 'business') {
-                // Band business items don't go into the song queue
-            } else {
+            } else if (_playable[u.type || 'single']) {
                 flatQueue.push({ title: u.title, band: u.band || '', _blockType: u.block || 'flow' });
             }
         });
@@ -315,10 +329,37 @@ window._rhRemoveUnit = function(idx) {
 };
 
 window._rhAddBusiness = function() {
-    var label = prompt('Band Business item:', 'Band Business');
+    _rhAddBlock('business');
+};
+
+window._rhShowAddBlock = function() {
+    var menu = document.getElementById('rhAddBlockMenu');
+    if (menu) menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+};
+
+window._rhAddBlock = function(blockType) {
+    var menu = document.getElementById('rhAddBlockMenu');
+    if (menu) menu.style.display = 'none';
+
+    if (blockType === 'song') {
+        _rhAddSongToplan();
+        return;
+    }
+    if (blockType === 'multi_song') {
+        var titles = prompt('Enter song titles (comma-separated):', '');
+        if (!titles) return;
+        var units = _rhGetUnits();
+        units.push({ type: 'multi_song', title: titles.trim(), block: 'flow' });
+        _rhSaveUnits(units);
+        _rhReRender();
+        return;
+    }
+
+    var labels = { exercise:'Exercise', note:'Note', business:'Band Business', jam:'Jam / Break' };
+    var label = prompt((labels[blockType] || 'Block') + ':', labels[blockType] || '');
     if (!label) return;
     var units = _rhGetUnits();
-    units.push({ type: 'business', title: label, block: 'flow' });
+    units.push({ type: blockType, title: label, block: 'flow' });
     _rhSaveUnits(units);
     _rhReRender();
 };
