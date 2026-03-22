@@ -603,8 +603,6 @@ async function editSetlist(idx) {
         + '<div id="slReadinessMeter" style="margin-bottom:6px"></div>'
         // Persistent sticky save bar (desktop: top sticky, mobile: bottom fixed)
         + '<div id="slStickyActions" style="position:sticky;top:0;z-index:10;background:#1e293b;padding:6px 0;margin:0 -14px;padding-left:14px;padding-right:14px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
-        + '<button class="btn btn-ghost btn-sm" onclick="slAddSet()" style="font-size:0.75em">+ Set</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="slAddSet(\'encore\')" style="font-size:0.75em">+ Encore</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">📤</button>'
         + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700;margin-left:auto">● Unsaved</span>'
         + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">💾 Save</button>'
@@ -1135,7 +1133,12 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
 
     // Name the first half if it was "All Songs"
     var firstName = set.name;
-    if (set.name === 'All Songs') firstName = 'Set 1';
+    if (set.name === 'All Songs') {
+        // If the new section is a non-set type (Soundcheck/Encore/custom),
+        // keep "All Songs" → will be renamed by the user or on next split.
+        // Only auto-rename to "Set 1" if the new section is also a numbered set.
+        if (secondName.match(/^Set \d+$/)) firstName = 'Set 1';
+    }
 
     set.name = firstName;
     set.songs = firstHalf;
