@@ -230,17 +230,19 @@ async function _sdPopulateBandLens(title) {
 
     // ── PLAY MODE: stage-ready with set navigation ──
     if (mode === 'play') {
-        // Build prev/next navigation from cached setlist
         var _playNav = _sdBuildPlayNav(title);
+        var _playCue = _sdBuildPlayCue(title, avgReadiness, _siIntel);
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
             // Now Playing indicator + set navigation
-            '<div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 12px">'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px">'+
             (_playNav.prev ? '<button class="sd-pm-btn" style="font-size:0.78em;padding:5px 12px" onclick="renderSongDetail(\''+_sdEsc(_playNav.prev).replace(/'/g,"\\'")+'\')">← '+_sdEsc(_playNav.prev)+'</button>' : '<div></div>')+
             '<div style="text-align:center;font-size:0.72em;color:var(--text-dim);font-weight:700;letter-spacing:0.05em">NOW PLAYING</div>'+
             (_playNav.next ? '<button class="sd-pm-btn" style="font-size:0.78em;padding:5px 12px" onclick="renderSongDetail(\''+_sdEsc(_playNav.next).replace(/'/g,"\\'")+'\')">'+_sdEsc(_playNav.next)+' →</button>' : '<div></div>')+
             '</div>'+
-            // Clean chart — full width, large text, premium feel
+            // Performance confidence cue — one line, subtle
+            (_playCue ? '<div style="text-align:center;font-size:0.75em;padding:0 0 14px;color:'+_playCue.color+'">'+_playCue.text+'</div>' : '') +
+            // Clean chart
             (chartText
                 ? '<div class="sd-card" style="padding:24px;border-color:rgba(99,102,241,0.12)"><pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.8;color:#e2e8f0;margin:0;letter-spacing:0.02em">' + _sdEsc(chartText) + '</pre></div>'
                 : '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">📖</div><div style="font-size:0.95em;margin-bottom:12px">No chart yet</div><button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'
@@ -261,32 +263,33 @@ async function _sdPopulateBandLens(title) {
             '<div class="sd-panel-inner">'+
             // Practice workflow — 3-step guided flow
             '<div class="sd-card" style="border-color:rgba(99,102,241,0.15)">'+
-            '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Practice This Song</div>'+
-            '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px;font-style:italic">Focus on what will make you better today</div>'+
+            '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Your Practice Session</div>'+
+            '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px;font-style:italic">Three steps. That\'s all it takes to get better.</div>'+
             '<div style="display:flex;flex-direction:column;gap:10px">'+
             // Step 1: Listen
             '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
             '<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:#818cf8;flex-shrink:0">1</div>'+
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Listen</div><div style="font-size:0.75em;color:var(--text-dim)">Hear the reference version</div></div>'+
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Listen First</div><div style="font-size:0.75em;color:var(--text-dim)">Get the feel in your head before your hands</div></div>'+
             '<span style="color:var(--text-dim);font-size:0.85em">▶</span>'+
             '</div>'+
             // Step 2: Play
             '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:10px;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
             '<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:#a5b4fc;flex-shrink:0">2</div>'+
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Play Along</div><div style="font-size:0.75em;color:var(--text-dim)">Open chart and practice</div></div>'+
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Play Through</div><div style="font-size:0.75em;color:var(--text-dim)">Chart up, instrument in hand. Don\'t stop.</div></div>'+
             '<span style="color:var(--accent-light);font-size:0.85em">→</span>'+
             '</div>'+
             // Step 3: Rate
             '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="var el=document.querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">'+
             '<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:var(--text-muted);flex-shrink:0">3</div>'+
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Rate Yourself</div><div style="font-size:0.75em;color:var(--text-dim)">Track your progress</div></div>'+
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Rate Yourself</div><div style="font-size:0.75em;color:var(--text-dim)">Honest check-in — where are you right now?</div></div>'+
             '<span style="color:var(--text-dim);font-size:0.85em">↓</span>'+
             '</div>'+
             '</div></div>'+
-            // Readiness
+            // Readiness + trend
             '<div class="sd-card" id="sd-readiness-card">'+
             '<div class="sd-card-title">📊 Your Readiness</div>'+
             _sdRenderReadinessBlock(title,safeSong)+
+            _sdBuildReadinessTrend(title)+
             '</div>'+
             // Song Info
             '<div class="sd-card" style="padding:10px 14px">'+
@@ -315,7 +318,7 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-panel-inner">'+
         // ── TOP 3 FOCUS — the single most important card ──
         '<div class="sd-card" style="border-color:rgba(245,158,11,0.2);background:linear-gradient(135deg,rgba(245,158,11,0.04),rgba(239,68,68,0.03))">'+
-        '<div class="sd-card-title" style="color:#fbbf24">\uD83C\uDFAF Focus for Rehearsal</div>'+
+        '<div class="sd-card-title" style="color:#fbbf24">\uD83C\uDFAF What the Band Needs</div>'+
         (_focusItems.length ? _focusItems.map(function(f) {
             return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'+
                 '<span style="font-size:1em;flex-shrink:0;margin-top:1px">'+f.icon+'</span>'+
@@ -377,29 +380,52 @@ async function _sdPopulateBandLens(title) {
 // ── Focus Items Builder (Lock In) ────────────────────────────────────────────
 function _sdBuildFocusItems(title, avgReadiness, gaps, intel, lowestMembers, status) {
     var items = [];
-    // 1. Low readiness
+    // 1. Low readiness — explains gig impact
     if (avgReadiness > 0 && avgReadiness < 3) {
-        items.push({ icon: '⚠️', title: 'Low band readiness (' + avgReadiness.toFixed(1) + '/5)', detail: 'This song needs more practice before it\'s gig-ready.' });
+        items.push({ icon: '⚠️',
+            title: 'Band\'s at ' + avgReadiness.toFixed(1) + ' — not ready for the stage',
+            detail: avgReadiness < 2
+                ? 'This could fall apart live. Run it at least twice in rehearsal.'
+                : 'Getting there, but the rough spots will show under pressure.' });
     }
-    // 2. Member gap
+    // 2. Member gap — names the person and why it matters
     if (lowestMembers && lowestMembers.length > 0 && intel && intel.min > 0 && intel.min < 3) {
-        var memberNames = lowestMembers.map(function(k) { return (typeof bandMembers !== 'undefined' && bandMembers[k]) ? bandMembers[k].name : k; });
-        items.push({ icon: '👤', title: memberNames.join(', ') + ' at ' + intel.min + '/5', detail: 'Weakest link — focus rehearsal time here.' });
+        var names = lowestMembers.map(function(k) { return (typeof bandMembers !== 'undefined' && bandMembers[k]) ? bandMembers[k].name : k; });
+        var verb = intel.min <= 1 ? 'hasn\'t learned this yet' : 'is still shaky';
+        items.push({ icon: '👤',
+            title: names[0] + ' ' + verb + ' (' + intel.min + '/5)',
+            detail: names.length > 1
+                ? names.slice(1).join(', ') + ' too. The chain is only as strong as the weakest link.'
+                : 'If they\'re lost, everyone feels it. Give them space to catch up.' });
     }
-    // 3. High-severity gaps
+    // 3. High-severity gaps — actionable
     if (gaps && gaps.length > 0) {
         var highGaps = gaps.filter(function(g) { return g.severity === 'high'; });
         if (highGaps.length > 0) {
-            items.push({ icon: '🔧', title: highGaps[0].detail || 'Gap detected', detail: highGaps.length > 1 ? '+' + (highGaps.length - 1) + ' more issues' : 'Address this before next gig.' });
+            items.push({ icon: '🔧',
+                title: highGaps[0].detail || 'Something needs attention',
+                detail: highGaps.length > 1
+                    ? (highGaps.length - 1) + ' more thing' + (highGaps.length > 2 ? 's' : '') + ' to sort out before this is tight.'
+                    : 'Fix this and the song levels up.' });
         }
     }
-    // 4. No readiness data at all
+    // 4. No readiness data — encouraging, not scolding
     if (!avgReadiness || avgReadiness === 0) {
-        items.push({ icon: '📊', title: 'No readiness scores yet', detail: 'Have each band member rate this song.' });
+        items.push({ icon: '📊',
+            title: 'Nobody\'s rated this one yet',
+            detail: 'Be the first — it takes 5 seconds and helps the whole band see where you stand.' });
     }
-    // 5. Status is prospect (not committed)
+    // 5. Prospect — action-oriented
     if (status === 'prospect' || status === '') {
-        items.push({ icon: '🗳', title: 'Song not committed', detail: 'Vote on whether to add this to the rotation.' });
+        items.push({ icon: '🗳',
+            title: 'Still a prospect — should you learn it?',
+            detail: 'The band hasn\'t committed to this song yet. Cast your vote.' });
+    }
+    // 6. Strong song — positive reinforcement
+    if (avgReadiness >= 4 && items.length === 0) {
+        items.push({ icon: '🔥',
+            title: 'This one\'s locked in — ' + avgReadiness.toFixed(1) + '/5',
+            detail: 'The band feels good about this. Keep it sharp and it\'ll be a highlight.' });
     }
     return items.slice(0, 3);
 }
@@ -424,6 +450,38 @@ function _sdBuildPlayNav(title) {
         prev: idx > 0 ? allTitles[idx - 1] : null,
         next: idx < allTitles.length - 1 ? allTitles[idx + 1] : null
     };
+}
+
+// ── Play Mode: performance confidence cue ────────────────────────────────────
+function _sdBuildPlayCue(title, avgReadiness, intel) {
+    if (!avgReadiness && !intel) return null;
+    var avg = avgReadiness || 0;
+    // Positive reinforcement first
+    if (avg >= 4.5) return { text: '\uD83D\uDD25 You own this one. Let it rip.', color: '#22c55e' };
+    if (avg >= 4)   return { text: '\u2705 Solid. Trust the work you\'ve put in.', color: '#86efac' };
+    if (avg >= 3)   return { text: '\uD83D\uDCAA Getting there. Stay focused on the changes.', color: '#fbbf24' };
+    // Gentle awareness, not anxiety
+    if (avg >= 2)   return { text: '\uD83C\uDFAF Watch the tricky parts. You know where they are.', color: '#f59e0b' };
+    if (avg > 0)    return { text: '\uD83D\uDCA1 Lean on the chart. The band\'s got your back.', color: '#94a3b8' };
+    return null; // No data = no cue (don't stress)
+}
+
+// ── Sharpen: readiness trend after save ──────────────────────────────────────
+function _sdBuildReadinessTrend(title) {
+    var myKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+    if (!myKey) return '';
+    var rc = (typeof GLStore !== 'undefined' && GLStore.getAllReadiness) ? GLStore.getAllReadiness() : (typeof readinessCache !== 'undefined' ? readinessCache : {});
+    var current = (rc[title] || {})[myKey] || 0;
+    if (!current) return '';
+    // Check practice stats for trend context
+    var stats = (typeof GLStore !== 'undefined' && GLStore.getSongPracticeStats) ? GLStore.getSongPracticeStats(title) : null;
+    var practiced = stats && stats.practiceCount ? stats.practiceCount : 0;
+    // Build a human-friendly message
+    if (current >= 5) return '<div class="sd-trend sd-trend--up">\uD83D\uDD25 Locked in. You\'re gig-ready on this one.</div>';
+    if (current >= 4) return '<div class="sd-trend sd-trend--up">\uD83D\uDCC8 Almost there' + (practiced > 2 ? ' \u2014 ' + practiced + ' sessions deep.' : '. One more good run should do it.') + '</div>';
+    if (current >= 3) return '<div class="sd-trend sd-trend--flat">\uD83D\uDCAA Getting solid' + (practiced > 0 ? '. Keep the momentum going.' : '. A few focused reps will level this up.') + '</div>';
+    if (current >= 2) return '<div class="sd-trend sd-trend--work">\uD83C\uDFAF Needs work' + (practiced > 0 ? ', but you\'re putting in the time.' : '. Start with the parts you know and build out.') + '</div>';
+    return '<div class="sd-trend sd-trend--work">\uD83D\uDCD6 Early days. Listen first, then play along with the chart.</div>';
 }
 
 function _sdSectionDots(sectionRatings) {
@@ -1579,6 +1637,10 @@ function _sdInjectStyles(){
     '.sd-details-summary::-webkit-details-marker{display:none}'+
     '.sd-details[open] .sd-details-summary{border-bottom:1px solid var(--border,rgba(255,255,255,0.06))}'+
     '.sd-details > div{padding:0 12px}'+
+    '.sd-trend{font-size:0.78em;padding:8px 10px;margin-top:10px;border-radius:8px;line-height:1.4}'+
+    '.sd-trend--up{background:rgba(34,197,94,0.06);color:#86efac;border:1px solid rgba(34,197,94,0.12)}'+
+    '.sd-trend--flat{background:rgba(245,158,11,0.06);color:#fbbf24;border:1px solid rgba(245,158,11,0.12)}'+
+    '.sd-trend--work{background:rgba(99,102,241,0.04);color:#a5b4fc;border:1px solid rgba(99,102,241,0.1)}'+
     '.sd-notes-sub{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim,#475569);margin-bottom:8px}'+
     '.sd-mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;padding:8px 16px;background:var(--bg-card,#1e293b);border-top:1px solid var(--border,rgba(255,255,255,0.08));z-index:60;gap:8px;justify-content:center}'+
     '.sd-mobile-bar__btn{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;text-align:center}'+
