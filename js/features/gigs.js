@@ -763,9 +763,8 @@ function gmOpenPocket() {
 function closeGigMode() {
     var ov = document.getElementById('gmOverlay');
     if (ov) ov.classList.remove('gm-visible');
-    var gmSt = document.getElementById('gm-injected-style');
-    if (gmSt) gmSt.remove();
-    _gmOverlayBuilt = false;
+    // Keep styles intact — removing them breaks reopening since _gmEnsureOverlay
+    // skips if the DOM node exists. Styles are idempotent (id-based).
     if (typeof closeGigPocketMeter === 'function') closeGigPocketMeter();
     var scrollY = document.body.dataset.scrollY || '0';
     document.body.style.position = '';
