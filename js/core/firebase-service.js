@@ -59,6 +59,14 @@ var currentUserPicture  = localStorage.getItem('deadcetera_google_picture') || '
 
 var currentBandSlug = localStorage.getItem('deadcetera_current_band') || 'deadcetera';
 
+// Safety: auto-restore production if test slug present but ?dev=true is not
+if (currentBandSlug === 'deadcetera-test' && !new URLSearchParams(window.location.search).get('dev')) {
+    currentBandSlug = 'deadcetera';
+    localStorage.setItem('deadcetera_current_band', 'deadcetera');
+    localStorage.removeItem('deadcetera_current_user');
+    console.log('\uD83D\uDD12 Auto-restored production band (test slug without ?dev=true)');
+}
+
 /**
  * Prefix any Firebase subpath with the current band's root.
  * e.g. bandPath('songs/foo') → 'bands/deadcetera/songs/foo'
@@ -179,6 +187,7 @@ window.initFirebaseOnly = async function initFirebaseOnly() {
 
     console.log('🔥 Firebase DB ready (auto-init)');
     window.migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
+    window.migrateBandLevelData().catch(err => console.log('Band-level migration skipped:', err.message));
 };
 
 // ── Full init with Google Identity (triggered on first "Connect" click) ──────
@@ -322,7 +331,13 @@ window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
 // ── CRUD: per-song data ───────────────────────────────────────────────────────
 
 /**
- * Save data for a song to Firebase (and localStorage as fallback).
+ * Save data for a song (or band-level entity) to Firebase + localStorage.
+ *
+ * Band-level data (songTitle === '_band') routes to the top-level band path:
+ *   bands/{slug}/{dataType}
+ * Song-level data routes through songPath:
+ *   bands/{slug}/songs/{sanitized_title}/{dataType}
+ *
  * @returns {Promise<boolean>} true if Firebase write succeeded
  */
 window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataType, data) {
@@ -336,7 +351,9 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
     }
 
     try {
-        var path = window.songPath(songTitle, dataType);
+        var path = (songTitle === '_band')
+            ? window.bandPath(window.sanitizeFirebasePath(dataType))
+            : window.songPath(songTitle, dataType);
         await firebaseDB.ref(path).set(data);
         return true;
     } catch (error) {
@@ -347,16 +364,35 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
 };
 
 /**
- * Load data for a song from Firebase, falling back to localStorage.
+ * Load data for a song (or band-level entity) from Firebase, with localStorage fallback.
+ *
+ * Band-level data (songTitle === '_band') reads from top-level band path first,
+ * then falls back to the legacy songs/_band/ path for backward compatibility.
+ *
  * @returns {Promise<any>} data or null
  */
 window.loadBandDataFromDrive = async function loadBandDataFromDrive(songTitle, dataType) {
     if (firebaseDB) {
         try {
-            var path = window.songPath(songTitle, dataType);
+            var path = (songTitle === '_band')
+                ? window.bandPath(window.sanitizeFirebasePath(dataType))
+                : window.songPath(songTitle, dataType);
             var snapshot = await firebaseDB.ref(path).once('value');
             var data = snapshot.val();
             if (data !== null) return data;
+
+            // Legacy fallback for _band data that hasn't been migrated yet
+            if (songTitle === '_band') {
+                var legacyPath = window.songPath(songTitle, dataType);
+                if (legacyPath !== path) {
+                    var legacySnap = await firebaseDB.ref(legacyPath).once('value');
+                    if (legacySnap.val() !== null) {
+                        console.warn('⚠️ [legacy-read] Loaded ' + dataType + ' from songs/_band/ — run migrateBandLevelData() to fix');
+                        window._glLegacyReads = (window._glLegacyReads || 0) + 1;
+                        return legacySnap.val();
+                    }
+                }
+            }
         } catch (error) {
             console.log('⚠️ Firebase error for ' + dataType + ':', error.message);
         }
@@ -414,6 +450,83 @@ window.saveMasterFile = async function saveMasterFile(fileName, data) {
         console.error('Error saving master file:', error);
         return false;
     }
+};
+
+// ── Band-level data migration: songs/_band/* → top-level ────────────────────
+//
+// Legacy bug: saveBandDataToDrive('_band', 'setlists', ...) routed through
+// songPath() which wrote to songs/_band/setlists. The fix above routes _band
+// to bandPath(dataType) instead. This migration copies any data stuck at the
+// old path to the correct top-level path.
+//
+// Idempotent. Non-destructive (never deletes old data). Auto-runs on startup.
+
+var BAND_LEVEL_MIGRATION_FLAG = '_meta/band_level_migration_v1';
+
+var BAND_LEVEL_DATA_TYPES = [
+    'custom_songs', 'calendar_events', 'blocked_dates', 'gig_history',
+    'setlists', 'equipment', 'contacts', 'playlists', 'finances',
+    'finances_meta', 'social_profiles', 'best_shots'
+];
+
+window.migrateBandLevelData = async function migrateBandLevelData() {
+    if (!firebaseDB) return { status: 'skipped', reason: 'no firebase' };
+
+    // Check idempotency flag
+    try {
+        var flagSnap = await firebaseDB.ref(window.bandPath(BAND_LEVEL_MIGRATION_FLAG)).once('value');
+        if (flagSnap.val()) return { status: 'already_done', completedAt: flagSnap.val().completedAt };
+    } catch(e) {}
+
+    console.log('%c🔄 Migrating band-level data from songs/_band/ to top-level...', 'color:#f59e0b;font-weight:bold');
+    var stats = { migrated: 0, skipped: 0, errors: 0, types: [] };
+
+    // Read legacy path: songs/_band/ (sanitized _band → _band)
+    var legacyKey = window.sanitizeFirebasePath('_band');
+    var legacyRoot;
+    try {
+        legacyRoot = await firebaseDB.ref(window.bandPath('songs/' + legacyKey)).once('value');
+    } catch(e) {
+        console.warn('Could not read legacy songs/_band/ path:', e.message);
+        return { status: 'error', error: e.message };
+    }
+
+    var legacyData = legacyRoot.val();
+    if (!legacyData || typeof legacyData !== 'object') {
+        console.log('No legacy band-level data found at songs/_band/');
+        await firebaseDB.ref(window.bandPath(BAND_LEVEL_MIGRATION_FLAG)).set({
+            completedAt: new Date().toISOString(), stats: stats, note: 'no legacy data'
+        });
+        return { status: 'complete', stats: stats };
+    }
+
+    var updates = {};
+    Object.keys(legacyData).forEach(function(dataType) {
+        if (BAND_LEVEL_DATA_TYPES.indexOf(dataType) !== -1) {
+            updates[dataType] = legacyData[dataType];
+            stats.migrated++;
+            stats.types.push(dataType);
+        } else {
+            stats.skipped++;
+        }
+    });
+
+    if (stats.migrated > 0) {
+        try {
+            await firebaseDB.ref(window.bandPath('')).update(updates);
+            console.log('%c✅ Migrated ' + stats.migrated + ' band-level types: ' + stats.types.join(', '),
+                'color:#22c55e;font-weight:bold');
+        } catch(e) {
+            console.error('Migration write failed:', e);
+            stats.errors++;
+            return { status: 'error', error: e.message, stats: stats };
+        }
+    }
+
+    await firebaseDB.ref(window.bandPath(BAND_LEVEL_MIGRATION_FLAG)).set({
+        completedAt: new Date().toISOString(), stats: stats
+    });
+    return { status: 'complete', stats: stats };
 };
 
 console.log('✅ firebase-service.js loaded');

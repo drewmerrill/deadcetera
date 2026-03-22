@@ -618,6 +618,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
     // Google Identity (for user email) is still loaded on first "Connect" click.
+    // ── Dev mode activation (before any renders) ──
+    if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.activate === 'function') {
+        GLT.activate();
+    }
+
     // Render songs immediately from built-in data (fast, no Firebase needed)
     renderSongs();
 
@@ -669,16 +674,27 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         
-        // Auto-re-authenticate if user was previously signed in
-        var savedEmail = localStorage.getItem('deadcetera_google_email');
-        var savedName  = localStorage.getItem('deadcetera_google_name');
-        if (savedEmail || savedName) {
-            // Either full session or partial (email cleared but name present) — attempt reconnect
-            console.log('🔑 Auto-reconnecting (was signed in)...');
-            handleGoogleDriveAuth(true);
+        // ── Dev mode: auto-seed test data ──
+        if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.autoSeedIfNeeded === 'function') {
+            GLT.autoSeedIfNeeded().then(function() {
+                renderSongs();
+                if (typeof addStatusBadges === 'function') addStatusBadges();
+            });
+        }
+
+        // Auto-re-authenticate if user was previously signed in (skip in dev mode)
+        if (typeof GLT !== 'undefined' && GLT.ACTIVE) {
+            // Dev mode — already "signed in" as test user, skip Google auth
+            if (typeof window.glHeroCheck === 'function') window.glHeroCheck(true);
         } else {
-            // No saved session at all — show hero to signed-out users
-            if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
+            var savedEmail = localStorage.getItem('deadcetera_google_email');
+            var savedName  = localStorage.getItem('deadcetera_google_name');
+            if (savedEmail || savedName) {
+                console.log('🔑 Auto-reconnecting (was signed in)...');
+                handleGoogleDriveAuth(true);
+            } else {
+                if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
+            }
         }
         
         // Check for ?join= invite link
@@ -5441,8 +5457,10 @@ function generateSheetMusic(sectionIndex, section) {
 // Default: 'deadcetera' (the original band). Future: band switcher sets this.
 // var currentBandSlug → js/core/firebase-service.js (Wave-1 refactor)
 
+// bandPath → canonical version in js/core/firebase-service.js (window.bandPath)
+// This stub delegates to the window version to prevent shadowing.
 function bandPath(subpath) {
-    return 'bands/' + currentBandSlug + '/' + subpath;
+    return window.bandPath(subpath);
 }
 
 // ── One-time migration: copy flat /songs and /master to /bands/deadcetera/ ──
@@ -5768,10 +5786,7 @@ async function recoverLocalStorageToFirebase() {
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (!key || !key.startsWith('deadcetera_')) continue;
-        // Key format: deadcetera_{dataType}_{songTitle}
-        // Extract parts — dataType is the second segment, songTitle is the rest
         const withoutPrefix = key.replace('deadcetera_', '');
-        // Known dataTypes used in saveBandDataToDrive
         const dataTypes = ['spotify_versions','song_status','song_metadata','song_structure',
                           'best_shot_takes','best_shot_ratings','best_shot_section_notes',
                           'practice_tracks','rehearsal_notes','gig_notes','moises_stems',
@@ -5788,16 +5803,17 @@ async function recoverLocalStorageToFirebase() {
         }
         if (!matchedType || !matchedSong) continue;
         try {
-            // Check if Firebase already has this data
-            const path = songPath(matchedSong, matchedType);
+            // Band-level data routes to top-level, NOT through songPath
+            const path = (matchedSong === '_band')
+                ? bandPath(sanitizeFirebasePath(matchedType))
+                : songPath(matchedSong, matchedType);
             const snap = await firebaseDB.ref(path).once('value');
-            if (snap.val() !== null) continue; // Firebase already has it — skip
-            // Push to Firebase
+            if (snap.val() !== null) continue;
             const data = JSON.parse(localStorage.getItem(key));
             if (!data || (Array.isArray(data) && data.length === 0)) continue;
             await firebaseDB.ref(path).set(data);
             recovered++;
-            console.log(`🔄 Recovered ${matchedType} for "${matchedSong}" from localStorage to Firebase`);
+            console.log(`🔄 Recovered ${matchedType} for "${matchedSong}" → ${path}`);
         } catch(e) { /* skip errors on individual keys */ }
     }
     if (recovered > 0) {
@@ -6027,14 +6043,13 @@ async function handleGoogleDriveAuth(silent) {
 // Firebase converts arrays to objects with numeric keys - this normalizes them back
 // toArray() → js/core/utils.js (Wave-1 refactor)
 
+// songPath, masterPath → canonical versions in js/core/firebase-service.js
+// These stubs delegate to prevent shadowing the fixed window.* versions.
 function songPath(songTitle, dataType) {
-    return bandPath(`songs/${sanitizeFirebasePath(songTitle)}/${sanitizeFirebasePath(dataType)}`);
+    return window.songPath(songTitle, dataType);
 }
-
 function masterPath(fileName) {
-    // Remove file extension for cleaner paths
-    const name = fileName.replace('.json', '');
-    return bandPath(`master/${sanitizeFirebasePath(name)}`);
+    return window.masterPath(fileName);
 }
 
 // ============================================================================
@@ -7217,56 +7232,23 @@ const BAND_DATA_TYPES = {
 // SAVE TO FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
+// saveBandDataToDrive → canonical version in js/core/firebase-service.js
+// This stub delegates to the window version which has the _band routing fix.
 async function saveBandDataToDrive(songTitle, dataType, data) {
-    // Always save to localStorage as backup
-    const localKey = `deadcetera_${dataType}_${songTitle}`;
-    localStorage.setItem(localKey, JSON.stringify(data));
-    
-    if (!firebaseDB) {
-        console.warn('⚠️ Firebase not ready — saved to localStorage only (not shared with band)');
-        showSignInNudge();
-        return false;
-    }
-    
-    try {
-        const path = songPath(songTitle, dataType);
-        await firebaseDB.ref(path).set(data);
-        return true;
-    } catch (error) {
-        console.error('❌ Failed to save to Firebase:', error);
-        // Show error toast so user knows their save didn't reach the band
-        showToast('⚠️ Could not sync to band — check your connection');
-        return false;
-    }
+    return window.saveBandDataToDrive(songTitle, dataType, data);
 }
 
 // ============================================================================
 // LOAD FROM FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
+// loadBandDataFromDrive, loadFromLocalStorageFallback → canonical in firebase-service.js
+// These stubs delegate to the window versions which have _band routing + legacy fallback.
 async function loadBandDataFromDrive(songTitle, dataType) {
-    if (firebaseDB) {
-        try {
-            const path = songPath(songTitle, dataType);
-            const snapshot = await firebaseDB.ref(path).once('value');
-            const data = snapshot.val();
-            
-            if (data !== null) {
-                return data;
-            }
-        } catch (error) {
-            console.log(`⚠️ Firebase error for ${dataType}:`, error.message);
-        }
-    }
-    
-    // Fallback to localStorage
-    return loadFromLocalStorageFallback(songTitle, dataType);
+    return window.loadBandDataFromDrive(songTitle, dataType);
 }
-
 function loadFromLocalStorageFallback(songTitle, dataType) {
-    const key = `deadcetera_${dataType}_${songTitle}`;
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
+    return window.loadFromLocalStorageFallback(songTitle, dataType);
 }
 
 // ============================================================================

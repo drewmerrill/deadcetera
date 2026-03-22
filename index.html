@@ -1,740 +1,286 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
 <head>
-    <meta name="build-version" content="20260322-170112">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GrooveLinx — Where Bands Lock In</title>
-
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
-
-    <!-- iOS / Safari PWA support -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="GrooveLinx">
-    <link rel="apple-touch-icon" href="icon-180.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
-
-    <!-- Android / Chrome -->
-    <meta name="theme-color" content="#6366f1">
-    <meta name="mobile-web-app-capable" content="yes">
-
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
-    <link rel="shortcut icon" href="favicon.ico">
-
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="app-shell.css">
-    <link rel="stylesheet" href="rehearsal-mode.css">
-    <link rel="stylesheet" href="version-hub.css">
-    <link rel="stylesheet" href="css/gl-shell.css">
-<script>(g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]);for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.googleapis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" already loaded"):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({key:"AIzaSyBDADFjoqqLvkmJgevpkIZxf-GTwc9RxI0",v:"weekly"});</script>
-    <style>
-        /* ⓘ Section help tooltip icons */
-        .gl-help-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: rgba(99,102,241,0.12);
-            color: rgba(129,140,248,0.6);
-            font-size: 0.65em;
-            cursor: pointer;
-            vertical-align: middle;
-            border: 1px solid rgba(99,102,241,0.2);
-            transition: all 0.15s;
-            flex-shrink: 0;
-            user-select: none;
-        }
-        .gl-help-icon:hover {
-            background: rgba(99,102,241,0.25);
-            color: #818cf8;
-            border-color: rgba(99,102,241,0.5);
-        }
-    </style>
-<style>
-@media(max-width:640px){
-  #calendarInner{margin:0 -6px 0 -4px!important;}
-  #calendarInner .app-card:first-child{padding:12px 2px!important;border-radius:8px!important;width:calc(100% + 10px)!important;box-sizing:border-box!important;}
-}
-</style>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.4">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000; min-height: 14.0px}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000}
+    p.p3 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px '.Apple Color Emoji UI'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85)}
+    p.p4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85)}
+    p.p6 {margin: 0.0px 0.0px 0.0px 0.0px; font: 9.6px Times; color: #526078; -webkit-text-stroke: #526078; min-height: 11.0px}
+    p.p7 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 9.0px '.Apple Color Emoji UI'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); background-color: #b3b3b3}
+    p.p8 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 9.0px '.Apple Color Emoji UI'; -webkit-text-stroke: #000000; background-color: #b3b3b3}
+    p.p9 {margin: 0.0px 0.0px 0.0px 0.0px; font: 9.0px 'Hiragino Mincho ProN'; color: #6e73f6; color: rgba(110, 115, 246, 0.6); -webkit-text-stroke: rgba(110, 115, 246, 0.6); background-color: #504aed; background-color: rgba(80, 74, 237, 0.12)}
+    p.p10 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; color: #8291a9; -webkit-text-stroke: #8291a9; background-color: #ffffff; background-color: rgba(255, 255, 255, 0.039)}
+    p.p11 {margin: 0.0px 0.0px 0.0px 0.0px; font: 10.2px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); background-color: #ffffff}
+    p.p12 {margin: 0.0px 0.0px 0.0px 0.0px; font: 10.2px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); min-height: 12.0px}
+    p.p13 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; color: #8291a9; -webkit-text-stroke: #8291a9}
+    p.p14 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; -webkit-text-stroke: #000000; min-height: 13.0px}
+    p.p15 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Apple Color Emoji'; -webkit-text-stroke: #000000}
+    p.p16 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.4px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85)}
+    p.p17 {margin: 0.0px 0.0px 0.0px 0.0px; font: 9.0px 'Hiragino Mincho ProN'; color: #6e73f6; color: rgba(110, 115, 246, 0.6); -webkit-text-stroke: rgba(110, 115, 246, 0.6)}
+    p.p19 {margin: 0.0px 0.0px 0.0px 0.0px; font: 10.2px 'Helvetica Neue'; color: #6e73f6; -webkit-text-stroke: #6e73f6}
+    p.p20 {margin: 0.0px 0.0px 0.0px 0.0px; font: 9.6px Times; -webkit-text-stroke: #000000}
+    p.p21 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 11.0px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); background-color: #b3b3b3}
+    p.p22 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 11.0px 'Helvetica Neue'; color: #6e73f6; -webkit-text-stroke: #6e73f6; background-color: #b3b3b3}
+    p.p23 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 9.6px 'Helvetica Neue'; color: #6e73f6; -webkit-text-stroke: #6e73f6}
+    p.p25 {margin: 0.0px 0.0px 0.0px 0.0px; font: 10.2px Times; color: #8291a9; -webkit-text-stroke: #8291a9}
+    p.p26 {margin: 0.0px 0.0px 0.0px 0.0px; font: 10.2px Times; color: #8291a9; -webkit-text-stroke: #8291a9; background-color: #ffffff; background-color: rgba(255, 255, 255, 0.031)}
+    p.p27 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px Times; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); background-color: #ffffff}
+    p.p28 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); background-color: #ffffff}
+    p.p29 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85); min-height: 13.0px}
+    p.p30 {margin: 0.0px 0.0px 0.0px 0.0px; font: 9.6px Times; color: #8291a9; -webkit-text-stroke: #8291a9}
+    p.p32 {margin: 0.0px 0.0px 12.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000}
+    p.p33 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000; background-color: #ebf3ff}
+    p.p34 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000; background-color: #2f69f3; min-height: 14.0px}
+    p.p35 {margin: 0.0px 0.0px 0.0px 0.0px; font: 10.8px Times; color: #3a4355; -webkit-text-stroke: #3a4355}
+    p.p36 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 12.0px Times; -webkit-text-stroke: #000000}
+    p.p38 {margin: 0.0px 0.0px 10.0px 0.0px; text-align: center; font: 13.8px Times; color: #dbe2ec; -webkit-text-stroke: #dbe2ec}
+    p.p39 {margin: 0.0px 0.0px 36.0px 0.0px; text-align: center; font: 11.4px Times; color: #8291a9; -webkit-text-stroke: #8291a9}
+    p.p40 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 12.0px 'Helvetica Neue'; color: #ffffff; -webkit-text-stroke: #ffffff; background-color: #5365e4}
+    p.p41 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 10.8px 'Helvetica Neue'; color: #8291a9; -webkit-text-stroke: #8291a9}
+    p.p42 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Zapf Dingbats'; color: #000000; color: rgba(0, 0, 0, 0.85); -webkit-text-stroke: rgba(0, 0, 0, 0.85)}
+    p.p43 {margin: 0.0px 0.0px 4.0px 0.0px; text-align: center; font: 9.6px Times; -webkit-text-stroke: #000000}
+    p.p44 {margin: 0.0px 0.0px 9.0px 0.0px; text-align: center; font: 9.0px Times; color: #526078; -webkit-text-stroke: #526078}
+    span.s1 {font-kerning: none}
+    span.s2 {font-kerning: none; background-color: #b3b3b3}
+    span.s3 {font: 12.0px Times; font-kerning: none; color: #000000; -webkit-text-stroke: 0px #000000}
+    span.s4 {font: 11.0px '.Apple Color Emoji UI'; font-kerning: none; background-color: #b3b3b3}
+    span.s5 {font: 12.0px 'Apple Color Emoji'; font-kerning: none}
+    span.s6 {font: 10.2px Times; font-kerning: none}
+    span.s7 {font-kerning: none; background-color: #ffffff}
+    span.s8 {font: 10.2px 'Apple Color Emoji'; font-kerning: none}
+    span.s9 {font: 12.0px 'Apple Color Emoji'; font-kerning: none; background-color: rgba(255, 255, 255, 0.039)}
+    span.s10 {font-kerning: none; background-color: rgba(255, 255, 255, 0.039)}
+    span.s11 {font-kerning: none; color: #000000; background-color: rgba(255, 255, 255, 0.039); -webkit-text-stroke: 0px #000000}
+    span.s12 {font: 10.2px Times; font-kerning: none; color: #eef2f7; background-color: rgba(255, 255, 255, 0.039); -webkit-text-stroke: 0px #eef2f7}
+    span.s13 {font: 9.0px '.Apple Color Emoji UI'; font-kerning: none; color: rgba(0, 0, 0, 0.85); background-color: #b3b3b3; -webkit-text-stroke: 0px rgba(0, 0, 0, 0.85)}
+    span.s14 {font: 9.0px 'Hiragino Mincho ProN'; font-kerning: none; color: rgba(110, 115, 246, 0.6); background-color: rgba(80, 74, 237, 0.12); -webkit-text-stroke: 0px rgba(110, 115, 246, 0.6)}
+    span.s15 {font: 11.4px '.Apple Color Emoji UI'; font-kerning: none}
+    span.s16 {font-kerning: none; background-color: rgba(80, 74, 237, 0.12)}
+    span.s17 {font: 14.0px 'Apple Color Emoji'; font-kerning: none}
+    span.s18 {font: 9.1px 'Hiragino Mincho ProN'; font-kerning: none; color: rgba(110, 115, 246, 0.6); background-color: rgba(80, 74, 237, 0.12); -webkit-text-stroke: 0px rgba(110, 115, 246, 0.6)}
+    span.s19 {font: 10.2px '.Apple Color Emoji UI'; text-decoration: underline ; font-kerning: none}
+    span.s20 {text-decoration: underline ; font-kerning: none}
+    span.s21 {font: 18.0px 'Apple Color Emoji'; font-kerning: none}
+    span.s22 {font: 11.0px '.Apple Color Emoji UI'; font-kerning: none}
+    span.s23 {font: 9.6px '.Apple Color Emoji UI'; text-decoration: underline ; font-kerning: none}
+    span.s24 {font-kerning: none; background-color: rgba(255, 255, 255, 0.031)}
+    span.s25 {font: 11.0px 'Helvetica Neue'; font-kerning: none}
+    span.s26 {font: 11.0px 'Apple Color Emoji'; font-kerning: none}
+    span.s27 {font: 11.0px Times; font-kerning: none}
+    span.s28 {font: 9.6px 'Apple Color Emoji'; font-kerning: none}
+    span.s29 {font: 11.0px '.Apple Color Emoji UI'; font-kerning: none; background-color: #1bae6e}
+    span.s30 {font-kerning: none; background-color: #1bae6e}
+    span.s31 {font: 11.0px '.Apple Color Emoji UI'; font-kerning: none; background-color: #3db165}
+    span.s32 {font-kerning: none; background-color: #3db165}
+    span.s33 {font: 11.0px '.Apple Color Emoji UI'; font-kerning: none; background-color: #e82c35}
+    span.s34 {font-kerning: none; background-color: #e82c35}
+    span.s35 {font: 12.0px 'Apple Color Emoji'; font-kerning: none; background-color: #ffffff}
+    span.s36 {font: 10.8px 'Times New Roman'; font-kerning: none; background-color: #ffffff}
+    span.s37 {font: 12.0px '.Apple Color Emoji UI'; font-kerning: none}
+  </style>
 </head>
 <body>
-    <!-- Overlay root — top-level stacking context for persistent UI (Now Playing bar) -->
-    <div id="gl-overlay-root" style="position:fixed;inset:0;pointer-events:none;z-index:99999">
-        <div id="gl-now-playing" style="position:absolute;bottom:0;left:0;right:0;height:48px;background:linear-gradient(135deg,#1e293b 0%,#252d4a 100%);border-top:1px solid rgba(99,102,241,0.3);pointer-events:auto;align-items:center;padding:0 16px;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.5)"></div>
-    </div>
-
-    <!-- TOP BAR -->
-    <div class="topbar">
-        <div class="topbar-left">
-            <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
-            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
-        </div>
-        <div class="topbar-right">
-            <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()" title="Sign in to sync">👤</button>
-            <button class="topbar-btn" onclick="glHelpCurrentPage()" title="Help for this page" id="glHelpBtn" style="padding:6px 8px">❓</button>
-            <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin" style="padding:6px 8px">⚙️</button>
-        </div>
-    </div>
-
-    <!-- SLIDE-OUT MENU -->
-    <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
-    <nav class="slide-menu" id="slideMenu">
-        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
-        <div class="menu-section">
-            <div class="menu-section-title">Music</div>
-            <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
-            <button class="menu-item" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Songs</button>
-            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
-            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
-            <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">🎸</span> Rehearsal</button>
-            <button class="menu-item" data-page="ideas" onclick="showPage('ideas')"><span class="menu-icon">💬</span> Band Room</button>
-        </div>
-        <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">Gigs</div>
-            <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
-            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
-            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
-            <button class="menu-item" data-page="stageplot" onclick="showPage('stageplot')"><span class="menu-icon">🎭</span> Stage Plot</button>
-        </div>
-        <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">Tools</div>
-            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
-            <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎚️</span> Pocket Meter</button>
-            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🔱</span> Guitar Tuner</button>
-            <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
-        </div>
-        <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">More</div>
-            <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
-            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
-            <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
-            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
-            <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
-            <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
-            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
-            <div class="menu-divider"></div>
-            <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help & Guide</button>
-        </div>
-    </nav>
-
-    <!-- MAIN CONTENT AREA -->
-    <div id="gl-shell">
-    <nav id="gl-left-rail"></nav>
-    <div class="main-content" id="mainContent">
-        <!-- PAGE: Songs (existing app content) -->
-        <div id="page-songs" class="app-page hidden">
-    <div class="container">
-
-        <!-- Step 1: Song Selection -->
-        <div class="step-card" id="step1">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-                <div class="step-number" style="flex-shrink:0">1</div>
-                <h2 style="margin:0;line-height:1.2">Songs</h2>
-                <span style="color:var(--text-dim,#64748b);font-size:0.8em;margin-left:auto" id="songCount"></span>
-                <button onclick="showCustomSongsList()" class="btn btn-ghost btn-sm" title="Add a custom song not in the library" style="margin-left:6px;font-size:0.75em;padding:4px 8px" id="customSongBtn">
-                    ➕ <span id="customSongCount" style="background:var(--accent);color:white;border-radius:10px;padding:1px 5px;font-size:0.85em;display:none"></span>
-                </button>
-                <button onclick="if(typeof showBulkImportModal==='function')showBulkImportModal()" class="btn btn-ghost btn-sm" title="Bulk import songs by artist" style="margin-left:4px;font-size:0.75em;padding:4px 8px">
-                    📥
-                </button>
-                <button onclick="glShowOnboarding('songs',true)" class="btn btn-ghost btn-sm" title="What can I do here?" style="margin-left:4px;font-size:0.75em;padding:4px 8px;color:var(--text-dim)" aria-label="Help for Songs page">
-                    ❓
-                </button>
-            </div>
-            <div id="songRecommendation" style="margin-bottom:8px"></div>
-            <div class="search-box">
-                <input
-                    type="text"
-                    id="songSearch"
-                    placeholder="Search for a song..."
-                    class="search-input"
-                >
-            </div>
-            <!-- Filters now in column headers (PL-13c) -->
-            <div id="songActiveFilters" style="display:none;margin:8px 0"></div>
-            
-            <div class="song-dropdown" id="songDropdown">
-                <!-- Songs populated here -->
-            </div>
-        </div>
-
-<!-- Step 2: Song Blueprint -->
-<div class="step-card hidden" id="step2">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">2</div>
-        <h2 style="margin:0" id="step2Title">Song DNA</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="What is Song DNA?">ⓘ</span>
-    </div>
-    
-    <!-- SONG METADATA -->
-    <div class="song-metadata" style="background:rgba(255,255,255,0.04);padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border,rgba(255,255,255,0.08))">
-        <div class="meta-row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
-            <div class="meta-item">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎤 Lead:</span>
-                <select id="leadSingerSelect" onchange="updateLeadSinger(this.value)" class="app-select" style="width:auto;min-width:100px;padding:5px 8px;font-size:0.85em">
-                    <option value="">Select...</option>
-                    <option value="drew">Drew</option>
-                    <option value="chris">Chris</option>
-                    <option value="brian">Brian</option>
-                    <option value="pierce">Pierce</option>
-                    <option value="drew,chris">Drew & Chris</option>
-                </select>
-            </div>
-            <div class="meta-item">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎯 Status:</span>
-                <select id="songStatusSelect" onchange="updateSongStatus(this.value)" class="app-select" style="width:auto;min-width:120px;padding:5px 8px;font-size:0.85em;font-weight:600">
-                    <option value="">— Not on Radar —</option>
-                    <option value="prospect">👀 Prospect</option>
-                    <option value="wip">🔧 Work in Progress</option>
-                    <option value="gig_ready">✅ Gig Ready</option>
-                </select>
-            </div>
-            <div class="meta-item">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🔑 Key:</span>
-                <select id="songKeySelect" onchange="updateSongKey(this.value)" class="app-select" style="width:auto;min-width:70px;padding:5px 8px;font-size:0.85em">
-                    <option value="">—</option>
-                    <option>A</option><option>Am</option><option>Bb</option><option>Bbm</option>
-                    <option>B</option><option>Bm</option><option>C</option><option>Cm</option>
-                    <option>C#</option><option>C#m</option><option>D</option><option>Dm</option>
-                    <option>Eb</option><option>Ebm</option><option>E</option><option>Em</option>
-                    <option>F</option><option>Fm</option><option>F#</option><option>F#m</option>
-                    <option>G</option><option>Gm</option><option>Ab</option><option>Abm</option>
-                </select>
-            </div>
-            <div class="meta-item">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🥁 BPM:</span>
-                <input type="number" id="songBpmInput" min="40" max="240" step="1" placeholder="120" onchange="updateSongBpm(this.value)"
-                    class="app-input" style="width:65px;padding:5px 8px;font-size:0.85em">
-            </div>
-            <div class="meta-item" title="Who starts, who cues the ending, transitions & arrangement">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px;cursor:help">🏗️ Structure:</span>
-                <span id="songStructureSummary" style="font-size:0.85em;color:var(--text,#f1f5f9)">—</span>
-                <button class="btn btn-sm btn-ghost" onclick="showSongStructureForm()" style="margin-left:4px;padding:2px 6px;font-size:0.75em" title="Edit song structure">✏️</button>
-            </div>
-        </div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
-            <div class="meta-item">
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                    <input type="checkbox" id="hasHarmoniesCheckbox" onchange="updateHasHarmonies(this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
-                    <span style="font-weight:600;color:var(--text-muted,#94a3b8)">🎶 Harmonies</span>
-                </label>
-            </div>
-            <div class="meta-item" id="harmonyMembersRow" style="display:none;flex-wrap:wrap;gap:6px;align-items:center;width:100%;flex:1 1 100%">
-                <span style="font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em;flex-shrink:0">Singers:</span>
-                <div style="position:relative;flex:1;min-width:140px">
-                    <button id="singersDropdownBtn" onclick="toggleSingersDropdown()" 
-                        style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text,#f1f5f9);font-size:0.85em;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center">
-                        <span id="singersLabel">Select singers...</span>
-                        <span>▾</span>
-                    </button>
-                    <div id="singersDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:8px;z-index:500;padding:6px;margin-top:4px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
-                        <label for="harmony-cb-drew" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-drew" name="harmony-drew" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
-                        <label for="harmony-cb-chris" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-chris" name="harmony-chris" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
-                        <label for="harmony-cb-brian" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-brian" name="harmony-brian" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
-                        <label for="harmony-cb-pierce" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-pierce" name="harmony-pierce" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
-                        <label for="harmony-cb-jay" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-jay" name="harmony-jay" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Song Structure form (hidden, opens as modal) -->\n    <div id="songStructureSection" style="display:none">
-        <div id="songStructureContainer"></div>
-        <div id="songStructureFormContainer"></div>
-    </div>
-
-    <!-- Band Lock-In Readiness -->
-    <div id="readinessContainer"></div>
-
-</div>
-
-<!-- Find a Version Hub launcher -->
-<div class="step-card hidden" id="stepVersionHub" style="background:linear-gradient(135deg,rgba(102,126,234,0.08),rgba(118,75,162,0.08));border:1px solid rgba(102,126,234,0.2)">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#667eea,#764ba2)">🔍</div>
-        <h2 style="margin:0">Find a Version</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('listen',this)" title="About Find a Version">ⓘ</span>
-    </div>
-    <button onclick="launchVersionHub()" class="btn btn-primary" style="width:100%;padding:12px;font-size:0.95em;margin-top:8px;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Find a Version</button>
-</div>
-
-<!-- Step 3: North Star (Reference Version) -->
-<div class="step-card hidden" id="step3ref">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">3</div>
-        <h2 style="margin:0">The North Star</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('northstar',this)" title="What is The North Star?">ⓘ</span>
-    </div>
-    
-    <div class="resource-section" id="refVersionSection">
-        <div class="section-header">
-            <h3>⭐ Reference Version (Band Voted) <span class="gl-help-icon" onclick="glShowHelp('northstar',this)" title="About reference versions">ⓘ</span></h3>
-            <div style="margin-top:4px">
-                <button onclick="launchVersionHubForNorthStar()" title="Search all sources and add a reference version" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.85em;padding:0">🔍 Find a Version</button>
-            </div>
-        </div>
-        <div id="spotifyVersionsContainer"></div>
-        <button class="secondary-btn" id="addRefVersionBtn" style="margin-top:12px">+ Suggest Reference Version</button>
-    </div>
-</div>
-
-<!-- Step 3b: Best Shot vs North Star -->
-<div class="step-card hidden" id="step3bestshot">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0;background:linear-gradient(135deg,#f59e0b,#ef4444)">🏆</div>
-        <h2 style="margin:0">Best Shot vs North Star</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('bestshot',this)" title="What is Best Shot?">ⓘ</span>
-    </div>
-    <div id="bestShotVsNorthStar"></div>
-</div>
-
-<!-- Step 4: Stage Cheat Sheets -->
-<div class="step-card hidden" id="step4ref">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">4</div>
-        <h2 style="margin:0">Stage Crib Notes</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('crib',this)" title="What are Stage Crib Notes?">ⓘ</span>
-    </div>
-    
-    <div class="resource-section" id="personalTabsSection">
-        <div id="personalTabsContainer"></div>
-    </div>
-</div>
-
-<!-- Step 4b: Cover Me -->
-<div class="step-card hidden" id="step4cover">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0;font-size:0.8em">4b</div>
-        <h2 style="margin:0">Cover Me 🎤</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('listen',this)" title="About Cover Me">ⓘ</span>
-    </div>
-    <div class="resource-section" id="coverMeSection">
-        <div id="coverMeContainer"></div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-            <button class="secondary-btn" onclick="showAddCoverMeForm()" style="flex:1">+ Add Cover Version</button>
-            <button class="secondary-btn" onclick="launchVersionHubForCoverMe()" style="flex:0 0 auto;color:var(--accent-light,#818cf8)">🔍 Find</button>
-        </div>
-    </div>
-</div>
-
-<!-- Step 5: Practice Workshop -->
-<div class="step-card hidden" id="step5ref">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <div class="step-number" style="flex-shrink:0">5</div>
-        <h2 style="margin:0">The Woodshed</h2>
-        <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="What is The Woodshed?">ⓘ</span>
-        <button onclick="searchUltimateGuitar()" style="background:none;border:none;color:var(--accent-light,#818cf8);text-decoration:underline;cursor:pointer;font-size:0.8em;padding:0;margin-left:4px">🔍 UG</button>
-    </div>
-    
-    <!-- CHORD CHART (The Band's Chart) -->
-    <div class="resource-section" id="chartSection">
-        <div class="section-header">
-            <h3>🎸 The Chart <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="About chord charts">ⓘ</span></h3>
-        </div>
-        <div id="chartContainer"></div>
-    </div>
-    
-    <!-- MOISES STEMS -->
-    <div class="resource-section" id="moisesSection">
-        <div class="section-header">
-            <h3>🎚️ Moises Stems <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About stems">ⓘ</span></h3>
-        </div>
-        <div id="moisesStemsContainer"></div>
-    </div>
-    
-    <!-- PRACTICE TRACKS -->
-    <div class="resource-section" id="practiceTracksSection">
-        <div class="section-header">
-            <h3>🎸 Practice Tracks <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About practice tracks">ⓘ</span></h3>
-        </div>
-        <div id="practiceTrackAddForm" style="background:rgba(255,255,255,0.03);padding:16px;border-radius:10px;margin-bottom:16px;border:1px solid var(--border,rgba(255,255,255,0.08))">
-            <h4 style="margin:0 0 12px 0;color:var(--text,#f1f5f9);font-size:0.95em">Add Practice Track</h4>
-            <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Video URL:</label>
-                <input type="text" id="practiceTrackUrlInput" placeholder="Paste YouTube, Vimeo, or any video URL" class="app-input" style="width:100%;box-sizing:border-box">
-            </div>
-            <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Instrument:</label>
-                <select id="practiceTrackInstrument" class="app-select" style="width:100%">
-                    <option value="">-- Select Instrument --</option>
-                    <option value="bass">🎸 Bass</option>
-                    <option value="leadGuitar">🎸 Lead Guitar</option>
-                    <option value="rhythmGuitar">🎸 Rhythm Guitar</option>
-                    <option value="keys">🎹 Keys/Keyboards</option>
-                    <option value="drums">🥁 Drums</option>
-                    <option value="vocals">🎤 Vocals</option>
-                    <option value="wholeBand">🎶 Whole Band</option>
-                </select>
-            </div>
-            <div style="margin-bottom:12px">
-                <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Notes (optional):</label>
-                <input type="text" id="practiceTrackNotes" placeholder="E.g., Great breakdown of the bass line" class="app-input" style="width:100%;box-sizing:border-box">
-            </div>
-            <div style="display:flex;gap:8px">
-                <button id="addPracticeTrackBtn" class="btn btn-primary" onclick="addPracticeTrackSimple()" style="flex:1">✨ Add Track</button>
-                <button class="btn btn-ghost" onclick="ptToggleUploadForm()" style="white-space:nowrap">📁 Upload MP3</button>
-            </div>
-            <!-- MP3 upload form (hidden by default) -->
-            <div id="ptUploadForm" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,rgba(255,255,255,0.08))">
-                <div style="margin-bottom:10px">
-                    <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Audio File:</label>
-                    <input type="file" id="ptAudioFile" accept="audio/*,.mp3,.m4a,.wav,.aac"
-                        style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:8px;color:var(--text,#f1f5f9);font-size:0.85em;box-sizing:border-box">
-                    <div style="font-size:0.76em;color:var(--text-dim,#64748b);margin-top:3px">MP3, M4A, WAV · max 20MB · uploaded to Firebase, shared with band</div>
-                </div>
-                <div style="margin-bottom:10px">
-                    <label style="display:block;margin-bottom:4px;font-weight:600;color:var(--text-muted,#94a3b8);font-size:0.85em">Track Title:</label>
-                    <input type="text" id="ptUploadTitle" placeholder="e.g. Bass isolated, Whole band slow run-through" class="app-input" style="width:100%;box-sizing:border-box">
-                </div>
-                <div id="ptUploadProgress" style="display:none;margin-bottom:8px">
-                    <div style="background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;height:6px">
-                        <div id="ptUploadBar" style="height:100%;background:var(--accent,#6366f1);width:0%;transition:width 0.3s"></div>
-                    </div>
-                    <div id="ptUploadStatus" style="font-size:0.78em;color:var(--text-dim,#64748b);margin-top:3px;text-align:center">Uploading…</div>
-                </div>
-                <button class="btn btn-primary" onclick="addPracticeTrackUpload()" style="width:100%">📤 Upload & Add Track</button>
-            </div>
-        </div>
-        <div id="practiceTracksContainer"></div>
-    </div>
-    
-    <!-- WOODSHED CHECKLISTS -->
-    <div class="resource-section" id="woodshedChecklistSection">
-        <div class="section-header">
-            <h3>✅ Woodshed Checklists <span class="gl-help-icon" onclick="glShowHelp('woodshed',this)" title="About Woodshed Checklists">ⓘ</span></h3>
-        </div>
-        <div id="woodshedChecklistContainer"></div>
-    </div>
-
-    <!-- HARMONIES -->
-    <div class="resource-section" id="harmoniesSection">
-        <div class="section-header">
-            <h3>🎤 Harmony Parts <span class="gl-help-icon" onclick="glShowHelp('dna',this)" title="About harmony parts">ⓘ</span></h3>
-        </div>
-        <div id="harmoniesContainer"></div>
-    </div>
-
-    <!-- SONG IN PLAYLISTS -->
-    <div class="resource-section" id="songPlaylistsSection" style="margin-top:8px">
-        <div style="font-size:0.8em;color:var(--text-muted,#94a3b8);font-weight:600;margin-bottom:6px">📋 In Playlists:</div>
-        <div id="songPlaylistsContainer"></div>
-    </div>
-    
-    <!-- REHEARSAL NOTES -->
-    <div class="resource-section" id="rehearsalNotesSection">
-        <div class="section-header">
-            <h3>📋 Rehearsal Notes <span class="gl-help-icon" onclick="glShowHelp('rehearsal',this)" title="About Rehearsal Notes">ⓘ</span></h3>
-        </div>
-        <div id="rehearsalNoteFormContainer"></div>
-        <div id="rehearsalNotesContainer"></div>
-        <button class="secondary-btn" onclick="showRehearsalNoteForm()" style="margin-top:12px">+ Add Note</button>
-    </div>
-    
-    <!-- GIG NOTES / PERFORMANCE TIPS -->
-    <div class="resource-section" id="gigNotesSection">
-        <div class="section-header">
-            <h3>🎤 Performance Tips</h3>
-        </div>
-        <div id="gigNotesContainer"></div>
-    </div>
-    
-    <!-- MULTI-TRACK STUDIO (Audio Snippets) -->
-</div><!-- end step5ref -->
-        <!-- Step 3: Version Selection (renumbered from Step 2) -->
-        <div class="step-card hidden" id="step3">
-            <div class="step-number">3</div>
-            <h2>Top 5 Live Versions</h2>
-            <p class="step-description">Based on community rankings and sound quality</p>
-            <div id="versionsContainer">
-                <!-- Top 5 versions populated here -->
-            </div>
-        </div>
-
-        <!-- Step 4: Download (renumbered from Step 3) -->
-        <div class="step-card hidden" id="step4">
-            <div class="step-number">4</div>
-            <h2>Download & Upload to Moises</h2>
-            <div class="download-card">
-                <div class="selected-info" id="selectedInfo">
-                    <!-- Selected song and version info -->
-                </div>
-                <div class="action-buttons">
-                    <button class="primary-btn smart-download-btn" id="smartDownloadBtn" style="background: #10b981;">
-                        ⚡ Smart Download (Just This Song!)
-                    </button>
-                    <button class="primary-btn" id="downloadBtn">
-                        ⬇️ Download Full Show from Archive.org
-                    </button>
-                    <button class="primary-btn moises-btn" id="moisesBtn">
-                        🎛️ Open Moises.ai Studio
-                    </button>
-                    <button class="primary-btn" id="setlistBtn" style="background: #48bb78;">
-                        📋 View Setlist (Song Order & Timing)
-                    </button>
-                    <button class="primary-btn youtube-btn" id="youtubeSearchBtn" style="background: #ef4444;">
-                        🎥 Search YouTube for This Song
-                    </button>
-                </div>
-                <div id="progressContainer" class="hidden" style="margin-top: 15px; padding: 15px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="spinner"></div>
-                        <div>
-                            <strong id="progressMessage">Processing...</strong>
-                            <div style="margin-top: 5px; height: 8px; background: #dbeafe; border-radius: 4px; overflow: hidden;">
-                                <div id="progressBar" style="height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="workflow-guide">
-                    <h3>📋 Your Practice Workflow:</h3>
-                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 10px;">
-                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #48bb78;">
-                            <strong>✅ STEP 1: Download MP3</strong>
-                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
-                                Click "Download MP3" button above → Find the file on Archive.org → Right-click → Save to Downloads
-                            </p>
-                        </div>
-                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #4299e1;">
-                            <strong>⬆️ STEP 2: Upload to Moises</strong>
-                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
-                                Click "Open Moises.ai Studio" → Click Upload → Select your downloaded MP3
-                            </p>
-                        </div>
-                        <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #ed8936;">
-                            <strong>⚙️ STEP 3: Separate Stems</strong>
-                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
-                                Choose "6 Stems" separation → Wait 1-2 minutes for AI processing
-                            </p>
-                        </div>
-                        <div style="padding: 10px; background: white; border-radius: 6px; border-left: 4px solid #667eea;">
-                            <strong>🎸 STEP 4: Solo Your Part</strong>
-                            <p style="margin: 5px 0 0 0; color: #4a5568; font-size: 0.9em;">
-                                Click "Solo" on your instrument → Adjust tempo → Loop sections → Practice!
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 5: Part Selection Guide (renumbered from Step 4) -->
-        <div class="step-card hidden" id="step5">
-            <div class="step-number">5</div>
-            <h2>Isolate Your Part in Moises</h2>
-            <div class="parts-grid">
-                <div class="part-card">
-                    <div class="part-icon">🎤</div>
-                    <h3>Vocals / Harmonies</h3>
-                    <p>Solo the vocals track to learn melody and harmonies</p>
-                </div>
-                <div class="part-card">
-                    <div class="part-icon">🎸</div>
-                    <h3>Jerry Garcia (Lead)</h3>
-                    <p>Isolate lead guitar to learn solos and fills</p>
-                </div>
-                <div class="part-card">
-                    <div class="part-icon">🎸</div>
-                    <h3>Bob Weir (Rhythm)</h3>
-                    <p>Focus on rhythm guitar and chord progressions</p>
-                </div>
-                <div class="part-card">
-                    <div class="part-icon">🎸</div>
-                    <h3>Phil Lesh (Bass)</h3>
-                    <p>Learn Phil's melodic bass lines</p>
-                </div>
-                <div class="part-card">
-                    <div class="part-icon">🥁</div>
-                    <h3>Drums</h3>
-                    <p>Practice the groove and fills</p>
-                </div>
-                <div class="part-card">
-                    <div class="part-icon">🎹</div>
-                    <h3>Keyboards</h3>
-                    <p>Isolate keys for atmospheric parts</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Reset Button -->
-        <div class="reset-container hidden" id="resetContainer">
-            <button class="reset-btn" onclick="resetWorkflow()">
-                ↺ Start Over with New Song
-            </button>
-        </div>
-        
-
-        
-
-    </div>
-        </div><!-- end page-songs -->
-
-
-        <!-- Hero: shown to signed-out users only, hidden once authenticated -->
-        <div id="page-hero" class="app-page hidden">
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:32px 24px;text-align:center;">
-                <img src="hero-logo.png" alt="GrooveLinx" style="width:200px;height:200px;border-radius:20px;box-shadow:0 8px 40px rgba(102,126,234,0.35);margin-bottom:28px;">
-                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx</h1>
-                <p style="font-size:1.15em;font-weight:600;color:var(--text-main,#e2e8f0);margin:0 0 10px;">Where Bands Lock In.</p>
-                <p style="font-size:0.95em;color:var(--text-muted,#94a3b8);max-width:340px;line-height:1.6;margin:0 0 36px;">GrooveLinx helps bands rehearse smarter, build setlists faster, and walk on stage ready.</p>
-                <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;">
-                    <button onclick="handleGoogleDriveAuth()" style="background:var(--accent,#667eea);color:white;border:none;padding:14px 24px;border-radius:10px;font-size:1em;font-weight:700;cursor:pointer;letter-spacing:0.02em;">
-                        👤 Sign In
-                    </button>
-                    <button onclick="showPage('admin')" style="background:transparent;color:var(--text-muted,#94a3b8);border:1px solid rgba(255,255,255,0.15);padding:12px 24px;border-radius:10px;font-size:0.9em;font-weight:600;cursor:pointer;">
-                        Create Band
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Home Dashboard -->
-        <div id="page-home" class="app-page hidden"></div>
-
-        <!-- Dynamic pages rendered by JS -->
-        <div id="page-setlists" class="app-page hidden"></div>
-        <div id="page-rehearsal" class="app-page hidden"></div>
-        <div id="page-rehearsal-intel" class="app-page hidden"></div>
-        <div id="page-playlists" class="app-page hidden"></div>
-        <div id="page-practice" class="app-page hidden"></div>
-        <div id="page-calendar" class="app-page hidden"></div>
-        <div id="page-gigs" class="app-page hidden"></div>
-        <div id="page-pocketmeter" class="app-page hidden"></div>
-        <div id="page-venues" class="app-page hidden"></div>
-        <div id="page-finances" class="app-page hidden"></div>
-        <div id="page-tuner" class="app-page hidden"></div>
-        <div id="page-metronome" class="app-page hidden"></div>
-        <div id="page-equipment" class="app-page hidden"></div>
-        <div id="page-contacts" class="app-page hidden"></div>
-        <div id="page-stageplot" class="app-page hidden"></div>
-        <div id="page-ideas" class="app-page hidden"></div>
-        <div id="page-social" class="app-page hidden"></div>
-        <div id="page-admin" class="app-page hidden"></div>
-        <div id="page-notifications" class="app-page hidden"></div>
-        <div id="page-bestshot" class="app-page hidden"></div>
-        <div id="page-stoner" class="app-page hidden"></div>
-        <div id="page-help" class="app-page hidden"></div>
-    </div>
-
-    <!-- Right context panel — sibling of #mainContent inside #gl-shell -->
-    <aside id="gl-right-panel" aria-label="Song context panel">
-        <div class="gl-rp-header">
-            <span id="gl-rp-title" class="gl-rp-title"></span>
-            <button class="gl-rp-close-btn" id="gl-rp-close" title="Close panel">✕</button>
-        </div>
-        <div id="gl-right-panel-content" class="gl-rp-content">
-        </div>
-    </aside>
-
-    </div><!-- /#gl-shell -->
-
-    <footer style="text-align:center;padding:20px;font-size:0.8em;">
-        <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
-        <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
-    </footer>
-
-    <script src="js/core/utils.js?v=20260322-170112"></script>
-    <script src="js/core/firebase-service.js?v=20260322-170112"></script>
-    <script src="js/core/song-intelligence.js?v=20260322-170112"></script>
-    <script src="js/core/rehearsal_agenda_engine.js?v=20260322-170112"></script>
-    <script src="js/core/rehearsal_scorecard_engine.js?v=20260322-170112"></script>
-    <script src="js/core/rehearsal_segmentation_engine.js?v=20260322-170112"></script>
-    <script src="js/core/groovelinx_store.js?v=20260322-170112"></script>
-    <script src="js/core/worker-api.js?v=20260322-170112"></script>
-    <script src="js/core/wake-lock.js?v=20260322-170112"></script>
-    <script src="js/ui/navigation.js?v=20260322-170112"></script>
-    <script src="js/ui/gl-right-panel.js?v=20260322-170112"></script>
-    <script src="js/ui/gl-left-rail.js?v=20260322-170112"></script>
-    <script src="js/ui/gl-now-playing.js?v=20260322-170112"></script>
-    <script src="js/ui/gl-context-bar.js?v=20260322-170112"></script><!-- Navigation stability: persistent context bar -->
-    <script src="js/ui/gl-entity-picker.js?v=20260322-170112"></script><!-- Phase 1: venue picker + entity combobox -->
-    <script src="js/ui/gl-inline-help.js?v=20260322-170112"></script>
-    <script src="js/ui/gl-spotlight.js?v=20260322-170112"></script>
-    <script src="js/features/songs.js?v=20260322-170112"></script>
-    <script src="data.js?v=20260322-170112"></script>
-    <script src="data/starter_packs.js?v=20260322-170112"></script>
-    <script src="js/features/gigs.js?v=20260322-170112"></script>
-    <script src="js/features/rehearsal.js?v=20260322-170112"></script>
-    <script src="js/features/setlists.js?v=20260322-170112"></script>
-    <script src="js/features/live-gig.js?v=20260322-170112"></script>
-    <script src="js/features/practice.js?v=20260322-170112"></script>
-    <script src="js/features/calendar.js?v=20260322-170112"></script>
-    <script src="js/core/calendar-export.js?v=20260322-170112"></script>
-    <script src="js/features/notifications.js?v=20260322-170112"></script>
-    <script src="js/features/social.js?v=20260322-170112"></script>
-    <script src="js/features/finances.js?v=20260322-170112"></script>
-    <script src="js/features/bestshot.js?v=20260322-170112"></script>
-    <script src="js/features/playlists.js?v=20260322-170112"></script>
-    <script src="js/features/stoner-mode.js?v=20260322-170112"></script>
-    <script src="js/features/home-dashboard.js?v=20260322-170112"></script>
-    <script src="js/features/song-detail.js?v=20260322-170112"></script>
-    <script src="js/features/song-drawer.js?v=20260322-170112"></script>
-    <script src="js/features/harmony-lab.js?v=20260322-170112"></script>
-    <script src="js/features/home-dashboard-cc.js?v=20260322-170112"></script>
-    <script src="js/features/chart-import.js?v=20260322-170112"></script>
-    <script src="js/features/song-pitch.js?v=20260322-170112"></script>
-    <script src="js/features/bulk-import.js?v=20260322-170112"></script>
-    <script src="js/features/band-comms.js?v=20260322-170112"></script>
-    <script src="js/features/stage-plot.js?v=20260322-170112"></script>
-    <script src="app.js?v=20260322-170112"></script>
-    <script src="rehearsal-mode.js?v=20260322-170112"></script>
-    <script src="version-hub.js?v=20260322-170112"></script>
-    <script src="pocket-meter.js?v=20260322-170112"></script>
-    <script src="help.js?v=20260322-170112"></script>
-    <script src="js/ui/gl-help-v2.js?v=20260322-170112"></script>
-
-    <script>
-    // Hero gate — fires immediately on load, before Firebase resolves
-    (function() {
-        var savedEmail = localStorage.getItem('deadcetera_google_email');
-        if (!savedEmail) {
-            // Not signed in — show hero right away, no flash
-            var hero = document.getElementById('page-hero');
-            if (hero) hero.classList.remove('hidden');
-        }
-        // (Signed-in users: page-songs is hidden, showPage('home') fires at 50ms in app.js)
-    })();
-
-    // Called by app.js after auth resolves
-    window.glHeroCheck = function(isSignedIn) {
-        var hero = document.getElementById('page-hero');
-        if (isSignedIn) {
-            if (hero) hero.classList.add('hidden');
-            // If a page or panel restore is pending, don't navigate to home —
-            // the restore handler will call the correct showPage() when ready.
-            if (window._glPanelRestorePending || window._glPageRestorePending) return;
-            if (typeof showPage === 'function') showPage('home');
-        } else {
-            var allPages = document.querySelectorAll('.app-page');
-            allPages.forEach(function(p) { p.classList.add('hidden'); });
-            if (hero) hero.classList.remove('hidden');
-        }
-    };
-    </script>
-    <script>
-    // Service Worker registration handled by app.js (single owner — PL-9.2)
-    </script>
-    <script>
-    // Strip stale share params (?playlist=, ?pack=) from URL on every load.
-    // These are generated by share link builders and should never persist as the launch URL.
-    (function() {
-        var p = new URLSearchParams(window.location.search);
-        if (p.has('playlist') || p.has('pack')) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-    })();
-    </script>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1"><img src="file:///Attachment.png" alt="Attachment.png">GrooveLinx</span></p>
+<p class="p3"><span class="s2">👤</span><span class="s3"> </span><span class="s2">❓</span><span class="s3"> </span><span class="s2">⚙️</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1"><img src="file:///Attachment.png" alt="Attachment.png"></span></p>
+<p class="p2"><span class="s1">GrooveLinx</span></p>
+<p class="p2"><span class="s1">Music</span></p>
+<p class="p4"><span class="s4">🏠</span><span class="s2"> Home</span><span class="s3"> </span><span class="s4">🎵</span><span class="s2"> Songs</span><span class="s3"> </span><span class="s4">📋</span><span class="s2"> Setlists</span><span class="s3"> </span><span class="s4">🎯</span><span class="s2"> Practice</span><span class="s3"> </span><span class="s4">🎸</span><span class="s2"> Rehearsal</span><span class="s3"> </span><span class="s4">💬</span><span class="s2"> Band Room</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">Gigs</span></p>
+<p class="p4"><span class="s4">🎤</span><span class="s2"> Gigs</span><span class="s3"> </span><span class="s4">📆</span><span class="s2"> Calendar</span><span class="s3"> </span><span class="s4">🏛️</span><span class="s2"> Venues &amp; Contacts</span><span class="s3"> </span><span class="s4">🎭</span><span class="s2"> Stage Plot</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">Tools</span></p>
+<p class="p4"><span class="s4">🎧</span><span class="s2"> Playlists</span><span class="s3"> </span><span class="s4">🎚️</span><span class="s2"> Pocket Meter</span><span class="s3"> </span><span class="s4">🔱</span><span class="s2"> Guitar Tuner</span><span class="s3"> </span><span class="s4">🥁</span><span class="s2"> Metronome</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">More</span></p>
+<p class="p4"><span class="s4">🏆</span><span class="s2"> Best Shot</span><span class="s3"> </span><span class="s4">📣</span><span class="s2"> Social Media</span><span class="s3"> </span><span class="s4">💰</span><span class="s2"> Finances</span><span class="s3"> </span><span class="s4">🎛️</span><span class="s2"> Equipment</span><span class="s3"> </span><span class="s4">👥</span><span class="s2"> Contacts</span><span class="s3"> </span><span class="s4">🔔</span><span class="s2"> Notifications</span><span class="s3"> </span><span class="s4">⚙️</span><span class="s2"> Settings &amp; Admin</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p4"><span class="s4">❓</span><span class="s2"> Help &amp; Guide</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">1</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Songs</b></span></h2>
+<p class="p6"><span class="s1"></span><br></p>
+<p class="p7"><span class="s1">➕</span></p>
+<p class="p7"><span class="s1">📥</span></p>
+<p class="p8"><span class="s1">❓</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">2</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Song DNA</b></span></h2>
+<p class="p9"><span class="s1">ⓘ</span></p>
+<p class="p10"><span class="s5">🎤</span><span class="s1"><b> Lead:</b><b></b></span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">Select...</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">Drew</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">Chris</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">Brian</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">Pierce</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">Drew &amp; Chris</span></p>
+<p class="p12"><span class="s7"><span class="Apple-converted-space">                </span></span></p>
+<p class="p10"><span class="s5">🎯</span><span class="s1"><b> Status:</b><b></b></span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">— Not on Radar —</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s8">👀</span><span class="s6"> Prospect</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s8">🔧</span><span class="s6"> Work in Progress</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s8">✅</span><span class="s6"> Gig Ready</span></p>
+<p class="p12"><span class="s7"><span class="Apple-converted-space">                </span></span></p>
+<p class="p10"><span class="s5">🔑</span><span class="s1"><b> Key:</b><b></b></span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">—</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">AAmBbBbm</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">BBmCCm</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">C#C#mDDm</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">EbEbmEEm</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">FFmF#F#m</span></p>
+<p class="p11"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s6">GGmAbAbm</span></p>
+<p class="p12"><span class="s7"><span class="Apple-converted-space">                </span></span></p>
+<p class="p13"><span class="s9">🥁</span><span class="s10"><b> BPM:</b><b></b></span></p>
+<p class="p13"><span class="s9">🏗️</span><span class="s10"><b> Structure:</b></span><span class="s11"> </span><span class="s12">—</span><span class="s11"> </span><span class="s13">✏️</span></p>
+<p class="p14"><span class="s1"></span><br></p>
+<p class="p13"><span class="s9">🎶</span><span class="s10"><b> Harmonies</b><b></b></span></p>
+<p class="p2"><span class="s1">\n</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p15"><span class="s1">🔍</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Find a Version</b></span></h2>
+<p class="p16"><span class="s14">ⓘ</span><span class="s3"> </span><span class="s15">🔍</span><span class="s1"> Find a Version</span></p>
+<p class="p2"><span class="s1">3</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>The North Star</b></span></h2>
+<p class="p17"><span class="s16">ⓘ</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">⭐</span><span class="s1"><b> Reference Version (Band Voted) </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<p class="p19"><span class="s19">🔍</span><span class="s20"> Find a Version</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p4"><span class="s2">+ Suggest Reference Version</span></p>
+<p class="p15"><span class="s1">🏆</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Best Shot vs North Star</b></span></h2>
+<p class="p17"><span class="s16">ⓘ</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">4</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Stage Crib Notes</b></span></h2>
+<p class="p17"><span class="s16">ⓘ</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p20"><span class="s1">4b</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Cover Me </b></span><span class="s21">🎤</span></h2>
+<p class="p17"><span class="s16">ⓘ</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p21"><span class="s1">+ Add Cover Version</span></p>
+<p class="p22"><span class="s22">🔍</span><span class="s1"> Find</span></p>
+<p class="p2"><span class="s1">5</span></p>
+<h2 style="margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>The Woodshed</b></span></h2>
+<p class="p17"><span class="s16">ⓘ</span></p>
+<p class="p23"><span class="s23">🔍</span><span class="s20"> UG</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">🎸</span><span class="s1"><b> The Chart </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<p class="p1"><span class="s1"></span><br></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">🎚️</span><span class="s1"><b> Moises Stems </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<p class="p1"><span class="s1"></span><br></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">🎸</span><span class="s1"><b> Practice Tracks </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<h4 style="margin: 0.0px 0.0px 12.0px 0.0px; font: 11.4px Times; color: #eef2f7; -webkit-text-stroke: #eef2f7"><span class="s24"><b>Add Practice Track</b><b></b></span></h4>
+<p class="p25"><span class="s24"><b>Video URL:</b><b></b></span></p>
+<p class="p26"><span class="s1"><b>Instrument:</b><b></b></span></p>
+<p class="p27"><span class="s25"><span class="Apple-converted-space">                    </span></span><span class="s1">-- Select Instrument --</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🎸</span><span class="s27"> Bass</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🎸</span><span class="s27"> Lead Guitar</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🎸</span><span class="s27"> Rhythm Guitar</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🎹</span><span class="s27"> Keys/Keyboards</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🥁</span><span class="s27"> Drums</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🎤</span><span class="s27"> Vocals</span></p>
+<p class="p28"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s26">🎶</span><span class="s27"> Whole Band</span></p>
+<p class="p29"><span class="s7"><span class="Apple-converted-space">                </span></span></p>
+<p class="p25"><span class="s24"><b>Notes (optional):</b><b></b></span></p>
+<p class="p21"><span class="s22">✨</span><span class="s1"> Add Track</span></p>
+<p class="p21"><span class="s22">📁</span><span class="s1"> Upload MP3</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">✅</span><span class="s1"><b> Woodshed Checklists </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<p class="p1"><span class="s1"></span><br></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">🎤</span><span class="s1"><b> Harmony Parts </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p30"><span class="s28">📋</span><span class="s1"><b> In Playlists:</b></span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">📋</span><span class="s1"><b> Rehearsal Notes </b></span><span class="s18"><b>ⓘ</b><b></b></span></h3>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p4"><span class="s2">+ Add Note</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">🎤</span><span class="s1"><b> Performance Tips</b></span></h3>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">3</span></p>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Top 5 Live Versions</b></span></h2>
+<p class="p32"><span class="s1">Based on community rankings and sound quality</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p2"><span class="s1">4</span></p>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Download &amp; Upload to Moises</b></span></h2>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p4"><span class="s29">⚡</span><span class="s30"> Smart Download (Just This Song!) </span><span class="s4">⬇️</span><span class="s2"> Download Full Show from Archive.org </span><span class="s4">🎛️</span><span class="s2"> Open Moises.ai Studio </span><span class="s31">📋</span><span class="s32"> View Setlist (Song Order &amp; Timing) </span><span class="s33">🎥</span><span class="s34"> Search YouTube for This Song</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p33"><span class="s1"><b>Processing...</b><b></b></span></p>
+<p class="p34"><span class="s1"></span><br></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s17">📋</span><span class="s1"><b> Your Practice Workflow:</b></span></h3>
+<p class="p2"><span class="s35">✅</span><span class="s7"><b> STEP 1: Download MP3</b><b></b></span></p>
+<p class="p35"><span class="s7">Click "Download MP3" button above </span><span class="s36">→</span><span class="s7"> Find the file on Archive.org </span><span class="s36">→</span><span class="s7"> Right-click </span><span class="s36">→</span><span class="s7"> Save to Downloads</span></p>
+<p class="p2"><span class="s35">⬆️</span><span class="s7"><b> STEP 2: Upload to Moises</b><b></b></span></p>
+<p class="p35"><span class="s7">Click "Open Moises.ai Studio" </span><span class="s36">→</span><span class="s7"> Click Upload </span><span class="s36">→</span><span class="s7"> Select your downloaded MP3</span></p>
+<p class="p2"><span class="s35">⚙️</span><span class="s7"><b> STEP 3: Separate Stems</b><b></b></span></p>
+<p class="p35"><span class="s7">Choose "6 Stems" separation </span><span class="s36">→</span><span class="s7"> Wait 1-2 minutes for AI processing</span></p>
+<p class="p2"><span class="s35">🎸</span><span class="s7"><b> STEP 4: Solo Your Part</b><b></b></span></p>
+<p class="p35"><span class="s7">Click "Solo" on your instrument </span><span class="s36">→</span><span class="s7"> Adjust tempo </span><span class="s36">→</span><span class="s7"> Loop sections </span><span class="s36">→</span><span class="s7"> Practice!</span></p>
+<p class="p2"><span class="s1">5</span></p>
+<h2 style="margin: 0.0px 0.0px 14.9px 0.0px; font: 18.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Isolate Your Part in Moises</b></span></h2>
+<p class="p15"><span class="s1">🎤</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Vocals / Harmonies</b></span></h3>
+<p class="p32"><span class="s1">Solo the vocals track to learn melody and harmonies</span></p>
+<p class="p15"><span class="s1">🎸</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Jerry Garcia (Lead)</b></span></h3>
+<p class="p32"><span class="s1">Isolate lead guitar to learn solos and fills</span></p>
+<p class="p15"><span class="s1">🎸</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Bob Weir (Rhythm)</b></span></h3>
+<p class="p32"><span class="s1">Focus on rhythm guitar and chord progressions</span></p>
+<p class="p15"><span class="s1">🎸</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Phil Lesh (Bass)</b></span></h3>
+<p class="p32"><span class="s1">Learn Phil's melodic bass lines</span></p>
+<p class="p15"><span class="s1">🥁</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Drums</b></span></h3>
+<p class="p32"><span class="s1">Practice the groove and fills</span></p>
+<p class="p15"><span class="s1">🎹</span></p>
+<h3 style="margin: 0.0px 0.0px 14.0px 0.0px; font: 14.0px Times; -webkit-text-stroke: #000000"><span class="s1"><b>Keyboards</b></span></h3>
+<p class="p32"><span class="s1">Isolate keys for atmospheric parts</span></p>
+<p class="p4"><span class="s2">↺ Start Over with New Song</span></p>
+<p class="p36"><span class="s1"><img src="file:///Attachment.png" alt="Attachment.png"></span></p>
+<h1 style="margin: 0.0px 0.0px 10.0px 0.0px; text-align: center; font: 26.4px Times; -webkit-text-stroke: #000000"><span class="s1"><b>GrooveLinx</b></span></h1>
+<p class="p38"><span class="s1"><b>Where Bands Lock In.</b></span></p>
+<p class="p39"><span class="s1">GrooveLinx helps bands rehearse smarter, build setlists faster, and walk on stage ready.</span></p>
+<p class="p40"><span class="s37">👤</span><span class="s1"><b> Sign In</b></span></p>
+<p class="p41"><span class="s1">Create Band</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p42"><span class="s2">✕</span></p>
+<p class="p1"><span class="s1"></span><br></p>
+<p class="p43"><span class="s1">GrooveLinx — Where Bands Lock In </span><span class="s28">🤘</span></p>
+<p class="p44"><span class="s1">© 2025–2026 Drew Merrill. All rights reserved.</span></p>
 </body>
 </html>
