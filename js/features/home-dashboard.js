@@ -367,7 +367,7 @@ function _renderDashboard(bundle, context) {
 function _renderSharpenDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
-        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Focus on what will make you better today'),
+        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Three steps. That\'s all it takes to get better.'),
         _renderSharpenPracticeCard(bundle),
         _renderSharpenWeakSongs(bundle),
         _renderSharpenRecentPractice(bundle),
@@ -467,19 +467,99 @@ function _timeAgo(isoStr) {
     return days + 'd ago';
 }
 
-// ── LOCK IN dashboard: band rehearsal focus (full command center) ─────────────
+// ── LOCK IN dashboard: session-level rehearsal plan ───────────────────────────
 function _renderLockinDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
-        _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Tighten the band. Fix the gaps.'),
-        _renderHeroNextBestStep(bundle, wf, isStoner),
+        _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Here\'s what the band should work on today.'),
+        _renderSessionPlan(bundle),
+        _renderBandReadinessSnapshot(bundle),
         _renderSetupGuidance(bundle, wf),
-        _renderPriorityQueue(bundle),
-        _renderBandHealthRow(bundle),
-        _renderBandMomentum(),
         '<div id="hdPollCard"></div>',
         '</div>'
     ].join('');
+}
+
+function _hdEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ── Session-level rehearsal plan from PracticeAttention engine ───────────────
+function _renderSessionPlan(bundle) {
+    var items = (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention)
+        ? GLStore.getPracticeAttention({ limit: 5 }) : null;
+
+    var html = '<div class="app-card home-anim-cards" style="border-color:rgba(245,158,11,0.15);background:linear-gradient(135deg,rgba(245,158,11,0.03),rgba(239,68,68,0.02))">';
+    html += '<h3 style="margin:0 0 14px;color:#fbbf24;font-size:1em">\uD83C\uDFAF Today\'s Session Plan</h3>';
+
+    if (!items || items.length === 0) {
+        html += '<div style="font-size:0.88em;color:var(--text-dim);padding:8px 0">No songs need attention right now. Add some to your rotation to get going.</div>';
+        html += '</div>';
+        return html;
+    }
+
+    items.slice(0, 5).forEach(function(item, i) {
+        var title = item.songId;
+        var avg = item.avg || 0;
+        var color = avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : avg > 0 ? '#ef4444' : '#475569';
+        var reason = item.topReason || '';
+        var time = item.score >= 15 ? '12 min' : item.score >= 8 ? '8 min' : '5 min';
+        var safeSong = _hdEsc(title).replace(/'/g, "\\'");
+
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;' + (i < Math.min(items.length, 5) - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.04)' : '') + ';cursor:pointer" onclick="if(typeof selectSong===\'function\')selectSong(\'' + safeSong + '\')">';
+        html += '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;font-size:0.75em;font-weight:800;color:#fbbf24;flex-shrink:0">' + (i + 1) + '</div>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="font-weight:600;font-size:0.9em;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _hdEsc(title) + '</div>';
+        html += '<div style="font-size:0.75em;color:var(--text-dim);margin-top:1px">' + _hdEsc(reason) + '</div>';
+        html += '</div>';
+        html += '<div style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0" title="' + avg.toFixed(1) + '/5"></div>';
+        html += '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim);flex-shrink:0;min-width:40px;text-align:right">' + time + '</span>';
+        html += '</div>';
+    });
+
+    var totalMin = items.slice(0, 5).reduce(function(sum, item) {
+        return sum + (item.score >= 15 ? 12 : item.score >= 8 ? 8 : 5);
+    }, 0);
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)">';
+    html += '<span style="font-size:0.78em;color:var(--text-dim)">' + Math.min(items.length, 5) + ' songs \xb7 ~' + totalMin + ' min</span>';
+    html += '<button class="btn btn-primary" style="font-size:0.82em;padding:8px 16px" onclick="showPage(\'rehearsal\')">Start Rehearsal</button>';
+    html += '</div></div>';
+    return html;
+}
+
+// ── Compact band readiness snapshot ──────────────────────────────────────────
+function _renderBandReadinessSnapshot(bundle) {
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+
+    var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
+    songs.forEach(function(s) {
+        var scores = rc[s.title] || {};
+        var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
+        if (vals.length === 0) return;
+        var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+        totalScore += avg;
+        ratedCount++;
+        if (avg < 3) lowCount++;
+        if (avg >= 4) lockedCount++;
+    });
+    var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
+    var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
+    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+
+    var html = '<div class="app-card home-anim-cards" style="padding:14px 16px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<span style="font-size:0.82em;font-weight:700;color:var(--text-muted)">\uD83D\uDFE2 Band Readiness</span>';
+    html += '<span style="font-size:1em;font-weight:800;color:' + barColor + '">' + overallAvg.toFixed(1) + '/5</span>';
+    html += '</div>';
+    html += '<div style="height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin-bottom:10px">';
+    html += '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:3px;transition:width 0.3s"></div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:14px;font-size:0.75em;color:var(--text-dim)">';
+    html += '<span>\uD83D\uDD12 ' + lockedCount + ' locked</span>';
+    html += '<span>\u26A0\uFE0F ' + lowCount + ' need work</span>';
+    html += '<span>\uD83C\uDFB5 ' + ratedCount + ' rated</span>';
+    html += '</div></div>';
+    return html;
 }
 
 // ── PLAY dashboard: gig focus ────────────────────────────────────────────────

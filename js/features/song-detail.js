@@ -524,27 +524,33 @@ function _sdBuildRecentSignal(title) {
 // ── Play Mode: transition hint to next song ──────────────────────────────────
 function _sdBuildTransitionHint(currentTitle, nextTitle) {
     if (!nextTitle) return '';
-    // Check transition intelligence if available
-    var hint = '';
+    // Check transition intelligence — never show empty state
+    var hint = '\uD83D\uDD04 New transition';
     if (typeof GLStore !== 'undefined' && GLStore.getTransitionBySongs) {
         var currentId = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(currentTitle) : currentTitle;
         var nextId = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(nextTitle) : nextTitle;
         var trans = GLStore.getTransitionBySongs(currentId, nextId);
-        if (trans && trans.confidence && trans.confidence >= 3) {
-            hint = '\u2705 Transition practiced';
+        if (trans && trans.practiceCount > 0 && trans.confidence >= 4) {
+            hint = '\u2705 Transition locked';
+        } else if (trans && trans.practiceCount > 0) {
+            hint = '\uD83D\uDCAA Practiced';
         } else if (trans && trans.issueFlags && trans.issueFlags.length > 0) {
             hint = '\u26A0\uFE0F ' + trans.issueFlags[0];
+        } else {
+            hint = '\uD83D\uDD04 Not yet practiced';
         }
     }
     // Get next song's key for transition awareness
     var nextSong = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === nextTitle; }) : null;
     var nextKey = nextSong && nextSong.key ? nextSong.key : '';
 
-    return '<div style="margin-top:8px;padding:12px 16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;display:flex;align-items:center;gap:10px">'+
+    var safeNext = _sdEsc(nextTitle).replace(/'/g, "\\'");
+    return '<div style="margin-top:8px;padding:12px 16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background 0.15s" onclick="renderSongDetail(\'' + safeNext + '\')" onmouseover="this.style.background=\'rgba(255,255,255,0.05)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.02)\'">' +
         '<span style="font-size:0.72em;color:var(--text-dim);font-weight:700;letter-spacing:0.04em">NEXT</span>'+
         '<span style="font-size:0.88em;font-weight:600;color:var(--text);flex:1">' + _sdEsc(nextTitle) + '</span>'+
         (nextKey ? '<span style="font-size:0.72em;color:#818cf8;background:rgba(129,140,248,0.1);padding:2px 6px;border-radius:4px">' + _sdEsc(nextKey) + '</span>' : '') +
-        (hint ? '<span style="font-size:0.72em;color:var(--text-dim)">' + hint + '</span>' : '') +
+        '<span style="font-size:0.72em;color:var(--text-dim)">' + hint + '</span>' +
+        '<span style="color:var(--text-dim);font-size:0.85em">\u2192</span>' +
         '</div>';
 }
 
