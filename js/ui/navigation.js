@@ -292,36 +292,14 @@ console.log('✅ navigation.js loaded');
                 }, 100);
             }
 
-            // ── Phase G: dev-shell song panel restore ────────────────────────
-            // In panel mode, glLastPage is NOT 'songdetail' (panelMode suppresses
-            // that write). glLastSong IS written. So this block runs independently
-            // of the glLastPage branching above: if glLastSong is set and the
-            // right-panel shell is available, restore the song into the panel.
-            //
-            // Timing problem: auth completes async and glHeroCheck(true) calls
-            // showPage('home'), which blows away the Songs workspace. We set a
-            // flag (window._glPanelRestorePending) so glHeroCheck can defer to us.
-            var panelSong = localStorage.getItem('glLastSong');
-            if (panelSong && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
-                window._glPanelRestorePending = true;
-                var pAttempts = 0;
-                var pInterval = setInterval(function() {
-                    pAttempts++;
-                    var ready = typeof allSongs !== 'undefined' && Array.isArray(allSongs) && allSongs.length > 0;
-                    if (ready || pAttempts >= 40) {
-                        clearInterval(pInterval);
-                        if (ready && typeof GLStore !== 'undefined' && typeof GLStore.selectSong === 'function') {
-                            // Ensure Songs workspace is visible behind the panel
-                            if (typeof showPage === 'function') showPage('songs');
-                            GLStore.selectSong(panelSong);
-                        }
-                        // Clear flag after auth callbacks have had time to fire.
-                        // 50ms showPage('home') and glHeroCheck typically complete
-                        // within 3s of page load. Clearing unblocks the songs-entry
-                        // panel logic for normal navigation.
-                        setTimeout(function() { window._glPanelRestorePending = false; }, 3000);
-                    }
-                }, 100);
+            // ── Phase G: song panel restore — DISABLED ─────────────────────────
+            // Previously auto-restored the last-viewed song into the right panel
+            // on every page load. This caused "After Midnight" (alphabetically first)
+            // to appear in the panel and Now Playing bar without user action.
+            // Users found this confusing. Now: fresh start on every load.
+            // The user must explicitly tap a song to open it.
+            try { localStorage.removeItem('glLastSong'); } catch(e) {}
+            if (false) { // dead code — kept for reference
             }
         } catch(e) {}
     });
