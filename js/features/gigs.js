@@ -740,6 +740,11 @@ function openGigMode(setlistObj) {
     _gmEnsureOverlay();
     _gmRenderNav();
     _gmShow();
+    // Reset to chart tab (gig mode should always open on chart)
+    if (typeof rmSwitchTab === 'function') {
+        var chartBtn = document.querySelector('#gmOverlay .rm-tab[data-tab="chart"]');
+        rmSwitchTab('chart', chartBtn);
+    }
     rmLoadChart();
 }
 
@@ -836,7 +841,11 @@ function gmNavigate(dir) {
     if (n < 0 || n >= _gmFlatList.length) return;
     rmIndex = n;
     _gmRenderNav();
-    // Reuse rmLoadChart — it reads from rmQueue[rmIndex]
+    // Always show chart tab when navigating songs
+    if (typeof rmSwitchTab === 'function') {
+        var chartBtn = document.querySelector('#gmOverlay .rm-tab[data-tab="chart"]');
+        rmSwitchTab('chart', chartBtn);
+    }
     if (typeof rmLoadChart === 'function') rmLoadChart();
     // Update pocket meter target BPM for new song
     var cur = _gmFlatList[rmIndex];
