@@ -9848,7 +9848,7 @@ function openGigPocketMeter(songTitle, bpm, songKey, bpArg) {
         // Close button
         var closeBtn = document.createElement('button');
         closeBtn.innerHTML = '\u2715 Close';
-        closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#94a3b8;padding:6px 14px;border-radius:8px;font-size:0.82em;cursor:pointer;font-weight:600;z-index:10011';
+        closeBtn.style.cssText = 'position:absolute;top:max(16px, env(safe-area-inset-top, 16px));right:max(16px, env(safe-area-inset-right, 16px));background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#94a3b8;padding:6px 14px;border-radius:8px;font-size:0.82em;cursor:pointer;font-weight:600;z-index:10011';
         closeBtn.onclick = closeGigPocketMeter;
         wrap.appendChild(closeBtn);
         container = document.createElement('div');

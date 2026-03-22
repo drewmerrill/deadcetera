@@ -7,7 +7,7 @@
 #rmOverlay.rm-visible { display:flex; }
 
 /* Header */
-.rm-header { display:flex; align-items:center; gap:12px; padding:10px 14px; background:linear-gradient(135deg,#1a2340,#0f172a); border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0; min-height:56px; }
+.rm-header { display:flex; align-items:center; gap:12px; padding:10px 14px; padding-top:max(10px, env(safe-area-inset-top, 10px)); background:linear-gradient(135deg,#1a2340,#0f172a); border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0; min-height:56px; }
 .rm-close { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; width:36px; height:36px; border-radius:8px; font-size:1em; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
 .rm-close:hover { background:rgba(255,255,255,0.15); color:white; }
 .rm-title-block { flex:1; min-width:0; }
