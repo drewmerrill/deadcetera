@@ -27,23 +27,27 @@
 
 // ── Rehearsal Planner block (app.js 18121–18801) ────────────────────────────
 
-// Register rehearsal walkthrough v3 — teaches workflow, not just controls
+// Register rehearsal walkthrough v4 — teaches vocabulary + workflow
 if (typeof glSpotlight !== 'undefined') {
     glSpotlight.register('rehearsal-plan-v3', [
         { target: '#rhPlanCard',
-          text: 'This is your draft rehearsal plan. Think of it like a text you\'d send the band — but structured so everyone\'s on the same page.' },
+          text: 'This is your rehearsal plan. Think of it like a text you\'d send the band — "open with a jam, work Jack Straw, do business, run the set" — but structured so everyone sees the same thing.' },
         { target: '#rhAddBlockBtn',
-          text: 'Build your plan block by block: songs to work on, exercises, jam time, band business, or notes.' },
-        { target: function() { return document.querySelector('[onclick*="_rhInsertTemplate"]'); },
-          text: 'Templates are the fastest way to add common blocks like "Cold starts" or "Band business." One tap.' },
+          text: 'Tap here to add a block. A block is one item on your agenda — a song, an exercise, a jam, band business, or a note to the band.' },
         { target: function() { return document.querySelector('[onclick*="_rhAddBlock(\\\'section"]') || document.querySelector('.rh-unit-row'); },
-          text: 'Use Sections to organize your rehearsal into phases — like Warm-Up, Song Work, and Run-Through.' },
+          text: 'A Section is a divider that groups blocks into phases. Example: "WARM-UP" section, then a jam + cold starts underneath. "SONG WORK" section, then your songs underneath. It keeps the plan organized.' },
+        { target: '#rhTemplateArea',
+          text: 'Templates add common blocks with one tap. "Cold starts," "Band business," or section dividers like "Warm-Up" — instead of typing each one, just tap it.' },
         { target: function() { return document.querySelector('.rh-drag-handle'); },
-          text: 'Drag blocks into the order you want. Build the flow the way you\'d actually run practice.' },
+          text: 'Grab this handle to drag any block up or down. Put things in the order you\'d actually run rehearsal.' },
         { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
-          text: 'Tap the time to make the plan realistic. If you only have 2 hours, the total at the top keeps you honest.' },
+          text: 'This is the time budget. Tap it to change how many minutes you want to spend. The total at the top adds up so you know if your plan fits in the time you have.' },
+        { target: function() { return document.querySelector('[onclick="renderRehearsalPlanner()"]'); },
+          text: 'Rebuild throws away this plan and generates a new one from scratch using AI suggestions. Your current plan is auto-saved as a snapshot first, so you can always get it back.' },
+        { target: function() { return document.querySelector('[onclick="_rhSaveSnapshotUI()"]'); },
+          text: 'Save Snapshot saves a copy of this exact plan. Use it before making big changes, or to save a plan you want to reuse for future rehearsals.' },
         { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
-          text: 'When the plan looks right, hit Start Rehearsal. Charts, notes, and your sequence load automatically.' }
+          text: 'When the plan looks right, hit Start Rehearsal. It opens practice mode with your songs loaded in order, charts ready, and a timer tracking how long you spend on each block.' }
     ]);
 }
 
@@ -338,7 +342,7 @@ async function _rhRenderCommandFlow(el) {
         // Add Block picker
         html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'
             + '<div id="rhAddBlockMenu" style="display:none;margin-top:4px;flex-direction:column;gap:6px">'
-            + '<div style="font-size:0.6em;color:var(--text-dim);padding:0 2px 3px;font-style:italic">Start with a section, then add songs, exercises, or business beneath it.</div>'
+            + '<div style="font-size:0.6em;color:var(--text-dim);padding:0 2px 3px;font-style:italic">Tip: Use a "Section divider" to label a phase (like Warm-Up), then add songs or exercises under it.</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:4px">'
             + '<button onclick="_rhAddBlock(\'song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵 Song</button>'
             + '<button onclick="_rhAddBlock(\'multi_song\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer;font-size:0.68em">🎵🎵 Multi-Song</button>'
@@ -346,7 +350,7 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="_rhAddBlock(\'note\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(148,163,184,0.2);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em">💬 Note</button>'
             + '<button onclick="_rhAddBlock(\'business\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:none;color:#fbbf24;cursor:pointer;font-size:0.68em">📋 Business</button>'
             + '<button onclick="_rhAddBlock(\'jam\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.25);background:none;color:#22c55e;cursor:pointer;font-size:0.68em">🔥 Jam</button>'
-            + '<button onclick="_rhAddBlock(\'section\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.06);color:#60a5fa;cursor:pointer;font-size:0.68em;font-weight:700">▬ Section</button>'
+            + '<button onclick="_rhAddBlock(\'section\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.06);color:#60a5fa;cursor:pointer;font-size:0.68em;font-weight:700" title="A divider that groups blocks into phases (e.g. Warm-Up, Song Work)">▬ Section divider</button>'
             + '</div>'
             + '<div id="rhTemplateArea" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:4px"><div style="font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:1px">Quick Templates</div>'
             + '<div style="font-size:0.55em;color:var(--text-dim);margin-bottom:3px;font-style:italic">One tap to add common rehearsal blocks.</div>'
@@ -389,10 +393,10 @@ async function _rhRenderCommandFlow(el) {
         html += '<div style="font-size:0.6em;color:var(--text-dim);padding:2px 0 4px;font-style:italic">Tap minutes on any block to make the plan realistic. Total: ' + totalLabel + '</div>'
             + '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
             + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Start Rehearsal</button>'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer">🔄 Rebuild</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer" title="Start over with a new AI-generated plan (current plan is auto-saved)">🔄 Rebuild</button>'
             + '</div>'
             + '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer">📸 Save Snapshot</button>'
+            + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer" title="Save a copy of this plan so you can reuse or restore it later">📸 Save Snapshot</button>'
             + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">Past Rehearsals</button>'
             + '</div>'
             + '<div id="rhSnapshots"></div>';
