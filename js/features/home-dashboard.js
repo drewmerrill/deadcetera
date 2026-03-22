@@ -349,26 +349,208 @@ function _scorePlayShowCard(bundle) {
 
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
+    var mode = (typeof GLStore !== 'undefined' && GLStore.getProductMode) ? GLStore.getProductMode() : 'sharpen';
 
     // Workflow state from GLStore
     var wf = (typeof GLStore !== 'undefined' && GLStore.getDashboardWorkflowState)
         ? GLStore.getDashboardWorkflowState()
         : { phaseState: {}, currentPhase: 'plan', nextActionLabel: 'Get started', nextActionDescription: '', nextActionTarget: '' };
 
+    // Mode-specific dashboard composition
+    if (mode === 'sharpen') return _renderSharpenDashboard(bundle, wf, isStoner);
+    if (mode === 'play') return _renderPlayDashboard(bundle, wf, isStoner);
+    // Default: Lock In (full command center)
+    return _renderLockinDashboard(bundle, wf, isStoner);
+}
+
+// ── SHARPEN dashboard: solo practice focus ────────────────────────────────────
+function _renderSharpenDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
-        _renderCommandCenterHeader(bundle),
+        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Focus on what will make you better today'),
+        _renderSharpenPracticeCard(bundle),
+        _renderSharpenWeakSongs(bundle),
+        _renderSharpenRecentPractice(bundle),
+        '</div>'
+    ].join('');
+}
+
+function _renderModeHeader(icon, title, subtitle) {
+    var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    return '<div class="hd-cc-header home-anim-header">'
+        + '<div class="hd-cc-header__left">'
+        + '<div class="hd-cc-header__title">' + icon + ' ' + title + '</div>'
+        + '<div class="hd-cc-header__date">' + dateStr + '</div>'
+        + '</div>'
+        + '</div>'
+        + '<div style="color:var(--text-dim);font-size:0.85em;padding:0 4px 16px;font-style:italic">' + subtitle + '</div>';
+}
+
+function _renderSharpenPracticeCard(bundle) {
+    var myKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+    var html = '<div class="app-card home-anim-cards">';
+    html += '<h3 style="margin:0 0 12px">\uD83C\uDFAF What to Practice</h3>';
+
+    // Find songs where user's readiness is lowest
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var weakest = [];
+    songs.forEach(function(s) {
+        var scores = rc[s.title] || {};
+        var myScore = myKey ? (scores[myKey] || 0) : 0;
+        if (myScore > 0 && myScore <= 3) {
+            weakest.push({ title: s.title, score: myScore, band: s.band });
+        }
+    });
+    weakest.sort(function(a, b) { return a.score - b.score; });
+    var top3 = weakest.slice(0, 3);
+
+    if (top3.length === 0) {
+        html += '<div style="color:var(--text-dim);font-size:0.88em;padding:8px 0">No weak songs found \u2014 rate your readiness on a few songs to get started.</div>';
+    } else {
+        top3.forEach(function(s) {
+            var color = (typeof readinessColor === 'function') ? readinessColor(s.score) : '#64748b';
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">';
+            html += '<div style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0"></div>';
+            html += '<span style="flex:1;font-weight:500;font-size:0.9em">' + s.title + '</span>';
+            html += '<span style="font-size:0.75em;color:' + color + ';font-weight:700">' + s.score + '/5</span>';
+            html += '</div>';
+        });
+    }
+    html += '<button onclick="showPage(\'practice\')" class="btn btn-primary" style="margin-top:14px;width:100%;justify-content:center">\uD83C\uDFAF Start Practice</button>';
+    html += '</div>';
+    return html;
+}
+
+function _renderSharpenWeakSongs(bundle) {
+    return '<div id="hdWeakSongsCard" class="app-card home-anim-cards">'
+        + '<h3 style="margin:0 0 8px">\uD83D\uDCC9 Needs Work</h3>'
+        + '<div style="color:var(--text-dim);font-size:0.82em">Loading weak songs...</div>'
+        + '</div>';
+}
+
+function _renderSharpenRecentPractice(bundle) {
+    var stats = (typeof GLStore !== 'undefined' && GLStore.getAllSongPracticeStats)
+        ? GLStore.getAllSongPracticeStats() : {};
+    var recent = Object.entries(stats)
+        .filter(function(e) { return e[1].lastPracticedAt; })
+        .sort(function(a, b) { return (b[1].lastPracticedAt || '').localeCompare(a[1].lastPracticedAt || ''); })
+        .slice(0, 5);
+
+    var html = '<div class="app-card home-anim-cards">';
+    html += '<h3 style="margin:0 0 8px">\uD83D\uDD52 Recently Practiced</h3>';
+    if (recent.length === 0) {
+        html += '<div style="color:var(--text-dim);font-size:0.82em;padding:4px 0">No practice sessions yet.</div>';
+    } else {
+        recent.forEach(function(entry) {
+            var title = entry[0];
+            var stat = entry[1];
+            var ago = stat.lastPracticedAt ? _timeAgo(stat.lastPracticedAt) : '';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">';
+            html += '<span style="flex:1;font-size:0.88em;font-weight:500">' + title + '</span>';
+            html += '<span style="font-size:0.72em;color:var(--text-dim)">' + ago + '</span>';
+            html += '</div>';
+        });
+    }
+    html += '</div>';
+    return html;
+}
+
+function _timeAgo(isoStr) {
+    if (!isoStr) return '';
+    var diff = Date.now() - new Date(isoStr).getTime();
+    var mins = Math.floor(diff / 60000);
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    return days + 'd ago';
+}
+
+// ── LOCK IN dashboard: band rehearsal focus (full command center) ─────────────
+function _renderLockinDashboard(bundle, wf, isStoner) {
+    return [
+        '<div class="home-dashboard hd-command-center">',
+        _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Tighten the band. Fix the gaps.'),
         _renderHeroNextBestStep(bundle, wf, isStoner),
         _renderSetupGuidance(bundle, wf),
         _renderPriorityQueue(bundle),
         _renderBandHealthRow(bundle),
         _renderBandMomentum(),
-        _renderNarrativeBridge(),
-        '<div style="text-align:center;padding:4px 0"><button onclick="if(typeof toggleStonerMode===\'function\')toggleStonerMode()" style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);color:#a78bfa;padding:8px 20px;border-radius:10px;font-size:0.78em;font-weight:600;cursor:pointer;transition:all 0.15s">\uD83C\uDFB6 Easy Mode<span style="display:block;font-size:0.72em;font-weight:500;color:#64748b;margin-top:1px">Simplified rehearsal view</span></button></div>',
-        _renderRecentChanges(bundle),
         '<div id="hdPollCard"></div>',
         '</div>'
     ].join('');
+}
+
+// ── PLAY dashboard: gig focus ────────────────────────────────────────────────
+function _renderPlayDashboard(bundle, wf, isStoner) {
+    return [
+        '<div class="home-dashboard hd-command-center">',
+        _renderModeHeader('\uD83C\uDFA4', 'Play', 'Everything you need. Nothing you don\'t.'),
+        _renderPlayUpcomingSet(bundle),
+        _renderPlayReadiness(bundle),
+        '</div>'
+    ].join('');
+}
+
+function _renderPlayUpcomingSet(bundle) {
+    var gig = bundle.gigs && bundle.gigs[0];
+    var html = '<div class="app-card home-anim-cards">';
+
+    if (gig) {
+        var gigDate = gig.date ? new Date(gig.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+        html += '<h3 style="margin:0 0 4px">\uD83C\uDFA4 Next Gig</h3>';
+        html += '<div style="font-size:0.88em;font-weight:600;color:var(--text)">' + (gig.venue || gig.name || 'Unnamed') + '</div>';
+        html += '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">' + gigDate + '</div>';
+
+        // Show setlist if linked
+        if (gig.setlistId || gig.setlistIndex !== undefined) {
+            html += '<button onclick="showPage(\'setlists\')" class="btn btn-primary" style="width:100%;justify-content:center">\uD83D\uDCCB View Setlist</button>';
+        } else {
+            html += '<div style="color:var(--text-dim);font-size:0.82em">No setlist linked yet.</div>';
+            html += '<button onclick="showPage(\'setlists\')" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px">\uD83D\uDCCB Create Setlist</button>';
+        }
+    } else {
+        html += '<h3 style="margin:0 0 8px">\uD83C\uDFA4 No Upcoming Gigs</h3>';
+        html += '<div style="color:var(--text-dim);font-size:0.85em;margin-bottom:12px">Book a gig to see your set here.</div>';
+        html += '<button onclick="showPage(\'gigs\')" class="btn btn-ghost" style="width:100%;justify-content:center">+ Add Gig</button>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function _renderPlayReadiness(bundle) {
+    var html = '<div class="app-card home-anim-cards">';
+    html += '<h3 style="margin:0 0 8px">\uD83D\uDFE2 Band Readiness</h3>';
+
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+
+    var totalScore = 0, totalCount = 0;
+    songs.forEach(function(s) {
+        var scores = rc[s.title] || {};
+        var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
+        if (vals.length > 0) {
+            totalScore += vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+            totalCount++;
+        }
+    });
+    var avg = totalCount > 0 ? (totalScore / totalCount).toFixed(1) : '0';
+    var pct = totalCount > 0 ? Math.round(totalScore / totalCount / 5 * 100) : 0;
+    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#eab308' : '#ef4444';
+
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<span style="font-size:0.85em;color:var(--text-muted)">Average</span>';
+    html += '<span style="font-size:1.1em;font-weight:800;color:' + barColor + '">' + avg + '/5</span>';
+    html += '</div>';
+    html += '<div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">';
+    html += '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:3px;transition:width 0.3s"></div>';
+    html += '</div>';
+    html += '<div style="font-size:0.75em;color:var(--text-dim);margin-top:8px">' + totalCount + ' songs rated</div>';
+
+    html += '</div>';
+    return html;
 }
 
 // ── Command Center: Header ────────────────────────────────────────────────────

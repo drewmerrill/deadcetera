@@ -1114,6 +1114,20 @@ body[data-gl-mode="play"] .menu-item[data-page="contacts"],
 body[data-gl-mode="play"] .menu-item[data-page="bestshot"],
 body[data-gl-mode="play"] .menu-item[data-page="notifications"] { display:none; }
 
+/* ── Play mode: simplify song list — hide editing UI ── */
+body[data-gl-mode="play"] .song-status-cell,
+body[data-gl-mode="play"] .song-chain-strip,
+body[data-gl-mode="play"] #songSearch,
+body[data-gl-mode="play"] .filter-row,
+body[data-gl-mode="play"] #customSongBtn { display:none!important; }
+
+/* ── Sharpen mode: de-emphasize band status columns ── */
+body[data-gl-mode="sharpen"] .song-status-cell { opacity:0.4; }
+
+/* ── All modes: improved base spacing ── */
+.app-card { margin-bottom:14px; }
+.app-card h3 { font-size:1em; margin-bottom:12px; }
+
 /* Mobile mode switcher — highlight active button */
 .gl-mobile-mode-btn[data-mode] { transition: all 0.15s; }
 body[data-gl-mode="sharpen"] .gl-mobile-mode-btn[data-mode="sharpen"],

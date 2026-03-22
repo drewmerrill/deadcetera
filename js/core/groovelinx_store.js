@@ -5076,13 +5076,29 @@
     play:    ['home', 'setlists', 'gigs', 'calendar', 'venues', 'stageplot', 'admin', 'help']
   };
 
+  // Default landing page per mode
+  var MODE_LANDING = { sharpen: 'songs', lockin: 'rehearsal', play: 'setlists' };
+
   function setProductMode(mode) {
     if (VALID_MODES.indexOf(mode) === -1) return;
+    var prev = _state.productMode;
     _state.productMode = mode;
     localStorage.setItem('gl_product_mode', mode);
-    emit('productModeChanged', { mode: mode });
-    // Apply body class for CSS filtering
     document.body.setAttribute('data-gl-mode', mode);
+    emit('productModeChanged', { mode: mode, prev: prev });
+
+    // Auto-redirect: if current page is not visible in new mode, go to landing
+    var currentPage = _state.activePage;
+    var visiblePages = MODE_PAGES[mode];
+    if (currentPage && visiblePages && visiblePages.indexOf(currentPage) === -1) {
+      var landing = MODE_LANDING[mode] || 'home';
+      if (typeof showPage === 'function') showPage(landing);
+    }
+
+    // Re-render home dashboard if on home (it's mode-aware)
+    if (_state.activePage === 'home' && typeof renderHomeDashboard === 'function') {
+      renderHomeDashboard();
+    }
   }
 
   function getProductMode() {
@@ -5103,6 +5119,7 @@
 
   // Expose on GLStore
   window.GLStore.setProductMode = setProductMode;
+  window.GLStore.MODE_LANDING   = MODE_LANDING;
   window.GLStore.getProductMode = getProductMode;
   window.GLStore.getModePages   = getModePages;
   window.GLStore.isPageVisibleInMode = isPageVisibleInMode;
