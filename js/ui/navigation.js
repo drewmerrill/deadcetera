@@ -68,8 +68,9 @@ window.showPage = function showPage(page) {
     }
 
     // Restore right panel when entering songs (skip if a reload restore is pending)
+    // On mobile (<900px), don't auto-open panel — it takes over the whole screen
     if (page === 'songs' && window.glRightPanel && typeof window.glRightPanel.open === 'function'
-        && !window._glPanelRestorePending) {
+        && !window._glPanelRestorePending && window.innerWidth >= 900) {
         var _savedSong = (typeof GLStore !== 'undefined' && GLStore.getSelectedSong) ? GLStore.getSelectedSong() : null;
         if (_savedSong) {
             if (typeof highlightSelectedSongRow === 'function') highlightSelectedSongRow(_savedSong);

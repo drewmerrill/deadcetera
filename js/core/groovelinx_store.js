@@ -5085,6 +5085,16 @@
     _state.productMode = mode;
     localStorage.setItem('gl_product_mode', mode);
     document.body.setAttribute('data-gl-mode', mode);
+
+    // Clear song selection on mode switch — prevents stale "After Midnight" auto-opening
+    if (prev !== mode) {
+      _state.activeSongId = null;
+      try { localStorage.removeItem('glLastSong'); } catch(e) {}
+      if (typeof window.glRightPanel !== 'undefined' && window.glRightPanel.hide) {
+        window.glRightPanel.hide();
+      }
+    }
+
     emit('productModeChanged', { mode: mode, prev: prev });
 
     // Auto-redirect: if current page is not visible in new mode, go to landing

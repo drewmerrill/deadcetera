@@ -317,8 +317,6 @@ async function _rhRenderCommandFlow(el) {
                     + '<span class="rh-row-controls">'
                     + (secLabel ? '<span style="font-size:0.7em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
                     + secAssignChip + secNoteChip
-                    + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
-                    + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                     + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                     + '</span>'
                     + '</div>'
@@ -361,8 +359,6 @@ async function _rhRenderCommandFlow(el) {
                 + '<span' + editClick + editTitle + ' style="flex:1;min-width:0;font-size:0.85em;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '500' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer' : '') + '">' + unitLabel + '</span>'
                 + '<span class="rh-row-controls">'
                 + minChip + assignChip + noteChip
-                + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
-                + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                 + '</span>'
                 + '</div>'
