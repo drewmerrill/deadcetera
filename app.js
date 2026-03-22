@@ -5718,6 +5718,12 @@ async function initFirebase() {
 function updateSignInStatus(signedIn) {
     isUserSignedIn = signedIn;
     updateDriveAuthButton();
+    // Always hide hero when signed in — catches edge cases where
+    // localStorage was cleared but Firebase data loaded successfully
+    if (signedIn) {
+        var _hero = document.getElementById('page-hero');
+        if (_hero) _hero.classList.add('hidden');
+    }
 }
 
 async function getCurrentUserEmail() {

@@ -1033,6 +1033,8 @@
    */
   function selectSong(title) {
     if (!title) { clearSong(); return; }
+    // If user is selecting a song, they're past the hero — hide it
+    try { var _h = document.getElementById('page-hero'); if (_h) _h.classList.add('hidden'); } catch(e) {}
     var prev = _state.activeSongId;
     _state.activeSongId = title;
     // Sync legacy global — app.js code that reads selectedSong keeps working
