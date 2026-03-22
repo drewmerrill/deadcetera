@@ -364,17 +364,22 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
     }
     if (!members.length) { el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-dim)">Add band members to see availability.</div>'; return; }
 
-    // Build day range
+    // Build day range with month context
     var today = new Date();
     var numDays = _calMatrixDays;
     var days = [];
+    var _monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     for (var d = 0; d < numDays; d++) {
         var dt = new Date(today.getTime() + d * 86400000);
         days.push({
             date: dt.toISOString().split('T')[0],
             label: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
             dayNum: dt.getDate(),
-            isWeekend: dt.getDay() === 0 || dt.getDay() === 6
+            month: _monthNames[dt.getMonth()],
+            monthIdx: dt.getMonth(),
+            year: dt.getFullYear(),
+            isWeekend: dt.getDay() === 0 || dt.getDay() === 6,
+            isFirstOfMonth: dt.getDate() === 1 || d === 0
         });
     }
 
@@ -411,7 +416,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
             var _bd = glParseDate(d.day.date);
             return '<span style="background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 8px;border-radius:4px;font-weight:700;cursor:pointer" onclick="calDayClick(' +
                 (_bd ? _bd.getFullYear() + ',' + _bd.getMonth() + ',' + _bd.getDate() : '') + ')">' +
-                d.day.label + ' ' + d.day.dayNum + '</span>';
+                d.day.label + ' ' + d.day.month + ' ' + d.day.dayNum + '</span>';
         }).join(' ');
         var firstBest = allFreeDays[0].day;
         var _fbd = glParseDate(firstBest.date);
@@ -427,7 +432,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         if (workableDays.length > 0) {
             var wkList = workableDays.slice(0, 4).map(function(d) {
                 return '<span style="background:rgba(132,204,22,0.12);color:#84cc16;padding:2px 8px;border-radius:4px;font-weight:700">' +
-                    d.day.label + ' ' + d.day.dayNum + ' <span style="font-size:0.8em;opacity:0.7">' + d.strength.label + '</span></span>';
+                    d.day.label + ' ' + d.day.month + ' ' + d.day.dayNum + ' <span style="font-size:0.8em;opacity:0.7">' + d.strength.label + '</span></span>';
             }).join(' ');
             bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(132,204,22,0.06);border:1px solid rgba(132,204,22,0.15);border-radius:8px;font-size:0.85em">' +
                 '<span style="color:#84cc16;font-weight:700">Workable days (soft conflicts only):</span> ' + wkList + '</div>';
@@ -438,7 +443,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
                 var mostList = mostAvail.map(function(d) {
                     var strengthLabel = d.strength ? ' · ' + d.strength.label : '';
                     return '<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 8px;border-radius:4px;font-weight:700">' +
-                        d.day.label + ' ' + d.day.dayNum + ' (' + d.freeCount + '/' + members.length + strengthLabel + ')</span>';
+                        d.day.label + ' ' + d.day.month + ' ' + d.day.dayNum + ' (' + d.freeCount + '/' + members.length + strengthLabel + ')</span>';
                 }).join(' ');
                 bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:8px;font-size:0.85em">' +
                     '<span style="color:#fbbf24;font-weight:700">Most available:</span> ' + mostList + '</div>';
@@ -456,16 +461,37 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
     });
     rangeHtml += '</div>';
 
-    // Table
+    // Table with month headers
     var html = rangeHtml + bestHtml;
     html += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;font-size:0.78em">';
+
+    // Month header row
+    html += '<tr><th style="position:sticky;left:0;background:#0f172a;z-index:2"></th>';
+    var _prevMonth = -1;
+    var _monthSpans = [];
+    days.forEach(function(day, di) {
+        var key = day.year + '-' + day.monthIdx;
+        if (day.monthIdx !== _prevMonth) {
+            if (_monthSpans.length) _monthSpans[_monthSpans.length - 1].span = di - _monthSpans[_monthSpans.length - 1].start;
+            _monthSpans.push({ label: day.month + ' ' + day.year, start: di, span: 0 });
+            _prevMonth = day.monthIdx;
+        }
+    });
+    if (_monthSpans.length) _monthSpans[_monthSpans.length - 1].span = days.length - _monthSpans[_monthSpans.length - 1].start;
+    _monthSpans.forEach(function(ms) {
+        html += '<th colspan="' + ms.span + '" style="text-align:center;padding:2px 0;font-size:0.7em;font-weight:800;letter-spacing:0.08em;color:var(--accent-light);text-transform:uppercase;border-bottom:2px solid rgba(99,102,241,0.2)">' + ms.label + '</th>';
+    });
+    html += '</tr>';
+
+    // Day header row
     html += '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-dim);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);position:sticky;left:0;background:#0f172a;z-index:1"></th>';
     days.forEach(function(day) {
         var allFree = dayAvail.find(function(d) { return d.day.date === day.date; });
-        var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.08)' : '';
+        var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.1)' : '';
+        var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:2px solid rgba(99,102,241,0.25);' : '';
         html += '<th style="text-align:center;padding:4px 2px;color:' + (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') +
-            ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg +
-            ';cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')">' +
+            ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg + ';' + monthBorder +
+            'cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')">' +
             day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span></th>';
     });
     html += '</tr>';
@@ -488,7 +514,8 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
                 var blocked = blockedRanges.some(function(b) { return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
                 if (blocked) cellContent = '<span style="color:#ef4444;font-weight:700">\u2716</span>';
             }
-            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + '">' + cellContent + '</td>';
+            var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:2px solid rgba(99,102,241,0.15);' : '';
+            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + ';' + monthBorder + '">' + cellContent + '</td>';
         });
         html += '</tr>';
     });
