@@ -361,8 +361,9 @@ async function _rhRenderCommandFlow(el) {
             + '<div id="rhSnapshots"></div>';
     }
 
-    // ── Session review ──
+    // ── Session review + history ──
     html += '<div id="rhSessionReview"></div>';
+    html += '<div id="rhSessionHistory"></div>';
 
     // ── SECTION 3: Tab content area (AI suggestions — secondary to saved plan) ──
     html += '<div id="rhTabContent"></div>';
@@ -393,8 +394,9 @@ async function _rhRenderCommandFlow(el) {
         }, 800);
     }
 
-    // Render last rehearsal session review
+    // Render last rehearsal session review + history
     _rhRenderSessionReview();
+    _rhRenderSessionHistory();
 
     // Show AI focus below the saved plan (complementary, not competing)
     if (hasSavedPlan) {
@@ -565,6 +567,72 @@ async function _rhRenderSessionReview() {
     html += '<div style="font-size:0.72em;color:var(--text-muted);padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:4px;font-style:italic">' + takeaway + '</div>'
         + '</div></details>';
 
+    el.innerHTML = html;
+}
+
+async function _rhRenderSessionHistory() {
+    var el = document.getElementById('rhSessionHistory');
+    if (!el) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var sessions = [];
+    try {
+        var snap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(10).once('value');
+        var val = snap.val();
+        if (val) sessions = Object.values(val).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    } catch(e) { return; }
+    if (sessions.length < 2) return; // don't show if only 1 (already in Last Rehearsal card)
+
+    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">📋 Past Rehearsals (' + sessions.length + ')</summary>'
+        + '<div style="margin-top:6px">';
+
+    sessions.forEach(function(s) {
+        var d = s.date ? new Date(s.date) : null;
+        var dateStr = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+        var totalActual = s.totalActualMin || 0;
+        var totalBudget = s.totalBudgetMin || 0;
+        var delta = totalActual - totalBudget;
+        var verdict = '', verdictColor = '';
+        if (!totalBudget) { verdict = totalActual + ' min'; verdictColor = 'var(--text-dim)'; }
+        else if (Math.abs(delta) <= 3) { verdict = 'On track'; verdictColor = '#22c55e'; }
+        else if (delta > 0 && delta <= 10) { verdict = delta + 'min over'; verdictColor = '#fbbf24'; }
+        else if (delta > 10) { verdict = delta + 'min over'; verdictColor = '#ef4444'; }
+        else { verdict = Math.abs(delta) + 'min under'; verdictColor = '#60a5fa'; }
+
+        var blocksCompleted = s.blocksCompleted || (s.blocks ? s.blocks.length : 0);
+        var totalBlocks = s.totalBlocks || blocksCompleted;
+
+        // Expandable block detail
+        var blockDetail = '';
+        if (s.blocks && s.blocks.length) {
+            blockDetail = '<div style="padding:4px 0 6px 8px;display:none" id="rhSessDetail_' + s.sessionId + '">';
+            s.blocks.forEach(function(b) {
+                if (!b.budgetMin && !b.actualMin) return;
+                var over = b.budgetMin > 0 && b.actualMin > b.budgetMin;
+                var pct = b.budgetMin > 0 ? Math.min(Math.round((b.actualMin / b.budgetMin) * 100), 200) : 100;
+                var barColor = pct <= 100 ? '#22c55e' : '#ef4444';
+                blockDetail += '<div style="display:flex;align-items:center;gap:6px;padding:1px 0;font-size:0.7em">'
+                    + '<span style="min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (over ? '#fca5a5' : 'var(--text-dim)') + '">' + escHtml(b.title) + '</span>'
+                    + '<div style="flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden"><div style="width:' + Math.min(pct, 100) + '%;height:100%;background:' + barColor + ';border-radius:2px"></div></div>'
+                    + '<span style="color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';white-space:nowrap">' + b.actualMin + 'm' + (b.budgetMin ? ' / ' + b.budgetMin + 'm' : '') + '</span>'
+                    + '</div>';
+            });
+            blockDetail += '</div>';
+        }
+
+        html += '<div style="border-bottom:1px solid rgba(255,255,255,0.03)">'
+            + '<div onclick="var d=document.getElementById(\'rhSessDetail_' + s.sessionId + '\');if(d)d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;font-size:0.78em">'
+            + '<span style="color:var(--text-muted);min-width:90px">' + dateStr + '</span>'
+            + '<span style="color:var(--text);font-weight:600">' + totalActual + ' min</span>'
+            + (totalBudget ? '<span style="font-size:0.85em;color:var(--text-dim)">/ ' + totalBudget + 'm</span>' : '')
+            + '<span style="font-size:0.85em;font-weight:700;color:' + verdictColor + ';margin-left:auto">' + verdict + '</span>'
+            + '<span style="font-size:0.72em;color:var(--text-dim)">' + blocksCompleted + '/' + totalBlocks + '</span>'
+            + '</div>'
+            + blockDetail
+            + '</div>';
+    });
+
+    html += '</div></details>';
     el.innerHTML = html;
 }
 
