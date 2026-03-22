@@ -616,7 +616,7 @@ async function editSetlist(idx) {
             var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
             var mergeBtn = si > 0 ? '<button onclick="slMergeSets(' + si + ')" style="margin-left:auto;padding:1px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600" title="Merge into previous set">↑ Merge</button>' : '';
             return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-                + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span>' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
+                + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
                 + '<div id="slSet' + si + 'Songs"></div>'
                 + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
                 + '</div>';
@@ -1093,35 +1093,64 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
     var set = window._slSets[setIdx];
     if (!set || !set.songs || afterSongIdx < 1 || afterSongIdx >= set.songs.length) return;
 
+    // Ask what kind of section starts after the break
+    var choice = prompt(
+        'What starts after this break?\n\n'
+        + '1 = Set (numbered)\n'
+        + '2 = Soundcheck\n'
+        + '3 = Encore\n'
+        + '4 = Custom name\n\n'
+        + 'Enter 1-4:', '1'
+    );
+    if (!choice) return;
+
     var firstHalf = set.songs.slice(0, afterSongIdx);
     var secondHalf = set.songs.slice(afterSongIdx);
 
-    // Determine names
-    var firstName = set.name;
-    // Find next available set number (avoid duplicates like two "Set 2"s)
-    var usedNums = {};
-    window._slSets.forEach(function(s) {
-        var m = (s.name || '').match(/^Set (\d+)$/);
-        if (m) usedNums[parseInt(m[1])] = true;
-    });
-    var nextNum = 1;
-    while (usedNums[nextNum]) nextNum++;
-    var secondName = 'Set ' + nextNum;
-    // If splitting "All Songs", name first half too
-    if (set.name === 'All Songs') {
-        firstName = 'Set 1';
-        if (secondName === 'Set 1') secondName = 'Set 2';
+    // Determine name for the new section
+    var secondName = '';
+    if (choice === '2') {
+        secondName = '🔊 Soundcheck';
+    } else if (choice === '3') {
+        secondName = 'Encore';
+    } else if (choice === '4') {
+        secondName = prompt('Section name:', '') || 'Set';
+    } else {
+        // Default: next available set number
+        var usedNums = {};
+        window._slSets.forEach(function(s) {
+            var m = (s.name || '').match(/^Set (\d+)$/);
+            if (m) usedNums[parseInt(m[1])] = true;
+        });
+        var nextNum = 1;
+        while (usedNums[nextNum]) nextNum++;
+        secondName = 'Set ' + nextNum;
     }
+
+    // Name the first half if it was "All Songs"
+    var firstName = set.name;
+    if (set.name === 'All Songs') firstName = 'Set 1';
 
     set.name = firstName;
     set.songs = firstHalf;
     window._slSets.splice(setIdx + 1, 0, { name: secondName, songs: secondHalf });
 
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
-    // Re-render the entire editor by reloading the edit view
     _slReRenderSets();
-    if (typeof showToast === 'function') showToast('Set break added — now ' + window._slSets.length + ' sets');
+    if (typeof showToast === 'function') showToast(secondName + ' added — now ' + window._slSets.length + ' sections');
 }
+
+// Rename a set section
+function slRenameSet(setIdx) {
+    if (!window._slSets[setIdx]) return;
+    var current = window._slSets[setIdx].name || 'Set ' + (setIdx + 1);
+    var newName = prompt('Rename section:', current);
+    if (!newName || newName === current) return;
+    window._slSets[setIdx].name = newName;
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    _slReRenderSets();
+}
+window.slRenameSet = slRenameSet;
 
 function _slReRenderSets() {
     var setsEl = document.getElementById('slSets');
@@ -1131,7 +1160,7 @@ function _slReRenderSets() {
         var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
         var mergeBtn = si > 0 ? '<button onclick="slMergeSets(' + si + ')" style="margin-left:auto;padding:1px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600" title="Merge into previous set">↑ Merge</button>' : '';
         return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-            + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span>' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
+            + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
             + '<div id="slSet' + si + 'Songs"></div>'
             + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
             + '</div>';
