@@ -1434,4 +1434,25 @@ window.gigSetAvailability = async function(gigIdx, status) {
     }
 };
 
+// ── Expose all onclick-referenced functions to window ─────────────────────────
+// async function declarations in non-strict scripts may not auto-bind to window
+// in all browsers (Safari). Explicit assignment ensures onclick handlers work.
+window.deleteGig = deleteGig;
+window.editGig = editGig;
+window.saveGigEdit = saveGigEdit;
+window.gigLaunchLinkedSetlist = gigLaunchLinkedSetlist;
+window.loadGigs = loadGigs;
+window.addGig = addGig;
+window.saveGig = saveGig;
+window.launchGigMode = launchGigMode;
+window.openGigMode = openGigMode;
+window.closeGigMode = closeGigMode;
+window.gmNavigate = gmNavigate;
+window.gmMarkPlayed = gmMarkPlayed;
+window.rmCaptureSave = rmCaptureSave;
+window.rmCaptureCancel = rmCaptureCancel;
+window.gigsMapSetFilter = gigsMapSetFilter;
+window.renderGigsPage = renderGigsPage;
+window.loadGigHistory = loadGigHistory;
+
 console.log('✅ gigs.js loaded');
