@@ -311,12 +311,26 @@ function slAddSongToSet(setIdx, title) {
 }
 
 // Duration estimate: 6 min/song default
-var _slMinPerSong = 6;
+// Calculate total runtime in seconds for a set's songs
+function _slSetRuntimeSec(songs) {
+    if (!songs || !songs.length) return 0;
+    var total = 0;
+    for (var i = 0; i < songs.length; i++) {
+        var title = typeof songs[i] === 'string' ? songs[i] : (songs[i].title || '');
+        total += (typeof getSongRuntimeSec === 'function') ? getSongRuntimeSec(title) : 360;
+    }
+    return total;
+}
 
-function _slDurationLabel(songCount) {
-    var mins = songCount * _slMinPerSong;
-    if (mins >= 60) return Math.floor(mins / 60) + 'h ' + (mins % 60 ? mins % 60 + 'min' : '');
-    return mins + ' min';
+function _slDurationLabel(songs) {
+    // Accept either a songs array or a plain count (backward compat)
+    if (typeof songs === 'number') {
+        var mins = songs * 6;
+        if (mins >= 60) return Math.floor(mins / 60) + 'h ' + (mins % 60 ? mins % 60 + 'min' : '');
+        return mins + ' min';
+    }
+    var sec = _slSetRuntimeSec(songs);
+    return (typeof formatRuntimeSec === 'function') ? formatRuntimeSec(sec) : Math.round(sec / 60) + ' min';
 }
 
 function slRenderSetSongs(setIdx) {
@@ -610,8 +624,9 @@ async function editSetlist(idx) {
         + '</div>'
         // Sets
         + '<div id="slSets">' + window._slSets.map(function(set, si) {
-            var setCount = (set.songs || []).length;
-            var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
+            var setSongs = set.songs || [];
+            var setCount = setSongs.length;
+            var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setSongs) : '';
             var setActions = '';
             if (si > 0) {
                 setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
@@ -1190,8 +1205,9 @@ function _slReRenderSets() {
     var setsEl = document.getElementById('slSets');
     if (!setsEl) return;
     setsEl.innerHTML = window._slSets.map(function(set, si) {
-        var setCount = (set.songs || []).length;
-        var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
+        var setSongs = set.songs || [];
+        var setCount = setSongs.length;
+        var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setSongs) : '';
         var setActions = '';
         if (si > 0) {
             setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
@@ -1214,10 +1230,15 @@ function _slUpdateShowTotal() {
     var el = document.getElementById('slShowTotal');
     if (!el) return;
     var totalSongs = 0;
-    window._slSets.forEach(function(s) { totalSongs += (s.songs || []).length; });
+    var allSongsFlat = [];
+    window._slSets.forEach(function(s) {
+        var songs = s.songs || [];
+        totalSongs += songs.length;
+        allSongsFlat = allSongsFlat.concat(songs);
+    });
     var setCount = window._slSets.length;
     var hint = setCount <= 1 && totalSongs > 5 ? '<span style="color:#fbbf24;font-weight:600"> · Use ✂ set break between songs to split into sets</span>' : '';
-    el.innerHTML = '<span>Full Show · ' + totalSongs + ' songs · ~' + _slDurationLabel(totalSongs) + (setCount > 1 ? ' · ' + setCount + ' sets' : '') + '</span>' + hint;
+    el.innerHTML = '<span>Full Show · ' + totalSongs + ' songs · ~' + _slDurationLabel(allSongsFlat) + (setCount > 1 ? ' · ' + setCount + ' sets' : '') + '</span>' + hint;
 }
 
 // ── Merge Sets — undo a set break by combining with previous set ─────────────

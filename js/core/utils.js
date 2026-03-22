@@ -258,4 +258,69 @@ window.isStructuralTitle = function(title) {
     return !!_structuralTitles[title.toLowerCase().trim()];
 };
 
+// ── Song Runtime Estimation ──────────────────────────────────────────────────
+// Returns estimated runtime in seconds for a song title.
+// Priority: 1) persistent override, 2) seed data, 3) fallback default.
+// Used for setlist show-length estimation. NOT rehearsal block budgeting.
+
+var _glDefaultRuntimeSec = 360; // 6 min fallback
+var _glLinkedTransitionBufferSec = 60; // 1 min segue buffer for linked pairs
+
+window.getSongRuntimeSec = function(title) {
+    if (!title) return _glDefaultRuntimeSec;
+
+    // 1. Persistent override (stored in songDetailCache or GLStore)
+    if (typeof GLStore !== 'undefined' && GLStore._getDetailCache) {
+        var cached = GLStore._getDetailCache(title);
+        if (cached && cached.durationSec && cached.durationSec > 0) return cached.durationSec;
+    }
+
+    // 2. Seed data from bandKnowledgeBase
+    if (typeof bandKnowledgeBase !== 'undefined' && bandKnowledgeBase[title]) {
+        var kb = bandKnowledgeBase[title];
+        // Check spotifyVersions[0].length first (most likely to have it)
+        var versions = kb.spotifyVersions || [];
+        for (var i = 0; i < versions.length; i++) {
+            if (versions[i].length) {
+                var parsed = _parseTimeStr(versions[i].length);
+                if (parsed > 0) return parsed;
+            }
+        }
+    }
+
+    // 3. Structural titles = 0 runtime (they're not songs)
+    if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return 0;
+
+    // 4. Fallback default
+    return _glDefaultRuntimeSec;
+};
+
+// Get runtime for a linked pair (sum + transition buffer)
+window.getLinkedPairRuntimeSec = function(fromTitle, toTitle) {
+    var fromSec = getSongRuntimeSec(fromTitle);
+    var toSec = getSongRuntimeSec(toTitle);
+    return fromSec + toSec + _glLinkedTransitionBufferSec;
+};
+
+// Parse "M:SS" or "H:MM:SS" string to seconds
+function _parseTimeStr(str) {
+    if (!str || typeof str !== 'string') return 0;
+    var parts = str.split(':').map(Number);
+    if (parts.length === 2) return (parts[0] * 60) + (parts[1] || 0);
+    if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + (parts[2] || 0);
+    return 0;
+}
+
+// Format seconds to human-readable "Xh Ymin" or "Xmin"
+window.formatRuntimeSec = function(totalSec) {
+    if (!totalSec || totalSec <= 0) return '0 min';
+    var mins = Math.round(totalSec / 60);
+    if (mins >= 60) {
+        var h = Math.floor(mins / 60);
+        var m = mins % 60;
+        return h + 'h' + (m ? ' ' + m + 'min' : '');
+    }
+    return mins + ' min';
+};
+
 console.log('✅ utils.js loaded');
