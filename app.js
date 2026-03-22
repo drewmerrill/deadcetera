@@ -10050,18 +10050,20 @@ function settingsTab(tab, btn) {
                     <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Instrument and vocal role are managed in the Band tab.</div>
                 </div>
                 <div class="form-row"><label class="form-label">🏠 Home Address</label>
-                    ${localStorage.getItem('deadcetera_home_address') ? `
-                    <div id="savedAddressDisplay" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:6px">
-                        <span style="flex:1;font-size:0.85em;color:var(--text)">${localStorage.getItem('deadcetera_home_address')}</span>
-                        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('savedAddressDisplay').style.display='none';document.getElementById('addressEditRow').style.display='flex'">Edit</button>
+                    <div id="addressSection">
+                        ${(function(){
+                            var addr = localStorage.getItem('deadcetera_home_address') || '';
+                            if (addr) {
+                                return '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px">'
+                                    + '<span style="flex:1;font-size:0.88em;color:var(--text)">' + addr.replace(/</g,'&lt;') + '</span>'
+                                    + '<button class="btn btn-sm btn-ghost" onclick="document.getElementById(\'addressSection\').innerHTML=_settingsAddressEditHTML()">Edit</button>'
+                                    + '</div>';
+                            } else {
+                                return _settingsAddressEditHTML();
+                            }
+                        })()}
                     </div>
-                    <div id="addressEditRow" style="display:none;gap:8px">` : `
-                    <div id="addressEditRow" style="display:flex;gap:8px">`}
-                        <input class="app-input" id="settingsHomeAddress" placeholder="Start typing your address..." style="flex:1"
-                            value="${localStorage.getItem('deadcetera_home_address')||''}">
-                        <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_home_address',document.getElementById('settingsHomeAddress').value);settingsTab('profile')">Save</button>
-                    </div>
-                    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used as default starting point for gig directions & leave-time calculations.</div>
+                    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used for gig directions & leave-time estimates.</div>
                 </div>
             </div>
             <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
@@ -10218,58 +10220,51 @@ function checkSyncStatus() {
         </div>`;
 }
 
+// Address edit form HTML (reusable for initial render and Edit button)
+window._settingsAddressEditHTML = function() {
+    var current = localStorage.getItem('deadcetera_home_address') || '';
+    return '<div style="display:flex;gap:8px;align-items:center">'
+        + '<input class="app-input" id="settingsHomeAddress" placeholder="Enter your home address..." style="flex:1" value="' + current.replace(/"/g, '&quot;') + '">'
+        + '<button class="btn btn-sm btn-primary" onclick="saveHomeAddress()">Save</button>'
+        + (current ? '<button class="btn btn-sm btn-ghost" onclick="settingsTab(\'profile\')">Cancel</button>' : '')
+        + '</div>';
+};
+
 function saveHomeAddress() {
     var val = (document.getElementById('settingsHomeAddress') || {}).value || '';
-    if (!val.trim()) { alert('Please enter an address first.'); return; }
+    if (!val.trim()) { showToast('Please enter an address'); return; }
     localStorage.setItem('deadcetera_home_address', val.trim());
     // Also save to Firebase under member record if signed in
     var key = localStorage.getItem('deadcetera_current_user');
-    if (key && typeof bandPath === 'function') {
-        firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim());
+    if (key && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+        try { firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim()); } catch(e) {}
     }
-    var btn = document.querySelector('#settingsHomeAddress + button') ||
-              document.querySelector('[onclick="saveHomeAddress()"]');
-    if (btn) { btn.textContent = 'Saved!'; setTimeout(function(){ btn.textContent = 'Save'; }, 1500); }
+    showToast('Address saved');
+    // Re-render to show saved state
+    settingsTab('profile');
 }
 
 async function initSettingsAddressAutocomplete() {
     var input = document.getElementById('settingsHomeAddress');
-    if (!input) return;
+    if (!input || input._acInit) return;
     try {
         if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
     } catch(e) {}
     if (!window.google || !window.google.maps || !window.google.maps.places) return;
-    if (input._acInit) return;
     input._acInit = true;
-    // Use new PlaceAutocompleteElement API (replaces deprecated Autocomplete)
+    // Use legacy Autocomplete (most reliable across browsers + dark themes)
     try {
-        var acEl = new google.maps.places.PlaceAutocompleteElement({
-            types: ['address']
-        });
-        acEl.style.cssText = 'width:100%;font-size:0.9em';
-        input.style.display = 'none';
-        input.parentNode.insertBefore(acEl, input.nextSibling);
-        acEl.addEventListener('gmp-placeselect', async function(ev) {
-            var place = ev.place;
-            if (!place) return;
-            try { await place.fetchFields({ fields: ['formattedAddress'] }); } catch(e) {}
-            var addr = (place.formattedAddress || '') + '';
-            if (addr) {
-                input.value = addr;
-                localStorage.setItem('deadcetera_home_address', addr);
-            }
-        });
-    } catch(e) {
-        // Fallback: legacy Autocomplete if new API not available
-        input.style.display = '';
         var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });
         ac.addListener('place_changed', function() {
             var place = ac.getPlace();
             if (place && place.formatted_address) {
                 input.value = place.formatted_address;
-                localStorage.setItem('deadcetera_home_address', place.formatted_address);
+                // Auto-save on selection
+                saveHomeAddress();
             }
         });
+    } catch(e) {
+        // Google Places not available — plain text input still works with Save button
     }
 }
 
