@@ -226,10 +226,9 @@ function renderCalendarInner() {
             const blockBars = blockedRanges
                 .filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate)
                 .map((b,bi) => {
-                    const isLegacy = b._block && b._block._legacy;
                     const blockId = b._block ? b._block.blockId : null;
-                    const bIdx = blockedRanges.indexOf(b);
-                    const editAction = isLegacy ? `calEditBlocked(${bIdx})` : `_calEditScheduleBlock('${blockId||''}')`;
+                    // Always use _calEditScheduleBlock — it handles both legacy and new-model blocks
+                    const editAction = blockId ? `_calEditScheduleBlock('${blockId}')` : `_calEditScheduleBlock('')`;
                     return `<div ondblclick="event.stopPropagation();${editAction}" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.7);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden;cursor:pointer" title="🖱️ Dbl-click to edit | ${b.person||''}: ${b.reason||''}">
                     <span style="font-size:0.55em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">🚫 ${(b.person||'').split(' ')[0]}</span>
                 </div>`;
@@ -326,15 +325,15 @@ async function loadCalendarEvents() {
     if (bEl && blocked.length > 0) {
         var statusLabels = { unavailable:'Unavailable', tentative:'Tentative', booked_elsewhere:'Booked', vacation:'Vacation', travel:'Travel', personal_block:'Personal', hold:'Hold' };
         bEl.innerHTML = blocked.map(function(b, i) {
-            var isLegacy = b._block && b._block._legacy;
             var blockId = b._block ? b._block.blockId : null;
             var statusChip = b.status && b.status !== 'unavailable'
                 ? '<span style="font-size:0.72em;padding:1px 5px;border-radius:3px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">' + (statusLabels[b.status] || b.status) + '</span> '
                 : '';
             var startFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.startDate, true) : b.startDate;
             var endFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.endDate, true) : b.endDate;
-            var deleteAction = isLegacy ? 'calDeleteBlocked(' + i + ')' : '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
-            var editAction = isLegacy ? 'calEditBlocked(' + i + ')' : '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
+            // Always use schedule block functions — they handle both legacy and new-model
+            var deleteAction = '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
+            var editAction = '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
             return '<div class="list-item" style="padding:6px 12px;font-size:0.85em">'
                 + '<span style="color:var(--red)">' + startFmt + ' → ' + endFmt + '</span>'
                 + '<span style="flex:1;color:var(--text-muted);margin-left:8px">' + statusChip + (b.person || '') + (b.reason ? ': ' + b.reason : '') + '</span>'
@@ -582,8 +581,19 @@ async function saveBlockedDates() {
     var reason = (document.getElementById('blockReason') || {}).value || '';
 
     if (typeof GLStore !== 'undefined' && GLStore.saveScheduleBlock) {
+        var editingId = window._calEditingBlockId || null;
+        // If editing a legacy block, remove from legacy array and migrate to new model
+        if (editingId && editingId.indexOf('_legacy_') === 0) {
+            var legacyIdx = parseInt(editingId.replace('_legacy_', ''), 10);
+            var legacyArr = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+            if (legacyIdx >= 0 && legacyIdx < legacyArr.length) {
+                legacyArr.splice(legacyIdx, 1);
+                await saveBandDataToDrive('_band', 'blocked_dates', legacyArr);
+            }
+            editingId = null; // assign new blockId for migrated block
+        }
         var block = {
-            blockId: window._calEditingBlockId || null,
+            blockId: editingId,
             ownerKey: personKey || null,
             ownerName: personName,
             status: status,
@@ -645,10 +655,18 @@ async function saveBlockedDatesEdit(idx) {
     renderCalendarInner();
 }
 
-// Schedule block CRUD (new model)
+// Schedule block CRUD (handles both new-model and legacy blocks)
 window._calDeleteScheduleBlock = async function(blockId) {
     if (!blockId || !confirm('Remove this schedule block?')) return;
-    if (typeof GLStore !== 'undefined' && GLStore.deleteScheduleBlock) {
+    // Legacy blocks have blockId like '_legacy_N' — delete from blocked_dates array
+    if (blockId.indexOf('_legacy_') === 0) {
+        var legacyIdx = parseInt(blockId.replace('_legacy_', ''), 10);
+        var blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
+        if (legacyIdx >= 0 && legacyIdx < blocked.length) {
+            blocked.splice(legacyIdx, 1);
+            await saveBandDataToDrive('_band', 'blocked_dates', blocked);
+        }
+    } else if (typeof GLStore !== 'undefined' && GLStore.deleteScheduleBlock) {
         await GLStore.deleteScheduleBlock(blockId);
     }
     renderCalendarInner();
@@ -667,6 +685,12 @@ window._calEditScheduleBlock = async function(blockId) {
         var p = document.getElementById('blockPerson'); if (p) p.value = block.ownerName || '';
         var r = document.getElementById('blockReason'); if (r) r.value = block.summary || '';
         var st = document.getElementById('blockStatus'); if (st) st.value = block.status || 'unavailable';
+        // Update form title and button for edit mode
+        var area = document.getElementById('calEventFormArea');
+        if (area) {
+            var h3 = area.querySelector('h3');
+            if (h3) h3.textContent = '✏️ Edit Conflict';
+        }
     }, 50);
     // Swap save button to update mode
     window._calEditingBlockId = blockId;
