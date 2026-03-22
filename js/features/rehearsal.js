@@ -252,15 +252,22 @@ async function _rhRenderCommandFlow(el) {
                 var secMin = _sectionSubtotals[idx];
                 var secLabel = secMin !== undefined && secMin > 0 ? ' · ' + secMin + ' min' : '';
                 var secAssignChip = _rhAssignChip(unit, idx);
-                html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="display:flex;align-items:center;gap:6px;margin:8px 0 2px;padding:5px 8px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
+                var secNoteText = unit.note || '';
+                var secNoteChip = secNoteText
+                    ? '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#fbbf24;cursor:pointer;padding:1px 4px;border-radius:3px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.15)" title="' + escHtml(secNoteText) + '">📝</span>'
+                    : '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#475569;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px dashed rgba(255,255,255,0.06)" title="Add note">📝</span>';
+                html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="margin:8px 0 2px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
+                    + '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px">'
                     + dragHandle
                     + '<span style="font-size:0.7em">▬</span>'
                     + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.78em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;border-bottom:1px dashed rgba(96,165,250,0.3)">' + escHtml(secTitle) + '</span>'
                     + (secLabel ? '<span style="font-size:0.65em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
-                    + secAssignChip
+                    + secAssignChip + secNoteChip
                     + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                     + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                     + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
+                    + '</div>'
+                    + (secNoteText ? '<div onclick="_rhEditBlockNote(' + idx + ')" style="padding:0 8px 4px 36px;font-size:0.68em;color:#fbbf24;opacity:0.7;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Click to edit note">📝 ' + escHtml(secNoteText.length > 50 ? secNoteText.substring(0, 50) + '…' : secNoteText) + '</div>' : '')
                     + '</div>';
                 return;
             }
@@ -285,15 +292,24 @@ async function _rhRenderCommandFlow(el) {
             var minChip = '<span onclick="_rhEditBlockTime(' + idx + ')" style="font-size:0.7em;color:' + (isOverridden ? '#a5b4fc' : 'var(--text-dim)') + ';white-space:nowrap;margin-left:4px;cursor:pointer;padding:1px 3px;border-radius:3px;border-bottom:1px dashed ' + (isOverridden ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)') + '" title="' + (isOverridden ? 'Custom override — click to change' : 'Click to set custom time') + '">' + blockMin + 'm</span>';
             var assignChip = _rhAssignChip(unit, idx);
 
-            html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
+            var noteText = unit.note || '';
+            var noteSnippet = noteText.length > 50 ? noteText.substring(0, 50) + '…' : noteText;
+            var noteChip = noteText
+                ? '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#fbbf24;cursor:pointer;padding:1px 4px;border-radius:3px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.15)" title="' + escHtml(noteText) + '">📝</span>'
+                : '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#475569;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px dashed rgba(255,255,255,0.06)" title="Add note">📝</span>';
+
+            html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + '">'
+                + '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;font-size:0.82em">'
                 + dragHandle
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
                 + typeChip
                 + '<span' + editClick + editTitle + ' style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)' : '') + '">' + unitLabel + '</span>'
-                + minChip + assignChip
+                + minChip + assignChip + noteChip
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
+                + '</div>'
+                + (noteText ? '<div onclick="_rhEditBlockNote(' + idx + ')" style="padding:0 4px 4px 36px;font-size:0.68em;color:#fbbf24;opacity:0.7;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Click to edit note">📝 ' + escHtml(noteSnippet) + '</div>' : '')
                 + '</div>';
         });
         html += '</div>';
@@ -772,6 +788,23 @@ window._rhToggleAssign = function(idx, memberKey, checked) {
     if (!checked && pos >= 0) arr.splice(pos, 1);
     _rhSaveUnits(units);
     // Update chip without full re-render (keeps menu open)
+};
+
+window._rhEditBlockNote = function(idx) {
+    var units = _rhGetUnits();
+    if (!units[idx]) return;
+    var current = units[idx].note || '';
+    var newNote = prompt('Note for this block (leave empty to clear):', current);
+    if (newNote === null) return; // cancelled
+    if (newNote.trim() === '') {
+        delete units[idx].note;
+        delete units[idx].noteBy;
+    } else {
+        units[idx].note = newNote.trim();
+        units[idx].noteBy = (typeof currentUserName !== 'undefined' && currentUserName) ? currentUserName : '';
+    }
+    _rhSaveUnits(units);
+    _rhReRender();
 };
 
 window._rhEditPlanName = function() {
