@@ -497,7 +497,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
     days.forEach(function(day) {
         var allFree = dayAvail.find(function(d) { return d.day.date === day.date; });
         var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.1)' : '';
-        var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:2px solid rgba(99,102,241,0.25);' : '';
+        var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:3px solid rgba(99,102,241,0.5);' : '';
         html += '<th style="text-align:center;padding:4px 2px;color:' + (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') +
             ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg + ';' + monthBorder +
             'cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')">' +
@@ -523,7 +523,7 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
                 var blocked = blockedRanges.some(function(b) { return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
                 if (blocked) cellContent = '<span style="color:#ef4444;font-weight:700">\u2716</span>';
             }
-            var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:2px solid rgba(99,102,241,0.15);' : '';
+            var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:3px solid rgba(99,102,241,0.5);' : '';
             html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + ';' + monthBorder + '">' + cellContent + '</td>';
         });
         html += '</tr>';
@@ -531,14 +531,15 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
 
     // Footer row: strength label or free count
     html += '<tr><td style="padding:4px 6px;color:var(--text-dim);font-size:0.8em;font-weight:600;position:sticky;left:0;background:#0f172a;z-index:1">Status</td>';
-    dayAvail.forEach(function(d) {
+    dayAvail.forEach(function(d, di) {
+        var mb = d.day.isFirstOfMonth && d.day.dayNum === 1 ? 'border-left:3px solid rgba(99,102,241,0.5);' : '';
         if (d.strength) {
             var s = d.strength;
             var shortLabel = { 'Strong':'\u2714', 'Workable':'~', 'Risky':'!', 'Not viable':'\u2716' }[s.label] || '?';
-            html += '<td style="text-align:center;padding:4px 2px;font-size:0.75em;font-weight:800;color:' + s.color + '" title="' + s.label + ': ' + s.available + ' free, ' + s.softConflictCount + ' soft, ' + s.hardConflictCount + ' hard">' + shortLabel + '</td>';
+            html += '<td style="text-align:center;padding:4px 2px;font-size:0.75em;font-weight:800;color:' + s.color + ';' + mb + '" title="' + s.label + ': ' + s.available + ' free, ' + s.softConflictCount + ' soft, ' + s.hardConflictCount + ' hard">' + shortLabel + '</td>';
         } else {
             var color = d.allFree ? '#22c55e' : d.freeCount >= members.length - 1 ? '#fbbf24' : 'var(--text-dim)';
-            html += '<td style="text-align:center;padding:4px 2px;font-size:0.8em;font-weight:700;color:' + color + '">' + d.freeCount + '</td>';
+            html += '<td style="text-align:center;padding:4px 2px;font-size:0.8em;font-weight:700;color:' + color + ';' + mb + '">' + d.freeCount + '</td>';
         }
     });
     html += '</tr>';
