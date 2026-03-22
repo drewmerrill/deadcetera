@@ -170,6 +170,8 @@ async function _rhRenderCommandFlow(el) {
         // Songs get 1.5x runtime (rehearsal overhead), non-song blocks get fixed defaults.
         var _rhNonSongDefaults = { exercise: 10, business: 15, jam: 10, note: 5 };
         function _rhBlockMinutes(unit) {
+            // User override takes priority
+            if (unit.durationMinOverride > 0) return unit.durationMinOverride;
             var bt = unit.type || 'single';
             // Non-song blocks: fixed defaults
             if (_rhNonSongDefaults[bt] !== undefined) return _rhNonSongDefaults[bt];
@@ -232,7 +234,8 @@ async function _rhRenderCommandFlow(el) {
             var editTitle = isEditable ? ' title="Click to edit"' : '';
 
             var blockMin = _rhBlockMinutes(unit);
-            var minChip = '<span style="font-size:0.7em;color:var(--text-dim);white-space:nowrap;margin-left:4px" title="Estimated rehearsal time">' + blockMin + 'm</span>';
+            var isOverridden = unit.durationMinOverride > 0;
+            var minChip = '<span onclick="_rhEditBlockTime(' + idx + ')" style="font-size:0.7em;color:' + (isOverridden ? '#a5b4fc' : 'var(--text-dim)') + ';white-space:nowrap;margin-left:4px;cursor:pointer;padding:1px 3px;border-radius:3px;border-bottom:1px dashed ' + (isOverridden ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)') + '" title="' + (isOverridden ? 'Custom override — click to change' : 'Click to set custom time') + '">' + blockMin + 'm</span>';
 
             html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
@@ -404,6 +407,23 @@ window._rhEditBlockTitle = function(idx) {
     var newTitle = prompt('Edit block title:', current);
     if (newTitle === null || newTitle === current) return;
     units[idx].title = newTitle.trim() || current;
+    _rhSaveUnits(units);
+    _rhReRender();
+};
+
+window._rhEditBlockTime = function(idx) {
+    var units = _rhGetUnits();
+    if (!units[idx]) return;
+    var current = units[idx].durationMinOverride || '';
+    var input = prompt('Minutes for this block (leave empty for auto-estimate):', current);
+    if (input === null) return; // cancelled
+    if (input.trim() === '') {
+        delete units[idx].durationMinOverride;
+    } else {
+        var mins = parseInt(input, 10);
+        if (isNaN(mins) || mins < 1 || mins > 120) { alert('Enter a number between 1 and 120'); return; }
+        units[idx].durationMinOverride = mins;
+    }
     _rhSaveUnits(units);
     _rhReRender();
 };
