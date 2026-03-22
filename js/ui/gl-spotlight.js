@@ -97,12 +97,17 @@ window.glSpotlight = (function() {
             // Skip missing targets gracefully (forward only)
             if (!target) { _show(stepIdx + 1); return; }
 
-            target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Scroll target to CENTER of viewport (not just "into view")
+            var targetRect = target.getBoundingClientRect();
+            var scrollTarget = window.scrollY + targetRect.top - (window.innerHeight / 2) + (targetRect.height / 2);
+            window.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
 
-            // Wait for scroll to settle
+            // Wait for scroll to settle, then position everything
             setTimeout(function() {
                 var rect = target.getBoundingClientRect();
-                var pad = 6;
+                var pad = 8;
+                var vh = window.innerHeight;
+                var vw = window.innerWidth;
 
                 if (!_overlay) {
                     _overlay = document.createElement('div');
@@ -113,10 +118,10 @@ window.glSpotlight = (function() {
                 _overlay.innerHTML = '';
 
                 // Clip-path cutout around target
-                var hL = rect.left - pad;
-                var hT = rect.top - pad;
-                var hR = rect.right + pad;
-                var hB = rect.bottom + pad;
+                var hL = Math.max(0, rect.left - pad);
+                var hT = Math.max(0, rect.top - pad);
+                var hR = Math.min(vw, rect.right + pad);
+                var hB = Math.min(vh, rect.bottom + pad);
                 _overlay.style.clipPath = 'polygon('
                     + '0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, '
                     + hL + 'px ' + hT + 'px, '
@@ -126,24 +131,29 @@ window.glSpotlight = (function() {
                     + hL + 'px ' + hT + 'px)';
                 _overlay.style.webkitClipPath = _overlay.style.clipPath;
 
+                // Highlight ring around the cutout
+                var ring = document.createElement('div');
+                ring.style.cssText = 'position:fixed;pointer-events:none;z-index:99991;border:2px solid #818cf8;border-radius:8px;box-shadow:0 0 12px rgba(99,102,241,0.5)';
+                ring.style.left = hL + 'px';
+                ring.style.top = hT + 'px';
+                ring.style.width = (hR - hL) + 'px';
+                ring.style.height = (hB - hT) + 'px';
+                _overlay.appendChild(ring);
+
                 // Build info box
                 _box = document.createElement('div');
                 _box.className = 'gl-spot-box';
 
                 var isFirst = stepIdx === 0;
                 var isLast = stepIdx === _steps.length - 1;
-                var dots = '';
-                for (var i = 0; i < _steps.length; i++) dots += (i === stepIdx) ? '●' : '○';
 
                 var navHtml = '<div class="gl-spot-nav">';
-                // Back button (unless first step)
                 if (!isFirst) {
                     navHtml += '<button class="gl-spot-btn gl-spot-btn-prev" onclick="glSpotlight.prev()">← Back</button>';
                 } else {
                     navHtml += '<button class="gl-spot-btn gl-spot-btn-skip" onclick="glSpotlight.skip()">Skip</button>';
                 }
                 navHtml += '<span class="gl-spot-dots">' + (stepIdx + 1) + '/' + _steps.length + '</span>';
-                // Next/Done + Skip
                 if (isLast) {
                     navHtml += '<button class="gl-spot-btn gl-spot-btn-done" onclick="glSpotlight.next()">Got it!</button>';
                 } else {
@@ -154,40 +164,41 @@ window.glSpotlight = (function() {
 
                 _box.innerHTML = '<div class="gl-spot-text">' + step.text + '</div>' + navHtml;
 
-                // Render offscreen to measure actual dimensions
+                // Measure box offscreen
                 _box.style.top = '-9999px';
                 _box.style.left = '12px';
-                _box.style.maxWidth = Math.min(300, window.innerWidth - 24) + 'px';
+                _box.style.maxWidth = Math.min(300, vw - 24) + 'px';
                 _overlay.appendChild(_box);
                 var boxH = _box.offsetHeight;
                 var boxW = _box.offsetWidth;
-                var gap = 14;
+                var gap = 16;
                 var margin = 12;
-                var vh = window.innerHeight;
-                var vw = window.innerWidth;
 
-                var tTop = rect.top - pad;
-                var tBot = rect.bottom + pad;
-                var spaceAbove = tTop - margin;
-                var spaceBelow = vh - tBot - margin;
+                // Target center relative to viewport
+                var targetCenterY = (rect.top + rect.bottom) / 2;
+                var targetInTopHalf = targetCenterY < vh / 2;
 
+                // Place dialog in the OPPOSITE half of the screen from the target
                 var boxTop;
-                if (spaceAbove >= boxH + gap) {
-                    boxTop = tTop - gap - boxH;
-                } else if (spaceBelow >= boxH + gap) {
-                    boxTop = tBot + gap;
-                } else if (spaceAbove >= spaceBelow) {
-                    boxTop = Math.max(margin, tTop - gap - boxH);
+                if (targetInTopHalf) {
+                    // Target is in top half → put dialog in bottom half
+                    boxTop = Math.max(hB + gap, vh / 2 + gap);
+                    // Clamp so it doesn't go off bottom
+                    if (boxTop + boxH > vh - margin) boxTop = vh - boxH - margin;
                 } else {
-                    boxTop = Math.min(vh - boxH - margin, tBot + gap);
+                    // Target is in bottom half → put dialog in top half
+                    boxTop = Math.min(hT - gap - boxH, vh / 2 - boxH - gap);
+                    // Clamp so it doesn't go off top
+                    if (boxTop < margin) boxTop = margin;
                 }
 
-                var boxLeft = Math.max(margin, Math.min(rect.left, vw - boxW - margin));
+                // Center horizontally
+                var boxLeft = Math.max(margin, Math.round((vw - boxW) / 2));
 
                 _box.style.top = boxTop + 'px';
                 _box.style.left = boxLeft + 'px';
-            }, 200);
-        }, 50);
+            }, 350);
+        }, 60);
     }
 
     return {
