@@ -40,8 +40,7 @@ window.glSpotlight = (function() {
         var s = document.createElement('style');
         s.id = 'glSpotlightCSS';
         s.textContent = [
-            '.gl-spot-overlay{position:fixed;inset:0;z-index:99990;pointer-events:auto}',
-            '.gl-spot-hole{position:absolute;box-shadow:0 0 0 9999px rgba(0,0,0,0.7);border-radius:8px;z-index:99991;pointer-events:none;transition:all 0.3s ease}',
+            '.gl-spot-overlay{position:fixed;inset:0;z-index:99990;pointer-events:auto;background:rgba(0,0,0,0.75)}',
             '.gl-spot-box{position:fixed;z-index:99992;background:#1e293b;border:1px solid rgba(99,102,241,0.4);border-radius:10px;padding:14px 16px;max-width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.6);animation:glSpotIn 0.25s ease-out}',
             '.gl-spot-text{font-size:0.88em;color:#e2e8f0;line-height:1.5;margin-bottom:12px}',
             '.gl-spot-nav{display:flex;align-items:center;gap:8px}',
@@ -97,14 +96,22 @@ window.glSpotlight = (function() {
             }
             _overlay.innerHTML = '';
 
-            // Hole cutout
-            var hole = document.createElement('div');
-            hole.className = 'gl-spot-hole';
-            hole.style.left = (rect.left - pad) + 'px';
-            hole.style.top = (rect.top - pad) + 'px';
-            hole.style.width = (rect.width + pad * 2) + 'px';
-            hole.style.height = (rect.height + pad * 2) + 'px';
-            _overlay.appendChild(hole);
+            // Clip-path cutout: full viewport polygon with a rectangular hole
+            var hL = rect.left - pad;
+            var hT = rect.top - pad;
+            var hR = rect.right + pad;
+            var hB = rect.bottom + pad;
+            var vw = window.innerWidth;
+            var vh = window.innerHeight;
+            // Polygon traces outer edge, then cuts inner hole (counter-clockwise)
+            _overlay.style.clipPath = 'polygon('
+                + '0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, '
+                + hL + 'px ' + hT + 'px, '
+                + hL + 'px ' + hB + 'px, '
+                + hR + 'px ' + hB + 'px, '
+                + hR + 'px ' + hT + 'px, '
+                + hL + 'px ' + hT + 'px)';
+            _overlay.style.webkitClipPath = _overlay.style.clipPath;
 
             // Info box
             _box = document.createElement('div');
