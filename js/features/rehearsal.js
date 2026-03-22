@@ -27,6 +27,22 @@
 
 // ── Rehearsal Planner block (app.js 18121–18801) ────────────────────────────
 
+// Register rehearsal walkthrough (runs on first visit with a saved plan)
+if (typeof glSpotlight !== 'undefined') {
+    glSpotlight.register('rehearsal-plan-v2', [
+        { target: '#rhPlanCard',
+          text: 'This is your rehearsal plan. Edit it to match how you actually want to run practice.' },
+        { target: '#rhAddBlockBtn',
+          text: 'Add songs, exercises, jam time, or section breaks to build your flow.' },
+        { target: function() { return document.querySelector('.rh-drag-handle'); },
+          text: 'Drag to reorder. Your rehearsal, your sequence.' },
+        { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
+          text: 'Tap the time to set how long each block gets. Total updates automatically.' },
+        { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
+          text: 'Hit Start Rehearsal to launch practice mode with your plan loaded.' }
+    ]);
+}
+
 var rhCurrentEventId = null; // which event is open in detail view
 
 // ── Page entry point ──────────────────────────────────────────────────────────
@@ -378,20 +394,7 @@ async function _rhRenderCommandFlow(el) {
 
     // First-visit walkthrough (only when a saved plan exists)
     if (hasSavedPlan && typeof glSpotlight !== 'undefined') {
-        setTimeout(function() {
-            glSpotlight.run('rehearsal-plan-v2', [
-                { target: '#rhPlanCard',
-                  text: 'This is your rehearsal plan. It\'s a starting point — edit it to match how you actually want to run practice.' },
-                { target: '#rhAddBlockBtn',
-                  text: 'Build your flow: add songs to work on, exercises, jam time, band business, or section breaks to organize it all.' },
-                { target: function() { return document.querySelector('.rh-drag-handle'); },
-                  text: 'Grab the handle to drag blocks into the order you want. Your rehearsal, your sequence.' },
-                { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
-                  text: 'Tap the time to budget how long each block gets. The total at the top updates automatically.' },
-                { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
-                  text: 'All set? Hit Start Rehearsal to kick off practice mode with charts, notes, and your plan loaded.' }
-            ]);
-        }, 800);
+        setTimeout(function() { glSpotlight.run('rehearsal-plan-v2'); }, 800);
     }
 
     // Render last rehearsal session review + history

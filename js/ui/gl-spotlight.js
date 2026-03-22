@@ -1,7 +1,18 @@
 // ============================================================================
 // js/ui/gl-spotlight.js
 // Lightweight spotlight walkthrough system — no external libraries.
-// Usage: glSpotlight.run('walkthrough-key', [ { target, text }, ... ])
+//
+// API:
+//   glSpotlight.register(key, steps)     — register a walkthrough
+//   glSpotlight.run(key, steps?, opts?)   — run by key (or inline steps)
+//   glSpotlight.next()                    — advance to next step
+//   glSpotlight.skip()                    — dismiss and mark done
+//   glSpotlight.reset(key)               — clear completion for re-trigger
+//   glSpotlight.resetAll()               — clear all walkthrough completions
+//   glSpotlight.runAllPending()           — run first uncompleted registered walkthrough
+//   glSpotlight.list()                    — list registered walkthrough keys
+//
+// Step shape: { target: selector|element|function, text: string }
 // ============================================================================
 
 window.glSpotlight = (function() {
@@ -10,16 +21,20 @@ window.glSpotlight = (function() {
     var _steps = [];
     var _current = 0;
     var _key = '';
+    var _registry = {}; // key → steps[]
 
     function _isDone(key) {
-        try { return localStorage.getItem('gl_walkthrough_' + key) === 'done'; } catch(e) { return false; }
+        try { return localStorage.getItem('gl_wt_' + key) === '1'; } catch(e) { return false; }
+    }
+    // Backward compat: check old key format too
+    function _isDoneCompat(key) {
+        return _isDone(key) || (function() { try { return localStorage.getItem('gl_walkthrough_' + key) === 'done'; } catch(e) { return false; } })();
     }
 
     function _markDone(key) {
-        try { localStorage.setItem('gl_walkthrough_' + key, 'done'); } catch(e) {}
+        try { localStorage.setItem('gl_wt_' + key, '1'); } catch(e) {}
     }
 
-    // Inject CSS once
     function _ensureCSS() {
         if (document.getElementById('glSpotlightCSS')) return;
         var s = document.createElement('style');
@@ -27,7 +42,7 @@ window.glSpotlight = (function() {
         s.textContent = [
             '.gl-spot-overlay{position:fixed;inset:0;z-index:99990;pointer-events:auto}',
             '.gl-spot-hole{position:absolute;box-shadow:0 0 0 9999px rgba(0,0,0,0.7);border-radius:8px;z-index:99991;pointer-events:none;transition:all 0.3s ease}',
-            '.gl-spot-box{position:absolute;z-index:99992;background:#1e293b;border:1px solid rgba(99,102,241,0.4);border-radius:10px;padding:14px 16px;max-width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.6);animation:glSpotIn 0.25s ease-out}',
+            '.gl-spot-box{position:fixed;z-index:99992;background:#1e293b;border:1px solid rgba(99,102,241,0.4);border-radius:10px;padding:14px 16px;max-width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.6);animation:glSpotIn 0.25s ease-out}',
             '.gl-spot-text{font-size:0.88em;color:#e2e8f0;line-height:1.5;margin-bottom:12px}',
             '.gl-spot-nav{display:flex;align-items:center;gap:8px}',
             '.gl-spot-btn{padding:5px 14px;border-radius:6px;font-size:0.78em;font-weight:700;cursor:pointer;border:none}',
@@ -47,6 +62,14 @@ window.glSpotlight = (function() {
         _current = 0;
     }
 
+    function _resolveTarget(step) {
+        if (typeof step.target === 'function') {
+            try { return step.target(); } catch(e) { return null; }
+        }
+        if (typeof step.target === 'string') return document.querySelector(step.target);
+        return step.target || null;
+    }
+
     function _show(stepIdx) {
         _current = stepIdx;
         if (stepIdx >= _steps.length) {
@@ -55,37 +78,29 @@ window.glSpotlight = (function() {
             return;
         }
         var step = _steps[stepIdx];
-        var target = null;
+        var target = _resolveTarget(step);
 
-        // Resolve target: selector string, element, or function
-        if (typeof step.target === 'function') target = step.target();
-        else if (typeof step.target === 'string') target = document.querySelector(step.target);
-        else target = step.target;
-
-        // If target not found, skip this step
+        // Skip missing targets gracefully
         if (!target) { _show(stepIdx + 1); return; }
 
-        // Scroll target into view
         target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-        // Small delay for scroll to settle
         setTimeout(function() {
             var rect = target.getBoundingClientRect();
             var pad = 6;
 
-            // Create or update overlay
             if (!_overlay) {
                 _overlay = document.createElement('div');
                 _overlay.className = 'gl-spot-overlay';
-                _overlay.onclick = function(e) { if (e.target === _overlay) _show(_steps.length); }; // click backdrop to dismiss
+                _overlay.onclick = function(e) { if (e.target === _overlay) { _markDone(_key); _cleanup(); } };
                 document.body.appendChild(_overlay);
             }
             _overlay.innerHTML = '';
 
-            // Hole (cutout around target)
+            // Hole cutout
             var hole = document.createElement('div');
             hole.className = 'gl-spot-hole';
-            hole.style.left = (rect.left - pad + window.scrollX) + 'px';
+            hole.style.left = (rect.left - pad) + 'px';
             hole.style.top = (rect.top - pad) + 'px';
             hole.style.width = (rect.width + pad * 2) + 'px';
             hole.style.height = (rect.height + pad * 2) + 'px';
@@ -106,11 +121,11 @@ window.glSpotlight = (function() {
                 + '<button class="gl-spot-btn ' + (isLast ? 'gl-spot-btn-done' : 'gl-spot-btn-next') + '" onclick="glSpotlight.next()">' + (isLast ? 'Got it!' : 'Next →') + '</button>'
                 + '</div>';
 
-            // Position box below or above target
+            // Position: prefer below target, fall back above, clamp to viewport
             var boxTop = rect.bottom + pad + 10;
             var boxLeft = Math.max(12, Math.min(rect.left, window.innerWidth - 320));
-            if (boxTop + 140 > window.innerHeight) {
-                boxTop = rect.top - pad - 120; // above
+            if (boxTop + 160 > window.innerHeight) {
+                boxTop = Math.max(12, rect.top - pad - 140);
             }
             _box.style.top = boxTop + 'px';
             _box.style.left = boxLeft + 'px';
@@ -119,18 +134,61 @@ window.glSpotlight = (function() {
     }
 
     return {
+        // Register a walkthrough for later use
+        register: function(key, steps) {
+            _registry[key] = steps;
+        },
+
+        // Run a walkthrough by key (uses registry) or with inline steps
         run: function(key, steps, opts) {
             opts = opts || {};
-            if (!opts.force && _isDone(key)) return;
+            if (!opts.force && _isDoneCompat(key)) return false;
+            var resolvedSteps = steps || _registry[key];
+            if (!resolvedSteps || !resolvedSteps.length) return false;
             _ensureCSS();
             _key = key;
-            _steps = steps;
+            _steps = resolvedSteps;
             _current = 0;
             _show(0);
+            return true;
         },
+
         next: function() { _show(_current + 1); },
         skip: function() { _markDone(_key); _cleanup(); },
-        reset: function(key) { try { localStorage.removeItem('gl_walkthrough_' + key); } catch(e) {} }
+
+        reset: function(key) {
+            try {
+                localStorage.removeItem('gl_wt_' + key);
+                localStorage.removeItem('gl_walkthrough_' + key); // old format
+            } catch(e) {}
+        },
+
+        resetAll: function() {
+            var keys = Object.keys(_registry);
+            keys.forEach(function(k) {
+                try {
+                    localStorage.removeItem('gl_wt_' + k);
+                    localStorage.removeItem('gl_walkthrough_' + k);
+                } catch(e) {}
+            });
+        },
+
+        // Run the first uncompleted registered walkthrough
+        runAllPending: function() {
+            var keys = Object.keys(_registry);
+            for (var i = 0; i < keys.length; i++) {
+                if (!_isDoneCompat(keys[i])) {
+                    return this.run(keys[i]);
+                }
+            }
+            return false;
+        },
+
+        // List registered walkthrough keys
+        list: function() { return Object.keys(_registry); },
+
+        // Check if a walkthrough is completed
+        isDone: function(key) { return _isDoneCompat(key); }
     };
 })();
 
