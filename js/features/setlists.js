@@ -614,9 +614,15 @@ async function editSetlist(idx) {
         + '<div id="slSets">' + window._slSets.map(function(set, si) {
             var setCount = (set.songs || []).length;
             var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
-            var mergeBtn = si > 0 ? '<button onclick="slMergeSets(' + si + ')" style="margin-left:auto;padding:1px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600" title="Merge into previous set">↑ Merge</button>' : '';
+            var setActions = '';
+            if (si > 0) {
+                setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
+                    + '<button onclick="slMoveSetUp(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Move this set up">↑</button>'
+                    + '<button onclick="slMergeSets(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Merge into previous set">Merge ↑</button>'
+                    + '</div>';
+            }
             return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-                + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
+                + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + setActions + '</div>'
                 + '<div id="slSet' + si + 'Songs"></div>'
                 + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
                 + '</div>';
@@ -1152,15 +1158,32 @@ function slRenameSet(setIdx) {
 }
 window.slRenameSet = slRenameSet;
 
+// Move a set up in the order
+function slMoveSetUp(setIdx) {
+    if (setIdx < 1 || !window._slSets[setIdx]) return;
+    var tmp = window._slSets[setIdx];
+    window._slSets[setIdx] = window._slSets[setIdx - 1];
+    window._slSets[setIdx - 1] = tmp;
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    _slReRenderSets();
+}
+window.slMoveSetUp = slMoveSetUp;
+
 function _slReRenderSets() {
     var setsEl = document.getElementById('slSets');
     if (!setsEl) return;
     setsEl.innerHTML = window._slSets.map(function(set, si) {
         var setCount = (set.songs || []).length;
         var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
-        var mergeBtn = si > 0 ? '<button onclick="slMergeSets(' + si + ')" style="margin-left:auto;padding:1px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600" title="Merge into previous set">↑ Merge</button>' : '';
+        var setActions = '';
+        if (si > 0) {
+            setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
+                + '<button onclick="slMoveSetUp(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Move this set up">↑</button>'
+                + '<button onclick="slMergeSets(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Merge into previous set">Merge ↑</button>'
+                + '</div>';
+        }
         return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-            + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
+            + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + setActions + '</div>'
             + '<div id="slSet' + si + 'Songs"></div>'
             + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
             + '</div>';
