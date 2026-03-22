@@ -138,9 +138,9 @@ function _slRenderCard(sl, isNext) {
         + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">▶ Open</button>'
         + (sl.locked
             ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;cursor:pointer;opacity:0.4" title="Locked — click to unlock and edit">✏️</button>'
-              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓</button>'
+              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓 Unlock</button>'
             : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>'
-              + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#22c55e;cursor:pointer" title="Lock setlist">🔒</button>'
+              + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e;cursor:pointer" title="Lock this setlist to prevent edits">🔒 Lock</button>'
               + '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
         + '</div></div>';
 }
