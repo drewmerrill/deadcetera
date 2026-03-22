@@ -251,7 +251,24 @@ window._rhClearSavedPlan = function() {
 // ── Inline agenda editing ─────────────────────────────────────────────────────
 
 function _rhGetUnits() {
-    try { return JSON.parse(localStorage.getItem('glPlannerUnits') || '[]'); } catch(e) { return []; }
+    // Try grouped units first, then fall back to flat queue (old format)
+    try {
+        var units = JSON.parse(localStorage.getItem('glPlannerUnits') || '[]');
+        if (units.length) return units;
+    } catch(e) {}
+    // Fallback: build units from flat queue
+    try {
+        var q = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
+        if (q.length) {
+            var built = q.map(function(item) {
+                return { type: 'single', title: item.title, band: item.band || '', block: item._blockType || 'flow' };
+            });
+            // Persist so future edits use the grouped format
+            localStorage.setItem('glPlannerUnits', JSON.stringify(built));
+            return built;
+        }
+    } catch(e) {}
+    return [];
 }
 
 function _rhSaveUnits(units) {
@@ -306,11 +323,15 @@ window._rhAddBusiness = function() {
     _rhReRender();
 };
 
+var _rhPickerShowLibrary = false;
+
 window._rhAddSongToplan = function() {
-    // Quick song picker — reuse the same pattern as setlist picker but simpler
     var songList = (typeof allSongs !== 'undefined' ? allSongs : []).filter(function(s) {
+        if (_rhPickerShowLibrary) return true;
         return typeof isSongActive === 'function' ? isSongActive(s.title) : true;
     });
+    songList.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
+
     var existing = document.getElementById('rhSongPickerOverlay');
     if (existing) existing.remove();
 
@@ -322,14 +343,21 @@ window._rhAddSongToplan = function() {
     h += '<div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">';
     h += '<span style="font-weight:700;font-size:0.92em">Add Song to Rehearsal</span>';
     h += '<button onclick="document.getElementById(\'rhSongPickerOverlay\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button></div>';
-    h += '<input id="rhPickerSearch" type="text" placeholder="Search..." oninput="_rhFilterPicker(this.value)" style="margin:8px 16px;padding:6px 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:0.85em;box-sizing:border-box">';
+    h += '<div style="display:flex;gap:6px;padding:8px 16px 0;align-items:center">';
+    h += '<input id="rhPickerSearch" type="text" placeholder="Search..." oninput="_rhFilterPicker(this.value)" style="flex:1;padding:6px 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:0.85em;box-sizing:border-box">';
+    h += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer;white-space:nowrap"><input type="checkbox" ' + (_rhPickerShowLibrary ? 'checked' : '') + ' onchange="_rhPickerShowLibrary=this.checked;_rhAddSongToplan()" style="accent-color:#667eea"> Library</label>';
+    h += '</div>';
     h += '<div id="rhPickerList" style="overflow-y:auto;flex:1;padding:4px 16px">';
     songList.forEach(function(s) {
         var safe = s.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        h += '<div data-title="' + safe.toLowerCase() + '" style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;font-size:0.85em;display:flex;align-items:center;gap:8px" onclick="_rhPickSong(\'' + safe + '\')">';
+        var isActive = typeof isSongActive === 'function' && isSongActive(s.title);
+        h += '<div data-title="' + safe.toLowerCase() + '" style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;font-size:0.85em;display:flex;align-items:center;gap:8px;' + (!isActive ? 'opacity:0.5' : '') + '" onclick="_rhPickSong(\'' + safe + '\')">';
         h += '<span style="flex:1">' + s.title + '</span>';
         h += '<span style="font-size:0.68em;color:var(--text-dim)">' + (s.band || '') + '</span></div>';
     });
+    h += '</div>';
+    h += '<div style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0">';
+    h += '<button onclick="document.getElementById(\'rhSongPickerOverlay\').remove();if(typeof showPage===\'function\')showPage(\'songs\')" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(255,255,255,0.15);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">+ Add a New Song →</button>';
     h += '</div></div>';
 
     ov.innerHTML = h;
@@ -358,12 +386,17 @@ window._rhPickSong = function(title) {
 // Launch saved rehearsal plan
 window._rhLaunchSavedPlan = function() {
     try {
+        // Rebuild queue from units (canonical source) to ensure consistency
+        var units = _rhGetUnits();
+        if (units.length) _rhSaveUnits(units); // rebuilds glPlannerQueue from units
         var q = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
         if (q.length && typeof openRehearsalModeWithQueue === 'function') {
-            // Also restore block guidance if available
             var guidance = localStorage.getItem('glPlannerGuidance');
             if (guidance) window._rpBlockGuidance = JSON.parse(guidance);
             openRehearsalModeWithQueue(q);
+        } else if (units.length) {
+            // Units exist but all are business items (no songs to play)
+            if (typeof showToast === 'function') showToast('No songs in the plan — add songs first');
         } else {
             if (typeof showToast === 'function') showToast('No saved plan found — build one first');
         }
