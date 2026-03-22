@@ -289,7 +289,8 @@ async function _rhRenderCommandFlow(el) {
             var _rfix = document.createElement('style'); _rfix.id = 'rh-row-fix';
             _rfix.textContent =
                 '.rh-unit-row>div:first-child{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:38px}' +
-                '.rh-unit-row .rh-drag-handle{width:16px;flex-shrink:0;text-align:center}';
+                '.rh-unit-row .rh-drag-handle{width:16px;flex-shrink:0;text-align:center}' +
+                '.rh-row-controls{display:flex;align-items:center;gap:3px;flex-shrink:0;margin-left:auto}';
             document.head.appendChild(_rfix);
         }
         html += '<div id="rhUnitList">';
@@ -312,12 +313,14 @@ async function _rhRenderCommandFlow(el) {
                     + '<div>'
                     + dragHandle
                     + '<span style="width:20px;flex-shrink:0;text-align:center;font-size:0.75em;color:#60a5fa">▬</span>'
-                    + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.82em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(secTitle) + '</span>'
-                    + (secLabel ? '<span style="font-size:0.7em;color:rgba(96,165,250,0.6);flex-shrink:0">' + secLabel + '</span>' : '')
+                    + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;min-width:0;font-size:0.82em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(secTitle) + '</span>'
+                    + '<span class="rh-row-controls">'
+                    + (secLabel ? '<span style="font-size:0.7em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
                     + secAssignChip + secNoteChip
                     + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                     + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                     + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
+                    + '</span>'
                     + '</div>'
                     + (secNoteText ? '<div onclick="_rhEditBlockNote(' + idx + ')" style="padding:0 8px 4px 36px;font-size:0.68em;color:#fbbf24;opacity:0.7;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Click to edit note">📝 ' + escHtml(secNoteText.length > 50 ? secNoteText.substring(0, 50) + '…' : secNoteText) + '</div>' : '')
                     + '</div>';
@@ -356,10 +359,12 @@ async function _rhRenderCommandFlow(el) {
                 + '<span style="width:18px;flex-shrink:0;text-align:center;font-size:0.78em;font-weight:700;color:var(--text-dim)">' + unitNum + '</span>'
                 + '<span style="width:20px;flex-shrink:0;text-align:center;font-size:0.75em">' + cfg.icon + '</span>'
                 + '<span' + editClick + editTitle + ' style="flex:1;min-width:0;font-size:0.85em;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '500' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer' : '') + '">' + unitLabel + '</span>'
+                + '<span class="rh-row-controls">'
                 + minChip + assignChip + noteChip
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
+                + '</span>'
                 + '</div>'
                 + (noteText ? '<div onclick="_rhEditBlockNote(' + idx + ')" style="padding:0 4px 4px 36px;font-size:0.68em;color:#fbbf24;opacity:0.7;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Click to edit note">📝 ' + escHtml(noteSnippet) + '</div>' : '')
                 + '</div>';
