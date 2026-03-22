@@ -608,8 +608,9 @@ async function editSetlist(idx) {
         + '<div id="slSets">' + window._slSets.map(function(set, si) {
             var setCount = (set.songs || []).length;
             var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
+            var mergeBtn = si > 0 ? '<button onclick="slMergeSets(' + si + ')" style="margin-left:auto;padding:1px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600" title="Merge into previous set">↑ Merge</button>' : '';
             return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-                + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span></div>'
+                + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span>' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
                 + '<div id="slSet' + si + 'Songs"></div>'
                 + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
                 + '</div>';
@@ -1125,8 +1126,9 @@ function _slReRenderSets() {
     setsEl.innerHTML = window._slSets.map(function(set, si) {
         var setCount = (set.songs || []).length;
         var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
+        var mergeBtn = si > 0 ? '<button onclick="slMergeSets(' + si + ')" style="margin-left:auto;padding:1px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600" title="Merge into previous set">↑ Merge</button>' : '';
         return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-            + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span></div>'
+            + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span>' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + mergeBtn + '</div>'
             + '<div id="slSet' + si + 'Songs"></div>'
             + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
             + '</div>';
@@ -1146,7 +1148,26 @@ function _slUpdateShowTotal() {
     el.innerHTML = '<span>Full Show · ' + totalSongs + ' songs · ~' + _slDurationLabel(totalSongs) + (setCount > 1 ? ' · ' + setCount + ' sets' : '') + '</span>' + hint;
 }
 
+// ── Merge Sets — undo a set break by combining with previous set ─────────────
+function slMergeSets(setIdx) {
+    if (setIdx < 1 || !window._slSets[setIdx] || !window._slSets[setIdx - 1]) return;
+    var prev = window._slSets[setIdx - 1];
+    var curr = window._slSets[setIdx];
+    // Append current songs to previous set
+    prev.songs = (prev.songs || []).concat(curr.songs || []);
+    // Remove the current set
+    window._slSets.splice(setIdx, 1);
+    // If only one set remains, rename to "All Songs"
+    if (window._slSets.length === 1) {
+        window._slSets[0].name = 'All Songs';
+    }
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    _slReRenderSets();
+    if (typeof showToast === 'function') showToast('Sets merged — now ' + window._slSets.length + (window._slSets.length === 1 ? ' set' : ' sets'));
+}
+
 window.slInsertSetBreak = slInsertSetBreak;
+window.slMergeSets = slMergeSets;
 window.slToggleLock = slToggleLock;
 
 // ── Song Picker Modal ────────────────────────────────────────────────────────
