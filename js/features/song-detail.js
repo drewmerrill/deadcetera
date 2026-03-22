@@ -228,18 +228,26 @@ async function _sdPopulateBandLens(title) {
     var statusLabel=statusLabels[status]||status||'—';
     var ytQuery=encodeURIComponent(title);
 
-    // ── PLAY MODE: stripped-down stage-ready view ──
+    // ── PLAY MODE: stage-ready with set navigation ──
     if (mode === 'play') {
+        // Build prev/next navigation from cached setlist
+        var _playNav = _sdBuildPlayNav(title);
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
-            // Clean chart — full width, large text
+            // Now Playing indicator + set navigation
+            '<div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 12px">'+
+            (_playNav.prev ? '<button class="sd-pm-btn" style="font-size:0.78em;padding:5px 12px" onclick="renderSongDetail(\''+_sdEsc(_playNav.prev).replace(/'/g,"\\'")+'\')">← '+_sdEsc(_playNav.prev)+'</button>' : '<div></div>')+
+            '<div style="text-align:center;font-size:0.72em;color:var(--text-dim);font-weight:700;letter-spacing:0.05em">NOW PLAYING</div>'+
+            (_playNav.next ? '<button class="sd-pm-btn" style="font-size:0.78em;padding:5px 12px" onclick="renderSongDetail(\''+_sdEsc(_playNav.next).replace(/'/g,"\\'")+'\')">'+_sdEsc(_playNav.next)+' →</button>' : '<div></div>')+
+            '</div>'+
+            // Clean chart — full width, large text, premium feel
             (chartText
-                ? '<div class="sd-card" style="padding:20px"><pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.7;color:#e2e8f0;margin:0">' + _sdEsc(chartText) + '</pre></div>'
-                : '<div class="sd-card" style="text-align:center;padding:24px;color:var(--text-dim)"><div style="font-size:1.4em;margin-bottom:8px">📖</div>No chart yet<br><button class="sd-pm-btn" style="margin-top:12px" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'
+                ? '<div class="sd-card" style="padding:24px;border-color:rgba(99,102,241,0.12)"><pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.8;color:#e2e8f0;margin:0;letter-spacing:0.02em">' + _sdEsc(chartText) + '</pre></div>'
+                : '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">📖</div><div style="font-size:0.95em;margin-bottom:12px">No chart yet</div><button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'
             ) +
-            // Crib notes (if any — these are the stage-relevant notes)
+            // Crib notes
             (cribData && toArray(cribData).length
-                ? '<div class="sd-card" style="padding:14px"><div class="sd-card-title" style="margin-bottom:8px">📋 Stage Notes</div>' + _sdRenderCribNotes(cribData) + '</div>'
+                ? '<div class="sd-card" style="padding:16px"><div class="sd-card-title" style="margin-bottom:8px">📋 Stage Notes</div>' + _sdRenderCribNotes(cribData) + '</div>'
                 : ''
             ) +
             '</div>';
@@ -247,34 +255,50 @@ async function _sdPopulateBandLens(title) {
         return;
     }
 
-    // ── SHARPEN MODE: practice-focused view ──
+    // ── SHARPEN MODE: guided practice workflow ──
     if (mode === 'sharpen') {
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
-            // Practice Mode — the dominant card
-            '<div class="sd-card">'+
-            '<div class="sd-card-title">🔥 Practice</div>'+
-            (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:13px;color:#94a3b8;line-height:1.5;max-height:120px;overflow:hidden;margin:0 0 12px">'+_sdEsc(chartText.split('\n').slice(0,6).join('\n'))+'</pre>':'')+
-            '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-            (chartText?'<button class="sd-pm-btn sd-pm-btn--hero" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Open Chart</button>':'<button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">📖 Get Chart</button>')+
-            '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
+            // Practice workflow — 3-step guided flow
+            '<div class="sd-card" style="border-color:rgba(99,102,241,0.15)">'+
+            '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Practice This Song</div>'+
+            '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px;font-style:italic">Focus on what will make you better today</div>'+
+            '<div style="display:flex;flex-direction:column;gap:10px">'+
+            // Step 1: Listen
+            '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
+            '<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:#818cf8;flex-shrink:0">1</div>'+
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Listen</div><div style="font-size:0.75em;color:var(--text-dim)">Hear the reference version</div></div>'+
+            '<span style="color:var(--text-dim);font-size:0.85em">▶</span>'+
+            '</div>'+
+            // Step 2: Play
+            '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:10px;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
+            '<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:#a5b4fc;flex-shrink:0">2</div>'+
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Play Along</div><div style="font-size:0.75em;color:var(--text-dim)">Open chart and practice</div></div>'+
+            '<span style="color:var(--accent-light);font-size:0.85em">→</span>'+
+            '</div>'+
+            // Step 3: Rate
+            '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="var el=document.querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">'+
+            '<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:var(--text-muted);flex-shrink:0">3</div>'+
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Rate Yourself</div><div style="font-size:0.75em;color:var(--text-dim)">Track your progress</div></div>'+
+            '<span style="color:var(--text-dim);font-size:0.85em">↓</span>'+
+            '</div>'+
             '</div></div>'+
-            // Your Readiness
+            // Readiness
             '<div class="sd-card" id="sd-readiness-card">'+
             '<div class="sd-card-title">📊 Your Readiness</div>'+
             _sdRenderReadinessBlock(title,safeSong)+
             '</div>'+
-            // Song DNA (key/bpm only — no lead/status editing in sharpen)
+            // Song Info
             '<div class="sd-card" style="padding:10px 14px">'+
-            '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song Info</div>'+
+            '<div class="sd-card-title" style="margin-bottom:8px">\uD83E\uDDEC Song Info</div>'+
             '<div style="display:flex;gap:16px;font-size:0.88em;color:var(--text-muted)">'+
-            (metaKey?'<span>🔑 '+_sdEsc(metaKey)+'</span>':'')+
-            (metaBpm?'<span>🥁 '+_sdEsc(metaBpm)+' BPM</span>':'')+
-            (lead?'<span>🎤 '+_sdEsc(lead.charAt(0).toUpperCase()+lead.slice(1))+'</span>':'')+
+            (metaKey?'<span>\uD83D\uDD11 '+_sdEsc(metaKey)+'</span>':'')+
+            (metaBpm?'<span>\uD83E\uDD41 '+_sdEsc(metaBpm)+' BPM</span>':'')+
+            (lead?'<span>\uD83C\uDFA4 '+_sdEsc(lead.charAt(0).toUpperCase()+lead.slice(1))+'</span>':'')+
             '</div></div>'+
             // How We Play It
             '<div class="sd-card" style="padding:10px 14px">' +
-            '<div class="sd-card-title" style="margin-bottom:0">🎼 How We Play It</div>' +
+            '<div class="sd-card-title" style="margin-bottom:0">\uD83C\uDFBC How We Play It</div>' +
             '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
             '</div>' +
             '</div>';
@@ -283,95 +307,123 @@ async function _sdPopulateBandLens(title) {
         return;
     }
 
-    // ── LOCK IN MODE: full band view (default) ──
+    // ── LOCK IN MODE: focus-first with collapsible detail ──
+    // Top 3 Focus card + collapsed remaining cards
+    var _focusItems = _sdBuildFocusItems(title, avgReadiness, _siGaps, _siIntel, _siLowest, status);
+
     panel.innerHTML =
         '<div class="sd-panel-inner">'+
-        '<div class="sd-card sd-intel-card">'+
-        '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between">'+
-          '<span>🎯 Song Intelligence ' + (typeof glInlineHelp !== 'undefined' ? glInlineHelp.renderHelpTrigger('song-intelligence') : '') + '</span>'+
-          '<button onclick="if(typeof GLStore!==\'undefined\')GLStore.setNowPlaying(\''+safeSong+'\')" '+
-            'style="background:none;border:1px solid rgba(255,255,255,0.1);color:var(--text-dim,#475569);font-size:0.65em;padding:2px 8px;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap" '+
-            'title="Set as Now Playing">🎵 Now Playing</button>'+
-        '</div>'+
-        (function(){ var cs = (typeof GLStore !== 'undefined' && GLStore.getSongCoachSignal) ? GLStore.getSongCoachSignal(title) : null; return cs ? '<div style="padding:6px 10px;margin-bottom:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.12);border-radius:6px;font-size:0.78em;color:#94a3b8">\uD83C\uDFAF ' + _sdEsc(cs) + '</div>' : ''; })() +
-        '<div class="sd-intel-grid">'+
-        '<div class="sd-intel-item"><div class="sd-intel-label">Band Readiness</div><div class="sd-intel-val">'+(avgReadiness||'—')+'<span class="sd-intel-unit"> / 5</span></div>'+(tierLabel?'<div class="sd-intel-sub">'+_sdEsc(tierLabel)+'</div>':'')+'</div>'+
-        '<div class="sd-intel-item"><div class="sd-intel-label">Status</div><div class="sd-intel-val sd-intel-sm">'+_sdEsc(statusLabel)+'</div></div>'+
-        '<div class="sd-intel-item"><div class="sd-intel-label">Top Gap</div><div class="sd-intel-val sd-intel-sm">'+topGapText+'</div>'+(gapCount>1?'<div class="sd-intel-sub">+' + (gapCount - 1) + ' more high</div>':'')+'</div>'+
-        '<div class="sd-intel-item"><div class="sd-intel-label">Last Played</div><div class="sd-intel-val sd-intel-sm" id="sd-last-played">—</div></div>'+
+        // ── TOP 3 FOCUS — the single most important card ──
+        '<div class="sd-card" style="border-color:rgba(245,158,11,0.2);background:linear-gradient(135deg,rgba(245,158,11,0.04),rgba(239,68,68,0.03))">'+
+        '<div class="sd-card-title" style="color:#fbbf24">\uD83C\uDFAF Focus for Rehearsal</div>'+
+        (_focusItems.length ? _focusItems.map(function(f) {
+            return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'+
+                '<span style="font-size:1em;flex-shrink:0;margin-top:1px">'+f.icon+'</span>'+
+                '<div><div style="font-weight:600;font-size:0.88em;color:var(--text)">'+_sdEsc(f.title)+'</div>'+
+                '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">'+_sdEsc(f.detail)+'</div></div></div>';
+        }).join('') : '<div style="font-size:0.85em;color:var(--text-dim);padding:4px">Looking good — no critical gaps found.</div>') +
+        '<div style="margin-top:12px;display:flex;gap:8px">'+
+        '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Practice Now</button>'+
         '</div></div>'+
-        // ── Readiness (moved up for mobile prominence) ──
+        // ── Readiness ──
         '<div class="sd-card" id="sd-readiness-card">'+
-        '<div class="sd-card-title">📊 Your Readiness</div>'+
-        (avgReadiness === 0 ? '<div style="font-size:0.78em;color:var(--accent-light);margin-bottom:6px;padding:6px 8px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.12);border-radius:6px">Be the first to rate this song — slide to set your readiness</div>' : '') +
+        '<div class="sd-card-title">📊 Band Readiness</div>'+
         _sdRenderReadinessBlock(title,safeSong)+
-        '<div style="font-size:0.68em;color:var(--text-dim,#475569);margin-top:6px;line-height:1.5;display:flex;flex-wrap:wrap;gap:2px 10px">'+
-        '<span>0 Never played</span><span>1 Learning</span><span>2 Rough</span><span>3 Getting there</span><span>4 Tight</span><span>5 Gig ready</span>'+
         '</div>'+
-        '<div id="sd-confidence-prompt" style="margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:6px">'+
-        '<div style="font-size:0.72em;font-weight:700;color:var(--accent-light);margin-bottom:4px">🔒 Private Confidence</div>'+
-        '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px">Would you put this song in the set this week?</div>'+
-        '<div style="display:flex;gap:6px">'+
-        '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'yes\')">Yes</button>'+
-        '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'maybe\')">Maybe</button>'+
-        '<button class="sd-pm-btn" style="font-size:0.72em;padding:4px 10px" onclick="sdSaveConfidence(\''+safeSong+'\',\'no\')">Not yet</button>'+
-        '</div></div>'+
-        '</div>'+
-        // ── Jam Structure (PROMOTED — core differentiator) ──
-        '<div class="sd-card" style="padding:10px 14px">' +
+        // ── Collapsed detail sections ──
+        '<details class="sd-details"><summary class="sd-details-summary">\uD83C\uDFBC Structure & DNA <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
+        '<div style="padding:12px 0">'+
+        '<div class="sd-card" style="padding:10px 14px;margin-bottom:10px">' +
         '<div style="display:flex;align-items:center;justify-content:space-between">' +
-        '<div class="sd-card-title" style="margin-bottom:0">🎼 How We Play It</div>' +
+        '<div class="sd-card-title" style="margin-bottom:0">\uD83C\uDFBC How We Play It</div>' +
         '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\''+safeSong+'\')">Edit</button>' +
         '</div>' +
         '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
         '</div>' +
-        // ── Song DNA ──
         '<div class="sd-card" style="padding:10px 14px">'+
-        '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song DNA</div>'+
+        '<div class="sd-card-title" style="margin-bottom:8px">\uD83E\uDDEC Song DNA</div>'+
         '<div class="sd-dna-grid">'+
-        '<div class="sd-dna-item"><span class="sd-dna-label">🎤 Lead</span><select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select><div class="sd-dna-attr" id="sd-attr-lead"></div></div>'+
-        '<div class="sd-dna-item"><span class="sd-dna-label">🎯 Status</span><select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select><div class="sd-dna-attr" id="sd-attr-status"></div></div>'+
-        '<div class="sd-dna-item"><span class="sd-dna-label">🔑 Key</span><select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select><div class="sd-dna-attr" id="sd-attr-key"></div></div>'+
-        '<div class="sd-dna-item"><span class="sd-dna-label">🥁 BPM</span><input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"><div class="sd-dna-attr" id="sd-attr-bpm"></div></div>'+
-        '</div>'+
-        _sdSectionDots(sectionRatings)+
-        '</div>'+
-        // ── Intelligence detail + practice ──
-        _sdRenderAttentionCard(title, safeSong)+
-        _sdRenderGapsCard(_siGaps)+
-        ((status === 'prospect' || status === '') ? '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:6px">🗳 Should we learn this?</div><div id="sd-prospect-vote" style="font-size:0.85em;color:var(--text-dim)">Loading votes...</div></div>' : '')+
-        _sdRenderFirstRunCard(title, status)+
-        '<div class="sd-card">'+
-        '<div class="sd-card-title">🧠 Practice Mode</div>'+
-        (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre>':'')+
-        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-        (chartText?'<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 View Chart</button>':'<button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">📖 Get Chart</button>')+
-        '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">\uD83C\uDFA4 Lead</span><select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">\uD83C\uDFAF Status</span><select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">\uD83D\uDD11 Key</span><select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">\uD83E\uDD41 BPM</span><input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"></div>'+
         '</div></div>'+
-        // ── Song Assets (progressive disclosure — moved from song list rows) ──
-        '<div class="sd-card" style="padding:10px 14px">' +
-        '<div class="sd-card-title" style="margin-bottom:8px">📦 Song Assets</div>' +
-        '<div id="sd-assets" style="display:flex;flex-wrap:wrap;gap:6px;font-size:0.75em">' +
-        '<span style="color:var(--text-dim)">Loading...</span>' +
-        '</div></div>' +
+        '</div></details>'+
+        '<details class="sd-details"><summary class="sd-details-summary">📋 Notes & Discussion <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
+        '<div style="padding:12px 0">'+
         '<div class="sd-card" id="sd-discussion-mount"><div style="font-size:0.82em;color:var(--text-dim);padding:4px">Loading discussion...</div></div>'+
         '<div class="sd-card">'+
-        '<div class="sd-card-title">📋 Band Notes</div>'+
+        '<div class="sd-card-title">\uD83D\uDCCB Band Notes</div>'+
         '<div class="sd-notes-sub">Stage Crib Notes</div>'+
         _sdRenderCribNotes(cribData)+
         '<div class="sd-notes-sub" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">Rehearsal Notes</div>'+
         _sdRenderRehearsalNotes(rehearsalNotes)+
-        '</div>'+
+        '</div></div></details>'+
+        '<details class="sd-details"><summary class="sd-details-summary">\uD83D\uDCE6 Assets & Practice <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
+        '<div style="padding:12px 0">'+
+        (chartText?'<div class="sd-card"><div class="sd-card-title">\uD83E\uDDE0 Practice Mode</div><pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre><button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 View Chart</button></div>':'')+
+        '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:8px">\uD83D\uDCE6 Song Assets</div><div id="sd-assets" style="display:flex;flex-wrap:wrap;gap:6px;font-size:0.75em"><span style="color:var(--text-dim)">Loading...</span></div></div>'+
+        '</div></details>'+
         '</div>';
     _sdBuildReadinessStrip(title);
-    // Load attribution for DNA fields + lifecycle suggestion + assets + structure
     setTimeout(function() { _sdLoadAttribution(title); _sdShowLifecycleSuggestion(title, status); _sdLoadAssets(title); _sdLoadStructure(title); }, 300);
-    // Load song discussion + prospect votes
     setTimeout(function() {
         var discMount = document.getElementById('sd-discussion-mount');
         if (discMount && typeof renderSongDiscussion === 'function') renderSongDiscussion(title, discMount);
         _sdRenderProspectVote(title);
     }, 200);
+}
+
+// ── Focus Items Builder (Lock In) ────────────────────────────────────────────
+function _sdBuildFocusItems(title, avgReadiness, gaps, intel, lowestMembers, status) {
+    var items = [];
+    // 1. Low readiness
+    if (avgReadiness > 0 && avgReadiness < 3) {
+        items.push({ icon: '⚠️', title: 'Low band readiness (' + avgReadiness.toFixed(1) + '/5)', detail: 'This song needs more practice before it\'s gig-ready.' });
+    }
+    // 2. Member gap
+    if (lowestMembers && lowestMembers.length > 0 && intel && intel.min > 0 && intel.min < 3) {
+        var memberNames = lowestMembers.map(function(k) { return (typeof bandMembers !== 'undefined' && bandMembers[k]) ? bandMembers[k].name : k; });
+        items.push({ icon: '👤', title: memberNames.join(', ') + ' at ' + intel.min + '/5', detail: 'Weakest link — focus rehearsal time here.' });
+    }
+    // 3. High-severity gaps
+    if (gaps && gaps.length > 0) {
+        var highGaps = gaps.filter(function(g) { return g.severity === 'high'; });
+        if (highGaps.length > 0) {
+            items.push({ icon: '🔧', title: highGaps[0].detail || 'Gap detected', detail: highGaps.length > 1 ? '+' + (highGaps.length - 1) + ' more issues' : 'Address this before next gig.' });
+        }
+    }
+    // 4. No readiness data at all
+    if (!avgReadiness || avgReadiness === 0) {
+        items.push({ icon: '📊', title: 'No readiness scores yet', detail: 'Have each band member rate this song.' });
+    }
+    // 5. Status is prospect (not committed)
+    if (status === 'prospect' || status === '') {
+        items.push({ icon: '🗳', title: 'Song not committed', detail: 'Vote on whether to add this to the rotation.' });
+    }
+    return items.slice(0, 3);
+}
+
+// ── Play Mode: set navigation ────────────────────────────────────────────────
+function _sdBuildPlayNav(title) {
+    // Try to get the current setlist song order
+    var setlists = (typeof window._glCachedSetlists !== 'undefined') ? window._glCachedSetlists : ((typeof window._cachedSetlists !== 'undefined') ? window._cachedSetlists : null);
+    if (!setlists || !setlists.length) return { prev: null, next: null };
+    // Use the first setlist (most recent / upcoming)
+    var sl = setlists[0];
+    var allTitles = [];
+    (sl.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : item.title;
+            if (t) allTitles.push(t);
+        });
+    });
+    var idx = allTitles.indexOf(title);
+    if (idx === -1) return { prev: null, next: null };
+    return {
+        prev: idx > 0 ? allTitles[idx - 1] : null,
+        next: idx < allTitles.length - 1 ? allTitles[idx + 1] : null
+    };
 }
 
 function _sdSectionDots(sectionRatings) {
@@ -1520,6 +1572,13 @@ function _sdInjectStyles(){
     '.sd-pm-btn{padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;transition:all 0.15s;white-space:nowrap}'+
     '.sd-pm-btn:hover{background:rgba(102,126,234,0.15);border-color:rgba(102,126,234,0.35);color:#818cf8}'+
     '.sd-pm-btn--hero{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.3);color:#a5b4fc;font-size:0.92em;padding:10px 20px}'+
+    '.sd-details{margin-bottom:8px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;overflow:hidden}'+
+    '.sd-details[open]{border-color:rgba(99,102,241,0.15)}'+
+    '.sd-details-summary{padding:12px 16px;font-size:0.85em;font-weight:700;color:var(--text-muted,#94a3b8);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.02);transition:background 0.15s}'+
+    '.sd-details-summary:hover{background:rgba(255,255,255,0.04)}'+
+    '.sd-details-summary::-webkit-details-marker{display:none}'+
+    '.sd-details[open] .sd-details-summary{border-bottom:1px solid var(--border,rgba(255,255,255,0.06))}'+
+    '.sd-details > div{padding:0 12px}'+
     '.sd-notes-sub{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim,#475569);margin-bottom:8px}'+
     '.sd-mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;padding:8px 16px;background:var(--bg-card,#1e293b);border-top:1px solid var(--border,rgba(255,255,255,0.08));z-index:60;gap:8px;justify-content:center}'+
     '.sd-mobile-bar__btn{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;text-align:center}'+
