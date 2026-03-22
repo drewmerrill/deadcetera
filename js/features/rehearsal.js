@@ -193,10 +193,14 @@ async function _rhRenderCommandFlow(el) {
             var rowBg = cfg.bg ? 'background:' + cfg.bg + ';' : '';
             var isPlayable = bt === 'single' || bt === 'song' || bt === 'multi_song' || bt === 'linked';
 
+            var isEditable = !isPlayable || bt === 'multi_song';
+            var editClick = isEditable ? ' onclick="_rhEditBlockTitle(' + idx + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)"' : '';
+            var editTitle = isEditable ? ' title="Click to edit"' : '';
+
             html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
                 + typeChip
-                + '<span style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic' : '') + '">' + unitLabel + '</span>'
+                + '<span' + editClick + editTitle + ' style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)' : '') + '">' + unitLabel + '</span>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
@@ -351,6 +355,18 @@ window._rhInsertTemplate = function(type, title) {
     units.push({ type: type, title: title, block: 'flow' });
     _rhSaveUnits(units);
     if (typeof showToast === 'function') showToast(title + ' added');
+    _rhReRender();
+};
+
+// Inline edit block title
+window._rhEditBlockTitle = function(idx) {
+    var units = _rhGetUnits();
+    if (!units[idx]) return;
+    var current = units[idx].title || '';
+    var newTitle = prompt('Edit block title:', current);
+    if (newTitle === null || newTitle === current) return;
+    units[idx].title = newTitle.trim() || current;
+    _rhSaveUnits(units);
     _rhReRender();
 };
 
