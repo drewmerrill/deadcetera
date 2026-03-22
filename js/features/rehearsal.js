@@ -161,8 +161,42 @@ async function _rhRenderCommandFlow(el) {
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<span style="font-size:0.78em;font-weight:800;color:#86efac">✅ Next Rehearsal Plan</span><span style="font-size:0.58em;color:var(--text-dim);margin-left:6px">Suggested Draft — Edit Freely</span>'
             + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
+            + '<span style="font-size:0.65em;font-weight:700;color:#a5b4fc;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">⏱ ' + totalLabel + '</span>'
             + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
+
+        // ── Rehearsal time budgeting ──────────────────────────────────────
+        // Estimate minutes per block. Separate from setlist runtime logic.
+        // Songs get 1.5x runtime (rehearsal overhead), non-song blocks get fixed defaults.
+        var _rhNonSongDefaults = { exercise: 10, business: 15, jam: 10, note: 5 };
+        function _rhBlockMinutes(unit) {
+            var bt = unit.type || 'single';
+            // Non-song blocks: fixed defaults
+            if (_rhNonSongDefaults[bt] !== undefined) return _rhNonSongDefaults[bt];
+            // Linked: sum of song runtimes * 1.5
+            if (bt === 'linked' && unit.songs && unit.songs.length > 0) {
+                var totalSec = 0;
+                unit.songs.forEach(function(s) { totalSec += (typeof getSongRuntimeSec === 'function') ? getSongRuntimeSec(s.title) : 360; });
+                return Math.ceil((totalSec / 60) * 1.5);
+            }
+            // multi_song: sum component songs if parseable, else 15 min
+            if (bt === 'multi_song') {
+                var titles = (unit.title || '').split(/[,→➔]/).map(function(s) { return s.trim(); }).filter(Boolean);
+                if (titles.length > 0 && typeof getSongRuntimeSec === 'function') {
+                    var sec = 0;
+                    titles.forEach(function(t) { sec += getSongRuntimeSec(t); });
+                    return Math.ceil((sec / 60) * 1.5);
+                }
+                return 15;
+            }
+            // Single song: runtime * 1.5
+            var title = unit.title || (unit.songs && unit.songs[0] ? unit.songs[0].title : '');
+            var runtimeSec = (typeof getSongRuntimeSec === 'function') ? getSongRuntimeSec(title) : 360;
+            return Math.ceil((runtimeSec / 60) * 1.5);
+        }
+
+        var totalMin = savedUnits.reduce(function(sum, u) { return sum + _rhBlockMinutes(u); }, 0);
+        var totalLabel = totalMin >= 60 ? Math.floor(totalMin / 60) + 'h ' + (totalMin % 60) + 'min' : totalMin + ' min';
 
         // Block type config
         var _btConfig = {
@@ -197,10 +231,14 @@ async function _rhRenderCommandFlow(el) {
             var editClick = isEditable ? ' onclick="_rhEditBlockTitle(' + idx + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)"' : '';
             var editTitle = isEditable ? ' title="Click to edit"' : '';
 
+            var blockMin = _rhBlockMinutes(unit);
+            var minChip = '<span style="font-size:0.7em;color:var(--text-dim);white-space:nowrap;margin-left:4px" title="Estimated rehearsal time">' + blockMin + 'm</span>';
+
             html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
                 + typeChip
                 + '<span' + editClick + editTitle + ' style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)' : '') + '">' + unitLabel + '</span>'
+                + minChip
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
