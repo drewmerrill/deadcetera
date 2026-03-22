@@ -348,6 +348,24 @@ async function _rhRenderCommandFlow(el) {
     // Wire up drag-and-drop on the unit list
     _rhInitDragDrop();
 
+    // First-visit walkthrough (only when a saved plan exists)
+    if (hasSavedPlan && typeof glSpotlight !== 'undefined') {
+        setTimeout(function() {
+            glSpotlight.run('rehearsal-plan', [
+                { target: function() { var rows = document.querySelectorAll('.rh-unit-row'); return rows.length ? rows[0] : null; },
+                  text: 'This is your starting plan — you can edit everything. Add, remove, or reorder any block.' },
+                { target: '#rhAddBlockBtn',
+                  text: 'Add songs, exercises, jam time, band business, or section dividers.' },
+                { target: function() { var h = document.querySelector('.rh-drag-handle'); return h; },
+                  text: 'Drag the handle to reorder blocks. You can also use the ↑↓ buttons.' },
+                { target: function() { var chips = document.querySelectorAll('[onclick^="_rhEditBlockTime"]'); return chips.length ? chips[0] : null; },
+                  text: 'Click the time chip to adjust how long you spend on each item.' },
+                { target: function() { var btn = document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); return btn; },
+                  text: 'When you\'re ready, hit Start Rehearsal to launch practice mode with your plan.' }
+            ]);
+        }, 800);
+    }
+
     // Show AI focus below the saved plan (complementary, not competing)
     if (hasSavedPlan) {
         // When plan exists, show a collapsed AI suggestions section
