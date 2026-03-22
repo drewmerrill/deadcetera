@@ -168,7 +168,7 @@ async function _rhRenderCommandFlow(el) {
         // ── Rehearsal time budgeting ──────────────────────────────────────
         // Estimate minutes per block. Separate from setlist runtime logic.
         // Songs get 1.5x runtime (rehearsal overhead), non-song blocks get fixed defaults.
-        var _rhNonSongDefaults = { exercise: 10, business: 15, jam: 10, note: 5 };
+        var _rhNonSongDefaults = { exercise: 10, business: 15, jam: 10, note: 5, section: 0 };
         function _rhBlockMinutes(unit) {
             // User override takes priority
             if (unit.durationMinOverride > 0) return unit.durationMinOverride;
@@ -209,16 +209,48 @@ async function _rhRenderCommandFlow(el) {
             exercise: { icon:'🎓', label:'Exercise', color:'#a78bfa',     bg:'rgba(167,139,250,0.06)' },
             note:     { icon:'💬', label:'Note',     color:'#94a3b8',     bg:'rgba(148,163,184,0.04)' },
             business: { icon:'📋', label:'Business', color:'#fbbf24',     bg:'rgba(245,158,11,0.05)' },
-            jam:      { icon:'🔥', label:'Jam',      color:'#22c55e',     bg:'rgba(34,197,94,0.05)' }
+            jam:      { icon:'🔥', label:'Jam',      color:'#22c55e',     bg:'rgba(34,197,94,0.05)' },
+            section:  { icon:'▬',  label:'Section',  color:'#60a5fa',     bg:'' }
         };
+
+        // Precompute section subtotals: for each section block, sum minutes until the next section
+        var _sectionSubtotals = {};
+        (function() {
+            var currentSectionIdx = -1;
+            for (var i = 0; i < savedUnits.length; i++) {
+                if (savedUnits[i].type === 'section') {
+                    currentSectionIdx = i;
+                    _sectionSubtotals[i] = 0;
+                } else if (currentSectionIdx >= 0) {
+                    _sectionSubtotals[currentSectionIdx] += _rhBlockMinutes(savedUnits[i]);
+                }
+            }
+        })();
 
         // Render editable units with block type awareness
         var unitNum = 0;
         var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:2px 4px;line-height:1';
         savedUnits.forEach(function(unit, idx) {
-            unitNum++;
             var bt = unit.type || 'single';
             var cfg = _btConfig[bt] || _btConfig.single;
+
+            // ── Section divider: render as full-width bar ──
+            if (bt === 'section') {
+                var secTitle = unit.title || 'Section';
+                var secMin = _sectionSubtotals[idx];
+                var secLabel = secMin !== undefined && secMin > 0 ? ' · ' + secMin + ' min' : '';
+                html += '<div style="display:flex;align-items:center;gap:6px;margin:8px 0 2px;padding:5px 8px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
+                    + '<span style="font-size:0.7em">▬</span>'
+                    + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.78em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;border-bottom:1px dashed rgba(96,165,250,0.3)">' + escHtml(secTitle) + '</span>'
+                    + (secLabel ? '<span style="font-size:0.65em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
+                    + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
+                    + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
+                    + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
+                    + '</div>';
+                return;
+            }
+
+            unitNum++;
             var unitLabel = '';
             if (bt === 'linked' && unit.songs && unit.songs.length > 1) {
                 unitLabel = unit.songs.map(function(s) { return s.title; }).join(' → ');
@@ -258,6 +290,7 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="_rhAddBlock(\'note\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(148,163,184,0.2);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em">💬 Note</button>'
             + '<button onclick="_rhAddBlock(\'business\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:none;color:#fbbf24;cursor:pointer;font-size:0.68em">📋 Business</button>'
             + '<button onclick="_rhAddBlock(\'jam\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.25);background:none;color:#22c55e;cursor:pointer;font-size:0.68em">🔥 Jam</button>'
+            + '<button onclick="_rhAddBlock(\'section\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.06);color:#60a5fa;cursor:pointer;font-size:0.68em;font-weight:700">▬ Section</button>'
             + '</div>'
             + '<div style="border-top:1px solid rgba(255,255,255,0.04);padding-top:4px"><div style="font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px">Quick Templates</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:3px">'
@@ -267,6 +300,9 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="_rhInsertTemplate(\'exercise\',\'Quick run-through — full set\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.04);color:#c4b5fd;cursor:pointer;font-size:0.62em">🎓 Run-through</button>'
             + '<button onclick="_rhInsertTemplate(\'business\',\'Band business\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-size:0.62em">📋 Band business</button>'
             + '<button onclick="_rhInsertTemplate(\'note\',\'Set break — 15 min\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(148,163,184,0.15);background:rgba(148,163,184,0.03);color:#94a3b8;cursor:pointer;font-size:0.62em">💬 Set break</button>'
+            + '<button onclick="_rhInsertTemplate(\'section\',\'Warm-Up\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(96,165,250,0.25);background:rgba(96,165,250,0.04);color:#60a5fa;cursor:pointer;font-size:0.62em">▬ Warm-Up</button>'
+            + '<button onclick="_rhInsertTemplate(\'section\',\'Song Work\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(96,165,250,0.25);background:rgba(96,165,250,0.04);color:#60a5fa;cursor:pointer;font-size:0.62em">▬ Song Work</button>'
+            + '<button onclick="_rhInsertTemplate(\'section\',\'Full Run-Through\')" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(96,165,250,0.25);background:rgba(96,165,250,0.04);color:#60a5fa;cursor:pointer;font-size:0.62em">▬ Run-Through</button>'
             + '</div></div>'
             + '</div></div>';
 
@@ -451,7 +487,7 @@ window._rhAddBlock = function(blockType) {
         return;
     }
 
-    var labels = { exercise:'Exercise', note:'Note', business:'Band Business', jam:'Jam / Break' };
+    var labels = { exercise:'Exercise', note:'Note', business:'Band Business', jam:'Jam / Break', section:'Section name' };
     var label = prompt((labels[blockType] || 'Block') + ':', labels[blockType] || '');
     if (!label) return;
     var units = _rhGetUnits();
