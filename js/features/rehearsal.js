@@ -181,7 +181,8 @@ async function _rhRenderCommandFlow(el) {
             + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
             + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
             + '<span style="font-size:0.65em;font-weight:700;color:#a5b4fc;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">⏱ ' + totalLabel + '</span>'
-            + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
+            + '<button onclick="_rhRunWalkthrough()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;cursor:pointer" title="Show guided tour">?</button>'
+            + '<button onclick="_rhClearSavedPlan()" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
 
         // ── Rehearsal time budgeting ──────────────────────────────────────
@@ -1087,6 +1088,16 @@ window._rhEditBlockNote = function(idx) {
     }
     _rhSaveUnits(units);
     _rhReRender();
+};
+
+window._rhRunWalkthrough = function() {
+    if (typeof glSpotlight !== 'undefined') {
+        glSpotlight.reset('rehearsal-plan-v3');
+        // Need to open the Add Block menu so template/section targets are visible
+        var menu = document.getElementById('rhAddBlockMenu');
+        if (menu) menu.style.display = 'flex';
+        setTimeout(function() { glSpotlight.run('rehearsal-plan-v3', null, { force: true }); }, 300);
+    }
 };
 
 window._rhEditPlanName = function() {
