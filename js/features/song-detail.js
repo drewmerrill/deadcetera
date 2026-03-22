@@ -10,13 +10,37 @@ var _sdCurrentSong   = null;
 var _sdLensPopulated = {};
 var _sdContainer     = null;
 
-var SD_LENSES = [
+var SD_LENSES_FULL = [
     { id:'band',    icon:'🎸', label:'Band'    },
     { id:'listen',  icon:'📻', label:'Listen'  },
     { id:'learn',   icon:'📖', label:'Learn'   },
     { id:'sing',    icon:'🎤', label:'Sing'    },
     { id:'inspire', icon:'✨', label:'Inspire' },
 ];
+
+// Mode-specific lens sets — Play strips to just what's needed on stage
+var SD_LENSES_BY_MODE = {
+    sharpen: [
+        { id:'band',   icon:'🎸', label:'Overview' },
+        { id:'learn',  icon:'📖', label:'Learn'    },
+        { id:'listen', icon:'📻', label:'Listen'   },
+    ],
+    lockin: [
+        { id:'band',    icon:'🎸', label:'Band'    },
+        { id:'listen',  icon:'📻', label:'Listen'  },
+        { id:'learn',   icon:'📖', label:'Learn'   },
+        { id:'sing',    icon:'🎤', label:'Sing'    },
+    ],
+    play: [
+        { id:'band',   icon:'📊', label:'Chart'   },
+    ],
+};
+
+function _sdGetMode() {
+    return (typeof GLStore !== 'undefined' && GLStore.getProductMode) ? GLStore.getProductMode() : 'lockin';
+}
+
+var SD_LENSES = SD_LENSES_FULL; // backward compat
 
 // ── Entry ────────────────────────────────────────────────────────────────────
 window.renderSongDetail = function renderSongDetail(songTitle, containerOverride, options) {
@@ -71,15 +95,38 @@ function _sdActivateTab(lens) {
 function _sdShellHTML(title) {
     var song = (typeof allSongs!=='undefined') ? allSongs.find(function(s){return s.title===title;}) : null;
     var band=song?(song.band||''):'', key=song?(song.key||''):'', bpm=song?(song.bpm||''):'';
+    var mode = _sdGetMode();
+    var lenses = SD_LENSES_BY_MODE[mode] || SD_LENSES_FULL;
     var pills = (band?'<span class="sd-meta-pill sd-band-pill '+band.toLowerCase()+'">'+_sdEsc(band)+'</span>':'');
-    var tabs = SD_LENSES.map(function(l) {
+    // Key/BPM pills for quick reference (always shown, prominent in Play)
+    if (key) pills += '<span class="sd-meta-pill" style="background:rgba(129,140,248,0.12);color:#818cf8;border-color:rgba(129,140,248,0.2)">'+_sdEsc(key)+'</span>';
+    if (bpm) pills += '<span class="sd-meta-pill" style="color:var(--text-dim)">'+_sdEsc(bpm)+' BPM</span>';
+
+    var tabs = lenses.map(function(l) {
         return '<button class="sd-tab-btn" data-lens="'+l.id+'" onclick="switchLens(\''+l.id+'\')">'+
                '<span class="sd-tab-icon">'+l.icon+'</span>'+
                '<span class="sd-tab-label">'+l.label+'</span></button>';
     }).join('');
-    var panels = SD_LENSES.map(function(l) {
+    // Always create all lens panels (even if tab hidden) for backward compat
+    var panels = SD_LENSES_FULL.map(function(l) {
         return '<div class="sd-lens-panel" data-lens="'+l.id+'" style="display:none">'+_sdSkeleton()+'</div>';
     }).join('');
+
+    // Play mode: hide tab bar entirely (single-lens mode)
+    var tabBarStyle = (mode === 'play') ? ' style="display:none"' : '';
+
+    // Mode-specific dominant action
+    var safeSong = _sdEsc(title).replace(/'/g,"\\'");
+    var action = '';
+    if (mode === 'sharpen') {
+        action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >🔥 Start Practice</button>';
+    } else if (mode === 'lockin') {
+        action = '<button class="sd-mobile-bar__btn" onclick="var el=document.querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">📊 Update Readiness</button>'
+               + '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >📖 Practice</button>';
+    } else {
+        action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >📖 Open Chart</button>';
+    }
+
     return '<div class="song-detail-page">'+
            '<div class="sd-header">'+
            '  <div class="sd-header-top">'+
@@ -89,12 +136,9 @@ function _sdShellHTML(title) {
            '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
            '  <div id="sd-readiness-strip" class="sd-readiness-strip"></div>'+
            '</div>'+
-           '<nav class="sd-tab-bar">'+tabs+'</nav>'+
+           '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
            '<div class="sd-panels">'+panels+'</div>'+
-           '<div class="sd-mobile-bar">'
-           + '<button class="sd-mobile-bar__btn" onclick="var el=document.querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">📊 Update Readiness</button>'
-           + '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+_sdEsc(title).replace(/'/g,"\\'")+'\')" >📖 Practice</button>'
-           + '</div>'+
+           '<div class="sd-mobile-bar">'+action+'</div>'+
            '</div>';
 }
 
@@ -112,6 +156,7 @@ async function _sdPopulateBandLens(title) {
     if (!panel) return;
     panel.style.display = 'block';
     _sdBuildReadinessStrip(title);
+    var mode = _sdGetMode();
 
     var songKey = typeof sanitizeFirebasePath==='function' ? sanitizeFirebasePath(title) : title;
     var safeSong = title.replace(/'/g,"\\'");
@@ -182,6 +227,63 @@ async function _sdPopulateBandLens(title) {
     var statusLabels={'prospect':'Prospect','learning':'Learning','rotation':'In Rotation','shelved':'Shelved','wip':'Learning','active':'Learning','gig_ready':'Learning','parked':'Shelved','retired':'Shelved','':'—'};
     var statusLabel=statusLabels[status]||status||'—';
     var ytQuery=encodeURIComponent(title);
+
+    // ── PLAY MODE: stripped-down stage-ready view ──
+    if (mode === 'play') {
+        panel.innerHTML =
+            '<div class="sd-panel-inner">'+
+            // Clean chart — full width, large text
+            (chartText
+                ? '<div class="sd-card" style="padding:20px"><pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.7;color:#e2e8f0;margin:0">' + _sdEsc(chartText) + '</pre></div>'
+                : '<div class="sd-card" style="text-align:center;padding:24px;color:var(--text-dim)"><div style="font-size:1.4em;margin-bottom:8px">📖</div>No chart yet<br><button class="sd-pm-btn" style="margin-top:12px" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'
+            ) +
+            // Crib notes (if any — these are the stage-relevant notes)
+            (cribData && toArray(cribData).length
+                ? '<div class="sd-card" style="padding:14px"><div class="sd-card-title" style="margin-bottom:8px">📋 Stage Notes</div>' + _sdRenderCribNotes(cribData) + '</div>'
+                : ''
+            ) +
+            '</div>';
+        _sdBuildReadinessStrip(title);
+        return;
+    }
+
+    // ── SHARPEN MODE: practice-focused view ──
+    if (mode === 'sharpen') {
+        panel.innerHTML =
+            '<div class="sd-panel-inner">'+
+            // Practice Mode — the dominant card
+            '<div class="sd-card">'+
+            '<div class="sd-card-title">🔥 Practice</div>'+
+            (chartText?'<pre style="white-space:pre-wrap;font-family:monospace;font-size:13px;color:#94a3b8;line-height:1.5;max-height:120px;overflow:hidden;margin:0 0 12px">'+_sdEsc(chartText.split('\n').slice(0,6).join('\n'))+'</pre>':'')+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+            (chartText?'<button class="sd-pm-btn sd-pm-btn--hero" onclick="openRehearsalMode(\''+safeSong+'\')">📖 Open Chart</button>':'<button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">📖 Get Chart</button>')+
+            '<button class="sd-pm-btn" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">▶ YouTube</button>'+
+            '</div></div>'+
+            // Your Readiness
+            '<div class="sd-card" id="sd-readiness-card">'+
+            '<div class="sd-card-title">📊 Your Readiness</div>'+
+            _sdRenderReadinessBlock(title,safeSong)+
+            '</div>'+
+            // Song DNA (key/bpm only — no lead/status editing in sharpen)
+            '<div class="sd-card" style="padding:10px 14px">'+
+            '<div class="sd-card-title" style="margin-bottom:8px">🧬 Song Info</div>'+
+            '<div style="display:flex;gap:16px;font-size:0.88em;color:var(--text-muted)">'+
+            (metaKey?'<span>🔑 '+_sdEsc(metaKey)+'</span>':'')+
+            (metaBpm?'<span>🥁 '+_sdEsc(metaBpm)+' BPM</span>':'')+
+            (lead?'<span>🎤 '+_sdEsc(lead.charAt(0).toUpperCase()+lead.slice(1))+'</span>':'')+
+            '</div></div>'+
+            // How We Play It
+            '<div class="sd-card" style="padding:10px 14px">' +
+            '<div class="sd-card-title" style="margin-bottom:0">🎼 How We Play It</div>' +
+            '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
+            '</div>' +
+            '</div>';
+        _sdBuildReadinessStrip(title);
+        setTimeout(function() { _sdLoadStructure(title); }, 300);
+        return;
+    }
+
+    // ── LOCK IN MODE: full band view (default) ──
     panel.innerHTML =
         '<div class="sd-panel-inner">'+
         '<div class="sd-card sd-intel-card">'+
@@ -1417,6 +1519,7 @@ function _sdInjectStyles(){
     '.sd-intel-sub{font-size:0.62em;font-weight:600;color:var(--text-dim,#475569);margin-top:2px}'+
     '.sd-pm-btn{padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;transition:all 0.15s;white-space:nowrap}'+
     '.sd-pm-btn:hover{background:rgba(102,126,234,0.15);border-color:rgba(102,126,234,0.35);color:#818cf8}'+
+    '.sd-pm-btn--hero{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.3);color:#a5b4fc;font-size:0.92em;padding:10px 20px}'+
     '.sd-notes-sub{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim,#475569);margin-bottom:8px}'+
     '.sd-mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;padding:8px 16px;background:var(--bg-card,#1e293b);border-top:1px solid var(--border,rgba(255,255,255,0.08));z-index:60;gap:8px;justify-content:center}'+
     '.sd-mobile-bar__btn{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;text-align:center}'+
