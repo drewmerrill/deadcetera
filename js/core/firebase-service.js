@@ -64,7 +64,19 @@ if (currentBandSlug === 'deadcetera-test' && !new URLSearchParams(window.locatio
     currentBandSlug = 'deadcetera';
     localStorage.setItem('deadcetera_current_band', 'deadcetera');
     localStorage.removeItem('deadcetera_current_user');
-    console.log('\uD83D\uDD12 Auto-restored production band (test slug without ?dev=true)');
+    // Clear test user identity so production doesn't show test@groovelinx.com
+    if (localStorage.getItem('deadcetera_google_email') === 'test@groovelinx.com') {
+        localStorage.removeItem('deadcetera_google_email');
+        localStorage.removeItem('deadcetera_google_name');
+        localStorage.removeItem('deadcetera_google_picture');
+        // Also reset runtime vars (already populated from stale localStorage above)
+        currentUserEmail = null;
+        currentUserName = '';
+        currentUserPicture = '';
+    }
+    localStorage.removeItem('gl_dev_user');
+    localStorage.removeItem('gl_dev_band');
+    console.log('\uD83D\uDD12 Auto-restored production (cleared test identity)');
 }
 
 /**
@@ -194,30 +206,30 @@ window.initFirebaseOnly = async function initFirebaseOnly() {
 
 window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
     return new Promise((resolve, reject) => {
-        console.log('🔥 Loading Firebase + Google Identity...');
+        console.log('🔥 Loading Google Identity...');
 
+        // Reuse the dedup-aware loadScript from initFirebaseOnly
         const loadScript = (src) => new Promise((res, rej) => {
+            if (document.querySelector('script[src="' + src + '"]')) { res(); return; }
             const s = document.createElement('script');
             s.src = src; s.onload = res; s.onerror = rej;
             document.head.appendChild(s);
         });
 
-        Promise.all([
-            loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js'),
-            loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js'),
-            loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js'),
-            loadScript('https://accounts.google.com/gsi/client')
-        ]).then(() => {
+        // Firebase SDKs are already loaded by initFirebaseOnly().
+        // Only load Google Identity Services if not yet present.
+        var gisReady = (window.google && window.google.accounts && window.google.accounts.oauth2)
+            ? Promise.resolve()
+            : loadScript('https://accounts.google.com/gsi/client');
+
+        gisReady.then(() => {
             try {
-                if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+                // Ensure Firebase is initialized (idempotent)
+                if (typeof firebase !== 'undefined' && !firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+                if (!firebaseDB && typeof firebase !== 'undefined') firebaseDB = firebase.database();
+                try { if (typeof firebase !== 'undefined' && firebase.storage && !firebaseStorage) firebaseStorage = firebase.storage(); } catch(e) {}
 
-                if (!firebaseDB) firebaseDB = firebase.database();
-
-                try {
-                    if (firebase.storage && !firebaseStorage) firebaseStorage = firebase.storage();
-                } catch(e) {}
-
-                console.log('✅ Firebase initialized');
+                console.log('✅ Google Identity ready');
 
                 tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_DRIVE_CONFIG.clientId,
