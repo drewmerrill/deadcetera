@@ -2860,14 +2860,7 @@
   function setNowPlaying(songId) {
     var prev = _state.nowPlayingSongId;
     _state.nowPlayingSongId = songId || null;
-    // Always persist to localStorage (even if same value — ensures freshness on reload)
-    try {
-      if (_state.nowPlayingSongId) {
-        localStorage.setItem('glNowPlaying', _state.nowPlayingSongId);
-      } else {
-        localStorage.removeItem('glNowPlaying');
-      }
-    } catch(e) {}
+    // Now Playing is session-only — no localStorage persistence
     // Only emit event if value actually changed (avoid duplicate renders)
     if (prev !== _state.nowPlayingSongId) {
       emit('nowPlayingChanged', { songId: _state.nowPlayingSongId, previousSongId: prev });
@@ -2878,11 +2871,10 @@
     return _state.nowPlayingSongId;
   }
 
-  // Restore nowPlaying from localStorage on load
-  try {
-    var _savedNP = localStorage.getItem('glNowPlaying');
-    if (_savedNP) _state.nowPlayingSongId = _savedNP;
-  } catch(e) {}
+  // Now Playing is SESSION-ONLY — do not restore from localStorage on load.
+  // The bar should only appear when a user actively selects a song this session.
+  // Clear any stale value so it doesn't haunt the band across refreshes.
+  try { localStorage.removeItem('glNowPlaying'); } catch(e) {}
 
   // Restore song practice stats from localStorage
   var _SONG_STATS_KEY = 'glSongPracticeStats';
