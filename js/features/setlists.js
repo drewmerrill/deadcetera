@@ -347,9 +347,9 @@ function slRenderSetSongs(setIdx) {
             </select>
             <button class="btn btn-sm btn-ghost" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
         </div>`;
-        // Insert Set Break button between songs — compact, hidden until hover/tap
+        // Insert Set Break button between songs — always subtly visible
         if (i < items.length - 1) {
-            row += `<div style="text-align:center;height:6px;overflow:visible;position:relative"><button onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.52em;padding:0 6px;border:1px dashed rgba(245,158,11,0.25);background:rgba(15,23,42,0.9);color:#64748b;border-radius:3px;cursor:pointer;opacity:0;transition:opacity 0.15s;position:relative;top:-4px;z-index:1" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0'" ontouchstart="this.style.opacity='1'" ontouchend="var b=this;setTimeout(function(){b.style.opacity='0'},2000)">✂</button></div>`;
+            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">✂ set break</button></div>`;
         }
         return row;
     }).join('');
