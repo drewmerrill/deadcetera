@@ -361,6 +361,9 @@ async function _rhRenderCommandFlow(el) {
             + '<div id="rhSnapshots"></div>';
     }
 
+    // ── Session review ──
+    html += '<div id="rhSessionReview"></div>';
+
     // ── SECTION 3: Tab content area (AI suggestions — secondary to saved plan) ──
     html += '<div id="rhTabContent"></div>';
 
@@ -389,6 +392,9 @@ async function _rhRenderCommandFlow(el) {
             ]);
         }, 800);
     }
+
+    // Render last rehearsal session review
+    _rhRenderSessionReview();
 
     // Show AI focus below the saved plan (complementary, not competing)
     if (hasSavedPlan) {
@@ -490,6 +496,77 @@ window._rhDeleteSnapshot = function(snapshotId) {
         _rhReRender();
     });
 };
+
+async function _rhRenderSessionReview() {
+    var el = document.getElementById('rhSessionReview');
+    if (!el) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var session = null;
+    try {
+        var snap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(1).once('value');
+        var val = snap.val();
+        if (val) { var arr = Object.values(val); session = arr[0]; }
+    } catch(e) { return; }
+    if (!session || !session.blocks || !session.blocks.length) return;
+
+    // Only show sessions from last 7 days
+    var ageMs = Date.now() - new Date(session.date).getTime();
+    if (ageMs > 7 * 86400000) return;
+
+    var totalBudget = session.totalBudgetMin || 0;
+    var totalActual = session.totalActualMin || 0;
+    var delta = totalActual - totalBudget;
+    var deltaLabel = delta === 0 ? 'Right on time' : delta > 0 ? delta + ' min over' : Math.abs(delta) + ' min under';
+    var deltaColor = Math.abs(delta) <= 3 ? '#22c55e' : delta > 0 ? '#ef4444' : '#60a5fa';
+
+    var d = new Date(session.date);
+    var dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    var timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    var overBlocks = session.blocks.filter(function(b) { return b.budgetMin > 0 && b.actualMin > b.budgetMin; });
+    var onTrackBlocks = session.blocks.filter(function(b) { return b.budgetMin > 0 && b.actualMin <= b.budgetMin; });
+
+    // Pacing takeaway
+    var takeaway = '';
+    if (overBlocks.length === 0) takeaway = 'Great pacing — every block stayed within budget.';
+    else if (overBlocks.length === 1) takeaway = 'Mostly on track. "' + overBlocks[0].title + '" ran over — consider budgeting more time or tightening focus.';
+    else if (overBlocks.length <= 3) takeaway = overBlocks.length + ' blocks ran over. Consider shorter passes or stricter transitions.';
+    else takeaway = 'Most blocks ran over. The plan may need more generous time budgets.';
+
+    var html = '<details open style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">📊 Last Rehearsal — ' + dateStr + '</summary>'
+        + '<div style="margin-top:6px;padding:10px 12px;border-radius:8px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15)">'
+        // Header stats
+        + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">'
+        + '<span style="font-size:0.82em;font-weight:700;color:var(--text)">' + totalActual + ' min</span>'
+        + '<span style="font-size:0.72em;color:var(--text-dim)">of ' + totalBudget + ' min budgeted</span>'
+        + '<span style="font-size:0.72em;font-weight:700;color:' + deltaColor + '">' + deltaLabel + '</span>'
+        + '<span style="font-size:0.65em;color:var(--text-dim);margin-left:auto">' + timeStr + '</span>'
+        + '</div>';
+
+    // Per-block breakdown
+    if (session.blocks.length > 0) {
+        html += '<div style="margin-bottom:8px">';
+        session.blocks.forEach(function(b) {
+            if (!b.budgetMin) return; // skip unbudgeted
+            var over = b.actualMin > b.budgetMin;
+            var pct = b.budgetMin > 0 ? Math.min(Math.round((b.actualMin / b.budgetMin) * 100), 200) : 0;
+            var barColor = pct <= 100 ? '#22c55e' : '#ef4444';
+            html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.72em">'
+                + '<span style="min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (over ? '#fca5a5' : 'var(--text-muted)') + '">' + escHtml(b.title) + '</span>'
+                + '<div style="flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden"><div style="width:' + Math.min(pct, 100) + '%;height:100%;background:' + barColor + ';border-radius:2px"></div></div>'
+                + '<span style="color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';font-weight:' + (over ? '700' : '400') + ';white-space:nowrap">' + b.actualMin + 'm / ' + b.budgetMin + 'm</span>'
+                + '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Takeaway
+    html += '<div style="font-size:0.72em;color:var(--text-muted);padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:4px;font-style:italic">' + takeaway + '</div>'
+        + '</div></details>';
+
+    el.innerHTML = html;
+}
 
 async function _rhRenderSnapshots() {
     var el = document.getElementById('rhSnapshots');
