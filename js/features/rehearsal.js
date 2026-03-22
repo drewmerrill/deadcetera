@@ -230,16 +230,20 @@ async function _rhRenderCommandFlow(el) {
         // Render editable units with block type awareness
         var unitNum = 0;
         var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:2px 4px;line-height:1';
+        var _dragHandleStyle = 'cursor:grab;color:#475569;font-size:0.8em;padding:2px 2px;user-select:none;touch-action:none;line-height:1';
+        html += '<div id="rhUnitList">';
         savedUnits.forEach(function(unit, idx) {
             var bt = unit.type || 'single';
             var cfg = _btConfig[bt] || _btConfig.single;
+            var dragHandle = '<span class="rh-drag-handle" style="' + _dragHandleStyle + '" title="Drag to reorder">⋮⋮</span>';
 
             // ── Section divider: render as full-width bar ──
             if (bt === 'section') {
                 var secTitle = unit.title || 'Section';
                 var secMin = _sectionSubtotals[idx];
                 var secLabel = secMin !== undefined && secMin > 0 ? ' · ' + secMin + ' min' : '';
-                html += '<div style="display:flex;align-items:center;gap:6px;margin:8px 0 2px;padding:5px 8px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
+                html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="display:flex;align-items:center;gap:6px;margin:8px 0 2px;padding:5px 8px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
+                    + dragHandle
                     + '<span style="font-size:0.7em">▬</span>'
                     + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.78em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;border-bottom:1px dashed rgba(96,165,250,0.3)">' + escHtml(secTitle) + '</span>'
                     + (secLabel ? '<span style="font-size:0.65em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
@@ -269,7 +273,8 @@ async function _rhRenderCommandFlow(el) {
             var isOverridden = unit.durationMinOverride > 0;
             var minChip = '<span onclick="_rhEditBlockTime(' + idx + ')" style="font-size:0.7em;color:' + (isOverridden ? '#a5b4fc' : 'var(--text-dim)') + ';white-space:nowrap;margin-left:4px;cursor:pointer;padding:1px 3px;border-radius:3px;border-bottom:1px dashed ' + (isOverridden ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)') + '" title="' + (isOverridden ? 'Custom override — click to change' : 'Click to set custom time') + '">' + blockMin + 'm</span>';
 
-            html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
+            html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.82em;border-radius:4px;' + rowBg + '">'
+                + dragHandle
                 + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
                 + typeChip
                 + '<span' + editClick + editTitle + ' style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)' : '') + '">' + unitLabel + '</span>'
@@ -279,6 +284,7 @@ async function _rhRenderCommandFlow(el) {
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                 + '</div>';
         });
+        html += '</div>';
 
         // Add Block picker
         html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'
@@ -326,6 +332,9 @@ async function _rhRenderCommandFlow(el) {
     html += '<div id="rhTabContent"></div>';
 
     main.innerHTML = html;
+
+    // Wire up drag-and-drop on the unit list
+    _rhInitDragDrop();
 
     // Show AI focus below the saved plan (complementary, not competing)
     if (hasSavedPlan) {
@@ -398,6 +407,139 @@ function _rhSaveUnits(units) {
 function _rhReRender() {
     var el = document.getElementById('rhMain');
     if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
+}
+
+// ── Drag-and-drop reorder ────────────────────────────────────────────────────
+function _rhInitDragDrop() {
+    var list = document.getElementById('rhUnitList');
+    if (!list) return;
+    var rows = list.querySelectorAll('.rh-unit-row');
+    if (!rows.length) return;
+
+    var dragSrcIdx = null;
+
+    // Inject drop-indicator CSS once
+    if (!document.getElementById('rhDragCSS')) {
+        var s = document.createElement('style');
+        s.id = 'rhDragCSS';
+        s.textContent = '.rh-unit-row.rh-drag-over-above{border-top:2px solid #60a5fa!important}'
+            + '.rh-unit-row.rh-drag-over-below{border-bottom:2px solid #60a5fa!important}'
+            + '.rh-unit-row.rh-dragging{opacity:0.35}';
+        document.head.appendChild(s);
+    }
+
+    rows.forEach(function(row) {
+        // Desktop drag events
+        row.addEventListener('dragstart', function(e) {
+            dragSrcIdx = parseInt(row.dataset.idx, 10);
+            row.classList.add('rh-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', dragSrcIdx);
+        });
+        row.addEventListener('dragend', function() {
+            row.classList.remove('rh-dragging');
+            _rhClearDropIndicators(list);
+        });
+        row.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            _rhClearDropIndicators(list);
+            var rect = row.getBoundingClientRect();
+            var midY = rect.top + rect.height / 2;
+            if (e.clientY < midY) {
+                row.classList.add('rh-drag-over-above');
+            } else {
+                row.classList.add('rh-drag-over-below');
+            }
+        });
+        row.addEventListener('dragleave', function() {
+            row.classList.remove('rh-drag-over-above', 'rh-drag-over-below');
+        });
+        row.addEventListener('drop', function(e) {
+            e.preventDefault();
+            _rhClearDropIndicators(list);
+            var dropIdx = parseInt(row.dataset.idx, 10);
+            if (dragSrcIdx === null || dragSrcIdx === dropIdx) return;
+            // Determine insert position based on drop half
+            var rect = row.getBoundingClientRect();
+            var midY = rect.top + rect.height / 2;
+            var insertAbove = e.clientY < midY;
+            _rhDragMove(dragSrcIdx, dropIdx, insertAbove);
+            dragSrcIdx = null;
+        });
+
+        // Touch support: long-press on handle to start, move to reorder
+        var handles = row.querySelectorAll('.rh-drag-handle');
+        handles.forEach(function(handle) {
+            var touchState = null;
+            handle.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                dragSrcIdx = parseInt(row.dataset.idx, 10);
+                row.classList.add('rh-dragging');
+                touchState = { startY: e.touches[0].clientY };
+            }, { passive: false });
+            handle.addEventListener('touchmove', function(e) {
+                if (!touchState) return;
+                e.preventDefault();
+                var touchY = e.touches[0].clientY;
+                _rhClearDropIndicators(list);
+                var targetRow = _rhRowAtY(list, touchY);
+                if (targetRow && targetRow !== row) {
+                    var rect = targetRow.getBoundingClientRect();
+                    if (touchY < rect.top + rect.height / 2) {
+                        targetRow.classList.add('rh-drag-over-above');
+                    } else {
+                        targetRow.classList.add('rh-drag-over-below');
+                    }
+                }
+            }, { passive: false });
+            handle.addEventListener('touchend', function(e) {
+                if (!touchState) return;
+                var touchY = e.changedTouches[0].clientY;
+                row.classList.remove('rh-dragging');
+                _rhClearDropIndicators(list);
+                var targetRow = _rhRowAtY(list, touchY);
+                if (targetRow && targetRow !== row) {
+                    var dropIdx = parseInt(targetRow.dataset.idx, 10);
+                    var rect = targetRow.getBoundingClientRect();
+                    var insertAbove = touchY < rect.top + rect.height / 2;
+                    _rhDragMove(dragSrcIdx, dropIdx, insertAbove);
+                }
+                dragSrcIdx = null;
+                touchState = null;
+            });
+        });
+    });
+}
+
+function _rhClearDropIndicators(list) {
+    list.querySelectorAll('.rh-drag-over-above,.rh-drag-over-below').forEach(function(el) {
+        el.classList.remove('rh-drag-over-above', 'rh-drag-over-below');
+    });
+}
+
+function _rhRowAtY(list, y) {
+    var rows = list.querySelectorAll('.rh-unit-row');
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i].getBoundingClientRect();
+        if (y >= r.top && y <= r.bottom) return rows[i];
+    }
+    return null;
+}
+
+function _rhDragMove(fromIdx, toIdx, insertAbove) {
+    var units = _rhGetUnits();
+    if (fromIdx < 0 || fromIdx >= units.length) return;
+    var item = units.splice(fromIdx, 1)[0];
+    // Adjust toIdx after removal
+    var insertIdx = toIdx;
+    if (fromIdx < toIdx) insertIdx--;
+    if (!insertAbove) insertIdx++;
+    if (insertIdx < 0) insertIdx = 0;
+    if (insertIdx > units.length) insertIdx = units.length;
+    units.splice(insertIdx, 0, item);
+    _rhSaveUnits(units);
+    _rhReRender();
 }
 
 window._rhMoveUnit = function(idx, dir) {
