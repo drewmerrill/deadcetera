@@ -139,7 +139,7 @@ function _slRenderCard(sl, isNext) {
         + (sl.locked
             ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓 Unlock</button>'
             : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>'
-              + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Lock setlist">🔒</button>'
+              + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#22c55e;cursor:pointer" title="Lock setlist">🔒</button>'
               + '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
         + '</div></div>';
 }
@@ -579,6 +579,7 @@ async function editSetlist(idx) {
     
     window._slSets = sl.sets || [{ name: 'Set 1', songs: [] }];
     window._slEditIndex = idx;
+    window._slIsLocked = !!sl.locked;
     _slSetCount = window._slSets.length;
     window._slSelectedVenueId = sl.venueId || null;
     window._slSelectedVenueName = sl.venue || null;
@@ -593,6 +594,7 @@ async function editSetlist(idx) {
         + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:130px;padding:5px 8px;font-size:0.82em;box-sizing:border-box">'
         + '<div id="slVenuePicker" style="flex:1;min-width:100px"></div>'
         + '</div>'
+        + (sl.locked ? '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;margin-bottom:8px;font-size:0.78em;color:#fbbf24"><span>🔒 This setlist is locked' + (sl.lockedBy ? ' by ' + _slMemberName(sl.lockedBy) : '') + '. Editing is view-only until unlocked.</span><button onclick="slUnlockWithWarning(' + idx + ')" style="margin-left:auto;padding:3px 10px;background:none;border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;white-space:nowrap">🔓 Unlock</button></div>' : '')
         + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">'
         + '<div id="slLinkedGigRow" style="flex-shrink:0"></div>'
         + '<input class="app-input" id="slNotes" value="' + safeNotes + '" placeholder="Notes..." style="flex:1;font-size:0.78em;padding:4px 8px;color:var(--text-dim)">'
@@ -1068,30 +1070,21 @@ function _slInitVenuePicker(venues, preselected) {
 
 // ── Window exports (called from inline HTML onclick handlers) ──────────────
 // Setlist lock toggle
+// slToggleLock is now ONLY used for LOCKING (not unlocking — use slUnlockWithWarning for that)
 async function slToggleLock(idx) {
     if (!requireSignIn()) return;
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     if (!data[idx]) return;
     var willLock = !data[idx].locked;
-    // If unlocking a setlist linked to an upcoming gig, confirm
-    if (!willLock && data[idx].gigId) {
-        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-        var today = new Date().toISOString().split('T')[0];
-        var linkedGig = gigs.find(function(g) { return g.gigId === data[idx].gigId && g.date && g.date >= today; });
-        if (linkedGig && !confirm('This setlist is linked to an upcoming gig (' + (linkedGig.venue || linkedGig.date) + '). Unlock it?')) return;
-    }
     data[idx].locked = willLock;
     if (willLock) {
         data[idx].lockedAt = new Date().toISOString();
         data[idx].lockedBy = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
-    } else {
-        data[idx].lockedAt = null;
-        data[idx].lockedBy = null;
     }
     await saveBandDataToDrive('_band', 'setlists', data);
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
-    showToast(willLock ? '🔒 Setlist locked for show readiness' : '🔓 Setlist unlocked');
+    showToast(willLock ? '🔒 Setlist locked' : '🔓 Setlist unlocked');
     loadSetlists();
 }
 // ── Insert Set Break — splits a set into two at a given song index ────────────
@@ -1175,43 +1168,73 @@ function slMergeSets(setIdx) {
     if (typeof showToast === 'function') showToast('Sets merged — now ' + window._slSets.length + (window._slSets.length === 1 ? ' set' : ' sets'));
 }
 
-// Unlock a locked setlist with warning + notification to the locker
+// Look up a band member's full name from email handle or key
+function _slMemberName(key) {
+    if (!key) return 'someone';
+    if (typeof bandMembers !== 'undefined') {
+        // Try exact match first
+        if (bandMembers[key] && bandMembers[key].name) return bandMembers[key].name;
+        // Try matching by email prefix
+        for (var k in bandMembers) {
+            if (k.split('@')[0] === key || k === key) return bandMembers[k].name || key;
+        }
+    }
+    return key;
+}
+
+// Unlock a locked setlist with combined warning + notification
 window.slUnlockWithWarning = async function(idx) {
     if (!requireSignIn()) return;
-    var data = window._cachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var sl = data[idx];
     if (!sl) return;
-    var lockedBy = sl.lockedBy || 'someone';
+
+    // Build combined warning message
+    var lockerName = _slMemberName(sl.lockedBy);
     var lockedAt = sl.lockedAt ? new Date(sl.lockedAt).toLocaleDateString() : 'unknown date';
-    var ok = confirm(
-        '⚠️ This setlist was locked by ' + lockedBy + ' on ' + lockedAt + '.\n\n'
-        + 'Unlocking will allow editing. ' + lockedBy + ' will be notified.\n\n'
-        + 'Are you sure you want to unlock it?'
-    );
-    if (!ok) return;
-    // Log the unlock event
-    var unlockEvent = {
-        action: 'setlist_unlocked',
-        setlistName: sl.name || 'Untitled',
-        unlockedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : 'unknown',
-        previouslyLockedBy: sl.lockedBy || '',
-        unlockedAt: new Date().toISOString()
-    };
+    var msg = '⚠️ This setlist was locked by ' + lockerName + ' on ' + lockedAt + '.';
+
+    // Include gig warning if linked to upcoming gig
+    if (sl.gigId) {
+        try {
+            var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+            var today = new Date().toISOString().split('T')[0];
+            var linkedGig = gigs.find(function(g) { return g.gigId === sl.gigId && g.date && g.date >= today; });
+            if (linkedGig) {
+                msg += '\n\nThis setlist is linked to an upcoming gig: ' + (linkedGig.venue || linkedGig.title || linkedGig.date) + '.';
+            }
+        } catch(e) {}
+    }
+
+    msg += '\n\nUnlocking will allow editing. ' + lockerName + ' will be notified.\n\nUnlock this setlist?';
+
+    if (!confirm(msg)) return;
+
+    // Unlock directly (skip slToggleLock to avoid double confirm)
+    data[idx].locked = false;
+    data[idx].unlockedBy = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
+    data[idx].unlockedAt = new Date().toISOString();
+    // Keep lockedBy/lockedAt for history
+    await saveBandDataToDrive('_band', 'setlists', data);
+
     // Save notification for the locker
+    var unlockerName = _slMemberName(typeof currentUserEmail !== 'undefined' ? currentUserEmail.split('@')[0] : '');
     try {
         var notifications = toArray(await loadBandDataFromDrive('_band', 'notifications') || []);
         notifications.push({
             id: 'notif_' + Date.now(),
             type: 'setlist_unlocked',
-            message: (unlockEvent.unlockedBy.split('@')[0] || 'Someone') + ' unlocked the setlist "' + (sl.name || 'Untitled') + '"',
+            message: unlockerName + ' unlocked the setlist "' + (sl.name || 'Untitled') + '"',
             for: sl.lockedBy || '',
             createdAt: new Date().toISOString(),
             read: false
         });
         await saveBandDataToDrive('_band', 'notifications', notifications);
     } catch(e) {}
-    // Unlock
-    await slToggleLock(idx);
+
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    showToast('🔓 Setlist unlocked');
+    loadSetlists();
 };
 
 window.slInsertSetBreak = slInsertSetBreak;
