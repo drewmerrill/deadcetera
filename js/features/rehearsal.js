@@ -282,8 +282,16 @@ async function _rhRenderCommandFlow(el) {
 
         // Render editable units with block type awareness
         var unitNum = 0;
-        var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:2px 4px;line-height:1';
-        var _dragHandleStyle = 'cursor:grab;color:#475569;font-size:0.8em;padding:2px 2px;user-select:none;touch-action:none;line-height:1';
+        var _editBtnStyle = 'background:none;border:none;color:#475569;cursor:pointer;font-size:0.75em;padding:4px;line-height:1;min-width:24px;min-height:24px;display:inline-flex;align-items:center;justify-content:center';
+        var _dragHandleStyle = 'cursor:grab;color:#475569;font-size:0.82em;padding:0;user-select:none;touch-action:none;line-height:1;width:16px;text-align:center;flex-shrink:0';
+        // Inject alignment CSS once
+        if (!document.getElementById('rh-row-fix')) {
+            var _rfix = document.createElement('style'); _rfix.id = 'rh-row-fix';
+            _rfix.textContent =
+                '.rh-unit-row>div:first-child{display:flex;align-items:center;gap:6px;padding:6px 8px;min-height:38px}' +
+                '.rh-unit-row .rh-drag-handle{width:16px;flex-shrink:0;text-align:center}';
+            document.head.appendChild(_rfix);
+        }
         html += '<div id="rhUnitList">';
         savedUnits.forEach(function(unit, idx) {
             var bt = unit.type || 'single';
@@ -300,12 +308,12 @@ async function _rhRenderCommandFlow(el) {
                 var secNoteChip = secNoteText
                     ? '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#fbbf24;cursor:pointer;padding:1px 4px;border-radius:3px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.15)" title="' + escHtml(secNoteText) + '">📝</span>'
                     : '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#475569;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px dashed rgba(255,255,255,0.06)" title="Add note">📝</span>';
-                html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="margin:8px 0 2px;border-radius:6px;background:rgba(96,165,250,0.08);border-left:3px solid rgba(96,165,250,0.5)">'
-                    + '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px">'
+                html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="margin:6px 0 2px;border-radius:6px;background:rgba(96,165,250,0.06);border-left:3px solid rgba(96,165,250,0.4)">'
+                    + '<div>'
                     + dragHandle
-                    + '<span style="font-size:0.7em">▬</span>'
-                    + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.78em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;border-bottom:1px dashed rgba(96,165,250,0.3)">' + escHtml(secTitle) + '</span>'
-                    + (secLabel ? '<span style="font-size:0.65em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
+                    + '<span style="width:20px;flex-shrink:0;text-align:center;font-size:0.75em;color:#60a5fa">▬</span>'
+                    + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;font-size:0.82em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(secTitle) + '</span>'
+                    + (secLabel ? '<span style="font-size:0.7em;color:rgba(96,165,250,0.6);flex-shrink:0">' + secLabel + '</span>' : '')
                     + secAssignChip + secNoteChip
                     + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                     + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
@@ -343,11 +351,11 @@ async function _rhRenderCommandFlow(el) {
                 : '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#475569;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px dashed rgba(255,255,255,0.06)" title="Add note">📝</span>';
 
             html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + '">'
-                + '<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;font-size:0.82em">'
+                + '<div>'
                 + dragHandle
-                + '<span style="color:var(--text-dim);min-width:16px;font-size:0.85em">' + unitNum + '</span>'
-                + typeChip
-                + '<span' + editClick + editTitle + ' style="flex:1;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '400' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.1)' : '') + '">' + unitLabel + '</span>'
+                + '<span style="width:18px;flex-shrink:0;text-align:center;font-size:0.78em;font-weight:700;color:var(--text-dim)">' + unitNum + '</span>'
+                + '<span style="width:20px;flex-shrink:0;text-align:center;font-size:0.75em">' + cfg.icon + '</span>'
+                + '<span' + editClick + editTitle + ' style="flex:1;min-width:0;font-size:0.85em;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '500' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer' : '') + '">' + unitLabel + '</span>'
                 + minChip + assignChip + noteChip
                 + '<button onclick="_rhMoveUnit(' + idx + ',-1)" style="' + _editBtnStyle + '" title="Move up">↑</button>'
                 + '<button onclick="_rhMoveUnit(' + idx + ',1)" style="' + _editBtnStyle + '" title="Move down">↓</button>'
