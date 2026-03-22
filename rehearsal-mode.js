@@ -27,6 +27,11 @@ var pmPalaceScenes = [];
 var pmPalaceAutoTimer = null;
 var _rmCache = {};        // In-memory cache: { title: { chart, meta, ts } }
 var _rmNavLock = 0;       // Throttle timestamp for rmNavigate
+// ── Session timing ──
+var _rmSessionStart = 0;       // session start timestamp
+var _rmBlockStartTime = 0;     // current block start timestamp
+var _rmBlockTimings = [];       // [{ title, budgetMin, actualMs, index }]
+var _rmTimingInterval = null;   // live timer update interval
 // Resolve band abbreviation to full name for external searches
 function _rmFullBandName(abbr) {
     var map = { GD:'Grateful Dead', JGB:'Jerry Garcia Band', WSP:'Widespread Panic', Phish:'Phish', ABB:'Allman Brothers Band', Goose:'Goose', DMB:'Dave Matthews Band' };
@@ -80,6 +85,10 @@ window.openRehearsalModeWithQueue = function(queue) {
     if (!queue || !queue.length) return;
     rmQueue = queue;
     rmIndex = 0;
+    // Init session timing
+    _rmSessionStart = Date.now();
+    _rmBlockStartTime = Date.now();
+    _rmBlockTimings = [];
     // Persist planner queue so it survives refresh
     try { localStorage.setItem('glPlannerQueue', JSON.stringify(queue)); } catch(e) {}
     if (window._rpBlockGuidance) {
@@ -398,6 +407,9 @@ function closeRehearsalMode() {
     const overlay = document.getElementById('rmOverlay');
     if (!overlay) return;
     overlay.classList.remove('rm-visible');
+    // Save session timing summary
+    if (_rmSessionStart > 0) _rmSaveSessionSummary();
+    if (_rmTimingInterval) { clearInterval(_rmTimingInterval); _rmTimingInterval = null; }
     // Milestone 4: restore workspace mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
     if (typeof glWakeLock !== 'undefined') glWakeLock.release('rehearsal-mode');
@@ -931,6 +943,106 @@ function _rmRenderBlockGuidance(songTitle) {
     el.textContent = text;
     var panel = document.getElementById('rmPanelChart');
     if (panel) panel.insertBefore(el, panel.querySelector('.rm-sticky-bar') || panel.firstChild);
+}
+
+// ── Session timing helpers ────────────────────────────────────────────────────
+function _rmRecordBlockTime() {
+    if (!_rmBlockStartTime) return;
+    var song = rmQueue[rmIndex];
+    if (!song) return;
+    var elapsed = Date.now() - _rmBlockStartTime;
+    // Update existing entry for this index or add new
+    var existing = _rmBlockTimings.find(function(t) { return t.index === rmIndex; });
+    if (existing) {
+        existing.actualMs += elapsed;
+    } else {
+        _rmBlockTimings.push({
+            title: song.title,
+            budgetMin: song.budgetMin || 0,
+            actualMs: elapsed,
+            index: rmIndex
+        });
+    }
+}
+
+function _rmRenderTimingBar() {
+    var existing = document.getElementById('rmTimingBar');
+    if (existing) existing.remove();
+    var song = rmQueue[rmIndex];
+    if (!song || !song.budgetMin) return;
+
+    var budgetMin = song.budgetMin;
+    var priorMs = 0;
+    var prior = _rmBlockTimings.find(function(t) { return t.index === rmIndex; });
+    if (prior) priorMs = prior.actualMs;
+    var currentMs = priorMs + (Date.now() - (_rmBlockStartTime || Date.now()));
+    var actualMin = Math.round(currentMs / 60000);
+    var pct = Math.min(Math.round((currentMs / (budgetMin * 60000)) * 100), 999);
+
+    var color = pct <= 80 ? '#22c55e' : pct <= 100 ? '#fbbf24' : '#ef4444';
+    var label = pct <= 80 ? 'On track' : pct <= 100 ? 'Wrapping up' : 'Over time';
+
+    var el = document.createElement('div');
+    el.id = 'rmTimingBar';
+    el.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 14px;font-size:0.72em;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(255,255,255,0.04)';
+    el.innerHTML = '<span style="color:var(--text-dim)">⏱</span>'
+        + '<div style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden"><div style="width:' + Math.min(pct, 100) + '%;height:100%;background:' + color + ';border-radius:2px;transition:width 0.5s"></div></div>'
+        + '<span style="color:' + color + ';font-weight:700;white-space:nowrap">' + actualMin + 'm / ' + budgetMin + 'm</span>'
+        + '<span style="color:' + color + ';font-size:0.9em;opacity:0.7">' + label + '</span>';
+
+    // Show note from plan if available
+    if (song.note) {
+        el.innerHTML += '<span style="color:#fbbf24;font-size:0.9em;margin-left:4px" title="' + (typeof escHtml === 'function' ? escHtml(song.note) : song.note) + '">📝</span>';
+    }
+
+    var panel = document.getElementById('rmPanelChart');
+    var guidance = document.getElementById('rmBlockGuidance');
+    if (panel) {
+        var insertBefore = guidance ? guidance.nextSibling : (panel.querySelector('.rm-sticky-bar') || panel.firstChild);
+        panel.insertBefore(el, insertBefore);
+    }
+}
+
+function _rmStartTimingUpdates() {
+    if (_rmTimingInterval) clearInterval(_rmTimingInterval);
+    _rmTimingInterval = setInterval(function() {
+        var ov = document.getElementById('rmOverlay');
+        if (!ov || !ov.classList.contains('rm-visible')) { clearInterval(_rmTimingInterval); return; }
+        _rmRenderTimingBar();
+    }, 10000); // update every 10 seconds
+}
+
+async function _rmSaveSessionSummary() {
+    _rmRecordBlockTime(); // capture final block
+    if (!_rmBlockTimings.length) return;
+    var totalBudgetMin = _rmBlockTimings.reduce(function(s, t) { return s + (t.budgetMin || 0); }, 0);
+    var totalActualMs = _rmBlockTimings.reduce(function(s, t) { return s + t.actualMs; }, 0);
+    var totalActualMin = Math.round(totalActualMs / 60000);
+    var summary = {
+        sessionId: 'rsess_' + Date.now().toString(36),
+        date: new Date().toISOString(),
+        totalBudgetMin: totalBudgetMin,
+        totalActualMin: totalActualMin,
+        blocksCompleted: _rmBlockTimings.length,
+        totalBlocks: rmQueue.length,
+        blocks: _rmBlockTimings.map(function(t) {
+            return { title: t.title, budgetMin: t.budgetMin, actualMin: Math.round(t.actualMs / 60000) };
+        })
+    };
+    // Save to Firebase
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + summary.sessionId)).set(summary);
+        } catch(e) { console.warn('[RhTiming] Save failed:', e.message); }
+    }
+    // Show toast summary
+    var deltaMin = totalActualMin - totalBudgetMin;
+    var deltaLabel = deltaMin === 0 ? 'Right on time!' : deltaMin > 0 ? deltaMin + 'min over budget' : Math.abs(deltaMin) + 'min under budget';
+    if (typeof showToast === 'function') showToast('Rehearsal: ' + totalActualMin + 'min total — ' + deltaLabel, 4000);
+    // Reset
+    _rmBlockTimings = [];
+    _rmSessionStart = 0;
 }
 
 function rmAdjustFont(delta) {
@@ -2093,6 +2205,9 @@ async function rmLoadSong() {
     _rmRenderSyncBar();
     // Rehearsal planner: show block guidance if available
     _rmRenderBlockGuidance(song.title);
+    // Show timing bar and start live updates
+    _rmRenderTimingBar();
+    _rmStartTimingUpdates();
     // Non-chart tabs use lazy-load on first switch (lines 216-228) — don't eagerly load all 5
     // Reset tab content to loading state so lazy-load triggers on switch
     ['rmKnowContent','rmMemoryContent','rmHarmonyContent','rmRecordContent'].forEach(function(id) {
@@ -2128,7 +2243,18 @@ async function rmLoadMeta(st, snapshotIdx) {
         _rmCache[st].ts = Date.now();
     } catch(e) {}
 }
-function rmNavigate(dir) { var now=Date.now(); if(now-_rmNavLock<300)return; _rmNavLock=now; const n=rmIndex+dir; if(n<0||n>=rmQueue.length)return; rmIndex=n; rmLoadSong(); }
+function rmNavigate(dir) {
+    var now = Date.now();
+    if (now - _rmNavLock < 300) return;
+    _rmNavLock = now;
+    var n = rmIndex + dir;
+    if (n < 0 || n >= rmQueue.length) return;
+    // Record elapsed time for current block
+    _rmRecordBlockTime();
+    rmIndex = n;
+    _rmBlockStartTime = Date.now();
+    rmLoadSong();
+}
 function rmKeyHandler(e) {
     const ov=document.getElementById('rmOverlay'); if(!ov?.classList.contains('rm-visible'))return; if(rmEditing)return;
     if(e.key==='Escape'){closeRehearsalMode();e.preventDefault();} if(e.key==='ArrowRight'){rmNavigate(1);e.preventDefault();} if(e.key==='ArrowLeft'){rmNavigate(-1);e.preventDefault();}

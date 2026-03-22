@@ -1042,6 +1042,25 @@ window._rhLaunchSavedPlan = function() {
         var units = _rhGetUnits();
         if (units.length) _rhSaveUnits(units); // rebuilds glPlannerQueue from units
         var q = JSON.parse(localStorage.getItem('glPlannerQueue') || '[]');
+        // Enrich queue items with budgeted minutes from matching units
+        q.forEach(function(item) {
+            var match = units.find(function(u) { return u.title === item.title; });
+            if (match) {
+                // Use _rhBlockMinutes logic inline (can't call it here — it's scoped inside render)
+                var bt = match.type || 'single';
+                var budgetMin = match.durationMinOverride || 0;
+                if (!budgetMin) {
+                    var defaults = { exercise: 10, business: 15, jam: 10, note: 5, section: 0 };
+                    if (defaults[bt] !== undefined) { budgetMin = defaults[bt]; }
+                    else {
+                        var sec = (typeof getSongRuntimeSec === 'function') ? getSongRuntimeSec(item.title) : 360;
+                        budgetMin = Math.ceil((sec / 60) * 1.5);
+                    }
+                }
+                item.budgetMin = budgetMin;
+                if (match.note) item.note = match.note;
+            }
+        });
         if (q.length && typeof openRehearsalModeWithQueue === 'function') {
             var guidance = localStorage.getItem('glPlannerGuidance');
             if (guidance) window._rpBlockGuidance = JSON.parse(guidance);
