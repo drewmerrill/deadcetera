@@ -1661,11 +1661,12 @@ function rmLoadHarmony() {
     var quickListenPlaceholder = '<div id="' + quickListenId + '" style="margin-bottom:14px"><div style="color:#64748b;font-size:0.78em;padding:8px 0">Loading reference versions...</div></div>';
 
     (async function() {
-        var northStar = null, bestShot = null;
+        var northStar = null, bestShot = null, lessons = [];
         try {
             var res = await Promise.all([
                 loadBandDataFromDrive(song.title, 'spotify_versions').catch(function(){ return null; }),
-                loadBandDataFromDrive(song.title, 'best_shot_takes').catch(function(){ return null; })
+                loadBandDataFromDrive(song.title, 'best_shot_takes').catch(function(){ return null; }),
+                loadBandDataFromDrive(song.title, 'practice_lessons').catch(function(){ return null; })
             ]);
             var refs = toArray(res[0] || []);
             var shots = toArray(res[1] || []);
@@ -1674,6 +1675,7 @@ function rmLoadHarmony() {
                 if (!northStar || votes > (northStar._voteCount || 0)) northStar = Object.assign({}, v, { _voteCount: votes });
             });
             bestShot = shots.find(function(s){ return s.crowned; }) || (shots.length ? shots[shots.length - 1] : null);
+            lessons = toArray(res[2] || []);
         } catch(e) {}
 
         // Look up container AFTER await — innerHTML is set by then
@@ -1744,6 +1746,22 @@ function rmLoadHarmony() {
                 + '<span style="font-size:0.78em;color:#64748b">No Best Shot yet</span>'
                 + '<button onclick="closeRehearsalMode();setTimeout(function(){if(typeof showPage===\'function\')showPage(\'songs\');if(typeof GLStore!==\'undefined\')GLStore.selectSong(\'' + _songTitle + '\');},300)" style="margin-left:auto;padding:3px 10px;background:none;border:1px solid rgba(245,158,11,0.3);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">Upload a Take →</button>'
                 + '</div>';
+        }
+
+        // ── Lessons section ──
+        if (lessons.length) {
+            html += '<div style="padding:8px 12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:8px">'
+                + '<div style="font-size:0.72em;font-weight:700;color:#86efac;margin-bottom:4px">🎓 Lessons & Tutorials</div>';
+            lessons.forEach(function(l, li) {
+                var lUrl = (l.url || '').replace(/'/g, "\\'");
+                var lTitle = _e(l.title || 'Lesson');
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">'
+                    + '<span style="flex:1;font-size:0.78em;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + lTitle + '</span>'
+                    + (lUrl ? '<button onclick="window.open(\'' + lUrl + '\',\'_blank\')" style="padding:3px 10px;background:rgba(34,197,94,0.12);color:#86efac;border:1px solid rgba(34,197,94,0.25);border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">▶ Watch</button>' : '')
+                    + '<button onclick="rmRemoveLesson(\'' + _songTitle + '\',' + li + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.68em">✕</button>'
+                    + '</div>';
+            });
+            html += '</div>';
         }
 
         container.innerHTML = html;
@@ -1961,10 +1979,18 @@ async function rmSearchYouTube() {
         var r = await fetch(PROXY + '/youtube-search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q }) });
         var d = await r.json();
         if (!d.results?.length) { c.innerHTML = '<div style="color:#64748b;font-size:0.82em;padding:8px">No results.</div>'; return; }
+        var _st = (rmQueue[rmIndex] ? rmQueue[rmIndex].title : '').replace(/'/g, "\\'");
         c.innerHTML = d.results.map(function(v) {
-            return '<div onclick="rmSelectTrack(\'' + v.url + '\',\'' + (v.title || '').replace(/'/g, "\\'") + '\')" style="padding:6px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
-                '<span style="color:#ef4444">▶</span><div style="flex:1;min-width:0"><div style="color:#e2e8f0;font-size:0.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + v.title + '</div>' +
-                '<div style="color:#64748b;font-size:0.68em">' + (v.author || '') + ' · ' + (v.duration || '') + '</div></div></div>';
+            var _vu = (v.url || '').replace(/'/g, "\\'");
+            var _vt = (v.title || '').replace(/'/g, "\\'");
+            return '<div style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<div onclick="rmSelectTrack(\'' + _vu + '\',\'' + _vt + '\')" style="cursor:pointer;display:flex;align-items:center;gap:8px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">'
+                + '<span style="color:#ef4444">▶</span><div style="flex:1;min-width:0"><div style="color:#e2e8f0;font-size:0.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + v.title + '</div>'
+                + '<div style="color:#64748b;font-size:0.68em">' + (v.author || '') + ' · ' + (v.duration || '') + '</div></div></div>'
+                + '<div style="display:flex;gap:4px;margin-top:3px;padding-left:20px">'
+                + '<button onclick="rmSetAsNorthStar(\'' + _st + '\',\'' + _vu + '\',\'' + _vt + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">⭐ North Star</button>'
+                + '<button onclick="rmAddAsLesson(\'' + _st + '\',\'' + _vu + '\',\'' + _vt + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">🎓 Lesson</button>'
+                + '</div></div>';
         }).join('');
     } catch(e) { c.innerHTML = '<div style="color:#ef4444;font-size:0.82em;padding:8px">Error: ' + e.message + '</div>'; }
 }
@@ -2160,6 +2186,64 @@ window.rmEditNorthStarUrl = async function(songTitle) {
     } catch(e) {
         if (typeof showToast === 'function') showToast('Edit failed');
     }
+};
+
+// Set a search result as North Star directly from Listen tab
+window.rmSetAsNorthStar = async function(songTitle, url, title) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    if (!songTitle || !url) return;
+    try {
+        var versions = toArray(await loadBandDataFromDrive(songTitle, 'spotify_versions') || []);
+        var safeEmail = typeof currentUserEmail !== 'undefined' ? currentUserEmail.replace(/\./g,'_').replace(/[#$\/\[\]]/g,'_') : '';
+        var version = {
+            id: 'version_' + Date.now(),
+            title: title || 'From search',
+            url: url, spotifyUrl: url,
+            platform: url.indexOf('youtube') !== -1 || url.indexOf('youtu.be') !== -1 ? 'youtube' : 'link',
+            votes: {}, totalVotes: 0, isDefault: false,
+            addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : '',
+            notes: 'Added from Practice Mode', dateAdded: new Date().toLocaleDateString()
+        };
+        if (typeof bandMembers !== 'undefined') Object.keys(bandMembers).forEach(function(k) { version.votes[k.replace(/\./g,'_')] = false; });
+        if (safeEmail) { version.votes[safeEmail] = true; version.totalVotes = 1; }
+        versions.push(version);
+        await saveBandDataToDrive(songTitle, 'spotify_versions', versions);
+        if (typeof showToast === 'function') showToast('⭐ Added as North Star!');
+        rmLoadHarmony();
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Failed to save');
+    }
+};
+
+// Add a search result as a Lesson
+window.rmAddAsLesson = async function(songTitle, url, title) {
+    if (!songTitle || !url) return;
+    try {
+        var lessons = toArray(await loadBandDataFromDrive(songTitle, 'practice_lessons') || []);
+        lessons.push({
+            id: 'lesson_' + Date.now(),
+            title: title || 'Lesson',
+            url: url,
+            addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : '',
+            addedAt: new Date().toISOString()
+        });
+        await saveBandDataToDrive(songTitle, 'practice_lessons', lessons);
+        if (typeof showToast === 'function') showToast('🎓 Saved as lesson!');
+        rmLoadHarmony();
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Failed to save');
+    }
+};
+
+// Remove a lesson
+window.rmRemoveLesson = async function(songTitle, idx) {
+    try {
+        var lessons = toArray(await loadBandDataFromDrive(songTitle, 'practice_lessons') || []);
+        lessons.splice(idx, 1);
+        await saveBandDataToDrive(songTitle, 'practice_lessons', lessons);
+        if (typeof showToast === 'function') showToast('Lesson removed');
+        rmLoadHarmony();
+    } catch(e) {}
 };
 
 console.log('🎸 Practice Mode 5-Tab loaded (Chart · Know · Memory · Harmony · Record)');
