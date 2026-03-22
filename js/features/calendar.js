@@ -226,8 +226,11 @@ function renderCalendarInner() {
             const blockBars = blockedRanges
                 .filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate)
                 .map((b,bi) => {
+                    const isLegacy = b._block && b._block._legacy;
+                    const blockId = b._block ? b._block.blockId : null;
                     const bIdx = blockedRanges.indexOf(b);
-                    return `<div ondblclick="event.stopPropagation();calEditBlocked(${bIdx})" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.7);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden;cursor:pointer" title="🖱️ Dbl-click to edit | ${b.person||''}: ${b.reason||''}">
+                    const editAction = isLegacy ? `calEditBlocked(${bIdx})` : `_calEditScheduleBlock('${blockId||''}')`;
+                    return `<div ondblclick="event.stopPropagation();${editAction}" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.7);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden;cursor:pointer" title="🖱️ Dbl-click to edit | ${b.person||''}: ${b.reason||''}">
                     <span style="font-size:0.55em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">🚫 ${(b.person||'').split(' ')[0]}</span>
                 </div>`;
                 }).join('');
