@@ -133,7 +133,7 @@ window.glSpotlight = (function() {
             _box.style.left = '-9999px';
             _overlay.appendChild(_box);
             var boxH = _box.offsetHeight || 140;
-            var gap = 10;
+            var gap = 16;
 
             // Position: prefer ABOVE target so highlighted content stays visible
             // Fall back to below if not enough room above
