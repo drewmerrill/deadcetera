@@ -128,15 +128,33 @@ window.glSpotlight = (function() {
                 + '<button class="gl-spot-btn ' + (isLast ? 'gl-spot-btn-done' : 'gl-spot-btn-next') + '" onclick="glSpotlight.next()">' + (isLast ? 'Got it!' : 'Next →') + '</button>'
                 + '</div>';
 
-            // Position: prefer below target, fall back above, clamp to viewport
-            var boxTop = rect.bottom + pad + 10;
-            var boxLeft = Math.max(12, Math.min(rect.left, window.innerWidth - 320));
-            if (boxTop + 160 > window.innerHeight) {
-                boxTop = Math.max(12, rect.top - pad - 140);
+            // Render offscreen to measure actual height
+            _box.style.top = '-9999px';
+            _box.style.left = '-9999px';
+            _overlay.appendChild(_box);
+            var boxH = _box.offsetHeight || 140;
+            var gap = 10;
+
+            // Position: prefer ABOVE target so highlighted content stays visible
+            // Fall back to below if not enough room above
+            var posHint = step.position || 'auto';
+            var boxTop, boxLeft;
+            boxLeft = Math.max(12, Math.min(rect.left, window.innerWidth - 320));
+
+            if (posHint === 'above' || (posHint === 'auto' && rect.top > boxH + gap + 20)) {
+                // Above target
+                boxTop = rect.top - pad - boxH - gap;
+                if (boxTop < 12) boxTop = 12;
+            } else {
+                // Below target
+                boxTop = rect.bottom + pad + gap;
+                if (boxTop + boxH > window.innerHeight - 12) {
+                    boxTop = Math.max(12, rect.top - pad - boxH - gap);
+                }
             }
+
             _box.style.top = boxTop + 'px';
             _box.style.left = boxLeft + 'px';
-            _overlay.appendChild(_box);
         }, 150);
     }
 

@@ -28,25 +28,26 @@
 // ── Rehearsal Planner block (app.js 18121–18801) ────────────────────────────
 
 // Register rehearsal walkthrough v4 — teaches vocabulary + workflow
+// position hint: 'above' forces info box above target so content stays visible
 if (typeof glSpotlight !== 'undefined') {
     glSpotlight.register('rehearsal-plan-v3', [
-        { target: '#rhPlanCard',
+        { target: '#rhPlanCard', position: 'above',
           text: 'This is your rehearsal plan. Think of it like a text you\'d send the band — "open with a jam, work Jack Straw, do business, run the set" — but structured so everyone sees the same thing.' },
-        { target: '#rhAddBlockBtn',
+        { target: '#rhAddBlockBtn', position: 'above',
           text: 'Tap here to add a block. A block is one item on your agenda — a song, an exercise, a jam, band business, or a note to the band.' },
-        { target: function() { return document.querySelector('[onclick*="_rhAddBlock(\\\'section"]') || document.querySelector('.rh-unit-row'); },
-          text: 'A Section is a divider that groups blocks into phases. Example: "WARM-UP" section, then a jam + cold starts underneath. "SONG WORK" section, then your songs underneath. It keeps the plan organized.' },
-        { target: '#rhTemplateArea',
+        { target: function() { return document.querySelector('[onclick*="_rhAddBlock(\\\'section"]') || document.querySelector('.rh-unit-row'); }, position: 'above',
+          text: 'A Section is a divider that groups blocks into phases. Example: "WARM-UP" section, then a jam + cold starts underneath. "SONG WORK" section, then your songs underneath.' },
+        { target: '#rhTemplateArea', position: 'above',
           text: 'Templates add common blocks with one tap. "Cold starts," "Band business," or section dividers like "Warm-Up" — instead of typing each one, just tap it.' },
         { target: function() { return document.querySelector('.rh-drag-handle'); },
           text: 'Grab this handle to drag any block up or down. Put things in the order you\'d actually run rehearsal.' },
         { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
           text: 'This is the time budget. Tap it to change how many minutes you want to spend. The total at the top adds up so you know if your plan fits in the time you have.' },
-        { target: function() { return document.querySelector('[onclick="renderRehearsalPlanner()"]'); },
+        { target: function() { return document.querySelector('[onclick="renderRehearsalPlanner()"]'); }, position: 'above',
           text: 'Rebuild throws away this plan and generates a new one from scratch using AI suggestions. Your current plan is auto-saved as a snapshot first, so you can always get it back.' },
-        { target: function() { return document.querySelector('[onclick="_rhSaveSnapshotUI()"]'); },
+        { target: function() { return document.querySelector('[onclick="_rhSaveSnapshotUI()"]'); }, position: 'above',
           text: 'Save Snapshot saves a copy of this exact plan. Use it before making big changes, or to save a plan you want to reuse for future rehearsals.' },
-        { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
+        { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); }, position: 'above',
           text: 'When the plan looks right, hit Start Rehearsal. It opens practice mode with your songs loaded in order, charts ready, and a timer tracking how long you spend on each block.' }
     ]);
 }
