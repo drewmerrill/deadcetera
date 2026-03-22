@@ -445,8 +445,8 @@ function _spRender() {
 
     // Display toggles
     html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
-    html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
-    html += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
+    html += '<label for="spToggleLabels" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="spToggleLabels" name="spLabels" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
+    html += '<label for="spToggleDirections" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="spToggleDirections" name="spDirections" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
     html += '</div>';
   } else {
     // ── Share Mode Header ──

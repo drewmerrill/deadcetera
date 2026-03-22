@@ -425,7 +425,7 @@ window._rhAddSongToplan = function(keepLibraryState) {
     h += '<button onclick="document.getElementById(\'rhSongPickerOverlay\').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button></div>';
     h += '<div style="display:flex;gap:6px;padding:8px 16px 0;align-items:center">';
     h += '<input id="rhPickerSearch" type="text" placeholder="Search..." oninput="_rhFilterPicker(this.value)" style="flex:1;padding:6px 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);font-size:0.85em;box-sizing:border-box">';
-    h += '<label style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer;white-space:nowrap"><input type="checkbox" ' + (_rhPickerShowLibrary ? 'checked' : '') + ' onchange="_rhPickerShowLibrary=this.checked;_rhAddSongToplan(true)" style="accent-color:#667eea"> Library</label>';
+    h += '<label for="rhPickerLibraryCb" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer;white-space:nowrap"><input type="checkbox" id="rhPickerLibraryCb" name="rhPickerLibrary" ' + (_rhPickerShowLibrary ? 'checked' : '') + ' onchange="_rhPickerShowLibrary=this.checked;_rhAddSongToplan(true)" style="accent-color:#667eea"> Library</label>';
     h += '</div>';
     h += '<div id="rhPickerList" style="overflow-y:auto;flex:1;padding:4px 16px">';
     songList.forEach(function(s) {
