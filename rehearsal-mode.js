@@ -1871,6 +1871,7 @@ async function rmSearchArchive() {
 
 function rmRenderArchiveResults(results) {
     var c = document.getElementById('rmArchiveResults');
+    var _st = (rmQueue[rmIndex] ? rmQueue[rmIndex].title : '').replace(/'/g, "\\'");
     var filtered = rmHarmonySourceFilter !== 'all' ? results.filter(function(r) { return r.sourceType === rmHarmonySourceFilter; }) : results;
     c.innerHTML = '<div style="color:#64748b;font-size:0.7em;padding:4px 8px">' + filtered.length + ' of ' + results.length + ' shows' + (rmHarmonySourceFilter !== 'all' ? ' (' + rmHarmonySourceFilter + ')' : '') + '</div>' +
         filtered.slice(0, 25).map(function(r) {
@@ -1880,11 +1881,19 @@ function rmRenderArchiveResults(results) {
             else if (r.sourceType === 'Matrix') { srcBadge = '🔀MTX'; srcColor = '#818cf8'; }
             var jcBadge = '';
             if (rmJamChartData && r.date) { var ds = (r.date || '').split('T')[0]; var jc = rmJamChartData.find(function(j) { return j.showdate === ds; }); if (jc) jcBadge = '<span style="color:#f59e0b;font-size:0.7em" title="' + (jc.jamchart_description || 'Jam Chart').replace(/"/g,'&quot;') + '">⭐JC</span> '; }
-            return '<div onclick="rmSelectShow(\'' + r.identifier + '\')" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
+            var archiveUrl = 'https://archive.org/details/' + r.identifier;
+            var _safeId = r.identifier.replace(/'/g, "\\'");
+            var _safeTitle = ((r.title || r.identifier) + '').replace(/'/g, "\\'");
+            return '<div style="padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04)">' +
+                '<div onclick="rmSelectShow(\'' + _safeId + '\')" style="cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
                 '<div style="display:flex;align-items:center;gap:6px">' +
                 (srcBadge ? '<span style="color:' + srcColor + ';font-size:0.65em;font-weight:700;padding:1px 5px;border:1px solid ' + srcColor + '33;border-radius:4px;white-space:nowrap">' + srcBadge + '</span>' : '') + jcBadge +
                 '<span style="color:#e2e8f0;font-size:0.82em;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.title || r.identifier) + '</span></div>' +
-                '<div style="color:#64748b;font-size:0.72em;margin-top:2px">' + (r.date ? r.date.split('T')[0] : '') + ' · ⭐ ' + (r.rating ? r.rating.toFixed(1) : '—') + ' · ' + (r.downloads ? r.downloads.toLocaleString() + ' dl' : '') + '</div></div>';
+                '<div style="color:#64748b;font-size:0.72em;margin-top:2px">' + (r.date ? r.date.split('T')[0] : '') + ' · ⭐ ' + (r.rating ? r.rating.toFixed(1) : '—') + ' · ' + (r.downloads ? r.downloads.toLocaleString() + ' dl' : '') + '</div></div>' +
+                '<div style="display:flex;gap:4px;margin-top:3px">' +
+                '<button onclick="rmSetAsNorthStar(\'' + _st + '\',\'' + archiveUrl.replace(/'/g, "\\'") + '\',\'' + _safeTitle + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">⭐ North Star</button>' +
+                '<button onclick="rmAddAsLesson(\'' + _st + '\',\'' + archiveUrl.replace(/'/g, "\\'") + '\',\'' + _safeTitle + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">🎓 Lesson</button>' +
+                '</div></div>';
         }).join('');
 }
 
@@ -1930,6 +1939,7 @@ async function rmSearchRelisten() {
 
 function rmRenderRelistenResults(results, songName, timesPlayed) {
     var c = document.getElementById('rmRelistenResults');
+    var _st = (rmQueue[rmIndex] ? rmQueue[rmIndex].title : '').replace(/'/g, "\\'");
     var filtered = rmHarmonySourceFilter === 'SBD' ? results.filter(function(r) { return r.hasSbd; }) : rmHarmonySourceFilter === 'AUD' ? results.filter(function(r) { return !r.hasSbd; }) : results;
     var hdr = '<div style="color:#64748b;font-size:0.7em;padding:4px 8px">' + (songName ? '"' + songName + '" — ' : '') + (timesPlayed ? timesPlayed + ' shows · ' : '') + filtered.length + ' shown' + (rmHarmonySourceFilter !== 'all' ? ' (' + rmHarmonySourceFilter + ')' : '') + '</div>';
     c.innerHTML = hdr + filtered.slice(0, 25).map(function(r) {
@@ -1937,9 +1947,16 @@ function rmRenderRelistenResults(results, songName, timesPlayed) {
         var jcBadge = '';
         if (rmJamChartData && r.date) { var jc = rmJamChartData.find(function(j) { return j.showdate === r.date; }); if (jc) jcBadge = '<span style="color:#f59e0b;font-size:0.7em" title="' + (jc.jamchart_description || '').replace(/"/g,'&quot;') + '">⭐JC</span> '; }
         var loc = [r.venue, r.city, r.state].filter(Boolean).join(', ');
-        return '<div onclick="window.open(\'' + r.relistenUrl + '\',\'_blank\')" style="padding:7px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
+        var rlUrl = (r.relistenUrl || '').replace(/'/g, "\\'");
+        var rlTitle = (r.date + ' ' + (r.venue || '')).replace(/'/g, "\\'");
+        return '<div style="padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04)">' +
+            '<div onclick="window.open(\'' + rlUrl + '\',\'_blank\')" style="cursor:pointer" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
             '<div style="display:flex;align-items:center;gap:6px">' + sbdBadge + jcBadge + '<span style="color:#e2e8f0;font-size:0.82em;font-weight:600">' + r.date + '</span></div>' +
-            '<div style="color:#64748b;font-size:0.72em;margin-top:2px">' + loc + (r.tapeCount ? ' · 📼 ' + r.tapeCount + ' tapes' : '') + '</div></div>';
+            '<div style="color:#64748b;font-size:0.72em;margin-top:2px">' + loc + (r.tapeCount ? ' · 📼 ' + r.tapeCount + ' tapes' : '') + '</div></div>' +
+            '<div style="display:flex;gap:4px;margin-top:3px">' +
+            '<button onclick="rmSetAsNorthStar(\'' + _st + '\',\'' + rlUrl + '\',\'' + rlTitle + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">⭐ North Star</button>' +
+            '<button onclick="rmAddAsLesson(\'' + _st + '\',\'' + rlUrl + '\',\'' + rlTitle + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">🎓 Lesson</button>' +
+            '</div></div>';
     }).join('');
 }
 
