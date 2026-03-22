@@ -1,5 +1,5 @@
 # GrooveLinx — Current Architecture
-**Last consolidated: 2026-03-09**
+**Last consolidated: 2026-03-22**
 
 ---
 
@@ -7,17 +7,19 @@
 
 GrooveLinx is a progressive web app for band preparation and live-performance support. It is designed as a **Band Operating System**: a single shared workspace connecting song learning, readiness tracking, rehearsal planning, setlist building, harmony work, and gig execution.
 
-The stack is intentionally simple: vanilla JavaScript, Firebase Realtime Database, GitHub Pages, and a Cloudflare Worker. The system should remain lightweight and directly inspectable without introducing a framework or build pipeline.
+The stack is intentionally simple: vanilla JavaScript, Firebase Realtime Database, Vercel hosting, and a Cloudflare Worker. The system should remain lightweight and directly inspectable without introducing a framework or build pipeline.
 
 ---
 
 ## Non-Negotiable Stack Constraints
 
 - **Frontend:** vanilla JavaScript SPA
-- **Hosting:** GitHub Pages (`drewmerrill.github.io/deadcetera`)
+- **Hosting:** Vercel (`app.groovelinx.com`) — auto-deploys on push to main
+- **CI:** GitHub Actions — JS syntax validation + auto version stamping
 - **Database:** Firebase Realtime Database (`deadcetera-35424`)
 - **Auth:** Google Identity Services token client (`initTokenClient`)
 - **Edge proxy:** Cloudflare Worker (`deadcetera-proxy.drewmerrill.workers.dev`)
+- **Legacy:** GitHub Pages redirects to app.groovelinx.com (retired as primary host)
 - **No React, Vue, TypeScript, or build toolchain**
 - **No traditional application server for production**
 

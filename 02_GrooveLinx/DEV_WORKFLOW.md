@@ -1,6 +1,14 @@
 # GrooveLinx Development Workflow
 
-_Last consolidated: 2026-03-09_
+_Last consolidated: 2026-03-22_
+
+> **NOTE:** The detailed Claude-specific workflow protocol is now at
+> `02_GrooveLinx/notes/claude_dev_workflow.md` with supporting docs
+> indexed at `02_GrooveLinx/notes/dev_workflow_index.md`.
+>
+> **Deploy platform changed:** Vercel (was GitHub Pages).
+> **CI added:** GitHub Actions syntax validation + auto version stamping.
+> **Production URL:** https://app.groovelinx.com
 
 ## Canonical Rule
 
