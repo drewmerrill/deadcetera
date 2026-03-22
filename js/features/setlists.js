@@ -1143,6 +1143,7 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
     set.name = firstName;
     set.songs = firstHalf;
     window._slSets.splice(setIdx + 1, 0, { name: secondName, songs: secondHalf });
+    _slRenumberSets();
 
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
     _slReRenderSets();
@@ -1161,12 +1162,25 @@ function slRenameSet(setIdx) {
 }
 window.slRenameSet = slRenameSet;
 
+// Auto-renumber "Set N" sections sequentially after any structural change.
+// Leaves Soundcheck, Encore, and custom names untouched.
+function _slRenumberSets() {
+    var setNum = 1;
+    window._slSets.forEach(function(s) {
+        if ((s.name || '').match(/^Set \d+$/) || s.name === 'All Songs') {
+            s.name = 'Set ' + setNum;
+            setNum++;
+        }
+    });
+}
+
 // Move a set up in the order
 function slMoveSetUp(setIdx) {
     if (setIdx < 1 || !window._slSets[setIdx]) return;
     var tmp = window._slSets[setIdx];
     window._slSets[setIdx] = window._slSets[setIdx - 1];
     window._slSets[setIdx - 1] = tmp;
+    _slRenumberSets();
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
     _slReRenderSets();
 }
@@ -1218,6 +1232,8 @@ function slMergeSets(setIdx) {
     // If only one set remains, rename to "All Songs"
     if (window._slSets.length === 1) {
         window._slSets[0].name = 'All Songs';
+    } else {
+        _slRenumberSets();
     }
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
     _slReRenderSets();
