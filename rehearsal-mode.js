@@ -1652,7 +1652,7 @@ var rmJamChartData = null;
 function rmLoadHarmony() {
     var song = rmQueue[rmIndex]; if(!song)return;
     var el = document.getElementById('rmHarmonyContent');
-    var ss = song.title.replace(/'/g,"\\'"), band = song.band||'Grateful Dead';
+    var ss = song.title.replace(/'/g,"\\'"), band = _rmFullBandName(song.band) || song.band || 'Grateful Dead';
     var isPhish = /phish/i.test(band);
     rmHarmonyCache = {}; rmJamChartData = null; rmHarmonySourceFilter = 'all';
 
@@ -1662,11 +1662,17 @@ function rmLoadHarmony() {
 
     (async function() {
         var northStar = null, bestShot = null, lessons = [];
+        // Lessons are per-user (each member has their own instrument-specific lessons)
+        var _lessonKey = 'my_lessons';
+        try {
+            var _email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
+            if (_email) _lessonKey = 'my_lessons_' + _email.replace(/[.#$/\[\]]/g, '_');
+        } catch(e) {}
         try {
             var res = await Promise.all([
                 loadBandDataFromDrive(song.title, 'spotify_versions').catch(function(){ return null; }),
                 loadBandDataFromDrive(song.title, 'best_shot_takes').catch(function(){ return null; }),
-                loadBandDataFromDrive(song.title, 'practice_lessons').catch(function(){ return null; })
+                loadBandDataFromDrive(song.title, _lessonKey).catch(function(){ return null; })
             ]);
             var refs = toArray(res[0] || []);
             var shots = toArray(res[1] || []);
@@ -1709,7 +1715,7 @@ function rmLoadHarmony() {
                 + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + nsTitle + '</div>'
                 + '<div style="font-size:0.65em;color:#64748b">' + (northStar._voteCount || 0) + '/' + totalMembers + ' votes · ' + nsVoteLabel + (nsMeta ? ' · ' + nsMeta : '') + '</div>'
                 + '</div>'
-                + (nsUrl ? '<button onclick="window.open(\'' + nsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>' : '')
+                + (nsUrl ? '<button onclick="rmPlayInline(\'' + nsUrl + '\')" style="padding:6px 14px;background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>' : '')
                 + '</div>'
                 + (nsNotes ? '<div style="font-size:0.72em;color:#94a3b8;margin-top:4px;font-style:italic;padding-left:30px">' + nsNotes + '</div>' : '')
                 + '<div style="display:flex;gap:6px;margin-top:6px;margin-left:30px;flex-wrap:wrap">'
@@ -1748,10 +1754,10 @@ function rmLoadHarmony() {
                 + '</div>';
         }
 
-        // ── Lessons section ──
+        // ── Lessons & Tutorials section (always visible, per-user) ──
+        html += '<div style="padding:8px 12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:8px">'
+            + '<div style="font-size:0.72em;font-weight:700;color:#86efac;margin-bottom:4px">🎓 My Lessons & Tutorials</div>';
         if (lessons.length) {
-            html += '<div style="padding:8px 12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:8px">'
-                + '<div style="font-size:0.72em;font-weight:700;color:#86efac;margin-bottom:4px">🎓 Lessons & Tutorials</div>';
             lessons.forEach(function(l, li) {
                 var lUrl = (l.url || '').replace(/'/g, "\\'");
                 var lTitle = _e(l.title || 'Lesson');
@@ -1761,8 +1767,10 @@ function rmLoadHarmony() {
                     + '<button onclick="rmRemoveLesson(\'' + _songTitle + '\',' + li + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.68em">✕</button>'
                     + '</div>';
             });
-            html += '</div>';
+        } else {
+            html += '<div style="font-size:0.72em;color:#64748b;padding:4px 0">No lessons saved yet — search YouTube below and click 🎓 Lesson to add one.</div>';
         }
+        html += '</div>';
 
         container.innerHTML = html;
     })();
@@ -1988,6 +1996,7 @@ async function rmSearchYouTube() {
                 + '<span style="color:#ef4444">▶</span><div style="flex:1;min-width:0"><div style="color:#e2e8f0;font-size:0.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + v.title + '</div>'
                 + '<div style="color:#64748b;font-size:0.68em">' + (v.author || '') + ' · ' + (v.duration || '') + '</div></div></div>'
                 + '<div style="display:flex;gap:4px;margin-top:3px;padding-left:20px">'
+                + '<button onclick="rmPlayInline(\'' + _vu + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(239,68,68,0.25);color:#f87171;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">👁 Preview</button>'
                 + '<button onclick="rmSetAsNorthStar(\'' + _st + '\',\'' + _vu + '\',\'' + _vt + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">⭐ North Star</button>'
                 + '<button onclick="rmAddAsLesson(\'' + _st + '\',\'' + _vu + '\',\'' + _vt + '\')" style="padding:2px 8px;background:none;border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:4px;cursor:pointer;font-size:0.62em;font-weight:600">🎓 Lesson</button>'
                 + '</div></div>';
@@ -2215,11 +2224,21 @@ window.rmSetAsNorthStar = async function(songTitle, url, title) {
     }
 };
 
-// Add a search result as a Lesson
+// Per-user lesson storage key
+function _rmLessonKey() {
+    try {
+        var email = typeof currentUserEmail !== 'undefined' ? currentUserEmail : '';
+        if (email) return 'my_lessons_' + email.replace(/[.#$/\[\]]/g, '_');
+    } catch(e) {}
+    return 'my_lessons';
+}
+
+// Add a search result as a Lesson (per-user)
 window.rmAddAsLesson = async function(songTitle, url, title) {
     if (!songTitle || !url) return;
     try {
-        var lessons = toArray(await loadBandDataFromDrive(songTitle, 'practice_lessons') || []);
+        var key = _rmLessonKey();
+        var lessons = toArray(await loadBandDataFromDrive(songTitle, key) || []);
         lessons.push({
             id: 'lesson_' + Date.now(),
             title: title || 'Lesson',
@@ -2227,7 +2246,7 @@ window.rmAddAsLesson = async function(songTitle, url, title) {
             addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : '',
             addedAt: new Date().toISOString()
         });
-        await saveBandDataToDrive(songTitle, 'practice_lessons', lessons);
+        await saveBandDataToDrive(songTitle, key, lessons);
         if (typeof showToast === 'function') showToast('🎓 Saved as lesson!');
         rmLoadHarmony();
     } catch(e) {
@@ -2235,15 +2254,42 @@ window.rmAddAsLesson = async function(songTitle, url, title) {
     }
 };
 
-// Remove a lesson
+// Remove a lesson (per-user)
 window.rmRemoveLesson = async function(songTitle, idx) {
     try {
-        var lessons = toArray(await loadBandDataFromDrive(songTitle, 'practice_lessons') || []);
+        var key = _rmLessonKey();
+        var lessons = toArray(await loadBandDataFromDrive(songTitle, key) || []);
         lessons.splice(idx, 1);
-        await saveBandDataToDrive(songTitle, 'practice_lessons', lessons);
+        await saveBandDataToDrive(songTitle, key, lessons);
         if (typeof showToast === 'function') showToast('Lesson removed');
         rmLoadHarmony();
     } catch(e) {}
+};
+
+// Inline player for North Star and YouTube preview
+window.rmPlayInline = function(url) {
+    var existing = document.getElementById('rmInlinePlayer');
+    if (existing) existing.remove();
+
+    var videoId = null;
+    var m = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+    if (m) videoId = m[1];
+
+    var player = document.createElement('div');
+    player.id = 'rmInlinePlayer';
+    player.style.cssText = 'position:fixed;bottom:60px;left:8px;right:8px;z-index:9998;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:12px;overflow:hidden;box-shadow:0 -8px 30px rgba(0,0,0,0.6)';
+
+    if (videoId) {
+        player.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:rgba(0,0,0,0.4)">'
+            + '<span style="font-size:0.72em;color:#a5b4fc;font-weight:600">Now Playing</span>'
+            + '<button onclick="document.getElementById(\'rmInlinePlayer\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em">✕</button></div>'
+            + '<div style="position:relative;padding-bottom:56.25%;height:0"><iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media" allowfullscreen></iframe></div>';
+    } else {
+        // Non-YouTube URL — open in new tab as fallback
+        window.open(url, '_blank');
+        return;
+    }
+    document.body.appendChild(player);
 };
 
 console.log('🎸 Practice Mode 5-Tab loaded (Chart · Know · Memory · Harmony · Record)');
