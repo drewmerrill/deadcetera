@@ -343,9 +343,9 @@ function slRenderSetSongs(setIdx) {
             </select>
             <button class="btn btn-sm btn-ghost" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
         </div>`;
-        // Insert Set Break button between songs (not after last)
+        // Insert Set Break button between songs — compact, hidden until hover/tap
         if (i < items.length - 1) {
-            row += `<div style="text-align:center;margin:1px 0"><button onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.58em;padding:1px 8px;border:1px dashed rgba(245,158,11,0.3);background:none;color:#64748b;border-radius:4px;cursor:pointer;opacity:0.5;transition:opacity 0.15s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">✂ set break</button></div>`;
+            row += `<div style="text-align:center;height:6px;overflow:visible;position:relative"><button onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.52em;padding:0 6px;border:1px dashed rgba(245,158,11,0.25);background:rgba(15,23,42,0.9);color:#64748b;border-radius:3px;cursor:pointer;opacity:0;transition:opacity 0.15s;position:relative;top:-4px;z-index:1" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0'" ontouchstart="this.style.opacity='1'" ontouchend="var b=this;setTimeout(function(){b.style.opacity='0'},2000)">✂</button></div>`;
         }
         return row;
     }).join('');
@@ -1101,13 +1101,19 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
 
     // Determine names
     var firstName = set.name;
-    // Auto-name the new set
-    var setNum = window._slSets.length;
-    var secondName = 'Set ' + setNum;
-    // If splitting "All Songs", name them Set 1 / Set 2
+    // Find next available set number (avoid duplicates like two "Set 2"s)
+    var usedNums = {};
+    window._slSets.forEach(function(s) {
+        var m = (s.name || '').match(/^Set (\d+)$/);
+        if (m) usedNums[parseInt(m[1])] = true;
+    });
+    var nextNum = 1;
+    while (usedNums[nextNum]) nextNum++;
+    var secondName = 'Set ' + nextNum;
+    // If splitting "All Songs", name first half too
     if (set.name === 'All Songs') {
         firstName = 'Set 1';
-        secondName = 'Set 2';
+        if (secondName === 'Set 1') secondName = 'Set 2';
     }
 
     set.name = firstName;
@@ -1231,14 +1237,23 @@ function slOpenSongPicker(setIdx) {
     html += '<div id="slPickerList" style="overflow-y:auto;flex:1;padding:8px 16px">';
     songList.forEach(function(s) {
         var isActive = _slIsActive(s.title);
+        // When Library is off, hide inactive songs entirely (not just dim)
+        if (!_slPickerShowLibrary && !isActive) return;
         var checked = inSet[s.title] ? 'checked' : '';
-        var dimStyle = !isActive ? 'opacity:0.45' : '';
         var safeTitle = s.title.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        html += '<label data-title="' + safeTitle + '" data-active="' + (isActive ? '1' : '0') + '" style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;' + dimStyle + '">';
+        // Get status for library songs
+        var statusLabel = '';
+        if (!isActive) {
+            var st = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(s.title) : '';
+            var stMap = { shelved:'Shelved', parked:'Parked', retired:'Retired' };
+            statusLabel = '<span style="font-size:0.55em;padding:1px 4px;border-radius:3px;background:rgba(100,116,139,0.15);color:#64748b;font-weight:600;flex-shrink:0">' + (stMap[st] || 'Library') + '</span>';
+        }
+        html += '<label data-title="' + safeTitle + '" data-active="' + (isActive ? '1' : '0') + '" style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;' + (!isActive ? 'opacity:0.5' : '') + '">';
         html += '<input type="checkbox" class="sl-picker-cb" data-song="' + safeTitle + '" ' + checked + ' onchange="slPickerUpdateCount()" style="accent-color:#667eea;width:16px;height:16px;flex-shrink:0">';
         html += '<span style="font-size:0.85em;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.title + '</span>';
         html += '<span style="font-size:0.68em;color:var(--text-dim);flex-shrink:0">' + (s.band || '') + '</span>';
         if (isActive) html += '<span style="font-size:0.55em;padding:1px 4px;border-radius:3px;background:rgba(34,197,94,0.15);color:#86efac;font-weight:700;flex-shrink:0">Active</span>';
+        else html += statusLabel;
         html += '</label>';
     });
     html += '</div>';
