@@ -512,10 +512,10 @@ async function _rhLoadSnapshots(limit) {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return [];
     try {
-        var snap = await db.ref(bandPath('rehearsal_history')).orderByChild('savedAt').limitToLast(limit || 5).once('value');
+        var snap = await db.ref(bandPath('rehearsal_history')).once('value');
         var val = snap.val();
         if (!val) return [];
-        return Object.values(val).sort(function(a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); });
+        return Object.values(val).sort(function(a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); }).slice(0, limit || 5);
     } catch(e) { return []; }
 }
 
@@ -560,9 +560,9 @@ async function _rhRenderSessionReview() {
     if (!db || typeof bandPath !== 'function') return;
     var session = null;
     try {
-        var snap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(1).once('value');
+        var snap = await db.ref(bandPath('rehearsal_sessions')).once('value');
         var val = snap.val();
-        if (val) { var arr = Object.values(val); session = arr[0]; }
+        if (val) { var arr = Object.values(val).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }); session = arr[0]; }
     } catch(e) { return; }
     if (!session || !session.blocks || !session.blocks.length) return;
 
@@ -631,9 +631,9 @@ async function _rhRenderSessionHistory() {
     if (!db || typeof bandPath !== 'function') return;
     var sessions = [];
     try {
-        var snap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(10).once('value');
+        var snap = await db.ref(bandPath('rehearsal_sessions')).once('value');
         var val = snap.val();
-        if (val) sessions = Object.values(val).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+        if (val) sessions = Object.values(val).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 10);
     } catch(e) { return; }
     if (sessions.length < 2) return; // don't show if only 1 (already in Last Rehearsal card)
 
@@ -731,10 +731,10 @@ async function _rhLoadPlanFromFirebase() {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return null;
     try {
-        var snap = await db.ref(bandPath('rehearsal_plans')).orderByChild('updatedAt').limitToLast(1).once('value');
+        var snap = await db.ref(bandPath('rehearsal_plans')).once('value');
         var val = snap.val();
         if (val) {
-            var plans = Object.values(val);
+            var plans = Object.values(val).sort(function(a, b) { return (b.updatedAt || '').localeCompare(a.updatedAt || ''); });
             _rhPlanCache = plans[0] || null;
             return _rhPlanCache;
         }
