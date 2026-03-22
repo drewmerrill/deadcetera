@@ -6641,9 +6641,10 @@ async function updateSongStatus(status) {
         await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
     }
 
-    // Update cache immediately
-    statusCache[selectedSong.title] = status;
-    
+    // Update cache immediately (via GLStore setter if available)
+    if (typeof GLStore !== 'undefined' && GLStore.setStatus) GLStore.setStatus(selectedSong.title, status);
+    else statusCache[selectedSong.title] = status;
+
     // Save updated master file (so next page load is instant)
     saveMasterFile(MASTER_STATUS_FILE, statusCache).then(() => {
         console.log('Master status file updated');
@@ -13376,6 +13377,7 @@ async function preloadReadinessCache() {
         var data = await loadMasterFile(MASTER_READINESS_FILE);
         if (data && typeof data === 'object') {
             readinessCache = data;
+            if (typeof GLStore !== 'undefined' && GLStore.setAllReadiness) GLStore.setAllReadiness(data);
         }
         readinessCacheLoaded = true;
     } catch(e) {
@@ -13559,8 +13561,9 @@ async function renderReadinessSection(songTitle) {
         var snap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/readiness')).once('value');
         if (snap.val()) {
             scores = snap.val();
-            // Update cache
-            readinessCache[songTitle] = scores;
+            // Update cache (via GLStore setter if available)
+            if (typeof GLStore !== 'undefined' && GLStore.setReadiness) GLStore.setReadiness(songTitle, scores);
+            else readinessCache[songTitle] = scores;
         }
     } catch(e) {}
 
@@ -13655,9 +13658,10 @@ async function saveMyReadiness(songTitle, value) {
     var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/readiness/' + memberKey);
     try {
         await firebaseDB.ref(path).set(v);
-        // Update local cache
+        // Update local cache (via GLStore setter if available)
         if (!readinessCache[songTitle]) readinessCache[songTitle] = {};
         readinessCache[songTitle][memberKey] = v;
+        if (typeof GLStore !== 'undefined' && GLStore.setReadiness) GLStore.setReadiness(songTitle, readinessCache[songTitle]);
         // Persist to master file
         saveMasterFile(MASTER_READINESS_FILE, readinessCache).catch(function(){});
         // Write to aggregated readiness index (used by Home Dashboard)

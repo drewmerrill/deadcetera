@@ -39,7 +39,7 @@ function venueShortLabel(v) {
 async function deleteGig(idx) {
     if (!requireSignIn()) return;
     if (!confirm('Delete this gig? This cannot be undone.')) return;
-    const raw = window._cachedGigs || toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const raw = (typeof GLStore !== 'undefined' && GLStore.getGigs().length) ? GLStore.getGigs() : toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const data = [...raw];
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'gigs', data);
@@ -48,7 +48,7 @@ async function deleteGig(idx) {
 }
 
 async function editGig(idx) {
-    const gigData = window._cachedGigs || toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    const gigData = (typeof GLStore !== 'undefined' && GLStore.getGigs().length) ? GLStore.getGigs() : toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     const g = gigData[idx];
     if (!g) return;
     const venues = await GLStore.getVenues();
@@ -373,7 +373,8 @@ async function loadGigs() {
     var rawData = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     var el = document.getElementById('gigsList');
     if (!el) return;
-    window._cachedGigs = rawData;
+    if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(rawData);
+    else window._cachedGigs = rawData;
     if (!rawData.length) { el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div>'; return; }
     var data = rawData.map(function(g, origIdx) { return Object.assign({}, g, { _origIdx: origIdx }); });
 

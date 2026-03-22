@@ -85,6 +85,7 @@
     // Single source of truth for setlist data. Both window._glCachedSetlists
     // and window._cachedSetlists are kept in sync via setSetlistCache().
     setlistCache: null,  // array or null (unloaded)
+    gigsCache: null,     // array or null (unloaded)
   };
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -1278,6 +1279,58 @@
     window._glCachedSetlists = null;
     window._cachedSetlists = null;
     emit('setlistsChanged', { count: 0 });
+  }
+
+  // ── Gigs Cache (centralized) ──────────────────────────────────────────────
+  function getGigs() {
+    return _state.gigsCache || [];
+  }
+
+  function setGigsCache(data) {
+    var arr = Array.isArray(data) ? data : [];
+    _state.gigsCache = arr;
+    window._cachedGigs = arr;
+    emit('gigsChanged', { count: arr.length });
+  }
+
+  function clearGigsCache() {
+    _state.gigsCache = null;
+    window._cachedGigs = null;
+    emit('gigsChanged', { count: 0 });
+  }
+
+  // ── Status Cache (centralized setter) ─────────────────────────────────────
+  function setStatus(songId, status) {
+    try {
+      if (typeof statusCache !== 'undefined') statusCache[songId] = status;
+    } catch(e) {}
+    emit('statusChanged', { songId: songId, status: status });
+  }
+
+  function setAllStatus(data) {
+    try {
+      if (typeof statusCache !== 'undefined') Object.assign(statusCache, data);
+    } catch(e) {}
+    emit('statusChanged', { bulk: true });
+  }
+
+  // ── Readiness Cache (centralized setter) ──────────────────────────────────
+  function setReadiness(songId, scores) {
+    try {
+      if (typeof readinessCache !== 'undefined') readinessCache[songId] = scores;
+    } catch(e) {}
+    emit('readinessChanged', { songId: songId });
+  }
+
+  function setAllReadiness(data) {
+    try {
+      if (typeof readinessCache !== 'undefined') {
+        // Replace entire cache
+        Object.keys(readinessCache).forEach(function(k) { delete readinessCache[k]; });
+        Object.assign(readinessCache, data);
+      }
+    } catch(e) {}
+    emit('readinessChanged', { bulk: true });
   }
 
   // ── Transition Intelligence ──────────────────────────────────────────────
@@ -3671,12 +3724,21 @@
     savePracticeMix:   savePracticeMix,
     deletePracticeMix: deletePracticeMix,
 
+    // Gigs Cache (centralized)
+    getGigs:           getGigs,
+    setGigsCache:      setGigsCache,
+    clearGigsCache:    clearGigsCache,
+
     // UI State
     setActiveLens:     setActiveLens,
     getActiveLens:     getActiveLens,
     getAllReadiness:    getAllReadiness,
     getAllStatus:       getAllStatus,
     getStatus:         getStatus,
+    setStatus:         setStatus,
+    setAllStatus:      setAllStatus,
+    setReadiness:      setReadiness,
+    setAllReadiness:   setAllReadiness,
 
     // Event bus
     subscribe:         subscribe,
@@ -4570,7 +4632,7 @@
       await saveBandDataToDrive('_band', 'gigs', gigs);
       await saveBandDataToDrive('_band', 'setlists', finalSetlists);
       await saveBandDataToDrive('_band', 'calendar_events', calEvts);
-      if (typeof window._cachedGigs !== 'undefined') window._cachedGigs = null;
+      clearGigsCache();
       clearSetlistCache();
       console.log('%c✅ Repair complete! Relinked ' + relinked + ', removed ' + blanksRemoved + ' blanks.', 'color:#22c55e;font-weight:bold');
     } else {
@@ -4690,7 +4752,7 @@
     if (!dryRun && fixed > 0) {
       await saveBandDataToDrive('_band', 'gigs', gigs);
       await saveBandDataToDrive('_band', 'setlists', finalSetlists);
-      if (typeof window._cachedGigs !== 'undefined') window._cachedGigs = null;
+      clearGigsCache();
       clearSetlistCache();
       console.log('%c✅ Repaired ' + fixed + ' bad links, removed ' + blanksToRemove.length + ' blank setlists.', 'color:#22c55e;font-weight:bold');
     } else if (!dryRun) {
