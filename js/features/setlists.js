@@ -254,7 +254,7 @@ async function createNewSetlist() {
     if (!requireSignIn()) return;
     const container = document.getElementById('setlistsList');
     if (!container) return;
-    window._slSets = [{ name: 'Set 1', songs: [] }];
+    window._slSets = [{ name: 'All Songs', songs: [] }];
     window._slSelectedVenueId = null;
     window._slSelectedVenueName = null;
     container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
@@ -264,7 +264,8 @@ async function createNewSetlist() {
             <div class="form-row"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
             <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
         </div>
-        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">Set 1</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
+        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
+        <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
             <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
@@ -305,12 +306,21 @@ function slAddSongToSet(setIdx, title) {
     document.getElementById('slSongResults' + setIdx).innerHTML = '';
 }
 
+// Duration estimate: 6 min/song default
+var _slMinPerSong = 6;
+
+function _slDurationLabel(songCount) {
+    var mins = songCount * _slMinPerSong;
+    if (mins >= 60) return Math.floor(mins / 60) + 'h ' + (mins % 60 ? mins % 60 + 'min' : '');
+    return mins + ' min';
+}
+
 function slRenderSetSongs(setIdx) {
     const el = document.getElementById('slSet' + setIdx + 'Songs');
     if (!el) return;
     const items = window._slSets[setIdx]?.songs || [];
     const allSongsList = (typeof allSongs !== 'undefined' ? allSongs : songs || []);
-    el.innerHTML = items.map((item, i) => {
+    var rows = items.map((item, i) => {
         const s = typeof item === 'string' ? item : item.title;
         const segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
         const songData = allSongsList.find(sd => sd.title === s);
@@ -318,7 +328,7 @@ function slRenderSetSongs(setIdx) {
         const bpmStr = songData?.bpm ? `<span style="font-size:0.7em;color:#94a3b8">\u26a1${songData.bpm}</span>` : '';
         const segueColor = { stop:'#64748b', flow:'#818cf8', segue:'#34d399', cutoff:'#f87171' }[segue] || '#64748b';
         const histTip = typeof getSongHistoryTooltip === 'function' ? getSongHistoryTooltip(s) : '';
-        return `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
+        var row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
             style="padding:3px 6px;font-size:0.82em;gap:4px;align-items:center;cursor:default;min-height:28px" title="${histTip.replace(/"/g,'&quot;')}">
             <span style="color:#475569;cursor:grab;font-size:0.9em;flex-shrink:0">\u2807</span>
             <span style="color:var(--text-dim);min-width:16px;font-weight:600;flex-shrink:0;font-size:0.85em">${i + 1}</span>
@@ -333,7 +343,13 @@ function slRenderSetSongs(setIdx) {
             </select>
             <button class="btn btn-sm btn-ghost" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
         </div>`;
+        // Insert Set Break button between songs (not after last)
+        if (i < items.length - 1) {
+            row += `<div style="text-align:center;margin:1px 0"><button onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.58em;padding:1px 8px;border:1px dashed rgba(245,158,11,0.3);background:none;color:#64748b;border-radius:4px;cursor:pointer;opacity:0.5;transition:opacity 0.15s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">✂ set break</button></div>`;
+        }
+        return row;
     }).join('');
+    el.innerHTML = rows;
     el.querySelectorAll('.sl-song-row').forEach(row => {
         row.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', row.dataset.idx); row.style.opacity='0.4'; });
         row.addEventListener('dragend', e => { row.style.opacity='1'; });
@@ -349,6 +365,7 @@ function slRenderSetSongs(setIdx) {
             slRenderSetSongs(setIdx);
         });
     });
+    _slUpdateShowTotal();
 }
 
 // Band Readiness Meter for setlist
@@ -589,13 +606,16 @@ async function editSetlist(idx) {
         + '</div>'
         // Sets
         + '<div id="slSets">' + window._slSets.map(function(set, si) {
+            var setCount = (set.songs || []).length;
+            var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
             return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-                + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '</div>'
+                + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span></div>'
                 + '<div id="slSet' + si + 'Songs"></div>'
                 + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
                 + '</div>';
         }).join('') + '</div>'
         // Mobile bottom save bar
+        + '<div id="slShowTotal" style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between"></div>'
         + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;gap:8px">'
         + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.82em">Cancel</button>'
         + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.88em;font-weight:700">💾 Save Changes</button>'
@@ -616,6 +636,7 @@ async function editSetlist(idx) {
 
     // Render existing songs in each set
     window._slSets.forEach((set, si) => slRenderSetSongs(si));
+    _slUpdateShowTotal();
     slEnrichKeyBpm();
     (async function() {
         var row = document.getElementById("slLinkedGigRow");
@@ -1069,6 +1090,63 @@ async function slToggleLock(idx) {
     showToast(willLock ? '🔒 Setlist locked for show readiness' : '🔓 Setlist unlocked');
     loadSetlists();
 }
+// ── Insert Set Break — splits a set into two at a given song index ────────────
+function slInsertSetBreak(setIdx, afterSongIdx) {
+    var set = window._slSets[setIdx];
+    if (!set || !set.songs || afterSongIdx < 1 || afterSongIdx >= set.songs.length) return;
+
+    var firstHalf = set.songs.slice(0, afterSongIdx);
+    var secondHalf = set.songs.slice(afterSongIdx);
+
+    // Determine names
+    var firstName = set.name;
+    // Auto-name the new set
+    var setNum = window._slSets.length;
+    var secondName = 'Set ' + setNum;
+    // If splitting "All Songs", name them Set 1 / Set 2
+    if (set.name === 'All Songs') {
+        firstName = 'Set 1';
+        secondName = 'Set 2';
+    }
+
+    set.name = firstName;
+    set.songs = firstHalf;
+    window._slSets.splice(setIdx + 1, 0, { name: secondName, songs: secondHalf });
+
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    // Re-render the entire editor by reloading the edit view
+    _slReRenderSets();
+    if (typeof showToast === 'function') showToast('Set break added — now ' + window._slSets.length + ' sets');
+}
+
+function _slReRenderSets() {
+    var setsEl = document.getElementById('slSets');
+    if (!setsEl) return;
+    setsEl.innerHTML = window._slSets.map(function(set, si) {
+        var setCount = (set.songs || []).length;
+        var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setCount) : '';
+        return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
+            + '<div style="font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px">' + (set.name || 'Set ' + (si+1)) + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span></div>'
+            + '<div id="slSet' + si + 'Songs"></div>'
+            + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
+            + '</div>';
+    }).join('');
+    // Render songs for each set
+    window._slSets.forEach(function(set, si) { slRenderSetSongs(si); });
+    _slUpdateShowTotal();
+}
+
+function _slUpdateShowTotal() {
+    var el = document.getElementById('slShowTotal');
+    if (!el) return;
+    var totalSongs = 0;
+    window._slSets.forEach(function(s) { totalSongs += (s.songs || []).length; });
+    var setCount = window._slSets.length;
+    var hint = setCount <= 1 && totalSongs > 5 ? '<span style="color:#fbbf24;font-weight:600"> · Use ✂ set break between songs to split into sets</span>' : '';
+    el.innerHTML = '<span>Full Show · ' + totalSongs + ' songs · ~' + _slDurationLabel(totalSongs) + (setCount > 1 ? ' · ' + setCount + ' sets' : '') + '</span>' + hint;
+}
+
+window.slInsertSetBreak = slInsertSetBreak;
 window.slToggleLock = slToggleLock;
 
 // ── Song Picker Modal ────────────────────────────────────────────────────────
