@@ -426,7 +426,7 @@ function getPlayButtonLabel(version) {
     if (p === 'archive' || url.includes('archive.org')) return '▶️ Listen on Archive.org';
     if (p === 'soundcloud' || url.includes('soundcloud')) return '▶️ Play on SoundCloud';
     if (p === 'tidal' || url.includes('tidal')) return '▶️ Play on Tidal';
-    if (url.includes('spotify')) return '▶️ Play on Spotify';
+    if (url.includes('spotify')) return '▶️ Open in Spotify';
     return '▶️ Listen';
 }
 
@@ -3149,7 +3149,7 @@ async function renderRefVersions(songTitle, bandData) {
 
                 ${version.notes ? `<p style="margin-bottom:12px;font-style:italic;color:var(--text-muted,#94a3b8);display:flex;align-items:center;gap:6px">${version.notes} <button onclick="editVersionNotes(${index})" style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.8em" title="Edit notes">✏️</button></p>` : ''}
 
-                <button class="spotify-play-btn" onclick="window.open('${version.url || version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
+                <button class="spotify-play-btn" onclick="openMusicLink('${version.url || version.spotifyUrl}')" style="${getPlayButtonStyle(version)}">
                     ${getPlayButtonLabel(version)}
                 </button>
             </div>

@@ -570,7 +570,7 @@ async function _sdUpgradeListenStep(title) {
             if (!northStar || votes > (northStar._vc || 0)) northStar = Object.assign({}, v, { _vc: votes });
         });
         if (northStar && northStar.url) {
-            step.onclick = function() { window.open(northStar.url, '_blank'); };
+            step.onclick = function() { openMusicLink(northStar.url); };
             sub.innerHTML = '\u2B50 ' + _sdEsc(northStar.fetchedTitle || northStar.title || 'North Star version');
         }
     } catch(e) {}
@@ -1549,7 +1549,7 @@ async function _sdPopulateListenLens(title) {
           '<span style="font-size:1.4em">⭐</span><div style="flex:1;min-width:0">'+
           '<div style="font-size:0.85em;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_sdEsc(northStar.fetchedTitle||northStar.title||'Reference')+'</div>'+
           '<div style="font-size:0.72em;color:var(--text-dim)">'+(northStar._voteCount||0)+' votes</div></div>'+
-          (northStar.url?'<button class="btn btn-sm" onclick="window.open(\''+northStar.url.replace(/'/g,"\\'")+'\',\'_blank\')" style="background:rgba(102,126,234,0.2);color:#818cf8;border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap">▶ Listen</button>':'')+
+          (northStar.url?'<button class="btn btn-sm" onclick="openMusicLink(\''+northStar.url.replace(/'/g,"\\'")+'\');" style="background:rgba(102,126,234,0.2);color:#818cf8;border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap">\u25B6 Open in Spotify</button>':'')+
           '</div>')
         :'<div style="color:var(--text-dim);font-size:0.85em">No North Star set yet — open Version Hub to browse and vote.</div>';
 

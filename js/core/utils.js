@@ -92,6 +92,49 @@ window.extractSpotifyTrackId = function extractSpotifyTrackId(url) {
     return m ? m[1] : null;
 };
 
+/**
+ * Smart open for music links. Prefers native app deep links for Spotify
+ * to avoid web player login prompts. Falls back to web URL.
+ *
+ * Usage: openMusicLink('https://open.spotify.com/track/abc123')
+ *   → tries spotify:track:abc123 first (opens Spotify app directly)
+ *   → falls back to web URL after a short delay
+ */
+window.openMusicLink = function openMusicLink(url) {
+    if (!url) return;
+    var lower = url.toLowerCase();
+
+    // Spotify: convert web URL to app deep link
+    if (lower.includes('spotify.com/track/')) {
+        var id = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
+        if (id) { _tryDeepLink('spotify:track:' + id[1], url); return; }
+    }
+    if (lower.includes('spotify.com/album/')) {
+        var id = url.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/);
+        if (id) { _tryDeepLink('spotify:album:' + id[1], url); return; }
+    }
+    if (lower.includes('spotify.com/playlist/')) {
+        var id = url.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/);
+        if (id) { _tryDeepLink('spotify:playlist:' + id[1], url); return; }
+    }
+
+    // Everything else: open directly
+    window.open(url, '_blank');
+};
+
+function _tryDeepLink(deepUrl, fallbackUrl) {
+    // On mobile, try the deep link directly
+    if (/iPhone|iPad|Android/i.test(navigator.userAgent)) {
+        window.location.href = deepUrl;
+        // If the app doesn't handle it within 1.5s, fall back to web
+        setTimeout(function() { window.open(fallbackUrl, '_blank'); }, 1500);
+    } else {
+        // Desktop: open web URL but with intent to trigger app handler
+        // Most desktop Spotify installs register open.spotify.com as a protocol handler
+        window.open(fallbackUrl, '_blank');
+    }
+}
+
 // ── Toast notification ───────────────────────────────────────────────────────
 
 /**

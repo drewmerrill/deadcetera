@@ -60,7 +60,7 @@ async function renderBestShotVsNorthStar(songTitle) {
         var nsTitle = northStar.fetchedTitle || northStar.title || 'Reference';
         var nsUrl = northStar.url || northStar.spotifyUrl || '';
         html += '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + nsTitle + '</div>';
-        html += '<button onclick="window.open(\'' + nsUrl.replace(/'/g, "\\'") + '\',\'_blank\')" class="btn btn-sm" style="background:rgba(102,126,234,0.2);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 14px;border-radius:8px;cursor:pointer">▶ Listen</button>';
+        html += '<button onclick="openMusicLink(\'' + nsUrl.replace(/'/g, "\\'") + '\')" class="btn btn-sm" style="background:rgba(102,126,234,0.2);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 14px;border-radius:8px;cursor:pointer">\u25B6 Open in Spotify</button>';
         html += '<div style="font-size:0.68em;color:var(--text-dim);margin-top:6px">' + (northStar._voteCount || 0) + '/' + Object.keys(bandMembers).length + ' votes</div>';
     } else {
         html += '<div style="font-size:0.78em;color:var(--text-dim)">No reference yet</div>';
