@@ -67,6 +67,7 @@ window.glSpotlight = (function() {
 
     function _cleanup() {
         if (_overlay) { _overlay.remove(); _overlay = null; }
+        if (_box) { _box.remove(); _box = null; }
         // Remove glow elements
         if (window._glSpotGlow) {
             window._glSpotGlow.forEach(function(el) { el.remove(); });
@@ -74,7 +75,6 @@ window.glSpotlight = (function() {
         }
         // Remove escape listener
         document.removeEventListener('keydown', _escHandler);
-        _box = null;
         _steps = [];
         _current = 0;
     }
@@ -145,6 +145,8 @@ window.glSpotlight = (function() {
                     document.body.appendChild(_overlay);
                 }
                 _overlay.innerHTML = '';
+                // Remove previous dialog box (now lives on body, not overlay)
+                if (_box) { _box.remove(); _box = null; }
 
                 // Clip-path cutout around target
                 var hL = Math.max(0, rect.left - pad);
@@ -205,11 +207,12 @@ window.glSpotlight = (function() {
 
                 _box.innerHTML = '<div class="gl-spot-text">' + step.text + '</div>' + navHtml;
 
-                // Measure box offscreen
+                // Measure box offscreen — append to BODY, not overlay
+                // (overlay has clip-path which would clip the dialog)
                 _box.style.top = '-9999px';
                 _box.style.left = '12px';
                 _box.style.maxWidth = Math.min(300, vw - 24) + 'px';
-                _overlay.appendChild(_box);
+                document.body.appendChild(_box);
                 var boxH = _box.offsetHeight;
                 var boxW = _box.offsetWidth;
                 var gap = 16;
