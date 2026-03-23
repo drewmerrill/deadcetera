@@ -13205,36 +13205,41 @@ async function preloadReadinessCache() {
 // GLStore (one-time write). Filters and intelligence only check allSongs[].
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
-    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
-    var _promoted = 0;
+    // Single bulk read: fetch ALL song nodes at once, extract key/bpm from each
     try {
-        var cap = Math.min(allSongs.length, 600);
-        for (var batch = 0; batch < cap; batch += 20) {
-            var promises = [];
-            for (var i = batch; i < Math.min(batch + 20, cap); i++) {
-                var s = allSongs[i];
-                if (!s || !s.title) continue;
-                // Key: load directly from legacy path (v2 path has no key data — skip it)
-                promises.push((function(song) {
-                    return loadBandDataFromDrive(song.title, 'key').then(function(data) {
-                        if (data && data.key) {
-                            song.key = data.key;
-                        }
-                    }).catch(function() {});
-                })(s));
-                // BPM: load directly from legacy path
-                promises.push((function(song) {
-                    return loadBandDataFromDrive(song.title, 'song_bpm').then(function(data) {
-                        if (data && data.bpm) {
-                            song.bpm = data.bpm;
-                        }
-                    }).catch(function() {});
-                })(s));
+        var snap = await firebaseDB.ref(bandPath('songs')).once('value');
+        var allData = snap.val();
+        if (!allData || typeof allData !== 'object') return;
+        var populated = 0;
+        allSongs.forEach(function(song) {
+            if (!song || !song.title) return;
+            var key = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(song.title) : song.title;
+            var songData = allData[key] || allData[song.title];
+            if (!songData) return;
+            // Key: stored as { key: "Am", ... } under /key
+            if (songData.key && typeof songData.key === 'object' && songData.key.key) {
+                song.key = songData.key.key;
+                populated++;
+            } else if (songData.key && typeof songData.key === 'string') {
+                song.key = songData.key;
+                populated++;
             }
-            if (promises.length) await Promise.all(promises);
-        }
-        if (_promoted > 0) console.log('[DNA preload] Promoted ' + _promoted + ' seed values into GLStore');
-    } catch(e) {}
+            // BPM: stored as { bpm: 120, ... } under /song_bpm
+            if (songData.song_bpm && typeof songData.song_bpm === 'object' && songData.song_bpm.bpm) {
+                song.bpm = songData.song_bpm.bpm;
+            } else if (songData.bpm) {
+                song.bpm = songData.bpm;
+            }
+            // Lead singer
+            if (songData.lead_singer) {
+                var ls = songData.lead_singer;
+                song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
+            }
+        });
+        console.log('[DNA] Bulk loaded key/bpm/lead for ' + populated + ' songs (1 Firebase call)');
+    } catch(e) {
+        console.warn('[DNA] Bulk load failed, falling back to nothing:', e.message);
+    }
 }
 
 // ── Lead singer preload (for triage accuracy) ────────────────────────────────
