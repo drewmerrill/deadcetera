@@ -62,6 +62,11 @@ window.glSpotlight = (function() {
 
     function _cleanup() {
         if (_overlay) { _overlay.remove(); _overlay = null; }
+        // Remove glow elements
+        if (window._glSpotGlow) {
+            window._glSpotGlow.forEach(function(el) { el.remove(); });
+            window._glSpotGlow = [];
+        }
         _box = null;
         _steps = [];
         _current = 0;
@@ -97,13 +102,28 @@ window.glSpotlight = (function() {
             // Skip missing targets gracefully (forward only)
             if (!target) { _show(stepIdx + 1); return; }
 
-            // Scroll target to CENTER of viewport (not just "into view")
+            // Scroll target to CENTER of viewport — try nested scroll containers first
             var targetRect = target.getBoundingClientRect();
-            var scrollTarget = window.scrollY + targetRect.top - (window.innerHeight / 2) + (targetRect.height / 2);
-            window.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
+            var scrollContainer = target.closest('.main-content') || target.closest('#gl-shell > .main-content') || null;
+            if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+                // Nested scroll container (e.g., #mainContent inside #gl-shell)
+                var containerRect = scrollContainer.getBoundingClientRect();
+                var targetOffsetInContainer = targetRect.top - containerRect.top + scrollContainer.scrollTop;
+                var scrollTo = targetOffsetInContainer - (scrollContainer.clientHeight / 2) + (targetRect.height / 2);
+                scrollContainer.scrollTo({ top: Math.max(0, scrollTo), behavior: 'smooth' });
+            } else {
+                // Fallback: window scroll
+                var scrollTarget = window.scrollY + targetRect.top - (window.innerHeight / 2) + (targetRect.height / 2);
+                window.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
+            }
 
             // Wait for scroll to settle, then position everything
             setTimeout(function() {
+                // Clean up previous step's glow
+                if (window._glSpotGlow) {
+                    window._glSpotGlow.forEach(function(el) { el.remove(); });
+                    window._glSpotGlow = [];
+                }
                 var rect = target.getBoundingClientRect();
                 var pad = 8;
                 var vh = window.innerHeight;
@@ -131,9 +151,21 @@ window.glSpotlight = (function() {
                     + hL + 'px ' + hT + 'px)';
                 _overlay.style.webkitClipPath = _overlay.style.clipPath;
 
+                // Bright highlight behind the cutout — makes target area pop
+                var glow = document.createElement('div');
+                glow.style.cssText = 'position:fixed;pointer-events:none;z-index:99989;border-radius:10px;background:rgba(99,102,241,0.12);box-shadow:0 0 40px 12px rgba(99,102,241,0.25),inset 0 0 20px rgba(99,102,241,0.08)';
+                glow.style.left = (hL - 4) + 'px';
+                glow.style.top = (hT - 4) + 'px';
+                glow.style.width = (hR - hL + 8) + 'px';
+                glow.style.height = (hB - hT + 8) + 'px';
+                document.body.appendChild(glow);
+                // Store for cleanup
+                if (!window._glSpotGlow) window._glSpotGlow = [];
+                window._glSpotGlow.push(glow);
+
                 // Highlight ring around the cutout
                 var ring = document.createElement('div');
-                ring.style.cssText = 'position:fixed;pointer-events:none;z-index:99991;border:2px solid #818cf8;border-radius:8px;box-shadow:0 0 12px rgba(99,102,241,0.5)';
+                ring.style.cssText = 'position:fixed;pointer-events:none;z-index:99991;border:2px solid #a5b4fc;border-radius:10px;box-shadow:0 0 20px rgba(99,102,241,0.6),0 0 40px rgba(99,102,241,0.3)';
                 ring.style.left = hL + 'px';
                 ring.style.top = hT + 'px';
                 ring.style.width = (hR - hL) + 'px';
@@ -204,7 +236,7 @@ window.glSpotlight = (function() {
                 _box.style.top = boxTop + 'px';
                 _box.style.left = boxLeft + 'px';
             }, 350);
-        }, 60);
+        }, 400); // allow nested container smooth-scroll to settle
     }
 
     return {
