@@ -206,7 +206,7 @@ async function _rhRenderCommandFlow(el) {
             if (_rhNonSongDefaults_pre[bt] !== undefined) return sum + _rhNonSongDefaults_pre[bt];
             return sum + 9;
         }, 0);
-        var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'min' : _preTotalMin + ' min';
+        var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'm' : _preTotalMin + 'm';
         html += '<div id="rhPlanCard" style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<span onclick="_rhEditPlanName()" style="font-size:0.78em;font-weight:800;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">✅ ' + escHtml(planName) + '</span>'
@@ -250,7 +250,7 @@ async function _rhRenderCommandFlow(el) {
         }
 
         var totalMin = savedUnits.reduce(function(sum, u) { return sum + _rhBlockMinutes(u); }, 0);
-        var totalLabel = totalMin >= 60 ? Math.floor(totalMin / 60) + 'h ' + (totalMin % 60) + 'min' : totalMin + ' min';
+        var totalLabel = totalMin >= 60 ? Math.floor(totalMin / 60) + 'h ' + (totalMin % 60) + 'm' : totalMin + 'm';
 
         // Block type config
         var _btConfig = {
@@ -312,8 +312,7 @@ async function _rhRenderCommandFlow(el) {
             if (bt === 'section') {
                 var secTitle = unit.title || 'Section';
                 var secMin = _sectionSubtotals[idx];
-                var secLabel = secMin !== undefined && secMin > 0 ? ' · ' + secMin + ' min' : '';
-                var secAssignChip = _rhAssignChip(unit, idx);
+                var secLabel = secMin !== undefined && secMin > 0 ? ' · ' + secMin + 'm' : '';
                 var secNoteText = unit.note || '';
                 var secNoteChip = secNoteText
                     ? '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#fbbf24;cursor:pointer;padding:1px 4px;border-radius:3px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.15)" title="' + escHtml(secNoteText) + '">📝</span>'
@@ -325,7 +324,7 @@ async function _rhRenderCommandFlow(el) {
                     + '<span onclick="_rhEditBlockTitle(' + idx + ')" title="Click to rename" style="flex:1;min-width:0;font-size:0.82em;font-weight:800;color:#60a5fa;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(secTitle) + '</span>'
                     + '<span class="rh-row-controls">'
                     + (secLabel ? '<span style="font-size:0.7em;color:rgba(96,165,250,0.6)">' + secLabel + '</span>' : '')
-                    + secAssignChip + secNoteChip
+                    + secNoteChip
                     + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                     + '</span>'
                     + '</div>'

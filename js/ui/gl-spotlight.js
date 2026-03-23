@@ -164,7 +164,7 @@ window.glSpotlight = (function() {
 
                 // Bright highlight behind the cutout — makes target area pop
                 var glow = document.createElement('div');
-                glow.style.cssText = 'position:fixed;pointer-events:none;z-index:99989;border-radius:10px;background:rgba(99,102,241,0.12);box-shadow:0 0 40px 12px rgba(99,102,241,0.25),inset 0 0 20px rgba(99,102,241,0.08)';
+                glow.style.cssText = 'position:fixed;pointer-events:none;z-index:99989;border-radius:10px;background:rgba(99,102,241,0.18);box-shadow:0 0 60px 20px rgba(99,102,241,0.35),0 0 120px 40px rgba(99,102,241,0.15)';
                 glow.style.left = (hL - 4) + 'px';
                 glow.style.top = (hT - 4) + 'px';
                 glow.style.width = (hR - hL + 8) + 'px';
@@ -176,7 +176,7 @@ window.glSpotlight = (function() {
 
                 // Highlight ring around the cutout
                 var ring = document.createElement('div');
-                ring.style.cssText = 'position:fixed;pointer-events:none;z-index:99991;border:2px solid #a5b4fc;border-radius:10px;box-shadow:0 0 20px rgba(99,102,241,0.6),0 0 40px rgba(99,102,241,0.3)';
+                ring.style.cssText = 'position:fixed;pointer-events:none;z-index:99991;border:3px solid #c7d2fe;border-radius:10px;box-shadow:0 0 24px rgba(99,102,241,0.7),0 0 48px rgba(99,102,241,0.4)';
                 ring.style.left = hL + 'px';
                 ring.style.top = hT + 'px';
                 ring.style.width = (hR - hL) + 'px';
