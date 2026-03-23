@@ -30,6 +30,11 @@ window.glSpotlight = (function() {
     var _key = '';
     var _registry = {};
 
+    // Escape key dismisses the spotlight
+    function _escHandler(e) {
+        if (e.key === 'Escape') { _markDone(_key); _cleanup(); }
+    }
+
     function _isDone(key) {
         try { return localStorage.getItem('gl_wt_' + key) === '1'; } catch(e) { return false; }
     }
@@ -67,6 +72,8 @@ window.glSpotlight = (function() {
             window._glSpotGlow.forEach(function(el) { el.remove(); });
             window._glSpotGlow = [];
         }
+        // Remove escape listener
+        document.removeEventListener('keydown', _escHandler);
         _box = null;
         _steps = [];
         _current = 0;
@@ -82,6 +89,8 @@ window.glSpotlight = (function() {
 
     function _show(stepIdx) {
         _current = stepIdx;
+        // Register escape key on first step
+        if (stepIdx === 0) document.addEventListener('keydown', _escHandler);
         if (stepIdx < 0) { _current = 0; return; }
         if (stepIdx >= _steps.length) {
             _markDone(_key);
@@ -206,35 +215,32 @@ window.glSpotlight = (function() {
                 var gap = 16;
                 var margin = 12;
 
-                // Position dialog so it NEVER overlaps the target.
-                // Priority: above target → below target → docked to top
+                // Position dialog — MUST be visible in viewport, prefer below target
                 var boxTop;
-                var spaceAbove = hT - gap;        // px available above the highlight
-                var spaceBelow = vh - hB - gap;   // px available below the highlight
+                var margin = 12;
+                var spaceBelow = vh - hB - gap;
+                var spaceAbove = hT - gap;
 
-                if (spaceAbove >= boxH + margin) {
-                    // Fits above target — preferred
-                    boxTop = hT - gap - boxH;
-                } else if (spaceBelow >= boxH + margin) {
-                    // Fits below target
+                if (spaceBelow >= boxH + margin) {
+                    // Fits below target — preferred (user reads top-down)
                     boxTop = hB + gap;
+                } else if (spaceAbove >= boxH + margin) {
+                    // Fits above target
+                    boxTop = hT - gap - boxH;
                 } else {
-                    // Neither fits — dock to top of viewport as slim banner
-                    boxTop = margin;
-                    // If this still overlaps, push below target anyway
-                    if (boxTop + boxH > hT - 4) {
-                        boxTop = hB + gap;
-                    }
+                    // Neither fits cleanly — dock to bottom of viewport
+                    boxTop = vh - boxH - margin;
                 }
-                // Final clamp to viewport
-                if (boxTop < margin) boxTop = margin;
-                if (boxTop + boxH > vh - margin) boxTop = vh - boxH - margin;
+
+                // HARD CLAMP — dialog must be fully visible no matter what
+                boxTop = Math.max(margin, Math.min(boxTop, vh - boxH - margin));
 
                 // Center horizontally
                 var boxLeft = Math.max(margin, Math.round((vw - boxW) / 2));
 
                 _box.style.top = boxTop + 'px';
                 _box.style.left = boxLeft + 'px';
+                _box.style.zIndex = '99992'; // ensure above overlay
             }, 350);
         }, 400); // allow nested container smooth-scroll to settle
     }
