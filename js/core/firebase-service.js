@@ -64,19 +64,20 @@ if (currentBandSlug === 'deadcetera-test' && !new URLSearchParams(window.locatio
     currentBandSlug = 'deadcetera';
     localStorage.setItem('deadcetera_current_band', 'deadcetera');
     localStorage.removeItem('deadcetera_current_user');
-    // Clear test user identity so production doesn't show test@groovelinx.com
+}
+// ALWAYS clear test identity if present (even if band slug was already restored)
+if (!new URLSearchParams(window.location.search).get('dev')) {
     if (localStorage.getItem('deadcetera_google_email') === 'test@groovelinx.com') {
         localStorage.removeItem('deadcetera_google_email');
         localStorage.removeItem('deadcetera_google_name');
         localStorage.removeItem('deadcetera_google_picture');
-        // Also reset runtime vars (already populated from stale localStorage above)
         currentUserEmail = null;
         currentUserName = '';
         currentUserPicture = '';
+        console.log('\uD83D\uDD12 Cleared test user identity');
     }
     localStorage.removeItem('gl_dev_user');
     localStorage.removeItem('gl_dev_band');
-    console.log('\uD83D\uDD12 Auto-restored production (cleared test identity)');
 }
 
 /**
