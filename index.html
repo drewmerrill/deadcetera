@@ -75,7 +75,7 @@
             <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
+            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx<sup style="font-size:0.45em;font-weight:400;opacity:0.6;vertical-align:super;margin-left:1px">™</sup></span></span>
         </div>
         <div class="topbar-right">
             <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()" title="Sign in to sync">👤</button>
@@ -87,7 +87,7 @@
     <!-- SLIDE-OUT MENU -->
     <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
     <nav class="slide-menu" id="slideMenu">
-        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
+        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx<sup style="font-size:0.4em;font-weight:400;opacity:0.5">™</sup></div>
         <!-- Mode Switcher (mobile) -->
         <div id="glMobileModeSwitcher" style="display:flex;gap:4px;padding:8px 12px 4px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08));margin-bottom:4px">
             <button class="gl-mobile-mode-btn" data-mode="sharpen" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('sharpen')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🔥 Sharpen</button>
@@ -592,7 +592,7 @@
         <div id="page-hero" class="app-page hidden">
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:32px 24px;text-align:center;">
                 <img src="hero-logo.png" alt="GrooveLinx" style="width:200px;height:200px;border-radius:20px;box-shadow:0 8px 40px rgba(102,126,234,0.35);margin-bottom:28px;">
-                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx</h1>
+                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx<sup style="font-size:0.35em;font-weight:400;-webkit-text-fill-color:rgba(255,255,255,0.4);margin-left:2px">™</sup></h1>
                 <p style="font-size:1.15em;font-weight:600;color:var(--text-main,#e2e8f0);margin:0 0 10px;">Where Bands Lock In.</p>
                 <p style="font-size:0.95em;color:var(--text-muted,#94a3b8);max-width:340px;line-height:1.6;margin:0 0 36px;">GrooveLinx helps bands rehearse smarter, build setlists faster, and walk on stage ready.</p>
                 <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;">
@@ -647,7 +647,7 @@
     </div><!-- /#gl-shell -->
 
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
-        <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
+        <p style="margin-bottom:4px">GrooveLinx™ — Where Bands Lock In 🤘</p>
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
