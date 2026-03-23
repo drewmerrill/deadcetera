@@ -780,6 +780,17 @@ async function vhSendTo(dest) {
             console.log('[vh] Loading existing versions for:', songTitle);
             var versions = typeof loadRefVersions === 'function' ? (await loadRefVersions(songTitle) || []) : [];
             if (!Array.isArray(versions)) versions = [];
+            // Dedup: don't add if same base URL already exists
+            var baseUrl = (version.url || '').replace(/[?#].*$/, '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            var isDupe = versions.some(function(v) {
+                var existing = (v.url || '').replace(/[?#].*$/, '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+                return existing === baseUrl;
+            });
+            if (isDupe) {
+                if (typeof showToast === 'function') showToast('This version is already saved');
+                closeVersionHub();
+                return;
+            }
             versions.push(version);
             console.log('[vh] Saving', versions.length, 'versions for:', songTitle);
             if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
