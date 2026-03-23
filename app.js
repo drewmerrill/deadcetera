@@ -13214,27 +13214,19 @@ async function _preloadSongDNA() {
             for (var i = batch; i < Math.min(batch + 20, cap); i++) {
                 var s = allSongs[i];
                 if (!s || !s.title) continue;
-                // Key: load from Firebase → populate allSongs[].key
+                // Key: load directly from legacy path (v2 path has no key data — skip it)
                 promises.push((function(song) {
-                    return GLStore.loadFieldMeta(song.title, 'key').then(function(data) {
+                    return loadBandDataFromDrive(song.title, 'key').then(function(data) {
                         if (data && data.key) {
                             song.key = data.key;
-                        } else if (song.key && !data) {
-                            // Seed has value, Firebase doesn't — promote seed into GLStore
-                            GLStore.saveSongData(song.title, 'key', { key: song.key, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
-                            _promoted++;
                         }
                     }).catch(function() {});
                 })(s));
-                // BPM: load from Firebase → populate allSongs[].bpm
+                // BPM: load directly from legacy path
                 promises.push((function(song) {
-                    return GLStore.loadFieldMeta(song.title, 'song_bpm').then(function(data) {
+                    return loadBandDataFromDrive(song.title, 'song_bpm').then(function(data) {
                         if (data && data.bpm) {
                             song.bpm = data.bpm;
-                        } else if (song.bpm && !data) {
-                            // Seed has value, Firebase doesn't — promote seed into GLStore
-                            GLStore.saveSongData(song.title, 'song_bpm', { bpm: song.bpm, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
-                            _promoted++;
                         }
                     }).catch(function() {});
                 })(s));
