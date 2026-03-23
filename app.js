@@ -647,10 +647,11 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadNorthStarCache();
         backgroundScanNorthStars();
         preloadReadinessCache().then(function() {
+            console.log('📊 Readiness loaded:', Object.keys(readinessCache).length, 'songs');
             // Signal that bulk readiness data loaded — invalidates Practice Attention cache
             if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
             // Re-render song list so readiness bars fill in (they render inline from cache)
-            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
+            if (typeof renderSongs === 'function') { console.log('📊 Re-rendering songs with readiness'); requestAnimationFrame(function() { renderSongs(); }); }
             // Re-render dashboard now that readiness data is available (Practice Radar needs it)
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
@@ -13184,13 +13185,16 @@ function readinessLabel(score) {
 async function preloadReadinessCache() {
     if (readinessCacheLoaded) return;
     try {
+        console.log('📊 preloadReadinessCache: loading from', MASTER_READINESS_FILE, 'firebaseDB:', !!firebaseDB, 'bandSlug:', currentBandSlug);
         var data = await loadMasterFile(MASTER_READINESS_FILE);
+        console.log('📊 preloadReadinessCache: got', data ? Object.keys(data).length : 'null', 'entries');
         if (data && typeof data === 'object') {
             readinessCache = data;
             if (typeof GLStore !== 'undefined' && GLStore.setAllReadiness) GLStore.setAllReadiness(data);
         }
         readinessCacheLoaded = true;
     } catch(e) {
+        console.error('📊 preloadReadinessCache ERROR:', e);
         readinessCacheLoaded = true;
     }
 }
