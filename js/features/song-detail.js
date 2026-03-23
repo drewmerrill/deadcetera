@@ -1395,8 +1395,13 @@ window.sdSaveStructure = function(title) {
     if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
         GLStore.saveSongData(title, 'song_structure', { sections: sections, updatedBy: who, updatedAt: new Date().toISOString() });
     }
+    // Sync in-memory flag so cleanup filter updates immediately
+    var song = (typeof allSongs !== 'undefined') ? allSongs.find(function(s){ return s.title === title; }) : null;
+    if (song && sections.length > 0) song._hasStructure = true;
     if (typeof showToast === 'function') showToast('Structure saved');
     _sdLoadStructure(title);
+    // Re-render song list to update filter counts
+    if (typeof renderSongs === 'function') requestAnimationFrame(function(){ renderSongs(); });
 };
 
 // ── Lifecycle suggestion (advisory) ───────────────────────────────────────────
