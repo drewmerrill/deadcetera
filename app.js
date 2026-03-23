@@ -649,8 +649,8 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadReadinessCache().then(function() {
             // Signal that bulk readiness data loaded — invalidates Practice Attention cache
             if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
-            // Re-render readiness chains on the song list (may have rendered before cache loaded)
-            if (typeof addReadinessChains === 'function') requestAnimationFrame(addReadinessChains);
+            // Re-render song list so readiness bars fill in (they render inline from cache)
+            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
             // Re-render dashboard now that readiness data is available (Practice Radar needs it)
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();

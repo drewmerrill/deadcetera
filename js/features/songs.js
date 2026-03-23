@@ -470,14 +470,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (!_isSelectMode) {
             if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
                 highlightSelectedSongRow(selectedSong.title);
-            } else if (filtered.length > 0) {
-                // Auto-select first song ONLY if Songs page is active (not Home or other pages)
-                var _activePage = (typeof GLStore !== 'undefined' && GLStore.getActivePage) ? GLStore.getActivePage() : null;
-                if (_activePage === 'songs') {
-                    var firstTitle = filtered[0].title;
-                    if (firstTitle && typeof selectSong === 'function') selectSong(firstTitle);
-                }
             }
+            // Auto-select first song REMOVED — users found "After Midnight"
+            // auto-opening on every render confusing. Let them tap explicitly.
         }
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
     });
