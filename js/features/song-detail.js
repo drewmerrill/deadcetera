@@ -192,8 +192,8 @@ async function _sdPopulateBandLens(title) {
     var metaKey=firebaseKey||(songObj&&songObj.key?songObj.key:'')||(songMeta.key?songMeta.key:'')||'';
     var metaBpm=firebaseBpm||(songObj&&songObj.bpm?String(songObj.bpm):'')||(songMeta.bpm?String(songMeta.bpm):'')||'';
 
-    var leadOpts=['','drew','chris','brian','pierce','drew,chris','shared','rotating'].map(function(v){
-        var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v==='shared'?'Shared':v==='rotating'?'Rotating':v.charAt(0).toUpperCase()+v.slice(1);
+    var leadOpts=['','drew','chris','brian','pierce','drew,chris','shared','rotating','n/a'].map(function(v){
+        var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v==='shared'?'Shared':v==='rotating'?'Rotating':v==='n/a'?'N/A (Instrumental)':v.charAt(0).toUpperCase()+v.slice(1);
         return '<option value="'+v+'"'+(lead===v?' selected':'')+'>'+lbl+'</option>';
     }).join('');
     var statusOpts=[['','— Select —'],['prospect','👀 Prospect (Active)'],['learning','📖 Learning (Active)'],['rotation','🔄 In Rotation (Active)'],['shelved','📦 Shelved (Library)']].map(function(p){
