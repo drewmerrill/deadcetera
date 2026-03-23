@@ -49,13 +49,26 @@ if (typeof glSpotlight !== 'undefined') {
         { target: '#rhTemplateArea',
           prepare: function() { _rhEnsureAddBlockMenu(true); },
           text: 'Templates let you add common blocks with one tap — "Cold starts," "Band business," "Warm-Up" section. Faster than typing each one.' },
-        { target: function() { return document.querySelector('.rh-drag-handle'); },
+        { target: function() {
+              // Target the first BLOCK row's drag handle (skip section header handles)
+              var rows = document.querySelectorAll('.rh-unit-row');
+              for (var i = 0; i < rows.length; i++) {
+                  if (!rows[i].querySelector('[style*="text-transform:uppercase"]')) {
+                      var handle = rows[i].querySelector('.rh-drag-handle');
+                      if (handle) return rows[i]; // highlight the whole row, not just the tiny handle
+                  }
+              }
+              return document.querySelector('.rh-unit-row');
+          },
           prepare: function() { _rhEnsureAddBlockMenu(false); },
-          text: 'Grab this handle to drag any block up or down. Arrange things in the order you\'d actually run rehearsal.' },
+          text: 'Grab the ⋮⋮ handle on the left to drag any block up or down. Arrange things in the order you\'d actually run rehearsal.' },
         { target: function() { return document.querySelector('.rh-unit-row [onclick^="_rhEditBlockTime"]'); },
           prepare: function() { _rhEnsureAddBlockMenu(false); },
           text: 'This is the time budget. Tap it to set how many minutes you want to spend on this block. The total at the top adds up so you know if the plan fits your available time.' },
-        { target: function() { return document.querySelector('[onclick="renderRehearsalPlanner()"]'); },
+        { target: function() {
+              var btn = document.querySelector('[onclick="renderRehearsalPlanner()"]');
+              return btn || null;
+          },
           prepare: function() { _rhEnsureAddBlockMenu(false); },
           text: 'Rebuild starts over with a new AI-generated plan. Don\'t worry — your current plan is auto-saved as a snapshot first, so you can always get it back from "Saved Plans."' },
         { target: function() { return document.querySelector('[onclick="_rhSaveSnapshotUI()"]'); },

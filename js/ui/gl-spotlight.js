@@ -126,7 +126,7 @@ window.glSpotlight = (function() {
                     window._glSpotGlow = [];
                 }
                 var rect = target.getBoundingClientRect();
-                var pad = 8;
+                var pad = 12; // generous padding to fully surround the target
                 var vh = window.innerHeight;
                 var vw = window.innerWidth;
 
