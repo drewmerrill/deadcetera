@@ -135,11 +135,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 var _ts = (typeof statusCache !== 'undefined') ? statusCache[song.title] : null;
                 if (_ts) return false;
             }
-            // no_lead requires async data — use cached songDetailCache if available
             if (tf === 'no_lead') {
+                // Check bulk-preloaded song.lead first, then GLStore detail cache
+                if (song.lead) return false;
                 var _dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(song.title) : null;
-                var _hasLead = _dc && _dc.lead_singer && _dc.lead_singer.singer;
-                if (_hasLead) return false;
+                if (_dc && _dc.lead_singer && _dc.lead_singer.singer) return false;
             }
             if (tf === 'needs_work') {
                 var _nwScores = (typeof readinessCache !== 'undefined' && readinessCache[song.title]) || {};
