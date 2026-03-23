@@ -126,7 +126,9 @@ window.glSpotlight = (function() {
                     window._glSpotGlow = [];
                 }
                 var rect = target.getBoundingClientRect();
-                var pad = 12; // generous padding to fully surround the target
+                // Adaptive padding: small targets need more, large targets need less
+                var targetArea = rect.width * rect.height;
+                var pad = targetArea < 2000 ? 16 : targetArea < 10000 ? 10 : 6;
                 var vh = window.innerHeight;
                 var vw = window.innerWidth;
 

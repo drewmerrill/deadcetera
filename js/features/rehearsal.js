@@ -77,9 +77,9 @@ if (typeof glSpotlight !== 'undefined') {
         { target: function() { return document.querySelector('[onclick="_rhLaunchSavedPlan()"]'); },
           prepare: function() { _rhEnsureAddBlockMenu(false); },
           text: 'When the plan looks right, Start Rehearsal opens practice mode with your songs in order, charts ready, and a timer tracking each block.' },
-        { target: '#rhSaveState',
+        { target: '#rhPlanCard',
           prepare: function() { _rhEnsureAddBlockMenu(false); },
-          text: 'Your plan auto-saves to the cloud. Every band member sees the same plan when they open the Rehearsal page — no need to text it separately. When you see "✓ Saved," the whole band has it.' }
+          text: 'Your plan auto-saves to the cloud. Every band member sees the same plan when they open the Rehearsal page — no need to text it separately. When you see "✓ Saved" next to the plan name, the whole band has it.' }
     ]);
 }
 
