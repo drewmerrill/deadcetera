@@ -889,6 +889,11 @@ window.sdUpdateLeadSinger = function(v) {
         saveBandDataToDrive(_sdCurrentSong, 'lead_singer', { singer: v });
         if (typeof showToast === 'function') showToast('Lead singer saved');
     }
+    // Sync in-memory allSongs cache so cleanup filter updates immediately
+    var song = (typeof allSongs !== 'undefined') ? allSongs.find(function(s){ return s.title === _sdCurrentSong; }) : null;
+    if (song) song.lead = v;
+    // Re-render song list to update filter counts
+    if (typeof renderSongs === 'function') requestAnimationFrame(function(){ renderSongs(); });
 };
 window.sdUpdateSongStatus = function(v) {
     if (!_sdCurrentSong) return;
@@ -903,6 +908,8 @@ window.sdUpdateSongStatus = function(v) {
     if (typeof statusCache !== 'undefined' && typeof saveMasterFile === 'function') {
         saveMasterFile('_master_song_statuses.json', statusCache).catch(function(){});
     }
+    // Re-render song list to update filter counts
+    if (typeof renderSongs === 'function') requestAnimationFrame(function(){ renderSongs(); });
 };
 window.sdUpdateSongKey = function(v) {
     if (!_sdCurrentSong) return;
@@ -917,6 +924,8 @@ window.sdUpdateSongKey = function(v) {
     // Sync topbar select if present
     var topSel = document.getElementById('songKeySelect');
     if (topSel) topSel.value = v || '';
+    // Re-render song list to update filter counts
+    if (typeof renderSongs === 'function') requestAnimationFrame(function(){ renderSongs(); });
 };
 window.sdUpdateSongBpm = function(v) {
     if (!_sdCurrentSong) return;
@@ -933,6 +942,8 @@ window.sdUpdateSongBpm = function(v) {
     // Sync topbar input if present
     var topInp = document.getElementById('songBpmInput');
     if (topInp) topInp.value = n;
+    // Re-render song list to update filter counts
+    if (typeof renderSongs === 'function') requestAnimationFrame(function(){ renderSongs(); });
 };
 // Sync allSongs in-memory cache when a field is updated
 function _sdSyncAllSongsField(title, field, value) {
