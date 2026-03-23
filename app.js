@@ -13235,8 +13235,23 @@ async function _preloadSongDNA() {
                 var ls = songData.lead_singer;
                 song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
             }
+            // Structure (for "No Structure" filter)
+            if (songData.song_structure) {
+                var st = songData.song_structure;
+                if (st.sections && st.sections.length > 0) {
+                    song._hasStructure = true;
+                }
+            }
+            // Status (supplement statusCache if not yet loaded)
+            if (songData.song_status) {
+                var ss = songData.song_status;
+                var statusVal = (typeof ss === 'object' && ss.status) ? ss.status : (typeof ss === 'string' ? ss : '');
+                if (statusVal && typeof statusCache !== 'undefined' && !statusCache[song.title]) {
+                    statusCache[song.title] = statusVal;
+                }
+            }
         });
-        console.log('[DNA] Bulk loaded key/bpm/lead for ' + populated + ' songs (1 Firebase call)');
+        console.log('[DNA] Bulk loaded key/bpm/lead/structure for ' + populated + ' songs (1 Firebase call)');
     } catch(e) {
         console.warn('[DNA] Bulk load failed, falling back to nothing:', e.message);
     }

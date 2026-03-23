@@ -152,7 +152,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 if (_nrStatus === 'rotation') return false;
             }
             if (tf === 'no_structure') {
-                // Check if song has structure in GLStore detail cache
+                // Check bulk-preloaded flag first, then GLStore detail cache
+                if (song._hasStructure) return false;
                 var _stDc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(song.title) : null;
                 if (_stDc && _stDc.song_structure && _stDc.song_structure.sections && _stDc.song_structure.sections.length > 0) return false;
             }
