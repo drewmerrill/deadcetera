@@ -111,22 +111,14 @@ window.glSpotlight = (function() {
             // Skip missing targets gracefully (forward only)
             if (!target) { _show(stepIdx + 1); return; }
 
-            // Scroll target to CENTER of viewport — try nested scroll containers first
-            var targetRect = target.getBoundingClientRect();
-            var scrollContainer = target.closest('.main-content') || target.closest('#gl-shell > .main-content') || null;
-            if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
-                // Nested scroll container (e.g., #mainContent inside #gl-shell)
-                var containerRect = scrollContainer.getBoundingClientRect();
-                var targetOffsetInContainer = targetRect.top - containerRect.top + scrollContainer.scrollTop;
-                var scrollTo = targetOffsetInContainer - (scrollContainer.clientHeight / 2) + (targetRect.height / 2);
-                scrollContainer.scrollTo({ top: Math.max(0, scrollTo), behavior: 'smooth' });
-            } else {
-                // Fallback: window scroll
-                var scrollTarget = window.scrollY + targetRect.top - (window.innerHeight / 2) + (targetRect.height / 2);
-                window.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
+            // Scroll target into view — use native scrollIntoView which handles nested containers
+            try {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            } catch(e) {
+                target.scrollIntoView(true);
             }
 
-            // Wait for scroll to settle, then position everything
+            // Wait for scroll to settle (600ms for smooth scroll in nested containers)
             setTimeout(function() {
                 // Clean up previous step's glow
                 if (window._glSpotGlow) {
@@ -245,7 +237,7 @@ window.glSpotlight = (function() {
                 _box.style.left = boxLeft + 'px';
                 _box.style.zIndex = '99992'; // ensure above overlay
             }, 350);
-        }, 400); // allow nested container smooth-scroll to settle
+        }, 600); // allow nested container smooth-scroll to settle
     }
 
     return {
