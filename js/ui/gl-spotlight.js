@@ -174,23 +174,29 @@ window.glSpotlight = (function() {
                 var gap = 16;
                 var margin = 12;
 
-                // Target center relative to viewport
-                var targetCenterY = (rect.top + rect.bottom) / 2;
-                var targetInTopHalf = targetCenterY < vh / 2;
-
-                // Place dialog in the OPPOSITE half of the screen from the target
+                // Position dialog so it NEVER overlaps the target.
+                // Priority: above target → below target → docked to top
                 var boxTop;
-                if (targetInTopHalf) {
-                    // Target is in top half → put dialog in bottom half
-                    boxTop = Math.max(hB + gap, vh / 2 + gap);
-                    // Clamp so it doesn't go off bottom
-                    if (boxTop + boxH > vh - margin) boxTop = vh - boxH - margin;
+                var spaceAbove = hT - gap;        // px available above the highlight
+                var spaceBelow = vh - hB - gap;   // px available below the highlight
+
+                if (spaceAbove >= boxH + margin) {
+                    // Fits above target — preferred
+                    boxTop = hT - gap - boxH;
+                } else if (spaceBelow >= boxH + margin) {
+                    // Fits below target
+                    boxTop = hB + gap;
                 } else {
-                    // Target is in bottom half → put dialog in top half
-                    boxTop = Math.min(hT - gap - boxH, vh / 2 - boxH - gap);
-                    // Clamp so it doesn't go off top
-                    if (boxTop < margin) boxTop = margin;
+                    // Neither fits — dock to top of viewport as slim banner
+                    boxTop = margin;
+                    // If this still overlaps, push below target anyway
+                    if (boxTop + boxH > hT - 4) {
+                        boxTop = hB + gap;
+                    }
                 }
+                // Final clamp to viewport
+                if (boxTop < margin) boxTop = margin;
+                if (boxTop + boxH > vh - margin) boxTop = vh - boxH - margin;
 
                 // Center horizontally
                 var boxLeft = Math.max(margin, Math.round((vw - boxW) / 2));

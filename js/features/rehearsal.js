@@ -198,12 +198,21 @@ async function _rhRenderCommandFlow(el) {
         console.log('[Planner] Rendering saved plan:', savedUnits.length, 'units,', songCount, 'songs', savedUnits);
 
         var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Next Rehearsal';
+        // Compute total time BEFORE using it in the header
+        var _rhNonSongDefaults_pre = { exercise: 10, business: 15, jam: 10, note: 5, section: 0 };
+        var _preTotalMin = savedUnits.reduce(function(sum, u) {
+            var bt = u.type || 'single';
+            if (u.durationMinOverride > 0) return sum + u.durationMinOverride;
+            if (_rhNonSongDefaults_pre[bt] !== undefined) return sum + _rhNonSongDefaults_pre[bt];
+            return sum + 9;
+        }, 0);
+        var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'min' : _preTotalMin + ' min';
         html += '<div id="rhPlanCard" style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<span onclick="_rhEditPlanName()" style="font-size:0.78em;font-weight:800;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">✅ ' + escHtml(planName) + '</span>'
             + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
             + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
-            + '<span style="font-size:0.65em;font-weight:700;color:#a5b4fc;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">⏱ ' + totalLabel + '</span>'
+            + '<span style="font-size:0.65em;font-weight:700;color:#a5b4fc;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">\u23F1 ' + _preTotalLabel + '</span>'
             + '<button onclick="_rhRunWalkthrough()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;cursor:pointer" title="Show guided tour">?</button>'
             + '<button onclick="_rhClearSavedPlan()" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
             + '</div>';
