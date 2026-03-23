@@ -1329,9 +1329,14 @@
   function setAllReadiness(data) {
     try {
       if (typeof readinessCache !== 'undefined') {
-        // Replace entire cache
+        // Clone data first — if readinessCache === data (same ref), clearing
+        // would destroy the source before we can copy from it
+        var clone = {};
+        if (data && typeof data === 'object') {
+          Object.keys(data).forEach(function(k) { clone[k] = data[k]; });
+        }
         Object.keys(readinessCache).forEach(function(k) { delete readinessCache[k]; });
-        Object.assign(readinessCache, data);
+        Object.assign(readinessCache, clone);
       }
     } catch(e) {}
     emit('readinessChanged', { bulk: true });
