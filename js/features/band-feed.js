@@ -544,7 +544,7 @@ window.renderBandFeedPage = async function(el) {
     _feedRemoveBackBar();
     el.innerHTML = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:12px;border-bottom:2px solid rgba(99,102,241,0.15);margin-bottom:12px">'
         + '<div><h1 style="margin:0;font-size:1.4em">\uD83D\uDCE1 Band Feed</h1>'
-        + '<p style="margin:4px 0 0;font-size:0.82em;color:var(--text-dim)">What needs you? What\u2019s waiting? What changed?</p></div>'
+        + '<p style="margin:4px 0 0;font-size:0.82em;color:var(--text-dim)">Where to jump in. What\u2019s waiting. What changed.</p></div>'
         + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
         + '</div>'
         + '<div id="feedCreateBar" style="margin-bottom:8px"></div>'
@@ -1523,7 +1523,7 @@ function _feedMicroReinforce(type) {
         first_post: '\uD83C\uDF89 First post \u2014 you\u2019re using Band Feed',
         first_vote: '\uD83C\uDF89 First vote \u2014 you just influenced the band',
         all_clear: '\uD83D\uDCAA All clear \u2014 the band is locked in',
-        targeted: '\uD83C\uDFAF Nice \u2014 you jumped in where needed',
+        targeted: '\uD83C\uDFAF Nice \u2014 you jumped in where it mattered',
         return: 'Back to Feed \u2014 you\u2019re in the right place',
         momentum: '\uD83D\uDD25 Nice \u2014 keep it going'
     };
