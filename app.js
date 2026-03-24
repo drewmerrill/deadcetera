@@ -10225,6 +10225,16 @@ function settingsTab(tab, btn) {
                     <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in the top navigation bar and metronome screen.</div></div>
                 </div></div>
         </div>
+        <div class="app-card"><h3>🎧 Playback Preference</h3>
+            <div class="form-row"><label class="form-label">Preferred playback source</label>
+                <select class="app-select" id="settingsSourcePref" onchange="if(typeof SetlistPlayer!=='undefined')SetlistPlayer.setSourcePref(this.value)" style="max-width:240px">
+                    <option value="youtube"${(typeof SetlistPlayer !== 'undefined' && SetlistPlayer.getSourcePref() === 'youtube') || (!typeof SetlistPlayer !== 'undefined' && (localStorage.getItem('gl_player_source_pref')||'youtube') === 'youtube') ? ' selected' : ''}>YouTube (default)</option>
+                    <option value="spotify"${(localStorage.getItem('gl_player_source_pref')) === 'spotify' ? ' selected' : ''}>Spotify</option>
+                    <option value="archive"${(localStorage.getItem('gl_player_source_pref')) === 'archive' ? ' selected' : ''}>Archive.org</option>
+                </select>
+                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">The setlist player tries your preferred source first, then automatically falls back to others.</div>
+            </div>
+        </div>
         <div class="app-card"><h3>👥 Band Members</h3>
             <div id="membersList">${Object.entries(bandMembers).map(([k,m])=>`
                 <div class="list-item" style="padding:10px 12px">
