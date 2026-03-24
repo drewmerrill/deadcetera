@@ -264,7 +264,7 @@ window.ListeningBundles = (function() {
         }
         var result = await deliverBundle(bundle, destination);
         if (result.matched === 0) {
-            if (typeof showToast === 'function') showToast('No matching versions found');
+            if (typeof showToast === 'function') showToast('Finding versions\u2026 try again in a moment');
             return;
         }
         launchBundle(result);
@@ -584,7 +584,7 @@ window.ListeningBundles = (function() {
             return { ok: false, reason: 'resolve error' };
         }
         if (!resolved.trackUris.length) {
-            if (typeof showToast === 'function') showToast('No Spotify matches found for any song');
+            if (typeof showToast === 'function') showToast('Finding Spotify matches\u2026 try again in a moment');
             return { ok: false, reason: 'no matches', resolved: resolved };
         }
 

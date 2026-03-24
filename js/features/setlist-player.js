@@ -83,13 +83,27 @@ window.SetlistPlayer = (function() {
             }
         } catch(e) {}
 
-        // 3. Search YouTube via oEmbed probe (no API key)
-        // Try common YouTube URL pattern — if it resolves, we have a match
+        // 3. Auto-search YouTube (no API key — uses Invidious public API)
         try {
             var q = encodeURIComponent(songTitle + ' ' + (bandName || 'Grateful Dead'));
-            var resp = await fetch('https://www.youtube.com/oembed?url=https://www.youtube.com/results?search_query=' + q + '&format=json').catch(function() { return null; });
-            // oEmbed won't work for search, so we skip and return null
-            // Future: use YouTube Data API v3 with key for actual search
+            // Try Invidious public instances for search (returns JSON, no API key)
+            var searchUrls = [
+                'https://vid.puffyan.us/api/v1/search?q=' + q + '&type=video&sort_by=relevance',
+                'https://invidious.fdn.fr/api/v1/search?q=' + q + '&type=video&sort_by=relevance'
+            ];
+            for (var si = 0; si < searchUrls.length; si++) {
+                try {
+                    var resp = await fetch(searchUrls[si], { signal: AbortSignal.timeout(5000) }).catch(function() { return null; });
+                    if (resp && resp.ok) {
+                        var results = await resp.json();
+                        if (results && results.length && results[0].videoId) {
+                            var foundId = results[0].videoId;
+                            _setCachedYtId(songTitle, foundId);
+                            return foundId;
+                        }
+                    }
+                } catch(e2) { continue; }
+            }
         } catch(e) {}
 
         return null;
@@ -225,6 +239,9 @@ window.SetlistPlayer = (function() {
 
         if (song.youtubeId && _ytReady) {
             _playYouTube(song.youtubeId);
+        } else if (_ytReady) {
+            // Auto-resolve: show "Finding..." then search
+            _showSearching(song);
         } else {
             _showFallback(song);
         }
@@ -268,17 +285,32 @@ window.SetlistPlayer = (function() {
         });
     }
 
+    async function _showSearching(song) {
+        var container = document.getElementById('slpVideoContainer');
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>';
+
+        // Search YouTube automatically
+        var ytId = await _resolveYouTubeId(song.title, song.band);
+        if (ytId) {
+            song.youtubeId = ytId;
+            _playYouTube(ytId);
+        } else {
+            _showFallback(song);
+        }
+    }
+
     function _showFallback(song) {
         var el = document.getElementById('slpFallback');
         var container = document.getElementById('slpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.85em">No video available</div>';
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.85em">Opening best version\u2026</div>';
         if (!el) return;
 
         var searchQuery = encodeURIComponent(song.title + ' ' + song.band);
-        var html = '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+        var html = '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:10px">Listen on your preferred platform</div>'
+            + '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
             + '<a href="https://www.youtube.com/results?search_query=' + searchQuery + '" target="_blank" rel="noopener" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.05);color:#f87171;text-decoration:none">\uD83D\uDCFA YouTube</a>'
-            + '<a href="https://archive.org/search?query=' + searchQuery + '" target="_blank" rel="noopener" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;text-decoration:none">\uD83C\uDFDB\uFE0F Archive</a>'
             + '<button onclick="SetlistPlayer._openSpotify(\'' + _esc(song.title).replace(/'/g, "\\'") + '\')" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:rgba(30,215,96,0.05);color:#1ed760;cursor:pointer">\uD83C\uDFB5 Spotify</button>'
+            + '<a href="https://archive.org/search?query=' + searchQuery + '" target="_blank" rel="noopener" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;text-decoration:none">\uD83C\uDFDB\uFE0F Archive</a>'
             + '</div>'
             + '<button onclick="SetlistPlayer.next()" style="margin-top:12px;padding:10px 24px;border-radius:8px;font-size:0.88em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer">Skip \u23ED</button>';
         el.innerHTML = html;
