@@ -4023,7 +4023,7 @@ window.homeGoWeakSongs = function homeGoWeakSongs(titles) {
 };
 
 async function _fillWeakSongs(bundle) {
-    var el = document.getElementById('home-weak-songs');
+    var el = document.getElementById('home-weak-songs') || document.getElementById('hdWeakSongsCard');
     if (!el) return;
 
     var activityLog = [];
