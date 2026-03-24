@@ -797,7 +797,7 @@ function rmCaptureMoment() {
     var popup = document.createElement('div');
     popup.id = 'rmCapturePopup';
     popup.style.cssText = 'position:fixed;bottom:80px;left:12px;right:12px;background:#1e293b;border:1px solid rgba(102,126,234,0.3);border-radius:14px;padding:14px;z-index:4000;box-shadow:0 8px 32px rgba(0,0,0,0.6)';
-    popup.innerHTML = '<div style="font-size:0.78em;font-weight:700;color:#818cf8;margin-bottom:8px">📸 Capture Moment — ' + songTitle + '</div>';
+    popup.innerHTML = '<div style="font-size:0.78em;font-weight:700;color:#818cf8;margin-bottom:4px">\uD83D\uDCDD Quick Note — ' + songTitle + '</div><div style="font-size:0.65em;color:var(--text-dim);margin-bottom:8px">Saved to this song\'s detail page under Moments</div>';
     popup.innerHTML += '<textarea id="rmCaptureText" class="app-textarea" placeholder="What just happened? (e.g. “Hit the intro landing perfectly” or “Section C still shaky”)" style="height:70px;font-size:0.85em;margin-bottom:8px"></textarea>';
     popup.innerHTML += '<div style="display:flex;gap:8px">';
     popup.innerHTML += '<button onclick="rmCaptureSave()" style="background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#a5b4fc;padding:6px 14px;border-radius:8px;font-size:0.85em;font-weight:700;cursor:pointer;flex:1">💾 Save Note</button>';
@@ -811,7 +811,6 @@ function rmCaptureMoment() {
 function rmCaptureCancel() { document.getElementById('rmCapturePopup')?.remove(); }
 
 async function rmCaptureSave() {
-    if (!requireSignIn()) return;
     var ta = document.getElementById('rmCaptureText');
     var text = ta ? ta.value.trim() : '';
     if (!text) { showToast('Write something first!'); return; }
@@ -819,20 +818,23 @@ async function rmCaptureSave() {
     if (!songTitle) { showToast('No song loaded'); return; }
     var ts = new Date().toISOString();
     var note = { text: text, ts: ts, by: currentUserEmail || 'me', mode: 'rehearsal' };
-    try {
-        var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/moments');
-        await firebaseDB.ref(path).push(note);
-        showToast('📸 Moment captured!');
-        document.getElementById('rmCapturePopup')?.remove();
-    } catch(e) {
-        // Fallback: save to localStorage
+    // Try Firebase first, fall back to localStorage (no auth gate — rehearsal must not be blocked)
+    var saved = false;
+    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+        try {
+            var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/moments');
+            await firebaseDB.ref(path).push(note);
+            saved = true;
+        } catch(e) {}
+    }
+    if (!saved) {
         var key = 'deadcetera_moments_' + songTitle;
         var arr = JSON.parse(localStorage.getItem(key)||'[]');
         arr.push(note);
         localStorage.setItem(key, JSON.stringify(arr));
-        showToast('📸 Saved locally');
-        document.getElementById('rmCapturePopup')?.remove();
     }
+    showToast(saved ? '📸 Note saved' : '📸 Saved locally (will sync later)');
+    document.getElementById('rmCapturePopup')?.remove();
 }
 
 function gmNavigate(dir) {
@@ -1058,8 +1060,8 @@ function _gmEnsureOverlay() {
         // Capture Moment floating button — appended to body so position:fixed works
         var capBtn = document.createElement('button');
         capBtn.id = 'rmCaptureMomentBtn';
-        capBtn.innerHTML = '\uD83D\uDCF8';
-        capBtn.title = 'Capture a moment';
+        capBtn.innerHTML = '\uD83D\uDCDD';
+        capBtn.title = 'Quick Note — saves to this song\'s detail page';
         capBtn.onclick = rmCaptureMoment;
         capBtn.style.cssText = 'position:fixed;bottom:74px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(102,126,234,0.25);border:1.5px solid rgba(102,126,234,0.5);color:#a5b4fc;font-size:1.2em;cursor:pointer;z-index:3500;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.4)';
         document.body.appendChild(capBtn);

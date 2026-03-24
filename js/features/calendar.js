@@ -1195,7 +1195,7 @@ async function calSaveEvent(editIdx) {
         }
     }
     document.getElementById('calEventFormArea').innerHTML = '';
-    loadCalendarEvents();
+    renderCalendarInner(); // re-render full grid + events list
 }
 
 
