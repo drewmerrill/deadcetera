@@ -237,7 +237,9 @@ window.PlaybackSession = (function() {
         if (existing) existing.remove();
 
         var firstSong = bundle.songs && bundle.songs[0];
-        var q = encodeURIComponent((firstSong ? firstSong.songTitle : '') + ' Grateful Dead');
+        var q = (typeof ListeningBundles !== 'undefined' && ListeningBundles._buildSearchQuery)
+            ? ListeningBundles._buildSearchQuery(firstSong ? firstSong.songTitle : '')
+            : encodeURIComponent(firstSong ? firstSong.songTitle : '');
 
         var overlay = document.createElement('div');
         overlay.id = 'glPlaybackFallback';

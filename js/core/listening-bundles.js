@@ -263,7 +263,7 @@ window.ListeningBundles = (function() {
         _qlCurrentIdx = 0;
         var first = _qlSortedUrls[0];
         var firstTitle = first ? first.songTitle : '';
-        var q = encodeURIComponent(firstTitle + ' Grateful Dead');
+        var q = _buildSearchQuery(firstTitle);
 
         var firstSource = first ? _detectUrlSource(first.url) : '';
         var spotifyId = first ? _getSpotifyTrackId(first.url) : null;
@@ -467,10 +467,29 @@ window.ListeningBundles = (function() {
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     function _detectUrlSource(url) { if (!url) return ''; var l = url.toLowerCase(); if (l.indexOf('spotify') >= 0) return 'spotify'; if (l.indexOf('youtube') >= 0 || l.indexOf('youtu.be') >= 0) return 'youtube'; if (l.indexOf('archive.org') >= 0) return 'archive'; return 'link'; }
 
+    // ── Fallback Search Query Builder ────────────────────────────────────────
+    // Looks up actual artist from allSongs. Never defaults to "Grateful Dead".
+    function _buildSearchQuery(songTitle) {
+        var artist = '';
+        if (typeof allSongs !== 'undefined' && allSongs) {
+            var match = allSongs.find(function(s) { return s.title === songTitle; });
+            if (match) {
+                if (match.artist && match.artist !== 'Other') artist = match.artist;
+                else if (match.band) {
+                    var bandMap = { GD: 'Grateful Dead', JGB: 'Jerry Garcia Band', ABB: 'Allman Brothers Band', Other: '' };
+                    artist = bandMap[match.band] || match.band;
+                }
+            }
+        }
+        var q = songTitle + (artist ? ' ' + artist : '');
+        console.log('[Fallback] Query:', q, '(title:', songTitle, 'artist:', artist, ')');
+        return encodeURIComponent(q);
+    }
+
     function _showQuickLaunchFallback(bundle, destination) {
         // Never leave user hanging — show explicit actions
         var firstSong = bundle.songs[0];
-        var q = encodeURIComponent((firstSong ? firstSong.songTitle : '') + ' Grateful Dead');
+        var q = _buildSearchQuery(firstSong ? firstSong.songTitle : '');
         var existing = document.getElementById('glQuickLaunchFallback');
         if (existing) existing.remove();
 
@@ -826,7 +845,7 @@ window.ListeningBundles = (function() {
     }
 
     async function _searchSpotifyTrack(songTitle) {
-        var q = encodeURIComponent(songTitle + ' Grateful Dead');
+        var q = _buildSearchQuery(songTitle);
         var data = await _spotifyApi('/search?q=' + q + '&type=track&limit=1');
         if (data && data.tracks && data.tracks.items && data.tracks.items.length) {
             return data.tracks.items[0].id;
@@ -1430,6 +1449,7 @@ window.ListeningBundles = (function() {
         _qlFullReset: _qlFullReset,
         buildSpotifyEmbed: _buildSpotifyEmbed,
         getSpotifyTrackId: _getSpotifyTrackId,
+        _buildSearchQuery: _buildSearchQuery,
 
         // UI
         renderDestinationChooser: renderDestinationChooser,
