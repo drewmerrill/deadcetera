@@ -1,17 +1,16 @@
 // ============================================================================
-// js/core/feed-action-state.js — Feed Action State Engine
+// js/core/feed-action-state.js — Global Action Engine
 //
-// Centralized source of truth for feed item ownership, completion,
-// actionability, badges, CTA labels, and return navigation.
+// Single source of truth for personal action ownership across all surfaces:
+//   Band Feed, nav badges, home dashboard, push eligibility.
 //
-// Used by band-feed.js and available for any surface that needs to answer:
-//   - What do I owe?
-//   - What is waiting on others?
-//   - What is done?
+// Answers three questions for every surface:
+//   1. What do I owe?        → needsMyInput
+//   2. What's waiting?       → waitingOnOthers
+//   3. What's done?          → isResolved
 //
-// DEPENDS ON (resolved at call time, not load time):
+// DEPENDS ON (resolved at call time):
 //   bandMembers, getCurrentMemberKey, currentUserEmail, currentUserName
-//   — all from firebase-service.js / app.js
 //
 // LOAD ORDER: after groovelinx_store.js, before band-feed.js
 // ============================================================================
@@ -22,24 +21,20 @@ window.FeedActionState = (function() {
 
     // ── Identity Resolution ─────────────────────────────────────────────────
     //
-    // The app uses multiple identity formats depending on context:
-    //   - Member key: 'drew', 'chris' (bandMembers keys, readiness, localStorage)
-    //   - Display name: 'Drew', 'Chris' (poll votes via _bcGetName(), feed notes)
-    //   - Email: 'drewmerrill1029@gmail.com' (Firebase auth, idea authors)
-    //   - Email prefix: 'drewmerrill1029' (fallback display)
+    // Formats in use:
+    //   Member key:   'drew'                    (bandMembers, readiness, localStorage)
+    //   Display name: 'Drew'                    (poll votes, feed notes)
+    //   Email:        'drewmerrill1029@gmail.com' (auth, idea authors)
+    //   Prefix:       'drewmerrill1029'          (fallback)
     //
-    // Poll votes are stored under DISPLAY NAMES (bandMembers[key].name).
-    // This mirrors _bcGetName() in band-comms.js.
-    //
-    // MIGRATION NOTE: If vote keys ever move to member keys instead of display
-    // names, update getMyVoteKey() to return the member key directly.
+    // Poll votes stored under display names (bandMembers[key].name).
+    // MIGRATION NOTE: if vote keys move to member keys, update getMyVoteKey().
 
     function getMyMemberKey() {
         if (typeof getCurrentMemberKey === 'function') {
             var k = getCurrentMemberKey();
             if (k) return k;
         }
-        // Fallback: try localStorage directly
         var cu = localStorage.getItem('deadcetera_current_user') || '';
         if (cu && typeof bandMembers !== 'undefined' && bandMembers[cu]) return cu;
         return null;
@@ -47,24 +42,18 @@ window.FeedActionState = (function() {
 
     function getMyDisplayName() {
         var key = getMyMemberKey();
-        if (key && typeof bandMembers !== 'undefined' && bandMembers[key]) {
-            return bandMembers[key].name;
-        }
+        if (key && typeof bandMembers !== 'undefined' && bandMembers[key]) return bandMembers[key].name;
         if (typeof currentUserName !== 'undefined' && currentUserName) return currentUserName;
         if (typeof currentUserEmail !== 'undefined' && currentUserEmail) return currentUserEmail.split('@')[0];
         return null;
     }
 
-    // Vote key: display name used by _bcGetName() when saving poll votes
-    function getMyVoteKey() {
-        return getMyDisplayName();
-    }
+    function getMyVoteKey() { return getMyDisplayName(); }
 
     function getMyEmail() {
         return (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail : null;
     }
 
-    // Check if an author string matches the current user
     function isMe(authorStr) {
         if (!authorStr) return false;
         var a = authorStr.toLowerCase();
@@ -81,30 +70,107 @@ window.FeedActionState = (function() {
     // ── Priority Buckets ────────────────────────────────────────────────────
 
     var BUCKET = {
-        CRITICAL:       1,  // mission_critical tag
-        NEEDS_MY_INPUT: 2,  // I owe action
-        WAITING_ON_BAND: 3, // I acted, others haven't
-        RECENT_FYI:     4,  // recent activity, no action needed
-        RESOLVED:       5,  // complete
-        ARCHIVED:       6   // hidden
+        CRITICAL:        1,
+        NEEDS_MY_INPUT:  2,
+        WAITING_ON_BAND: 3,
+        RECENT_FYI:      4,
+        RESOLVED:        5,
+        ARCHIVED:        6
     };
+
+    // ── Notification Eligibility ────────────────────────────────────────────
+    //
+    // Classifies events for push notification decisions.
+    // Push should only fire for ACTION_REQUIRED and selected CRITICAL_CHANGE.
+    //
+    // Preference buckets (stored in localStorage gl_notif_prefs):
+    //   action_required:  ON by default  — polls needing my vote, items assigned to me
+    //   critical_change:  ON by default  — setlist/rehearsal changes near a gig
+    //   band_updates:     OFF by default — FYI activity, comments, low-signal
+
+    var NOTIF_CLASS = {
+        ACTION_REQUIRED:  'action_required',   // I must act
+        CRITICAL_CHANGE:  'critical_change',    // near-term rehearsal/gig material change
+        FYI:              'fyi'                 // informational, no push
+    };
+
+    var _NOTIF_PREF_KEY = 'gl_notif_prefs';
+    var _NOTIF_DEFAULTS = { action_required: true, critical_change: true, band_updates: false };
+
+    function getNotifPrefs() {
+        try {
+            var raw = localStorage.getItem(_NOTIF_PREF_KEY);
+            if (raw) {
+                var parsed = JSON.parse(raw);
+                // Merge with defaults so new keys get safe defaults
+                return { action_required: parsed.action_required !== false, critical_change: parsed.critical_change !== false, band_updates: !!parsed.band_updates };
+            }
+        } catch(e) {}
+        return { action_required: true, critical_change: true, band_updates: false };
+    }
+
+    function setNotifPrefs(prefs) {
+        try { localStorage.setItem(_NOTIF_PREF_KEY, JSON.stringify(prefs)); } catch(e) {}
+    }
+
+    function classifyNotification(item, meta) {
+        meta = meta || {};
+        var tag = meta.tag || item.tag || 'fyi';
+        var resolved = (meta.resolved !== undefined) ? !!meta.resolved : !!item.resolved;
+        if (resolved || meta.archived) return NOTIF_CLASS.FYI;
+
+        // ACTION_REQUIRED: poll needing my vote, unresolved needs_input
+        if (tag === 'needs_input') {
+            if (item.type === 'poll' && !item.iVoted) return NOTIF_CLASS.ACTION_REQUIRED;
+            if (item.type === 'idea') return NOTIF_CLASS.ACTION_REQUIRED;
+        }
+        if (tag === 'mission_critical') return NOTIF_CLASS.ACTION_REQUIRED;
+
+        // CRITICAL_CHANGE: rehearsal/gig notes with critical tag
+        if ((item.type === 'rehearsal_note' || item.type === 'gig_note') && tag === 'mission_critical') {
+            return NOTIF_CLASS.CRITICAL_CHANGE;
+        }
+
+        return NOTIF_CLASS.FYI;
+    }
+
+    function isPushEligible(item, meta) {
+        var cls = classifyNotification(item, meta);
+        var prefs = getNotifPrefs();
+        if (cls === NOTIF_CLASS.ACTION_REQUIRED) return !!prefs.action_required;
+        if (cls === NOTIF_CLASS.CRITICAL_CHANGE) return !!prefs.critical_change;
+        return false; // FYI never pushes
+    }
+
+    // Push payload shape for future delivery
+    function buildPushPayload(item, meta) {
+        var cls = classifyNotification(item, meta);
+        var state = getActionState(item, meta);
+        return {
+            type: cls,
+            title: cls === NOTIF_CLASS.ACTION_REQUIRED ? 'Action needed' : 'Band update',
+            body: (item.text || '').substring(0, 120),
+            tag: 'gl-' + cls + '-' + item.id,
+            data: {
+                itemType: item.type,
+                itemId: item.id,
+                url: '/#feed',
+                badge: state.badge ? state.badge.text : ''
+            }
+        };
+    }
 
     // ── Compute Normalized Action State ─────────────────────────────────────
 
     function getActionState(item, meta) {
         meta = meta || {};
-
         var effectiveTag = meta.tag || item.tag || 'fyi';
         var isArchived = !!meta.archived;
         var isResolved = (meta.resolved !== undefined) ? !!meta.resolved : !!item.resolved;
         var iVoted = !!item.iVoted;
 
-        // Determine personal vs band input need
-        var needsMyInput = false;
-        var needsBandInput = false;
-        var waitingOnOthers = false;
-        var completeForMe = true;
-        var completeForBand = isResolved;
+        var needsMyInput = false, needsBandInput = false, waitingOnOthers = false;
+        var completeForMe = true, completeForBand = isResolved;
 
         if (effectiveTag === 'needs_input' && !isResolved) {
             if (item.type === 'poll') {
@@ -113,14 +179,12 @@ window.FeedActionState = (function() {
                 waitingOnOthers = iVoted;
                 completeForMe = iVoted;
             } else {
-                // Ideas, pitches: needs everyone's input until resolved
                 needsMyInput = true;
                 needsBandInput = true;
                 completeForMe = false;
             }
         }
 
-        // Priority bucket
         var bucket;
         if (isArchived) bucket = BUCKET.ARCHIVED;
         else if (effectiveTag === 'mission_critical' && !isResolved) bucket = BUCKET.CRITICAL;
@@ -129,28 +193,17 @@ window.FeedActionState = (function() {
         else if (isResolved) bucket = BUCKET.RESOLVED;
         else bucket = BUCKET.RECENT_FYI;
 
-        // Badge
-        var badge = _computeBadge(effectiveTag, isResolved, iVoted, item.type, isArchived);
-
-        // Primary CTA
-        var cta = _computeCTA(item, needsMyInput, isResolved, isArchived);
-
         return {
-            itemType:         item.type,
-            itemId:           item.id,
-            title:            item.text || '',
-            effectiveTag:     effectiveTag,
-            needsMyInput:     needsMyInput,
-            needsBandInput:   needsBandInput,
-            completeForMe:    completeForMe,
-            completeForBand:  completeForBand,
-            waitingOnOthers:  waitingOnOthers,
-            isResolved:       isResolved,
-            isArchived:       isArchived,
-            iVoted:           iVoted,
-            priorityBucket:   bucket,
-            badge:            badge,
-            cta:              cta
+            itemType: item.type, itemId: item.id, title: item.text || '',
+            effectiveTag: effectiveTag,
+            needsMyInput: needsMyInput, needsBandInput: needsBandInput,
+            completeForMe: completeForMe, completeForBand: completeForBand,
+            waitingOnOthers: waitingOnOthers,
+            isResolved: isResolved, isArchived: isArchived, iVoted: iVoted,
+            priorityBucket: bucket,
+            badge: _computeBadge(effectiveTag, isResolved, iVoted, item.type, isArchived),
+            cta: _computeCTA(item, needsMyInput, isResolved, isArchived),
+            notifClass: classifyNotification(item, meta)
         };
     }
 
@@ -181,7 +234,6 @@ window.FeedActionState = (function() {
     function computeSummary(items, metaMap) {
         metaMap = metaMap || {};
         var critical = 0, myInput = 0, bandInput = 0, resolved = 0, total = 0;
-
         for (var i = 0; i < items.length; i++) {
             var meta = metaMap[items[i].type + ':' + items[i].id] || {};
             if (meta.archived) continue;
@@ -192,77 +244,44 @@ window.FeedActionState = (function() {
             if (state.waitingOnOthers) bandInput++;
             if (state.isResolved) resolved++;
         }
-
         return {
-            total: total,
-            critical: critical,
-            needsMyInput: myInput,
-            waitingOnBand: bandInput,
-            resolved: resolved,
-            allClear: critical === 0 && myInput === 0
+            total: total, critical: critical,
+            needsMyInput: myInput, waitingOnBand: bandInput,
+            resolved: resolved, allClear: critical === 0 && myInput === 0
         };
     }
 
-    // Sort items by action urgency
     function sortByPriority(items, metaMap) {
         metaMap = metaMap || {};
-        // Compute state for each item once, then sort
         var decorated = items.map(function(item) {
             var meta = metaMap[item.type + ':' + item.id] || {};
-            var state = getActionState(item, meta);
-            return { item: item, state: state };
+            return { item: item, state: getActionState(item, meta) };
         });
-
         decorated.sort(function(a, b) {
-            // Primary: bucket priority (lower = more urgent)
-            if (a.state.priorityBucket !== b.state.priorityBucket) {
-                return a.state.priorityBucket - b.state.priorityBucket;
-            }
-            // Secondary: chronological (newest first)
+            if (a.state.priorityBucket !== b.state.priorityBucket) return a.state.priorityBucket - b.state.priorityBucket;
             return (b.item.timestamp || '').localeCompare(a.item.timestamp || '');
         });
-
         return decorated.map(function(d) { return d.item; });
     }
 
     // ── Return Context ──────────────────────────────────────────────────────
-    //
-    // Persisted in sessionStorage so it survives page navigation and refresh
-    // within the same session. Cleared when user explicitly exits feed loop.
 
     var _RETURN_KEY = 'gl_feed_return_ctx';
 
-    function setReturnContext(ctx) {
-        try {
-            sessionStorage.setItem(_RETURN_KEY, JSON.stringify(ctx));
-        } catch(e) {}
-    }
+    function setReturnContext(ctx) { try { sessionStorage.setItem(_RETURN_KEY, JSON.stringify(ctx)); } catch(e) {} }
+    function getReturnContext() { try { var r = sessionStorage.getItem(_RETURN_KEY); return r ? JSON.parse(r) : null; } catch(e) { return null; } }
+    function clearReturnContext() { sessionStorage.removeItem(_RETURN_KEY); sessionStorage.removeItem('gl_feed_context'); }
+    function hasReturnContext() { return sessionStorage.getItem('gl_feed_context') === '1'; }
 
-    function getReturnContext() {
-        try {
-            var raw = sessionStorage.getItem(_RETURN_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch(e) { return null; }
-    }
-
-    function clearReturnContext() {
-        sessionStorage.removeItem(_RETURN_KEY);
-        sessionStorage.removeItem('gl_feed_context');
-    }
-
-    function hasReturnContext() {
-        return sessionStorage.getItem('gl_feed_context') === '1';
-    }
-
-    // ── Badge HTML helper ───────────────────────────────────────────────────
+    // ── Badge HTML ──────────────────────────────────────────────────────────
 
     var _TONE_STYLES = {
-        red:    'background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25)',
+        red: 'background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25)',
         yellow: 'background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.25)',
-        green:  'background:rgba(34,197,94,0.1);color:#86efac;border:1px solid rgba(34,197,94,0.2)',
+        green: 'background:rgba(34,197,94,0.1);color:#86efac;border:1px solid rgba(34,197,94,0.2)',
         indigo: 'background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2)',
-        dim:    'background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.08)',
-        none:   ''
+        dim: 'background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.08)',
+        none: ''
     };
 
     function renderBadgeHTML(badge) {
@@ -272,36 +291,7 @@ window.FeedActionState = (function() {
         return '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;' + style + '">' + badge.text + '</span>';
     }
 
-    // ── Public API ──────────────────────────────────────────────────────────
-
-    return {
-        // Identity
-        getMyMemberKey:    getMyMemberKey,
-        getMyDisplayName:  getMyDisplayName,
-        getMyVoteKey:      getMyVoteKey,
-        getMyEmail:        getMyEmail,
-        isMe:              isMe,
-
-        // Action state
-        getActionState:    getActionState,
-        computeSummary:    computeSummary,
-        sortByPriority:    sortByPriority,
-        renderBadgeHTML:   renderBadgeHTML,
-
-        // Return context
-        setReturnContext:  setReturnContext,
-        getReturnContext:  getReturnContext,
-        clearReturnContext: clearReturnContext,
-        hasReturnContext:  hasReturnContext,
-
-        // Constants
-        BUCKET: BUCKET
-    };
-
-    // ── Inline Vote Helper ────────────────────────────────────────────────
-    //
-    // Saves vote to Firebase and returns updated state. Reuses the same
-    // storage path as _bcVotePoll in band-comms.js.
+    // ── Inline Vote ─────────────────────────────────────────────────────────
 
     async function voteOnPoll(pollKey, optionIdx) {
         var voteKey = getMyVoteKey();
@@ -316,30 +306,104 @@ window.FeedActionState = (function() {
         }
     }
 
+    // ── Nav Badge State ─────────────────────────────────────────────────────
+    //
+    // Cached action count for nav badge. Updated by feed after data loads,
+    // and after any action that changes counts. Any surface can read it.
+
+    var _cachedActionCount = 0;
+
+    function setActionCount(count) {
+        _cachedActionCount = count;
+        _updateNavBadge(count);
+        _updateAppBadge(count);
+    }
+
+    function getActionCount() { return _cachedActionCount; }
+
+    function _updateNavBadge(count) {
+        // Feed nav badge in left rail
+        var badge = document.getElementById('glRailFeedBadge');
+        if (badge) {
+            badge.textContent = count > 9 ? '9+' : String(count);
+            badge.style.display = count > 0 ? '' : 'none';
+        }
+    }
+
+    function _updateAppBadge(count) {
+        // PWA app icon badge (navigator.setAppBadge) — supported on Chrome/Edge
+        // iOS PWA does not support this yet (as of 2026), but the call is safe.
+        if ('setAppBadge' in navigator) {
+            try {
+                if (count > 0) navigator.setAppBadge(count);
+                else navigator.clearAppBadge();
+            } catch(e) {}
+        }
+    }
+
+    // ── Push Subscription State ─────────────────────────────────────────────
+    //
+    // Tracks whether the user has granted push permission and subscribed.
+    // Actual push delivery requires a backend (not implemented yet).
+    // This layer defines the client-side architecture.
+
+    var _PUSH_SUB_KEY = 'gl_push_subscription';
+
+    function getPushState() {
+        // Returns: 'granted', 'denied', 'default', or 'unsupported'
+        if (!('Notification' in window)) return 'unsupported';
+        return Notification.permission;
+    }
+
+    function getPushSubscription() {
+        try {
+            var raw = localStorage.getItem(_PUSH_SUB_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch(e) { return null; }
+    }
+
+    async function requestPushPermission() {
+        if (!('Notification' in window)) return { ok: false, reason: 'unsupported' };
+        var result = await Notification.requestPermission();
+        if (result !== 'granted') return { ok: false, reason: result };
+        // Store subscription state
+        try {
+            var reg = await navigator.serviceWorker.ready;
+            var sub = await reg.pushManager.getSubscription();
+            if (sub) {
+                localStorage.setItem(_PUSH_SUB_KEY, JSON.stringify({ endpoint: sub.endpoint, ts: new Date().toISOString() }));
+            }
+        } catch(e) {}
+        return { ok: true };
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
         // Identity
-        getMyMemberKey:    getMyMemberKey,
-        getMyDisplayName:  getMyDisplayName,
-        getMyVoteKey:      getMyVoteKey,
-        getMyEmail:        getMyEmail,
-        isMe:              isMe,
+        getMyMemberKey: getMyMemberKey, getMyDisplayName: getMyDisplayName,
+        getMyVoteKey: getMyVoteKey, getMyEmail: getMyEmail, isMe: isMe,
 
         // Action state
-        getActionState:    getActionState,
-        computeSummary:    computeSummary,
-        sortByPriority:    sortByPriority,
-        renderBadgeHTML:   renderBadgeHTML,
+        getActionState: getActionState, computeSummary: computeSummary,
+        sortByPriority: sortByPriority, renderBadgeHTML: renderBadgeHTML,
 
         // Actions
-        voteOnPoll:        voteOnPoll,
+        voteOnPoll: voteOnPoll,
+
+        // Nav badge
+        setActionCount: setActionCount, getActionCount: getActionCount,
+
+        // Notifications
+        classifyNotification: classifyNotification, isPushEligible: isPushEligible,
+        buildPushPayload: buildPushPayload,
+        getNotifPrefs: getNotifPrefs, setNotifPrefs: setNotifPrefs,
+        getPushState: getPushState, requestPushPermission: requestPushPermission,
+        NOTIF_CLASS: NOTIF_CLASS,
 
         // Return context
-        setReturnContext:  setReturnContext,
-        getReturnContext:  getReturnContext,
-        clearReturnContext: clearReturnContext,
-        hasReturnContext:  hasReturnContext,
+        setReturnContext: setReturnContext, getReturnContext: getReturnContext,
+        clearReturnContext: clearReturnContext, hasReturnContext: hasReturnContext,
 
         // Constants
         BUCKET: BUCKET
@@ -348,8 +412,6 @@ window.FeedActionState = (function() {
 })();
 
 // ── GLStore Bridge ──────────────────────────────────────────────────────────
-// Expose action summary on GLStore so any surface can query it without
-// importing feed internals. Requires feed data to be loaded first.
 
 if (typeof GLStore !== 'undefined') {
     GLStore.getActionSummary = function(feedItems, feedMeta) {
@@ -358,6 +420,9 @@ if (typeof GLStore !== 'undefined') {
     GLStore.getActionState = function(item, meta) {
         return FeedActionState.getActionState(item, meta || {});
     };
+    GLStore.getActionCount = function() {
+        return FeedActionState.getActionCount();
+    };
 }
 
-console.log('\u2699\uFE0F feed-action-state.js loaded');
+console.log('\u2699\uFE0F feed-action-state.js loaded (global action engine)');

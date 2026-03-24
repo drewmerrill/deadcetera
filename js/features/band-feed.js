@@ -133,6 +133,7 @@ window.renderBandFeedPage = async function(el) {
     _feedRenderAttentionBar(items);
     _feedRenderFilterBar(items);
     _feedRender(items);
+    _feedSyncNavBadge();
 
     // Scroll to focused item if return context specified one
     if (rc && rc.focusItem) {
@@ -361,6 +362,14 @@ function _feedRerender() {
     _feedRenderAttentionBar(_feedCache);
     _feedRenderFilterBar(_feedCache);
     _feedRender(_feedCache);
+    _feedSyncNavBadge();
+}
+
+function _feedSyncNavBadge() {
+    var fas = _fas();
+    if (!fas || !_feedCache) return;
+    var summary = fas.computeSummary(_feedCache, _feedMeta);
+    fas.setActionCount(summary.needsMyInput);
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -792,5 +801,37 @@ function _feedEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&l
 if (typeof pageRenderers !== 'undefined') {
     pageRenderers.feed = function(el) { renderBandFeedPage(el); };
 }
+
+// ── Background badge refresh (runs on app startup, not just feed page) ──────
+// Lightweight: loads only polls (the primary action-required source) to update
+// the nav badge without loading the full feed.
+(function _feedBgBadgeRefresh() {
+    function refresh() {
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!fas || !db || typeof bandPath !== 'function') return;
+        var myVoteKey = fas.getMyVoteKey();
+        if (!myVoteKey) return;
+        db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
+            var polls = snap.val();
+            if (!polls) { fas.setActionCount(0); return; }
+            var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+            var count = 0;
+            Object.values(polls).forEach(function(p) {
+                if (!p || !p.ts) return;
+                var voteCount = p.votes ? Object.keys(p.votes).length : 0;
+                var allVoted = voteCount >= memberCount;
+                if (allVoted) return;
+                var iVoted = !!(p.votes && p.votes[myVoteKey] !== undefined);
+                if (!iVoted) count++;
+            });
+            fas.setActionCount(count);
+        }).catch(function() {});
+    }
+    // Run after Firebase is likely ready
+    setTimeout(refresh, 4000);
+    // Periodic refresh every 2 minutes
+    setInterval(refresh, 120000);
+})();
 
 console.log('\uD83D\uDCE1 band-feed.js v5 loaded \u2014 unified action engine');
