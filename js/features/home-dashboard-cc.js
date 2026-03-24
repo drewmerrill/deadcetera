@@ -281,9 +281,15 @@ async function _ccLoadNextRehearsal() {
 function _ccRenderReadinessRadar() {
   var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
   var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
+  var sc = (typeof statusCache !== 'undefined') ? statusCache
+      : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+  var _activeStatuses = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
 
-  // Score every song
-  var scored = songs.map(function(song) {
+  // Score every ACTIVE song only
+  var scored = songs.filter(function(song) {
+    var st = (sc && sc[song.title]) || '';
+    return !!_activeStatuses[st];
+  }).map(function(song) {
     var scores = rc[song.title] || {};
     var vals = Object.values(scores).filter(function(v) { return typeof v === 'number'; });
     var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0)/vals.length : null;

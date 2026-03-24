@@ -391,11 +391,16 @@ function _renderSharpenPracticeCard(bundle) {
     var html = '<div class="app-card home-anim-cards">';
     html += '<h3 style="margin:0 0 12px">\uD83C\uDFAF What to Practice</h3>';
 
-    // Find songs where user's readiness is lowest
+    // Find songs where user's readiness is lowest (active songs only)
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var _sc = (typeof statusCache !== 'undefined') ? statusCache
+        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+    var _activeSet = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     var weakest = [];
     songs.forEach(function(s) {
+        var st = (_sc && _sc[s.title]) || '';
+        if (!_activeSet[st]) return; // skip removed/shelved/unknown songs
         var scores = rc[s.title] || {};
         var myScore = myKey ? (scores[myKey] || 0) : 0;
         if (myScore > 0 && myScore <= 3) {
@@ -530,9 +535,14 @@ function _renderBandReadinessSnapshot(bundle) {
     var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var _sc = (typeof statusCache !== 'undefined') ? statusCache
+        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+    var _activeSet = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
 
     var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
     songs.forEach(function(s) {
+        var st = (_sc && _sc[s.title]) || '';
+        if (!_activeSet[st]) return; // skip removed/shelved songs
         var scores = rc[s.title] || {};
         var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
         if (vals.length === 0) return;
@@ -3724,9 +3734,17 @@ function _computeWeakSongs(readinessCache, recencyMap, limit, gigTitles) {
     var rc = readinessCache || {};
     var gigSet = gigTitles || new Set();
     var candidates = [];
+    // Active statuses — only show songs the band is actually working on
+    var _activeStatuses = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
+    var sc = (typeof statusCache !== 'undefined') ? statusCache
+        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
 
     Object.entries(rc).forEach(function(entry) {
         var title   = entry[0];
+        // Skip songs that aren't active (removed, shelved, or never added)
+        var songStatus = (sc && sc[title]) || '';
+        if (!_activeStatuses[songStatus]) return;
+
         var ratings = entry[1] || {};
         var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
         if (!keys.length) return;
