@@ -124,18 +124,23 @@ window.SetlistPlayer = (function() {
         var cached = _getCachedYtId(songTitle);
         if (cached) return cached;
 
-        // 2. Check saved versions
+        // 2. Check saved versions — primary locked first, then any YouTube, then default
         try {
             var versions = (typeof loadBandDataFromDrive === 'function')
                 ? await loadBandDataFromDrive(songTitle, 'spotify_versions') : null;
             if (versions) {
                 var arr = Array.isArray(versions) ? versions : Object.values(versions);
+                // Priority 1: isPrimary locked version
+                var primary = arr.find(function(v) { return v && v.isPrimary && v.platform === 'youtube' && v.url; });
+                if (primary) { var pId = extractYouTubeId(primary.url); if (pId) { _setCachedYtId(songTitle, pId); return pId; } }
+                // Priority 2: any YouTube version
                 for (var i = 0; i < arr.length; i++) {
                     if (arr[i] && arr[i].platform === 'youtube' && arr[i].url) {
                         var id = extractYouTubeId(arr[i].url);
                         if (id) { _setCachedYtId(songTitle, id); return id; }
                     }
                 }
+                // Priority 3: default version (any platform, extract YT ID if possible)
                 var def = arr.find(function(v) { return v && v.isDefault && v.url; });
                 if (def) { var defId = extractYouTubeId(def.url); if (defId) { _setCachedYtId(songTitle, defId); return defId; } }
             }
@@ -261,8 +266,9 @@ window.SetlistPlayer = (function() {
             + '<div id="slpVideoContainer" style="width:100%;max-width:640px;margin:0 auto;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;flex-shrink:0"></div>'
             // Song info — large, centered, car-friendly
             + '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 16px;min-height:0">'
-            + '<div id="slpSongTitle" style="font-size:1.8em;font-weight:800;text-align:center;margin-bottom:6px;line-height:1.2"></div>'
-            + '<div id="slpSongArtist" style="font-size:0.9em;color:#94a3b8;text-align:center;margin-bottom:8px"></div>'
+            + '<div id="slpSongTitle" style="font-size:1.8em;font-weight:800;text-align:center;margin-bottom:4px;line-height:1.2"></div>'
+            + '<div id="slpSongArtist" style="font-size:0.9em;color:#94a3b8;text-align:center;margin-bottom:4px"></div>'
+            + '<button id="slpLockBtn" onclick="SetlistPlayer._lockCurrentVersion()" style="font-size:0.72em;font-weight:600;padding:4px 12px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;margin-bottom:6px">\uD83D\uDD12 Use this version</button>'
             + '<div id="slpProgress" style="font-size:0.8em;color:#64748b;text-align:center"></div>'
             + '<div id="slpFallback" style="display:none;text-align:center;margin-top:12px"></div>'
             + '</div>'
@@ -272,11 +278,8 @@ window.SetlistPlayer = (function() {
             + '<button id="slpPlayPause" onclick="SetlistPlayer.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em">\u23F8</button>'
             + '<button onclick="SetlistPlayer.next()" style="width:60px;height:60px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.5em">\u23ED</button>'
             + '</div>'
-            // Up next + version control
-            + '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0">'
-            + '<div id="slpUpNext" style="font-size:0.82em;color:#64748b;flex:1"></div>'
-            + '<button id="slpLockBtn" onclick="SetlistPlayer._lockCurrentVersion()" style="font-size:0.68em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;white-space:nowrap">\uD83D\uDD12 Use this version</button>'
-            + '</div>';
+            // Up next
+            + '<div id="slpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
         document.body.appendChild(_overlay);
     }
 
@@ -354,7 +357,12 @@ window.SetlistPlayer = (function() {
         if (ytId) {
             song.youtubeId = ytId;
             _playYouTube(ytId);
-            if (typeof showToast === 'function') showToast('\u2705 Found a great version');
+            // Only show toast on first-ever resolution for this song
+            var _resolvedKey = 'gl_resolved_' + song.title;
+            if (!sessionStorage.getItem(_resolvedKey)) {
+                sessionStorage.setItem(_resolvedKey, '1');
+                if (typeof showToast === 'function') showToast('\u2705 Found a great version');
+            }
         } else {
             _showFallback(song);
         }
@@ -365,29 +373,36 @@ window.SetlistPlayer = (function() {
         var song = _queue[_currentIdx];
         if (!song.youtubeId) { if (typeof showToast === 'function') showToast('No video playing to lock'); return; }
 
-        // Save to Firebase as locked version
         try {
             var versions = (typeof loadBandDataFromDrive === 'function')
                 ? await loadBandDataFromDrive(song.title, 'spotify_versions') : null;
             var arr = versions ? (Array.isArray(versions) ? versions : Object.values(versions)) : [];
+
+            // Remove any existing primary/locked YouTube versions (enforce single primary)
+            arr = arr.filter(function(v) {
+                return !(v && v.platform === 'youtube' && (v.isPrimary || v.spotifyMatchLocked));
+            });
+
+            // Add new primary version
             arr.push({
-                id: 'yt_locked_' + Date.now(),
+                id: 'yt_primary_' + Date.now(),
                 url: 'https://www.youtube.com/watch?v=' + song.youtubeId,
                 platform: 'youtube',
-                title: 'YouTube (locked)',
+                title: 'YouTube (primary)',
+                isPrimary: true,
                 isDefault: false,
                 addedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : 'player',
                 dateAdded: new Date().toISOString().split('T')[0],
-                notes: 'Locked from Play Mode'
+                notes: 'Set from Play Mode'
             });
+
             if (typeof saveBandDataToDrive === 'function') {
                 await saveBandDataToDrive(song.title, 'spotify_versions', arr);
             }
             _setCachedYtId(song.title, song.youtubeId);
-            // Update button
             var btn = document.getElementById('slpLockBtn');
-            if (btn) { btn.textContent = '\u2705 Locked'; btn.style.color = '#86efac'; btn.disabled = true; }
-            if (typeof showToast === 'function') showToast('\uD83D\uDD12 Version locked for ' + song.title);
+            if (btn) { btn.textContent = '\u2705 Locked'; btn.style.color = '#86efac'; btn.style.borderColor = 'rgba(34,197,94,0.3)'; }
+            if (typeof showToast === 'function') showToast('\uD83D\uDD12 Primary version set for ' + song.title);
         } catch(e) {
             if (typeof showToast === 'function') showToast('Could not save');
         }
