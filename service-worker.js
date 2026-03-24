@@ -76,11 +76,21 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-    const target = (event.notification.data && event.notification.data.url)
-        ? event.notification.data.url : BASE;
+    const data = event.notification.data || {};
+    const target = data.url || (BASE + '#feed');
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-            for (const c of list) { if (c.url.includes(BASE) && 'focus' in c) return c.focus(); }
+            // Try to focus existing window and navigate it to feed
+            for (const c of list) {
+                if (c.url.includes(BASE) && 'focus' in c) {
+                    c.focus();
+                    // Post message to navigate to feed with item context
+                    if (data.itemType && data.itemId) {
+                        c.postMessage({ type: 'GL_NOTIF_TAP', itemType: data.itemType, itemId: data.itemId });
+                    }
+                    return c;
+                }
+            }
             return clients.openWindow(target);
         })
     );

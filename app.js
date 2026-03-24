@@ -10134,6 +10134,7 @@ function renderSettingsPage(el) {
         <button class="tab-btn active" onclick="settingsTab('profile',this)">👤 Profile</button>
         <button class="tab-btn" onclick="settingsTab('band',this)">🎸 Band</button>
         <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
+        <button class="tab-btn" onclick="settingsTab('notifications',this)">🔔 Notifications</button>
         <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Bugs</button>
         <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
     </div>
@@ -10296,16 +10297,90 @@ function settingsTab(tab, btn) {
                 <a href="https://github.com" target="_blank" style="color:var(--accent-light)">GitHub</a> · 
                 <a href="mailto:drewmerrill1029@gmail.com" style="color:var(--accent-light)">Contact</a>
             </div>
+        </div>`,
+
+    notifications: `
+        <div class="app-card"><h3>🔔 Notifications</h3>
+            <p style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Get notified when the band needs you. No spam — only action items and urgent changes.</p>
+            <div id="notifSettingsContent" style="font-size:0.85em;color:var(--text-dim)">Loading...</div>
         </div>`
     };
-    
+
     el.innerHTML = panels[tab] || panels.profile;
-    
-    // Post-render: load feedback history
+
+    // Post-render hooks
+    if (tab === 'notifications') _renderNotifSettings();
     if (tab === 'feedback') loadFeedbackHistory();
     if (tab === 'data') checkSyncStatus();
     if (tab === 'profile' || !tab) setTimeout(initSettingsAddressAutocomplete, 300);
 }
+
+function _renderNotifSettings() {
+    var el = document.getElementById('notifSettingsContent');
+    if (!el) return;
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) { el.innerHTML = 'Notification engine not available.'; return; }
+
+    var pushState = fas.getPushState();
+    var enabled = fas.isPushEnabled();
+    var prefs = fas.getNotifPrefs();
+
+    var html = '';
+
+    // Master toggle
+    if (pushState === 'unsupported') {
+        html += '<div style="padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;margin-bottom:12px;color:#f87171">Your browser does not support notifications.</div>';
+    } else if (pushState === 'denied') {
+        html += '<div style="padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;margin-bottom:12px;color:#f87171">Notifications are blocked. To enable, update your browser or device notification settings for this site.</div>';
+    } else {
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+            + '<div><div style="font-weight:700;color:var(--text)">Enable Notifications</div>'
+            + '<div style="font-size:0.85em;color:var(--text-dim)">Get notified when the band needs you</div></div>'
+            + '<button id="notifMasterToggle" onclick="_toggleNotifMaster()" style="padding:6px 16px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid ' + (enabled ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)') + ';background:' + (enabled ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (enabled ? '#86efac' : 'var(--text-dim)') + '">' + (enabled ? 'On' : 'Off') + '</button>'
+            + '</div>';
+    }
+
+    // Preference toggles (only if enabled)
+    if (enabled) {
+        var rows = [
+            { key: 'action_required', label: 'Action required', desc: 'Polls, decisions needing your input', val: prefs.action_required },
+            { key: 'critical_change', label: 'Rehearsal & gig changes', desc: 'Setlist changes, urgent updates near events', val: prefs.critical_change },
+            { key: 'band_updates', label: 'Band updates', desc: 'Ideas, notes, general activity', val: prefs.band_updates }
+        ];
+        rows.forEach(function(r) {
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<div><div style="font-weight:600;color:var(--text)">' + r.label + '</div>'
+                + '<div style="font-size:0.82em;color:var(--text-dim)">' + r.desc + '</div></div>'
+                + '<button onclick="_toggleNotifPref(\'' + r.key + '\')" style="padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.78em;font-weight:700;border:1px solid ' + (r.val ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)') + ';background:' + (r.val ? 'rgba(34,197,94,0.06)' : 'none') + ';color:' + (r.val ? '#86efac' : 'var(--text-dim)') + '">' + (r.val ? 'On' : 'Off') + '</button>'
+                + '</div>';
+        });
+    }
+
+    el.innerHTML = html;
+}
+
+window._toggleNotifMaster = async function() {
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) return;
+    if (fas.isPushEnabled()) {
+        await fas.disablePush();
+    } else {
+        var result = await fas.enablePush();
+        if (!result.ok) {
+            if (typeof showToast === 'function') showToast('Could not enable: ' + (result.reason || 'unknown'));
+        }
+    }
+    _renderNotifSettings();
+};
+
+window._toggleNotifPref = function(key) {
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) return;
+    var prefs = fas.getNotifPrefs();
+    prefs[key] = !prefs[key];
+    fas.setNotifPrefs(prefs);
+    _renderNotifSettings();
+};
 
 async function loadFeedbackHistory() {
     const el = document.getElementById('fbHistory');

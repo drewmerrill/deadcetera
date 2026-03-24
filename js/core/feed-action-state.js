@@ -426,40 +426,114 @@ window.FeedActionState = (function() {
         }
     }
 
-    // ── Push Subscription State ─────────────────────────────────────────────
+    // ── Push Notifications ─────────────────────────────────────────────────
     //
-    // Tracks whether the user has granted push permission and subscribed.
-    // Actual push delivery requires a backend (not implemented yet).
-    // This layer defines the client-side architecture.
+    // Two layers:
+    //   1. LOCAL: Firebase real-time listener fires Notification API when app
+    //      is backgrounded/minimized. Works immediately, no server needed.
+    //   2. PUSH: VAPID subscription stored in Firebase. Cloud Function sends
+    //      push when app is fully closed. Requires function deployment.
 
+    var _VAPID_PUBLIC = 'BKH5-I_52giyvB9ljg4Uwhc_UUzgbzaHrVZrJm8eXoN_ikZAsqej8U3x_LaMCWkjZlEqcm30SPOkBXmFruzNSVw';
     var _PUSH_SUB_KEY = 'gl_push_subscription';
+    var _PUSH_ENABLED_KEY = 'gl_push_enabled';
 
     function getPushState() {
-        // Returns: 'granted', 'denied', 'default', or 'unsupported'
         if (!('Notification' in window)) return 'unsupported';
         return Notification.permission;
     }
 
-    function getPushSubscription() {
-        try {
-            var raw = localStorage.getItem(_PUSH_SUB_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch(e) { return null; }
+    function isPushEnabled() {
+        return localStorage.getItem(_PUSH_ENABLED_KEY) === '1';
     }
 
-    async function requestPushPermission() {
+    function getPushSubscription() {
+        try { var r = localStorage.getItem(_PUSH_SUB_KEY); return r ? JSON.parse(r) : null; }
+        catch(e) { return null; }
+    }
+
+    async function enablePush() {
         if (!('Notification' in window)) return { ok: false, reason: 'unsupported' };
-        var result = await Notification.requestPermission();
-        if (result !== 'granted') return { ok: false, reason: result };
-        // Store subscription state
+        var perm = await Notification.requestPermission();
+        if (perm !== 'granted') return { ok: false, reason: perm };
+
+        // Subscribe via service worker push manager (for true push when app closed)
+        try {
+            var reg = await navigator.serviceWorker.ready;
+            var sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: _urlBase64ToUint8Array(_VAPID_PUBLIC)
+            });
+            var subJson = sub.toJSON();
+            // Store subscription in Firebase for server-side push delivery
+            var memberKey = getMyMemberKey();
+            if (memberKey && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+                await firebaseDB.ref(bandPath('push_subscriptions/' + memberKey)).set({
+                    endpoint: subJson.endpoint,
+                    keys: subJson.keys,
+                    ts: new Date().toISOString()
+                });
+            }
+            localStorage.setItem(_PUSH_SUB_KEY, JSON.stringify(subJson));
+        } catch(e) {
+            console.warn('[Push] Subscription failed:', e.message);
+            // Still enable local notifications even if push subscription fails
+        }
+
+        localStorage.setItem(_PUSH_ENABLED_KEY, '1');
+        return { ok: true };
+    }
+
+    async function disablePush() {
+        localStorage.setItem(_PUSH_ENABLED_KEY, '0');
+        // Unsubscribe from push
         try {
             var reg = await navigator.serviceWorker.ready;
             var sub = await reg.pushManager.getSubscription();
-            if (sub) {
-                localStorage.setItem(_PUSH_SUB_KEY, JSON.stringify({ endpoint: sub.endpoint, ts: new Date().toISOString() }));
+            if (sub) await sub.unsubscribe();
+            // Remove from Firebase
+            var memberKey = getMyMemberKey();
+            if (memberKey && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+                await firebaseDB.ref(bandPath('push_subscriptions/' + memberKey)).remove();
             }
         } catch(e) {}
+        localStorage.removeItem(_PUSH_SUB_KEY);
         return { ok: true };
+    }
+
+    // Fire a local notification (works when app is open but backgrounded)
+    function fireLocalNotification(title, body, data) {
+        if (!isPushEnabled()) return;
+        if (getPushState() !== 'granted') return;
+        if (document.visibilityState === 'visible') return; // don't notify when user is looking at app
+        var prefs = getNotifPrefs();
+        var cls = (data && data.notifClass) || 'fyi';
+        if (cls === 'fyi' && !prefs.band_updates) return;
+        if (cls === 'action_required' && !prefs.action_required) return;
+        if (cls === 'critical_change' && !prefs.critical_change) return;
+
+        try {
+            navigator.serviceWorker.ready.then(function(reg) {
+                reg.showNotification(title, {
+                    body: body,
+                    icon: 'icon-192.png',
+                    tag: 'gl-' + (data && data.itemId || 'general'),
+                    data: Object.assign({ url: '/#feed' }, data || {})
+                });
+            });
+        } catch(e) {
+            // Fallback: Notification API directly
+            try { new Notification(title, { body: body, icon: 'icon-192.png', tag: 'gl-local' }); } catch(e2) {}
+        }
+    }
+
+    function _urlBase64ToUint8Array(base64String) {
+        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var rawData = atob(base64);
+        var outputArray = new Uint8Array(rawData.length);
+        for (var i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+        return outputArray;
     }
 
     // ── Public API ──────────────────────────────────────────────────────────
@@ -491,7 +565,9 @@ window.FeedActionState = (function() {
         classifyNotification: classifyNotification, isPushEligible: isPushEligible,
         buildPushPayload: buildPushPayload,
         getNotifPrefs: getNotifPrefs, setNotifPrefs: setNotifPrefs,
-        getPushState: getPushState, requestPushPermission: requestPushPermission,
+        getPushState: getPushState, isPushEnabled: isPushEnabled,
+        enablePush: enablePush, disablePush: disablePush,
+        fireLocalNotification: fireLocalNotification,
         NOTIF_CLASS: NOTIF_CLASS,
 
         // Return context

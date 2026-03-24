@@ -1294,4 +1294,59 @@ if (typeof pageRenderers !== 'undefined') {
     setInterval(refresh, 120000);
 })();
 
+// ── Real-time notification listener ──────────────────────────────────────────
+// Watches for new polls/ideas and fires local notifications when backgrounded.
+
+(function _feedRealtimeNotifs() {
+    function setup() {
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!fas || !db || typeof bandPath !== 'function') return;
+        if (!fas.isPushEnabled()) return;
+        var myVoteKey = fas.getMyVoteKey();
+        if (!myVoteKey) return;
+
+        db.ref(bandPath('polls')).orderByChild('ts').limitToLast(1).on('child_added', function(snap) {
+            var p = snap.val();
+            if (!p || !p.ts) return;
+            if (Date.now() - new Date(p.ts).getTime() > 60000) return; // ignore old
+            if (p.votes && p.votes[myVoteKey] !== undefined) return;
+            if (fas.isMe(p.author)) return;
+            fas.fireLocalNotification('Band needs your input',
+                (p.question || 'New poll').substring(0, 80),
+                { itemType: 'poll', itemId: snap.key, notifClass: 'action_required' });
+        });
+
+        db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(1).on('child_added', function(snap) {
+            var p = snap.val();
+            if (!p || !p.ts) return;
+            if (Date.now() - new Date(p.ts).getTime() > 60000) return;
+            if (fas.isMe(p.author)) return;
+            if (p.tag !== 'needs_input' && p.tag !== 'mission_critical') return;
+            fas.fireLocalNotification('New idea shared',
+                (p.title || 'Band idea').substring(0, 80),
+                { itemType: 'idea', itemId: snap.key, notifClass: 'action_required' });
+        });
+    }
+    setTimeout(setup, 6000);
+})();
+
+// ── Notification tap handler ────────────────────────────────────────────────
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'GL_NOTIF_TAP') {
+            showPage('feed');
+            setTimeout(function() {
+                var el = document.getElementById('feedItem_' + event.data.itemType + '_' + event.data.itemId);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('feed-next-action');
+                    setTimeout(function() { el.classList.remove('feed-next-action'); }, 3000);
+                }
+            }, 1500);
+        }
+    });
+}
+
 console.log('\uD83D\uDCE1 band-feed.js v5 loaded \u2014 unified action engine');
