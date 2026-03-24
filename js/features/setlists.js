@@ -1546,13 +1546,23 @@ window._slMarkDirty = function() {
 window.editSetlist = editSetlist;
 
 window.slPlaySetlist = async function(idx) {
-    if (typeof SetlistPlayer === 'undefined') { if (typeof showToast === 'function') showToast('Player not available'); return; }
     // idx is _origIdx from unsorted Firebase data — do NOT re-sort
     var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var sl = allSetlists[idx];
     if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
-    console.log('[slPlaySetlist] idx=' + idx + ' name=' + (sl.name || sl.title || '?'));
-    SetlistPlayer.launch(sl, sl.name || sl.title || 'Setlist');
+    var name = sl.name || sl.title || 'Setlist';
+    console.log('[slPlaySetlist] idx=' + idx + ' name=' + name);
+
+    // Use unified engine if available, fall back to legacy
+    if (typeof GLPlayerEngine !== 'undefined' && typeof GLPlayerUI !== 'undefined') {
+        GLPlayerEngine.loadFromSetlist(sl, { name: name });
+        GLPlayerUI.showOverlay();
+        GLPlayerEngine.play(0);
+    } else if (typeof SetlistPlayer !== 'undefined') {
+        SetlistPlayer.launch(sl, name);
+    } else {
+        if (typeof showToast === 'function') showToast('Player not available');
+    }
 };
 
 window.slShareSetlist = slShareSetlist;
