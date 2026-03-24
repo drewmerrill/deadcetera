@@ -158,19 +158,25 @@ window.GLPlayerEngine = (function() {
         }
         if (!_queue.length || _currentIdx >= _queue.length) return;
 
+        // Guard against rapid taps — each play() gets its own token
+        var myToken = ++_token;
+
         var song = _queue[_currentIdx];
         _activeSource = null;
         _activeResult = null;
         _isPlaying = false;
 
-        // Destroy previous YouTube player
+        // Destroy previous YouTube player immediately
         if (_ytPlayer && _ytPlayer.destroy) { try { _ytPlayer.destroy(); } catch(e) {} }
         _ytPlayer = null;
 
+        // Immediate visual feedback
+        _setState(State.RESOLVING, { song: song.title });
         _emit('songChange', { idx: _currentIdx, song: song, total: _queue.length });
+        _emit('status', { message: 'Loading\u2026' });
         _persistState();
 
-        _resolveAndPlay(song);
+        _resolveAndPlay(song, myToken);
     }
 
     function next() {
@@ -208,57 +214,70 @@ window.GLPlayerEngine = (function() {
 
     // ── Resolution + Playback ───────────────────────────────────────────────
 
-    async function _resolveAndPlay(song) {
-        var myToken = _token;
+    async function _resolveAndPlay(song, myToken) {
+        if (myToken === undefined) myToken = _token;
 
-        // Quick path: cached IDs
+        // Quick path: cached IDs (instant — no async)
         var pref = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver.getPreferred() : 'youtube';
         if (pref === 'youtube' && song.youtubeId && _ytReady) {
+            if (myToken !== _token) return;
             _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song);
             return;
         }
         if (pref === 'spotify' && song.spotifyTrackId) {
+            if (myToken !== _token) return;
             _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
             return;
         }
         if (song.youtubeId && _ytReady) {
+            if (myToken !== _token) return;
             _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song);
             return;
         }
         if (song.spotifyTrackId) {
+            if (myToken !== _token) return;
             _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
             return;
         }
 
         // Full resolution via GLSourceResolver
-        _setState(State.RESOLVING, { song: song.title });
-
         var R = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver : null;
         if (!R) { _setState(State.FALLBACK, { song: song.title, reason: 'no resolver' }); return; }
 
-        // 4s timeout
+        // 4s hard timeout — resolver gets 1.5s per source (fits 3 sources + 1 retry in 4s)
         var timedOut = false;
-        var timer = setTimeout(function() { timedOut = true; _setState(State.FALLBACK, { song: song.title, reason: 'timeout' }); }, 4000);
+        var timer = setTimeout(function() {
+            if (myToken !== _token) return;
+            timedOut = true;
+            console.warn('[GLPlayer] resolution timeout for:', song.title);
+            _setState(State.FALLBACK, { song: song.title, reason: 'timeout' });
+        }, 4000);
 
-        var result = await R.resolve(song.title, song.bandName || song.band, {
-            mode: _mode,
-            setOverrides: _setOverrides,
-            timeout: 2000,
-            onStatus: function(msg) {
-                if (myToken === _token) _emit('status', { message: msg });
+        try {
+            var result = await R.resolve(song.title, song.bandName || song.band, {
+                mode: _mode,
+                setOverrides: _setOverrides,
+                timeout: 1500,
+                onStatus: function(msg) {
+                    if (myToken === _token) _emit('status', { message: msg });
+                }
+            });
+
+            clearTimeout(timer);
+            if (timedOut || myToken !== _token) return;
+
+            if (result) {
+                if (result.source === 'youtube' && result.videoId) song.youtubeId = result.videoId;
+                if (result.source === 'spotify' && result.trackId) song.spotifyTrackId = result.trackId;
+                _playSource(result, song);
+            } else {
+                _setState(State.FALLBACK, { song: song.title, reason: 'all sources failed' });
             }
-        });
-
-        clearTimeout(timer);
-        if (timedOut || myToken !== _token) return;
-
-        if (result) {
-            // Cache for future
-            if (result.source === 'youtube' && result.videoId) song.youtubeId = result.videoId;
-            if (result.source === 'spotify' && result.trackId) song.spotifyTrackId = result.trackId;
-            _playSource(result, song);
-        } else {
-            _setState(State.FALLBACK, { song: song.title, reason: 'all sources failed' });
+        } catch(e) {
+            clearTimeout(timer);
+            if (myToken !== _token) return;
+            console.error('[GLPlayer] resolve error:', e);
+            _setState(State.FALLBACK, { song: song.title, reason: 'error: ' + (e.message || 'unknown') });
         }
     }
 
@@ -310,13 +329,13 @@ window.GLPlayerEngine = (function() {
                     if (e.data === YT.PlayerState.PAUSED) { _isPlaying = false; _emit('stateChange', { state: State.PLAYING, isPlaying: false }); }
                 },
                 onError: function() {
+                    _isPlaying = false;
                     var song = _queue[_currentIdx];
                     if (song && song.youtubeId) {
-                        if (typeof GLSourceResolver !== 'undefined') {
-                            try { var c = JSON.parse(localStorage.getItem('gl_yt_id_cache') || '{}'); delete c[song.title]; localStorage.setItem('gl_yt_id_cache', JSON.stringify(c)); } catch(e) {}
-                        }
+                        try { var c = JSON.parse(localStorage.getItem('gl_yt_id_cache') || '{}'); delete c[song.title]; localStorage.setItem('gl_yt_id_cache', JSON.stringify(c)); } catch(e) {}
                         song.youtubeId = null;
                     }
+                    console.warn('[GLPlayer] YouTube embed error for:', song ? song.title : '?');
                     _setState(State.FALLBACK, { song: song ? song.title : '', reason: 'youtube error' });
                 }
             }
@@ -367,13 +386,16 @@ window.GLPlayerEngine = (function() {
     function retryCurrentSong() {
         if (_currentIdx < 0 || _currentIdx >= _queue.length) return;
         var song = _queue[_currentIdx];
-        // Clear caches
-        if (typeof GLSourceResolver !== 'undefined') {
+        // Clear all caches for this song
+        var R = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver : null;
+        if (R) {
             try { var c = JSON.parse(localStorage.getItem('gl_yt_id_cache') || '{}'); delete c[song.title]; localStorage.setItem('gl_yt_id_cache', JSON.stringify(c)); } catch(e) {}
             try { var s = JSON.parse(localStorage.getItem('gl_sp_track_cache') || '{}'); delete s[song.title]; localStorage.setItem('gl_sp_track_cache', JSON.stringify(s)); } catch(e) {}
         }
         song.youtubeId = null;
         song.spotifyTrackId = null;
+        // Immediate feedback
+        _emit('status', { message: 'Retrying\u2026' });
         play(_currentIdx);
     }
 

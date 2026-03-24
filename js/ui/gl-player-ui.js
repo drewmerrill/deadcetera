@@ -186,6 +186,9 @@ window.GLPlayerUI = (function() {
         _setText('glpSongArtist', song.bandName || song.band || '');
         _setText('glpProgress', (d.idx + 1) + ' of ' + d.total);
         _setText('glpSourceLabel', '');
+        // Clear video container immediately — no stale embed during resolution
+        var vc = document.getElementById('glpVideoContainer');
+        if (vc) vc.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Loading\u2026</div>';
         // Clear fallback
         var fb = document.getElementById('glpFallback');
         if (fb) { fb.style.display = 'none'; fb.innerHTML = ''; }

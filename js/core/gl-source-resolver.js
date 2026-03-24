@@ -287,20 +287,24 @@ window.GLSourceResolver = (function() {
             if (ov.source && ov.id) return ov;
         }
 
+        // Tighten timeouts as we go deeper in the chain
+        var timeouts = [options.timeout || 1500, 1000, 800];
+
         for (var i = 0; i < chain.length; i++) {
             var src = chain[i];
+            var srcTimeout = timeouts[i] || 800;
             if (options.onStatus) options.onStatus('Trying ' + labels[src] + '\u2026');
 
             // First attempt
             try {
-                var result = await resolvers[src](songTitle, bandName, { timeout: options.timeout });
+                var result = await resolvers[src](songTitle, bandName, { timeout: srcTimeout });
                 if (result) return result;
             } catch(e) {}
 
-            // Silent retry for first source
+            // Silent retry only for preferred source (index 0)
             if (i === 0) {
                 try {
-                    var retry = await resolvers[src](songTitle, bandName, { timeout: options.timeout, skipCuration: true });
+                    var retry = await resolvers[src](songTitle, bandName, { timeout: srcTimeout, skipCuration: true });
                     if (retry) return retry;
                 } catch(e) {}
             }
