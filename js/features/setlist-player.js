@@ -144,10 +144,14 @@ window.SetlistPlayer = (function() {
 
     function _persistState() {
         try {
+            var songTitle = (_queue[_currentIdx] && _queue[_currentIdx].title) || '';
+            var total = _queue.length;
             localStorage.setItem(_PERSIST_KEY, JSON.stringify({
                 setlistId: _setlistId,
                 setlistName: _setlistName,
                 songIdx: _currentIdx,
+                songTitle: songTitle,
+                total: total,
                 ts: Date.now()
             }));
         } catch(e) {}
@@ -251,7 +255,15 @@ window.SetlistPlayer = (function() {
                     if (e.data === YT.PlayerState.PLAYING) { _isPlaying = true; _updatePlayPauseBtn(); }
                     if (e.data === YT.PlayerState.PAUSED) { _isPlaying = false; _updatePlayPauseBtn(); }
                 },
-                onError: function() { _showFallback(_queue[_currentIdx]); }
+                onError: function() {
+                        // Invalidate cached YouTube ID so it re-resolves next time
+                        var song = _queue[_currentIdx];
+                        if (song && song.youtubeId) {
+                            try { var c = JSON.parse(localStorage.getItem(_YT_CACHE_KEY) || '{}'); delete c[song.title]; localStorage.setItem(_YT_CACHE_KEY, JSON.stringify(c)); } catch(e) {}
+                            song.youtubeId = null;
+                        }
+                        _showFallback(song);
+                    }
             }
         });
     }
@@ -313,16 +325,97 @@ window.SetlistPlayer = (function() {
     function close() {
         if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
         _player = null;
+        var wasPlaying = _isPlaying;
         _isPlaying = false;
         if (_overlay) { _overlay.remove(); _overlay = null; }
+        // Show mini now-playing bar if there's still a queue
+        if (_queue.length > 0 && _currentIdx < _queue.length) {
+            _showNowPlayingBar();
+        }
     }
 
-    // Play from a specific song index
+    function fullClose() {
+        // Truly destroy everything including now-playing bar
+        if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
+        _player = null;
+        _isPlaying = false;
+        if (_overlay) { _overlay.remove(); _overlay = null; }
+        _removeNowPlayingBar();
+        _queue = [];
+    }
+
     function playFromIndex(idx) {
         if (idx >= 0 && idx < _queue.length) {
             _currentIdx = idx;
             _playCurrent();
         }
+    }
+
+    // ── Now Playing Bar ─────────────────────────────────────────────────────
+
+    function _showNowPlayingBar() {
+        _removeNowPlayingBar();
+        if (!_queue.length || _currentIdx >= _queue.length) return;
+        var song = _queue[_currentIdx];
+        var bar = document.createElement('div');
+        bar.id = 'slpNowPlayingBar';
+        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9500;display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(15,23,42,0.95);border-top:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer';
+        bar.onclick = function() { _removeNowPlayingBar(); _createOverlay(_setlistName); _playCurrent(); };
+        bar.innerHTML = '<span style="font-size:1.1em">\u25B6</span>'
+            + '<div style="flex:1;min-width:0"><div style="font-size:0.85em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>'
+            + '<div style="font-size:0.7em;color:#64748b">' + (_currentIdx + 1) + ' of ' + _queue.length + ' \u00B7 Tap to return</div></div>'
+            + '<button onclick="event.stopPropagation();SetlistPlayer.fullClose()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:4px">\u2715</button>';
+        document.body.appendChild(bar);
+    }
+
+    function _removeNowPlayingBar() {
+        var existing = document.getElementById('slpNowPlayingBar');
+        if (existing) existing.remove();
+    }
+
+    // ── Resume Prompt ───────────────────────────────────────────────────────
+
+    function showResumePrompt(containerId) {
+        var state = getResumeState();
+        if (!state) return false;
+        var el = containerId ? document.getElementById(containerId) : null;
+        if (!el) {
+            // Create floating prompt
+            var existing = document.getElementById('slpResumePrompt');
+            if (existing) existing.remove();
+            el = document.createElement('div');
+            el.id = 'slpResumePrompt';
+            el.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:8500;padding:12px 16px;background:#1e293b;border:1px solid rgba(99,102,241,0.25);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.4);display:flex;align-items:center;gap:10px';
+            document.body.appendChild(el);
+        }
+        el.innerHTML = '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:0.82em;font-weight:700;color:var(--text,#e2e8f0)">Resume setlist?</div>'
+            + '<div style="font-size:0.75em;color:#94a3b8;margin-top:2px">\u25B6 Continue from ' + _esc(state.songTitle || 'song ' + (state.songIdx + 1)) + ' (' + (state.songIdx + 1) + ' of ' + (state.total || '?') + ')</div>'
+            + '</div>'
+            + '<button onclick="SetlistPlayer._resumeFromState()" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap">Resume</button>'
+            + '<button onclick="SetlistPlayer._dismissResume()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:4px">\u2715</button>';
+        return true;
+    }
+
+    async function _resumeFromState() {
+        _dismissResume();
+        var state = getResumeState();
+        if (!state) return;
+        // Load setlist and launch from saved index
+        try {
+            var slData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'setlists') : null;
+            if (!slData) { if (typeof showToast === 'function') showToast('Could not load setlist'); return; }
+            var all = Array.isArray(slData) ? slData : Object.values(slData);
+            var sl = all.find(function(s) { return s && (s.id === state.setlistId || s.name === state.setlistId || s.title === state.setlistId); });
+            if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); clearResumeState(); return; }
+            await launch(sl, state.setlistName, state.songIdx);
+        } catch(e) { if (typeof showToast === 'function') showToast('Resume failed'); }
+    }
+
+    function _dismissResume() {
+        var el = document.getElementById('slpResumePrompt');
+        if (el) el.remove();
+        clearResumeState();
     }
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -335,12 +428,25 @@ window.SetlistPlayer = (function() {
         prev: prev,
         togglePlay: togglePlay,
         close: close,
+        fullClose: fullClose,
         playFromIndex: playFromIndex,
         getResumeState: getResumeState,
         clearResumeState: clearResumeState,
+        showResumePrompt: showResumePrompt,
+        _resumeFromState: _resumeFromState,
+        _dismissResume: _dismissResume,
         _openSpotify: _openSpotify
     };
 
 })();
 
-console.log('\u25B6\uFE0F setlist-player.js v2 loaded');
+// Auto-show resume prompt on app load if state exists
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        if (typeof SetlistPlayer !== 'undefined' && SetlistPlayer.getResumeState()) {
+            SetlistPlayer.showResumePrompt();
+        }
+    }, 3000);
+});
+
+console.log('\u25B6\uFE0F setlist-player.js v3 loaded');
