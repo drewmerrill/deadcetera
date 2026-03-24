@@ -85,6 +85,8 @@ function _feedAdvanceOnboarding() {
     _feedSessionCompleted++;
     _feedRecordAction();
     if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('action_completed');
+    // Momentum reinforcement on 3rd action in a session
+    if (_feedSessionCompleted === 3) _feedMicroReinforce('momentum');
     var fas = _fas();
     if (!fas || !_feedCache) return;
     var summary = fas.computeSummary(_feedCache, _feedMeta);
@@ -1507,24 +1509,23 @@ function _feedRegisterWalkthrough() {
 // ── Micro-reinforcement ─────────────────────────────────────────────────────
 
 function _feedMicroReinforce(type) {
-    // Show once per milestone, never repeat
     var key = 'gl_feed_reinforce_' + type;
-    if (type !== 'targeted' && type !== 'return') {
-        // Permanent milestones — fire once ever
-        if (localStorage.getItem(key)) return;
-        localStorage.setItem(key, '1');
-    } else {
-        // Session milestones — fire once per session
+    var sessionTypes = { targeted: 1, return: 1, momentum: 1 };
+    if (sessionTypes[type]) {
         if (sessionStorage.getItem(key)) return;
         sessionStorage.setItem(key, '1');
+    } else {
+        if (localStorage.getItem(key)) return;
+        localStorage.setItem(key, '1');
     }
 
     var msgs = {
         first_post: '\uD83C\uDF89 First post \u2014 you\u2019re using Band Feed',
-        first_vote: '\uD83C\uDF89 First vote \u2014 the band sees your input',
-        all_clear: '\uD83D\uDCAA All clear \u2014 you\u2019re locked in',
+        first_vote: '\uD83C\uDF89 First vote \u2014 you just influenced the band',
+        all_clear: '\uD83D\uDCAA All clear \u2014 the band is locked in',
         targeted: '\uD83C\uDFAF Nice \u2014 you handled something assigned to you',
-        return: '\u2190 Back to Feed \u2014 you\u2019re in the right place'
+        return: 'Back to Feed \u2014 you\u2019re in the right place',
+        momentum: '\uD83D\uDD25 Nice \u2014 keep it going'
     };
     var msg = msgs[type];
     if (msg) _feedShowToast(msg);
