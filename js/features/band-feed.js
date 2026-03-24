@@ -339,22 +339,17 @@ function _feedRenderCreateBar() {
     var bar = document.getElementById('feedCreateBar');
     if (!bar) return;
 
-    // Quick add input + full menu
-    var nudge = '';
-    if (!localStorage.getItem(_FEED_CREATED_KEY)) {
-        nudge = '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px;opacity:0.7">Have an idea? Add something for the band.</div>';
-    }
-    bar.innerHTML = nudge
+    // Messaging-style creation — feels like typing to your band
+    bar.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.12);border-radius:12px;padding:10px 12px">'
         + '<div style="display:flex;gap:6px;margin-bottom:8px">'
-        + '<input id="feedQuickAdd" type="text" placeholder="Share something with the band\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.85em;padding:10px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.15);background:rgba(0,0,0,0.12);color:var(--text);outline:none" onfocus="this.style.borderColor=\'rgba(99,102,241,0.35)\'" onblur="this.style.borderColor=\'rgba(99,102,241,0.15)\'">'
-        + '<button onclick="_feedQuickPost()" title="Send" style="flex-shrink:0;font-size:0.85em;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u2191</button>'
+        + '<input id="feedQuickAdd" type="text" placeholder="Share something with the band\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.88em;padding:10px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);color:var(--text);outline:none" onfocus="this.style.borderColor=\'rgba(99,102,241,0.3)\'" onblur="this.style.borderColor=\'rgba(255,255,255,0.08)\'">'
+        + '<button onclick="_feedQuickPost()" title="Send" style="flex-shrink:0;width:40px;height:40px;border-radius:50%;cursor:pointer;border:none;background:rgba(99,102,241,0.15);color:#a5b4fc;font-size:1em;font-weight:700;display:flex;align-items:center;justify-content:center">\u2191</button>'
         + '</div>'
-        + '<button onclick="_feedToggleCreateMenu()" id="feedCreateBtn" style="display:flex;align-items:center;gap:6px;width:100%;padding:7px 14px;border-radius:8px;cursor:pointer;border:1px dashed rgba(99,102,241,0.15);background:none;color:var(--text-dim);font-size:0.75em;font-weight:600;text-align:left;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.04)\'" onmouseout="this.style.background=\'none\'">'
-        + '<span style="color:#a5b4fc">+</span> Poll, Idea, or more</button>'
-        + '<div id="feedCreateMenu" style="display:none;margin-top:6px;padding:6px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
-        + '<button onclick="_feedCreateItem(\'poll\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDDF3\uFE0F Poll / Decision</button>'
-        + '<button onclick="_feedCreateItem(\'idea\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDCA1 Idea</button>'
-        + '<button onclick="_feedCreateItem(\'note\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDCDD Note</button>'
+        + '<div style="display:flex;gap:6px">'
+        + '<button onclick="_feedCreateItem(\'note\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center">\uD83D\uDCDD Note</button>'
+        + '<button onclick="_feedCreateItem(\'idea\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center">\uD83D\uDCA1 Idea</button>'
+        + '<button onclick="_feedCreateItem(\'poll\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center">\uD83D\uDDF3\uFE0F Poll</button>'
+        + '</div>'
         + '</div>';
 }
 
@@ -411,7 +406,7 @@ function _feedShowCreateForm(type, title, placeholder1, placeholder2) {
     // Target selector (not for notes — notes are FYI)
     if (!isNote) {
         html += '<div style="margin-bottom:8px">'
-            + '<div style="font-size:0.75em;font-weight:600;color:var(--text-dim);margin-bottom:4px">Who needs to respond?</div>'
+            + '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Who needs to respond?</div>'
             + '<div style="display:flex;gap:4px;margin-bottom:4px">'
             + '<button id="feedTargetAll" onclick="_feedSetTarget(\'all\')" class="feedTargetBtn feedTargetBtn--active" style="font-size:0.75em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Everyone</button>'
             + '<button id="feedTargetSpecific" onclick="_feedSetTarget(\'specific\')" class="feedTargetBtn" style="font-size:0.75em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Specific people</button>'
@@ -779,7 +774,7 @@ window._feedVotePoll = async function(pollKey, optionIdx) {
         ctx.push(item.resolved ? (voteCount + '/' + memberCount + ' voted \u2705') : (remaining + ' of ' + memberCount + ' still need to vote'));
         item.context = ctx.join(' \u00B7 ');
     }
-    _feedShowToast('Vote recorded');
+    _feedShowToast('\u2705 Vote recorded');
     _feedAdvanceOnboarding();
     _feedRerender();
     // Also refresh left rail badge
@@ -798,7 +793,7 @@ window._feedAcknowledgeIdea = async function(id) {
     notes.push({ text: 'Acknowledged', by: by, ts: new Date().toISOString() });
     await _feedSaveMeta(item, { notes: notes, resolved: true });
     item.resolved = true;
-    _feedShowToast('Acknowledged');
+    _feedShowToast('\u2705 Acknowledged');
     _feedAdvanceOnboarding();
     _feedRerender();
 };
@@ -1213,20 +1208,23 @@ function _feedRenderItem(item, isFirstAction) {
 
     if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
 
-    // Target indicator for specifically-targeted items
+    // Ownership + targeting labels — explicit, not subtle
+    if (state && state.needsMyInput && !resolved) {
+        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 You owe this</div>';
+    }
+
     if (item.targetType === 'specific' && item.targetMembers && item.targetMembers.length) {
         var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
         var targetNames = item.targetMembers.map(function(k) { return members[k] ? members[k].name : k; });
         var tLabel = targetNames.length <= 3 ? targetNames.join(', ') : targetNames.slice(0, 2).join(', ') + ' +' + (targetNames.length - 2) + ' more';
-        html += '<div style="font-size:0.72em;color:#a5b4fc;margin-top:4px;opacity:0.8">For: ' + _feedEsc(tLabel) + '</div>';
+        html += '<div style="font-size:0.72em;color:#a5b4fc;margin-top:3px">Needs input from: ' + _feedEsc(tLabel) + '</div>';
     }
 
-    // "Waiting on" indicator for polls where I voted but others haven't
     if (item.type === 'poll' && state && state.waitingOnOthers && fas) {
         var waiting = fas.getWaitingMembers(item);
         if (waiting.length > 0) {
             var names = waiting.length <= 3 ? waiting.join(', ') : waiting.slice(0, 2).join(', ') + ' +' + (waiting.length - 2) + ' more';
-            html += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px;opacity:0.7">Waiting on: ' + _feedEsc(names) + '</div>';
+            html += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px">Waiting on: ' + _feedEsc(names) + '</div>';
         }
     }
 
