@@ -154,10 +154,14 @@ function _feedRenderAttentionBar(items) {
     var summary = fas.computeSummary(items, _feedMeta);
 
     if (summary.allClear) {
-        bar.innerHTML = '<div style="padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
+        var acHtml = '<div style="padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
             + '<span style="font-size:1.1em">\u2705</span>'
-            + '<span style="font-size:0.82em;font-weight:700;color:#86efac">All clear \u2014 nothing needs your attention</span>'
-            + '</div>';
+            + '<div><div style="font-size:0.82em;font-weight:700;color:#86efac">You\u2019re locked in. Nothing needs you right now.</div>';
+        if (summary.waitingOnBand > 0) {
+            acHtml += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Waiting on band: ' + summary.waitingOnBand + ' item' + (summary.waitingOnBand > 1 ? 's' : '') + '</div>';
+        }
+        acHtml += '</div></div>';
+        bar.innerHTML = acHtml;
         return;
     }
 
@@ -309,6 +313,38 @@ window._feedSaveNote = async function(type, id) {
     _feedAdvanceOnboarding();
     _feedShowToast('Note added');
     _feedRerender();
+};
+
+// ── Inline Poll Voting ──────────────────────────────────────────────────────
+
+window._feedVotePoll = async function(pollKey, optionIdx) {
+    var fas = _fas();
+    if (!fas) return;
+    var result = await fas.voteOnPoll(pollKey, optionIdx);
+    if (!result.ok) {
+        _feedShowToast('Vote failed: ' + (result.reason || 'unknown'));
+        return;
+    }
+    // Update local cache immediately
+    var item = _feedFindItem('poll', pollKey);
+    if (item) {
+        item.iVoted = true;
+        if (!item.pollVotes) item.pollVotes = {};
+        item.pollVotes[result.voteKey] = optionIdx;
+        // Recount
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var voteCount = Object.keys(item.pollVotes).length;
+        item.resolved = voteCount >= memberCount;
+        var remaining = memberCount - voteCount;
+        var ctx = ['You voted'];
+        ctx.push(item.resolved ? (voteCount + '/' + memberCount + ' voted \u2705') : (remaining + ' of ' + memberCount + ' still need to vote'));
+        item.context = ctx.join(' \u00B7 ');
+    }
+    _feedShowToast('Vote recorded');
+    _feedAdvanceOnboarding();
+    _feedRerender();
+    // Also refresh left rail badge
+    if (typeof _updateBandRoomBadge === 'function') setTimeout(_updateBandRoomBadge, 500);
 };
 
 window._feedToggleOlderNotes = function(type, id) {
@@ -473,6 +509,8 @@ async function _feedLoadAll() {
                     author: v.author || 'Anonymous', timestamp: v.ts,
                     tag: v.tag || 'needs_input',
                     resolved: allVoted, iVoted: iVoted,
+                    pollOptions: v.options || [],
+                    pollVotes: v.votes || {},
                     context: ctx.join(' \u00B7 ')
                 });
             });
@@ -659,6 +697,23 @@ function _feedRenderItem(item) {
     html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedEsc(item.text) + '</div>';
 
     if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
+
+    // Inline poll voting — show options when I haven't voted yet
+    if (item.type === 'poll' && state && state.needsMyInput && item.pollOptions && item.pollOptions.length) {
+        html += '<div style="margin-top:8px" onclick="event.stopPropagation()">';
+        item.pollOptions.forEach(function(opt, idx) {
+            var voteCount = 0;
+            if (item.pollVotes) Object.values(item.pollVotes).forEach(function(v) { if (v === idx) voteCount++; });
+            html += '<button onclick="_feedVotePoll(\'' + _feedEsc(item.id) + '\',' + idx + ')" '
+                + 'style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;'
+                + 'background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);text-align:left;transition:background 0.15s" '
+                + 'onmouseover="this.style.background=\'rgba(99,102,241,0.08)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.02)\'">'
+                + '<span style="flex:1;font-size:0.82em;color:var(--text-muted)">' + _feedEsc(opt) + '</span>'
+                + '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim)">' + voteCount + '</span>'
+                + '</button>';
+        });
+        html += '</div>';
+    }
 
     // Notes
     var notes = _feedGetNotes(item);

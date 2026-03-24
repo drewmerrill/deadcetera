@@ -228,19 +228,24 @@
   }
 
   // ── Band Room badge ────────────────────────────────────────────────────
-  // Async: loads poll counts from Firebase and updates the nav badge
+  // Uses FeedActionState identity for correct vote key matching.
+  // Previous version used email prefix which didn't match vote storage format.
   async function _updateBandRoomBadge() {
     try {
       var db = (typeof firebaseDB !== 'undefined') ? firebaseDB : null;
       if (!db || typeof bandPath !== 'function') return;
-      var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
+      // Use FeedActionState for correct identity (display name = vote key)
+      var voteKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyVoteKey)
+          ? FeedActionState.getMyVoteKey() : null;
+      // Fallback: email prefix (legacy, less reliable)
+      if (!voteKey) voteKey = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
       var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
       var snap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(10).once('value');
       var val = snap.val();
       var count = 0;
       if (val) {
         Object.values(val).forEach(function(p) {
-          if (p.ts > cutoff && p.options && p.options.length && (!p.votes || p.votes[userId] === undefined)) count++;
+          if (p.ts > cutoff && p.options && p.options.length && (!p.votes || p.votes[voteKey] === undefined)) count++;
         });
       }
       var badge = document.getElementById('glRailBandRoomBadge');

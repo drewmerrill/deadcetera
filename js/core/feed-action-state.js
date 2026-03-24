@@ -298,6 +298,66 @@ window.FeedActionState = (function() {
         BUCKET: BUCKET
     };
 
+    // ── Inline Vote Helper ────────────────────────────────────────────────
+    //
+    // Saves vote to Firebase and returns updated state. Reuses the same
+    // storage path as _bcVotePoll in band-comms.js.
+
+    async function voteOnPoll(pollKey, optionIdx) {
+        var voteKey = getMyVoteKey();
+        if (!voteKey) return { ok: false, reason: 'no identity' };
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return { ok: false, reason: 'no database' };
+        try {
+            await db.ref(bandPath('polls/' + pollKey + '/votes/' + voteKey)).set(optionIdx);
+            return { ok: true, voteKey: voteKey, optionIdx: optionIdx };
+        } catch(e) {
+            return { ok: false, reason: e.message };
+        }
+    }
+
+    // ── Public API ──────────────────────────────────────────────────────────
+
+    return {
+        // Identity
+        getMyMemberKey:    getMyMemberKey,
+        getMyDisplayName:  getMyDisplayName,
+        getMyVoteKey:      getMyVoteKey,
+        getMyEmail:        getMyEmail,
+        isMe:              isMe,
+
+        // Action state
+        getActionState:    getActionState,
+        computeSummary:    computeSummary,
+        sortByPriority:    sortByPriority,
+        renderBadgeHTML:   renderBadgeHTML,
+
+        // Actions
+        voteOnPoll:        voteOnPoll,
+
+        // Return context
+        setReturnContext:  setReturnContext,
+        getReturnContext:  getReturnContext,
+        clearReturnContext: clearReturnContext,
+        hasReturnContext:  hasReturnContext,
+
+        // Constants
+        BUCKET: BUCKET
+    };
+
 })();
+
+// ── GLStore Bridge ──────────────────────────────────────────────────────────
+// Expose action summary on GLStore so any surface can query it without
+// importing feed internals. Requires feed data to be loaded first.
+
+if (typeof GLStore !== 'undefined') {
+    GLStore.getActionSummary = function(feedItems, feedMeta) {
+        return FeedActionState.computeSummary(feedItems || [], feedMeta || {});
+    };
+    GLStore.getActionState = function(item, meta) {
+        return FeedActionState.getActionState(item, meta || {});
+    };
+}
 
 console.log('\u2699\uFE0F feed-action-state.js loaded');
