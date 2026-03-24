@@ -48,63 +48,73 @@ function _feedItemKey(item) {
     return item.type + ':' + item.id;
 }
 
-// ── Onboarding ──────────────────────────────────────────────────────────────
+// ── Feed Guidance ───────────────────────────────────────────────────────────
+// Contextual explainer — shows for first 3 visits, then auto-hides.
+// Not a tutorial. Not a modal. Just orientation.
 
-var _FEED_OB_KEY = 'gl_onboarding_feed_step';
+var _FEED_HELP_KEY = 'gl_feed_help_seen';
+var _FEED_HIGHLIGHT_KEY = 'gl_first_action_highlight_seen';
 
-function _feedGetOnboardingStep() {
-    var v = localStorage.getItem(_FEED_OB_KEY);
-    if (v === 'done') return 'done';
-    var n = parseInt(v, 10);
-    return (n >= 1 && n <= 3) ? n : 1;
+function _feedHelpViewCount() {
+    return parseInt(localStorage.getItem(_FEED_HELP_KEY) || '0', 10);
 }
 
 function _feedAdvanceOnboarding() {
-    var step = _feedGetOnboardingStep();
-    if (step === 'done') return;
-    localStorage.setItem(_FEED_OB_KEY, (step + 1) > 3 ? 'done' : String(step + 1));
-    _feedRemoveOnboardingBanner();
+    // Called on any meaningful action — dismiss highlight
+    if (!localStorage.getItem(_FEED_HIGHLIGHT_KEY)) {
+        localStorage.setItem(_FEED_HIGHLIGHT_KEY, '1');
+        var hl = document.querySelector('.feed-first-action');
+        if (hl) hl.classList.remove('feed-first-action');
+    }
 }
 
-window._feedDismissOnboarding = function() {
-    var step = _feedGetOnboardingStep();
-    if (step === 'done') return;
-    localStorage.setItem(_FEED_OB_KEY, step >= 3 ? 'done' : String(step + 1));
-    _feedRemoveOnboardingBanner();
+window._feedDismissHelp = function() {
+    localStorage.setItem(_FEED_HELP_KEY, '99'); // never show again
+    var b = document.getElementById('feedHelpBanner');
+    if (b) { b.style.opacity = '0'; b.style.transition = 'opacity 0.2s'; setTimeout(function() { b.remove(); }, 250); }
 };
 
-function _feedRemoveOnboardingBanner() {
-    var b = document.getElementById('feedOnboarding');
-    if (b) b.remove();
-}
-
 function _feedRenderOnboarding() {
-    _feedRemoveOnboardingBanner();
-    var step = _feedGetOnboardingStep();
-    if (step === 'done') return;
-    var msgs = {
-        1: '\uD83D\uDC4B This is your band\u2019s command center. Red = urgent. Yellow = you owe input. Tap any item to take action.',
-        2: 'Try this: tap a yellow item and respond. That\u2019s how your band stays locked in.',
-        3: 'Use this instead of texting. Everything your band needs lives here.'
-    };
-    var msg = msgs[step];
-    if (!msg) return;
+    var existing = document.getElementById('feedHelpBanner');
+    if (existing) existing.remove();
+
+    var views = _feedHelpViewCount();
+    if (views >= 3) return; // auto-hide after 3 visits
+    localStorage.setItem(_FEED_HELP_KEY, String(views + 1));
+
     var el = document.getElementById('page-feed');
     if (!el) return;
     var banner = document.createElement('div');
-    banner.id = 'feedOnboarding';
-    banner.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;max-height:60px;overflow:hidden;animation:feedObFadeIn 0.3s ease';
-    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#c7d2fe;line-height:1.4">' + msg + '</div>'
-        + '<button onclick="_feedDismissOnboarding()" style="flex-shrink:0;font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap">Got it</button>';
+    banner.id = 'feedHelpBanner';
+    banner.style.cssText = 'padding:12px 14px;margin-bottom:8px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:10px;animation:feedHelpIn 0.3s ease';
+    banner.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
+        + '<div style="flex:1">'
+        + '<div style="font-size:0.85em;font-weight:700;color:#c7d2fe;margin-bottom:4px">This is your band\u2019s control center</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);line-height:1.6">'
+        + '\uD83D\uDD25 <strong style="color:#fbbf24">I Owe</strong> \u2192 what you need to do<br>'
+        + '\u23F3 <strong style="color:#a5b4fc">Waiting</strong> \u2192 what others still need to do<br>'
+        + '\u2705 When this is clear, you\u2019re locked in'
+        + '</div></div>'
+        + '<button onclick="_feedDismissHelp()" style="flex-shrink:0;font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u2715</button>'
+        + '</div>';
+
     var attnBar = document.getElementById('feedAttentionBar');
     if (attnBar) attnBar.parentNode.insertBefore(banner, attnBar);
     else el.insertBefore(banner, el.firstChild);
-    if (!document.getElementById('feedObStyles')) {
-        var s = document.createElement('style');
-        s.id = 'feedObStyles';
-        s.textContent = '@keyframes feedObFadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}';
-        document.head.appendChild(s);
-    }
+
+    _injectGuidanceStyles();
+}
+
+function _injectGuidanceStyles() {
+    if (document.getElementById('feedGuidanceStyles')) return;
+    var s = document.createElement('style');
+    s.id = 'feedGuidanceStyles';
+    s.textContent = [
+        '@keyframes feedHelpIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}',
+        '@keyframes feedFirstPulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{box-shadow:0 0 0 4px rgba(245,158,11,0.15)}}',
+        '.feed-first-action{animation:feedFirstPulse 2s ease-in-out 3;border-color:rgba(245,158,11,0.3) !important}'
+    ].join('\n');
+    document.head.appendChild(s);
 }
 
 // ── Page Renderer ────────────────────────────────────────────────────────────
@@ -659,7 +669,8 @@ function _feedRender(items) {
         if (groups.myInput.length) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
             html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B YOU OWE INPUT (' + groups.myInput.length + ')</div>';
-            groups.myInput.forEach(function(item) { html += _feedRenderItem(item); });
+            var highlightFirst = !localStorage.getItem(_FEED_HIGHLIGHT_KEY);
+            groups.myInput.forEach(function(item, idx) { html += _feedRenderItem(item, idx === 0 && highlightFirst); });
             html += '</div>';
         }
         if (groups.bandWait.length) {
@@ -688,7 +699,7 @@ function _feedRender(items) {
     el.innerHTML = html || '<div style="text-align:center;padding:40px;color:var(--text-dim)">No feed items yet.</div>';
 }
 
-function _feedRenderItem(item) {
+function _feedRenderItem(item, isFirstAction) {
     var fas = _fas();
     var meta = _feedGetMeta(item);
     var state = fas ? fas.getActionState(item, meta) : null;
@@ -710,7 +721,8 @@ function _feedRenderItem(item) {
     if (resolved) cardStyle += ';opacity:0.6';
     if (archived) cardStyle += ';opacity:0.45';
 
-    var html = '<div id="feedItem_' + safeType + '_' + safeId + '" style="' + cardStyle + '">';
+    var highlightClass = isFirstAction ? ' feed-first-action' : '';
+    var html = '<div id="feedItem_' + safeType + '_' + safeId + '" class="' + highlightClass + '" style="' + cardStyle + '">';
 
     // Header
     html += '<div' + clickAttr + ' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer">'

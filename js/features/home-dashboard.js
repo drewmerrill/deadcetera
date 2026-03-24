@@ -495,13 +495,33 @@ function _scheduleActionOwedFill() {
 
 function _renderModeHeader(icon, title, subtitle) {
     var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+    // Mode micro-guidance — subtle context for what this mode is about
+    // Auto-hides after 3 views per mode
+    var guidanceHtml = '';
+    var modeGuide = {
+        'Sharpen': 'Personal reps. Get your part down before rehearsal.',
+        'Lock In': 'Band alignment. Focus on starts, endings, transitions.',
+        'Play': 'No thinking. Everything should feel automatic on stage.'
+    };
+    var guide = modeGuide[title];
+    if (guide) {
+        var modeKey = 'gl_mode_help_' + title.toLowerCase().replace(/\s/g, '_');
+        var views = parseInt(localStorage.getItem(modeKey) || '0', 10);
+        if (views < 3) {
+            localStorage.setItem(modeKey, String(views + 1));
+            guidanceHtml = '<div style="font-size:0.75em;color:var(--text-dim);padding:0 4px 4px;opacity:0.7">' + _escHtml(guide) + '</div>';
+        }
+    }
+
     return '<div class="hd-cc-header home-anim-header">'
         + '<div class="hd-cc-header__left">'
         + '<div class="hd-cc-header__title">' + icon + ' ' + title + '</div>'
         + '<div class="hd-cc-header__date">' + dateStr + '</div>'
         + '</div>'
         + '</div>'
-        + '<div style="color:var(--text-dim);font-size:0.85em;padding:0 4px 16px;font-style:italic">' + subtitle + '</div>';
+        + '<div style="color:var(--text-dim);font-size:0.85em;padding:0 4px 6px;font-style:italic">' + subtitle + '</div>'
+        + guidanceHtml;
 }
 
 function _renderSharpenPracticeCard(bundle) {
