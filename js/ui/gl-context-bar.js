@@ -58,6 +58,11 @@
   // ── Init ─────────────────────────────────────────────────────────────────
 
   function init() {
+    // Guard: prevent double init (can happen if script loaded twice)
+    if (document.getElementById('gl-context-bar')) {
+        _bar = document.getElementById('gl-context-bar');
+        return;
+    }
     var main = document.getElementById('mainContent');
     if (!main) return;
 
