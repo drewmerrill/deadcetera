@@ -226,6 +226,100 @@ window.ListeningBundles = (function() {
         launchUrl(sorted[0].url);
     }
 
+    // ── Play Confirmation Overlay ──────────────────────────────────────────
+    // Shows match results with explicit play buttons. Avoids popup blocking.
+
+    var _qlSortedUrls = [];
+    var _qlCurrentIdx = 0;
+
+    function _showPlayConfirmation(result, bundle) {
+        var existing = document.getElementById('glPlayConfirm');
+        if (existing) existing.remove();
+
+        _qlSortedUrls = result.urls.sort(function(a, b) { return a.order - b.order; });
+        _qlCurrentIdx = 0;
+        var first = _qlSortedUrls[0];
+        var firstTitle = first ? first.songTitle : '';
+        var q = encodeURIComponent(firstTitle + ' Grateful Dead');
+
+        var overlay = document.createElement('div');
+        overlay.id = 'glPlayConfirm';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:360px;width:100%;text-align:center">'
+            + '<div style="font-size:1.1em;font-weight:800;color:#e2e8f0;margin-bottom:4px">' + result.matched + ' of ' + result.total + ' songs ready</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">' + (firstTitle ? 'Starting with: ' + _esc(firstTitle) : '') + '</div>'
+            + '<div style="display:flex;flex-direction:column;gap:8px;align-items:center">'
+            + '<button onclick="ListeningBundles._qlPlay()" style="width:100%;max-width:240px;padding:12px 20px;border-radius:10px;cursor:pointer;font-size:0.9em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Play first track</button>'
+            + '<div style="display:flex;gap:8px">'
+            + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:8px 16px;border-radius:8px;font-size:0.8em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);text-decoration:none">\uD83D\uDCFA YouTube</a>'
+            + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:8px 16px;border-radius:8px;font-size:0.8em;font-weight:600;border:1px solid rgba(30,215,96,0.15);background:none;color:rgba(30,215,96,0.6);text-decoration:none">\uD83C\uDFA7 Spotify</a>'
+            + '</div>'
+            + '</div>'
+            + '<button onclick="document.getElementById(\'glPlayConfirm\').remove()" style="margin-top:12px;background:none;border:none;color:#475569;cursor:pointer;font-size:0.82em">Close</button>'
+            + '</div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+
+    window._qlPlayUrl = null; // for the next-song bar
+    function _qlPlay() {
+        var confirm = document.getElementById('glPlayConfirm');
+        if (confirm) confirm.remove();
+        if (!_qlSortedUrls.length) return;
+        var item = _qlSortedUrls[_qlCurrentIdx];
+        if (!item) return;
+        if (typeof openMusicLink === 'function') openMusicLink(item.url);
+        else window.open(item.url, '_blank');
+        // Show "Next Song" bar if more tracks
+        if (_qlSortedUrls.length > 1) {
+            _showNextSongBar();
+        }
+    }
+
+    function _qlNext() {
+        _qlCurrentIdx++;
+        if (_qlCurrentIdx >= _qlSortedUrls.length) {
+            _removeNextSongBar();
+            if (typeof showToast === 'function') showToast('\uD83C\uDFB6 All songs played');
+            return;
+        }
+        var item = _qlSortedUrls[_qlCurrentIdx];
+        if (typeof openMusicLink === 'function') openMusicLink(item.url);
+        else window.open(item.url, '_blank');
+        _updateNextSongBar();
+    }
+
+    function _showNextSongBar() {
+        _removeNextSongBar();
+        var bar = document.createElement('div');
+        bar.id = 'glNextSongBar';
+        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9400;display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(15,23,42,0.95);border-top:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+        document.body.appendChild(bar);
+        _updateNextSongBar();
+    }
+
+    function _updateNextSongBar() {
+        var bar = document.getElementById('glNextSongBar');
+        if (!bar) return;
+        var nextIdx = _qlCurrentIdx + 1;
+        if (nextIdx >= _qlSortedUrls.length) {
+            bar.innerHTML = '<span style="flex:1;font-size:0.82em;color:#64748b">Last song</span>'
+                + '<button onclick="ListeningBundles._removeNextSongBar()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em">\u2715</button>';
+            return;
+        }
+        var next = _qlSortedUrls[nextIdx];
+        bar.innerHTML = '<span style="flex:1;font-size:0.82em;color:#94a3b8">Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong> \u00B7 ' + (nextIdx + 1) + '/' + _qlSortedUrls.length + '</span>'
+            + '<button onclick="ListeningBundles._qlNext()" style="padding:6px 16px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Next Song \u2192</button>'
+            + '<button onclick="ListeningBundles._removeNextSongBar()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:4px">\u2715</button>';
+    }
+
+    function _removeNextSongBar() {
+        var el = document.getElementById('glNextSongBar');
+        if (el) el.remove();
+    }
+
+    function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
     function _showQuickLaunchFallback(bundle, destination) {
         // Never leave user hanging — show explicit actions
         var firstSong = bundle.songs[0];
@@ -237,8 +331,8 @@ window.ListeningBundles = (function() {
         overlay.id = 'glQuickLaunchFallback';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
         overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:340px;width:100%;text-align:center">'
-            + '<div style="font-size:1em;font-weight:800;color:#e2e8f0;margin-bottom:6px">No auto-match found</div>'
-            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">Choose where to listen:</div>'
+            + '<div style="font-size:1em;font-weight:800;color:#e2e8f0;margin-bottom:6px">Pick where to listen</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">We couldn\u2019t match automatically \u2014 choose a platform:</div>'
             + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
             + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glQuickLaunchFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.05);color:#f87171;text-decoration:none;cursor:pointer">\uD83D\uDCFA YouTube</a>'
             + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glQuickLaunchFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:rgba(30,215,96,0.05);color:#1ed760;text-decoration:none;cursor:pointer">\uD83C\uDFB5 Spotify</a>'
@@ -289,20 +383,11 @@ window.ListeningBundles = (function() {
         }
         var result = await deliverBundle(bundle, destination);
         if (result.matched === 0) {
-            // No matches — show explicit fallback, never hang
             _showQuickLaunchFallback(bundle, destination);
             return;
         }
-        // Show match count then open — use timeout to let toast render first
-        if (typeof showToast === 'function') {
-            showToast(result.matched + '/' + result.total + ' matched \u2014 opening\u2026');
-        }
-        // Open via user-gesture-safe timeout (short, synchronous-ish)
-        var firstUrl = result.urls.sort(function(a, b) { return a.order - b.order; })[0].url;
-        setTimeout(function() {
-            if (typeof openMusicLink === 'function') openMusicLink(firstUrl);
-            else window.open(firstUrl, '_blank');
-        }, 100);
+        // Show confirmation overlay — user clicks to play (avoids popup blocking)
+        _showPlayConfirmation(result, bundle);
     }
 
     // ── Spotify Sync Engine ────────────────────────────────────────────────
@@ -1173,6 +1258,9 @@ window.ListeningBundles = (function() {
         _resyncAfterReview: _resyncAfterReview,
         _openReviewFromChoice: _openReviewFromChoice,
         _openPlaylistAnyway: _openPlaylistAnyway,
+        _qlPlay: _qlPlay,
+        _qlNext: _qlNext,
+        _removeNextSongBar: _removeNextSongBar,
 
         // UI
         renderDestinationChooser: renderDestinationChooser,
