@@ -3831,7 +3831,13 @@ async function _fillWeakSongs(bundle) {
 
     var weak = _computeWeakSongs(bundle.readinessCache, recencyMap, _WEAK_DISPLAY, gigTitles);
 
-    if (!weak.length) return;
+    if (!weak.length) {
+        el.innerHTML = '<div class="app-card home-anim-cards">'
+            + '<h3 style="margin:0 0 8px">\u2705 All Good</h3>'
+            + '<div style="color:var(--text-dim);font-size:0.82em">No active songs below readiness threshold.</div>'
+            + '</div>';
+        return;
+    }
 
     var titles    = weak.map(function(s) { return s.title; });
     var titlesEsc = JSON.stringify(titles).replace(/'/g, "\\'");
@@ -3855,7 +3861,12 @@ async function _fillWeakSongs(bundle) {
             + '</div>';
     }).join('');
 
+    var _twSc = (typeof statusCache !== 'undefined') ? statusCache
+        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+    var _twActive = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     var totalWeak = Object.entries(bundle.readinessCache || {}).filter(function(entry) {
+        var st = (_twSc && _twSc[entry[0]]) || '';
+        if (!_twActive[st]) return false;
         var ratings = entry[1] || {};
         var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
         if (!keys.length) return false;
