@@ -403,7 +403,7 @@ function _renderListeningCard(bundleType, title, subtitle) {
         + '<div id="hdListenReady_' + bundleType + '" style="font-size:0.72em;color:#64748b;margin-bottom:8px"></div>'
         // Primary CTA
         + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
-        + '<button id="hdStartSet_' + bundleType + '" onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'spotify\')" style="display:flex;align-items:center;gap:4px;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Start Set</button>'
+        + '<button id="hdStartSet_' + bundleType + '" onclick="hdPlayBundle(\'' + bundleType + '\')" style="display:flex;align-items:center;gap:4px;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Start Set</button>'
         + '<button onclick="' + spotifyAction + '" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;' + spotifyStyle + '">' + spotifyLabel + '</button>'
         + '</div>'
         // Secondary destinations
@@ -414,6 +414,29 @@ function _renderListeningCard(bundleType, title, subtitle) {
         + '<div style="font-size:0.68em;color:#475569;margin-top:6px">We\u2019ll start with your first song and guide you through the set.</div>'
         + '</div>';
 }
+
+// ── Play Bundle via Unified Engine ──────────────────────────────────────────
+
+window.hdPlayBundle = async function(bundleType) {
+    // Use unified engine if available
+    if (typeof GLPlayerEngine !== 'undefined' && typeof GLPlayerUI !== 'undefined' && typeof ListeningBundles !== 'undefined') {
+        try {
+            var bundle = await ListeningBundles.computeBundle(bundleType);
+            if (!bundle || !bundle.songs || !bundle.songs.length) {
+                if (typeof showToast === 'function') showToast('No songs in this bundle');
+                return;
+            }
+            var songs = bundle.songs.map(function(s) { return s.songTitle || s.title || s; });
+            var labels = { gig: 'Gig Set', rehearsal: 'Rehearsal Set', focus: 'Focus Set', northstar: 'North Star' };
+            GLPlayerEngine.loadQueue(songs, { name: labels[bundleType] || 'Listen & Learn', mode: 'default' });
+            GLPlayerUI.showOverlay();
+            GLPlayerEngine.play(0);
+            return;
+        } catch(e) { console.warn('[hdPlayBundle] unified engine failed:', e); }
+    }
+    // Fallback to legacy
+    if (typeof ListeningBundles !== 'undefined') ListeningBundles.quickLaunch(bundleType, 'spotify');
+};
 
 // ── Action Owed Card (all modes) ─────────────────────────────────────────────
 // Uses FeedActionState as single source of truth. Shows personal action debt

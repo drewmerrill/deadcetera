@@ -35,7 +35,13 @@ window.GLPlayerUI = (function() {
         if (!E) return;
 
         E.on('stateChange', function(d) { _renderState(d); });
-        E.on('songChange', function(d) { _renderSong(d); });
+        E.on('songChange', function(d) {
+            _renderSong(d);
+            // Sync chart highlighting
+            if (typeof ChartSystem !== 'undefined' && ChartSystem.highlightActiveSong) {
+                ChartSystem.highlightActiveSong(d.song ? d.song.title : null);
+            }
+        });
         E.on('sourceResolved', function(d) { _renderSource(d); });
         E.on('status', function(d) { _renderStatus(d.message); });
         E.on('embedReady', function(d) { _createEmbed(d); });
@@ -232,31 +238,21 @@ window.GLPlayerUI = (function() {
     }
 
     function _createEmbed(d) {
-        if (d.source === 'youtube') {
+        var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
+
+        if (d.source === 'youtube' && d.videoId) {
             var E = window.GLPlayerEngine;
-            // Overlay
-            var oc = document.getElementById('glpVideoContainer');
-            if (oc && _mode === 'overlay') E.createYouTubePlayer('glpVideoContainer', d.videoId);
-            // Float
-            var fc = document.getElementById('glpFloatVideo');
-            if (fc && _mode === 'float') E.createYouTubePlayer('glpFloatVideo', d.videoId);
+            if (E) E.createYouTubePlayer(containerId, d.videoId);
         }
-        if (d.source === 'spotify') {
-            var R = window.GLPlayerEngine ? window.GLPlayerEngine.getActiveResult() : null;
-            if (R && R.trackId) {
-                var iframe = '<iframe src="https://open.spotify.com/embed/track/' + R.trackId + '?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:8px"></iframe>';
-                var oc2 = document.getElementById('glpVideoContainer');
-                if (oc2) oc2.innerHTML = iframe;
-                var fb = document.getElementById('glpFallback');
-                if (fb) { fb.style.display = ''; fb.innerHTML = '<div style="font-size:0.78em;color:#1ed760;margin-top:6px">Tap play in Spotify to start</div>'; }
-            }
+        if (d.source === 'spotify' && d.trackId) {
+            var oc = document.getElementById(containerId);
+            if (oc) oc.innerHTML = '<iframe src="https://open.spotify.com/embed/track/' + d.trackId + '?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:8px"></iframe>';
+            var fb = document.getElementById('glpFallback');
+            if (fb) { fb.style.display = ''; fb.innerHTML = '<div style="font-size:0.78em;color:#1ed760;margin-top:6px">Tap play in Spotify to start</div>'; }
         }
-        if (d.source === 'archive') {
-            var R2 = window.GLPlayerEngine ? window.GLPlayerEngine.getActiveResult() : null;
-            if (R2 && R2.identifier) {
-                var oc3 = document.getElementById('glpVideoContainer');
-                if (oc3) oc3.innerHTML = '<iframe src="https://archive.org/embed/' + _esc(R2.identifier) + '" width="100%" height="100%" frameborder="0" allowfullscreen style="border-radius:8px"></iframe>';
-            }
+        if (d.source === 'archive' && d.identifier) {
+            var oc2 = document.getElementById(containerId);
+            if (oc2) oc2.innerHTML = '<iframe src="https://archive.org/embed/' + _esc(d.identifier) + '" width="100%" height="100%" frameborder="0" allowfullscreen style="border-radius:8px"></iframe>';
         }
     }
 

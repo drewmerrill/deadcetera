@@ -271,9 +271,10 @@ window.GLPlayerEngine = (function() {
             _playYouTube(result.videoId);
         } else if (result.source === 'spotify') {
             _setState(State.PLAYING, { source: 'spotify' });
-            // Spotify embeds don't autoplay — state is PLAYING but user taps play in iframe
+            _emit('embedReady', { source: 'spotify', trackId: result.trackId });
         } else if (result.source === 'archive') {
             _setState(State.PLAYING, { source: 'archive' });
+            _emit('embedReady', { source: 'archive', identifier: result.identifier });
         }
     }
 
