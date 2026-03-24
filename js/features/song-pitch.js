@@ -142,25 +142,90 @@ function _pitchShowApprovalCard(pitch) {
 }
 
 // ── Render Pitch Section (called from Band Room page) ────────────────────────
+var _spFilter = 'auto'; // auto | all | need_vote | voted
+
+window._spSetFilter = function(key) {
+    _spFilter = key;
+    var container = document.getElementById('spPitchContainer');
+    if (container) renderSongPitchSection(container);
+};
+
 window.renderSongPitchSection = async function(container) {
     if (!container) return;
+    container.id = 'spPitchContainer';
     var pitches = toArray(await loadBandDataFromDrive('_band', 'song_pitches') || []);
     var pending = pitches.filter(function(p) { return p.status === 'pending'; });
     var backlog = pitches.filter(function(p) { return p.status === 'rejected' || p.status === 'deferred'; });
 
+    // Compute per-user vote state
+    var myKey = typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null;
+    var needVote = [], alreadyVoted = [];
+    pending.forEach(function(p) {
+        var myVote = myKey ? ((p.votes || {})[myKey] || null) : null;
+        if (myVote) alreadyVoted.push(p);
+        else needVote.push(p);
+    });
+
+    // Auto-default: show "Need my vote" if any outstanding, else "All"
+    var activeFilter = _spFilter;
+    if (activeFilter === 'auto') activeFilter = needVote.length > 0 ? 'need_vote' : 'all';
+
+    // Apply filter
+    var visiblePending;
+    if (activeFilter === 'need_vote') visiblePending = needVote;
+    else if (activeFilter === 'voted') visiblePending = alreadyVoted;
+    else visiblePending = pending;
+
     var html = '<div style="margin-bottom:16px">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">'
-        + '<h3 style="margin:0;font-size:0.95em;color:var(--text)">🎤 Song Pitches</h3>'
+        + '<h3 style="margin:0;font-size:0.95em;color:var(--text)">\uD83C\uDFA4 Song Pitches</h3>'
         + '<button onclick="showPitchModal()" style="font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;min-height:36px">+ Pitch a Song</button>'
         + '</div>';
 
-    if (pending.length === 0 && backlog.length === 0) {
-        html += '<div style="font-size:0.82em;color:var(--text-dim);padding:12px;text-align:center;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">No active pitches. Suggest a song for the band to learn.</div>';
+    // Filter bar + progress
+    if (pending.length > 0) {
+        var votedCount = alreadyVoted.length;
+        var totalCount = pending.length;
+        var remainCount = needVote.length;
+        var pct = totalCount > 0 ? Math.round((votedCount / totalCount) * 100) : 100;
+
+        html += '<div style="margin-bottom:10px">';
+        // Filter tabs
+        var tabs = [
+            { key: 'all', label: 'All (' + totalCount + ')' },
+            { key: 'need_vote', label: '\u270B Need My Vote' + (remainCount > 0 ? ' (' + remainCount + ')' : '') },
+            { key: 'voted', label: '\u2705 Voted (' + votedCount + ')' }
+        ];
+        html += '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">';
+        tabs.forEach(function(t) {
+            var isActive = t.key === activeFilter;
+            html += '<button onclick="_spSetFilter(\'' + t.key + '\')" style="font-size:0.75em;font-weight:' + (isActive ? '800' : '600') + ';padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid ' + (isActive ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (isActive ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (isActive ? '#a5b4fc' : 'var(--text-dim)') + '">' + t.label + '</button>';
+        });
+        html += '</div>';
+        // Progress bar
+        html += '<div style="display:flex;align-items:center;gap:8px">'
+            + '<div style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">'
+            + '<div style="height:100%;width:' + pct + '%;background:' + (pct >= 100 ? '#22c55e' : '#a5b4fc') + ';border-radius:2px;transition:width 0.3s"></div></div>'
+            + '<span style="font-size:0.72em;font-weight:700;color:' + (pct >= 100 ? '#86efac' : 'var(--text-dim)') + ';white-space:nowrap">' + votedCount + '/' + totalCount + ' voted</span>'
+            + '</div>';
+        html += '</div>';
     }
 
-    // Pending pitches
-    pending.forEach(function(p) {
-        var myKey = typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null;
+    // Empty states
+    if (pending.length === 0 && backlog.length === 0) {
+        html += '<div style="font-size:0.82em;color:var(--text-dim);padding:12px;text-align:center;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">No active pitches. Suggest a song for the band to learn.</div>';
+    } else if (visiblePending.length === 0 && activeFilter === 'need_vote') {
+        html += '<div style="text-align:center;padding:20px;font-size:0.85em">'
+            + '<div style="font-size:1.1em;margin-bottom:4px">\u2705</div>'
+            + '<div style="font-weight:700;color:#86efac;margin-bottom:2px">You\u2019re all caught up</div>'
+            + '<div style="font-size:0.82em;color:var(--text-dim)">No pitches need your vote right now.</div>'
+            + '</div>';
+    } else if (visiblePending.length === 0 && activeFilter === 'voted') {
+        html += '<div style="font-size:0.82em;color:var(--text-dim);padding:12px;text-align:center">You haven\u2019t voted on any pitches yet.</div>';
+    }
+
+    // Visible pending pitches
+    visiblePending.forEach(function(p) {
         var votes = p.votes || {};
         var yesCount = Object.values(votes).filter(function(v) { return v === 'yes'; }).length;
         var noCount = Object.values(votes).filter(function(v) { return v === 'no'; }).length;
