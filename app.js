@@ -577,7 +577,7 @@ function _pwaShowInstallBanner() {
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8500;display:flex;align-items:center;gap:10px;padding:10px 14px;max-height:60px;overflow:hidden;'
         + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(99,102,241,0.25);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
     banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#c7d2fe;line-height:1.3">'
-        + '\uD83D\uDCF2 Install GrooveLinx for faster access during rehearsal</div>';
+        + '\uD83D\uDCF2 Install GrooveLinx\u2122 for faster access during rehearsal</div>';
 
     var installBtn = document.createElement('button');
     installBtn.textContent = 'Install';
@@ -616,7 +616,7 @@ function _pwaShowIOSInstructions() {
     overlay.id = 'gl-pwa-ios-modal';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
     overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:24px;max-width:320px;width:100%;text-align:center">'
-        + '<div style="font-size:1.2em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:16px">Install GrooveLinx</div>'
+        + '<div style="font-size:1.2em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:16px">Install GrooveLinx\u2122</div>'
         + '<div style="text-align:left;font-size:0.85em;color:var(--text-muted,#94a3b8);line-height:1.8">'
         + '<div style="margin-bottom:8px"><span style="font-weight:700;color:#a5b4fc">1.</span> Tap the <span style="font-weight:700;color:#f1f5f9">Share</span> icon <span style="font-size:1.1em">\u2B1B\u2191</span> in Safari</div>'
         + '<div style="margin-bottom:8px"><span style="font-weight:700;color:#a5b4fc">2.</span> Scroll down and tap <span style="font-weight:700;color:#f1f5f9">"Add to Home Screen"</span></div>'
@@ -10290,7 +10290,7 @@ function settingsTab(tab, btn) {
         <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
         
     about: `
-        <div class="app-card"><h3>ℹ️ About GrooveLinx</h3>
+        <div class="app-card"><h3>ℹ️ About GrooveLinx™</h3>
             <div style="text-align:center;padding:16px 0">
                 <div style="font-size:2.5em;margin-bottom:8px">🎸</div>
                 <div style="font-size:1.3em;font-weight:800;background:linear-gradient(135deg,#667eea,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${bn}</div>
