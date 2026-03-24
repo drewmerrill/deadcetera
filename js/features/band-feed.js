@@ -143,6 +143,7 @@ function _feedCheckCompletion() {
     if (summary.needsMyInput === 0 && _feedSessionCompleted > 0) {
         // Save last count for new-items detection next session
         try { localStorage.setItem(_FEED_LAST_COUNT_KEY, '0'); } catch(e) {}
+        _feedMicroReinforce('all_clear');
 
         // Celebration animation
         if (_feedSessionTotal > 1) {
@@ -371,10 +372,12 @@ window._feedQuickPost = async function() {
         await db.ref(bandPath('ideas/posts')).push({
             title: text, author: author, ts: new Date().toISOString(), tag: 'fyi'
         });
+        var wasFirst = !localStorage.getItem(_FEED_CREATED_KEY);
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         inp.value = '';
         if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'quick' });
         _feedShowToast('Shared with the band');
+        if (wasFirst) setTimeout(function() { _feedMicroReinforce('first_post'); }, 2500);
         var el = document.getElementById('page-feed');
         if (el) renderBandFeedPage(el);
     } catch(e) { _feedShowToast('Failed'); }
@@ -783,6 +786,10 @@ window._feedVotePoll = async function(pollKey, optionIdx) {
         item.context = ctx.join(' \u00B7 ');
     }
     _feedShowToast('\u2705 Vote recorded');
+    if (!localStorage.getItem(_FEED_FIRST_VOTE_KEY)) {
+        localStorage.setItem(_FEED_FIRST_VOTE_KEY, '1');
+        setTimeout(function() { _feedMicroReinforce('first_vote'); }, 2500);
+    }
     _feedAdvanceOnboarding();
     _feedRerender();
     // Also refresh left rail badge
@@ -1449,47 +1456,70 @@ if ('serviceWorker' in navigator) {
 // Guided behavior onboarding. 7 steps targeting real UI elements.
 // Runs once on first feed visit. Replayable via help button.
 
-var _FEED_WT_KEY = 'feed-walkthrough-v1';
+var _FEED_WT_KEY = 'feed-walkthrough-v2';
+var _FEED_FIRST_VOTE_KEY = 'gl_feed_first_vote';
 
 function _feedRegisterWalkthrough() {
     if (typeof glSpotlight === 'undefined' || !glSpotlight.register) return;
 
     glSpotlight.register(_FEED_WT_KEY, [
-        // Step 1 — Purpose
+        // 1 — Purpose
         { target: '.page-header',
-          text: 'This is your band\u2019s command center. Everything the band needs to decide, review, or act on lives here.' },
+          text: 'Your band\u2019s command center.\nEverything that matters shows up here.' },
 
-        // Step 2 — Action clarity
+        // 2 — Action
         { target: function() { return document.querySelector('[style*="You owe this"]') || document.querySelector('#feedAttentionBar > div'); },
-          text: 'When you see \u201cYou owe this\u201d \u2014 you need to act. Vote, respond, or acknowledge.' },
+          text: 'If you see this, you need to act.\nVote, respond, or acknowledge.' },
 
-        // Step 3 — Ownership
+        // 3 — Ownership
         { target: function() { return document.querySelector('[style*="Needs input from"]') || document.querySelector('[style*="Waiting on"]') || document.querySelector('#feedFilterBar'); },
-          text: 'Some items are for specific people. You\u2019ll see exactly who needs to respond.' },
+          text: 'Some items are for specific people.\nYou\u2019ll see exactly who.' },
 
-        // Step 4 — Creation (critical)
+        // 4 — Creation
         { target: '#feedCreateBar',
-          text: 'Type here to share something with the band instantly. Use the buttons below for polls, ideas, or notes.' },
+          text: 'This replaces texting the band.\nType and send. Start here.' },
 
-        // Step 5 — Interaction
+        // 5 — Interaction
         { target: function() { return document.querySelector('[id^="feedItem_"]'); },
-          text: 'Tap any item to vote, respond, or review. You can also vote on polls directly without leaving this page.' },
+          text: 'Tap to vote or respond.\nPolls work right here \u2014 no extra screens.' },
 
-        // Step 6 — Navigation
+        // 6 — Navigation
         { target: function() { return document.getElementById('feedBackBar') || document.querySelector('#feedFilterBar'); },
-          text: 'When you navigate away, a \u201c\u2190 Back to Feed\u201d bar appears so you can always return.' },
+          text: 'Navigate away and come back safely.\n\u201c\u2190 Back to Feed\u201d always brings you here.' },
 
-        // Step 7 — Completion
+        // 7 — Completion
         { target: '#feedAttentionBar',
-          text: 'When nothing needs you, you\u2019ll see \u201cYou\u2019re locked in.\u201d That\u2019s the goal. Clear your items and feel done.' }
+          text: 'Clear everything and you\u2019re locked in.\nThat\u2019s the goal.' },
+
+        // 8 — Call to action
+        { target: '#feedQuickAdd',
+          text: 'Try it now.\nAsk the band something.' }
     ]);
+}
+
+// ── Micro-reinforcement ─────────────────────────────────────────────────────
+
+function _feedMicroReinforce(type) {
+    // Show once per milestone, never repeat
+    var key = 'gl_feed_reinforce_' + type;
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+
+    var msgs = {
+        first_post: '\uD83C\uDF89 First post \u2014 you\u2019re using Band Feed',
+        first_vote: '\uD83C\uDF89 First vote \u2014 you\u2019re using Band Feed',
+        all_clear: '\uD83D\uDCAA All clear \u2014 you\u2019re locked in'
+    };
+    var msg = msgs[type];
+    if (msg && typeof _feedShowToast === 'function') _feedShowToast(msg);
 }
 
 function _feedTriggerWalkthrough() {
     if (typeof glSpotlight === 'undefined') return;
-    // Only auto-run on first-ever feed visit
     try {
+        // Check both v1 and v2 keys so users who completed v1 don't see v2
         if (localStorage.getItem('gl_wt_' + _FEED_WT_KEY) === '1') return;
+        if (localStorage.getItem('gl_wt_feed-walkthrough-v1') === '1') return;
     } catch(e) {}
     setTimeout(function() { glSpotlight.run(_FEED_WT_KEY); }, 1200);
 }
