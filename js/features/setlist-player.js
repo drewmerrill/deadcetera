@@ -1,8 +1,9 @@
 // ============================================================================
-// js/features/setlist-player.js — In-App Setlist Player v2
+// js/features/setlist-player.js — In-App Setlist Player v3
 //
 // Car-friendly. Large controls. Auto-advance. Version caching.
 // Plays setlists via YouTube embeds with stored + searched video IDs.
+// Launch-guarded: concurrent launches are safely abandoned.
 //
 // DEPENDS ON: extractYouTubeId (utils.js), loadBandDataFromDrive, allSongs
 // ============================================================================
@@ -21,6 +22,7 @@ window.SetlistPlayer = (function() {
     var _setlistId = null;
     var _setlistName = '';
     var _PERSIST_KEY = 'gl_player_state';
+    var _launchToken = 0; // incremented on each launch — stale async ops check this
 
     // ── YouTube IFrame API ──────────────────────────────────────────────────
 
@@ -174,7 +176,7 @@ window.SetlistPlayer = (function() {
 
     // ── Build Queue ─────────────────────────────────────────────────────────
 
-    async function _buildQueue(setlistObj) {
+    async function _buildQueue(setlistObj, token) {
         var songs = [];
         (setlistObj.sets || []).forEach(function(set) {
             (set.songs || []).forEach(function(sg) {
@@ -183,36 +185,65 @@ window.SetlistPlayer = (function() {
             });
         });
 
-        _queue = [];
+        // Build into local array — only assign to _queue if our token is still current
+        var built = [];
         for (var i = 0; i < songs.length; i++) {
+            if (token !== _launchToken) return null; // superseded by newer launch
             var title = songs[i];
             var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === title; });
             var band = songData ? (songData.band || '') : '';
             var _bnMap = { GD: 'Grateful Dead', JGB: 'Jerry Garcia Band', ABB: 'Allman Brothers Band', Phish: 'Phish', WSP: 'Widespread Panic', DMB: 'Dave Matthews Band', Goose: 'Goose' };
             var bandName = _bnMap[band] || (songData && songData.artist && songData.artist !== 'Other' ? songData.artist : band) || '';
             var ytId = await _resolveYouTubeId(title, bandName);
-            _queue.push({ title: title, band: bandName, youtubeId: ytId });
+            if (token !== _launchToken) return null; // check again after async
+            built.push({ title: title, band: bandName, youtubeId: ytId });
         }
-        return _queue;
+        return built;
     }
 
     // ── Launch ──────────────────────────────────────────────────────────────
 
     async function launch(setlistObj, setlistName, startIdx) {
-        if (typeof showToast === 'function') showToast('Loading player\u2026');
+        // ── Full reset: kill any prior session completely ──
+        var myToken = ++_launchToken;
+        fullClose();
+        clearResumeState();
+        _queue = [];
+        _currentIdx = 0;
+        _setlistId = null;
+        _setlistName = '';
+        _isPlaying = false;
 
+        // ── Set new session identity ──
         _setlistName = setlistName || 'Setlist';
         _setlistId = setlistObj.id || setlistObj.name || setlistName;
 
-        await _ensureYouTubeAPI();
-        await _buildQueue(setlistObj);
+        console.log('[SetlistPlayer] launch token=' + myToken, {
+            setlistId: _setlistId, setlistName: _setlistName,
+            songCount: (setlistObj.sets || []).reduce(function(n, s) { return n + (s.songs || []).length; }, 0)
+        });
 
-        if (!_queue.length) {
+        if (typeof showToast === 'function') showToast('Loading player\u2026');
+
+        await _ensureYouTubeAPI();
+        if (myToken !== _launchToken) { console.log('[SetlistPlayer] launch ' + myToken + ' superseded (after YT API)'); return; }
+
+        var built = await _buildQueue(setlistObj, myToken);
+        if (myToken !== _launchToken) { console.log('[SetlistPlayer] launch ' + myToken + ' superseded (after queue build)'); return; }
+        if (!built || !built.length) {
             if (typeof showToast === 'function') showToast('No songs in setlist');
             return;
         }
 
+        _queue = built;
         _currentIdx = (typeof startIdx === 'number' && startIdx >= 0 && startIdx < _queue.length) ? startIdx : 0;
+
+        var song = _queue[_currentIdx];
+        console.log('[SetlistPlayer] ready token=' + myToken, {
+            header: _setlistName, song: song.title, artist: song.band,
+            youtubeId: song.youtubeId || 'none', queueLen: _queue.length
+        });
+
         _createOverlay(_setlistName);
         _playCurrent();
         _persistState();
@@ -290,14 +321,22 @@ window.SetlistPlayer = (function() {
         if (_currentIdx < 0 || _currentIdx >= _queue.length) return;
         var song = _queue[_currentIdx];
 
+        console.log('[SetlistPlayer] playCurrent', {
+            idx: _currentIdx, title: song.title, artist: song.band,
+            youtubeId: song.youtubeId || 'none', ytReady: _ytReady
+        });
+
         var titleEl = document.getElementById('slpSongTitle');
         var artistEl = document.getElementById('slpSongArtist');
         var progressEl = document.getElementById('slpProgress');
         var fallbackEl = document.getElementById('slpFallback');
+        var lockBtn = document.getElementById('slpLockBtn');
         if (titleEl) titleEl.textContent = song.title;
         if (artistEl) artistEl.textContent = song.band;
         if (progressEl) progressEl.textContent = (_currentIdx + 1) + ' of ' + _queue.length;
-        if (fallbackEl) fallbackEl.style.display = 'none';
+        if (fallbackEl) { fallbackEl.style.display = 'none'; fallbackEl.innerHTML = ''; }
+        // Reset lock button state for new song
+        if (lockBtn) { lockBtn.textContent = '\uD83D\uDD12 Use this version'; lockBtn.style.color = '#475569'; lockBtn.style.borderColor = 'rgba(255,255,255,0.06)'; }
 
         _updateUpNext();
         _persistState();
@@ -308,6 +347,7 @@ window.SetlistPlayer = (function() {
             // Auto-resolve: show "Finding..." then search
             _showSearching(song);
         } else {
+            // YouTube API not ready — go straight to fallback (no infinite loading)
             _showFallback(song);
         }
     }
@@ -354,22 +394,24 @@ window.SetlistPlayer = (function() {
         var container = document.getElementById('slpVideoContainer');
         if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>';
 
-        // Timeout: if search takes > 10s, go straight to fallback
+        // Timeout: if search takes > 5s, go straight to fallback
+        var myToken = _launchToken;
         var timedOut = false;
-        var timer = setTimeout(function() { timedOut = true; _showFallback(song); }, 10000);
+        var timer = setTimeout(function() { timedOut = true; console.log('[SetlistPlayer] search timeout for:', song.title); _showFallback(song); }, 5000);
         var ytId = await _resolveYouTubeId(song.title, song.band);
         clearTimeout(timer);
-        if (timedOut) return; // fallback already shown
+        if (timedOut || myToken !== _launchToken) return; // fallback already shown or superseded
         if (ytId) {
             song.youtubeId = ytId;
+            console.log('[SetlistPlayer] resolved:', song.title, '→', ytId);
             _playYouTube(ytId);
-            // Only show toast on first-ever resolution for this song
             var _resolvedKey = 'gl_resolved_' + song.title;
             if (!sessionStorage.getItem(_resolvedKey)) {
                 sessionStorage.setItem(_resolvedKey, '1');
                 if (typeof showToast === 'function') showToast('\u2705 Found a great version');
             }
         } else {
+            console.log('[SetlistPlayer] no YouTube ID found for:', song.title);
             _showFallback(song);
         }
     }
@@ -417,10 +459,11 @@ window.SetlistPlayer = (function() {
     function _showFallback(song) {
         var el = document.getElementById('slpFallback');
         var container = document.getElementById('slpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.85em">Opening best version\u2026</div>';
+        // Clear the video area — show terminal message, not a loading spinner
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.82em;text-align:center;padding:12px">Couldn\u2019t load embedded version \u2014 choose a platform below</div>';
         if (!el) return;
 
-        var searchQuery = encodeURIComponent(song.title + ' ' + song.band);
+        var searchQuery = _buildPlayerSearchQuery(song);
         var html = '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:10px">Listen on your preferred platform</div>'
             + '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
             + '<a href="https://www.youtube.com/results?search_query=' + searchQuery + '" target="_blank" rel="noopener" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.05);color:#f87171;text-decoration:none">\uD83D\uDCFA YouTube</a>'
@@ -432,13 +475,31 @@ window.SetlistPlayer = (function() {
         el.style.display = '';
     }
 
+    // Build search query using correct artist for the current song
+    function _buildPlayerSearchQuery(song) {
+        return encodeURIComponent(song.title + (song.band ? ' ' + song.band : ''));
+    }
+
     async function _openSpotify(songTitle) {
-        var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
-        if (lb) {
-            var url = await lb.resolveUrl(songTitle, 'spotify');
-            if (url) { if (typeof openMusicLink === 'function') openMusicLink(url); else window.open(url, '_blank'); return; }
+        try {
+            var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
+            if (lb && lb.resolveUrl) {
+                var url = await lb.resolveUrl(songTitle, 'spotify');
+                if (url) {
+                    console.log('[SetlistPlayer] Spotify resolved:', songTitle, '→', url);
+                    if (typeof openMusicLink === 'function') openMusicLink(url);
+                    else window.open(url, '_blank');
+                    return;
+                }
+            }
+        } catch(e) {
+            console.warn('[SetlistPlayer] Spotify resolve error:', e);
         }
-        window.open('https://open.spotify.com/search/' + encodeURIComponent(songTitle), '_blank');
+        // Always fall back to Spotify search — never silently no-op
+        var searchUrl = 'https://open.spotify.com/search/' + encodeURIComponent(songTitle);
+        console.log('[SetlistPlayer] Spotify fallback search:', searchUrl);
+        window.open(searchUrl, '_blank');
+        if (typeof showToast === 'function') showToast('Opening Spotify search\u2026');
     }
 
     function _updateUpNext() {
@@ -472,7 +533,6 @@ window.SetlistPlayer = (function() {
     function close() {
         if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
         _player = null;
-        var wasPlaying = _isPlaying;
         _isPlaying = false;
         if (_overlay) { _overlay.remove(); _overlay = null; }
         // Show mini now-playing bar if there's still a queue
@@ -482,13 +542,16 @@ window.SetlistPlayer = (function() {
     }
 
     function fullClose() {
-        // Truly destroy everything including now-playing bar
+        // Truly destroy everything — no stale state survives
         if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
         _player = null;
         _isPlaying = false;
         if (_overlay) { _overlay.remove(); _overlay = null; }
         _removeNowPlayingBar();
         _queue = [];
+        _currentIdx = 0;
+        _setlistId = null;
+        _setlistName = '';
     }
 
     function playFromIndex(idx) {
@@ -562,14 +625,18 @@ window.SetlistPlayer = (function() {
         _dismissResume();
         var state = getResumeState();
         if (!state) return;
+        // Snapshot current token — if a user-initiated launch happens during our async work, bail
+        var tokenBefore = _launchToken;
         try {
             var slData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'setlists') : null;
+            if (tokenBefore !== _launchToken) { console.log('[SetlistPlayer] resume abandoned — user launched new setlist'); return; }
             if (!slData) { if (typeof showToast === 'function') showToast('Could not load setlist'); return; }
             var all = Array.isArray(slData) ? slData : Object.values(slData);
             var sl = all.find(function(s) { return s && (s.id === state.setlistId || s.name === state.setlistId || s.title === state.setlistId); });
             if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); clearResumeState(); return; }
+            if (tokenBefore !== _launchToken) { console.log('[SetlistPlayer] resume abandoned — user launched new setlist'); return; }
             await launch(sl, state.setlistName, state.songIdx);
-            // Confidence signal
+            // Confidence signal (only if launch wasn't superseded)
             if (typeof showToast === 'function') {
                 var songName = state.songTitle || ('song ' + (state.songIdx + 1));
                 showToast('\u25B6 Resumed: ' + songName + ' (' + (state.songIdx + 1) + '/' + (state.total || '?') + ')');
@@ -633,4 +700,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-console.log('\u25B6\uFE0F setlist-player.js v3 loaded');
+console.log('\u25B6\uFE0F setlist-player.js v4 loaded (launch-guarded)');
