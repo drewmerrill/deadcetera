@@ -102,47 +102,70 @@ async function loadSetlists() {
     container.innerHTML = html;
 }
 
+// Inject responsive setlist card CSS once
+(function _slInjectCSS() {
+    if (document.getElementById('slCardCSS')) return;
+    var s = document.createElement('style');
+    s.id = 'slCardCSS';
+    s.textContent = [
+        '.sl-card{padding:10px 14px;border-radius:8px;margin-bottom:6px;display:flex;align-items:flex-start;gap:10px}',
+        '.sl-card-info{flex:1;min-width:0;overflow:hidden}',
+        '.sl-card-info>div{display:block;line-height:1.4;word-break:normal;overflow-wrap:normal}',
+        '.sl-card-title{font-weight:700;font-size:0.9em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '.sl-card-meta{font-size:0.72em;color:var(--text-dim);margin-top:2px}',
+        '.sl-card-preview{font-size:0.68em;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '.sl-card-badge{font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px}',
+        '.sl-card-actions{display:flex;gap:4px;flex-shrink:0;align-items:center;flex-wrap:wrap}',
+        '.sl-card-actions button{font-size:0.72em;padding:4px 8px;border-radius:5px;cursor:pointer}',
+        // Mobile: stack vertically
+        '@media(max-width:600px){',
+        '  .sl-card{flex-direction:column;gap:6px}',
+        '  .sl-card-info{width:100%}',
+        '  .sl-card-actions{width:100%;justify-content:flex-start;order:-1;margin-bottom:2px}',
+        '  .sl-card-title{white-space:normal}',
+        '}'
+    ].join('\n');
+    document.head.appendChild(s);
+})();
+
 function _slRenderCard(sl, isNext) {
     var songCount = (sl.sets || []).reduce(function(a,s) { return a + (s.songs || []).length; }, 0);
     var setCount = (sl.sets || []).length;
     var idx = sl._origIdx;
 
-    var dateDisplay = _slFormatDate(sl.date, true); // compact: "Fri, Jun 5, 2026"
+    var dateDisplay = _slFormatDate(sl.date, true);
     var dateLabel = _slCountdownLabel(sl.date);
 
-    // Set preview — first set, max 4 songs, truncated
     var preview = '';
     if (sl.sets && sl.sets[0] && sl.sets[0].songs && sl.sets[0].songs.length > 0) {
         var songs = sl.sets[0].songs;
         var shown = songs.slice(0, 4).map(function(sg) { return typeof sg === 'string' ? sg : (sg.title || ''); });
         var more = songs.length > 4 ? ' +' + (songs.length - 4) + ' more' : '';
-        preview = shown.join(' · ') + more;
+        preview = shown.join(' \u00B7 ') + more;
     }
 
     var borderColor = isNext ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)';
     var bgColor = isNext ? 'rgba(99,102,241,0.04)' : 'rgba(255,255,255,0.02)';
 
-    return '<div style="padding:10px 14px;border-radius:8px;border:1px solid ' + borderColor + ';background:' + bgColor + ';margin-bottom:6px;display:flex;align-items:flex-start;gap:10px">'
-        // Left: info — explicit block display, safe word wrapping
-        + '<div style="flex:1;min-width:0;display:block;overflow:hidden">'
-        + (isNext ? '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px;line-height:1.4;word-break:normal;overflow-wrap:normal;white-space:normal">NEXT UP' + (dateLabel ? ' \u00B7 ' + dateLabel : '') + ' \u00B7 ' + dateDisplay + '</div>' : '')
-        + '<div style="font-weight:700;font-size:0.9em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:1.4">' + (sl.locked ? '\uD83D\uDD12 ' : '') + (sl.name || 'Untitled') + '</div>'
-        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px;display:block;line-height:1.4;word-break:normal;overflow-wrap:normal;white-space:normal">'
+    return '<div class="sl-card" style="border:1px solid ' + borderColor + ';background:' + bgColor + '">'
+        + '<div class="sl-card-info">'
+        + (isNext ? '<div class="sl-card-badge">NEXT UP' + (dateLabel ? ' \u00B7 ' + dateLabel : '') + ' \u00B7 ' + dateDisplay + '</div>' : '')
+        + '<div class="sl-card-title">' + (sl.locked ? '\uD83D\uDD12 ' : '') + (sl.name || 'Untitled') + '</div>'
+        + '<div class="sl-card-meta">'
         + dateDisplay + ' \u00B7 ' + songCount + ' songs \u00B7 ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
         + (!isNext && dateLabel ? ' \u00B7 ' + dateLabel : '')
         + '</div>'
-        + (preview ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + preview + '</div>' : '')
+        + (preview ? '<div class="sl-card-preview">' + preview + '</div>' : '')
         + '</div>'
-        // Right: actions — wrap on narrow screens, constrain width
-        + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center;flex-wrap:wrap;max-width:45%">'
-        + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">\u25B6 Open</button>'
-        + '<button onclick="slPlaySetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer;font-weight:600" title="Play through setlist">\uD83C\uDFA7</button>'
+        + '<div class="sl-card-actions">'
+        + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Open">\u25B6 Open</button>'
+        + '<button onclick="slPlaySetlist(' + idx + ')" style="border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;font-weight:600" title="Play">\uD83C\uDFA7</button>'
         + (sl.locked
-            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;cursor:pointer;opacity:0.4" title="Locked — click to unlock and edit">✏️</button>'
-              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓 Unlock</button>'
-            : '<button onclick="editSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer" title="Edit">✏️</button>'
-              + '<button onclick="slToggleLock(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e;cursor:pointer" title="Lock this setlist to prevent edits">🔒 Lock</button>'
-              + '<button onclick="deleteSetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer" title="Delete">🗑️</button>')
+            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;opacity:0.4" title="Locked">\u270F\uFE0F</button>'
+              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24" title="Unlock">\uD83D\uDD13 Unlock</button>'
+            : '<button onclick="editSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Edit">\u270F\uFE0F</button>'
+              + '<button onclick="slToggleLock(' + idx + ')" style="border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e" title="Lock">\uD83D\uDD12 Lock</button>'
+              + '<button onclick="deleteSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b" title="Delete">\uD83D\uDDD1\uFE0F</button>')
         + '</div></div>';
 }
 
