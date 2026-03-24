@@ -36,14 +36,11 @@ window.PlaybackSession = (function() {
         try { playlists = JSON.parse(localStorage.getItem('gl_spotify_playlists') || '{}'); } catch(e) {}
         if (!playlists[bundleType]) return 'connected_no_playlist';
 
-        // Check staleness via sync hash
+        // Check staleness — hashes in localStorage survive reloads
         var lastHash = null;
-        try { lastHash = sessionStorage.getItem('gl_sync_hash_' + bundleType); } catch(e) {}
-        // If we have a hash stored from a previous sync and it differs from current,
-        // we'd mark stale. For now, if a playlist exists and we can't prove staleness, it's synced.
-        // Staleness detected: when ListeningBundles stores hash after sync, we compare.
+        try { lastHash = localStorage.getItem('gl_sync_hash_' + bundleType); } catch(e) {}
         var currentHash = null;
-        try { currentHash = sessionStorage.getItem('gl_current_bundle_hash_' + bundleType); } catch(e) {}
+        try { currentHash = localStorage.getItem('gl_current_bundle_hash_' + bundleType); } catch(e) {}
         if (lastHash && currentHash && lastHash !== currentHash) return 'stale';
 
         return 'synced';
@@ -136,14 +133,26 @@ window.PlaybackSession = (function() {
         }
 
         _setState(STATES.STARTING);
+        if (typeof showToast === 'function') showToast('Starting playback\u2026');
         var detectedSource = _detectSource(item.url);
+
+        // Timeout safety net: if still STARTING after 5s, force error
+        var _startTimer = setTimeout(function() {
+            if (_state === STATES.STARTING) {
+                _setState(STATES.ERROR);
+                _showError('Taking too long \u2014 try YouTube or Spotify');
+                _showFallbackOverlay(_bundle._raw || { songs: [{ songTitle: item.songTitle }] });
+            }
+        }, 5000);
 
         try {
             if (typeof openMusicLink === 'function') openMusicLink(item.url);
             else window.open(item.url, '_blank');
+            clearTimeout(_startTimer);
             _setState(STATES.PLAYING);
             _showNowPlayingBar(item, detectedSource, sorted);
         } catch(e) {
+            clearTimeout(_startTimer);
             _setState(STATES.ERROR);
             _showError('Popup blocked \u2014 tap the link below to open');
             _showFallbackOverlay(_bundle._raw || { songs: [{ songTitle: item.songTitle }] });
@@ -289,15 +298,14 @@ window.PlaybackSession = (function() {
         _setHelpData(surface, h);
     }
 
-    function canReplayHelp(surface) {
-        var h = _getSurfaceHelp(surface);
-        return !h.disabled;
+    function canReplayHelp() {
+        // "?" always works — disabled only blocks auto-trigger, not manual replay
+        return true;
     }
 
     function showSurfaceHelp(surface, text, targetId) {
         var forceReplay = !!targetId;
         if (!forceReplay && !shouldShowHelp(surface)) return;
-        if (forceReplay && !canReplayHelp(surface)) return;
 
         if (typeof glSpotlight !== 'undefined' && glSpotlight.run) {
             glSpotlight.run('help_' + surface, [

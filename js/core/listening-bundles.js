@@ -245,9 +245,15 @@ window.ListeningBundles = (function() {
         var overlay = document.createElement('div');
         overlay.id = 'glPlayConfirm';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+        // Detect source + reason for first track
+        var firstSource = first ? _detectUrlSource(first.url) : '';
+        var sourceLabel = { spotify: '\uD83C\uDFB5 Spotify', youtube: '\uD83D\uDCFA YouTube', archive: '\uD83C\uDFDB\uFE0F Archive.org' }[firstSource] || '\uD83C\uDFB5 Link';
+        var reason = first && first.url && first.url.indexOf('spotify') >= 0 ? 'Best match' : 'Top result';
+
         overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:360px;width:100%;text-align:center">'
             + '<div style="font-size:1.1em;font-weight:800;color:#e2e8f0;margin-bottom:4px">' + result.matched + ' of ' + result.total + ' songs ready</div>'
-            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">' + (firstTitle ? 'Starting with: ' + _esc(firstTitle) : '') + '</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:4px">' + (firstTitle ? 'Starting with: ' + _esc(firstTitle) : '') + '</div>'
+            + '<div style="font-size:0.72em;color:#64748b;margin-bottom:14px">' + sourceLabel + ' \u00B7 ' + reason + '</div>'
             + '<div style="display:flex;flex-direction:column;gap:8px;align-items:center">'
             + '<button onclick="ListeningBundles._qlPlay()" style="width:100%;max-width:240px;padding:12px 20px;border-radius:10px;cursor:pointer;font-size:0.9em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Play first track</button>'
             + '<div style="display:flex;gap:8px">'
@@ -319,6 +325,7 @@ window.ListeningBundles = (function() {
     }
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function _detectUrlSource(url) { if (!url) return ''; var l = url.toLowerCase(); if (l.indexOf('spotify') >= 0) return 'spotify'; if (l.indexOf('youtube') >= 0 || l.indexOf('youtu.be') >= 0) return 'youtube'; if (l.indexOf('archive.org') >= 0) return 'archive'; return 'link'; }
 
     function _showQuickLaunchFallback(bundle, destination) {
         // Never leave user hanging — show explicit actions
