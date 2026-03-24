@@ -5076,8 +5076,8 @@
 
   // Pages visible per mode (pages NOT in the list are hidden from nav)
   var MODE_PAGES = {
-    sharpen: ['home', 'songs', 'practice', 'playlists', 'pocketmeter', 'tuner', 'metronome', 'admin', 'help'],
-    lockin:  ['home', 'songs', 'rehearsal', 'setlists', 'ideas', 'calendar', 'admin', 'help'],
+    sharpen: ['home', 'songs', 'practice', 'playlists', 'pocketmeter', 'tuner', 'metronome', 'feed', 'admin', 'help'],
+    lockin:  ['home', 'songs', 'rehearsal', 'setlists', 'ideas', 'feed', 'calendar', 'admin', 'help'],
     play:    ['home', 'setlists', 'gigs', 'calendar', 'venues', 'stageplot', 'admin', 'help']
   };
 

@@ -39,6 +39,7 @@
       { page: 'setlists',  icon: '📋', label: 'Setlists',  tip: 'Build and organize setlists for upcoming gigs' },
       { page: 'rehearsal', icon: '🎸', label: 'Rehearsal',  tip: 'Plan and run a structured band rehearsal' },
       { page: 'ideas',     icon: '💬', label: 'Band Room',  tip: 'Pitch songs, vote, and make band decisions' },
+      { page: 'feed',      icon: '\uD83D\uDCE1', label: 'Feed',       tip: 'See all band notes, ideas, and decisions in one place' },
     ]},
     { title: 'Gigs', items: [
       { page: 'gigs',      icon: '🎤', label: 'Gigs',       tip: 'Manage gigs, link setlists, and track performance details' },
