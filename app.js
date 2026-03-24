@@ -705,6 +705,10 @@ window.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', function() {
     // Parachute: render gig pack if URL has ?gigpack=1#...
     if (parachuteCheckUrlHash()) return;
+    // Spotify OAuth callback handler
+    if (typeof ListeningBundles !== 'undefined' && ListeningBundles.handleSpotifyCallback) {
+        ListeningBundles.handleSpotifyCallback();
+    }
     // ── Auto-init Firebase DB on page load ──────────────────────────────────
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.

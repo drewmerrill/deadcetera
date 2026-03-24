@@ -273,6 +273,276 @@ window.ListeningBundles = (function() {
         }
     }
 
+    // ── Spotify Sync Engine ────────────────────────────────────────────────
+    //
+    // Persistent synced playlists via Spotify Web API.
+    // Uses PKCE OAuth (no server needed — pure client-side SPA flow).
+    //
+    // Flow: authorize → resolve track IDs → create/update playlist → open
+    //
+    // NOTE: Requires a Spotify App registered at developer.spotify.com
+    // with redirect URI matching the app's origin + /callback
+    // Drew must register the app and set SPOTIFY_CLIENT_ID below.
+
+    var SPOTIFY_CLIENT_ID = ''; // TODO: Register at developer.spotify.com
+    var SPOTIFY_REDIRECT = window.location.origin + '/';
+    var SPOTIFY_SCOPES = 'playlist-modify-public playlist-modify-private';
+    var _SPOTIFY_TOKEN_KEY = 'gl_spotify_token';
+    var _SPOTIFY_PLAYLISTS_KEY = 'gl_spotify_playlists';
+
+    function _getSpotifyToken() {
+        try {
+            var raw = localStorage.getItem(_SPOTIFY_TOKEN_KEY);
+            if (!raw) return null;
+            var data = JSON.parse(raw);
+            if (data.expiresAt && Date.now() > data.expiresAt) return null;
+            return data.accessToken;
+        } catch(e) { return null; }
+    }
+
+    function isSpotifyConnected() {
+        return !!_getSpotifyToken();
+    }
+
+    // PKCE OAuth flow
+    async function connectSpotify() {
+        if (!SPOTIFY_CLIENT_ID) {
+            if (typeof showToast === 'function') showToast('Spotify app not configured yet');
+            return { ok: false, reason: 'no client id' };
+        }
+        // Generate PKCE verifier + challenge
+        var verifier = _generateRandomString(128);
+        var challenge = await _sha256Base64url(verifier);
+        localStorage.setItem('gl_spotify_pkce_verifier', verifier);
+        localStorage.setItem('gl_spotify_pkce_return', window.location.href);
+
+        var params = new URLSearchParams({
+            client_id: SPOTIFY_CLIENT_ID,
+            response_type: 'code',
+            redirect_uri: SPOTIFY_REDIRECT,
+            scope: SPOTIFY_SCOPES,
+            code_challenge_method: 'S256',
+            code_challenge: challenge,
+            state: 'gl_spotify_auth'
+        });
+        window.location.href = 'https://accounts.spotify.com/authorize?' + params.toString();
+        return { ok: true, redirecting: true };
+    }
+
+    // Call this on page load to handle OAuth callback
+    async function handleSpotifyCallback() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('state') !== 'gl_spotify_auth') return false;
+        var code = params.get('code');
+        if (!code) return false;
+
+        var verifier = localStorage.getItem('gl_spotify_pkce_verifier');
+        if (!verifier) return false;
+
+        try {
+            var resp = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: SPOTIFY_CLIENT_ID,
+                    grant_type: 'authorization_code',
+                    code: code,
+                    redirect_uri: SPOTIFY_REDIRECT,
+                    code_verifier: verifier
+                })
+            });
+            var data = await resp.json();
+            if (data.access_token) {
+                localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify({
+                    accessToken: data.access_token,
+                    refreshToken: data.refresh_token,
+                    expiresAt: Date.now() + (data.expires_in * 1000)
+                }));
+                localStorage.removeItem('gl_spotify_pkce_verifier');
+                // Clean URL
+                var returnUrl = localStorage.getItem('gl_spotify_pkce_return') || '/';
+                localStorage.removeItem('gl_spotify_pkce_return');
+                window.history.replaceState({}, '', returnUrl);
+                if (typeof showToast === 'function') showToast('Spotify connected');
+                return true;
+            }
+        } catch(e) {
+            console.warn('[Spotify] Token exchange failed:', e);
+        }
+        return false;
+    }
+
+    function disconnectSpotify() {
+        localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
+        localStorage.removeItem(_SPOTIFY_PLAYLISTS_KEY);
+        if (typeof showToast === 'function') showToast('Spotify disconnected');
+    }
+
+    // ── Spotify API helpers ─────────────────────────────────────────────────
+
+    async function _spotifyApi(path, method, body) {
+        var token = _getSpotifyToken();
+        if (!token) return null;
+        var opts = {
+            method: method || 'GET',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+        };
+        if (body) opts.body = JSON.stringify(body);
+        var resp = await fetch('https://api.spotify.com/v1' + path, opts);
+        if (resp.status === 401) {
+            localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
+            return null;
+        }
+        if (resp.status === 204) return {};
+        return resp.json();
+    }
+
+    async function _getSpotifyUserId() {
+        var me = await _spotifyApi('/me');
+        return me ? me.id : null;
+    }
+
+    // ── Track ID Resolution ─────────────────────────────────────────────────
+
+    function _extractTrackId(url) {
+        if (!url) return null;
+        if (typeof extractSpotifyTrackId === 'function') return extractSpotifyTrackId(url);
+        var m = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
+        return m ? m[1] : null;
+    }
+
+    async function _searchSpotifyTrack(songTitle) {
+        var q = encodeURIComponent(songTitle + ' Grateful Dead');
+        var data = await _spotifyApi('/search?q=' + q + '&type=track&limit=1');
+        if (data && data.tracks && data.tracks.items && data.tracks.items.length) {
+            return data.tracks.items[0].id;
+        }
+        return null;
+    }
+
+    async function resolveSpotifyTrackIds(bundle) {
+        var results = { trackUris: [], matched: 0, searched: 0, failed: 0 };
+        for (var i = 0; i < bundle.songs.length; i++) {
+            var song = bundle.songs[i];
+            var url = song.url || await resolveUrl(song.songTitle, 'spotify');
+            var trackId = url ? _extractTrackId(url) : null;
+
+            if (!trackId && _getSpotifyToken()) {
+                // Search Spotify API as fallback
+                trackId = await _searchSpotifyTrack(song.songTitle);
+                results.searched++;
+            }
+
+            if (trackId) {
+                results.trackUris.push('spotify:track:' + trackId);
+                results.matched++;
+            } else {
+                results.failed++;
+            }
+        }
+        return results;
+    }
+
+    // ── Playlist Sync ───────────────────────────────────────────────────────
+
+    function _getPlaylistIds() {
+        try { var r = localStorage.getItem(_SPOTIFY_PLAYLISTS_KEY); return r ? JSON.parse(r) : {}; }
+        catch(e) { return {}; }
+    }
+
+    function _setPlaylistIds(ids) {
+        try { localStorage.setItem(_SPOTIFY_PLAYLISTS_KEY, JSON.stringify(ids)); } catch(e) {}
+    }
+
+    var _PLAYLIST_NAMES = {
+        gig: 'GrooveLinx \u2014 Upcoming Gig',
+        rehearsal: 'GrooveLinx \u2014 Rehearsal Prep',
+        focus: 'GrooveLinx \u2014 Focus Songs',
+        northstar: 'GrooveLinx \u2014 North Stars'
+    };
+
+    async function syncToSpotify(bundleType) {
+        var token = _getSpotifyToken();
+        if (!token) {
+            return connectSpotify();
+        }
+
+        if (typeof showToast === 'function') showToast('Syncing to Spotify\u2026');
+
+        var bundle = await computeBundle(bundleType);
+        if (!bundle.songs.length) {
+            if (typeof showToast === 'function') showToast('No songs in ' + bundleType);
+            return { ok: false, reason: 'empty bundle' };
+        }
+
+        // Resolve track IDs
+        var resolved = await resolveSpotifyTrackIds(bundle);
+        if (!resolved.trackUris.length) {
+            if (typeof showToast === 'function') showToast('No Spotify matches found');
+            return { ok: false, reason: 'no matches', resolved: resolved };
+        }
+
+        // Get or create playlist
+        var playlists = _getPlaylistIds();
+        var playlistId = playlists[bundleType];
+        var userId = await _getSpotifyUserId();
+        if (!userId) {
+            if (typeof showToast === 'function') showToast('Spotify session expired — reconnect');
+            return { ok: false, reason: 'no user' };
+        }
+
+        if (!playlistId) {
+            // Create new playlist
+            var name = _PLAYLIST_NAMES[bundleType] || 'GrooveLinx \u2014 ' + bundleType;
+            var created = await _spotifyApi('/users/' + userId + '/playlists', 'POST', {
+                name: name,
+                description: 'Auto-synced by GrooveLinx',
+                public: false
+            });
+            if (created && created.id) {
+                playlistId = created.id;
+                playlists[bundleType] = playlistId;
+                _setPlaylistIds(playlists);
+            } else {
+                if (typeof showToast === 'function') showToast('Could not create playlist');
+                return { ok: false, reason: 'create failed' };
+            }
+        }
+
+        // Replace playlist contents
+        await _spotifyApi('/playlists/' + playlistId + '/tracks', 'PUT', {
+            uris: resolved.trackUris
+        });
+
+        // Open playlist
+        var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
+        if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
+        else window.open(playlistUrl, '_blank');
+
+        if (typeof showToast === 'function') {
+            showToast(resolved.matched + ' songs synced to Spotify');
+        }
+
+        return { ok: true, matched: resolved.matched, failed: resolved.failed, searched: resolved.searched, playlistId: playlistId };
+    }
+
+    // ── PKCE Helpers ────────────────────────────────────────────────────────
+
+    function _generateRandomString(length) {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        var arr = new Uint8Array(length);
+        crypto.getRandomValues(arr);
+        return Array.from(arr, function(x) { return chars[x % chars.length]; }).join('');
+    }
+
+    async function _sha256Base64url(plain) {
+        var encoder = new TextEncoder();
+        var data = encoder.encode(plain);
+        var digest = await crypto.subtle.digest('SHA-256', data);
+        return btoa(String.fromCharCode.apply(null, new Uint8Array(digest)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
@@ -290,6 +560,14 @@ window.ListeningBundles = (function() {
         launchBundle: launchBundle,
         launchUrl: launchUrl,
         quickLaunch: quickLaunch,
+
+        // Spotify
+        isSpotifyConnected: isSpotifyConnected,
+        connectSpotify: connectSpotify,
+        disconnectSpotify: disconnectSpotify,
+        handleSpotifyCallback: handleSpotifyCallback,
+        syncToSpotify: syncToSpotify,
+        resolveSpotifyTrackIds: resolveSpotifyTrackIds,
 
         // UI
         renderDestinationChooser: renderDestinationChooser,
