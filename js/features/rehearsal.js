@@ -669,6 +669,29 @@ async function _rhRenderSessionHistory() {
     html += '<button onclick="_rhToggleBulkMode()" style="font-size:0.65em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (_rhBulkMode ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_rhBulkMode ? 'rgba(239,68,68,0.1)' : 'none') + ';color:' + (_rhBulkMode ? '#f87171' : '#475569') + '">' + (_rhBulkMode ? '\u2715 Cancel' : '\u2611 Select') + '</button>';
     html += '</div></div>';
 
+    // ── Trend Indicator ──
+    var last5 = clean.slice(0, 5);
+    if (last5.length >= 2) {
+        var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
+        var ratingValues = { great: 3, solid: 2, needs_work: 1 };
+        var dots = last5.map(function(s) { return ratingIcons[s.rating] || '\u25CB'; }).reverse().join(' ');
+        var rated = last5.filter(function(s) { return s.rating; });
+        var trend = '', trendColor = '', trendIcon = '';
+        if (rated.length >= 2) {
+            var recent = rated.slice(0, Math.ceil(rated.length / 2));
+            var older = rated.slice(Math.ceil(rated.length / 2));
+            var avgRecent = recent.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / recent.length;
+            var avgOlder = older.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / older.length;
+            if (avgRecent > avgOlder + 0.3) { trend = 'Improving'; trendColor = '#22c55e'; trendIcon = '\u2191'; }
+            else if (avgRecent < avgOlder - 0.3) { trend = 'Needs attention'; trendColor = '#fbbf24'; trendIcon = '\u2193'; }
+            else { trend = 'Steady'; trendColor = '#94a3b8'; trendIcon = '\u2192'; }
+        }
+        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px">';
+        html += '<div style="font-size:0.85em;letter-spacing:2px" title="Last ' + last5.length + ' sessions (oldest \u2192 newest)">' + dots + '</div>';
+        if (trend) html += '<div style="font-size:0.72em;font-weight:700;color:' + trendColor + ';margin-left:auto">' + trendIcon + ' ' + trend + '</div>';
+        html += '</div>';
+    }
+
     if (_rhBulkMode) {
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px">'
             + '<span id="rhBulkCount" style="font-size:0.72em;font-weight:600;color:#f87171">0 selected</span>'
@@ -742,11 +765,15 @@ async function _rhRenderSessionHistory() {
         html += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + blocksCompleted + '/' + totalBlocks + ' songs</span>';
         html += '</div>';
 
+        // Headline insight
+        var headline = _rhGetHeadline(s, _si, clean);
+        if (headline) html += '<div style="font-size:0.78em;font-weight:700;color:' + headline.color + ';margin-bottom:3px">' + headline.icon + ' ' + headline.text + '</div>';
+
         // Summary line (auto-generated or from session)
-        if (summaryLine) html += '<div style="font-size:0.72em;color:#94a3b8;margin-bottom:3px;line-height:1.4">' + escHtml(summaryLine) + '</div>';
+        if (summaryLine && !headline) html += '<div style="font-size:0.72em;color:#94a3b8;margin-bottom:3px;line-height:1.4">' + escHtml(summaryLine) + '</div>';
 
         // Songs preview
-        if (songList && !summaryLine) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(songList) + '</div>';
+        if (songList && !summaryLine && !headline) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(songList) + '</div>';
 
         // Notes
         if (notesPreview) html += '<div style="font-size:0.72em;color:#475569;margin-bottom:3px">' + notesPreview + '</div>';
@@ -757,6 +784,10 @@ async function _rhRenderSessionHistory() {
         html += '<button onclick="var d=document.getElementById(\'rhSessDetail_' + s.sessionId + '\');if(d)d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Details</button>';
         if (s.mixdown_id) {
             html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
+            // Mixdown tag
+            var mxTag = s.mixdown_tag || '';
+            var mxTagLabels = { best_take: '\u2B50 Best Take', needs_work: '\uD83D\uDD27 Needs Work' };
+            html += '<button onclick="_rhCycleMixdownTag(\'' + s.sessionId + '\')" style="font-size:0.6em;font-weight:600;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid ' + (mxTag === 'best_take' ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (mxTag === 'best_take' ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (mxTag === 'best_take' ? '#fbbf24' : mxTag === 'needs_work' ? '#f87171' : '#475569') + '">' + (mxTagLabels[mxTag] || '\uD83C\uDFF7 Tag') + '</button>';
             html += '<button onclick="if(typeof RehearsalMixdowns!==\'undefined\')RehearsalMixdowns.openInChopper(\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b">\u2702\uFE0F Chopper</button>';
         }
         html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;margin-left:auto">\uD83D\uDDD1\uFE0F</button>';
@@ -790,6 +821,74 @@ async function _rhRenderSessionHistory() {
     html += '</div>';
     el.innerHTML = html;
 }
+
+// ── Headline Insight ────────────────────────────────────────────────────────
+function _rhGetHeadline(session, idx, allSessions) {
+    var rating = session.rating;
+    var actual = session.totalActualMin || 0;
+    var budget = session.totalBudgetMin || 0;
+    var songs = (session.songsWorked || session.blocks || []).length;
+    var delta = actual - budget;
+    var overBlocks = (session.blocks || []).filter(function(b) { return b.budgetMin > 0 && b.actualMin > b.budgetMin; });
+
+    // Best rehearsal this month
+    if (rating === 'great' && idx === 0) {
+        var thisMonth = new Date().toISOString().substring(0, 7);
+        var monthSessions = allSessions.filter(function(s) { return (s.date || '').substring(0, 7) === thisMonth; });
+        var bestInMonth = monthSessions.every(function(s) { return s.rating !== 'great' || s === session; });
+        if (bestInMonth || monthSessions.length <= 1) return { icon: '\uD83D\uDD25', text: 'Best rehearsal this month', color: '#22c55e' };
+    }
+
+    // Great rating
+    if (rating === 'great') return { icon: '\uD83D\uDD25', text: 'Great session', color: '#22c55e' };
+
+    // Tight and efficient
+    if (budget > 0 && Math.abs(delta) <= 3 && songs >= 4) return { icon: '\uD83D\uDCAA', text: 'Tight and efficient session', color: '#a5b4fc' };
+
+    // Ran long
+    if (budget > 0 && delta > 10) return { icon: '\u26A0\uFE0F', text: 'Ran long \u2014 transitions need work', color: '#fbbf24' };
+
+    // Over on most blocks
+    if (overBlocks.length > 0 && overBlocks.length >= (session.blocks || []).length * 0.6) return { icon: '\u26A0\uFE0F', text: 'Most songs ran over \u2014 tighten up', color: '#fbbf24' };
+
+    // Finished early
+    if (budget > 0 && delta < -10) return { icon: '\u26A1', text: 'Finished early \u2014 add more to the plan', color: '#60a5fa' };
+
+    // Solid
+    if (rating === 'solid') return { icon: '\uD83D\uDCAA', text: 'Solid session', color: '#a5b4fc' };
+
+    // Needs work
+    if (rating === 'needs_work') return { icon: '\uD83D\uDD27', text: 'Needs work \u2014 keep pushing', color: '#fbbf24' };
+
+    // Long productive session
+    if (actual >= 60 && songs >= 6) return { icon: '\uD83C\uDFAF', text: 'Deep work session \u2014 ' + songs + ' songs in ' + actual + ' min', color: '#94a3b8' };
+
+    return null;
+}
+
+// ── Mixdown Tagging ─────────────────────────────────────────────────────────
+window._rhCycleMixdownTag = async function(sessionId) {
+    var sessions = _rhSessionsCache || [];
+    var s = sessions.find(function(x) { return x.sessionId === sessionId; });
+    if (!s) return;
+
+    var tags = [null, 'best_take', 'needs_work'];
+    var cur = s.mixdown_tag || null;
+    var nextIdx = (tags.indexOf(cur) + 1) % tags.length;
+    var next = tags[nextIdx];
+
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({ mixdown_tag: next || null });
+            s.mixdown_tag = next;
+        } catch(e) {}
+    }
+
+    var labels = { best_take: '\u2B50 Best Take', needs_work: '\uD83D\uDD27 Needs Work' };
+    if (typeof showToast === 'function') showToast(labels[next] || 'Tag cleared');
+    _rhRenderSessionHistory();
+};
 
 window._rhToggleMixdownPlayer = async function(sessionId, mixdownId) {
     var el = document.getElementById('rhMixdownPlayer_' + sessionId);
