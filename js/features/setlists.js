@@ -304,6 +304,7 @@ async function createNewSetlist() {
 }
 
 var _slOnlyActive = false; // Pierce filter: show only prospect/wip/gig_ready songs
+var _slPickerShowLibrary = false; // When true, song picker shows inactive/shelved songs too
 
 function slToggleActiveFilter(btn) {
     _slOnlyActive = !_slOnlyActive;
@@ -1425,6 +1426,7 @@ function slOpenSongPicker(setIdx) {
     html += '<div style="display:flex;gap:6px;margin-top:6px">';
     html += '<button onclick="slPickerSelectAll(true)" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">Select All Active (' + activeCount + ')</button>';
     html += '<button onclick="slPickerSelectAll(false)" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Clear All</button>';
+    html += '<button onclick="slPickerToggleLibrary()" id="slPickerLibBtn" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">' + (_slPickerShowLibrary ? 'Hide Library' : 'Show Library') + '</button>';
     html += '<span id="slPickerCount" style="font-size:0.68em;color:var(--text-dim);margin-left:auto;align-self:center">' + Object.keys(inSet).length + ' selected</span>';
     html += '</div></div>';
 
@@ -1515,11 +1517,24 @@ function slPickerConfirm(setIdx) {
     if (typeof showToast === 'function') showToast(added > 0 ? added + ' song' + (added > 1 ? 's' : '') + ' added' : 'Setlist updated');
 }
 
+function slPickerToggleLibrary() {
+    _slPickerShowLibrary = !_slPickerShowLibrary;
+    var btn = document.getElementById('slPickerLibBtn');
+    if (btn) btn.textContent = _slPickerShowLibrary ? 'Hide Library' : 'Show Library';
+    // Re-render by toggling visibility of inactive labels
+    document.querySelectorAll('#slPickerList label').forEach(function(label) {
+        if (label.dataset.active === '0') {
+            label.style.display = _slPickerShowLibrary ? 'flex' : 'none';
+        }
+    });
+}
+
 window.slOpenSongPicker = slOpenSongPicker;
 window.slPickerFilter = slPickerFilter;
 window.slPickerSelectAll = slPickerSelectAll;
 window.slPickerUpdateCount = slPickerUpdateCount;
 window.slPickerConfirm = slPickerConfirm;
+window.slPickerToggleLibrary = slPickerToggleLibrary;
 
 window.renderSetlistsPage = renderSetlistsPage;
 window.loadSetlists = loadSetlists;
