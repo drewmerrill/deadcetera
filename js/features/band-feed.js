@@ -376,8 +376,11 @@ window._feedQuickPost = async function() {
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         inp.value = '';
         if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'quick' });
-        _feedShowToast('Shared with the band');
-        if (wasFirst) setTimeout(function() { _feedMicroReinforce('first_post'); }, 2500);
+        if (wasFirst && !localStorage.getItem('gl_feed_reinforce_first_post')) {
+            _feedMicroReinforce('first_post');
+        } else {
+            _feedShowToast('Shared with the band');
+        }
         var el = document.getElementById('page-feed');
         if (el) renderBandFeedPage(el);
     } catch(e) { _feedShowToast('Failed'); }
@@ -785,10 +788,13 @@ window._feedVotePoll = async function(pollKey, optionIdx) {
         ctx.push(item.resolved ? (voteCount + '/' + memberCount + ' voted \u2705') : (remaining + ' of ' + memberCount + ' still need to vote'));
         item.context = ctx.join(' \u00B7 ');
     }
-    _feedShowToast('\u2705 Vote recorded');
     if (!localStorage.getItem(_FEED_FIRST_VOTE_KEY)) {
         localStorage.setItem(_FEED_FIRST_VOTE_KEY, '1');
-        setTimeout(function() { _feedMicroReinforce('first_vote'); }, 2500);
+        _feedMicroReinforce('first_vote');
+    } else if (item && item.targetType === 'specific') {
+        _feedMicroReinforce('targeted');
+    } else {
+        _feedShowToast('\u2705 Vote recorded');
     }
     _feedAdvanceOnboarding();
     _feedRerender();
@@ -868,6 +874,7 @@ window._feedNavigate = function(type, id, songId) {
 window._feedBackToFeed = function() {
     _feedRemoveBackBar();
     showPage('feed');
+    _feedMicroReinforce('return');
 };
 
 function _feedShowBackBar() {
@@ -1469,7 +1476,7 @@ function _feedRegisterWalkthrough() {
 
         // 2 — Action
         { target: function() { return document.querySelector('[style*="You owe this"]') || document.querySelector('#feedAttentionBar > div'); },
-          text: 'If you see this, you need to act.\nVote, respond, or acknowledge.' },
+          text: 'You owe this.\nAct now.' },
 
         // 3 — Ownership
         { target: function() { return document.querySelector('[style*="Needs input from"]') || document.querySelector('[style*="Waiting on"]') || document.querySelector('#feedFilterBar'); },
@@ -1485,7 +1492,7 @@ function _feedRegisterWalkthrough() {
 
         // 6 — Navigation
         { target: function() { return document.getElementById('feedBackBar') || document.querySelector('#feedFilterBar'); },
-          text: 'Navigate away and come back safely.\n\u201c\u2190 Back to Feed\u201d always brings you here.' },
+          text: 'Leave and come back anytime.\n\u2190 Back to Feed' },
 
         // 7 — Completion
         { target: '#feedAttentionBar',
@@ -1502,16 +1509,25 @@ function _feedRegisterWalkthrough() {
 function _feedMicroReinforce(type) {
     // Show once per milestone, never repeat
     var key = 'gl_feed_reinforce_' + type;
-    if (localStorage.getItem(key)) return;
-    localStorage.setItem(key, '1');
+    if (type !== 'targeted' && type !== 'return') {
+        // Permanent milestones — fire once ever
+        if (localStorage.getItem(key)) return;
+        localStorage.setItem(key, '1');
+    } else {
+        // Session milestones — fire once per session
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+    }
 
     var msgs = {
         first_post: '\uD83C\uDF89 First post \u2014 you\u2019re using Band Feed',
-        first_vote: '\uD83C\uDF89 First vote \u2014 you\u2019re using Band Feed',
-        all_clear: '\uD83D\uDCAA All clear \u2014 you\u2019re locked in'
+        first_vote: '\uD83C\uDF89 First vote \u2014 the band sees your input',
+        all_clear: '\uD83D\uDCAA All clear \u2014 you\u2019re locked in',
+        targeted: '\uD83C\uDFAF Nice \u2014 you handled something assigned to you',
+        return: '\u2190 Back to Feed \u2014 you\u2019re in the right place'
     };
     var msg = msgs[type];
-    if (msg && typeof _feedShowToast === 'function') _feedShowToast(msg);
+    if (msg) _feedShowToast(msg);
 }
 
 function _feedTriggerWalkthrough() {
