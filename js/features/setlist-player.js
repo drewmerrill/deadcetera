@@ -250,7 +250,7 @@ window.SetlistPlayer = (function() {
                 onStateChange: function(e) {
                     if (e.data === YT.PlayerState.ENDED) {
                         if (_currentIdx < _queue.length - 1) { _currentIdx++; _playCurrent(); }
-                        else { _isPlaying = false; _updatePlayPauseBtn(); if (typeof showToast === 'function') showToast('Setlist complete'); clearResumeState(); }
+                        else { _isPlaying = false; _updatePlayPauseBtn(); if (typeof showToast === 'function') showToast('\uD83C\uDFB6 Set complete \u2014 nice run'); clearResumeState(); }
                     }
                     if (e.data === YT.PlayerState.PLAYING) { _isPlaying = true; _updatePlayPauseBtn(); }
                     if (e.data === YT.PlayerState.PAUSED) { _isPlaying = false; _updatePlayPauseBtn(); }
@@ -359,18 +359,30 @@ window.SetlistPlayer = (function() {
         var song = _queue[_currentIdx];
         var bar = document.createElement('div');
         bar.id = 'slpNowPlayingBar';
-        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9500;display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(15,23,42,0.95);border-top:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer';
-        bar.onclick = function() { _removeNowPlayingBar(); _createOverlay(_setlistName); _playCurrent(); };
-        bar.innerHTML = '<span style="font-size:1.1em">\u25B6</span>'
-            + '<div style="flex:1;min-width:0"><div style="font-size:0.85em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>'
-            + '<div style="font-size:0.7em;color:#64748b">' + (_currentIdx + 1) + ' of ' + _queue.length + ' \u00B7 Tap to return</div></div>'
-            + '<button onclick="event.stopPropagation();SetlistPlayer.fullClose()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:4px">\u2715</button>';
+        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9500;display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(15,23,42,0.95);border-top:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+        bar.innerHTML = '<button onclick="event.stopPropagation();SetlistPlayer._npTogglePlay()" id="slpNpPlayBtn" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:1em;flex-shrink:0;display:flex;align-items:center;justify-content:center">' + (_isPlaying ? '\u23F8' : '\u25B6') + '</button>'
+            + '<div onclick="SetlistPlayer._npReturnToPlayer()" style="flex:1;min-width:0;cursor:pointer"><div style="font-size:0.85em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>'
+            + '<div style="font-size:0.7em;color:#64748b">' + (_currentIdx + 1) + '/' + _queue.length + ' \u00B7 Tap to return</div></div>'
+            + '<button onclick="event.stopPropagation();SetlistPlayer.next()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1em;padding:4px 6px">\u23ED</button>'
+            + '<button onclick="event.stopPropagation();SetlistPlayer.fullClose()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:4px 6px">\u2715</button>';
         document.body.appendChild(bar);
     }
 
     function _removeNowPlayingBar() {
         var existing = document.getElementById('slpNowPlayingBar');
         if (existing) existing.remove();
+    }
+
+    function _npTogglePlay() {
+        togglePlay();
+        var btn = document.getElementById('slpNpPlayBtn');
+        if (btn) btn.textContent = _isPlaying ? '\u25B6' : '\u23F8'; // will flip after state change
+    }
+
+    function _npReturnToPlayer() {
+        _removeNowPlayingBar();
+        _createOverlay(_setlistName);
+        _playCurrent();
     }
 
     // ── Resume Prompt ───────────────────────────────────────────────────────
@@ -385,15 +397,17 @@ window.SetlistPlayer = (function() {
             if (existing) existing.remove();
             el = document.createElement('div');
             el.id = 'slpResumePrompt';
-            el.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:8500;padding:12px 16px;background:#1e293b;border:1px solid rgba(99,102,241,0.25);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.4);display:flex;align-items:center;gap:10px';
+            el.style.cssText = 'position:fixed;bottom:16px;left:12px;right:12px;z-index:8500;padding:14px 16px;background:linear-gradient(135deg,#1e293b,#1a2540);border:1px solid rgba(99,102,241,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:flex;align-items:center;gap:12px;animation:slpFadeUp 0.3s ease';
             document.body.appendChild(el);
+            _injectPlayerStyles();
         }
-        el.innerHTML = '<div style="flex:1;min-width:0">'
-            + '<div style="font-size:0.82em;font-weight:700;color:var(--text,#e2e8f0)">Resume setlist?</div>'
-            + '<div style="font-size:0.75em;color:#94a3b8;margin-top:2px">\u25B6 Continue from ' + _esc(state.songTitle || 'song ' + (state.songIdx + 1)) + ' (' + (state.songIdx + 1) + ' of ' + (state.total || '?') + ')</div>'
+        el.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:1.2em">\u25B6</span></div>'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:0.88em;font-weight:700;color:#e2e8f0">Resume ' + _esc(state.setlistName || 'setlist') + '?</div>'
+            + '<div style="font-size:0.78em;color:#94a3b8;margin-top:2px">Continue from <strong>' + _esc(state.songTitle || 'song ' + (state.songIdx + 1)) + '</strong> \u00B7 ' + (state.songIdx + 1) + '/' + (state.total || '?') + '</div>'
             + '</div>'
-            + '<button onclick="SetlistPlayer._resumeFromState()" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap">Resume</button>'
-            + '<button onclick="SetlistPlayer._dismissResume()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:4px">\u2715</button>';
+            + '<button onclick="SetlistPlayer._resumeFromState()" style="padding:10px 20px;border-radius:10px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap">Resume</button>'
+            + '<button onclick="SetlistPlayer._dismissResume()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.9em;padding:4px 6px">\u2715</button>';
         return true;
     }
 
@@ -420,6 +434,14 @@ window.SetlistPlayer = (function() {
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+    function _injectPlayerStyles() {
+        if (document.getElementById('slpStyles')) return;
+        var s = document.createElement('style');
+        s.id = 'slpStyles';
+        s.textContent = '@keyframes slpFadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}';
+        document.head.appendChild(s);
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
@@ -435,14 +457,17 @@ window.SetlistPlayer = (function() {
         showResumePrompt: showResumePrompt,
         _resumeFromState: _resumeFromState,
         _dismissResume: _dismissResume,
-        _openSpotify: _openSpotify
+        _openSpotify: _openSpotify,
+        _npTogglePlay: _npTogglePlay,
+        _npReturnToPlayer: _npReturnToPlayer
     };
 
 })();
 
-// Auto-show resume prompt on app load if state exists
+// Auto-show resume prompt on app load — no delay
 document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
+    // Use requestAnimationFrame for earliest safe DOM access
+    requestAnimationFrame(function() {
         if (typeof SetlistPlayer !== 'undefined' && SetlistPlayer.getResumeState()) {
             SetlistPlayer.showResumePrompt();
         }
