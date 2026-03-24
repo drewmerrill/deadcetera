@@ -626,7 +626,7 @@ function _feedRenderAttentionBar(items) {
         html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:130px;padding:12px 16px;border-radius:10px;cursor:pointer;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;gap:10px">'
             + '<span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>'
             + '<div><div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + summary.needsMyInput + '</div>'
-            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d">Needs you</div></div></button>';
+            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d">Needs You</div></div></button>';
     }
     html += '</div>';
     bar.innerHTML = html;
@@ -1234,7 +1234,7 @@ function _feedRenderItem(item, isFirstAction) {
 
     // Ownership + targeting labels — explicit, not subtle
     if (state && state.needsMyInput && !resolved) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 Needs you</div>';
+        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 Needs You</div>';
     }
 
     if (item.targetType === 'specific' && item.targetMembers && item.targetMembers.length) {
@@ -1523,7 +1523,7 @@ function _feedMicroReinforce(type) {
         first_post: '\uD83C\uDF89 First post \u2014 you\u2019re using Band Feed',
         first_vote: '\uD83C\uDF89 First vote \u2014 you just influenced the band',
         all_clear: '\uD83D\uDCAA All clear \u2014 the band is locked in',
-        targeted: '\uD83C\uDFAF Nice \u2014 you jumped in',
+        targeted: '\uD83C\uDFAF Nice \u2014 you jumped in where needed',
         return: 'Back to Feed \u2014 you\u2019re in the right place',
         momentum: '\uD83D\uDD25 Nice \u2014 keep it going'
     };

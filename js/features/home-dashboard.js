@@ -574,7 +574,7 @@ function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, t
     // Action owed state
     card.style.borderLeftColor = 'rgba(245,158,11,0.5)';
     var html = '<div style="font-weight:800;color:#fbbf24;font-size:0.9em;margin-bottom:6px">'
-        + summary.needsMyInput + ' thing' + (summary.needsMyInput > 1 ? 's' : '') + ' need you</div>';
+        + summary.needsMyInput + ' item' + (summary.needsMyInput > 1 ? 's' : '') + ' need you</div>';
 
     // Show top items — first one gets "Do this next:" emphasis
     var items = topItems || [];
