@@ -5,7 +5,7 @@
 //   Band Feed, nav badges, home dashboard, push eligibility.
 //
 // Answers three questions for every surface:
-//   1. What do I owe?        → needsMyInput
+//   1. What needs me?        → needsMyInput
 //   2. What's waiting?       → waitingOnOthers
 //   3. What's done?          → isResolved
 //

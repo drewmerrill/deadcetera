@@ -574,7 +574,7 @@ function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, t
     // Action owed state
     card.style.borderLeftColor = 'rgba(245,158,11,0.5)';
     var html = '<div style="font-weight:800;color:#fbbf24;font-size:0.9em;margin-bottom:6px">'
-        + summary.needsMyInput + ' item' + (summary.needsMyInput > 1 ? 's' : '') + ' need your input</div>';
+        + summary.needsMyInput + ' thing' + (summary.needsMyInput > 1 ? 's' : '') + ' need you</div>';
 
     // Show top items — first one gets "Do this next:" emphasis
     var items = topItems || [];
@@ -591,7 +591,7 @@ function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, t
         var first = items[0];
         var ft = (first.text || '').substring(0, 55);
         if ((first.text || '').length > 55) ft += '\u2026';
-        html += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;font-weight:600">\u25B6 Do this next: ' + _escHtml(ft) + '</div>';
+        html += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;font-weight:600">\u25B6 Jump in: ' + _escHtml(ft) + '</div>';
         for (var ii = 1; ii < items.length; ii++) {
             var t = (items[ii].text || '').substring(0, 55);
             if ((items[ii].text || '').length > 55) t += '\u2026';

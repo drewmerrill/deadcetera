@@ -271,7 +271,7 @@ function _feedRenderHelpBanner(isRecall) {
         + '<div style="flex:1">'
         + '<div style="font-size:0.85em;font-weight:700;color:#c7d2fe;margin-bottom:4px">This is your band\u2019s control center</div>'
         + '<div style="font-size:0.78em;color:var(--text-dim);line-height:1.6">'
-        + '\uD83D\uDD25 <strong style="color:#fbbf24">I Owe</strong> \u2192 what you need to do<br>'
+        + '\uD83D\uDD25 <strong style="color:#fbbf24">Needs You</strong> \u2192 jump in and respond<br>'
         + '\u23F3 <strong style="color:#a5b4fc">Waiting</strong> \u2192 what others still need to do<br>'
         + '\u2705 When this is clear, you\u2019re locked in<br>'
         + '<span style="color:var(--text-muted)">Start by completing the first item below.</span>'
@@ -544,7 +544,7 @@ window.renderBandFeedPage = async function(el) {
     _feedRemoveBackBar();
     el.innerHTML = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:12px;border-bottom:2px solid rgba(99,102,241,0.15);margin-bottom:12px">'
         + '<div><h1 style="margin:0;font-size:1.4em">\uD83D\uDCE1 Band Feed</h1>'
-        + '<p style="margin:4px 0 0;font-size:0.82em;color:var(--text-dim)">What do you owe? What\u2019s waiting? What changed?</p></div>'
+        + '<p style="margin:4px 0 0;font-size:0.82em;color:var(--text-dim)">What needs you? What\u2019s waiting? What changed?</p></div>'
         + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
         + '</div>'
         + '<div id="feedCreateBar" style="margin-bottom:8px"></div>'
@@ -626,7 +626,7 @@ function _feedRenderAttentionBar(items) {
         html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:130px;padding:12px 16px;border-radius:10px;cursor:pointer;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;gap:10px">'
             + '<span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>'
             + '<div><div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + summary.needsMyInput + '</div>'
-            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d">You owe input</div></div></button>';
+            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d">Needs you</div></div></button>';
     }
     html += '</div>';
     bar.innerHTML = html;
@@ -645,7 +645,7 @@ function _feedRenderFilterBar(items) {
     var filters = [
         { key: 'all', label: 'All (' + summary.total + ')' },
         { key: 'critical', label: '\u26A0\uFE0F Critical' + (summary.critical ? ' (' + summary.critical + ')' : '') },
-        { key: 'needs_input', label: '\u270B I Owe' + (summary.needsMyInput ? ' (' + summary.needsMyInput + ')' : '') },
+        { key: 'needs_input', label: '\u270B Needs You' + (summary.needsMyInput ? ' (' + summary.needsMyInput + ')' : '') },
         { key: 'waiting_on_band', label: '\uD83D\uDC65 Waiting' + (summary.waitingOnBand ? ' (' + summary.waitingOnBand + ')' : '') },
         { key: 'since_rehearsal', label: '\uD83C\uDFB8 Since Rehearsal' + (sinceCount ? ' (' + sinceCount + ')' : '') },
         { key: 'archived', label: '\uD83D\uDDC4\uFE0F Archived' + (archivedCount ? ' (' + archivedCount + ')' : '') }
@@ -1149,7 +1149,7 @@ function _feedRender(items) {
         }
         if (groups.myInput.length) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B YOU OWE INPUT (' + groups.myInput.length + ')</div>';
+            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B NEEDS YOU (' + groups.myInput.length + ')</div>';
             var highlightFirst = !localStorage.getItem(_FEED_HIGHLIGHT_KEY);
             groups.myInput.forEach(function(item, idx) { html += _feedRenderItem(item, idx === 0 && highlightFirst); });
             html += '</div>';
@@ -1234,7 +1234,7 @@ function _feedRenderItem(item, isFirstAction) {
 
     // Ownership + targeting labels — explicit, not subtle
     if (state && state.needsMyInput && !resolved) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 You owe this</div>';
+        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 Needs you</div>';
     }
 
     if (item.targetType === 'specific' && item.targetMembers && item.targetMembers.length) {
@@ -1477,8 +1477,8 @@ function _feedRegisterWalkthrough() {
           text: 'Your band\u2019s command center.\nEverything that matters shows up here.' },
 
         // 2 — Action
-        { target: function() { return document.querySelector('[style*="You owe this"]') || document.querySelector('#feedAttentionBar > div'); },
-          text: 'You owe this.\nAct now.' },
+        { target: function() { return document.querySelector('[style*="Needs you"]') || document.querySelector('#feedAttentionBar > div'); },
+          text: 'This needs you.\nJump in.' },
 
         // 3 — Ownership
         { target: function() { return document.querySelector('[style*="Needs input from"]') || document.querySelector('[style*="Waiting on"]') || document.querySelector('#feedFilterBar'); },
@@ -1523,7 +1523,7 @@ function _feedMicroReinforce(type) {
         first_post: '\uD83C\uDF89 First post \u2014 you\u2019re using Band Feed',
         first_vote: '\uD83C\uDF89 First vote \u2014 you just influenced the band',
         all_clear: '\uD83D\uDCAA All clear \u2014 the band is locked in',
-        targeted: '\uD83C\uDFAF Nice \u2014 you handled something assigned to you',
+        targeted: '\uD83C\uDFAF Nice \u2014 you jumped in',
         return: 'Back to Feed \u2014 you\u2019re in the right place',
         momentum: '\uD83D\uDD25 Nice \u2014 keep it going'
     };
