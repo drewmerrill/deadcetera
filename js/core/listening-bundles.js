@@ -476,7 +476,7 @@ window.ListeningBundles = (function() {
             if (match) {
                 if (match.artist && match.artist !== 'Other') artist = match.artist;
                 else if (match.band) {
-                    var bandMap = { GD: 'Grateful Dead', JGB: 'Jerry Garcia Band', ABB: 'Allman Brothers Band', Other: '' };
+                    var bandMap = { GD: 'Grateful Dead', JGB: 'Jerry Garcia Band', ABB: 'Allman Brothers Band', Phish: 'Phish', WSP: 'Widespread Panic', DMB: 'Dave Matthews Band', Goose: 'Goose', Other: '' };
                     artist = bandMap[match.band] || match.band;
                 }
             }

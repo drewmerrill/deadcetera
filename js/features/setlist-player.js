@@ -187,8 +187,9 @@ window.SetlistPlayer = (function() {
         for (var i = 0; i < songs.length; i++) {
             var title = songs[i];
             var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === title; });
-            var band = songData ? (songData.band || 'GD') : 'GD';
-            var bandName = band === 'GD' ? 'Grateful Dead' : band === 'JGB' ? 'Jerry Garcia Band' : band;
+            var band = songData ? (songData.band || '') : '';
+            var _bnMap = { GD: 'Grateful Dead', JGB: 'Jerry Garcia Band', ABB: 'Allman Brothers Band', Phish: 'Phish', WSP: 'Widespread Panic', DMB: 'Dave Matthews Band', Goose: 'Goose' };
+            var bandName = _bnMap[band] || (songData && songData.artist && songData.artist !== 'Other' ? songData.artist : band) || '';
             var ytId = await _resolveYouTubeId(title, bandName);
             _queue.push({ title: title, band: bandName, youtubeId: ytId });
         }
