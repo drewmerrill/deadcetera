@@ -389,24 +389,29 @@ function _renderListeningCard(bundleType, title, subtitle) {
     var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
     if (!lb) return '';
 
-    // Spotify button — single source of truth via PlaybackSession
     var ps = (typeof PlaybackSession !== 'undefined') ? PlaybackSession : null;
     var spotifyLabel = ps ? ps.getSpotifyLabel(bundleType) : '\uD83C\uDFB5 Spotify';
     var spotifyStyle = ps ? ps.getSpotifyStyle(bundleType) : 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)';
     var spotifyAction = 'ListeningBundles.syncToSpotify(\'' + bundleType + '\')';
 
     return '<div class="app-card home-anim-cards" style="border-left:3px solid rgba(99,102,241,0.2)">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
         + '<span style="font-size:1em">' + title.split(' ')[0] + '</span>'
         + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">' + _escHtml(title.substring(title.indexOf(' ') + 1)) + '</span>'
         + '</div>'
-        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px">' + _escHtml(subtitle) + '</div>'
-        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
-        + '<button onclick="' + spotifyAction + '" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:700;' + spotifyStyle + '">' + spotifyLabel + '</button>'
-        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'spotify\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(30,215,96,0.15);background:none;color:rgba(30,215,96,0.6)">\u25B6 Play Now</button>'
-        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'youtube\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">\uD83D\uDCFA YouTube</button>'
-        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'archive\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">\uD83C\uDFDB\uFE0F Archive</button>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">' + _escHtml(subtitle) + '</div>'
+        + '<div id="hdListenReady_' + bundleType + '" style="font-size:0.72em;color:#64748b;margin-bottom:8px"></div>'
+        // Primary CTA
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+        + '<button id="hdStartSet_' + bundleType + '" onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'spotify\')" style="display:flex;align-items:center;gap:4px;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Start Set</button>'
+        + '<button onclick="' + spotifyAction + '" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;' + spotifyStyle + '">' + spotifyLabel + '</button>'
         + '</div>'
+        // Secondary destinations
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'youtube\')" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">\uD83D\uDCFA YouTube</button>'
+        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'archive\')" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">\uD83C\uDFDB\uFE0F Archive</button>'
+        + '</div>'
+        + '<div style="font-size:0.68em;color:#475569;margin-top:6px">We\u2019ll start with your first song and guide you through the set.</div>'
         + '</div>';
 }
 
