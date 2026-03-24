@@ -593,7 +593,8 @@ window.ListeningBundles = (function() {
         if (_lastSyncHash[bundleType] === hash) {
             var plId = _getPlaylistIds()[bundleType];
             if (plId) {
-                if (typeof showToast === 'function') showToast('Already up to date \u2014 opening Spotify');
+                var _utdLabel = { gig: 'Gig', rehearsal: 'Rehearsal', focus: 'Focus', northstar: 'North Star' }[bundleType] || '';
+                if (typeof showToast === 'function') showToast((_utdLabel ? _utdLabel + ' playlist' : 'Playlist') + ' already up to date');
                 var pUrl = 'https://open.spotify.com/playlist/' + plId;
                 if (typeof openMusicLink === 'function') openMusicLink(pUrl);
                 else window.open(pUrl, '_blank');
@@ -649,12 +650,19 @@ window.ListeningBundles = (function() {
         } else {
             // All matched — show identity then open
             var _bundleLabel = { gig: 'Gig', rehearsal: 'Rehearsal', focus: 'Focus', northstar: 'North Star' }[bundleType] || bundleType;
-            if (typeof showToast === 'function') showToast(_bundleLabel + ' playlist ready \u2014 ' + resolved.matched + ' songs in order');
+            // First-time playlist moment
+            var isFirst = !localStorage.getItem('gl_first_playlist');
+            if (isFirst) {
+                localStorage.setItem('gl_first_playlist', '1');
+                if (typeof showToast === 'function') showToast('\uD83C\uDFB6 Your first GrooveLinx playlist is ready');
+            } else {
+                if (typeof showToast === 'function') showToast(_bundleLabel + ' playlist ready \u2014 ' + resolved.matched + ' songs \u2014 stay locked in');
+            }
             setTimeout(function() {
                 var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
                 if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
                 else window.open(playlistUrl, '_blank');
-            }, 400);
+            }, isFirst ? 600 : 400);
         }
 
         return syncResult;
