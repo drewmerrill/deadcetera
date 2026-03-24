@@ -41,6 +41,79 @@ function _feedItemKey(item) {
     return item.type + ':' + item.id;
 }
 
+// ── Onboarding ──────────────────────────────────────────────────────────────
+
+var _FEED_OB_KEY = 'gl_onboarding_feed_step';
+
+function _feedGetOnboardingStep() {
+    var v = localStorage.getItem(_FEED_OB_KEY);
+    if (v === 'done') return 'done';
+    var n = parseInt(v, 10);
+    return (n >= 1 && n <= 3) ? n : 1;
+}
+
+function _feedAdvanceOnboarding() {
+    var step = _feedGetOnboardingStep();
+    if (step === 'done') return;
+    var next = step + 1;
+    localStorage.setItem(_FEED_OB_KEY, next > 3 ? 'done' : String(next));
+    _feedRemoveOnboardingBanner();
+}
+
+window._feedDismissOnboarding = function() {
+    var step = _feedGetOnboardingStep();
+    if (step === 'done') return;
+    localStorage.setItem(_FEED_OB_KEY, step >= 3 ? 'done' : String(step + 1));
+    _feedRemoveOnboardingBanner();
+};
+
+function _feedRemoveOnboardingBanner() {
+    var b = document.getElementById('feedOnboarding');
+    if (b) b.remove();
+}
+
+function _feedRenderOnboarding() {
+    _feedRemoveOnboardingBanner();
+    var step = _feedGetOnboardingStep();
+    if (step === 'done') return;
+
+    var msgs = {
+        1: '\uD83D\uDC4B This is your band\u2019s command center. Red = urgent. Yellow = you owe input. Tap any item to take action.',
+        2: 'Try this: tap a yellow item and respond. That\u2019s how your band stays locked in.',
+        3: 'Use this instead of texting. Everything your band needs lives here.'
+    };
+    var msg = msgs[step];
+    if (!msg) return;
+
+    var el = document.getElementById('page-feed');
+    if (!el) return;
+    var banner = document.createElement('div');
+    banner.id = 'feedOnboarding';
+    banner.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px;'
+        + 'background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;'
+        + 'max-height:60px;overflow:hidden;animation:feedObFadeIn 0.3s ease';
+    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#c7d2fe;line-height:1.4">' + msg + '</div>'
+        + '<button onclick="_feedDismissOnboarding()" style="flex-shrink:0;font-size:0.72em;font-weight:700;'
+        + 'padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);'
+        + 'background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap">Got it</button>';
+
+    // Insert after page header, before attention bar
+    var attnBar = document.getElementById('feedAttentionBar');
+    if (attnBar) {
+        attnBar.parentNode.insertBefore(banner, attnBar);
+    } else {
+        el.insertBefore(banner, el.firstChild);
+    }
+
+    // Inject fade-in animation once
+    if (!document.getElementById('feedObStyles')) {
+        var s = document.createElement('style');
+        s.id = 'feedObStyles';
+        s.textContent = '@keyframes feedObFadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}';
+        document.head.appendChild(s);
+    }
+}
+
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
 window.renderBandFeedPage = async function(el) {
@@ -55,6 +128,7 @@ window.renderBandFeedPage = async function(el) {
     await _feedLoadMeta();
     var items = await _feedLoadAll();
     _feedCache = items;
+    _feedRenderOnboarding();
     _feedRenderAttentionBar(items);
     _feedRenderFilterBar(items);
     _feedRender(items);
@@ -206,6 +280,7 @@ window._feedAction = async function(action, type, id) {
     if (action === 'resolve') {
         var isResolved = _feedIsResolved(item);
         await _feedSaveMeta(item, { resolved: !isResolved });
+        if (!isResolved) _feedAdvanceOnboarding(); // auto-advance on resolve
         _feedShowToast(isResolved ? 'Reopened' : 'Marked resolved');
     } else if (action === 'archive') {
         await _feedSaveMeta(item, { archived: true });
@@ -267,6 +342,7 @@ window._feedSaveNote = async function(type, id) {
     await _feedSaveMeta(item, { notes: notes });
 
     input.value = '';
+    _feedAdvanceOnboarding(); // auto-advance on respond
     _feedShowToast('Note added');
     if (_feedCache) {
         _feedRenderAttentionBar(_feedCache);
@@ -289,6 +365,7 @@ window._feedToggleOlderNotes = function(type, id) {
 // ── Navigation with back-to-feed support ────────────────────────────────────
 
 window._feedNavigate = function(type, id, songId) {
+    _feedAdvanceOnboarding(); // auto-advance on click-through
     _feedNavigatedFrom = true;
     _feedShowBackBar();
 
