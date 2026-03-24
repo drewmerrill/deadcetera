@@ -252,7 +252,8 @@ window.ListeningBundles = (function() {
 
         overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:360px;width:100%;text-align:center">'
             + '<div style="font-size:1.1em;font-weight:800;color:#e2e8f0;margin-bottom:4px">' + result.matched + ' of ' + result.total + ' songs ready</div>'
-            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:4px">' + (firstTitle ? 'Starting with: ' + _esc(firstTitle) : '') + '</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:2px">' + (firstTitle ? 'Starting with: ' + _esc(firstTitle) : '') + '</div>'
+            + '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">Tap play in Spotify, then come back for the next song.</div>'
             + '<div style="font-size:0.72em;color:#64748b;margin-bottom:14px">' + sourceLabel + ' \u00B7 ' + reason + '</div>'
             + '<div style="display:flex;flex-direction:column;gap:8px;align-items:center">'
             + '<button onclick="ListeningBundles._qlPlay()" style="width:100%;max-width:240px;padding:12px 20px;border-radius:10px;cursor:pointer;font-size:0.9em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Play first track</button>'
@@ -276,6 +277,12 @@ window.ListeningBundles = (function() {
         if (!item) return;
         if (typeof openMusicLink === 'function') openMusicLink(item.url);
         else window.open(item.url, '_blank');
+        // Hint: tap play in Spotify, come back for next song
+        if (_qlSortedUrls.length > 1) {
+            setTimeout(function() {
+                if (typeof showToast === 'function') showToast('Tap play in Spotify \u2014 come back here for next song');
+            }, 1500);
+        }
         // Show "Next Song" bar if more tracks
         if (_qlSortedUrls.length > 1) {
             _showNextSongBar();
@@ -587,6 +594,13 @@ window.ListeningBundles = (function() {
 
         var verifier = localStorage.getItem('gl_spotify_pkce_verifier');
         if (!verifier) return false;
+
+        // CRITICAL: ensure Client ID is loaded before token exchange
+        await _ensureSpotifyConfig();
+        if (!SPOTIFY_CLIENT_ID) {
+            console.warn('[Spotify] Cannot exchange token — no Client ID');
+            return false;
+        }
 
         try {
             var resp = await fetch('https://accounts.spotify.com/api/token', {

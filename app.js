@@ -705,9 +705,13 @@ window.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', function() {
     // Parachute: render gig pack if URL has ?gigpack=1#...
     if (parachuteCheckUrlHash()) return;
-    // Spotify OAuth callback handler
+    // Spotify OAuth callback handler (async — must complete before page renders)
     if (typeof ListeningBundles !== 'undefined' && ListeningBundles.handleSpotifyCallback) {
-        ListeningBundles.handleSpotifyCallback();
+        ListeningBundles.handleSpotifyCallback().then(function(connected) {
+            if (connected && typeof window.renderHomeDashboard === 'function') {
+                setTimeout(window.renderHomeDashboard, 300);
+            }
+        });
     }
     // ── Auto-init Firebase DB on page load ──────────────────────────────────
     // Firebase RTDB doesn't require user sign-in to read/write. 
