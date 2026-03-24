@@ -353,10 +353,12 @@ function _feedRenderCreateBar() {
         + '<input id="feedQuickAdd" type="text" placeholder="Share something with the band\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.88em;padding:10px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);color:var(--text);outline:none" onfocus="this.style.borderColor=\'rgba(99,102,241,0.3)\'" onblur="this.style.borderColor=\'rgba(255,255,255,0.08)\'">'
         + '<button onclick="_feedQuickPost()" title="Send" style="flex-shrink:0;width:40px;height:40px;border-radius:50%;cursor:pointer;border:none;background:rgba(99,102,241,0.15);color:#a5b4fc;font-size:1em;font-weight:700;display:flex;align-items:center;justify-content:center">\u2191</button>'
         + '</div>'
-        + '<div style="display:flex;gap:6px">'
-        + '<button onclick="_feedCreateItem(\'note\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center">\uD83D\uDCDD Note</button>'
-        + '<button onclick="_feedCreateItem(\'idea\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center">\uD83D\uDCA1 Idea</button>'
-        + '<button onclick="_feedCreateItem(\'poll\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center">\uD83D\uDDF3\uFE0F Poll</button>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + '<button onclick="_feedCreateItem(\'note\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center;min-width:60px">\uD83D\uDCDD Note</button>'
+        + '<button onclick="_feedCreateItem(\'link\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center;min-width:60px">\uD83D\uDD17 Link</button>'
+        + '<button onclick="_feedCreateItem(\'photo\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center;min-width:60px">\uD83D\uDCF7 Photo</button>'
+        + '<button onclick="_feedCreateItem(\'idea\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center;min-width:60px">\uD83D\uDCA1 Idea</button>'
+        + '<button onclick="_feedCreateItem(\'poll\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center;min-width:60px">\uD83D\uDDF3\uFE0F Poll</button>'
         + '</div>'
         + '</div>';
 }
@@ -403,6 +405,10 @@ window._feedCreateItem = function(type) {
         _feedShowCreateForm('idea', '\uD83D\uDCA1 Share an Idea', 'Song title or idea', 'Link (optional)');
     } else if (type === 'note') {
         _feedShowCreateForm('note', '\uD83D\uDCDD Add a Note', 'What does the band need to know?', null);
+    } else if (type === 'link') {
+        _feedShowCreateForm('link', '\uD83D\uDD17 Share a Link', 'Title or description', 'URL');
+    } else if (type === 'photo') {
+        _feedShowCreateForm('photo', '\uD83D\uDCF7 Share a Photo', 'Caption (optional)', 'Image URL or paste link');
     }
 };
 
@@ -513,8 +519,20 @@ window._feedSubmitCreate = async function(type) {
         } else if (type === 'note') {
             await db.ref(bandPath('ideas/posts')).push({
                 title: text, author: author,
-                ts: new Date().toISOString(), tag: 'fyi'
+                ts: new Date().toISOString(), tag: 'fyi', post_type: 'note'
             });
+        } else if (type === 'link') {
+            var linkUrl = inp2 ? inp2.value.trim() : '';
+            if (!linkUrl) { _feedShowToast('Add a URL'); return; }
+            var linkData = { title: text || linkUrl, link: linkUrl, author: author, ts: new Date().toISOString(), tag: 'fyi', post_type: 'link' };
+            Object.assign(linkData, targetPayload);
+            await db.ref(bandPath('ideas/posts')).push(linkData);
+        } else if (type === 'photo') {
+            var photoUrl = inp2 ? inp2.value.trim() : '';
+            if (!photoUrl) { _feedShowToast('Add a photo URL'); return; }
+            var photoData = { title: text || 'Photo', photo_url: photoUrl, author: author, ts: new Date().toISOString(), tag: 'fyi', post_type: 'photo' };
+            Object.assign(photoData, targetPayload);
+            await db.ref(bandPath('ideas/posts')).push(photoData);
         }
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'structured', targeted: _feedCreateTargetType === 'specific' });
@@ -649,6 +667,9 @@ function _feedRenderFilterBar(items) {
         { key: 'needs_input', label: '\u270B Needs You' + (summary.needsMyInput ? ' (' + summary.needsMyInput + ')' : '') },
         { key: 'waiting_on_band', label: '\uD83D\uDC65 Waiting' + (summary.waitingOnBand ? ' (' + summary.waitingOnBand + ')' : '') },
         { key: 'since_rehearsal', label: '\uD83C\uDFB8 Since Rehearsal' + (sinceCount ? ' (' + sinceCount + ')' : '') },
+        { key: 'links', label: '\uD83D\uDD17 Links' },
+        { key: 'photos', label: '\uD83D\uDCF7 Photos' },
+        { key: 'pinned', label: '\uD83D\uDCCC Pinned' },
         { key: 'system', label: '\u2699\uFE0F System' + (systemCount ? ' (' + systemCount + ')' : '') },
         { key: 'archived', label: '\uD83D\uDDC4\uFE0F Archived' + (archivedCount ? ' (' + archivedCount + ')' : '') }
     ];
@@ -729,6 +750,12 @@ window._feedAction = async function(action, type, id) {
         if (!confirm('Delete this post? This cannot be undone.')) return;
         await _feedDeleteItem(item);
         _feedShowToast('Post deleted');
+    } else if (action === 'pin') {
+        await _feedSaveMeta(item, { pinned: true });
+        _feedShowToast('\uD83D\uDCCC Pinned to Band Room');
+    } else if (action === 'unpin') {
+        await _feedSaveMeta(item, { pinned: false });
+        _feedShowToast('Unpinned');
     }
     _feedRerender();
 };
@@ -791,6 +818,81 @@ window._feedBulkToggle = function(type, id) {
     var countEl = document.getElementById('feedBulkCount');
     if (countEl) countEl.textContent = Object.keys(_feedBulkSelected).length + ' selected';
 };
+
+// ── Edit ───────────────────────────────────────────────────────────────────
+
+window._feedEditItem = function(type, id) {
+    var item = _feedFindItem(type, id);
+    if (!item) return;
+    if (!_feedCanDelete(item)) { _feedShowToast('Only the creator can edit'); return; }
+
+    var cardEl = document.getElementById('feedItem_' + type + '_' + id);
+    if (!cardEl) return;
+
+    var existingText = item.text || item.title || '';
+    var existingLink = item.link || '';
+
+    var html = '<div style="padding:8px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.2);border-radius:8px;margin-top:6px" onclick="event.stopPropagation()">';
+    html += '<textarea id="feedEditText_' + type + '_' + id + '" style="width:100%;min-height:40px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);font-size:0.82em;resize:vertical;box-sizing:border-box;font-family:inherit">' + _feedEsc(existingText) + '</textarea>';
+    if (existingLink || item.post_type === 'link') {
+        html += '<input id="feedEditLink_' + type + '_' + id + '" value="' + _feedEsc(existingLink) + '" placeholder="URL" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);font-size:0.78em;margin-top:4px;box-sizing:border-box">';
+    }
+    html += '<div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end">';
+    html += '<button onclick="document.getElementById(\'feedEditArea_' + type + '_' + id + '\').remove()" style="font-size:0.75em;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Cancel</button>';
+    html += '<button onclick="_feedSaveEdit(\'' + type + '\',\'' + id + '\')" style="font-size:0.75em;font-weight:700;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac">Save</button>';
+    html += '</div></div>';
+
+    var editArea = document.createElement('div');
+    editArea.id = 'feedEditArea_' + type + '_' + id;
+    editArea.innerHTML = html;
+    cardEl.appendChild(editArea);
+};
+
+window._feedSaveEdit = async function(type, id) {
+    var item = _feedFindItem(type, id);
+    if (!item) return;
+
+    var textEl = document.getElementById('feedEditText_' + type + '_' + id);
+    var linkEl = document.getElementById('feedEditLink_' + type + '_' + id);
+    var newText = textEl ? textEl.value.trim() : '';
+    if (!newText) { _feedShowToast('Cannot be empty'); return; }
+
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+
+    // Update in Firebase
+    var path = null;
+    if (type === 'post' || type === 'idea' || type === 'ideas') path = 'ideas/posts/' + id;
+    else if (type === 'poll') path = 'polls/' + id;
+    if (!path) return;
+
+    var updates = { title: newText };
+    if (linkEl) updates.link = linkEl.value.trim();
+    updates.edited_at = new Date().toISOString();
+
+    try {
+        await db.ref(bandPath(path)).update(updates);
+        _feedShowToast('Updated');
+        // Refresh
+        var el = document.getElementById('page-feed');
+        if (el && typeof renderBandFeedPage === 'function') renderBandFeedPage(el);
+    } catch(e) { _feedShowToast('Update failed'); }
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function _feedLinkLabel(url) {
+    if (!url) return 'Link';
+    try {
+        var host = new URL(url).hostname.replace('www.', '');
+        if (host.indexOf('youtube') >= 0 || host.indexOf('youtu.be') >= 0) return 'YouTube';
+        if (host.indexOf('spotify') >= 0) return 'Spotify';
+        if (host.indexOf('archive.org') >= 0) return 'Archive';
+        if (host.indexOf('drive.google') >= 0) return 'Google Drive';
+        if (host.indexOf('instagram') >= 0) return 'Instagram';
+        return host.length > 20 ? host.substring(0, 18) + '\u2026' : host;
+    } catch(e) { return 'Link'; }
+}
 
 window._feedBulkDelete = async function() {
     var keys = Object.keys(_feedBulkSelected);
@@ -1199,6 +1301,12 @@ function _feedRender(items) {
         filtered = visible.filter(function(i) { var s = fas ? fas.getActionState(i, _feedGetMeta(i)) : null; return s && s.waitingOnOthers; });
     } else if (_feedFilter === 'since_rehearsal') {
         filtered = _feedLastRehearsalTs ? visible.filter(function(i) { return (i.timestamp || '') > _feedLastRehearsalTs; }) : visible;
+    } else if (_feedFilter === 'links') {
+        filtered = visible.filter(function(i) { return i.post_type === 'link' || (!i.post_type && i.link); });
+    } else if (_feedFilter === 'photos') {
+        filtered = visible.filter(function(i) { return i.post_type === 'photo' || i.photo_url; });
+    } else if (_feedFilter === 'pinned') {
+        filtered = visible.filter(function(i) { return _feedGetMeta(i).pinned; });
     } else if (_feedFilter === 'system') {
         filtered = visible.filter(function(i) { return i._source === 'playlist_sync'; });
     } else if (_feedFilter === 'archived') {
@@ -1331,7 +1439,20 @@ function _feedRenderItem(item, isFirstAction) {
     // Body
     html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedEsc(item.text) + '</div>';
 
-    if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
+    if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 ' + _feedEsc(_feedLinkLabel(item.link)) + '</a>';
+
+    // Photo
+    if (item.photo_url) html += '<div style="margin-top:6px"><img src="' + _feedEsc(item.photo_url) + '" style="max-width:100%;max-height:240px;border-radius:8px;border:1px solid rgba(255,255,255,0.06)" onerror="this.style.display=\'none\'"></div>';
+
+    // Post type badge
+    if (item.post_type && item.post_type !== 'note') {
+        var ptLabels = { link: '\uD83D\uDD17 Link', photo: '\uD83D\uDCF7 Photo' };
+        if (ptLabels[item.post_type]) html += '<span style="font-size:0.6em;font-weight:700;color:#475569;background:rgba(71,85,105,0.15);padding:1px 5px;border-radius:3px;margin-top:4px;display:inline-block">' + ptLabels[item.post_type] + '</span>';
+    }
+
+    // Pinned badge
+    var isPinned = _feedGetMeta(item).pinned;
+    if (isPinned) html += '<span style="font-size:0.6em;font-weight:700;color:#fbbf24;background:rgba(251,191,36,0.1);padding:1px 5px;border-radius:3px;margin-top:4px;margin-left:4px;display:inline-block">\uD83D\uDCCC Pinned to Band Room</span>';
 
     // Ownership + targeting labels — explicit, not subtle
     if (state && state.needsMyInput && !resolved) {
@@ -1415,6 +1536,12 @@ function _feedRenderItem(item, isFirstAction) {
         html += '<button onclick="_feedAction(\'unarchive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u21A9\uFE0F Restore</button>';
     } else {
         html += '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);opacity:0.5">\uD83D\uDDC4\uFE0F Archive</button>';
+    }
+    // Pin to Band Room
+    html += '<button onclick="_feedAction(\'' + (isPinned ? 'unpin' : 'pin') + '\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (isPinned ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.08)') + ';background:' + (isPinned ? 'rgba(251,191,36,0.08)' : 'none') + ';color:' + (isPinned ? '#fbbf24' : 'var(--text-dim)') + ';opacity:' + (isPinned ? '1' : '0.5') + '">\uD83D\uDCCC ' + (isPinned ? 'Unpin' : 'Pin') + '</button>';
+    // Edit (creator only)
+    if (_feedCanDelete(item)) {
+        html += '<button onclick="_feedEditItem(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;opacity:0.5">\u270F\uFE0F</button>';
     }
     // Delete button (creator or admin only)
     if (_feedCanDelete(item)) {
