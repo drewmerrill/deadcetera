@@ -1,149 +1,142 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-22 (end of session)_
+_Updated: 2026-03-24 (end of marathon sprint)_
 
-## Active Phase: Rehearsal System Complete + System Hardening
+## Active Phase: Band Feed Action Engine + Listening System + Play Mode
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main)
 Production URL: **https://app.groovelinx.com**
-CI: GitHub Actions syntax validation on all branch pushes
 
 ---
 
 ## GrooveLinx Product Philosophy
 
-**Two-layer product model:**
-1. **Band Operations Layer** — calendar, availability, gigs, setlists, polls/discussions
-2. **Musicianship Intelligence Layer** — Song Intelligence, Rehearsal Intelligence, Groove Intelligence
+**Three-mode system:**
+- 🔥 Sharpen = personal practice (get your part down)
+- 🎯 Lock In = band alignment (starts, endings, transitions)
+- 🎤 Play = live execution (no thinking, automatic)
 
-**Command Center = Band Mission Control.** Answers: "What should the band do next?"
+**Band Feed = central action hub.** Answers: "What needs me? What's waiting? What changed?"
 
-**Navigation roadmap:** Migrate from data-module nav to workflow-based groups (Music / Rehearsal / Shows / Band / Tools).
-
-**Out of scope:** file storage, messaging/chat, complex RBAC, email blasts, multi-band.
-
----
-
-## Shipped This Session (2026-03-22)
-
-### Rehearsal System (30+ patches)
-- Mixed block types: song, exercise, jam, business, note, section divider
-- Section dividers with subtotals, quick templates
-- Drag-and-drop reordering (HTML5 + touch) with ↑↓ fallback
-- Time budgeting: auto-calculated + manual override per block
-- Per-block assignments (band member checkboxes)
-- Per-block notes (collaborative prep)
-- Editable plan name
-- Firebase shared plans (`rehearsal_plans/{planId}`) — whole band sees same plan
-- Debounced save with "Saving…" / "✓ Saved" indicator
-- Plan snapshots: save/load/delete, auto-save before Clear/Rebuild
-- Live rehearsal timing: actual vs budgeted per block
-- Post-session review card with per-block bars + pacing takeaway
-- Past rehearsals list (last 10 sessions, expand/collapse)
-- 10-step guided walkthrough with back button, prepare hooks, highlight ring
-- `?` button to re-trigger walkthrough on demand
-- Example "How to build a rehearsal plan" helper panel
-
-### Calendar System
-- Date validation (year range, end-before-start, long range warning)
-- Conflict option in day-click dropdown
-- Blocked dates sorted chronologically
-- Unified edit/delete for legacy + new-model schedule blocks
-- Stronger month boundary line in availability matrix
-- Conflict resolver scroll-into-view + header count
-
-### Store Centralization
-- Gigs cache: GLStore getter/setter/clear
-- Status cache: GLStore setter + event
-- Readiness cache: GLStore setter + event
-- Schedule blocks cache clear for calendar refresh
-
-### Lesson Bridge (Phase 1)
-- Practice Mode lessons (`my_lessons_{email}`) now visible in Song Detail Learn Lens
-- Remove button works from Song Detail side
-- North Star and Best Shot confirmed UNIFIED (no split-brain)
-
-### Spotlight / Onboarding
-- Reusable registry-based walkthrough system (`gl-spotlight.js`)
-- Clip-path overlay, scroll-to-center, dialog in opposite half
-- `prepare()` hooks, back button, highlight ring
-
-### Bug Fixes
-- Chart scroll fight: stable DOM container + scoped scrollIntoView
-- Now Playing bar: session-only (no longer persists "After Midnight" across refreshes)
-- Calendar block edit: unified blockId routing (no more wrong-entry bug)
-- Firebase index warnings: removed orderByChild queries (client-side sort)
+**Listening Bundles = fastest path to hearing.** Answers: "What should I listen to, and where?"
 
 ---
 
-## Smoke Test Plan
+## Shipped This Session (2026-03-24) — ~60 commits
 
-Full 65-test plan at: `02_GrooveLinx/notes/smoke_test_plan.md`
+### Band Feed v5 (Action Engine)
+- FeedActionState: centralized ownership, completion, badges, CTAs, priority
+- Personal vs band input split ("Needs You" / "Waiting on Band")
+- Inline poll voting (no navigation required)
+- Inline idea acknowledgment ("Got it")
+- Identity-aware vote tracking via _feedGetMyVoteKey()
+- Progress bar + auto-advance + momentum nudges
+- Completion celebration + session summary
+- New-items indicator + weekly action history
+- Band alignment card (Lock In dashboard)
+- Time + urgency layer (event-aware priority, rehearsal blockers)
+- Creation bar (quick add + structured: poll/idea/note)
+- Responsibility targeting (everyone / specific people)
+- 8-step spotlight walkthrough (guided behavior onboarding)
+- Micro-reinforcement system (first post, first vote, all clear, targeted, momentum)
+- Collaborative language ("Needs You", "Jump in", "the band is locked in")
+- Persistent return-to-feed navigation via sessionStorage
+- Feed events for playlist sync
 
-Covers: Rehearsal Planning (25), Firebase Sync (6), Snapshots (7), Rehearsal Execution (11), Session Review (8), Past Rehearsals (8), Spotlight (10)
+### Listening Bundles + Destinations
+- Bundle abstraction: gig, rehearsal, focus, northstar
+- Multi-destination: Spotify, YouTube, Archive.org
+- Spotify PKCE OAuth (Client ID from Cloudflare Worker)
+- Persistent synced playlists (create/update/reuse)
+- Match review + fix system (search, select, lock)
+- Auto version resolution (Invidious YouTube search + ranking)
+- Result quality scoring (views, duration, artist match)
+- Version locking (isPrimary, single source of truth)
+- Token refresh (silent, reduces forced re-auth)
+- "Already up to date" detection
+- Failure state dialogs (not configured / not connected / expired)
+- Playlist events posted to Band Feed
+
+### In-App Setlist Player (Play Mode)
+- Full-screen YouTube embed player
+- Auto-advance on song end
+- Car-friendly UI (1.8em title, 80px play button)
+- YouTube ID caching (localStorage, permanent)
+- Playback persistence (resume within 2h auto, 2-24h prompt)
+- Now-playing bar with play/pause + skip
+- "Use this version" lock button
+- 10-second search timeout → auto-fallback
+- Play confirmation overlay (avoids Safari popup blocking)
+- Next Song continuation bar
+
+### Global Systems
+- FeedActionState on GLStore (getActionSummary, getActionState)
+- Left rail Feed badge (needsMyInput count)
+- App icon badge (navigator.setAppBadge)
+- Background badge refresh (polls, every 2min)
+- Notification architecture (local triggers + push prep)
+- Notification preferences (Settings UI)
+- VAPID keys + subscription storage in Firebase
+- Usage instrumentation (FeedMetrics: visits, actions, creates, bounces)
+- Song pitch filters (Need My Vote / Voted / progress bar)
+
+### Reliability Fixes
+- P0 blank screen: boot watchdog + auth path gaps
+- Band Feed syntax error (merge residue)
+- Status filter on all 7 readiness surfaces
+- "Loading weak songs" hang (element ID mismatch)
+- Weak songs card async fill fallback
+- Harmony Lab "Loading..." → "Coming soon"
+- PWA app icon fix (full-bleed, no white padding)
+- PWA install + update notification system
+- Service worker cache management
 
 ---
 
-## Audit Results (confirmed this session)
+## In Progress
 
-| System | Status |
-|--------|--------|
-| Lessons | BRIDGED (Phase 1 — Practice Mode visible in Song Detail) |
-| North Star | UNIFIED (same Firebase path everywhere) |
-| Best Shot | UNIFIED (same Firebase path everywhere) |
-| Pocket Meter | FULLY BUILT (2,281 lines, production-ready) |
-| Bug queue | CLEAN (no active bugs) |
-| TODO/FIXME comments | NONE in codebase |
+- Spotify Worker deploy (`/spotify-config` endpoint)
+- Redirect URI in Spotify Developer Dashboard
+- End-to-end Spotify flow testing
 
----
-
-## Pending Work (prioritized)
+## Pending Work
 
 ### HIGH
-1. Notification inbox UI — data stored, no reader UI
-2. GitHub Pages redirect — old links go to dead page
-3. Stale docs — 5 files reference old GitHub Pages URL
+1. Deploy Cloudflare Worker with /spotify-config
+2. Add redirect URI to Spotify Dashboard
+3. Test Spotify connect → sync → playlist flow
+4. YouTube OAuth playlists (Phase 2)
+5. Observe usage via FeedMetrics
 
 ### MEDIUM
-4. Lesson unification (Phase 2) — unified `learning_resources/` model with instrument tags
-5. Setlist Phase B — drag songs between sets, per-song duration override
-6. Store centralization — northStarCache, pitchCache, blockedDates
-7. Google Maps API key — verify Vercel domains in referrers
+6. Archive.org launch experience (Phase 3)
+7. Push notification Cloud Function (for closed-app delivery)
+8. Settings UI for notification preferences
+9. Setlist player: start from any song in setlist view
 
 ### LOW
-8. Groove personality profiles (Pocket Meter v2)
-9. Marketing site "Launch App" link
-10. app-dev.js cleanup
-
----
-
-## Phase 2 Lesson Unification (proposed, not implemented)
-
-```
-bands/{slug}/songs/{title}/learning_resources/{resourceId}
-{
-  resourceId: "lr_abc123",
-  type: "lesson" | "tab" | "track" | "cover",
-  title: "Jerry Garcia — Eyes solo breakdown",
-  url: "https://youtube.com/...",
-  addedBy: "drew",
-  addedAt: "2026-03-22T...",
-  visibility: "personal" | "band",
-  assignedTo: ["jay"],
-  instrument: "guitar",
-  notes: "Focus on the chromatic run at 2:15"
-}
-```
-
-Migration: adapter reads both old + new paths → new writes to unified path → background migration → drop old paths.
+10. Scroll position restoration on feed return
+11. App-dev.js cleanup
+12. Band alignment on Play dashboard
 
 ---
 
 ## Firebase Paths Added This Session
 
 ```
-bands/{slug}/rehearsal_plans/{planId}        — shared rehearsal plans
-bands/{slug}/rehearsal_history/{snapshotId}  — plan snapshots for reuse
-bands/{slug}/rehearsal_sessions/{sessionId}  — session timing summaries
+bands/{slug}/feed_meta/{type:id}         — feed item overlay (archive, resolved, tags, notes)
+bands/{slug}/push_subscriptions/{key}     — push subscription per member
+bands/{slug}/metrics/{key}/{date}         — daily usage rollup per member
+```
+
+---
+
+## Key Architecture Files (new this session)
+
+```
+js/core/feed-action-state.js    — Global Action Engine
+js/core/feed-metrics.js         — Usage instrumentation
+js/core/listening-bundles.js    — Bundle + destination + Spotify sync
+js/features/setlist-player.js   — In-app setlist player
 ```
