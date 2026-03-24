@@ -808,11 +808,12 @@ async function _feedLoadAll() {
         }
 
         _feedLastRehearsalTs = await _feedGetLastRehearsalTs(db);
+        await _feedLoadNextEvents(db);
     } catch(e) {
         console.warn('[Feed] Load error:', e.message);
     }
 
-    // Sort by priority (action urgency), not just chronology
+    // Sort by priority (action urgency + time proximity)
     if (fas) {
         items = fas.sortByPriority(items, _feedMeta);
     } else {
@@ -838,6 +839,34 @@ async function _feedGetLastRehearsalTs(db) {
         }
     } catch(e) {}
     return null;
+}
+
+// ── Load next event dates for urgency ────────────────────────────────────────
+
+async function _feedLoadNextEvents(db) {
+    var fas = _fas();
+    if (!fas) return;
+    var today = new Date().toISOString().split('T')[0];
+    var nextRehearsal = null, nextGig = null;
+    try {
+        // Gigs
+        var gigsData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'gigs') : null;
+        if (gigsData) {
+            var gigs = (Array.isArray(gigsData) ? gigsData : Object.values(gigsData))
+                .filter(function(g) { return g && (g.date || '') >= today; })
+                .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+            if (gigs.length) nextGig = gigs[0].date;
+        }
+        // Calendar events for next rehearsal
+        var calData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'calendar_events') : null;
+        if (calData) {
+            var rehearsals = (Array.isArray(calData) ? calData : Object.values(calData))
+                .filter(function(e) { return e && e.type === 'rehearsal' && (e.date || '') >= today; })
+                .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+            if (rehearsals.length) nextRehearsal = rehearsals[0].date;
+        }
+    } catch(e) {}
+    fas.setNextEvents({ rehearsal: nextRehearsal, gig: nextGig });
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -963,7 +992,7 @@ function _feedRenderItem(item, isFirstAction) {
     html += '<div' + clickAttr + ' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer">'
         + '<span style="font-size:1em">' + typeIcon + '</span>'
         + '<span style="font-size:0.82em;font-weight:700;color:var(--text)">' + _feedEsc(item.author) + '</span>'
-        + contextStr + badgeHtml
+        + contextStr + badgeHtml + _feedRenderUrgencyTag(state)
         + '<span style="margin-left:auto;font-size:0.68em;color:var(--text-dim);flex-shrink:0">' + timeStr + '</span>'
         + '</div>';
 
@@ -1076,6 +1105,15 @@ function _feedTimeAgo(ts) {
     var d = Math.floor(h / 24);
     if (d < 7) return d + 'd ago';
     return Math.floor(d / 7) + 'w ago';
+}
+
+function _feedRenderUrgencyTag(state) {
+    if (!state || !state.urgency) return '';
+    var u = state.urgency;
+    var color = u.tone === 'red' ? '#f87171' : '#fbbf24';
+    var bg = u.tone === 'red' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)';
+    var border = u.tone === 'red' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)';
+    return '<span style="font-size:0.6em;font-weight:700;padding:1px 5px;border-radius:3px;background:' + bg + ';color:' + color + ';border:1px solid ' + border + '">\u23F0 ' + u.text + '</span>';
 }
 
 function _feedEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }

@@ -160,6 +160,51 @@ window.FeedActionState = (function() {
         };
     }
 
+    // ── Urgency Context ───────────────────────────────────────────────────
+    //
+    // Time-aware priority. Uses cached next-event dates to tag items as
+    // urgent when rehearsal or gig is imminent. No new data structures —
+    // reads from the same gig/calendar data already loaded by the dashboard.
+
+    var _nextEventCache = null; // { rehearsal: "2026-03-28", gig: "2026-04-05" }
+
+    function setNextEvents(events) {
+        _nextEventCache = events || null;
+    }
+
+    function getNextEvents() { return _nextEventCache; }
+
+    function _daysUntil(dateStr) {
+        if (!dateStr) return Infinity;
+        var now = new Date(); now.setHours(0,0,0,0);
+        var target = new Date(dateStr + 'T12:00:00');
+        return Math.ceil((target - now) / 86400000);
+    }
+
+    function getUrgencyTag(item, meta) {
+        if (!_nextEventCache) return null;
+        meta = meta || {};
+        var tag = meta.tag || item.tag || 'fyi';
+        var resolved = (meta.resolved !== undefined) ? !!meta.resolved : !!item.resolved;
+        if (resolved || (meta.archived)) return null;
+        if (tag !== 'needs_input' && tag !== 'mission_critical') return null;
+
+        var daysToRehearsal = _daysUntil(_nextEventCache.rehearsal);
+        var daysToGig = _daysUntil(_nextEventCache.gig);
+
+        if (daysToGig <= 3) return { text: 'Needed for upcoming gig', tone: 'red', days: daysToGig };
+        if (daysToRehearsal <= 2) return { text: 'Needed for next rehearsal', tone: 'yellow', days: daysToRehearsal };
+        if (daysToGig <= 7) return { text: 'Needed for upcoming gig', tone: 'yellow', days: daysToGig };
+        return null;
+    }
+
+    // Urgency score: lower = more urgent (used as sort tiebreaker within same bucket)
+    function _urgencyScore(item, meta) {
+        var u = getUrgencyTag(item, meta);
+        if (!u) return 999;
+        return u.days;
+    }
+
     // ── Compute Normalized Action State ─────────────────────────────────────
 
     function getActionState(item, meta) {
@@ -201,6 +246,7 @@ window.FeedActionState = (function() {
             waitingOnOthers: waitingOnOthers,
             isResolved: isResolved, isArchived: isArchived, iVoted: iVoted,
             priorityBucket: bucket,
+            urgency: getUrgencyTag(item, meta),
             badge: _computeBadge(effectiveTag, isResolved, iVoted, item.type, isArchived),
             cta: _computeCTA(item, needsMyInput, isResolved, isArchived),
             notifClass: classifyNotification(item, meta)
@@ -288,10 +334,16 @@ window.FeedActionState = (function() {
         metaMap = metaMap || {};
         var decorated = items.map(function(item) {
             var meta = metaMap[item.type + ':' + item.id] || {};
-            return { item: item, state: getActionState(item, meta) };
+            var state = getActionState(item, meta);
+            var urgScore = _urgencyScore(item, meta);
+            return { item: item, state: state, urgency: urgScore };
         });
         decorated.sort(function(a, b) {
+            // 1. Bucket priority (lower = more urgent)
             if (a.state.priorityBucket !== b.state.priorityBucket) return a.state.priorityBucket - b.state.priorityBucket;
+            // 2. Within same bucket, urgent items (near event) rise higher
+            if (a.urgency !== b.urgency) return a.urgency - b.urgency;
+            // 3. Chronological tiebreak (newest first)
             return (b.item.timestamp || '').localeCompare(a.item.timestamp || '');
         });
         return decorated.map(function(d) { return d.item; });
@@ -427,6 +479,10 @@ window.FeedActionState = (function() {
         // Band alignment
         computeBandAlignment: computeBandAlignment,
         getWaitingMembers: getWaitingMembers,
+
+        // Urgency
+        setNextEvents: setNextEvents, getNextEvents: getNextEvents,
+        getUrgencyTag: getUrgencyTag,
 
         // Nav badge
         setActionCount: setActionCount, getActionCount: getActionCount,

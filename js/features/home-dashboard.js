@@ -447,7 +447,19 @@ function _renderBandAlignContent(el, card, align) {
         + '</div></div>';
 
     if (align.actionable > 0 && align.pct < 100) {
+        var blocking = align.actionable - align.resolved;
         html += '<div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">' + align.resolved + '/' + align.actionable + ' decisions resolved</div>';
+        // Rehearsal blocker warning
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var events = fas ? fas.getNextEvents() : null;
+        if (events && events.rehearsal && blocking > 0) {
+            var now = new Date(); now.setHours(0,0,0,0);
+            var rDate = new Date(events.rehearsal + 'T12:00:00');
+            var daysTo = Math.ceil((rDate - now) / 86400000);
+            if (daysTo <= 3 && daysTo >= 0) {
+                html += '<div style="font-size:0.75em;font-weight:700;color:#f87171;margin-top:4px">\u26A0\uFE0F ' + blocking + ' item' + (blocking > 1 ? 's' : '') + ' still blocking rehearsal</div>';
+            }
+        }
     }
     el.innerHTML = html;
 }
