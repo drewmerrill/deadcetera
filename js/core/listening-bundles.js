@@ -552,7 +552,7 @@ window.ListeningBundles = (function() {
     var SPOTIFY_CLIENT_ID = '';
     var _spotifyConfigLoaded = false;
     var SPOTIFY_REDIRECT = window.location.origin + '/';
-    var SPOTIFY_SCOPES = 'playlist-modify-public playlist-modify-private';
+    var SPOTIFY_SCOPES = 'user-read-email user-read-private playlist-modify-public playlist-modify-private';
 
     async function _ensureSpotifyConfig() {
         if (SPOTIFY_CLIENT_ID || _spotifyConfigLoaded) return;
@@ -977,20 +977,14 @@ window.ListeningBundles = (function() {
             }
         }
 
-        // Get or create playlist
+        // Get or create playlist — uses /me/playlists (no userId needed)
         var playlists = _getPlaylistIds();
         var playlistId = playlists[bundleType];
         var isNewPlaylist = !playlistId;
-        var userId = await _getSpotifyUserId();
-        if (!userId) {
-            localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
-            _showSpotifyDialog('expired', bundleType);
-            return { ok: false, reason: 'expired' };
-        }
 
         if (!playlistId) {
             var name = _PLAYLIST_NAMES[bundleType] || 'GrooveLinx \u2014 ' + bundleType;
-            var created = await _spotifyApi('/users/' + userId + '/playlists', 'POST', {
+            var created = await _spotifyApi('/me/playlists', 'POST', {
                 name: name,
                 description: 'Auto-synced by GrooveLinx \u2014 ' + new Date().toLocaleDateString(),
                 public: false
@@ -1001,8 +995,18 @@ window.ListeningBundles = (function() {
                 playlists[bundleType] = playlistId;
                 _setPlaylistIds(playlists);
             } else {
+                var errStatus = (created && created.error && created.error.status) || 0;
                 var errMsg = (created && created.error && created.error.message) ? created.error.message : 'unknown error';
-                console.warn('[Spotify] Playlist creation failed:', errMsg, created);
+                console.warn('[Spotify] Playlist creation failed:', errStatus, errMsg, created);
+
+                // 403 = scopes missing — need to reconnect with updated permissions
+                if (errStatus === 403) {
+                    localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
+                    if (typeof showToast === 'function') showToast('Spotify permissions need updating \u2014 reconnecting\u2026');
+                    setTimeout(function() { connectSpotify(); }, 1000);
+                    return { ok: false, reason: 'scope_upgrade' };
+                }
+
                 if (typeof showToast === 'function') showToast('Could not create playlist \u2014 ' + errMsg);
                 return { ok: false, reason: 'create failed: ' + errMsg };
             }
