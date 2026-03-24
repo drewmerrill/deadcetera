@@ -1052,6 +1052,7 @@ async function _rmSaveSessionSummary() {
     }
 
     // Show session summary screen instead of just a toast
+    window._rmLastSummary = summary;
     _rmShowSessionSummary(summary);
 
     // Reset
@@ -1060,7 +1061,29 @@ async function _rmSaveSessionSummary() {
 }
 
 // ── Session Summary Screen ──────────────────────────────────────────────
-// Shown after ending rehearsal. User can add notes + attach mixdown.
+// Shown after ending rehearsal. Feels like a completion moment.
+
+function _rmGenerateAutoSummary(summary) {
+    var songs = summary.songsWorked || [];
+    var actual = summary.totalActualMin || 0;
+    var budget = summary.totalBudgetMin || 0;
+    var delta = actual - budget;
+    var overBlocks = (summary.blocks || []).filter(function(b) { return b.budgetMin > 0 && b.actualMin > b.budgetMin; });
+
+    if (!budget) return songs.length + ' song' + (songs.length !== 1 ? 's' : '') + ' in ' + actual + ' minutes.';
+
+    var pacing = '';
+    if (Math.abs(delta) <= 3) pacing = 'Great pacing \u2014 right on target.';
+    else if (delta > 10) pacing = 'Ran ' + delta + ' min over \u2014 consider tighter transitions.';
+    else if (delta > 0) pacing = 'Slightly over by ' + delta + ' min \u2014 close to plan.';
+    else pacing = 'Finished ' + Math.abs(delta) + ' min early \u2014 efficient session.';
+
+    var detail = '';
+    if (overBlocks.length === 1) detail = ' "' + overBlocks[0].title + '" needed extra time.';
+    else if (overBlocks.length > 1) detail = ' ' + overBlocks.length + ' songs ran over budget.';
+
+    return songs.length + ' song' + (songs.length !== 1 ? 's' : '') + ', ' + actual + ' min. ' + pacing + detail;
+}
 
 function _rmShowSessionSummary(summary) {
     var totalActual = summary.totalActualMin || 0;
@@ -1069,58 +1092,78 @@ function _rmShowSessionSummary(summary) {
     var deltaLabel = delta === 0 ? 'Right on time!' : delta > 0 ? '+' + delta + ' min over' : Math.abs(delta) + ' min under';
     var deltaColor = Math.abs(delta) <= 3 ? '#22c55e' : delta > 0 ? (delta > 10 ? '#ef4444' : '#fbbf24') : '#60a5fa';
     var durLabel = totalActual >= 60 ? Math.floor(totalActual / 60) + 'h ' + (totalActual % 60) + 'm' : totalActual + ' min';
-
+    var songCount = (summary.songsWorked || []).length;
     var songList = (summary.songsWorked || []).join(' \u00B7 ');
+    var autoSummary = _rmGenerateAutoSummary(summary);
 
     var existing = document.getElementById('rmSessionSummaryOverlay');
     if (existing) existing.remove();
 
+    // Inject animation styles
+    if (!document.getElementById('rmSummaryStyles')) {
+        var st = document.createElement('style');
+        st.id = 'rmSummaryStyles';
+        st.textContent = '@keyframes rmFadeIn{from{opacity:0;transform:scale(0.95) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}@keyframes rmCheckIn{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}@keyframes rmSaveFlash{0%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)}50%{box-shadow:0 0 20px 8px rgba(34,197,94,0.15)}100%{box-shadow:none}}';
+        document.head.appendChild(st);
+    }
+
     var ov = document.createElement('div');
     ov.id = 'rmSessionSummaryOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)';
 
-    var html = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:16px;max-width:440px;width:100%;padding:24px;color:#f1f5f9">';
+    var html = '<div id="rmSummaryCard" style="background:linear-gradient(160deg,#1e293b,#1a2540);border:1px solid rgba(99,102,241,0.3);border-radius:18px;max-width:440px;width:100%;padding:28px 24px;color:#f1f5f9;animation:rmFadeIn 0.4s ease;max-height:90vh;overflow-y:auto">';
 
-    // Header
-    html += '<div style="text-align:center;margin-bottom:16px">';
-    html += '<div style="font-size:1.5em;margin-bottom:6px">\uD83C\uDFB6</div>';
-    html += '<div style="font-size:1.1em;font-weight:800">Rehearsal Complete</div>';
+    // Completion header
+    html += '<div style="text-align:center;margin-bottom:20px">';
+    html += '<div style="width:56px;height:56px;margin:0 auto 10px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(99,102,241,0.2));display:flex;align-items:center;justify-content:center;animation:rmCheckIn 0.5s ease 0.2s both"><span style="font-size:1.6em">\u2705</span></div>';
+    html += '<div style="font-size:1.2em;font-weight:800;letter-spacing:-0.01em">Rehearsal Complete</div>';
+    html += '<div style="font-size:0.75em;color:#64748b;margin-top:3px">' + new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + '</div>';
     html += '</div>';
 
-    // Stats
-    html += '<div style="display:flex;justify-content:center;gap:20px;margin-bottom:16px">';
-    html += '<div style="text-align:center"><div style="font-size:1.4em;font-weight:800;color:#a5b4fc">' + durLabel + '</div><div style="font-size:0.68em;color:#64748b">Duration</div></div>';
-    html += '<div style="text-align:center"><div style="font-size:1.4em;font-weight:800;color:#e2e8f0">' + (summary.songsWorked || []).length + '</div><div style="font-size:0.68em;color:#64748b">Songs</div></div>';
-    html += '<div style="text-align:center"><div style="font-size:1.4em;font-weight:800;color:' + deltaColor + '">' + deltaLabel + '</div><div style="font-size:0.68em;color:#64748b">vs Plan</div></div>';
+    // Stats row
+    html += '<div style="display:flex;justify-content:center;gap:24px;margin-bottom:18px">';
+    html += '<div style="text-align:center"><div style="font-size:1.5em;font-weight:800;color:#a5b4fc">' + durLabel + '</div><div style="font-size:0.65em;color:#475569;font-weight:600;letter-spacing:0.05em;text-transform:uppercase">Duration</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:1.5em;font-weight:800;color:#e2e8f0">' + songCount + '</div><div style="font-size:0.65em;color:#475569;font-weight:600;letter-spacing:0.05em;text-transform:uppercase">Songs</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:1.5em;font-weight:800;color:' + deltaColor + '">' + deltaLabel + '</div><div style="font-size:0.65em;color:#475569;font-weight:600;letter-spacing:0.05em;text-transform:uppercase">vs Plan</div></div>';
     html += '</div>';
+
+    // Auto summary
+    html += '<div style="font-size:0.78em;color:#94a3b8;text-align:center;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;margin-bottom:14px;line-height:1.5">' + _rmEsc(autoSummary) + '</div>';
 
     // Songs worked
     if (songList) {
-        html += '<div style="font-size:0.78em;color:#94a3b8;text-align:center;margin-bottom:12px;max-height:60px;overflow-y:auto">' + _rmEsc(songList) + '</div>';
+        html += '<div style="font-size:0.72em;color:#64748b;text-align:center;margin-bottom:14px;max-height:48px;overflow-y:auto">' + _rmEsc(songList) + '</div>';
     }
+
+    // Quick Rating
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:0.72em;font-weight:700;color:#475569;margin-bottom:6px;text-align:center">How was it?</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:center">';
+    html += '<button onclick="_rmSetRating(\'great\')" id="rmRate_great" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDD25 Great</button>';
+    html += '<button onclick="_rmSetRating(\'solid\')" id="rmRate_solid" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDCAA Solid</button>';
+    html += '<button onclick="_rmSetRating(\'needs_work\')" id="rmRate_needs_work" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDD27 Needs Work</button>';
+    html += '</div></div>';
 
     // Notes input
     html += '<div style="margin-bottom:12px">';
-    html += '<div style="font-size:0.75em;font-weight:600;color:#64748b;margin-bottom:4px">Session Notes</div>';
-    html += '<textarea id="rmSummaryNotes" placeholder="How did it go? What needs work?" style="width:100%;min-height:60px;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#f1f5f9;font-size:0.85em;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>';
+    html += '<textarea id="rmSummaryNotes" placeholder="What went well? What needs work next time?" style="width:100%;min-height:52px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.2);color:#f1f5f9;font-size:0.82em;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>';
     html += '</div>';
 
     // Mixdown attachment
-    html += '<div style="margin-bottom:16px">';
-    html += '<div style="font-size:0.75em;font-weight:600;color:#64748b;margin-bottom:4px">\uD83C\uDFA4 Attach Mixdown</div>';
+    html += '<details style="margin-bottom:14px"><summary style="font-size:0.75em;font-weight:600;color:#475569;cursor:pointer">\uD83C\uDFA4 Attach Rehearsal Recording</summary>';
+    html += '<div style="padding:8px 0">';
     html += '<div style="display:flex;gap:6px">';
-    html += '<input id="rmSummaryDriveUrl" placeholder="Paste Drive link or audio URL" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#f1f5f9;font-size:0.82em;min-width:0">';
-    html += '<button onclick="_rmSummaryUpload()" style="padding:8px 12px;border-radius:8px;font-size:0.78em;font-weight:600;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;white-space:nowrap">\uD83D\uDCE4 Upload</button>';
+    html += '<input id="rmSummaryDriveUrl" placeholder="Paste Google Drive or audio link" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#f1f5f9;font-size:0.82em;min-width:0">';
+    html += '<button onclick="_rmSummaryUpload()" style="padding:8px 12px;border-radius:8px;font-size:0.75em;font-weight:600;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;white-space:nowrap">\uD83D\uDCE4 Upload</button>';
     html += '</div>';
     html += '<input type="file" id="rmSummaryFileInput" accept="audio/*,.mp3,.m4a,.wav" style="display:none" onchange="_rmSummaryFileSelected(this)">';
     html += '<div id="rmSummaryFileName" style="font-size:0.72em;color:#818cf8;margin-top:3px"></div>';
-    html += '</div>';
+    html += '<div id="rmSummaryDriveStatus" style="font-size:0.68em;margin-top:3px"></div>';
+    html += '</div></details>';
 
-    // Buttons
-    html += '<div style="display:flex;gap:8px">';
-    html += '<button onclick="_rmSummarySave(\'' + summary.sessionId + '\')" style="flex:2;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">\uD83D\uDCBE Save Session</button>';
-    html += '<button onclick="document.getElementById(\'rmSessionSummaryOverlay\').remove()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;cursor:pointer;font-size:0.85em">Skip</button>';
-    html += '</div>';
+    // Save button
+    html += '<button id="rmSaveBtn" onclick="_rmSummarySave(\'' + summary.sessionId + '\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer;transition:all 0.2s">\uD83D\uDCBE Save Session</button>';
+    html += '<button onclick="document.getElementById(\'rmSessionSummaryOverlay\').remove()" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.78em">Skip for now</button>';
 
     html += '</div>';
     ov.innerHTML = html;
@@ -1128,6 +1171,24 @@ function _rmShowSessionSummary(summary) {
 }
 
 var _rmSummaryFile = null;
+var _rmSummaryRating = null;
+
+window._rmSetRating = function(rating) {
+    _rmSummaryRating = rating;
+    ['great', 'solid', 'needs_work'].forEach(function(r) {
+        var btn = document.getElementById('rmRate_' + r);
+        if (!btn) return;
+        if (r === rating) {
+            btn.style.background = r === 'great' ? 'rgba(34,197,94,0.15)' : r === 'solid' ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.15)';
+            btn.style.transform = 'scale(1.05)';
+            btn.style.borderWidth = '2px';
+        } else {
+            btn.style.background = 'none';
+            btn.style.transform = 'scale(1)';
+            btn.style.borderWidth = '1px';
+        }
+    });
+};
 
 window._rmSummaryUpload = function() {
     var fi = document.getElementById('rmSummaryFileInput');
@@ -1146,7 +1207,15 @@ window._rmSummarySave = async function(sessionId) {
     var driveUrl = (document.getElementById('rmSummaryDriveUrl') || {}).value || '';
     var audioUrl = '';
 
-    // Handle file upload — create blob URL + create mixdown record
+    // Detect + validate Drive link
+    if (driveUrl) {
+        var statusEl = document.getElementById('rmSummaryDriveStatus');
+        var isDrive = driveUrl.indexOf('drive.google.com') >= 0 || driveUrl.indexOf('docs.google.com') >= 0;
+        if (isDrive && statusEl) statusEl.innerHTML = '<span style="color:#22c55e">\u2705 Google Drive link detected</span>';
+        else if (statusEl) statusEl.innerHTML = '<span style="color:#94a3b8">Direct audio link</span>';
+    }
+
+    // Handle file upload
     if (_rmSummaryFile) {
         audioUrl = URL.createObjectURL(_rmSummaryFile);
     }
@@ -1154,41 +1223,57 @@ window._rmSummarySave = async function(sessionId) {
     // Create mixdown record if we have audio/drive
     var mixdownId = null;
     if (audioUrl || driveUrl) {
-        if (typeof RehearsalMixdowns !== 'undefined') {
-            mixdownId = 'mx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-            var mxData = {
-                title: 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                rehearsal_date: new Date().toISOString().split('T')[0],
-                audio_url: audioUrl,
-                drive_url: driveUrl,
-                notes: notes ? 'From session: ' + notes.substring(0, 100) : '',
-                linked_session_id: sessionId,
-                created_at: new Date().toISOString(),
-                created_by: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
-            };
-            try {
-                var all = await loadBandDataFromDrive('_band', 'rehearsal_mixdowns') || {};
-                all[mixdownId] = mxData;
-                await saveBandDataToDrive('_band', 'rehearsal_mixdowns', all);
-            } catch(e) { console.warn('[Session] Mixdown save failed:', e); }
-        }
+        mixdownId = 'mx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        var mxData = {
+            title: 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            rehearsal_date: new Date().toISOString().split('T')[0],
+            audio_url: audioUrl,
+            drive_url: driveUrl,
+            notes: notes ? 'From session: ' + notes.substring(0, 100) : '',
+            linked_session_id: sessionId,
+            created_at: new Date().toISOString(),
+            created_by: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
+        };
+        try {
+            var all = await loadBandDataFromDrive('_band', 'rehearsal_mixdowns') || {};
+            all[mixdownId] = mxData;
+            await saveBandDataToDrive('_band', 'rehearsal_mixdowns', all);
+        } catch(e) { console.warn('[Session] Mixdown save failed:', e); }
     }
 
-    // Update session with notes + mixdown_id
+    // Generate summary line
+    var autoSummary = _rmGenerateAutoSummary(window._rmLastSummary || {});
+
+    // Update session
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (db && typeof bandPath === 'function') {
         var updates = {};
         if (notes) updates.notes = notes;
         if (mixdownId) updates.mixdown_id = mixdownId;
+        if (_rmSummaryRating) updates.rating = _rmSummaryRating;
+        if (autoSummary) updates.summary = autoSummary;
         if (Object.keys(updates).length) {
             try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates); } catch(e) {}
         }
     }
 
+    // Save animation
+    var saveBtn = document.getElementById('rmSaveBtn');
+    if (saveBtn) {
+        saveBtn.textContent = '\u2705 Saved!';
+        saveBtn.style.animation = 'rmSaveFlash 0.6s ease';
+    }
+
     _rmSummaryFile = null;
-    var ov = document.getElementById('rmSessionSummaryOverlay');
-    if (ov) ov.remove();
-    if (typeof showToast === 'function') showToast('\u2705 Session saved' + (mixdownId ? ' with mixdown' : ''));
+    _rmSummaryRating = null;
+
+    // Brief pause to show the "Saved!" confirmation, then close
+    setTimeout(function() {
+        var ov = document.getElementById('rmSessionSummaryOverlay');
+        if (ov) ov.remove();
+    }, 800);
+
+    if (typeof showToast === 'function') showToast('\u2705 Session recorded' + (mixdownId ? ' with mixdown' : '') + (_rmSummaryRating ? ' \u2014 ' + _rmSummaryRating.replace('_', ' ') : ''));
 };
 
 function _rmEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

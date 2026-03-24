@@ -708,13 +708,19 @@ async function _rhRenderSessionHistory() {
             else { verdict = delta + 'm'; verdictColor = '#60a5fa'; }
         }
 
-        // Notes
+        // Notes + summary
         var notesPreview = s.notes ? escHtml(s.notes).substring(0, 60) + (s.notes.length > 60 ? '\u2026' : '') : '';
+        var summaryLine = s.summary || '';
+
+        // Rating badge
+        var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
+        var ratingColors = { great: '#22c55e', solid: '#a5b4fc', needs_work: '#fbbf24' };
+        var ratingHtml = s.rating ? '<span style="font-size:0.68em;color:' + (ratingColors[s.rating] || '#94a3b8') + ';font-weight:700" title="' + (s.rating || '').replace('_', ' ') + '">' + (ratingIcons[s.rating] || '') + '</span>' : '';
 
         // Mixdown link
         var mixdownHtml = '';
         if (s.mixdown_id) {
-            mixdownHtml = '<span style="font-size:0.65em;color:#fbbf24;cursor:pointer" title="Has mixdown">\uD83C\uDFA4</span>';
+            mixdownHtml = '<span style="font-size:0.65em;color:#fbbf24" title="Has mixdown">\uD83C\uDFA4</span>';
         }
 
         html += '<div class="app-card" style="padding:8px 12px;margin-bottom:6px' + (isLatest ? ';border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.04)' : '') + '">';
@@ -731,12 +737,16 @@ async function _rhRenderSessionHistory() {
         html += '<span style="font-weight:700;font-size:0.85em;color:var(--text)">' + dateStr + '</span>';
         html += '<span style="font-size:0.78em;color:var(--text-muted);font-weight:600">' + durLabel + '</span>';
         if (verdict) html += '<span style="font-size:0.72em;font-weight:700;color:' + verdictColor + '">' + verdict + '</span>';
+        html += ratingHtml;
         html += mixdownHtml;
         html += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + blocksCompleted + '/' + totalBlocks + ' songs</span>';
         html += '</div>';
 
+        // Summary line (auto-generated or from session)
+        if (summaryLine) html += '<div style="font-size:0.72em;color:#94a3b8;margin-bottom:3px;line-height:1.4">' + escHtml(summaryLine) + '</div>';
+
         // Songs preview
-        if (songList) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(songList) + '</div>';
+        if (songList && !summaryLine) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(songList) + '</div>';
 
         // Notes
         if (notesPreview) html += '<div style="font-size:0.72em;color:#475569;margin-bottom:3px">' + notesPreview + '</div>';
@@ -746,7 +756,8 @@ async function _rhRenderSessionHistory() {
         if (isLatest) html += '<span style="font-size:0.6em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
         html += '<button onclick="var d=document.getElementById(\'rhSessDetail_' + s.sessionId + '\');if(d)d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Details</button>';
         if (s.mixdown_id) {
-            html += '<button onclick="if(typeof RehearsalMixdowns!==\'undefined\')RehearsalMixdowns.openInChopper(\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Play Mixdown</button>';
+            html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
+            html += '<button onclick="if(typeof RehearsalMixdowns!==\'undefined\')RehearsalMixdowns.openInChopper(\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b">\u2702\uFE0F Chopper</button>';
         }
         html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;margin-left:auto">\uD83D\uDDD1\uFE0F</button>';
         html += '</div>';
@@ -768,12 +779,46 @@ async function _rhRenderSessionHistory() {
             html += '</div>';
         }
 
+        // Inline mixdown player area (hidden until toggled)
+        if (s.mixdown_id) {
+            html += '<div id="rhMixdownPlayer_' + s.sessionId + '" style="display:none;margin-top:6px;padding:8px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:8px"></div>';
+        }
+
         html += '</div>';
     });
 
     html += '</div>';
     el.innerHTML = html;
 }
+
+window._rhToggleMixdownPlayer = async function(sessionId, mixdownId) {
+    var el = document.getElementById('rhMixdownPlayer_' + sessionId);
+    if (!el) return;
+    if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = '<div style="font-size:0.72em;color:#fbbf24">Loading mixdown\u2026</div>';
+
+    // Load mixdown data
+    try {
+        var all = await loadBandDataFromDrive('_band', 'rehearsal_mixdowns') || {};
+        var mx = all[mixdownId];
+        if (!mx) { el.innerHTML = '<div style="font-size:0.72em;color:#64748b">Mixdown not found</div>'; return; }
+
+        var html = '';
+        if (mx.audio_url) {
+            html += '<audio controls preload="metadata" style="width:100%;height:36px;margin-bottom:4px" src="' + escHtml(mx.audio_url) + '"></audio>';
+        }
+        if (mx.drive_url) {
+            html += '<a href="' + escHtml(mx.drive_url) + '" target="_blank" rel="noopener" style="font-size:0.72em;color:#60a5fa;text-decoration:none">\uD83D\uDCC1 Open in Google Drive</a>';
+        }
+        if (!mx.audio_url && !mx.drive_url) {
+            html = '<div style="font-size:0.72em;color:#64748b">No playable audio attached</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) {
+        el.innerHTML = '<div style="font-size:0.72em;color:#64748b">Could not load mixdown</div>';
+    }
+};
 
 async function _rhRenderSnapshots() {
     var el = document.getElementById('rhSnapshots');
