@@ -84,6 +84,7 @@ function _feedAdvanceOnboarding() {
     // Track completion + compute remaining
     _feedSessionCompleted++;
     _feedRecordAction();
+    if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('action_completed');
     var fas = _fas();
     if (!fas || !_feedCache) return;
     var summary = fas.computeSummary(_feedCache, _feedMeta);
@@ -372,6 +373,7 @@ window._feedQuickPost = async function() {
         });
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         inp.value = '';
+        if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'quick' });
         _feedShowToast('Shared with the band');
         var el = document.getElementById('page-feed');
         if (el) renderBandFeedPage(el);
@@ -510,6 +512,7 @@ window._feedSubmitCreate = async function(type) {
             });
         }
         localStorage.setItem(_FEED_CREATED_KEY, '1');
+        if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'structured', targeted: _feedCreateTargetType === 'specific' });
         _feedShowToast('Shared with the band');
         _feedRenderCreateBar();
         // Reload feed to show new item
@@ -549,6 +552,7 @@ window.renderBandFeedPage = async function(el) {
     _feedCache = items;
     _feedSessionTotal = 0;
     _feedSessionCompleted = 0;
+    if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('feed_visit');
     _feedRenderCreateBar();
     _feedRenderOnboarding();
     _feedRenderAttentionBar(items);
