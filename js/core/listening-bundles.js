@@ -317,6 +317,8 @@ window.ListeningBundles = (function() {
     }
 
     window._qlPlayUrl = null; // for the next-song bar
+    var _qlPlaying = false;
+
     function _qlPlay() {
         var confirm = document.getElementById('glPlayConfirm');
         if (confirm) confirm.remove();
@@ -325,19 +327,73 @@ window.ListeningBundles = (function() {
         if (!item) return;
         if (typeof openMusicLink === 'function') openMusicLink(item.url);
         else window.open(item.url, '_blank');
-        // Hint: tap play in Spotify, come back for next song
+
+        // Show playing indicator
+        _qlPlaying = true;
+        _qlShowPlayingState(item.songTitle);
+
+        // Hint + next song bar
         if (_qlSortedUrls.length > 1) {
             setTimeout(function() {
                 if (typeof showToast === 'function') showToast('Tap play in Spotify \u2014 come back here for next song');
             }, 1500);
-        }
-        // Show "Next Song" bar if more tracks
-        if (_qlSortedUrls.length > 1) {
             _showNextSongBar();
+            // Flow reinforcement after first play
+            setTimeout(function() {
+                if (typeof showToast === 'function') showToast('Next up ready \uD83D\uDC47');
+            }, 4000);
+        }
+
+        // Listen for window focus return (user comes back from Spotify)
+        _qlListenForReturn();
+    }
+
+    function _qlShowPlayingState(songTitle) {
+        // Update playing indicator in overlay (if still open)
+        var indicator = document.getElementById('glPlayingIndicator');
+        if (indicator) {
+            indicator.textContent = '\u25CF Playing (in Spotify): ' + (songTitle || '');
+            indicator.style.display = '';
+        }
+        // Update next-song bar if visible
+        var bar = document.getElementById('glNextSongBar');
+        if (bar) {
+            var existing = document.getElementById('glNowPlayingLabel');
+            if (!existing) {
+                var label = document.createElement('div');
+                label.id = 'glNowPlayingLabel';
+                label.style.cssText = 'font-size:0.68em;color:#22c55e;font-weight:600;margin-bottom:2px';
+                label.textContent = '\u25CF Playing: ' + (songTitle || '');
+                bar.insertBefore(label, bar.firstChild);
+            } else {
+                existing.textContent = '\u25CF Playing: ' + (songTitle || '');
+            }
         }
     }
 
+    function _qlClearPlayingState() {
+        _qlPlaying = false;
+        var indicator = document.getElementById('glPlayingIndicator');
+        if (indicator) indicator.style.display = 'none';
+        var label = document.getElementById('glNowPlayingLabel');
+        if (label) label.remove();
+    }
+
+    var _qlReturnListenerActive = false;
+    function _qlListenForReturn() {
+        if (_qlReturnListenerActive) return;
+        _qlReturnListenerActive = true;
+        var handler = function() {
+            if (!_qlPlaying) { window.removeEventListener('focus', handler); _qlReturnListenerActive = false; return; }
+            if (typeof showToast === 'function') showToast('Back in GrooveLinx \u2014 tap Next to continue');
+            window.removeEventListener('focus', handler);
+            _qlReturnListenerActive = false;
+        };
+        window.addEventListener('focus', handler);
+    }
+
     function _qlNext() {
+        _qlClearPlayingState();
         _qlCurrentIdx++;
         if (_qlCurrentIdx >= _qlSortedUrls.length) {
             _removeNextSongBar();
@@ -347,6 +403,9 @@ window.ListeningBundles = (function() {
         var item = _qlSortedUrls[_qlCurrentIdx];
         if (typeof openMusicLink === 'function') openMusicLink(item.url);
         else window.open(item.url, '_blank');
+        _qlPlaying = true;
+        _qlShowPlayingState(item.songTitle);
+        _qlListenForReturn();
         _updateNextSongBar();
     }
 

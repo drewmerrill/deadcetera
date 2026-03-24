@@ -209,7 +209,7 @@ window.ChartSystem = (function() {
             var chartText = data.band || data.master;
             var songData = (typeof allSongs !== 'undefined' ? allSongs : []).find(function(s) { return s.title === item.title; });
 
-            html += '<div style="margin-bottom:16px;page-break-inside:avoid">';
+            html += '<div id="chart_song_' + i + '" data-song="' + _esc(item.title) + '" style="margin-bottom:16px;page-break-inside:avoid">';
             html += '<div style="font-size:1em;font-weight:800;color:var(--text);margin-bottom:2px">' + _esc(item.title) + '</div>';
             if (songData && (songData.key || songData.bpm)) {
                 var m = [];
@@ -230,6 +230,38 @@ window.ChartSystem = (function() {
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+    // ── Now Playing Highlight ────────────────────────────────────────────────
+
+    function highlightActiveSong(songTitle) {
+        // Clear previous highlight
+        document.querySelectorAll('[id^="chart_song_"]').forEach(function(el) {
+            el.style.borderLeft = '';
+            el.style.paddingLeft = '';
+            el.style.background = '';
+            // Remove "Now playing" label
+            var label = el.querySelector('.chart-now-playing');
+            if (label) label.remove();
+        });
+        if (!songTitle) return;
+        // Find and highlight matching song
+        var els = document.querySelectorAll('[data-song]');
+        for (var i = 0; i < els.length; i++) {
+            if (els[i].dataset.song === songTitle) {
+                els[i].style.borderLeft = '3px solid #22c55e';
+                els[i].style.paddingLeft = '10px';
+                els[i].style.background = 'rgba(34,197,94,0.04)';
+                // Add "Now playing" label
+                var label = document.createElement('div');
+                label.className = 'chart-now-playing';
+                label.style.cssText = 'font-size:0.68em;font-weight:700;color:#22c55e;margin-bottom:2px';
+                label.textContent = '\u25CF Now playing';
+                els[i].insertBefore(label, els[i].firstChild);
+                els[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                break;
+            }
+        }
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
@@ -237,6 +269,7 @@ window.ChartSystem = (function() {
         saveChart: saveChart,
         renderChartPanel: renderChartPanel,
         renderSetlistCharts: renderSetlistCharts,
+        highlightActiveSong: highlightActiveSong,
         _toggleEdit: _toggleEdit,
         _cancelEdit: _cancelEdit,
         _saveEdit: _saveEdit,
