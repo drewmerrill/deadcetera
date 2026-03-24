@@ -91,6 +91,8 @@ window.showPage = function showPage(page) {
     if (el) {
         el.classList.remove('hidden');
         el.classList.add('fade-in');
+    } else {
+        console.warn('⚠️ showPage("' + page + '"): #page-' + page + ' not found in DOM');
     }
 
     // Update nav active states
@@ -194,7 +196,7 @@ var pageRenderers = window.pageRenderers = {
 // Pages the hash router will accept. Anything else falls back to 'home'.
 var _HASH_VALID_PAGES = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
     'venues','finances','tuner','metronome','bestshot','admin',
-    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel','stageplot','ideas'];
+    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel','stageplot','ideas','feed'];
 
 function _sanitizeHashPage(raw) {
     if (!raw) return 'home';

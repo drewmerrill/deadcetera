@@ -712,6 +712,11 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
         // Fallback: try loading custom songs from localStorage anyway
         loadCustomSongs().then(() => renderSongs());
+        // CRITICAL: still show a page — without this, blank screen on offline PWA
+        var _savedEmail = localStorage.getItem('deadcetera_google_email');
+        if (typeof window.glHeroCheck === 'function') {
+            window.glHeroCheck(!!_savedEmail);
+        }
     });
     setupSearchAndFilters();
     setupInstrumentSelector();
@@ -5852,6 +5857,25 @@ async function handleGoogleDriveAuth(silent) {
         } catch (error) {
             console.error('Failed to load Firebase:', error);
             if (!silent) alert('Failed to initialize.\n\nError: ' + error.message);
+            // CRITICAL: still restore session from localStorage to prevent blank screen.
+            // GIS failed but we can still show the app with cached identity.
+            if (silent) {
+                var _fallbackEmail = localStorage.getItem('deadcetera_google_email');
+                if (_fallbackEmail) {
+                    currentUserEmail = _fallbackEmail;
+                    currentUserName = localStorage.getItem('deadcetera_google_name') || '';
+                    currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
+                    var _fh = document.getElementById('page-hero');
+                    if (_fh) _fh.classList.add('hidden');
+                    if (!window._glPageRestorePending && typeof showPage === 'function') {
+                        var _fp = localStorage.getItem('glLastPage');
+                        showPage((!_fp || _fp === 'home') ? 'home' : _fp);
+                    }
+                    console.log('⚠️ GIS failed but session restored from cache:', _fallbackEmail);
+                } else if (typeof window.glHeroCheck === 'function') {
+                    window.glHeroCheck(false);
+                }
+            }
             return;
         }
     }
