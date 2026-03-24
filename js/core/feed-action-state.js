@@ -67,6 +67,29 @@ window.FeedActionState = (function() {
         return false;
     }
 
+    // ── Targeting ─────────────────────────────────────────────────────────
+    //
+    // Items can specify who needs to respond:
+    //   targetType: 'all' (default) | 'specific' | 'fyi'
+    //   targetMembers: ['drew', 'chris'] (member keys, only when 'specific')
+    //
+    // 'fyi' items never require input regardless of needs_input tag.
+    // 'specific' items only require input from listed members.
+    // 'all' or missing targetType = everyone (legacy behavior).
+
+    function _isTargetedAtMe(item) {
+        var tt = item.targetType || 'all';
+        if (tt === 'fyi') return false;
+        if (tt === 'all' || !item.targetMembers || !item.targetMembers.length) return true;
+        // 'specific' — check if my member key is in the list
+        var myKey = getMyMemberKey();
+        if (myKey && item.targetMembers.indexOf(myKey) !== -1) return true;
+        // Also check display name (defensive)
+        var myName = getMyDisplayName();
+        if (myName && item.targetMembers.indexOf(myName) !== -1) return true;
+        return false;
+    }
+
     // ── Priority Buckets ────────────────────────────────────────────────────
 
     var BUCKET = {
@@ -218,15 +241,18 @@ window.FeedActionState = (function() {
         var completeForMe = true, completeForBand = isResolved;
 
         if (effectiveTag === 'needs_input' && !isResolved) {
+            // Check targeting: does this item apply to me?
+            var targeted = _isTargetedAtMe(item);
+
             if (item.type === 'poll') {
-                needsMyInput = !iVoted;
-                needsBandInput = iVoted;
+                needsMyInput = targeted && !iVoted;
+                needsBandInput = iVoted || !targeted; // waiting if I voted OR not targeted at me
                 waitingOnOthers = iVoted;
-                completeForMe = iVoted;
+                completeForMe = iVoted || !targeted;
             } else {
-                needsMyInput = true;
+                needsMyInput = targeted;
                 needsBandInput = true;
-                completeForMe = false;
+                completeForMe = !targeted;
             }
         }
 

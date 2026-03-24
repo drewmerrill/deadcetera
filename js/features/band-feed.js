@@ -399,11 +399,23 @@ window._feedCreateItem = function(type) {
 function _feedShowCreateForm(type, title, placeholder1, placeholder2) {
     var bar = document.getElementById('feedCreateBar');
     if (!bar) return;
+    var isNote = (type === 'note');
     var html = '<div style="padding:12px 14px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
         + '<div style="font-size:0.85em;font-weight:700;color:#c7d2fe;margin-bottom:8px">' + title + '</div>'
         + '<input id="feedCreateInput1" type="text" placeholder="' + placeholder1 + '" style="width:100%;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none;margin-bottom:6px;box-sizing:border-box">';
     if (placeholder2) {
         html += '<input id="feedCreateInput2" type="text" placeholder="' + placeholder2 + '" style="width:100%;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none;margin-bottom:6px;box-sizing:border-box">';
+    }
+    // Target selector (not for notes — notes are FYI)
+    if (!isNote) {
+        html += '<div style="margin-bottom:8px">'
+            + '<div style="font-size:0.75em;font-weight:600;color:var(--text-dim);margin-bottom:4px">Who needs to respond?</div>'
+            + '<div style="display:flex;gap:4px;margin-bottom:4px">'
+            + '<button id="feedTargetAll" onclick="_feedSetTarget(\'all\')" class="feedTargetBtn feedTargetBtn--active" style="font-size:0.75em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Everyone</button>'
+            + '<button id="feedTargetSpecific" onclick="_feedSetTarget(\'specific\')" class="feedTargetBtn" style="font-size:0.75em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Specific people</button>'
+            + '</div>'
+            + '<div id="feedTargetMembers" style="display:none;margin-top:4px"></div>'
+            + '</div>';
     }
     html += '<div style="display:flex;gap:6px;justify-content:flex-end">'
         + '<button onclick="_feedCancelCreate()" style="font-size:0.78em;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Cancel</button>'
@@ -413,6 +425,45 @@ function _feedShowCreateForm(type, title, placeholder1, placeholder2) {
     var inp = document.getElementById('feedCreateInput1');
     if (inp) inp.focus();
 }
+
+var _feedCreateTargetType = 'all';
+var _feedCreateTargetMembers = [];
+
+window._feedSetTarget = function(type) {
+    _feedCreateTargetType = type;
+    // Update button styles
+    var allBtn = document.getElementById('feedTargetAll');
+    var specBtn = document.getElementById('feedTargetSpecific');
+    if (allBtn) { allBtn.style.background = type === 'all' ? 'rgba(99,102,241,0.1)' : 'none'; allBtn.style.borderColor = type === 'all' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.08)'; allBtn.style.color = type === 'all' ? '#a5b4fc' : 'var(--text-dim)'; }
+    if (specBtn) { specBtn.style.background = type === 'specific' ? 'rgba(99,102,241,0.1)' : 'none'; specBtn.style.borderColor = type === 'specific' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.08)'; specBtn.style.color = type === 'specific' ? '#a5b4fc' : 'var(--text-dim)'; }
+    // Show/hide member list
+    var membersEl = document.getElementById('feedTargetMembers');
+    if (!membersEl) return;
+    if (type === 'specific') {
+        _feedCreateTargetMembers = [];
+        var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var fas = _fas();
+        var myKey = fas ? fas.getMyMemberKey() : null;
+        var html = '';
+        Object.keys(members).forEach(function(key) {
+            if (key === myKey) return; // don't show self
+            var m = members[key];
+            html += '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:0.8em;color:var(--text-muted)">'
+                + '<input type="checkbox" value="' + key + '" onchange="_feedToggleTargetMember(\'' + key + '\',this.checked)" style="accent-color:#6366f1">'
+                + (m.name || key) + '</label>';
+        });
+        membersEl.innerHTML = html;
+        membersEl.style.display = '';
+    } else {
+        _feedCreateTargetMembers = [];
+        membersEl.style.display = 'none';
+    }
+};
+
+window._feedToggleTargetMember = function(key, checked) {
+    if (checked && _feedCreateTargetMembers.indexOf(key) === -1) _feedCreateTargetMembers.push(key);
+    else _feedCreateTargetMembers = _feedCreateTargetMembers.filter(function(k) { return k !== key; });
+};
 
 window._feedCancelCreate = function() { _feedRenderCreateBar(); };
 
@@ -427,17 +478,28 @@ window._feedSubmitCreate = async function(type) {
     var fas = _fas();
     var author = fas ? (fas.getMyDisplayName() || 'Anonymous') : 'Anonymous';
 
+    // Build targeting payload
+    var targetPayload = {};
+    if (type !== 'note') {
+        if (_feedCreateTargetType === 'specific' && _feedCreateTargetMembers.length > 0) {
+            targetPayload = { targetType: 'specific', targetMembers: _feedCreateTargetMembers.slice() };
+        } else {
+            targetPayload = { targetType: 'all' };
+        }
+    }
+
     try {
         if (type === 'poll') {
             var options = inp2 ? inp2.value.split(',').map(function(o) { return o.trim(); }).filter(Boolean) : [];
             if (options.length < 2) { _feedShowToast('Add at least 2 options'); return; }
-            await db.ref(bandPath('polls')).push({
-                question: text, options: options, votes: {},
-                author: author, ts: new Date().toISOString(), tag: 'needs_input'
-            });
+            var pollData = { question: text, options: options, votes: {}, author: author, ts: new Date().toISOString(), tag: 'needs_input' };
+            Object.assign(pollData, targetPayload);
+            await db.ref(bandPath('polls')).push(pollData);
         } else if (type === 'idea') {
             var link = inp2 ? inp2.value.trim() : '';
-            await db.ref(bandPath('ideas/posts')).push({
+            var ideaData = { title: text, link: link, author: author, ts: new Date().toISOString(), tag: 'needs_input' };
+            Object.assign(ideaData, targetPayload);
+            await db.ref(bandPath('ideas/posts')).push(ideaData);
                 title: text, link: link, author: author,
                 ts: new Date().toISOString(), tag: 'needs_input'
             });
@@ -879,6 +941,8 @@ async function _feedLoadAll() {
                     author: v.author || 'Anonymous', timestamp: v.ts,
                     tag: v.tag || (v.convertedToPitch ? 'fyi' : 'needs_input'),
                     resolved: !!v.convertedToPitch,
+                    targetType: v.targetType || 'all',
+                    targetMembers: v.targetMembers || [],
                     context: v.convertedToPitch ? 'Converted to pitch' : 'Band idea'
                 });
             });
@@ -908,6 +972,8 @@ async function _feedLoadAll() {
                     resolved: allVoted, iVoted: iVoted,
                     pollOptions: v.options || [],
                     pollVotes: v.votes || {},
+                    targetType: v.targetType || 'all',
+                    targetMembers: v.targetMembers || [],
                     context: ctx.join(' \u00B7 ')
                 });
             });
@@ -1138,6 +1204,14 @@ function _feedRenderItem(item, isFirstAction) {
     html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedEsc(item.text) + '</div>';
 
     if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
+
+    // Target indicator for specifically-targeted items
+    if (item.targetType === 'specific' && item.targetMembers && item.targetMembers.length) {
+        var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var targetNames = item.targetMembers.map(function(k) { return members[k] ? members[k].name : k; });
+        var tLabel = targetNames.length <= 3 ? targetNames.join(', ') : targetNames.slice(0, 2).join(', ') + ' +' + (targetNames.length - 2) + ' more';
+        html += '<div style="font-size:0.72em;color:#a5b4fc;margin-top:4px;opacity:0.8">For: ' + _feedEsc(tLabel) + '</div>';
+    }
 
     // "Waiting on" indicator for polls where I voted but others haven't
     if (item.type === 'poll' && state && state.waitingOnOthers && fas) {
