@@ -133,28 +133,39 @@ window.PlaybackSession = (function() {
         }
 
         _setState(STATES.STARTING);
-        if (typeof showToast === 'function') showToast('Starting playback\u2026');
         var detectedSource = _detectSource(item.url);
+        var _startTs = Date.now();
 
-        // Timeout safety net: if still STARTING after 5s, force error
+        // Contextual starting message
+        var startMsg = { 'Spotify': 'Starting Spotify\u2026', 'YouTube': 'Opening YouTube\u2026', 'Archive.org': 'Launching Archive\u2026' }[detectedSource] || 'Starting playback\u2026';
+        if (typeof showToast === 'function') showToast(startMsg);
+
+        // Timeout safety net
         var _startTimer = setTimeout(function() {
             if (_state === STATES.STARTING) {
                 _setState(STATES.ERROR);
-                _showError('Taking too long \u2014 try YouTube or Spotify');
+                _logPlayback('timeout', detectedSource, Date.now() - _startTs);
+                _showError('Nothing opened \u2014 tap again or choose another source');
                 _showFallbackOverlay(_bundle._raw || { songs: [{ songTitle: item.songTitle }] });
             }
         }, 5000);
+
+        _logPlayback('attempt', detectedSource, 0);
 
         try {
             if (typeof openMusicLink === 'function') openMusicLink(item.url);
             else window.open(item.url, '_blank');
             clearTimeout(_startTimer);
             _setState(STATES.PLAYING);
+            _logPlayback('success', detectedSource, Date.now() - _startTs);
             _showNowPlayingBar(item, detectedSource, sorted);
+            // Preload hint: cache next track's source for faster transition
+            _preloadHint(sorted, _trackIdx + 1);
         } catch(e) {
             clearTimeout(_startTimer);
             _setState(STATES.ERROR);
-            _showError('Popup blocked \u2014 tap the link below to open');
+            _logPlayback('error', detectedSource, Date.now() - _startTs);
+            _showError('Popup blocked \u2014 tap again or choose another source');
             _showFallbackOverlay(_bundle._raw || { songs: [{ songTitle: item.songTitle }] });
         }
     }
@@ -233,7 +244,8 @@ window.PlaybackSession = (function() {
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
         overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:340px;width:100%;text-align:center">'
             + '<div style="font-size:1em;font-weight:800;color:#e2e8f0;margin-bottom:6px">No matches found</div>'
-            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">Try searching manually:</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:4px">Try searching manually:</div>'
+            + '<div style="font-size:0.72em;color:#475569;margin-bottom:12px">If nothing opened, tap again or choose another source.</div>'
             + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
             + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glPlaybackFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.05);color:#f87171;text-decoration:none">\uD83D\uDCFA YouTube</a>'
             + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glPlaybackFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:rgba(30,215,96,0.05);color:#1ed760;text-decoration:none">\uD83C\uDFB5 Spotify</a>'
@@ -252,6 +264,49 @@ window.PlaybackSession = (function() {
     }
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    // ── Analytics ───────────────────────────────────────────────────────────
+
+    function _logPlayback(event, source, durationMs) {
+        console.log('[Playback]', event, source, durationMs + 'ms');
+        if (typeof FeedMetrics !== 'undefined' && FeedMetrics.trackEvent) {
+            FeedMetrics.trackEvent('playback_' + event, { source: source, ms: durationMs });
+        }
+    }
+
+    // ── Preload Hint ────────────────────────────────────────────────────────
+    // Warm the browser cache for the next track's URL. No-op if unavailable.
+    // Future: could prefetch YouTube embed or Spotify widget.
+
+    function _preloadHint(sorted, nextIdx) {
+        if (nextIdx >= sorted.length) return;
+        var next = sorted[nextIdx];
+        if (!next || !next.url) return;
+        // DNS prefetch for next domain
+        try {
+            var domain = new URL(next.url).hostname;
+            if (!document.querySelector('link[rel="dns-prefetch"][href*="' + domain + '"]')) {
+                var link = document.createElement('link');
+                link.rel = 'dns-prefetch';
+                link.href = '//' + domain;
+                document.head.appendChild(link);
+            }
+        } catch(e) {}
+    }
+
+    // ── Button Feedback ─────────────────────────────────────────────────────
+    // Subtle press animation on playback action buttons.
+
+    function addButtonFeedback(btnId) {
+        var btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.style.transition = 'transform 0.1s, opacity 0.1s';
+        btn.addEventListener('mousedown', function() { btn.style.transform = 'scale(0.95)'; btn.style.opacity = '0.8'; });
+        btn.addEventListener('mouseup', function() { btn.style.transform = ''; btn.style.opacity = ''; });
+        btn.addEventListener('mouseleave', function() { btn.style.transform = ''; btn.style.opacity = ''; });
+        btn.addEventListener('touchstart', function() { btn.style.transform = 'scale(0.95)'; btn.style.opacity = '0.8'; }, { passive: true });
+        btn.addEventListener('touchend', function() { btn.style.transform = ''; btn.style.opacity = ''; }, { passive: true });
+    }
 
     // ── Help System (object storage) ────────────────────────────────────────
     //
@@ -329,7 +384,8 @@ window.PlaybackSession = (function() {
         _removeBar: _removeBar,
         shouldShowHelp: shouldShowHelp, dismissHelp: dismissHelp,
         disableHelp: disableHelp, canReplayHelp: canReplayHelp,
-        showSurfaceHelp: showSurfaceHelp
+        showSurfaceHelp: showSurfaceHelp,
+        addButtonFeedback: addButtonFeedback
     };
 
 })();
