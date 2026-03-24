@@ -1,34 +1,27 @@
 // ============================================================================
-// js/features/band-feed.js — Band Feed v4: Attention Layer
-// Aggregates existing data. Prioritizes critical + needs-input items.
-// Click-through navigation, inline actions, archive, tag editing, notes.
-// Attention summary bar, back-to-feed navigation, collapsible notes.
-// Feed metadata (archive, resolved, tags, notes) stored in feed_meta.
+// js/features/band-feed.js — Band Feed v5: Unified Action Engine
+//
+// Personal action feed powered by FeedActionState (feed-action-state.js).
+// All ownership, completion, badges, CTA, and prioritization logic is
+// centralized in the action state engine. This file owns rendering + data.
+//
 // No chat. No messaging. No notifications.
 // ============================================================================
 
 'use strict';
 
 var _feedCache = null;
-var _feedMeta = {};   // feed_meta from Firebase: { itemKey: { archived, resolved, tag, notes[] } }
-var _feedFilter = 'all'; // all | critical | needs_input | needs_band_input | mine | since_rehearsal | archived
-var _feedLastRehearsalTs = null; // ISO timestamp of most recent rehearsal
-var _feedNavigatedFrom = sessionStorage.getItem('gl_feed_context') === '1'; // persistent feed context
+var _feedMeta = {};
+var _feedFilter = 'all';
+var _feedLastRehearsalTs = null;
 
-// ── Current user identity for vote/ownership checks ─────────────────────────
+// ── Shorthand ───────────────────────────────────────────────────────────────
 
-function _feedGetMyVoteKey() {
-    // Poll votes are stored under display names via _bcGetName()
-    // Replicate same resolution chain
-    var cu = localStorage.getItem('deadcetera_current_user') || '';
-    if (typeof bandMembers !== 'undefined' && bandMembers[cu]) return bandMembers[cu].name;
-    if (typeof currentUserEmail !== 'undefined' && currentUserEmail && typeof getCurrentMemberKey === 'function') {
-        var key = getCurrentMemberKey();
-        if (key && typeof bandMembers !== 'undefined' && bandMembers[key]) return bandMembers[key].name;
-    }
-    if (typeof currentUserName !== 'undefined' && currentUserName) return currentUserName;
-    if (typeof currentUserEmail !== 'undefined' && currentUserEmail) return currentUserEmail.split('@')[0];
-    return null;
+var FAS = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+
+function _fas() {
+    if (!FAS && typeof FeedActionState !== 'undefined') FAS = FeedActionState;
+    return FAS;
 }
 
 // ── Song Title Resolver ──────────────────────────────────────────────────────
@@ -51,8 +44,6 @@ function _feedResolveSongTitle(firebaseKey) {
     return _feedSongTitleMap[firebaseKey] || firebaseKey.replace(/_/g, ' ');
 }
 
-// ── Unique key for feed_meta lookup ──────────────────────────────────────────
-
 function _feedItemKey(item) {
     return item.type + ':' + item.id;
 }
@@ -71,8 +62,7 @@ function _feedGetOnboardingStep() {
 function _feedAdvanceOnboarding() {
     var step = _feedGetOnboardingStep();
     if (step === 'done') return;
-    var next = step + 1;
-    localStorage.setItem(_FEED_OB_KEY, next > 3 ? 'done' : String(next));
+    localStorage.setItem(_FEED_OB_KEY, (step + 1) > 3 ? 'done' : String(step + 1));
     _feedRemoveOnboardingBanner();
 }
 
@@ -92,7 +82,6 @@ function _feedRenderOnboarding() {
     _feedRemoveOnboardingBanner();
     var step = _feedGetOnboardingStep();
     if (step === 'done') return;
-
     var msgs = {
         1: '\uD83D\uDC4B This is your band\u2019s command center. Red = urgent. Yellow = you owe input. Tap any item to take action.',
         2: 'Try this: tap a yellow item and respond. That\u2019s how your band stays locked in.',
@@ -100,28 +89,16 @@ function _feedRenderOnboarding() {
     };
     var msg = msgs[step];
     if (!msg) return;
-
     var el = document.getElementById('page-feed');
     if (!el) return;
     var banner = document.createElement('div');
     banner.id = 'feedOnboarding';
-    banner.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px;'
-        + 'background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;'
-        + 'max-height:60px;overflow:hidden;animation:feedObFadeIn 0.3s ease';
+    banner.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;max-height:60px;overflow:hidden;animation:feedObFadeIn 0.3s ease';
     banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#c7d2fe;line-height:1.4">' + msg + '</div>'
-        + '<button onclick="_feedDismissOnboarding()" style="flex-shrink:0;font-size:0.72em;font-weight:700;'
-        + 'padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);'
-        + 'background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap">Got it</button>';
-
-    // Insert after page header, before attention bar
+        + '<button onclick="_feedDismissOnboarding()" style="flex-shrink:0;font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap">Got it</button>';
     var attnBar = document.getElementById('feedAttentionBar');
-    if (attnBar) {
-        attnBar.parentNode.insertBefore(banner, attnBar);
-    } else {
-        el.insertBefore(banner, el.firstChild);
-    }
-
-    // Inject fade-in animation once
+    if (attnBar) attnBar.parentNode.insertBefore(banner, attnBar);
+    else el.insertBefore(banner, el.firstChild);
     if (!document.getElementById('feedObStyles')) {
         var s = document.createElement('style');
         s.id = 'feedObStyles';
@@ -134,14 +111,21 @@ function _feedRenderOnboarding() {
 
 window.renderBandFeedPage = async function(el) {
     if (!el) return;
-    _feedNavigatedFrom = false;
-    sessionStorage.removeItem('gl_feed_context');
-    _feedRemoveBackBar(); // clean up any stale back bar
+
+    // Restore filter from return context if coming back
+    var fas = _fas();
+    if (fas) {
+        var rc = fas.getReturnContext();
+        if (rc && rc.filter) _feedFilter = rc.filter;
+        fas.clearReturnContext();
+    }
+
+    _feedRemoveBackBar();
     el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCE1 Band Feed</h1>'
-        + '<p>Everything the band said, noted, and decided \u2014 actionable.</p></div>'
+        + '<p>What do you owe? What\u2019s waiting on others? What changed?</p></div>'
         + '<div id="feedAttentionBar"></div>'
         + '<div id="feedFilterBar"></div>'
-        + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed...</div></div>';
+        + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed\u2026</div></div>';
     await _feedLoadMeta();
     var items = await _feedLoadAll();
     _feedCache = items;
@@ -149,101 +133,73 @@ window.renderBandFeedPage = async function(el) {
     _feedRenderAttentionBar(items);
     _feedRenderFilterBar(items);
     _feedRender(items);
+
+    // Scroll to focused item if return context specified one
+    if (rc && rc.focusItem) {
+        setTimeout(function() {
+            var target = document.getElementById('feedItem_' + rc.focusItem);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 200);
+    }
 };
-
-// ── Personal vs Band input classification ───────────────────────────────────
-
-function _feedNeedsMyInput(item) {
-    // Only consider items tagged needs_input and not resolved
-    if (_feedGetTag(item) !== 'needs_input' || _feedIsResolved(item)) return false;
-    // Polls: check if I specifically have NOT voted
-    if (item.type === 'poll') return !item.iVoted;
-    // Ideas: needs_input and not resolved = needs everyone's input
-    return true;
-}
-
-function _feedNeedsBandInput(item) {
-    if (_feedGetTag(item) !== 'needs_input' || _feedIsResolved(item)) return false;
-    // Polls: I voted but others haven't
-    if (item.type === 'poll') return item.iVoted;
-    // Ideas: not resolved = still needs band input
-    return true;
-}
 
 // ── Attention Summary Bar ───────────────────────────────────────────────────
 
 function _feedRenderAttentionBar(items) {
     var bar = document.getElementById('feedAttentionBar');
     if (!bar) return;
+    var fas = _fas();
+    if (!fas) return;
 
-    var visible = items.filter(function(i) { return !_feedIsArchived(i); });
-    var critCount = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; }).length;
-    var myInputCount = visible.filter(function(i) { return _feedNeedsMyInput(i); }).length;
+    var summary = fas.computeSummary(items, _feedMeta);
 
-    if (critCount === 0 && myInputCount === 0) {
+    if (summary.allClear) {
         bar.innerHTML = '<div style="padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
             + '<span style="font-size:1.1em">\u2705</span>'
-            + '<span style="font-size:0.82em;font-weight:700;color:#86efac">All clear \u2014 nothing needs attention right now</span>'
+            + '<span style="font-size:0.82em;font-weight:700;color:#86efac">All clear \u2014 nothing needs your attention</span>'
             + '</div>';
         return;
     }
 
     var html = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
-
-    if (critCount > 0) {
-        html += '<button onclick="_feedSetFilter(\'critical\')" style="flex:1;min-width:140px;padding:12px 16px;border-radius:10px;cursor:pointer;'
-            + 'background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);'
-            + 'display:flex;align-items:center;gap:10px;transition:background 0.15s"'
-            + ' onmouseover="this.style.background=\'rgba(239,68,68,0.15)\'" onmouseout="this.style.background=\'rgba(239,68,68,0.08)\'">'
+    if (summary.critical > 0) {
+        html += '<button onclick="_feedSetFilter(\'critical\')" style="flex:1;min-width:130px;padding:12px 16px;border-radius:10px;cursor:pointer;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);display:flex;align-items:center;gap:10px">'
             + '<span style="width:10px;height:10px;border-radius:50%;background:#ef4444;flex-shrink:0"></span>'
-            + '<div>'
-            + '<div style="font-size:1.2em;font-weight:800;color:#f87171;line-height:1">' + critCount + '</div>'
-            + '<div style="font-size:0.68em;font-weight:600;color:#fca5a5;letter-spacing:0.03em">Critical</div>'
-            + '</div></button>';
+            + '<div><div style="font-size:1.2em;font-weight:800;color:#f87171;line-height:1">' + summary.critical + '</div>'
+            + '<div style="font-size:0.68em;font-weight:600;color:#fca5a5">Critical</div></div></button>';
     }
-
-    if (myInputCount > 0) {
-        html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:140px;padding:12px 16px;border-radius:10px;cursor:pointer;'
-            + 'background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);'
-            + 'display:flex;align-items:center;gap:10px;transition:background 0.15s"'
-            + ' onmouseover="this.style.background=\'rgba(245,158,11,0.12)\'" onmouseout="this.style.background=\'rgba(245,158,11,0.06)\'">'
+    if (summary.needsMyInput > 0) {
+        html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:130px;padding:12px 16px;border-radius:10px;cursor:pointer;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;gap:10px">'
             + '<span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>'
-            + '<div>'
-            + '<div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + myInputCount + '</div>'
-            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d;letter-spacing:0.03em">Need Your Input</div>'
-            + '</div></button>';
+            + '<div><div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + summary.needsMyInput + '</div>'
+            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d">You owe input</div></div></button>';
     }
-
     html += '</div>';
     bar.innerHTML = html;
 }
 
-// ── Filter Bar (with counts) ─────────────────────────────────────────────────
+// ── Filter Bar ──────────────────────────────────────────────────────────────
 
 function _feedRenderFilterBar(items) {
     var bar = document.getElementById('feedFilterBar');
     if (!bar) return;
-
-    var visible = items.filter(function(i) { return !_feedIsArchived(i); });
-    var critCount = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; }).length;
-    var myInputCount = visible.filter(function(i) { return _feedNeedsMyInput(i); }).length;
-    var bandInputCount = visible.filter(function(i) { return _feedNeedsBandInput(i); }).length;
-    var sinceCount = _feedLastRehearsalTs ? visible.filter(function(i) { return (i.timestamp || '') > _feedLastRehearsalTs; }).length : 0;
+    var fas = _fas();
+    var summary = fas ? fas.computeSummary(items, _feedMeta) : { total: items.length, critical: 0, needsMyInput: 0, waitingOnBand: 0 };
+    var sinceCount = _feedLastRehearsalTs ? items.filter(function(i) { return !_feedIsArchived(i) && (i.timestamp || '') > _feedLastRehearsalTs; }).length : 0;
     var archivedCount = items.filter(function(i) { return _feedIsArchived(i); }).length;
 
     var filters = [
-        { key: 'all', label: 'All (' + visible.length + ')' },
-        { key: 'critical', label: '\u26A0\uFE0F Critical' + (critCount ? ' (' + critCount + ')' : '') },
-        { key: 'needs_input', label: '\u270B Needs My Input' + (myInputCount ? ' (' + myInputCount + ')' : '') },
-        { key: 'needs_band_input', label: '\uD83D\uDC65 Needs Band Input' + (bandInputCount ? ' (' + bandInputCount + ')' : '') },
+        { key: 'all', label: 'All (' + summary.total + ')' },
+        { key: 'critical', label: '\u26A0\uFE0F Critical' + (summary.critical ? ' (' + summary.critical + ')' : '') },
+        { key: 'needs_input', label: '\u270B I Owe' + (summary.needsMyInput ? ' (' + summary.needsMyInput + ')' : '') },
+        { key: 'waiting_on_band', label: '\uD83D\uDC65 Waiting' + (summary.waitingOnBand ? ' (' + summary.waitingOnBand + ')' : '') },
         { key: 'since_rehearsal', label: '\uD83C\uDFB8 Since Rehearsal' + (sinceCount ? ' (' + sinceCount + ')' : '') },
-        { key: 'mine', label: '\uD83D\uDC64 My Items' },
         { key: 'archived', label: '\uD83D\uDDC4\uFE0F Archived' + (archivedCount ? ' (' + archivedCount + ')' : '') }
     ];
     bar.innerHTML = '<div style="display:flex;gap:4px;flex-wrap:wrap">'
         + filters.map(function(f) {
             var active = _feedFilter === f.key;
-            return '<button onclick="_feedSetFilter(\'' + f.key + '\')" id="feedFilter_' + f.key + '" style="font-size:0.75em;font-weight:' + (active ? '800' : '600') + ';padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + f.label + '</button>';
+            return '<button onclick="_feedSetFilter(\'' + f.key + '\')" style="font-size:0.75em;font-weight:' + (active ? '800' : '600') + ';padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + f.label + '</button>';
         }).join('')
         + '</div>';
 }
@@ -271,85 +227,59 @@ async function _feedLoadMeta() {
 }
 
 function _feedGetMeta(item) {
-    var key = _feedItemKey(item);
-    return _feedMeta[key] || {};
+    return _feedMeta[_feedItemKey(item)] || {};
 }
-
-function _feedIsArchived(item) {
-    return !!_feedGetMeta(item).archived;
-}
-
+function _feedIsArchived(item) { return !!_feedGetMeta(item).archived; }
 function _feedIsResolved(item) {
-    var meta = _feedGetMeta(item);
-    if (meta.resolved !== undefined) return !!meta.resolved;
-    return !!item.resolved;
+    var m = _feedGetMeta(item);
+    return (m.resolved !== undefined) ? !!m.resolved : !!item.resolved;
 }
-
 function _feedGetTag(item) {
-    var meta = _feedGetMeta(item);
-    return meta.tag || item.tag || 'fyi';
+    var m = _feedGetMeta(item);
+    return m.tag || item.tag || 'fyi';
 }
-
-function _feedGetNotes(item) {
-    return _feedGetMeta(item).notes || [];
-}
+function _feedGetNotes(item) { return _feedGetMeta(item).notes || []; }
 
 async function _feedSaveMeta(item, updates) {
     var key = _feedItemKey(item);
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return;
-
     if (!_feedMeta[key]) _feedMeta[key] = {};
     Object.keys(updates).forEach(function(k) { _feedMeta[key][k] = updates[k]; });
-
-    try {
-        await db.ref(bandPath('feed_meta/' + key)).update(updates);
-    } catch(e) {
-        console.warn('[Feed] Meta save error:', e.message);
-    }
+    try { await db.ref(bandPath('feed_meta/' + key)).update(updates); }
+    catch(e) { console.warn('[Feed] Meta save error:', e.message); }
 }
 
-// ── Actions (global handlers) ────────────────────────────────────────────────
+// ── Actions ─────────────────────────────────────────────────────────────────
 
 window._feedAction = async function(action, type, id) {
     var item = _feedFindItem(type, id);
     if (!item) return;
-
     if (action === 'resolve') {
-        var isResolved = _feedIsResolved(item);
-        await _feedSaveMeta(item, { resolved: !isResolved });
-        if (!isResolved) _feedAdvanceOnboarding(); // auto-advance on resolve
-        _feedShowToast(isResolved ? 'Reopened' : 'Marked resolved');
+        var was = _feedIsResolved(item);
+        await _feedSaveMeta(item, { resolved: !was });
+        if (!was) _feedAdvanceOnboarding();
+        _feedShowToast(was ? 'Reopened' : 'Marked resolved');
     } else if (action === 'archive') {
         await _feedSaveMeta(item, { archived: true });
         _feedShowToast('Archived');
     } else if (action === 'unarchive') {
         await _feedSaveMeta(item, { archived: false });
-        _feedShowToast('Restored from archive');
+        _feedShowToast('Restored');
     }
-
-    if (_feedCache) {
-        _feedRenderAttentionBar(_feedCache);
-        _feedRenderFilterBar(_feedCache);
-        _feedRender(_feedCache);
-    }
+    _feedRerender();
 };
 
 window._feedChangeTag = async function(type, id) {
     var item = _feedFindItem(type, id);
     if (!item) return;
-    var currentTag = _feedGetTag(item);
     var tags = ['fyi', 'needs_input', 'mission_critical', 'fun'];
     var labels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
-    var idx = tags.indexOf(currentTag);
-    var nextTag = tags[(idx + 1) % tags.length];
-    await _feedSaveMeta(item, { tag: nextTag });
-    _feedShowToast('Tag: ' + labels[nextTag]);
-    if (_feedCache) {
-        _feedRenderAttentionBar(_feedCache);
-        _feedRenderFilterBar(_feedCache);
-        _feedRender(_feedCache);
-    }
+    var cur = _feedGetTag(item);
+    var next = tags[(tags.indexOf(cur) + 1) % tags.length];
+    await _feedSaveMeta(item, { tag: next });
+    _feedShowToast('Tag: ' + labels[next]);
+    _feedRerender();
 };
 
 window._feedShowNoteInput = function(type, id) {
@@ -357,39 +287,29 @@ window._feedShowNoteInput = function(type, id) {
     if (!el) return;
     el.style.display = el.style.display === 'none' ? '' : 'none';
     if (el.style.display !== 'none') {
-        var input = el.querySelector('input');
-        if (input) input.focus();
+        var inp = el.querySelector('input');
+        if (inp) inp.focus();
     }
 };
 
 window._feedSaveNote = async function(type, id) {
     var el = document.getElementById('feedNote_' + type + '_' + id);
     if (!el) return;
-    var input = el.querySelector('input');
-    var text = input ? input.value.trim() : '';
+    var inp = el.querySelector('input');
+    var text = inp ? inp.value.trim() : '';
     if (!text) return;
-
     var item = _feedFindItem(type, id);
     if (!item) return;
-
+    var fas = _fas();
     var notes = _feedGetNotes(item).slice();
-    var userName = (typeof currentUserName !== 'undefined' && currentUserName)
-        ? currentUserName.split(' ')[0]
-        : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'Me';
-    notes.push({ text: text, by: userName, ts: new Date().toISOString() });
+    var by = fas ? (fas.getMyDisplayName() || 'Me') : 'Me';
+    notes.push({ text: text, by: by, ts: new Date().toISOString() });
     await _feedSaveMeta(item, { notes: notes });
-
-    input.value = '';
-    _feedAdvanceOnboarding(); // auto-advance on respond
+    inp.value = '';
+    _feedAdvanceOnboarding();
     _feedShowToast('Note added');
-    if (_feedCache) {
-        _feedRenderAttentionBar(_feedCache);
-        _feedRenderFilterBar(_feedCache);
-        _feedRender(_feedCache);
-    }
+    _feedRerender();
 };
-
-// ── Toggle older notes ──────────────────────────────────────────────────────
 
 window._feedToggleOlderNotes = function(type, id) {
     var el = document.getElementById('feedOlderNotes_' + type + '_' + id);
@@ -400,12 +320,26 @@ window._feedToggleOlderNotes = function(type, id) {
     btn.textContent = hidden ? 'Hide older notes' : btn.dataset.label;
 };
 
-// ── Navigation with back-to-feed support ────────────────────────────────────
+function _feedRerender() {
+    if (!_feedCache) return;
+    _feedRenderAttentionBar(_feedCache);
+    _feedRenderFilterBar(_feedCache);
+    _feedRender(_feedCache);
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
 
 window._feedNavigate = function(type, id, songId) {
-    _feedAdvanceOnboarding(); // auto-advance on click-through
-    _feedNavigatedFrom = true;
-    sessionStorage.setItem('gl_feed_context', '1');
+    _feedAdvanceOnboarding();
+    var fas = _fas();
+    if (fas) {
+        fas.setReturnContext({
+            filter: _feedFilter,
+            focusItem: type + '_' + id,
+            ts: Date.now()
+        });
+        sessionStorage.setItem('gl_feed_context', '1');
+    }
     _feedShowBackBar();
 
     if (type === 'song_moment' || type === 'rehearsal_note') {
@@ -420,24 +354,16 @@ window._feedNavigate = function(type, id, songId) {
 };
 
 window._feedBackToFeed = function() {
-    _feedNavigatedFrom = false;
-    sessionStorage.removeItem('gl_feed_context');
     _feedRemoveBackBar();
     showPage('feed');
 };
 
 function _feedShowBackBar() {
-    _feedRemoveBackBar(); // prevent duplicates
+    _feedRemoveBackBar();
     var bar = document.createElement('div');
     bar.id = 'feedBackBar';
-    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:900;'
-        + 'display:flex;align-items:center;gap:8px;padding:8px 16px;'
-        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(99,102,241,0.2);'
-        + 'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
-    bar.innerHTML = '<button onclick="_feedBackToFeed()" style="display:flex;align-items:center;gap:6px;'
-        + 'font-size:0.8em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;'
-        + 'border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">'
-        + '\u2190 Back to Feed</button>';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:900;display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    bar.innerHTML = '<button onclick="_feedBackToFeed()" style="display:flex;align-items:center;gap:6px;font-size:0.8em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u2190 Back to Feed</button>';
     document.body.appendChild(bar);
 }
 
@@ -446,29 +372,26 @@ function _feedRemoveBackBar() {
     if (existing) existing.remove();
 }
 
-// Clean up back bar when user explicitly navigates via nav rail (not feed deep-link)
-// The bar persists through all pages while feed context is active.
-// Only removed when: returning to feed, or navigating via rail/menu (gl-rail-item click).
+// Feed context management via GLStore
 if (typeof GLStore !== 'undefined' && GLStore.subscribe) {
     GLStore.subscribe('pageChanged', function(payload) {
+        var fas = _fas();
         if (payload.page === 'feed') {
-            // Returned to feed — clean up
-            _feedNavigatedFrom = false;
-            sessionStorage.removeItem('gl_feed_context');
+            // Returned to feed — context stays (restored in renderBandFeedPage)
             _feedRemoveBackBar();
-        }
-        // If navigated from feed, keep the bar; show it if not visible
-        if (_feedNavigatedFrom && payload.page !== 'feed') {
+        } else if (fas && fas.hasReturnContext()) {
             _feedShowBackBar();
         }
     });
 }
-// Also show back bar on load if feed context was active (e.g. page refresh)
-if (_feedNavigatedFrom) {
+// Show back bar on load if feed context was active
+if (typeof FeedActionState !== 'undefined' && FeedActionState.hasReturnContext()) {
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(_feedShowBackBar, 500);
     });
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function _feedFindItem(type, id) {
     if (!_feedCache) return null;
@@ -488,15 +411,29 @@ function _feedShowToast(msg) {
     setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 2000);
 }
 
+function _feedResolveName(byField) {
+    if (!byField) return 'Anonymous';
+    if (byField.indexOf('@') > 0) {
+        var emailMap = {
+            'drewmerrill1029@gmail.com': 'Drew', 'cmjalbert@gmail.com': 'Chris',
+            'brian@hrestoration.com': 'Brian', 'pierce.d.hale@gmail.com': 'Pierce',
+            'jnault@fegholdings.com': 'Jay'
+        };
+        return emailMap[byField] || byField.split('@')[0];
+    }
+    return byField;
+}
+
 // ── Data Loading ─────────────────────────────────────────────────────────────
 
 async function _feedLoadAll() {
     var items = [];
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return items;
+    var fas = _fas();
 
     try {
-        // 1. Ideas/Posts
+        // 1. Ideas
         var ideasSnap = await db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(50).once('value');
         var ideas = ideasSnap.val();
         if (ideas) {
@@ -514,12 +451,12 @@ async function _feedLoadAll() {
             });
         }
 
-        // 2. Polls — with per-user vote tracking
+        // 2. Polls — per-user vote tracking
         var pollSnap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value');
         var polls = pollSnap.val();
         if (polls) {
             var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
-            var myVoteKey = _feedGetMyVoteKey();
+            var myVoteKey = fas ? fas.getMyVoteKey() : null;
             Object.entries(polls).forEach(function(entry) {
                 var v = entry[1];
                 if (!v || !v.ts) return;
@@ -527,23 +464,21 @@ async function _feedLoadAll() {
                 var allVoted = voteCount >= memberCount;
                 var iVoted = !!(myVoteKey && v.votes && v.votes[myVoteKey] !== undefined);
                 var remaining = memberCount - voteCount;
-                var contextParts = [];
-                if (iVoted) contextParts.push('You voted');
-                if (allVoted) contextParts.push(voteCount + '/' + memberCount + ' voted \u2705');
-                else contextParts.push(remaining + ' of ' + memberCount + ' still need to vote');
+                var ctx = [];
+                if (iVoted) ctx.push('You voted');
+                ctx.push(allVoted ? (voteCount + '/' + memberCount + ' voted \u2705') : (remaining + ' of ' + memberCount + ' still need to vote'));
                 items.push({
                     id: entry[0], type: 'poll',
                     text: v.question || v.title || '',
                     author: v.author || 'Anonymous', timestamp: v.ts,
                     tag: v.tag || 'needs_input',
-                    resolved: allVoted,
-                    iVoted: iVoted,
-                    context: contextParts.join(' \u00B7 ')
+                    resolved: allVoted, iVoted: iVoted,
+                    context: ctx.join(' \u00B7 ')
                 });
             });
         }
 
-        // 3. Song Moments (batch read)
+        // 3. Song Moments
         var songsSnap = await db.ref(bandPath('songs')).once('value');
         var allSongsData = songsSnap.val();
         if (allSongsData) {
@@ -567,14 +502,17 @@ async function _feedLoadAll() {
             });
         }
 
-        // 4. Determine last rehearsal timestamp
         _feedLastRehearsalTs = await _feedGetLastRehearsalTs(db);
-
     } catch(e) {
         console.warn('[Feed] Load error:', e.message);
     }
 
-    items.sort(function(a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
+    // Sort by priority (action urgency), not just chronology
+    if (fas) {
+        items = fas.sortByPriority(items, _feedMeta);
+    } else {
+        items.sort(function(a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
+    }
     return items;
 }
 
@@ -582,14 +520,10 @@ async function _feedGetLastRehearsalTs(db) {
     try {
         var sessSnap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('startedAt').limitToLast(1).once('value');
         var sess = sessSnap.val();
-        if (sess) {
-            var latest = Object.values(sess)[0];
-            if (latest && latest.startedAt) return latest.startedAt;
-        }
+        if (sess) { var latest = Object.values(sess)[0]; if (latest && latest.startedAt) return latest.startedAt; }
     } catch(e) {}
     try {
-        var events = (typeof loadBandDataFromDrive === 'function')
-            ? await loadBandDataFromDrive('_band', 'calendar_events') : null;
+        var events = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'calendar_events') : null;
         if (events) {
             var today = new Date().toISOString().split('T')[0];
             var rehearsals = (Array.isArray(events) ? events : Object.values(events))
@@ -601,27 +535,12 @@ async function _feedGetLastRehearsalTs(db) {
     return null;
 }
 
-function _feedResolveName(byField) {
-    if (!byField) return 'Anonymous';
-    if (byField.indexOf('@') > 0) {
-        var emailMap = {
-            'drewmerrill1029@gmail.com': 'Drew', 'cmjalbert@gmail.com': 'Chris',
-            'brian@hrestoration.com': 'Brian', 'pierce.d.hale@gmail.com': 'Pierce',
-            'jnault@fegholdings.com': 'Jay'
-        };
-        return emailMap[byField] || byField.split('@')[0];
-    }
-    return byField;
-}
-
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 function _feedRender(items) {
     var el = document.getElementById('feedList');
     if (!el) return;
-
-    var myEmail = (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '';
-    var myName = (typeof currentUserName !== 'undefined') ? currentUserName : '';
+    var fas = _fas();
 
     var visible;
     if (_feedFilter === 'archived') {
@@ -630,32 +549,20 @@ function _feedRender(items) {
         visible = items.filter(function(i) { return !_feedIsArchived(i); });
     }
 
-    var critical = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; });
-    var needsMyInput = visible.filter(function(i) { return _feedNeedsMyInput(i); });
-    var needsBandInput = visible.filter(function(i) { return _feedNeedsBandInput(i); });
-
+    // Apply filter using action state
     var filtered;
     if (_feedFilter === 'critical') {
-        filtered = critical;
+        filtered = visible.filter(function(i) { var s = fas ? fas.getActionState(i, _feedGetMeta(i)) : null; return s && s.priorityBucket === 1; });
     } else if (_feedFilter === 'needs_input') {
-        filtered = needsMyInput;
-    } else if (_feedFilter === 'needs_band_input') {
-        filtered = needsBandInput;
-    } else if (_feedFilter === 'mine') {
-        filtered = visible.filter(function(i) {
-            var a = (i.author || '').toLowerCase();
-            return a === myEmail.toLowerCase() || a === myName.toLowerCase() || a === (myEmail.split('@')[0] || '').toLowerCase();
-        });
+        filtered = visible.filter(function(i) { var s = fas ? fas.getActionState(i, _feedGetMeta(i)) : null; return s && s.needsMyInput; });
+    } else if (_feedFilter === 'waiting_on_band') {
+        filtered = visible.filter(function(i) { var s = fas ? fas.getActionState(i, _feedGetMeta(i)) : null; return s && s.waitingOnOthers; });
     } else if (_feedFilter === 'since_rehearsal') {
-        if (_feedLastRehearsalTs) {
-            filtered = visible.filter(function(i) { return (i.timestamp || '') > _feedLastRehearsalTs; });
-        } else {
-            filtered = visible;
-        }
+        filtered = _feedLastRehearsalTs ? visible.filter(function(i) { return (i.timestamp || '') > _feedLastRehearsalTs; }) : visible;
     } else if (_feedFilter === 'archived') {
         filtered = visible;
     } else {
-        filtered = null; // "all" handled below
+        filtered = null; // "all" — grouped rendering below
     }
 
     if (filtered !== null && filtered.length === 0) {
@@ -667,50 +574,48 @@ function _feedRender(items) {
 
     var html = '';
 
-    if (_feedFilter === 'all') {
-        if (critical.length > 0) {
-            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;border-left:4px solid #ef4444">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u26A0\uFE0F CRITICAL (' + critical.length + ')</div>';
-            critical.forEach(function(item) { html += _feedRenderItem(item); });
-            html += '</div>';
-        }
-
-        if (needsMyInput.length > 0) {
-            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B NEEDS YOUR INPUT (' + needsMyInput.length + ')</div>';
-            needsMyInput.forEach(function(item) { html += _feedRenderItem(item); });
-            html += '</div>';
-        }
-
-        if (needsBandInput.length > 0) {
-            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;border-left:4px solid #6366f1">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 WAITING ON BAND (' + needsBandInput.length + ')</div>';
-            needsBandInput.forEach(function(item) { html += _feedRenderItem(item); });
-            html += '</div>';
-        }
-
-        var restItems = visible.filter(function(i) {
-            return _feedGetTag(i) !== 'mission_critical' && !_feedNeedsMyInput(i) && !_feedNeedsBandInput(i);
+    if (_feedFilter === 'all' && fas) {
+        // Group by action urgency
+        var groups = { critical: [], myInput: [], bandWait: [], rest: [] };
+        visible.forEach(function(item) {
+            var state = fas.getActionState(item, _feedGetMeta(item));
+            if (state.priorityBucket === 1) groups.critical.push(item);
+            else if (state.needsMyInput) groups.myInput.push(item);
+            else if (state.waitingOnOthers) groups.bandWait.push(item);
+            else groups.rest.push(item);
         });
-        if (restItems.length > 0) {
+
+        if (groups.critical.length) {
+            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;border-left:4px solid #ef4444">';
+            html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u26A0\uFE0F CRITICAL (' + groups.critical.length + ')</div>';
+            groups.critical.forEach(function(item) { html += _feedRenderItem(item); });
+            html += '</div>';
+        }
+        if (groups.myInput.length) {
+            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
+            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B YOU OWE INPUT (' + groups.myInput.length + ')</div>';
+            groups.myInput.forEach(function(item) { html += _feedRenderItem(item); });
+            html += '</div>';
+        }
+        if (groups.bandWait.length) {
+            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;border-left:4px solid #6366f1">';
+            html += '<div style="font-size:0.72em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 WAITING ON BAND (' + groups.bandWait.length + ')</div>';
+            groups.bandWait.forEach(function(item) { html += _feedRenderItem(item); });
+            html += '</div>';
+        }
+        if (groups.rest.length) {
             var lastDate = '';
-            restItems.forEach(function(item) {
-                var itemDate = (item.timestamp || '').substring(0, 10);
-                if (itemDate !== lastDate) {
-                    lastDate = itemDate;
-                    html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">' + _feedFormatDate(itemDate) + '</div>';
-                }
+            groups.rest.forEach(function(item) {
+                var d = (item.timestamp || '').substring(0, 10);
+                if (d !== lastDate) { lastDate = d; html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">' + _feedFormatDate(d) + '</div>'; }
                 html += _feedRenderItem(item);
             });
         }
     } else {
         var lastDate = '';
-        filtered.forEach(function(item) {
-            var itemDate = (item.timestamp || '').substring(0, 10);
-            if (itemDate !== lastDate) {
-                lastDate = itemDate;
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">' + _feedFormatDate(itemDate) + '</div>';
-            }
+        (filtered || visible).forEach(function(item) {
+            var d = (item.timestamp || '').substring(0, 10);
+            if (d !== lastDate) { lastDate = d; html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">' + _feedFormatDate(d) + '</div>'; }
             html += _feedRenderItem(item);
         });
     }
@@ -719,17 +624,14 @@ function _feedRender(items) {
 }
 
 function _feedRenderItem(item) {
-    var typeIcon = { idea: '\uD83D\uDCA1', poll: '\uD83D\uDDF3\uFE0F', rehearsal_note: '\uD83C\uDFB8', song_moment: '\uD83C\uDFB5', gig_note: '\uD83C\uDFA4' }[item.type] || '\uD83D\uDCCB';
-    var effectiveTag = _feedGetTag(item);
-    var resolved = _feedIsResolved(item);
-    var archived = _feedIsArchived(item);
+    var fas = _fas();
+    var meta = _feedGetMeta(item);
+    var state = fas ? fas.getActionState(item, meta) : null;
 
-    var tagBadge = '';
-    if (effectiveTag === 'mission_critical') tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25)">\u26A0\uFE0F Critical</span>';
-    else if (effectiveTag === 'needs_input' && !resolved && item.iVoted) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2)">You voted \u00B7 waiting on band</span>';
-    else if (effectiveTag === 'needs_input' && !resolved) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.25)">\u270B Your input needed</span>';
-    else if (effectiveTag === 'needs_input' && resolved) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(34,197,94,0.1);color:#86efac;border:1px solid rgba(34,197,94,0.2)">\u2705 Resolved</span>';
-    else if (effectiveTag === 'fun') tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:#86efac;border:1px solid rgba(34,197,94,0.25)">\uD83C\uDF89 Fun</span>';
+    var typeIcon = { idea: '\uD83D\uDCA1', poll: '\uD83D\uDDF3\uFE0F', rehearsal_note: '\uD83C\uDFB8', song_moment: '\uD83C\uDFB5', gig_note: '\uD83C\uDFA4' }[item.type] || '\uD83D\uDCCB';
+    var badgeHtml = (fas && state) ? fas.renderBadgeHTML(state.badge) : '';
+    var resolved = state ? state.isResolved : _feedIsResolved(item);
+    var archived = state ? state.isArchived : _feedIsArchived(item);
 
     var timeStr = _feedTimeAgo(item.timestamp);
     var contextStr = item.context ? '<span style="font-size:0.72em;color:var(--accent-light)">' + _feedEsc(item.context) + '</span>' : '';
@@ -737,62 +639,45 @@ function _feedRenderItem(item) {
     var safeType = _feedEsc(item.type);
     var safeId = _feedEsc(item.id);
     var safeSongId = item.songId ? _feedEsc(item.songId) : '';
-
     var clickAttr = ' onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')"';
 
     var cardStyle = 'padding:10px 14px;background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;margin-bottom:6px';
     if (resolved) cardStyle += ';opacity:0.6';
     if (archived) cardStyle += ';opacity:0.45';
 
-    var html = '<div style="' + cardStyle + '">';
+    var html = '<div id="feedItem_' + safeType + '_' + safeId + '" style="' + cardStyle + '">';
 
-    // Header row
+    // Header
     html += '<div' + clickAttr + ' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer">'
         + '<span style="font-size:1em">' + typeIcon + '</span>'
         + '<span style="font-size:0.82em;font-weight:700;color:var(--text)">' + _feedEsc(item.author) + '</span>'
-        + contextStr + tagBadge
+        + contextStr + badgeHtml
         + '<span style="margin-left:auto;font-size:0.68em;color:var(--text-dim);flex-shrink:0">' + timeStr + '</span>'
         + '</div>';
 
     // Body
     html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedEsc(item.text) + '</div>';
 
-    if (item.link) {
-        html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
-    }
+    if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
 
-    // Notes — most recent prominent, older collapsed
+    // Notes
     var notes = _feedGetNotes(item);
     if (notes.length > 0) {
         html += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
-
-        // Most recent note: prominent
         var latest = notes[notes.length - 1];
-        var isNew = latest.ts && (Date.now() - new Date(latest.ts).getTime() < 86400000); // < 24h
+        var isNew = latest.ts && (Date.now() - new Date(latest.ts).getTime() < 86400000);
         html += '<div style="font-size:0.78em;padding:4px 0;' + (isNew ? 'color:var(--text);font-weight:600' : 'color:var(--text-muted)') + '">'
             + (isNew ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#818cf8;margin-right:5px;vertical-align:middle"></span>' : '')
             + '<span style="font-weight:700;color:' + (isNew ? '#a5b4fc' : 'var(--text-muted)') + '">' + _feedEsc(latest.by) + ':</span> '
             + _feedEsc(latest.text)
-            + ' <span style="opacity:0.5;font-size:0.9em">' + _feedTimeAgo(latest.ts) + '</span>'
-            + '</div>';
-
-        // Older notes: collapsed behind toggle
+            + ' <span style="opacity:0.5;font-size:0.9em">' + _feedTimeAgo(latest.ts) + '</span></div>';
         if (notes.length > 1) {
-            var olderCount = notes.length - 1;
-            html += '<button id="feedOlderNotesBtn_' + safeType + '_' + safeId + '" '
-                + 'data-label="View ' + olderCount + ' older note' + (olderCount > 1 ? 's' : '') + '" '
-                + 'onclick="event.stopPropagation();_feedToggleOlderNotes(\'' + safeType + '\',\'' + safeId + '\')" '
-                + 'style="font-size:0.68em;font-weight:600;color:var(--accent-light,#818cf8);background:none;border:none;cursor:pointer;padding:2px 0;opacity:0.7">'
-                + 'View ' + olderCount + ' older note' + (olderCount > 1 ? 's' : '') + '</button>';
+            var oc = notes.length - 1;
+            html += '<button id="feedOlderNotesBtn_' + safeType + '_' + safeId + '" data-label="View ' + oc + ' older note' + (oc > 1 ? 's' : '') + '" onclick="event.stopPropagation();_feedToggleOlderNotes(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;color:var(--accent-light,#818cf8);background:none;border:none;cursor:pointer;padding:2px 0;opacity:0.7">View ' + oc + ' older note' + (oc > 1 ? 's' : '') + '</button>';
             html += '<div id="feedOlderNotes_' + safeType + '_' + safeId + '" style="display:none">';
-            // Render older notes in reverse chronological (newest first, excluding the latest already shown)
             for (var ni = notes.length - 2; ni >= 0; ni--) {
                 var n = notes[ni];
-                html += '<div style="font-size:0.75em;color:var(--text-dim);padding:2px 0">'
-                    + '<span style="font-weight:700;color:var(--text-muted)">' + _feedEsc(n.by) + ':</span> '
-                    + _feedEsc(n.text)
-                    + ' <span style="opacity:0.5">' + _feedTimeAgo(n.ts) + '</span>'
-                    + '</div>';
+                html += '<div style="font-size:0.75em;color:var(--text-dim);padding:2px 0"><span style="font-weight:700;color:var(--text-muted)">' + _feedEsc(n.by) + ':</span> ' + _feedEsc(n.text) + ' <span style="opacity:0.5">' + _feedTimeAgo(n.ts) + '</span></div>';
             }
             html += '</div>';
         }
@@ -800,39 +685,23 @@ function _feedRenderItem(item) {
     }
 
     // Action bar
+    var effectiveTag = state ? state.effectiveTag : _feedGetTag(item);
     html += '<div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">';
-
-    html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" '
-        + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:' + (resolved ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (resolved ? '#86efac' : 'var(--text-dim)') + '">'
-        + (resolved ? '\u2705 Resolved' : '\u2611\uFE0F Resolve') + '</button>';
-
+    html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:' + (resolved ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (resolved ? '#86efac' : 'var(--text-dim)') + '">' + (resolved ? '\u2705 Resolved' : '\u2611\uFE0F Resolve') + '</button>';
     var tagLabels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
-    html += '<button onclick="_feedChangeTag(\'' + safeType + '\',\'' + safeId + '\')" '
-        + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">'
-        + '\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || effectiveTag) + '</button>';
-
-    html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" '
-        + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">'
-        + '\uD83D\uDCDD Note</button>';
-
+    html += '<button onclick="_feedChangeTag(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || effectiveTag) + '</button>';
+    html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83D\uDCDD Note</button>';
     if (archived) {
-        html += '<button onclick="_feedAction(\'unarchive\',\'' + safeType + '\',\'' + safeId + '\')" '
-            + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">'
-            + '\u21A9\uFE0F Restore</button>';
+        html += '<button onclick="_feedAction(\'unarchive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u21A9\uFE0F Restore</button>';
     } else {
-        html += '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" '
-            + 'style="margin-left:auto;font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);opacity:0.5">'
-            + '\uD83D\uDDC4\uFE0F Archive</button>';
+        html += '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="margin-left:auto;font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);opacity:0.5">\uD83D\uDDC4\uFE0F Archive</button>';
     }
     html += '</div>';
 
     // Inline note input
-    html += '<div id="feedNote_' + safeType + '_' + safeId + '" style="display:none;margin-top:6px" onclick="event.stopPropagation()">'
-        + '<div style="display:flex;gap:6px">'
-        + '<input type="text" placeholder="Add a note..." onkeydown="if(event.key===\'Enter\')_feedSaveNote(\'' + safeType + '\',\'' + safeId + '\')" '
-        + 'style="flex:1;font-size:0.78em;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none">'
-        + '<button onclick="_feedSaveNote(\'' + safeType + '\',\'' + safeId + '\')" '
-        + 'style="font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Save</button>'
+    html += '<div id="feedNote_' + safeType + '_' + safeId + '" style="display:none;margin-top:6px" onclick="event.stopPropagation()"><div style="display:flex;gap:6px">'
+        + '<input type="text" placeholder="Add a note\u2026" onkeydown="if(event.key===\'Enter\')_feedSaveNote(\'' + safeType + '\',\'' + safeId + '\')" style="flex:1;font-size:0.78em;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none">'
+        + '<button onclick="_feedSaveNote(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Save</button>'
         + '</div></div>';
 
     html += '</div>';
@@ -863,10 +732,10 @@ function _feedTimeAgo(ts) {
 
 function _feedEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
-// ── Register page ────────────────────────────────────────────────────────────
+// ── Register ────────────────────────────────────────────────────────────────
 
 if (typeof pageRenderers !== 'undefined') {
     pageRenderers.feed = function(el) { renderBandFeedPage(el); };
 }
 
-console.log('\uD83D\uDCE1 band-feed.js v4 loaded \u2014 attention layer');
+console.log('\uD83D\uDCE1 band-feed.js v5 loaded \u2014 unified action engine');
