@@ -389,22 +389,10 @@ function _renderListeningCard(bundleType, title, subtitle) {
     var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
     if (!lb) return '';
 
-    // Spotify button reflects real state: connect → create → synced → update
-    var spotifyConnected = lb.isSpotifyConnected();
-    var playlists = {};
-    try { playlists = JSON.parse(localStorage.getItem('gl_spotify_playlists') || '{}'); } catch(e) {}
-    var hasPlaylist = !!playlists[bundleType];
-    var spotifyLabel, spotifyStyle;
-    if (!spotifyConnected) {
-        spotifyLabel = '\uD83C\uDFB5 Connect Spotify';
-        spotifyStyle = 'border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.08);color:#1ed760';
-    } else if (!hasPlaylist) {
-        spotifyLabel = '\uD83C\uDFB5 Create Playlist';
-        spotifyStyle = 'border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.08);color:#1ed760';
-    } else {
-        spotifyLabel = '\uD83C\uDFB5 Sync to Spotify';
-        spotifyStyle = 'border:1px solid rgba(30,215,96,0.2);background:none;color:rgba(30,215,96,0.7)';
-    }
+    // Spotify button — single source of truth via PlaybackSession
+    var ps = (typeof PlaybackSession !== 'undefined') ? PlaybackSession : null;
+    var spotifyLabel = ps ? ps.getSpotifyLabel(bundleType) : '\uD83C\uDFB5 Spotify';
+    var spotifyStyle = ps ? ps.getSpotifyStyle(bundleType) : 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)';
     var spotifyAction = 'ListeningBundles.syncToSpotify(\'' + bundleType + '\')';
 
     return '<div class="app-card home-anim-cards" style="border-left:3px solid rgba(99,102,241,0.2)">'
