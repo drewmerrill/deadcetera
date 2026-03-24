@@ -1145,6 +1145,11 @@ window.ListeningBundles = (function() {
     // ── Post Playlist Event to Feed ────────────────────────────────────────
 
     async function _postPlaylistToFeed(bundleType, songCount, playlistId, isNew) {
+        // Suppress noisy auto-posts — only post if explicitly enabled
+        // These were polluting Band Feed with "Focus playlist updated — 1 songs" etc.
+        var postEnabled = localStorage.getItem('gl_playlist_feed_posts') === 'true';
+        if (!postEnabled) { console.log('[Playlist] Feed post suppressed (gl_playlist_feed_posts !== true)'); return; }
+
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!db || typeof bandPath !== 'function') return;
 

@@ -642,20 +642,24 @@ function _feedRenderFilterBar(items) {
     var sinceCount = _feedLastRehearsalTs ? items.filter(function(i) { return !_feedIsArchived(i) && (i.timestamp || '') > _feedLastRehearsalTs; }).length : 0;
     var archivedCount = items.filter(function(i) { return _feedIsArchived(i); }).length;
 
+    var systemCount = items.filter(function(i) { return i._source === 'playlist_sync' && !_feedIsArchived(i); }).length;
     var filters = [
         { key: 'all', label: 'All (' + summary.total + ')' },
         { key: 'critical', label: '\u26A0\uFE0F Critical' + (summary.critical ? ' (' + summary.critical + ')' : '') },
         { key: 'needs_input', label: '\u270B Needs You' + (summary.needsMyInput ? ' (' + summary.needsMyInput + ')' : '') },
         { key: 'waiting_on_band', label: '\uD83D\uDC65 Waiting' + (summary.waitingOnBand ? ' (' + summary.waitingOnBand + ')' : '') },
         { key: 'since_rehearsal', label: '\uD83C\uDFB8 Since Rehearsal' + (sinceCount ? ' (' + sinceCount + ')' : '') },
+        { key: 'system', label: '\u2699\uFE0F System' + (systemCount ? ' (' + systemCount + ')' : '') },
         { key: 'archived', label: '\uD83D\uDDC4\uFE0F Archived' + (archivedCount ? ' (' + archivedCount + ')' : '') }
     ];
-    bar.innerHTML = '<div style="display:flex;gap:4px;flex-wrap:wrap">'
+    bar.innerHTML = '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
         + filters.map(function(f) {
             var active = _feedFilter === f.key;
             return '<button onclick="_feedSetFilter(\'' + f.key + '\')" style="font-size:0.75em;font-weight:' + (active ? '800' : '600') + ';padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + f.label + '</button>';
         }).join('')
-        + '</div>';
+        + '<button onclick="_feedToggleBulkMode()" style="font-size:0.68em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid ' + (_feedBulkMode ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_feedBulkMode ? 'rgba(239,68,68,0.1)' : 'none') + ';color:' + (_feedBulkMode ? '#f87171' : '#475569') + ';margin-left:auto">' + (_feedBulkMode ? '\u2715 Cancel' : '\u2611 Select') + '</button>'
+        + '</div>'
+        + (_feedBulkMode ? '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px"><span id="feedBulkCount" style="font-size:0.78em;font-weight:600;color:#f87171">0 selected</span><button onclick="_feedBulkDelete()" style="margin-left:auto;font-size:0.78em;font-weight:700;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.1);color:#f87171">\uD83D\uDDD1 Delete Selected</button></div>' : '');
 }
 
 window._feedSetFilter = function(key) {
@@ -720,7 +724,87 @@ window._feedAction = async function(action, type, id) {
     } else if (action === 'unarchive') {
         await _feedSaveMeta(item, { archived: false });
         _feedShowToast('Restored');
+    } else if (action === 'delete') {
+        if (!_feedCanDelete(item)) { _feedShowToast('Only the creator or admin can delete'); return; }
+        if (!confirm('Delete this post? This cannot be undone.')) return;
+        await _feedDeleteItem(item);
+        _feedShowToast('Post deleted');
     }
+    _feedRerender();
+};
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+
+function _feedCanDelete(item) {
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) return true; // can't check, allow
+    // Creator can delete
+    if (fas.isMe && fas.isMe(item.author)) return true;
+    // Admin check: drew is admin (band owner)
+    var key = fas.getMyMemberKey ? fas.getMyMemberKey() : '';
+    if (key === 'drew') return true;
+    return false;
+}
+
+async function _feedDeleteItem(item) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+
+    // Delete from source: ideas/posts is the main store for posts type
+    if (item.type === 'post' || item.type === 'idea' || item.type === 'ideas') {
+        try { await db.ref(bandPath('ideas/posts/' + item.id)).remove(); } catch(e) {}
+    }
+    if (item.type === 'poll') {
+        try { await db.ref(bandPath('polls/' + item.id)).remove(); } catch(e) {}
+    }
+
+    // Delete metadata
+    var key = _feedItemKey(item);
+    try { await db.ref(bandPath('feed_meta/' + key)).remove(); } catch(e) {}
+    delete _feedMeta[key];
+
+    // Remove from cache
+    if (_feedCache) {
+        _feedCache = _feedCache.filter(function(f) { return !(f.type === item.type && f.id === item.id); });
+    }
+}
+
+// ── Bulk Delete ────────────────────────────────────────────────────────────
+
+var _feedBulkMode = false;
+var _feedBulkSelected = {};
+
+window._feedToggleBulkMode = function() {
+    _feedBulkMode = !_feedBulkMode;
+    _feedBulkSelected = {};
+    _feedRerender();
+};
+
+window._feedBulkToggle = function(type, id) {
+    var key = type + ':' + id;
+    if (_feedBulkSelected[key]) delete _feedBulkSelected[key];
+    else _feedBulkSelected[key] = { type: type, id: id };
+    // Update checkbox UI
+    var cb = document.getElementById('feedBulkCb_' + type + '_' + id);
+    if (cb) cb.checked = !!_feedBulkSelected[key];
+    // Update count
+    var countEl = document.getElementById('feedBulkCount');
+    if (countEl) countEl.textContent = Object.keys(_feedBulkSelected).length + ' selected';
+};
+
+window._feedBulkDelete = async function() {
+    var keys = Object.keys(_feedBulkSelected);
+    if (!keys.length) { _feedShowToast('Nothing selected'); return; }
+    if (!confirm('Delete ' + keys.length + ' item' + (keys.length > 1 ? 's' : '') + '? This cannot be undone.')) return;
+
+    for (var i = 0; i < keys.length; i++) {
+        var sel = _feedBulkSelected[keys[i]];
+        var item = _feedFindItem(sel.type, sel.id);
+        if (item) await _feedDeleteItem(item);
+    }
+    _feedShowToast(keys.length + ' item' + (keys.length > 1 ? 's' : '') + ' deleted');
+    _feedBulkMode = false;
+    _feedBulkSelected = {};
     _feedRerender();
 };
 
@@ -1115,6 +1199,8 @@ function _feedRender(items) {
         filtered = visible.filter(function(i) { var s = fas ? fas.getActionState(i, _feedGetMeta(i)) : null; return s && s.waitingOnOthers; });
     } else if (_feedFilter === 'since_rehearsal') {
         filtered = _feedLastRehearsalTs ? visible.filter(function(i) { return (i.timestamp || '') > _feedLastRehearsalTs; }) : visible;
+    } else if (_feedFilter === 'system') {
+        filtered = visible.filter(function(i) { return i._source === 'playlist_sync'; });
     } else if (_feedFilter === 'archived') {
         filtered = visible;
     } else {
@@ -1131,6 +1217,8 @@ function _feedRender(items) {
     var html = '';
 
     if (_feedFilter === 'all' && fas) {
+        // Hide system-generated posts from default view (they show under System filter)
+        visible = visible.filter(function(i) { return i._source !== 'playlist_sync'; });
         // Group by action urgency
         var groups = { critical: [], myInput: [], bandWait: [], rest: [] };
         visible.forEach(function(item) {
@@ -1213,6 +1301,19 @@ function _feedRenderItem(item, isFirstAction) {
 
     var highlightClass = isFirstAction ? ' feed-first-action' : '';
     var html = '<div id="feedItem_' + safeType + '_' + safeId + '" class="' + highlightClass + '" style="' + cardStyle + '">';
+
+    // Bulk select checkbox
+    if (_feedBulkMode) {
+        var bKey = safeType + ':' + safeId;
+        html += '<div style="float:left;margin-right:8px;margin-top:2px" onclick="event.stopPropagation()">'
+            + '<input type="checkbox" id="feedBulkCb_' + safeType + '_' + safeId + '" onchange="_feedBulkToggle(\'' + safeType + '\',\'' + safeId + '\')"' + (_feedBulkSelected[bKey] ? ' checked' : '') + ' style="accent-color:#ef4444;width:16px;height:16px;cursor:pointer">'
+            + '</div>';
+    }
+
+    // System-generated badge
+    if (item._source === 'playlist_sync') {
+        html += '<div style="font-size:0.6em;font-weight:700;color:#475569;background:rgba(71,85,105,0.15);display:inline-block;padding:1px 6px;border-radius:3px;margin-bottom:4px">SYSTEM</div>';
+    }
 
     // Micro-guidance on first action item
     if (isFirstAction) {
@@ -1313,7 +1414,11 @@ function _feedRenderItem(item, isFirstAction) {
     if (archived) {
         html += '<button onclick="_feedAction(\'unarchive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u21A9\uFE0F Restore</button>';
     } else {
-        html += '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="margin-left:auto;font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);opacity:0.5">\uD83D\uDDC4\uFE0F Archive</button>';
+        html += '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);opacity:0.5">\uD83D\uDDC4\uFE0F Archive</button>';
+    }
+    // Delete button (creator or admin only)
+    if (_feedCanDelete(item)) {
+        html += '<button onclick="_feedAction(\'delete\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;opacity:0.5" title="Delete permanently">\uD83D\uDDD1\uFE0F</button>';
     }
     html += '</div>';
 
