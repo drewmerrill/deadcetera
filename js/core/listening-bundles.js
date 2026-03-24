@@ -647,11 +647,13 @@ window.ListeningBundles = (function() {
             // Don't open Spotify yet — show choice
             _showSyncChoice(syncResult);
         } else {
-            // All matched — open directly
-            var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
-            if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
-            else window.open(playlistUrl, '_blank');
-            if (typeof showToast === 'function') showToast(resolved.matched + ' songs synced \u2014 opening Spotify');
+            // All matched — open with brief transition
+            if (typeof showToast === 'function') showToast(resolved.matched + ' songs synced \u2014 opening Spotify\u2026');
+            setTimeout(function() {
+                var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
+                if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
+                else window.open(playlistUrl, '_blank');
+            }, 300);
         }
 
         return syncResult;
@@ -731,7 +733,7 @@ window.ListeningBundles = (function() {
             + '<div style="font-size:0.85em;color:#fbbf24;margin-bottom:16px">' + result.failed + ' need review</div>'
             + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
             + '<button onclick="ListeningBundles._openReviewFromChoice()" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Fix matches</button>'
-            + '<button onclick="ListeningBundles._openPlaylistAnyway()" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Open anyway</button>'
+            + '<button onclick="ListeningBundles._openPlaylistAnyway()" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Open anyway (' + result.failed + ' song' + (result.failed > 1 ? 's' : '') + ' missing)</button>'
             + '</div></div>';
         overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
         document.body.appendChild(overlay);
@@ -747,9 +749,12 @@ window.ListeningBundles = (function() {
         var overlay = document.getElementById('spReviewOverlay');
         if (overlay) overlay.remove();
         if (_lastSyncResult && _lastSyncResult.playlistId) {
-            var url = 'https://open.spotify.com/playlist/' + _lastSyncResult.playlistId;
-            if (typeof openMusicLink === 'function') openMusicLink(url);
-            else window.open(url, '_blank');
+            if (typeof showToast === 'function') showToast('Opening Spotify\u2026');
+            setTimeout(function() {
+                var url = 'https://open.spotify.com/playlist/' + _lastSyncResult.playlistId;
+                if (typeof openMusicLink === 'function') openMusicLink(url);
+                else window.open(url, '_blank');
+            }, 250);
         }
     }
 
@@ -846,7 +851,7 @@ window.ListeningBundles = (function() {
     function _reviewSkip(idx) {
         var container = document.getElementById('spReviewItem_' + idx);
         if (!container) return;
-        container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px"><span style="color:var(--text-dim)">\u23ED</span><span style="font-size:0.82em;color:var(--text-dim)">Skipped</span></div>';
+        container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px"><span style="color:var(--text-dim)">\u23ED</span><span style="font-size:0.82em;color:var(--text-dim)">Skipped \u2014 not in Spotify</span></div>';
         _reviewAdvance('skipped');
     }
 
@@ -883,7 +888,17 @@ window.ListeningBundles = (function() {
         var overlay = document.getElementById('spReviewOverlay');
         if (overlay) overlay.remove();
         if (_lastSyncResult && _lastSyncResult.bundleType) {
-            await syncToSpotify(_lastSyncResult.bundleType);
+            var prevFixed = _lastSyncResult.failed || 0;
+            var result = await syncToSpotify(_lastSyncResult.bundleType);
+            // Show improvement feedback
+            if (result && result.ok && prevFixed > 0) {
+                var improved = prevFixed - (result.failed || 0);
+                if (improved > 0) {
+                    setTimeout(function() {
+                        if (typeof showToast === 'function') showToast(improved + ' song' + (improved > 1 ? 's' : '') + ' updated \u2014 playlist improved');
+                    }, 2000);
+                }
+            }
         }
     }
 
