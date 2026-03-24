@@ -281,31 +281,31 @@ window.ListeningBundles = (function() {
 
         // Spotify embed if available
         if (hasEmbed) {
-            html += '<div id="glSpotifyEmbed" style="margin-bottom:10px">' + _buildSpotifyEmbed(spotifyId, false) + '</div>'
-                + '<div style="font-size:0.68em;color:#475569;text-align:center;margin-bottom:10px">Tap play above \u00B7 Spotify may require a tap to start.</div>';
+            html += '<div style="font-size:0.82em;font-weight:700;color:#a5b4fc;text-align:center;margin-bottom:6px">\u25B6 Tap play to start</div>'
+                + '<div id="glSpotifyEmbed" style="margin-bottom:6px">' + _buildSpotifyEmbed(spotifyId, false) + '</div>'
+                + '<div style="font-size:0.72em;color:#64748b;text-align:center;margin-bottom:10px">Stay here to move through your set.</div>';
         }
+
+        // Playing indicator slot (updated when user starts playback)
+        html += '<div id="glPlayingIndicator" style="display:none;text-align:center;font-size:0.78em;font-weight:700;color:#22c55e;margin-bottom:8px">\u25CF Playing: ' + _esc(firstTitle) + '</div>';
 
         // Action buttons
         html += '<div style="display:flex;flex-direction:column;gap:6px;align-items:center">';
         if (hasEmbed) {
-            // Embed is primary — offer open in app as secondary
-            html += '<button onclick="ListeningBundles._qlPlay()" style="width:100%;max-width:260px;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:none;color:rgba(30,215,96,0.7)">Open in Spotify app \u2192</button>';
+            html += '<button onclick="ListeningBundles._qlPlay()" style="width:100%;max-width:260px;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:none;color:rgba(30,215,96,0.7)">\uD83C\uDFA7 Spotify (in app) \u2192</button>';
         } else {
-            // No embed — external open is primary
             html += '<button onclick="ListeningBundles._qlPlay()" style="width:100%;max-width:260px;padding:10px 20px;border-radius:10px;cursor:pointer;font-size:0.88em;font-weight:700;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Open in ' + ({ spotify: 'Spotify', youtube: 'YouTube', archive: 'Archive' }[firstSource] || 'player') + '</button>';
         }
-        // Always show alternatives
         html += '<div style="display:flex;gap:6px;margin-top:2px">'
-            + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:6px 12px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-decoration:none">\uD83D\uDCFA YouTube</a>'
-            + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:6px 12px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(30,215,96,0.1);background:none;color:rgba(30,215,96,0.5);text-decoration:none">\uD83C\uDFB5 Spotify</a>'
-            + '<a href="https://archive.org/search?query=' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:6px 12px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-decoration:none">\uD83C\uDFDB\uFE0F Archive</a>'
+            + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:6px 12px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-decoration:none">\uD83D\uDCFA YouTube (new tab)</a>'
+            + '<a href="https://archive.org/search?query=' + q + '" target="_blank" rel="noopener" onclick="document.getElementById(\'glPlayConfirm\').remove()" style="padding:6px 12px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-decoration:none">\uD83C\uDFDB\uFE0F Archive (search)</a>'
             + '</div>';
         html += '</div>';
 
         // Next song context
         if (_qlSortedUrls.length > 1) {
             var nextTitle = _qlSortedUrls[1] ? _qlSortedUrls[1].songTitle : '';
-            html += '<div style="font-size:0.72em;color:#475569;text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.04)">Up next: <strong style="color:#94a3b8">' + _esc(nextTitle) + '</strong> \u00B7 ' + _qlSortedUrls.length + ' songs total</div>';
+            html += '<div style="font-size:0.72em;color:#475569;text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.04)">Up next: <strong style="color:#94a3b8">' + _esc(nextTitle) + '</strong> \u2014 tap Next when ready \u00B7 ' + _qlSortedUrls.length + ' songs</div>';
         }
 
         html += '<button onclick="document.getElementById(\'glPlayConfirm\').remove()" style="display:block;margin:10px auto 0;background:none;border:none;color:#475569;cursor:pointer;font-size:0.78em">Close</button>'
@@ -371,8 +371,8 @@ window.ListeningBundles = (function() {
         var next = _qlSortedUrls[nextIdx];
         var nextSpotifyId = _getSpotifyTrackId(next.url);
         bar.innerHTML = (nextSpotifyId
-            ? '<div style="flex:1;min-width:0"><div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong></div>' + _buildSpotifyEmbed(nextSpotifyId, true) + '</div>'
-            : '<span style="flex:1;font-size:0.82em;color:#94a3b8">Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong> \u00B7 ' + (nextIdx + 1) + '/' + _qlSortedUrls.length + '</span>')
+            ? '<div style="flex:1;min-width:0"><div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">\u25CF Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong> \u2014 tap Next when ready</div>' + _buildSpotifyEmbed(nextSpotifyId, true) + '</div>'
+            : '<span style="flex:1;font-size:0.82em;color:#94a3b8">\u25CF Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong> \u2014 tap Next when ready \u00B7 ' + (nextIdx + 1) + '/' + _qlSortedUrls.length + '</span>')
             + '<button onclick="ListeningBundles._qlNext()" style="padding:6px 16px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;flex-shrink:0">Next \u2192</button>'
             + '<button onclick="ListeningBundles._removeNextSongBar()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:4px;flex-shrink:0">\u2715</button>';
     }
