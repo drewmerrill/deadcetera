@@ -332,17 +332,51 @@ function _injectGuidanceStyles() {
 
 // ── Create Bar ──────────────────────────────────────────────────────────────
 
+var _FEED_CREATED_KEY = 'gl_feed_has_created';
+
 function _feedRenderCreateBar() {
     var bar = document.getElementById('feedCreateBar');
     if (!bar) return;
-    bar.innerHTML = '<button onclick="_feedToggleCreateMenu()" id="feedCreateBtn" style="display:flex;align-items:center;gap:6px;width:100%;padding:10px 14px;border-radius:10px;cursor:pointer;border:1px dashed rgba(99,102,241,0.25);background:none;color:#a5b4fc;font-size:0.82em;font-weight:600;text-align:left;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.06)\'" onmouseout="this.style.background=\'none\'">'
-        + '<span style="font-size:1.1em">+</span> Add something for the band</button>'
-        + '<div id="feedCreateMenu" style="display:none;margin-top:6px;padding:8px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
+
+    // Quick add input + full menu
+    var nudge = '';
+    if (!localStorage.getItem(_FEED_CREATED_KEY)) {
+        nudge = '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px;opacity:0.7">Have an idea? Add something for the band.</div>';
+    }
+    bar.innerHTML = nudge
+        + '<div style="display:flex;gap:6px;margin-bottom:6px">'
+        + '<input id="feedQuickAdd" type="text" placeholder="Quick note\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.82em;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);color:var(--text);outline:none">'
+        + '<button onclick="_feedQuickPost()" style="flex-shrink:0;font-size:0.78em;font-weight:700;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u2191</button>'
+        + '</div>'
+        + '<button onclick="_feedToggleCreateMenu()" id="feedCreateBtn" style="display:flex;align-items:center;gap:6px;width:100%;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px dashed rgba(99,102,241,0.2);background:none;color:var(--text-dim);font-size:0.78em;font-weight:600;text-align:left;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.04)\'" onmouseout="this.style.background=\'none\'">'
+        + '<span style="color:#a5b4fc">+</span> Poll, Idea, or more</button>'
+        + '<div id="feedCreateMenu" style="display:none;margin-top:6px;padding:6px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
         + '<button onclick="_feedCreateItem(\'poll\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDDF3\uFE0F Poll / Decision</button>'
         + '<button onclick="_feedCreateItem(\'idea\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDCA1 Idea</button>'
         + '<button onclick="_feedCreateItem(\'note\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDCDD Note</button>'
         + '</div>';
 }
+
+window._feedQuickPost = async function() {
+    var inp = document.getElementById('feedQuickAdd');
+    if (!inp) return;
+    var text = inp.value.trim();
+    if (!text) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') { _feedShowToast('Not connected'); return; }
+    var fas = _fas();
+    var author = fas ? (fas.getMyDisplayName() || 'Anonymous') : 'Anonymous';
+    try {
+        await db.ref(bandPath('ideas/posts')).push({
+            title: text, author: author, ts: new Date().toISOString(), tag: 'fyi'
+        });
+        localStorage.setItem(_FEED_CREATED_KEY, '1');
+        inp.value = '';
+        _feedShowToast('Shared with the band');
+        var el = document.getElementById('page-feed');
+        if (el) renderBandFeedPage(el);
+    } catch(e) { _feedShowToast('Failed'); }
+};
 
 window._feedToggleCreateMenu = function() {
     var menu = document.getElementById('feedCreateMenu');
@@ -413,7 +447,8 @@ window._feedSubmitCreate = async function(type) {
                 ts: new Date().toISOString(), tag: 'fyi'
             });
         }
-        _feedShowToast('Posted');
+        localStorage.setItem(_FEED_CREATED_KEY, '1');
+        _feedShowToast('Shared with the band');
         _feedRenderCreateBar();
         // Reload feed to show new item
         var el = document.getElementById('page-feed');
@@ -1050,7 +1085,15 @@ function _feedRender(items) {
         });
     }
 
-    el.innerHTML = html || '<div style="text-align:center;padding:40px;color:var(--text-dim)">No feed items yet.</div>';
+    if (!html) {
+        html = '<div style="text-align:center;padding:40px">'
+            + '<div style="font-size:1.2em;margin-bottom:4px">\u2705</div>'
+            + '<div style="font-size:0.88em;font-weight:700;color:#86efac;margin-bottom:4px">You\u2019re locked in</div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Nothing blocking rehearsal</div>'
+            + '<button onclick="_feedCreateItem(\'note\')" style="font-size:0.78em;font-weight:700;padding:8px 18px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">+ Add something for the band</button>'
+            + '</div>';
+    }
+    el.innerHTML = html;
 }
 
 function _feedRenderItem(item, isFirstAction) {
