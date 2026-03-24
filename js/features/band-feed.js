@@ -11,9 +11,25 @@
 
 var _feedCache = null;
 var _feedMeta = {};   // feed_meta from Firebase: { itemKey: { archived, resolved, tag, notes[] } }
-var _feedFilter = 'all'; // all | critical | needs_input | mine | since_rehearsal | archived
+var _feedFilter = 'all'; // all | critical | needs_input | needs_band_input | mine | since_rehearsal | archived
 var _feedLastRehearsalTs = null; // ISO timestamp of most recent rehearsal
-var _feedNavigatedFrom = false; // tracks if user deep-linked from feed
+var _feedNavigatedFrom = sessionStorage.getItem('gl_feed_context') === '1'; // persistent feed context
+
+// ── Current user identity for vote/ownership checks ─────────────────────────
+
+function _feedGetMyVoteKey() {
+    // Poll votes are stored under display names via _bcGetName()
+    // Replicate same resolution chain
+    var cu = localStorage.getItem('deadcetera_current_user') || '';
+    if (typeof bandMembers !== 'undefined' && bandMembers[cu]) return bandMembers[cu].name;
+    if (typeof currentUserEmail !== 'undefined' && currentUserEmail && typeof getCurrentMemberKey === 'function') {
+        var key = getCurrentMemberKey();
+        if (key && typeof bandMembers !== 'undefined' && bandMembers[key]) return bandMembers[key].name;
+    }
+    if (typeof currentUserName !== 'undefined' && currentUserName) return currentUserName;
+    if (typeof currentUserEmail !== 'undefined' && currentUserEmail) return currentUserEmail.split('@')[0];
+    return null;
+}
 
 // ── Song Title Resolver ──────────────────────────────────────────────────────
 
@@ -118,7 +134,8 @@ function _feedRenderOnboarding() {
 
 window.renderBandFeedPage = async function(el) {
     if (!el) return;
-    _feedNavigatedFrom = false; // reset on feed load
+    _feedNavigatedFrom = false;
+    sessionStorage.removeItem('gl_feed_context');
     _feedRemoveBackBar(); // clean up any stale back bar
     el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCE1 Band Feed</h1>'
         + '<p>Everything the band said, noted, and decided \u2014 actionable.</p></div>'
@@ -134,6 +151,25 @@ window.renderBandFeedPage = async function(el) {
     _feedRender(items);
 };
 
+// ── Personal vs Band input classification ───────────────────────────────────
+
+function _feedNeedsMyInput(item) {
+    // Only consider items tagged needs_input and not resolved
+    if (_feedGetTag(item) !== 'needs_input' || _feedIsResolved(item)) return false;
+    // Polls: check if I specifically have NOT voted
+    if (item.type === 'poll') return !item.iVoted;
+    // Ideas: needs_input and not resolved = needs everyone's input
+    return true;
+}
+
+function _feedNeedsBandInput(item) {
+    if (_feedGetTag(item) !== 'needs_input' || _feedIsResolved(item)) return false;
+    // Polls: I voted but others haven't
+    if (item.type === 'poll') return item.iVoted;
+    // Ideas: not resolved = still needs band input
+    return true;
+}
+
 // ── Attention Summary Bar ───────────────────────────────────────────────────
 
 function _feedRenderAttentionBar(items) {
@@ -142,9 +178,9 @@ function _feedRenderAttentionBar(items) {
 
     var visible = items.filter(function(i) { return !_feedIsArchived(i); });
     var critCount = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; }).length;
-    var inputCount = visible.filter(function(i) { return _feedGetTag(i) === 'needs_input' && !_feedIsResolved(i); }).length;
+    var myInputCount = visible.filter(function(i) { return _feedNeedsMyInput(i); }).length;
 
-    if (critCount === 0 && inputCount === 0) {
+    if (critCount === 0 && myInputCount === 0) {
         bar.innerHTML = '<div style="padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
             + '<span style="font-size:1.1em">\u2705</span>'
             + '<span style="font-size:0.82em;font-weight:700;color:#86efac">All clear \u2014 nothing needs attention right now</span>'
@@ -166,14 +202,14 @@ function _feedRenderAttentionBar(items) {
             + '</div></button>';
     }
 
-    if (inputCount > 0) {
+    if (myInputCount > 0) {
         html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:140px;padding:12px 16px;border-radius:10px;cursor:pointer;'
             + 'background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);'
             + 'display:flex;align-items:center;gap:10px;transition:background 0.15s"'
             + ' onmouseover="this.style.background=\'rgba(245,158,11,0.12)\'" onmouseout="this.style.background=\'rgba(245,158,11,0.06)\'">'
             + '<span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>'
             + '<div>'
-            + '<div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + inputCount + '</div>'
+            + '<div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + myInputCount + '</div>'
             + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d;letter-spacing:0.03em">Need Your Input</div>'
             + '</div></button>';
     }
@@ -190,14 +226,16 @@ function _feedRenderFilterBar(items) {
 
     var visible = items.filter(function(i) { return !_feedIsArchived(i); });
     var critCount = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; }).length;
-    var inputCount = visible.filter(function(i) { return _feedGetTag(i) === 'needs_input' && !_feedIsResolved(i); }).length;
+    var myInputCount = visible.filter(function(i) { return _feedNeedsMyInput(i); }).length;
+    var bandInputCount = visible.filter(function(i) { return _feedNeedsBandInput(i); }).length;
     var sinceCount = _feedLastRehearsalTs ? visible.filter(function(i) { return (i.timestamp || '') > _feedLastRehearsalTs; }).length : 0;
     var archivedCount = items.filter(function(i) { return _feedIsArchived(i); }).length;
 
     var filters = [
         { key: 'all', label: 'All (' + visible.length + ')' },
         { key: 'critical', label: '\u26A0\uFE0F Critical' + (critCount ? ' (' + critCount + ')' : '') },
-        { key: 'needs_input', label: '\u2753 Needs Input' + (inputCount ? ' (' + inputCount + ')' : '') },
+        { key: 'needs_input', label: '\u270B Needs My Input' + (myInputCount ? ' (' + myInputCount + ')' : '') },
+        { key: 'needs_band_input', label: '\uD83D\uDC65 Needs Band Input' + (bandInputCount ? ' (' + bandInputCount + ')' : '') },
         { key: 'since_rehearsal', label: '\uD83C\uDFB8 Since Rehearsal' + (sinceCount ? ' (' + sinceCount + ')' : '') },
         { key: 'mine', label: '\uD83D\uDC64 My Items' },
         { key: 'archived', label: '\uD83D\uDDC4\uFE0F Archived' + (archivedCount ? ' (' + archivedCount + ')' : '') }
@@ -367,6 +405,7 @@ window._feedToggleOlderNotes = function(type, id) {
 window._feedNavigate = function(type, id, songId) {
     _feedAdvanceOnboarding(); // auto-advance on click-through
     _feedNavigatedFrom = true;
+    sessionStorage.setItem('gl_feed_context', '1');
     _feedShowBackBar();
 
     if (type === 'song_moment' || type === 'rehearsal_note') {
@@ -381,6 +420,8 @@ window._feedNavigate = function(type, id, songId) {
 };
 
 window._feedBackToFeed = function() {
+    _feedNavigatedFrom = false;
+    sessionStorage.removeItem('gl_feed_context');
     _feedRemoveBackBar();
     showPage('feed');
 };
@@ -405,12 +446,27 @@ function _feedRemoveBackBar() {
     if (existing) existing.remove();
 }
 
-// Clean up back bar when navigating to feed or any non-deep-linked page
+// Clean up back bar when user explicitly navigates via nav rail (not feed deep-link)
+// The bar persists through all pages while feed context is active.
+// Only removed when: returning to feed, or navigating via rail/menu (gl-rail-item click).
 if (typeof GLStore !== 'undefined' && GLStore.subscribe) {
     GLStore.subscribe('pageChanged', function(payload) {
-        if (payload.page === 'feed' || !_feedNavigatedFrom) {
+        if (payload.page === 'feed') {
+            // Returned to feed — clean up
+            _feedNavigatedFrom = false;
+            sessionStorage.removeItem('gl_feed_context');
             _feedRemoveBackBar();
         }
+        // If navigated from feed, keep the bar; show it if not visible
+        if (_feedNavigatedFrom && payload.page !== 'feed') {
+            _feedShowBackBar();
+        }
+    });
+}
+// Also show back bar on load if feed context was active (e.g. page refresh)
+if (_feedNavigatedFrom) {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(_feedShowBackBar, 500);
     });
 }
 
@@ -458,23 +514,31 @@ async function _feedLoadAll() {
             });
         }
 
-        // 2. Polls
+        // 2. Polls — with per-user vote tracking
         var pollSnap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value');
         var polls = pollSnap.val();
         if (polls) {
             var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+            var myVoteKey = _feedGetMyVoteKey();
             Object.entries(polls).forEach(function(entry) {
                 var v = entry[1];
                 if (!v || !v.ts) return;
                 var voteCount = v.votes ? Object.keys(v.votes).length : 0;
                 var allVoted = voteCount >= memberCount;
+                var iVoted = !!(myVoteKey && v.votes && v.votes[myVoteKey] !== undefined);
+                var remaining = memberCount - voteCount;
+                var contextParts = [];
+                if (iVoted) contextParts.push('You voted');
+                if (allVoted) contextParts.push(voteCount + '/' + memberCount + ' voted \u2705');
+                else contextParts.push(remaining + ' of ' + memberCount + ' still need to vote');
                 items.push({
                     id: entry[0], type: 'poll',
                     text: v.question || v.title || '',
                     author: v.author || 'Anonymous', timestamp: v.ts,
                     tag: v.tag || 'needs_input',
                     resolved: allVoted,
-                    context: voteCount + '/' + memberCount + ' voted' + (allVoted ? ' \u2705' : '')
+                    iVoted: iVoted,
+                    context: contextParts.join(' \u00B7 ')
                 });
             });
         }
@@ -567,13 +631,16 @@ function _feedRender(items) {
     }
 
     var critical = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; });
-    var needsInput = visible.filter(function(i) { return _feedGetTag(i) === 'needs_input' && !_feedIsResolved(i); });
+    var needsMyInput = visible.filter(function(i) { return _feedNeedsMyInput(i); });
+    var needsBandInput = visible.filter(function(i) { return _feedNeedsBandInput(i); });
 
     var filtered;
     if (_feedFilter === 'critical') {
         filtered = critical;
     } else if (_feedFilter === 'needs_input') {
-        filtered = needsInput;
+        filtered = needsMyInput;
+    } else if (_feedFilter === 'needs_band_input') {
+        filtered = needsBandInput;
     } else if (_feedFilter === 'mine') {
         filtered = visible.filter(function(i) {
             var a = (i.author || '').toLowerCase();
@@ -608,15 +675,22 @@ function _feedRender(items) {
             html += '</div>';
         }
 
-        if (needsInput.length > 0) {
+        if (needsMyInput.length > 0) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u2753 NEEDS INPUT (' + needsInput.length + ' pending)</div>';
-            needsInput.forEach(function(item) { html += _feedRenderItem(item); });
+            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B NEEDS YOUR INPUT (' + needsMyInput.length + ')</div>';
+            needsMyInput.forEach(function(item) { html += _feedRenderItem(item); });
+            html += '</div>';
+        }
+
+        if (needsBandInput.length > 0) {
+            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;border-left:4px solid #6366f1">';
+            html += '<div style="font-size:0.72em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 WAITING ON BAND (' + needsBandInput.length + ')</div>';
+            needsBandInput.forEach(function(item) { html += _feedRenderItem(item); });
             html += '</div>';
         }
 
         var restItems = visible.filter(function(i) {
-            return _feedGetTag(i) !== 'mission_critical' && !(_feedGetTag(i) === 'needs_input' && !_feedIsResolved(i));
+            return _feedGetTag(i) !== 'mission_critical' && !_feedNeedsMyInput(i) && !_feedNeedsBandInput(i);
         });
         if (restItems.length > 0) {
             var lastDate = '';
@@ -652,7 +726,8 @@ function _feedRenderItem(item) {
 
     var tagBadge = '';
     if (effectiveTag === 'mission_critical') tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25)">\u26A0\uFE0F Critical</span>';
-    else if (effectiveTag === 'needs_input' && !resolved) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.25)">\u2753 Input needed</span>';
+    else if (effectiveTag === 'needs_input' && !resolved && item.iVoted) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.2)">You voted \u00B7 waiting on band</span>';
+    else if (effectiveTag === 'needs_input' && !resolved) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.25)">\u270B Your input needed</span>';
     else if (effectiveTag === 'needs_input' && resolved) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(34,197,94,0.1);color:#86efac;border:1px solid rgba(34,197,94,0.2)">\u2705 Resolved</span>';
     else if (effectiveTag === 'fun') tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:#86efac;border:1px solid rgba(34,197,94,0.25)">\uD83C\uDF89 Fun</span>';
 
