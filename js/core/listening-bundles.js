@@ -290,14 +290,58 @@ window.ListeningBundles = (function() {
     var _SPOTIFY_TOKEN_KEY = 'gl_spotify_token';
     var _SPOTIFY_PLAYLISTS_KEY = 'gl_spotify_playlists';
 
-    function _getSpotifyToken() {
+    function _getSpotifyTokenData() {
         try {
             var raw = localStorage.getItem(_SPOTIFY_TOKEN_KEY);
-            if (!raw) return null;
-            var data = JSON.parse(raw);
-            if (data.expiresAt && Date.now() > data.expiresAt) return null;
-            return data.accessToken;
+            return raw ? JSON.parse(raw) : null;
         } catch(e) { return null; }
+    }
+
+    function _getSpotifyToken() {
+        var data = _getSpotifyTokenData();
+        if (!data) return null;
+        if (data.expiresAt && Date.now() > data.expiresAt) return null;
+        return data.accessToken;
+    }
+
+    function _isTokenExpiringSoon() {
+        var data = _getSpotifyTokenData();
+        if (!data || !data.expiresAt) return true;
+        return (data.expiresAt - Date.now()) < 300000; // < 5 min
+    }
+
+    async function _refreshSpotifyToken() {
+        var data = _getSpotifyTokenData();
+        if (!data || !data.refreshToken || !SPOTIFY_CLIENT_ID) return false;
+        try {
+            var resp = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: SPOTIFY_CLIENT_ID,
+                    grant_type: 'refresh_token',
+                    refresh_token: data.refreshToken
+                })
+            });
+            var result = await resp.json();
+            if (result.access_token) {
+                localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify({
+                    accessToken: result.access_token,
+                    refreshToken: result.refresh_token || data.refreshToken,
+                    expiresAt: Date.now() + (result.expires_in * 1000)
+                }));
+                return true;
+            }
+        } catch(e) { console.warn('[Spotify] Refresh failed:', e); }
+        return false;
+    }
+
+    async function _ensureValidToken() {
+        if (_getSpotifyToken() && !_isTokenExpiringSoon()) return true;
+        if (_getSpotifyTokenData() && _getSpotifyTokenData().refreshToken) {
+            return await _refreshSpotifyToken();
+        }
+        return false;
     }
 
     function isSpotifyConnected() {
@@ -390,10 +434,19 @@ window.ListeningBundles = (function() {
         if (body) opts.body = JSON.stringify(body);
         var resp = await fetch('https://api.spotify.com/v1' + path, opts);
         if (resp.status === 401) {
-            localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
-            return null;
+            // Try silent refresh before giving up
+            var refreshed = await _refreshSpotifyToken();
+            if (refreshed) {
+                opts.headers['Authorization'] = 'Bearer ' + _getSpotifyToken();
+                resp = await fetch('https://api.spotify.com/v1' + path, opts);
+                if (resp.status === 401) { localStorage.removeItem(_SPOTIFY_TOKEN_KEY); return null; }
+            } else {
+                localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
+                return null;
+            }
         }
         if (resp.status === 204) return {};
+        if (!resp.ok) { console.warn('[Spotify] API ' + resp.status + ' on ' + path); return null; }
         return resp.json();
     }
 
@@ -420,17 +473,48 @@ window.ListeningBundles = (function() {
         return null;
     }
 
+    // ── Version Locking ───────────────────────────────────────────────────
+    //
+    // Locked tracks are stored in feed_meta or version data as:
+    //   spotifyTrackId: 'abc123'
+    //   spotifyMatchLocked: true
+    //
+    // When locked, we skip search entirely and use the stored ID.
+
+    async function _getLockedTrackId(songTitle) {
+        try {
+            var versions = (typeof loadBandDataFromDrive === 'function')
+                ? await loadBandDataFromDrive(songTitle, 'spotify_versions') : null;
+            if (!versions) return null;
+            var arr = Array.isArray(versions) ? versions : Object.values(versions);
+            for (var i = 0; i < arr.length; i++) {
+                if (arr[i] && arr[i].spotifyMatchLocked && arr[i].spotifyTrackId) {
+                    return arr[i].spotifyTrackId;
+                }
+            }
+        } catch(e) {}
+        return null;
+    }
+
     async function resolveSpotifyTrackIds(bundle) {
-        var results = { trackUris: [], matched: 0, searched: 0, failed: 0 };
+        var results = { trackUris: [], matched: 0, locked: 0, searched: 0, failed: 0, failedSongs: [] };
         for (var i = 0; i < bundle.songs.length; i++) {
             var song = bundle.songs[i];
-            var url = song.url || await resolveUrl(song.songTitle, 'spotify');
-            var trackId = url ? _extractTrackId(url) : null;
 
+            // 1. Check locked track ID (highest confidence)
+            var trackId = await _getLockedTrackId(song.songTitle);
+            if (trackId) { results.locked++; }
+
+            // 2. Extract from saved version URL
+            if (!trackId) {
+                var url = song.url || await resolveUrl(song.songTitle, 'spotify');
+                trackId = url ? _extractTrackId(url) : null;
+            }
+
+            // 3. Search Spotify API as fallback
             if (!trackId && _getSpotifyToken()) {
-                // Search Spotify API as fallback
                 trackId = await _searchSpotifyTrack(song.songTitle);
-                results.searched++;
+                if (trackId) results.searched++;
             }
 
             if (trackId) {
@@ -438,6 +522,7 @@ window.ListeningBundles = (function() {
                 results.matched++;
             } else {
                 results.failed++;
+                results.failedSongs.push(song.songTitle);
             }
         }
         return results;
@@ -461,25 +546,59 @@ window.ListeningBundles = (function() {
         northstar: 'GrooveLinx \u2014 North Stars'
     };
 
+    // Track last sync state for "already up to date" detection
+    var _lastSyncHash = {};
+
+    function _bundleHash(uris) {
+        return uris.join(',');
+    }
+
     async function syncToSpotify(bundleType) {
-        var token = _getSpotifyToken();
-        if (!token) {
+        // Ensure valid token (refresh silently if needed)
+        var hasToken = await _ensureValidToken();
+        if (!hasToken) {
             return connectSpotify();
         }
 
         if (typeof showToast === 'function') showToast('Syncing to Spotify\u2026');
 
-        var bundle = await computeBundle(bundleType);
+        // Compute bundle
+        var bundle;
+        try {
+            bundle = await computeBundle(bundleType);
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Could not load songs');
+            return { ok: false, reason: 'bundle error: ' + e.message };
+        }
         if (!bundle.songs.length) {
-            if (typeof showToast === 'function') showToast('No songs in ' + bundleType);
+            if (typeof showToast === 'function') showToast('No songs found for ' + (_PLAYLIST_NAMES[bundleType] || bundleType));
             return { ok: false, reason: 'empty bundle' };
         }
 
         // Resolve track IDs
-        var resolved = await resolveSpotifyTrackIds(bundle);
+        var resolved;
+        try {
+            resolved = await resolveSpotifyTrackIds(bundle);
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Error matching songs: ' + e.message);
+            return { ok: false, reason: 'resolve error' };
+        }
         if (!resolved.trackUris.length) {
-            if (typeof showToast === 'function') showToast('No Spotify matches found');
+            if (typeof showToast === 'function') showToast('No Spotify matches found for any song');
             return { ok: false, reason: 'no matches', resolved: resolved };
+        }
+
+        // Check if already up to date
+        var hash = _bundleHash(resolved.trackUris);
+        if (_lastSyncHash[bundleType] === hash) {
+            var plId = _getPlaylistIds()[bundleType];
+            if (plId) {
+                if (typeof showToast === 'function') showToast('Already up to date \u2014 opening Spotify');
+                var pUrl = 'https://open.spotify.com/playlist/' + plId;
+                if (typeof openMusicLink === 'function') openMusicLink(pUrl);
+                else window.open(pUrl, '_blank');
+                return { ok: true, upToDate: true, playlistId: plId };
+            }
         }
 
         // Get or create playlist
@@ -487,16 +606,16 @@ window.ListeningBundles = (function() {
         var playlistId = playlists[bundleType];
         var userId = await _getSpotifyUserId();
         if (!userId) {
-            if (typeof showToast === 'function') showToast('Spotify session expired — reconnect');
-            return { ok: false, reason: 'no user' };
+            if (typeof showToast === 'function') showToast('Spotify session expired \u2014 tap Sync again to reconnect');
+            localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
+            return { ok: false, reason: 'session expired' };
         }
 
         if (!playlistId) {
-            // Create new playlist
             var name = _PLAYLIST_NAMES[bundleType] || 'GrooveLinx \u2014 ' + bundleType;
             var created = await _spotifyApi('/users/' + userId + '/playlists', 'POST', {
                 name: name,
-                description: 'Auto-synced by GrooveLinx',
+                description: 'Auto-synced by GrooveLinx \u2014 ' + new Date().toLocaleDateString(),
                 public: false
             });
             if (created && created.id) {
@@ -504,26 +623,35 @@ window.ListeningBundles = (function() {
                 playlists[bundleType] = playlistId;
                 _setPlaylistIds(playlists);
             } else {
-                if (typeof showToast === 'function') showToast('Could not create playlist');
+                if (typeof showToast === 'function') showToast('Could not create Spotify playlist');
                 return { ok: false, reason: 'create failed' };
             }
         }
 
         // Replace playlist contents
-        await _spotifyApi('/playlists/' + playlistId + '/tracks', 'PUT', {
+        var putResult = await _spotifyApi('/playlists/' + playlistId + '/tracks', 'PUT', {
             uris: resolved.trackUris
         });
+        if (putResult === null) {
+            if (typeof showToast === 'function') showToast('Spotify sync failed \u2014 try again');
+            return { ok: false, reason: 'put failed' };
+        }
+
+        // Save hash for "already up to date" detection
+        _lastSyncHash[bundleType] = hash;
 
         // Open playlist
         var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
         if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
         else window.open(playlistUrl, '_blank');
 
-        if (typeof showToast === 'function') {
-            showToast(resolved.matched + ' songs synced to Spotify');
-        }
+        // Detailed feedback
+        var msg = resolved.matched + ' songs synced';
+        if (resolved.failed > 0) msg += ', ' + resolved.failed + ' need review';
+        msg += ' \u2014 opening Spotify';
+        if (typeof showToast === 'function') showToast(msg);
 
-        return { ok: true, matched: resolved.matched, failed: resolved.failed, searched: resolved.searched, playlistId: playlistId };
+        return { ok: true, matched: resolved.matched, locked: resolved.locked, searched: resolved.searched, failed: resolved.failed, failedSongs: resolved.failedSongs, playlistId: playlistId };
     }
 
     // ── PKCE Helpers ────────────────────────────────────────────────────────
