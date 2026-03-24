@@ -605,6 +605,7 @@ window.ListeningBundles = (function() {
         // Get or create playlist
         var playlists = _getPlaylistIds();
         var playlistId = playlists[bundleType];
+        var isNewPlaylist = !playlistId;
         var userId = await _getSpotifyUserId();
         if (!userId) {
             if (typeof showToast === 'function') showToast('Spotify session expired \u2014 tap Sync again to reconnect');
@@ -639,7 +640,13 @@ window.ListeningBundles = (function() {
         }
 
         // Save hash for "already up to date" detection
+        var prevHash = _lastSyncHash[bundleType];
         _lastSyncHash[bundleType] = hash;
+
+        // Post to Band Feed (skip if hash unchanged — already posted)
+        if (hash !== prevHash) {
+            _postPlaylistToFeed(bundleType, resolved.matched, playlistId, isNewPlaylist);
+        }
 
         var syncResult = { ok: true, matched: resolved.matched, locked: resolved.locked, searched: resolved.searched, failed: resolved.failed, failedSongs: resolved.failedSongs, playlistId: playlistId, bundleType: bundleType };
         _lastSyncResult = syncResult;
@@ -732,6 +739,38 @@ window.ListeningBundles = (function() {
             if (typeof openMusicLink === 'function') openMusicLink(url);
             else window.open(url, '_blank');
         }, isFirst ? 600 : 400);
+    }
+
+    // ── Post Playlist Event to Feed ────────────────────────────────────────
+
+    async function _postPlaylistToFeed(bundleType, songCount, playlistId, isNew) {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return;
+
+        var label = { gig: 'Gig', rehearsal: 'Rehearsal', focus: 'Focus', northstar: 'North Star' }[bundleType] || bundleType;
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var author = fas ? (fas.getMyDisplayName() || 'GrooveLinx') : 'GrooveLinx';
+
+        var title = isNew
+            ? (label + ' playlist ready \u2014 ' + songCount + ' songs')
+            : (label + ' playlist updated \u2014 ' + songCount + ' songs');
+
+        var playlistUrl = playlistId ? ('https://open.spotify.com/playlist/' + playlistId) : '';
+
+        try {
+            await db.ref(bandPath('ideas/posts')).push({
+                title: title,
+                author: author,
+                ts: new Date().toISOString(),
+                tag: 'fyi',
+                link: playlistUrl,
+                targetType: 'all',
+                _source: 'playlist_sync',
+                _bundleType: bundleType
+            });
+        } catch(e) {
+            console.warn('[Playlist] Feed post failed:', e.message);
+        }
     }
 
     // Sync choice overlay — shows before review when there are failures
