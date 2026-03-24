@@ -365,14 +365,14 @@ window.ListeningBundles = (function() {
         var title, body, buttons;
         if (state === 'not_configured') {
             title = 'Spotify Sync Not Ready';
-            body = 'Spotify sync is still being set up for GrooveLinx. Use Quick Listen for now.';
-            buttons = '<button onclick="_glSpDlgAction(\'quick\',\'' + (bundleType || '') + '\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u25B6 Quick Listen</button>'
+            body = 'Spotify syncing isn\u2019t available yet. You can still listen now.';
+            buttons = '<button onclick="_glSpDlgAction(\'quick\',\'' + (bundleType || '') + '\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u25B6 Play Now</button>'
                 + '<button onclick="_glSpDlgAction(\'youtube\',\'' + (bundleType || '') + '\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83D\uDCFA YouTube</button>'
                 + '<button onclick="_glSpDlgClose()" style="padding:10px 14px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:none;background:none;color:#475569">Close</button>';
             console.warn('[Spotify] SPOTIFY_CLIENT_ID not set. Register at developer.spotify.com.');
         } else if (state === 'not_connected') {
             title = 'Connect Spotify';
-            body = 'Sync your GrooveLinx playlist to Spotify so you can listen in the car and download it there.';
+            body = 'Listen in your car and download playlists. Connect once \u2014 stays synced.';
             buttons = '<button onclick="_glSpDlgAction(\'connect\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.1);color:#1ed760">Connect Spotify</button>'
                 + '<button onclick="_glSpDlgClose()" style="padding:10px 14px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:none;background:none;color:#475569">Not now</button>';
         } else if (state === 'expired') {
@@ -470,7 +470,7 @@ window.ListeningBundles = (function() {
                 var returnUrl = localStorage.getItem('gl_spotify_pkce_return') || '/';
                 localStorage.removeItem('gl_spotify_pkce_return');
                 window.history.replaceState({}, '', returnUrl);
-                if (typeof showToast === 'function') showToast('Spotify connected');
+                if (typeof showToast === 'function') showToast('\u2705 Spotify connected');
                 return true;
             }
         } catch(e) {
