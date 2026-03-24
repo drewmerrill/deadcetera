@@ -481,25 +481,26 @@ window.SetlistPlayer = (function() {
     }
 
     async function _openSpotify(songTitle) {
+        // Open window IMMEDIATELY in user gesture context (before any await)
+        // Mobile Safari blocks window.open() after async calls lose gesture context
+        var searchUrl = 'https://open.spotify.com/search/' + encodeURIComponent(songTitle);
+        var win = window.open(searchUrl, '_blank');
+
+        // Try to resolve a better URL and redirect the already-open window
         try {
             var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
             if (lb && lb.resolveUrl) {
                 var url = await lb.resolveUrl(songTitle, 'spotify');
-                if (url) {
+                if (url && win && !win.closed) {
                     console.log('[SetlistPlayer] Spotify resolved:', songTitle, '→', url);
-                    if (typeof openMusicLink === 'function') openMusicLink(url);
-                    else window.open(url, '_blank');
+                    win.location.href = url;
                     return;
                 }
             }
         } catch(e) {
             console.warn('[SetlistPlayer] Spotify resolve error:', e);
         }
-        // Always fall back to Spotify search — never silently no-op
-        var searchUrl = 'https://open.spotify.com/search/' + encodeURIComponent(songTitle);
-        console.log('[SetlistPlayer] Spotify fallback search:', searchUrl);
-        window.open(searchUrl, '_blank');
-        if (typeof showToast === 'function') showToast('Opening Spotify search\u2026');
+        console.log('[SetlistPlayer] Spotify search:', searchUrl);
     }
 
     function _updateUpNext() {

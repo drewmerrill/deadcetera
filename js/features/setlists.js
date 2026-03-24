@@ -1547,10 +1547,11 @@ window.editSetlist = editSetlist;
 
 window.slPlaySetlist = async function(idx) {
     if (typeof SetlistPlayer === 'undefined') { if (typeof showToast === 'function') showToast('Player not available'); return; }
+    // idx is _origIdx from unsorted Firebase data — do NOT re-sort
     var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-    allSetlists.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     var sl = allSetlists[idx];
     if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
+    console.log('[slPlaySetlist] idx=' + idx + ' name=' + (sl.name || sl.title || '?'));
     SetlistPlayer.launch(sl, sl.name || sl.title || 'Setlist');
 };
 
