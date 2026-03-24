@@ -54,7 +54,10 @@ function _feedItemKey(item) {
 
 var _FEED_HELP_KEY = 'gl_feed_help_seen';
 var _FEED_HIGHLIGHT_KEY = 'gl_first_action_highlight_seen';
-var _feedSessionTotal = 0; // total action items at session start (for progress bar)
+var _feedSessionTotal = 0;        // total action items at session start
+var _feedSessionCompleted = 0;    // actions completed this session
+var _FEED_HISTORY_KEY = 'gl_feed_action_history';
+var _FEED_LAST_COUNT_KEY = 'gl_feed_last_count'; // needsMyInput at end of last session
 
 function _feedHelpViewCount() {
     return parseInt(localStorage.getItem(_FEED_HELP_KEY) || '0', 10);
@@ -78,11 +81,13 @@ function _feedAdvanceOnboarding() {
         if (mg) mg.remove();
     }
 
-    // Compute remaining after this action
+    // Track completion + compute remaining
+    _feedSessionCompleted++;
+    _feedRecordAction();
     var fas = _fas();
     if (!fas || !_feedCache) return;
     var summary = fas.computeSummary(_feedCache, _feedMeta);
-    var remaining = Math.max(0, summary.needsMyInput - 1); // -1 because action not yet reflected in cache
+    var remaining = Math.max(0, summary.needsMyInput - 1);
 
     // Momentum nudge
     if (remaining === 0) {
@@ -134,14 +139,66 @@ function _feedCheckCompletion() {
     var fas = _fas();
     if (!fas || !_feedCache) return;
     var summary = fas.computeSummary(_feedCache, _feedMeta);
-    if (summary.needsMyInput === 0 && _feedSessionTotal > 1) {
-        // Completion celebration — add brief animation to the all-clear banner
-        var banner = document.querySelector('#feedAttentionBar > div');
-        if (banner) {
-            banner.classList.add('feed-completion-celebrate');
-            setTimeout(function() { banner.classList.remove('feed-completion-celebrate'); }, 2000);
+    if (summary.needsMyInput === 0 && _feedSessionCompleted > 0) {
+        // Save last count for new-items detection next session
+        try { localStorage.setItem(_FEED_LAST_COUNT_KEY, '0'); } catch(e) {}
+
+        // Celebration animation
+        if (_feedSessionTotal > 1) {
+            var banner = document.querySelector('#feedAttentionBar > div');
+            if (banner) {
+                banner.classList.add('feed-completion-celebrate');
+                setTimeout(function() { banner.classList.remove('feed-completion-celebrate'); }, 2000);
+            }
+        }
+
+        // Session summary — show once after completion
+        if (_feedSessionCompleted > 1 && !document.getElementById('feedSessionSummary')) {
+            var sumEl = document.createElement('div');
+            sumEl.id = 'feedSessionSummary';
+            sumEl.style.cssText = 'text-align:center;padding:10px;font-size:0.78em;color:var(--text-dim);animation:feedHelpIn 0.3s ease';
+            sumEl.innerHTML = '<span style="color:#86efac;font-weight:700">You cleared ' + _feedSessionCompleted + ' items.</span>'
+                + '<br><span style="opacity:0.7">Band is tighter because of this.</span>';
+            var attn = document.getElementById('feedAttentionBar');
+            if (attn) attn.parentNode.insertBefore(sumEl, attn.nextSibling);
+            // Auto-fade after 8 seconds
+            setTimeout(function() {
+                if (sumEl.parentNode) { sumEl.style.opacity = '0'; sumEl.style.transition = 'opacity 0.5s'; setTimeout(function() { sumEl.remove(); }, 500); }
+            }, 8000);
         }
     }
+}
+
+// ── Action History ──────────────────────────────────────────────────────────
+// Lightweight rolling weekly count. Stored as JSON array of daily counts.
+// Shape: [{ date: "2026-03-24", count: 5 }, ...]
+
+function _feedRecordAction() {
+    try {
+        var raw = localStorage.getItem(_FEED_HISTORY_KEY);
+        var history = raw ? JSON.parse(raw) : [];
+        var today = new Date().toISOString().substring(0, 10);
+        var last = history.length ? history[history.length - 1] : null;
+        if (last && last.date === today) {
+            last.count++;
+        } else {
+            history.push({ date: today, count: 1 });
+        }
+        // Keep only last 7 days
+        var cutoff = new Date(Date.now() - 7 * 86400000).toISOString().substring(0, 10);
+        history = history.filter(function(h) { return h.date >= cutoff; });
+        localStorage.setItem(_FEED_HISTORY_KEY, JSON.stringify(history));
+    } catch(e) {}
+}
+
+function _feedGetWeeklyCount() {
+    try {
+        var raw = localStorage.getItem(_FEED_HISTORY_KEY);
+        if (!raw) return 0;
+        var history = JSON.parse(raw);
+        var cutoff = new Date(Date.now() - 7 * 86400000).toISOString().substring(0, 10);
+        return history.filter(function(h) { return h.date >= cutoff; }).reduce(function(sum, h) { return sum + h.count; }, 0);
+    } catch(e) { return 0; }
 }
 
 // ── Progress Bar ────────────────────────────────────────────────────────────
@@ -219,6 +276,45 @@ function _feedRenderHelpBanner(isRecall) {
     _injectGuidanceStyles();
 }
 
+// ── Continuity Signals ──────────────────────────────────────────────────────
+
+function _feedRenderContinuitySignals(items) {
+    var fas = _fas();
+    if (!fas) return;
+    var summary = fas.computeSummary(items, _feedMeta);
+    var current = summary.needsMyInput;
+    var lastCount = parseInt(localStorage.getItem(_FEED_LAST_COUNT_KEY) || '-1', 10);
+
+    // New items indicator: previous session ended at 0, now there are items
+    if (lastCount === 0 && current > 0) {
+        _feedShowContinuityBanner(current + ' new thing' + (current > 1 ? 's' : '') + ' need' + (current === 1 ? 's' : '') + ' you');
+        return;
+    }
+
+    // Occasional weekly history (show ~1 in 3 sessions, not every time)
+    var weekly = _feedGetWeeklyCount();
+    if (weekly >= 3 && Math.random() < 0.33) {
+        _feedShowContinuityBanner('You\u2019ve completed ' + weekly + ' actions this week');
+    }
+}
+
+function _feedShowContinuityBanner(text) {
+    var container = document.getElementById('feedAttentionBar');
+    if (!container || !container.parentNode) return;
+    var existing = document.getElementById('feedContinuity');
+    if (existing) existing.remove();
+
+    var el = document.createElement('div');
+    el.id = 'feedContinuity';
+    el.style.cssText = 'text-align:center;padding:8px 14px;margin-bottom:6px;font-size:0.78em;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.1);border-radius:8px;animation:feedHelpIn 0.3s ease';
+    el.textContent = text;
+    container.parentNode.insertBefore(el, container);
+    // Auto-fade after 6 seconds
+    setTimeout(function() {
+        if (el.parentNode) { el.style.opacity = '0'; el.style.transition = 'opacity 0.5s'; setTimeout(function() { el.remove(); }, 500); }
+    }, 6000);
+}
+
 function _injectGuidanceStyles() {
     if (document.getElementById('feedGuidanceStyles')) return;
     var s = document.createElement('style');
@@ -260,13 +356,22 @@ window.renderBandFeedPage = async function(el) {
     await _feedLoadMeta();
     var items = await _feedLoadAll();
     _feedCache = items;
-    _feedSessionTotal = 0; // reset for new feed load
+    _feedSessionTotal = 0;
+    _feedSessionCompleted = 0;
     _feedRenderOnboarding();
     _feedRenderAttentionBar(items);
     _feedRenderProgress();
+    _feedRenderContinuitySignals(items);
     _feedRenderFilterBar(items);
     _feedRender(items);
     _feedSyncNavBadge();
+
+    // Save current count for next-session new-items detection
+    var fas2 = _fas();
+    if (fas2) {
+        var s2 = fas2.computeSummary(items, _feedMeta);
+        try { localStorage.setItem(_FEED_LAST_COUNT_KEY, String(s2.needsMyInput)); } catch(e) {}
+    }
 
     // Scroll to focused item if return context specified one
     if (rc && rc.focusItem) {
