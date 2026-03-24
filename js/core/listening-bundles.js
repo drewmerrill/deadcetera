@@ -560,7 +560,7 @@ window.ListeningBundles = (function() {
             return connectSpotify();
         }
 
-        if (typeof showToast === 'function') showToast('Syncing to Spotify\u2026');
+        if (typeof showToast === 'function') showToast('Creating your playlist\u2026');
 
         // Compute bundle
         var bundle;
@@ -647,13 +647,14 @@ window.ListeningBundles = (function() {
             // Don't open Spotify yet — show choice
             _showSyncChoice(syncResult);
         } else {
-            // All matched — open with brief transition
-            if (typeof showToast === 'function') showToast(resolved.matched + ' songs synced \u2014 opening Spotify\u2026');
+            // All matched — show identity then open
+            var _bundleLabel = { gig: 'Gig', rehearsal: 'Rehearsal', focus: 'Focus', northstar: 'North Star' }[bundleType] || bundleType;
+            if (typeof showToast === 'function') showToast(_bundleLabel + ' playlist ready \u2014 ' + resolved.matched + ' songs in order');
             setTimeout(function() {
                 var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
                 if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
                 else window.open(playlistUrl, '_blank');
-            }, 300);
+            }, 400);
         }
 
         return syncResult;
@@ -893,9 +894,14 @@ window.ListeningBundles = (function() {
             // Show improvement feedback
             if (result && result.ok && prevFixed > 0) {
                 var improved = prevFixed - (result.failed || 0);
+                var nowFailed = result.failed || 0;
                 if (improved > 0) {
                     setTimeout(function() {
-                        if (typeof showToast === 'function') showToast(improved + ' song' + (improved > 1 ? 's' : '') + ' updated \u2014 playlist improved');
+                        if (nowFailed === 0) {
+                            if (typeof showToast === 'function') showToast('\u2705 All songs fixed \u2014 your playlist is complete');
+                        } else {
+                            if (typeof showToast === 'function') showToast(improved + ' song' + (improved > 1 ? 's' : '') + ' fixed \u2014 playlist improved');
+                        }
                     }, 2000);
                 }
             }
