@@ -348,11 +348,74 @@ window.ListeningBundles = (function() {
         return !!_getSpotifyToken();
     }
 
+    // ── Spotify Status Detection ────────────────────────────────────────────
+
+    function _getSpotifyFailureState() {
+        if (!SPOTIFY_CLIENT_ID) return 'not_configured';
+        var tokenData = _getSpotifyTokenData();
+        if (!tokenData) return 'not_connected';
+        if (tokenData.expiresAt && Date.now() > tokenData.expiresAt) return 'expired';
+        return 'ok';
+    }
+
+    function _showSpotifyDialog(state, bundleType) {
+        var existing = document.getElementById('glSpotifyDialog');
+        if (existing) existing.remove();
+
+        var title, body, buttons;
+        if (state === 'not_configured') {
+            title = 'Spotify Sync Not Ready';
+            body = 'Spotify sync is still being set up for GrooveLinx. Use Quick Listen for now.';
+            buttons = '<button onclick="_glSpDlgAction(\'quick\',\'' + (bundleType || '') + '\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u25B6 Quick Listen</button>'
+                + '<button onclick="_glSpDlgAction(\'youtube\',\'' + (bundleType || '') + '\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83D\uDCFA YouTube</button>'
+                + '<button onclick="_glSpDlgClose()" style="padding:10px 14px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:none;background:none;color:#475569">Close</button>';
+            console.warn('[Spotify] SPOTIFY_CLIENT_ID not set. Register at developer.spotify.com.');
+        } else if (state === 'not_connected') {
+            title = 'Connect Spotify';
+            body = 'Sync your GrooveLinx playlist to Spotify so you can listen in the car and download it there.';
+            buttons = '<button onclick="_glSpDlgAction(\'connect\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.1);color:#1ed760">Connect Spotify</button>'
+                + '<button onclick="_glSpDlgClose()" style="padding:10px 14px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:none;background:none;color:#475569">Not now</button>';
+        } else if (state === 'expired') {
+            title = 'Reconnect Spotify';
+            body = 'Your Spotify session expired. Reconnect to keep syncing playlists.';
+            buttons = '<button onclick="_glSpDlgAction(\'connect\')" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.1);color:#1ed760">Reconnect</button>'
+                + '<button onclick="_glSpDlgClose()" style="padding:10px 14px;border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;border:none;background:none;color:#475569">Cancel</button>';
+        }
+
+        var overlay = document.createElement('div');
+        overlay.id = 'glSpotifyDialog';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:340px;width:100%;text-align:center">'
+            + '<div style="font-size:1.1em;font-weight:800;color:#e2e8f0;margin-bottom:8px">' + title + '</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;line-height:1.5;margin-bottom:18px">' + body + '</div>'
+            + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' + buttons + '</div>'
+            + '</div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+
+    // Dialog action handlers (global for onclick)
+    window._glSpDlgClose = function() {
+        var el = document.getElementById('glSpotifyDialog');
+        if (el) el.remove();
+    };
+
+    window._glSpDlgAction = function(action, bundleType) {
+        _glSpDlgClose();
+        if (action === 'connect') {
+            connectSpotify();
+        } else if (action === 'quick' && bundleType) {
+            quickLaunch(bundleType, 'spotify');
+        } else if (action === 'youtube' && bundleType) {
+            quickLaunch(bundleType, 'youtube');
+        }
+    };
+
     // PKCE OAuth flow
     async function connectSpotify() {
         if (!SPOTIFY_CLIENT_ID) {
-            if (typeof showToast === 'function') showToast('Spotify app not configured yet');
-            return { ok: false, reason: 'no client id' };
+            _showSpotifyDialog('not_configured');
+            return { ok: false, reason: 'not_configured' };
         }
         // Generate PKCE verifier + challenge
         var verifier = _generateRandomString(128);
@@ -554,10 +617,23 @@ window.ListeningBundles = (function() {
     }
 
     async function syncToSpotify(bundleType) {
-        // Ensure valid token (refresh silently if needed)
-        var hasToken = await _ensureValidToken();
-        if (!hasToken) {
-            return connectSpotify();
+        // Check failure state and show appropriate dialog
+        var failState = _getSpotifyFailureState();
+        if (failState === 'not_configured') {
+            _showSpotifyDialog('not_configured', bundleType);
+            return { ok: false, reason: 'not_configured' };
+        }
+        if (failState === 'not_connected') {
+            _showSpotifyDialog('not_connected', bundleType);
+            return { ok: false, reason: 'not_connected' };
+        }
+        if (failState === 'expired') {
+            // Try silent refresh first
+            var refreshed = await _refreshSpotifyToken();
+            if (!refreshed) {
+                _showSpotifyDialog('expired', bundleType);
+                return { ok: false, reason: 'expired' };
+            }
         }
 
         if (typeof showToast === 'function') showToast('Creating your playlist\u2026');
@@ -608,9 +684,9 @@ window.ListeningBundles = (function() {
         var isNewPlaylist = !playlistId;
         var userId = await _getSpotifyUserId();
         if (!userId) {
-            if (typeof showToast === 'function') showToast('Spotify session expired \u2014 tap Sync again to reconnect');
             localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
-            return { ok: false, reason: 'session expired' };
+            _showSpotifyDialog('expired', bundleType);
+            return { ok: false, reason: 'expired' };
         }
 
         if (!playlistId) {
