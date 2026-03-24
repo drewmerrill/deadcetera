@@ -469,10 +469,11 @@ function _scheduleBandAlignFill() {
 }
 
 function _renderActionOwedCard() {
-    return '<div id="hdActionOwedCard" class="app-card home-anim-cards" style="border-left:3px solid rgba(245,158,11,0.3)">'
+    return '<div id="hdActionOwedCard" class="app-card home-anim-cards" style="border-left:3px solid rgba(245,158,11,0.3);cursor:pointer" onclick="showPage(\'feed\')">'
         + '<div style="display:flex;align-items:center;gap:8px">'
         + '<span style="font-size:1em">\uD83D\uDCE1</span>'
         + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">Band Feed</span>'
+        + '<span style="margin-left:auto;font-size:0.72em;color:var(--text-dim)">\u2192</span>'
         + '</div>'
         + '<div id="hdActionOwedContent" style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">Checking\u2026</div>'
         + '</div>';
@@ -567,7 +568,6 @@ function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, t
         });
     }
 
-    html += '<button onclick="showPage(\'feed\')" style="margin-top:8px;font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.1);color:#fbbf24">Open Feed \u2192</button>';
     el.innerHTML = html;
 }
 

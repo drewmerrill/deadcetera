@@ -330,6 +330,99 @@ function _injectGuidanceStyles() {
     document.head.appendChild(s);
 }
 
+// ── Create Bar ──────────────────────────────────────────────────────────────
+
+function _feedRenderCreateBar() {
+    var bar = document.getElementById('feedCreateBar');
+    if (!bar) return;
+    bar.innerHTML = '<button onclick="_feedToggleCreateMenu()" id="feedCreateBtn" style="display:flex;align-items:center;gap:6px;width:100%;padding:10px 14px;border-radius:10px;cursor:pointer;border:1px dashed rgba(99,102,241,0.25);background:none;color:#a5b4fc;font-size:0.82em;font-weight:600;text-align:left;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.06)\'" onmouseout="this.style.background=\'none\'">'
+        + '<span style="font-size:1.1em">+</span> Add something for the band</button>'
+        + '<div id="feedCreateMenu" style="display:none;margin-top:6px;padding:8px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
+        + '<button onclick="_feedCreateItem(\'poll\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDDF3\uFE0F Poll / Decision</button>'
+        + '<button onclick="_feedCreateItem(\'idea\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDCA1 Idea</button>'
+        + '<button onclick="_feedCreateItem(\'note\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDCDD Note</button>'
+        + '</div>';
+}
+
+window._feedToggleCreateMenu = function() {
+    var menu = document.getElementById('feedCreateMenu');
+    if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+};
+
+window._feedCreateItem = function(type) {
+    var menu = document.getElementById('feedCreateMenu');
+    if (menu) menu.style.display = 'none';
+
+    if (type === 'poll') {
+        _feedShowCreateForm('poll', '\uD83D\uDDF3\uFE0F Create a Poll', 'Question', 'Options (comma-separated)');
+    } else if (type === 'idea') {
+        _feedShowCreateForm('idea', '\uD83D\uDCA1 Share an Idea', 'Song title or idea', 'Link (optional)');
+    } else if (type === 'note') {
+        _feedShowCreateForm('note', '\uD83D\uDCDD Add a Note', 'What does the band need to know?', null);
+    }
+};
+
+function _feedShowCreateForm(type, title, placeholder1, placeholder2) {
+    var bar = document.getElementById('feedCreateBar');
+    if (!bar) return;
+    var html = '<div style="padding:12px 14px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
+        + '<div style="font-size:0.85em;font-weight:700;color:#c7d2fe;margin-bottom:8px">' + title + '</div>'
+        + '<input id="feedCreateInput1" type="text" placeholder="' + placeholder1 + '" style="width:100%;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none;margin-bottom:6px;box-sizing:border-box">';
+    if (placeholder2) {
+        html += '<input id="feedCreateInput2" type="text" placeholder="' + placeholder2 + '" style="width:100%;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none;margin-bottom:6px;box-sizing:border-box">';
+    }
+    html += '<div style="display:flex;gap:6px;justify-content:flex-end">'
+        + '<button onclick="_feedCancelCreate()" style="font-size:0.78em;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Cancel</button>'
+        + '<button onclick="_feedSubmitCreate(\'' + type + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.1);color:#86efac">Post</button>'
+        + '</div></div>';
+    bar.innerHTML = html;
+    var inp = document.getElementById('feedCreateInput1');
+    if (inp) inp.focus();
+}
+
+window._feedCancelCreate = function() { _feedRenderCreateBar(); };
+
+window._feedSubmitCreate = async function(type) {
+    var inp1 = document.getElementById('feedCreateInput1');
+    var inp2 = document.getElementById('feedCreateInput2');
+    var text = inp1 ? inp1.value.trim() : '';
+    if (!text) { _feedShowToast('Enter something'); return; }
+
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') { _feedShowToast('Not connected'); return; }
+    var fas = _fas();
+    var author = fas ? (fas.getMyDisplayName() || 'Anonymous') : 'Anonymous';
+
+    try {
+        if (type === 'poll') {
+            var options = inp2 ? inp2.value.split(',').map(function(o) { return o.trim(); }).filter(Boolean) : [];
+            if (options.length < 2) { _feedShowToast('Add at least 2 options'); return; }
+            await db.ref(bandPath('polls')).push({
+                question: text, options: options, votes: {},
+                author: author, ts: new Date().toISOString(), tag: 'needs_input'
+            });
+        } else if (type === 'idea') {
+            var link = inp2 ? inp2.value.trim() : '';
+            await db.ref(bandPath('ideas/posts')).push({
+                title: text, link: link, author: author,
+                ts: new Date().toISOString(), tag: 'needs_input'
+            });
+        } else if (type === 'note') {
+            await db.ref(bandPath('ideas/posts')).push({
+                title: text, author: author,
+                ts: new Date().toISOString(), tag: 'fyi'
+            });
+        }
+        _feedShowToast('Posted');
+        _feedRenderCreateBar();
+        // Reload feed to show new item
+        var el = document.getElementById('page-feed');
+        if (el) renderBandFeedPage(el);
+    } catch(e) {
+        _feedShowToast('Failed: ' + (e.message || 'unknown'));
+    }
+};
+
 // ── Page Renderer ────────────────────────────────────────────────────────────
 
 window.renderBandFeedPage = async function(el) {
@@ -349,6 +442,7 @@ window.renderBandFeedPage = async function(el) {
         + '<p style="margin:4px 0 0">What do you owe? What\u2019s waiting on others? What changed?</p></div>'
         + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
         + '</div>'
+        + '<div id="feedCreateBar" style="margin-bottom:8px"></div>'
         + '<div id="feedProgressBar" style="display:none"></div>'
         + '<div id="feedAttentionBar"></div>'
         + '<div id="feedFilterBar"></div>'
@@ -358,6 +452,7 @@ window.renderBandFeedPage = async function(el) {
     _feedCache = items;
     _feedSessionTotal = 0;
     _feedSessionCompleted = 0;
+    _feedRenderCreateBar();
     _feedRenderOnboarding();
     _feedRenderAttentionBar(items);
     _feedRenderProgress();
