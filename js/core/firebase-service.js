@@ -481,7 +481,7 @@ var BAND_LEVEL_DATA_TYPES = [
     'equipment', 'contacts', 'playlists', 'finances', 'finances_meta',
     'social_profiles', 'venues', 'notifications', 'notif_log', 'notif_members',
     'feedback', 'band_contacts', 'song_pitches', 'playlist_listens', 'best_shots',
-    'gig_history'
+    'gig_history', 'rehearsal_mixdowns'
 ];
 
 window.migrateBandLevelData = async function migrateBandLevelData() {

@@ -462,10 +462,16 @@ async function _rhRenderCommandFlow(el) {
     html += '<div id="rhSessionReview"></div>';
     html += '<div id="rhSessionHistory"></div>';
 
+    // ── Rehearsal Mixdowns ──
+    html += '<div id="rhMixdownsContainer" style="margin-top:16px"></div>';
+
     // ── SECTION 3: Tab content area (AI suggestions — secondary to saved plan) ──
     html += '<div id="rhTabContent"></div>';
 
     main.innerHTML = html;
+
+    // Render mixdowns section
+    if (typeof RehearsalMixdowns !== 'undefined') RehearsalMixdowns.render('rhMixdownsContainer');
 
     // Wire up drag-and-drop on the unit list
     _rhInitDragDrop();
