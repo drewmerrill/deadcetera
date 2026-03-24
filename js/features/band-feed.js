@@ -54,31 +54,122 @@ function _feedItemKey(item) {
 
 var _FEED_HELP_KEY = 'gl_feed_help_seen';
 var _FEED_HIGHLIGHT_KEY = 'gl_first_action_highlight_seen';
+var _feedSessionTotal = 0; // total action items at session start (for progress bar)
 
 function _feedHelpViewCount() {
     return parseInt(localStorage.getItem(_FEED_HELP_KEY) || '0', 10);
 }
 
+// ── Completion Engine ────────────────────────────────────────────────────────
+// Called after every meaningful action. Handles:
+//   - First-action highlight cleanup
+//   - Continuous momentum nudges
+//   - Auto-advance to next item
+//   - Progress bar update
+//   - Completion celebration
+
 function _feedAdvanceOnboarding() {
-    // Called on any meaningful action — dismiss highlight + show nudge
-    var wasFirst = !localStorage.getItem(_FEED_HIGHLIGHT_KEY);
-    if (wasFirst) {
+    // Clean up first-action highlight (one-time)
+    if (!localStorage.getItem(_FEED_HIGHLIGHT_KEY)) {
         localStorage.setItem(_FEED_HIGHLIGHT_KEY, '1');
         var hl = document.querySelector('.feed-first-action');
         if (hl) hl.classList.remove('feed-first-action');
-        // Remove micro-guidance label
         var mg = document.getElementById('feedMicroGuide');
         if (mg) mg.remove();
-        // Momentum nudge
-        var fas = _fas();
-        var remaining = 0;
-        if (fas && _feedCache) {
-            var summary = fas.computeSummary(_feedCache, _feedMeta);
-            remaining = summary.needsMyInput - 1; // minus the one just completed
-        }
-        var nudge = remaining > 0 ? ('Nice \u2014 ' + remaining + ' left') : 'Nice \u2014 keep going';
-        _feedShowToast(nudge);
     }
+
+    // Compute remaining after this action
+    var fas = _fas();
+    if (!fas || !_feedCache) return;
+    var summary = fas.computeSummary(_feedCache, _feedMeta);
+    var remaining = Math.max(0, summary.needsMyInput - 1); // -1 because action not yet reflected in cache
+
+    // Momentum nudge
+    if (remaining === 0) {
+        // Will be handled by completion celebration after rerender
+    } else if (remaining === 1) {
+        _feedShowToast('Last one \u2014 finish it');
+    } else if (remaining === 2) {
+        _feedShowToast('Two left \u2014 almost there');
+    } else {
+        _feedShowToast(remaining + ' left \u2014 keep going');
+    }
+
+    // Schedule auto-advance after rerender
+    setTimeout(_feedAutoAdvance, 350);
+}
+
+function _feedAutoAdvance() {
+    // Find the first remaining "I Owe" item and subtly highlight it
+    var items = document.querySelectorAll('[id^="feedItem_"]');
+    // Remove any previous auto-advance highlight
+    var prev = document.querySelector('.feed-next-action');
+    if (prev) prev.classList.remove('feed-next-action');
+
+    if (!_feedCache) return;
+    var fas = _fas();
+    if (!fas) return;
+
+    for (var i = 0; i < _feedCache.length; i++) {
+        var item = _feedCache[i];
+        var meta = _feedMeta[item.type + ':' + item.id] || {};
+        var state = fas.getActionState(item, meta);
+        if (state.needsMyInput) {
+            var el = document.getElementById('feedItem_' + item.type + '_' + item.id);
+            if (el) {
+                el.classList.add('feed-next-action');
+                // Scroll into view if off-screen
+                var rect = el.getBoundingClientRect();
+                if (rect.top < 0 || rect.bottom > window.innerHeight) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+            return;
+        }
+    }
+}
+
+// Check for completion after rerender
+function _feedCheckCompletion() {
+    var fas = _fas();
+    if (!fas || !_feedCache) return;
+    var summary = fas.computeSummary(_feedCache, _feedMeta);
+    if (summary.needsMyInput === 0 && _feedSessionTotal > 1) {
+        // Completion celebration — add brief animation to the all-clear banner
+        var banner = document.querySelector('#feedAttentionBar > div');
+        if (banner) {
+            banner.classList.add('feed-completion-celebrate');
+            setTimeout(function() { banner.classList.remove('feed-completion-celebrate'); }, 2000);
+        }
+    }
+}
+
+// ── Progress Bar ────────────────────────────────────────────────────────────
+
+function _feedRenderProgress() {
+    var el = document.getElementById('feedProgressBar');
+    if (!el) return;
+    var fas = _fas();
+    if (!fas || !_feedCache) { el.style.display = 'none'; return; }
+
+    var summary = fas.computeSummary(_feedCache, _feedMeta);
+    // Initialize session total on first render (captures starting action debt)
+    if (_feedSessionTotal === 0 && summary.needsMyInput > 0) {
+        _feedSessionTotal = summary.needsMyInput;
+    }
+    var total = _feedSessionTotal;
+    if (total <= 1) { el.style.display = 'none'; return; }
+
+    var completed = total - summary.needsMyInput;
+    var pct = Math.round((completed / total) * 100);
+
+    el.style.display = '';
+    el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:0 2px;margin-bottom:8px">'
+        + '<div style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">'
+        + '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#6366f1,#818cf8);border-radius:2px;transition:width 0.4s ease"></div>'
+        + '</div>'
+        + '<span style="font-size:0.7em;font-weight:700;color:' + (pct >= 100 ? '#86efac' : 'var(--text-dim)') + ';white-space:nowrap">' + completed + '/' + total + '</span>'
+        + '</div>';
 }
 
 window._feedDismissHelp = function() {
@@ -135,7 +226,10 @@ function _injectGuidanceStyles() {
     s.textContent = [
         '@keyframes feedHelpIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}',
         '@keyframes feedFirstPulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{box-shadow:0 0 0 4px rgba(245,158,11,0.15)}}',
-        '.feed-first-action{animation:feedFirstPulse 2s ease-in-out 3;border-color:rgba(245,158,11,0.3) !important}'
+        '.feed-first-action{animation:feedFirstPulse 2s ease-in-out 3;border-color:rgba(245,158,11,0.3) !important}',
+        '.feed-next-action{border-color:rgba(99,102,241,0.25) !important;background:rgba(99,102,241,0.03) !important;transition:border-color 0.3s,background 0.3s}',
+        '@keyframes feedCelebrate{0%{transform:scale(1)}40%{transform:scale(1.015)}100%{transform:scale(1)}}',
+        '.feed-completion-celebrate{animation:feedCelebrate 0.6s ease}'
     ].join('\n');
     document.head.appendChild(s);
 }
@@ -159,14 +253,17 @@ window.renderBandFeedPage = async function(el) {
         + '<p style="margin:4px 0 0">What do you owe? What\u2019s waiting on others? What changed?</p></div>'
         + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
         + '</div>'
+        + '<div id="feedProgressBar" style="display:none"></div>'
         + '<div id="feedAttentionBar"></div>'
         + '<div id="feedFilterBar"></div>'
         + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed\u2026</div></div>';
     await _feedLoadMeta();
     var items = await _feedLoadAll();
     _feedCache = items;
+    _feedSessionTotal = 0; // reset for new feed load
     _feedRenderOnboarding();
     _feedRenderAttentionBar(items);
+    _feedRenderProgress();
     _feedRenderFilterBar(items);
     _feedRender(items);
     _feedSyncNavBadge();
@@ -414,9 +511,11 @@ window._feedToggleOlderNotes = function(type, id) {
 function _feedRerender() {
     if (!_feedCache) return;
     _feedRenderAttentionBar(_feedCache);
+    _feedRenderProgress();
     _feedRenderFilterBar(_feedCache);
     _feedRender(_feedCache);
     _feedSyncNavBadge();
+    _feedCheckCompletion();
 }
 
 function _feedSyncNavBadge() {
