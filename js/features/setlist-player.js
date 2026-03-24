@@ -1,5 +1,5 @@
 // ============================================================================
-// js/features/setlist-player.js — In-App Setlist Player v6
+// js/features/setlist-player.js — In-App Setlist Player v6.1
 //
 // Car-friendly. Large controls. Auto-advance. Version caching.
 // Auto-fallback chain: YouTube → Spotify → Archive (configurable order).
@@ -44,12 +44,11 @@ window.SetlistPlayer = (function() {
 
     function _getSourceChain() {
         var pref = getSourcePref();
-        var all = ['youtube', 'spotify', 'archive'];
-        var chain = [pref];
-        for (var i = 0; i < all.length; i++) {
-            if (all[i] !== pref) chain.push(all[i]);
-        }
-        return chain;
+        // Optimized order: pref first, then Spotify (fast), YouTube (parallel), Archive (slow)
+        if (pref === 'youtube') return ['youtube', 'spotify', 'archive'];
+        if (pref === 'spotify') return ['spotify', 'youtube', 'archive'];
+        if (pref === 'archive') return ['archive', 'spotify', 'youtube'];
+        return ['youtube', 'spotify', 'archive'];
     }
 
     // ── YouTube IFrame API ──────────────────────────────────────────────────
@@ -160,13 +159,13 @@ window.SetlistPlayer = (function() {
                 if (pending <= 0) resolve(null);
             }
             invidiousUrls.forEach(function(url) {
-                fetch(url, { signal: AbortSignal.timeout(4000) })
+                fetch(url, { signal: AbortSignal.timeout(2000) })
                     .then(function(r) { return r.ok ? r.json() : null; })
                     .then(function(data) { done(data ? _pickBestResult(data, songTitle, bandName) : null); })
                     .catch(function() { done(null); });
             });
             pipedUrls.forEach(function(url) {
-                fetch(url, { signal: AbortSignal.timeout(4000) })
+                fetch(url, { signal: AbortSignal.timeout(2000) })
                     .then(function(r) { return r.ok ? r.json() : null; })
                     .then(function(data) {
                         var items = data && data.items ? data.items : data;
@@ -175,7 +174,7 @@ window.SetlistPlayer = (function() {
                     })
                     .catch(function() { done(null); });
             });
-            setTimeout(function() { done(null); }, 5000);
+            setTimeout(function() { done(null); }, 2500);
         });
     }
 
@@ -254,7 +253,7 @@ window.SetlistPlayer = (function() {
         try {
             var q = encodeURIComponent(song.title + ' ' + (song.band || ''));
             var url = 'https://archive.org/advancedsearch.php?q=' + q + '+mediatype:audio&output=json&rows=3&fl[]=identifier,title,creator';
-            var resp = await fetch(url, { signal: AbortSignal.timeout(4000) });
+            var resp = await fetch(url, { signal: AbortSignal.timeout(2000) });
             if (resp && resp.ok) {
                 var data = await resp.json();
                 var docs = data && data.response && data.response.docs;
@@ -267,7 +266,14 @@ window.SetlistPlayer = (function() {
     }
 
     // ── Auto-Fallback Chain ─────────────────────────────────────────────────
-    // Tries each source in preference order. Returns first success or null.
+    // Tries each source with progressive status. Silent retry on first fail.
+
+    var _sourceLabels = { youtube: 'YouTube', spotify: 'Spotify', archive: 'Archive' };
+
+    function _showStatus(msg) {
+        var container = document.getElementById('slpVideoContainer');
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">' + _esc(msg) + '</div>';
+    }
 
     async function _resolveSong(song) {
         var chain = _getSourceChain();
@@ -275,17 +281,43 @@ window.SetlistPlayer = (function() {
 
         for (var i = 0; i < chain.length; i++) {
             var src = chain[i];
+            _showStatus('Trying ' + _sourceLabels[src] + '\u2026');
+
+            // First attempt
             try {
                 var result = await resolvers[src](song);
                 if (result) {
-                    console.log('[SetlistPlayer] resolved via ' + src + ':', song.title, result);
+                    result.confidence = _getConfidence(result);
+                    console.log('[SetlistPlayer] resolved via ' + src + ':', song.title, result.confidence);
                     return result;
                 }
-            } catch(e) {
-                console.warn('[SetlistPlayer] ' + src + ' resolve failed:', e);
+            } catch(e) {}
+
+            // Silent retry once for YouTube (backends are racy)
+            if (src === 'youtube' && i === 0) {
+                try {
+                    var retry = await resolvers[src](song);
+                    if (retry) {
+                        retry.confidence = _getConfidence(retry);
+                        console.log('[SetlistPlayer] resolved via ' + src + ' (retry):', song.title);
+                        return retry;
+                    }
+                } catch(e) {}
             }
         }
         return null;
+    }
+
+    function _getConfidence(result) {
+        if (!result) return '';
+        if (result.source === 'archive') return 'live';
+        // Cached or Firebase-saved = high confidence
+        if (result.source === 'youtube') {
+            var wasCached = _getCachedYtId(result.videoId ? '___check' : '') !== null; // heuristic
+            return 'best';
+        }
+        if (result.source === 'spotify') return 'best';
+        return 'close';
     }
 
     // ── Embed Renderers ─────────────────────────────────────────────────────
@@ -514,44 +546,51 @@ window.SetlistPlayer = (function() {
         _updateUpNext();
         _persistState();
 
-        // Show searching state
-        var container = document.getElementById('slpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>';
-
-        // Run fallback chain
+        // Run fallback chain (shows progressive status)
         _resolveAndPlay(song);
     }
 
     async function _resolveAndPlay(song) {
         var myToken = _launchToken;
 
-        // Quick path: check caches for preferred source
+        // Quick path: check caches for preferred source (instant)
         var pref = getSourcePref();
         if (pref === 'youtube' && song.youtubeId && _ytReady) {
-            _setSourceLabel('youtube');
+            _setSourceLabel('youtube', 'best');
             _embedYouTube(song.youtubeId);
             return;
         }
         if (pref === 'spotify' && song.spotifyTrackId) {
-            _setSourceLabel('spotify');
+            _setSourceLabel('spotify', 'best');
+            _embedSpotify(song.spotifyTrackId);
+            return;
+        }
+        // Also check non-preferred caches
+        if (song.youtubeId && _ytReady) {
+            _setSourceLabel('youtube', 'best');
+            _embedYouTube(song.youtubeId);
+            return;
+        }
+        if (song.spotifyTrackId) {
+            _setSourceLabel('spotify', 'best');
             _embedSpotify(song.spotifyTrackId);
             return;
         }
 
-        // Full chain resolution with timeout
+        // Full chain resolution — 4s max
         var timedOut = false;
         var timer = setTimeout(function() {
             timedOut = true;
-            console.log('[SetlistPlayer] chain timeout for:', song.title);
+            console.log('[SetlistPlayer] chain timeout (4s) for:', song.title);
             _showLastResortFallback(song);
-        }, 8000);
+        }, 4000);
 
         var result = await _resolveSong(song);
         clearTimeout(timer);
         if (timedOut || myToken !== _launchToken) return;
 
         if (result) {
-            _setSourceLabel(result.source);
+            _setSourceLabel(result.source, result.confidence);
             if (result.source === 'youtube') {
                 song.youtubeId = result.videoId;
                 _embedYouTube(result.videoId);
@@ -562,17 +601,20 @@ window.SetlistPlayer = (function() {
                 _embedArchive(result.identifier);
             }
         } else {
-            // ALL sources failed — show minimal fallback
             _showLastResortFallback(song);
         }
     }
 
-    function _setSourceLabel(source) {
+    function _setSourceLabel(source, confidence) {
         var el = document.getElementById('slpSourceLabel');
         if (!el) return;
-        var labels = { youtube: '\u25B6 Playing via YouTube', spotify: '\uD83C\uDFB5 Playing via Spotify', archive: '\uD83C\uDFDB\uFE0F Playing via Archive' };
+        var icons = { youtube: '\u25B6', spotify: '\uD83C\uDFB5', archive: '\uD83C\uDFDB\uFE0F' };
+        var names = { youtube: 'YouTube', spotify: 'Spotify', archive: 'Archive' };
         var colors = { youtube: '#f87171', spotify: '#1ed760', archive: '#94a3b8' };
-        el.textContent = labels[source] || '';
+        var badges = { best: 'Best match', close: 'Close match', live: 'Live version' };
+        var badge = badges[confidence] || '';
+        el.innerHTML = (icons[source] || '') + ' Playing via ' + (names[source] || source)
+            + (badge ? ' <span style="font-size:0.9em;opacity:0.7">\u00B7 ' + badge + '</span>' : '');
         el.style.color = colors[source] || '#475569';
     }
 
@@ -859,4 +901,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-console.log('\u25B6\uFE0F setlist-player.js v6 loaded (auto-fallback chain)');
+console.log('\u25B6\uFE0F setlist-player.js v6.1 loaded (speed + confidence)');
