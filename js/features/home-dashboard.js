@@ -373,11 +373,38 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Three steps. That\'s all it takes to get better.'),
         _renderActionOwedCard(),
+        _renderListeningCard('focus', '\uD83C\uDFA7 Listen & Learn', 'Focus on your weakest songs'),
         _renderSharpenPracticeCard(bundle),
         _renderSharpenWeakSongs(bundle),
         _renderSharpenRecentPractice(bundle),
         '</div>'
     ].join('');
+}
+
+// ── Listening Card ──────────────────────────────────────────────────────────
+// One-tap listening bundle launcher. Shows destination chooser if multiple
+// destinations configured, otherwise launches directly.
+
+function _renderListeningCard(bundleType, title, subtitle) {
+    var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
+    if (!lb) return '';
+
+    var defaultDest = lb.getDefaultDestination();
+    var destLabel = { spotify: 'Spotify', youtube: 'YouTube', archive: 'Archive.org', auto: '' }[defaultDest] || '';
+    var btnLabel = destLabel ? ('Listen in ' + destLabel) : 'Listen';
+
+    return '<div class="app-card home-anim-cards" style="border-left:3px solid rgba(99,102,241,0.2)">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:1em">' + title.split(' ')[0] + '</span>'
+        + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">' + _escHtml(title.substring(title.indexOf(' ') + 1)) + '</span>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px">' + _escHtml(subtitle) + '</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'spotify\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid rgba(30,215,96,0.25);background:rgba(30,215,96,0.06);color:#1ed760">\uD83C\uDFB5 Spotify</button>'
+        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'youtube\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.04);color:#f87171">\uD83D\uDCFA YouTube</button>'
+        + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'archive\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83C\uDFDB\uFE0F Archive</button>'
+        + '</div>'
+        + '</div>';
 }
 
 // ── Action Owed Card (all modes) ─────────────────────────────────────────────
@@ -708,6 +735,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Here\'s what the band should work on today.'),
         _renderActionOwedCard(),
         _renderBandAlignmentCard(),
+        _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
         _renderSessionPlan(bundle),
         _renderBandReadinessSnapshot(bundle),
         _renderSetupGuidance(bundle, wf),
@@ -809,6 +837,7 @@ function _renderPlayDashboard(bundle, wf, isStoner) {
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83C\uDFA4', 'Play', 'Everything you need. Nothing you don\'t.'),
         _renderActionOwedCard(),
+        _renderListeningCard('gig', '\uD83C\uDFA7 Play Your Set', 'Listen through the gig setlist'),
         _renderPlayUpcomingSet(bundle),
         _renderPlayReadiness(bundle),
         '</div>'
