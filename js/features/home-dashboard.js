@@ -58,6 +58,7 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
         container.innerHTML = _renderDashboard(bundle, context);
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(bundle);
+        _scheduleActionOwedFill();
         _renderHdPollCard();
     } catch (err) {
         console.warn('[Home] Load error:', err);
@@ -77,6 +78,7 @@ window.refreshHomeDashboard = function refreshHomeDashboard() {
         container.innerHTML = _renderDashboard(_homeBundle, context);
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(_homeBundle);
+        _scheduleActionOwedFill();
         _renderHdPollCard();
     } else {
         window.renderHomeDashboard();
@@ -368,11 +370,127 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Three steps. That\'s all it takes to get better.'),
+        _renderActionOwedCard(),
         _renderSharpenPracticeCard(bundle),
         _renderSharpenWeakSongs(bundle),
         _renderSharpenRecentPractice(bundle),
         '</div>'
     ].join('');
+}
+
+// ── Action Owed Card (all modes) ─────────────────────────────────────────────
+// Uses FeedActionState as single source of truth. Shows personal action debt
+// or completion state. Populated async after feed data loads.
+
+function _renderActionOwedCard() {
+    return '<div id="hdActionOwedCard" class="app-card home-anim-cards" style="border-left:3px solid rgba(245,158,11,0.3)">'
+        + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<span style="font-size:1em">\uD83D\uDCE1</span>'
+        + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">Band Feed</span>'
+        + '</div>'
+        + '<div id="hdActionOwedContent" style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">Checking\u2026</div>'
+        + '</div>';
+}
+
+// Async fill — runs after dashboard renders. Loads poll data if feed cache
+// isn't available yet (the feed may not have been visited this session).
+function _fillActionOwedCard() {
+    var el = document.getElementById('hdActionOwedContent');
+    var card = document.getElementById('hdActionOwedCard');
+    if (!el || !card) return;
+
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) { el.innerHTML = '<span style="color:var(--text-dim)">Feed not available</span>'; return; }
+
+    // If feed cache exists, use it directly
+    if (typeof _feedCache !== 'undefined' && _feedCache && typeof _feedMeta !== 'undefined') {
+        var summary = fas.computeSummary(_feedCache, _feedMeta);
+        _renderActionOwedContent(el, card, summary, _feedCache, _feedMeta, fas);
+        return;
+    }
+
+    // Otherwise do a lightweight poll check (same as badge bg refresh)
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') {
+        el.innerHTML = '<span style="color:var(--text-dim)">Offline</span>';
+        return;
+    }
+    var myVoteKey = fas.getMyVoteKey();
+    db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
+        var polls = snap.val();
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var myCount = 0, waitCount = 0, topItems = [];
+        if (polls) {
+            Object.entries(polls).forEach(function(entry) {
+                var p = entry[1];
+                if (!p || !p.ts) return;
+                var vc = p.votes ? Object.keys(p.votes).length : 0;
+                if (vc >= memberCount) return;
+                var iVoted = !!(myVoteKey && p.votes && p.votes[myVoteKey] !== undefined);
+                if (!iVoted) {
+                    myCount++;
+                    if (topItems.length < 3) topItems.push({ text: p.question || p.title || 'Poll', id: entry[0] });
+                } else { waitCount++; }
+            });
+        }
+        var summary = { needsMyInput: myCount, waitingOnBand: waitCount, allClear: myCount === 0 };
+        _renderActionOwedContent(el, card, summary, null, null, fas, topItems);
+    }).catch(function() {
+        el.innerHTML = '<span style="color:var(--text-dim)">Could not load</span>';
+    });
+}
+
+function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, topItems) {
+    if (summary.allClear || summary.needsMyInput === 0) {
+        // Completion state
+        card.style.borderLeftColor = 'rgba(34,197,94,0.3)';
+        var html = '<div style="display:flex;align-items:center;gap:8px">'
+            + '<span style="font-size:1.1em">\u2705</span>'
+            + '<div><div style="font-weight:700;color:#86efac">You\u2019re locked in.</div>'
+            + '<div style="font-size:0.9em;color:var(--text-dim)">Nothing needs you right now.</div>';
+        if (summary.waitingOnBand > 0) {
+            html += '<div style="font-size:0.85em;color:var(--text-dim);margin-top:2px">Waiting on band: ' + summary.waitingOnBand + '</div>';
+        }
+        html += '</div></div>';
+        el.innerHTML = html;
+        return;
+    }
+
+    // Action owed state
+    card.style.borderLeftColor = 'rgba(245,158,11,0.5)';
+    var html = '<div style="font-weight:700;color:#fbbf24;margin-bottom:6px">'
+        + summary.needsMyInput + ' item' + (summary.needsMyInput > 1 ? 's' : '') + ' need your input</div>';
+
+    // Show top items if available
+    var items = topItems || [];
+    if (!items.length && feedCache && fas) {
+        // Extract top 3 from feed cache
+        for (var i = 0; i < feedCache.length && items.length < 3; i++) {
+            var meta = feedMeta ? (feedMeta[feedCache[i].type + ':' + feedCache[i].id] || {}) : {};
+            var state = fas.getActionState(feedCache[i], meta);
+            if (state.needsMyInput) {
+                items.push({ text: feedCache[i].text || 'Item', id: feedCache[i].id });
+            }
+        }
+    }
+    if (items.length) {
+        items.forEach(function(it) {
+            var t = (it.text || '').substring(0, 60);
+            if ((it.text || '').length > 60) t += '\u2026';
+            html += '<div style="font-size:0.85em;color:var(--text-muted);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">\u2022 ' + _escHtml(t) + '</div>';
+        });
+    }
+
+    html += '<button onclick="showPage(\'feed\')" style="margin-top:8px;font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.1);color:#fbbf24">Open Feed \u2192</button>';
+    el.innerHTML = html;
+}
+
+// Schedule fill after dashboard renders
+var _hdActionFillScheduled = false;
+function _scheduleActionOwedFill() {
+    if (_hdActionFillScheduled) return;
+    _hdActionFillScheduled = true;
+    setTimeout(function() { _hdActionFillScheduled = false; _fillActionOwedCard(); }, 300);
 }
 
 function _renderModeHeader(icon, title, subtitle) {
@@ -477,6 +595,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Here\'s what the band should work on today.'),
+        _renderActionOwedCard(),
         _renderSessionPlan(bundle),
         _renderBandReadinessSnapshot(bundle),
         _renderSetupGuidance(bundle, wf),
@@ -577,6 +696,7 @@ function _renderPlayDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83C\uDFA4', 'Play', 'Everything you need. Nothing you don\'t.'),
+        _renderActionOwedCard(),
         _renderPlayUpcomingSet(bundle),
         _renderPlayReadiness(bundle),
         '</div>'

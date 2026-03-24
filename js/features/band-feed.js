@@ -155,11 +155,12 @@ function _feedRenderAttentionBar(items) {
     var summary = fas.computeSummary(items, _feedMeta);
 
     if (summary.allClear) {
-        var acHtml = '<div style="padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
-            + '<span style="font-size:1.1em">\u2705</span>'
-            + '<div><div style="font-size:0.82em;font-weight:700;color:#86efac">You\u2019re locked in. Nothing needs you right now.</div>';
+        var acHtml = '<div style="padding:14px 16px;background:linear-gradient(135deg,rgba(34,197,94,0.08),rgba(16,185,129,0.04));border:1px solid rgba(34,197,94,0.2);border-radius:12px;margin-bottom:10px;display:flex;align-items:center;gap:12px">'
+            + '<div style="width:36px;height:36px;border-radius:50%;background:rgba(34,197,94,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:1.2em">\u2705</span></div>'
+            + '<div><div style="font-size:0.88em;font-weight:800;color:#86efac">You\u2019re locked in.</div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim);margin-top:1px">Nothing needs you right now.</div>';
         if (summary.waitingOnBand > 0) {
-            acHtml += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Waiting on band: ' + summary.waitingOnBand + ' item' + (summary.waitingOnBand > 1 ? 's' : '') + '</div>';
+            acHtml += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px;opacity:0.7">Waiting on band: ' + summary.waitingOnBand + ' item' + (summary.waitingOnBand > 1 ? 's' : '') + '</div>';
         }
         acHtml += '</div></div>';
         bar.innerHTML = acHtml;
@@ -346,6 +347,23 @@ window._feedVotePoll = async function(pollKey, optionIdx) {
     _feedRerender();
     // Also refresh left rail badge
     if (typeof _updateBandRoomBadge === 'function') setTimeout(_updateBandRoomBadge, 500);
+};
+
+// ── Inline Idea Acknowledgment ───────────────────────────────────────────────
+
+window._feedAcknowledgeIdea = async function(id) {
+    var item = _feedFindItem('idea', id);
+    if (!item) return;
+    // Save acknowledgment as a note + mark resolved via meta
+    var fas = _fas();
+    var by = fas ? (fas.getMyDisplayName() || 'Me') : 'Me';
+    var notes = _feedGetNotes(item).slice();
+    notes.push({ text: 'Acknowledged', by: by, ts: new Date().toISOString() });
+    await _feedSaveMeta(item, { notes: notes, resolved: true });
+    item.resolved = true;
+    _feedShowToast('Acknowledged');
+    _feedAdvanceOnboarding();
+    _feedRerender();
 };
 
 window._feedToggleOlderNotes = function(type, id) {
@@ -722,6 +740,16 @@ function _feedRenderItem(item) {
                 + '</button>';
         });
         html += '</div>';
+    }
+
+    // Inline idea acknowledgment — simple "Got it" for ideas needing my input
+    if (item.type === 'idea' && state && state.needsMyInput) {
+        html += '<div style="margin-top:8px" onclick="event.stopPropagation()">'
+            + '<button onclick="_feedAcknowledgeIdea(\'' + safeId + '\')" '
+            + 'style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;'
+            + 'border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;transition:background 0.15s" '
+            + 'onmouseover="this.style.background=\'rgba(34,197,94,0.15)\'" onmouseout="this.style.background=\'rgba(34,197,94,0.08)\'">'
+            + '\u2713 Got it</button></div>';
     }
 
     // Notes
