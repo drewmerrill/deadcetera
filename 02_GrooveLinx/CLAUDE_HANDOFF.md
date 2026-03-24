@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-24 (end of marathon sprint — ~60 commits)_
+_Last updated: 2026-03-24 (setlist player v5 — in-app playback overhaul)_
 
 ## Read This First
 
@@ -41,7 +41,8 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 | `js/core/listening-bundles.js` | **Listening system** — bundles, destinations, Spotify sync, match review |
 | `js/core/feed-metrics.js` | Usage instrumentation |
 | `js/features/band-feed.js` | **Band Feed v5** — central action hub, inline actions, creation, onboarding |
-| `js/features/setlist-player.js` | **In-app setlist player** — YouTube embed, auto-advance, resume |
+| `js/features/setlist-player.js` | **In-app setlist player v5** — lazy resolve, parallel search, in-app embeds |
+| `js/features/charts.js` | Chord chart system — master/band charts, inline editing, setlist chart mode |
 | `js/features/home-dashboard.js` | Mode dashboards, action card, listening card, band alignment |
 | `js/features/song-pitch.js` | Song pitch voting with filters |
 | `js/features/rehearsal.js` | Rehearsal planner, walkthrough |
@@ -64,10 +65,32 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 ### Listening System
 - Bundles: gig (setlist), rehearsal (attention), focus (weak songs), northstar
 - Spotify: PKCE OAuth, persistent playlists, match review + fix, version locking
-- Auto resolution: Invidious YouTube search with quality ranking
+- Auto resolution: Invidious + Piped YouTube search with quality ranking
 - In-app player: YouTube embed, car-friendly, resume, now-playing bar
 - Multi-destination: Spotify / YouTube / Archive.org buttons
 - Play confirmation overlay + Next Song continuation bar
+- `_buildSearchQuery()` uses real artist/band (not hardcoded "Grateful Dead")
+
+### Setlist Player v5 (In-App Playback)
+- **Lazy resolution**: queue builds instantly (no network), YouTube IDs resolve per-song on play
+- **Parallel search**: 5 Invidious + 2 Piped instances raced simultaneously (first wins)
+- **Launch guard**: `_launchToken` prevents race conditions between concurrent launches
+- **Full reset**: `fullClose()` + `clearResumeState()` on every new launch
+- **Queue isolation**: builds into local array, only assigned to `_queue` on completion
+- **In-app fallback** (no external links by default):
+  - Retry Search button (clears cache, re-resolves)
+  - YouTube URL paste → extracts video ID → embeds via IFrame API
+  - Spotify embed iframe (searches via ListeningBundles, embeds track player)
+  - Skip to next song
+- **Index mismatch fix**: `slPlaySetlist()` no longer re-sorts (matches `_origIdx`)
+- **Spotify popup fix**: `window.open()` fires synchronously before any await
+- **Safe-area padding**: overlay + now-playing bar respect iPhone notch/Dynamic Island
+
+### Data Integrity
+- All 585 songs have `artist` and `band` fields
+- Band codes: GD, JGB, ABB, Phish, WSP, DMB, Goose
+- All 5 band member mappings consistent across 6 locations
+- No Firebase-breaking characters in song data
 
 ### Reliability
 - Boot watchdog (5s safety net for blank screen)
@@ -86,10 +109,11 @@ I'm continuing GrooveLinx development. Read these files first:
 - CLAUDE.md
 
 Current priorities:
-1. Deploy Cloudflare Worker /spotify-config endpoint
-2. Test Spotify end-to-end flow
-3. Observe real usage via FeedMetrics
-4. Plan YouTube OAuth playlists (Phase 2)
+1. Test setlist player in-app playback (Grizz Fest, other setlists)
+2. Deploy Cloudflare Worker /spotify-config endpoint
+3. Test Spotify end-to-end flow
+4. Wire chart panel into song detail view + setlist player
+5. Plan YouTube OAuth playlists (Phase 2)
 ```
 
 ## Firebase Paths (key additions from this session)

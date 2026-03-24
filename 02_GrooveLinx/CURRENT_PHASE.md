@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-24 (end of marathon sprint)_
+_Updated: 2026-03-24 (setlist player v5 — in-app playback overhaul)_
 
 ## Active Phase: Band Feed Action Engine + Listening System + Play Mode
 
@@ -58,17 +58,27 @@ Production URL: **https://app.groovelinx.com**
 - Failure state dialogs (not configured / not connected / expired)
 - Playlist events posted to Band Feed
 
-### In-App Setlist Player (Play Mode)
-- Full-screen YouTube embed player
+### In-App Setlist Player v5 (Play Mode)
+- Full-screen YouTube embed player with lazy per-song resolution
+- 7 parallel search backends (5 Invidious + 2 Piped) — first result wins
+- Launch guard (token-based) prevents race conditions between concurrent launches
+- Full reset on every launch — no stale state leaks between setlists
+- Queue isolation: builds into local array, assigned only on completion
+- In-app fallback (no external links):
+  - Retry Search (clears cache, re-resolves all backends)
+  - YouTube URL paste → extract ID → embed via IFrame API
+  - Spotify embed iframe (track search + embed)
+  - Skip to next song
 - Auto-advance on song end
 - Car-friendly UI (1.8em title, 80px play button)
 - YouTube ID caching (localStorage, permanent)
 - Playback persistence (resume within 2h auto, 2-24h prompt)
 - Now-playing bar with play/pause + skip
 - "Use this version" lock button
-- 10-second search timeout → auto-fallback
-- Play confirmation overlay (avoids Safari popup blocking)
-- Next Song continuation bar
+- Safe-area padding (iPhone notch/Dynamic Island)
+- Index mismatch fix: slPlaySetlist uses _origIdx (unsorted Firebase order)
+- Spotify button: window.open fires synchronously (no popup blocker)
+- Fallback search uses correct artist per band (not hardcoded "Grateful Dead")
 
 ### Global Systems
 - FeedActionState on GLStore (getActionSummary, getActionState)
@@ -96,29 +106,38 @@ Production URL: **https://app.groovelinx.com**
 
 ## In Progress
 
+- Testing setlist player v5 in-app playback
 - Spotify Worker deploy (`/spotify-config` endpoint)
 - Redirect URI in Spotify Developer Dashboard
-- End-to-end Spotify flow testing
+
+## Bugs Fixed This Session (2026-03-24 evening)
+
+1. **Setlist player race condition**: concurrent `launch()` calls (auto-resume + user click) shared closure state, corrupting queue and showing wrong setlist header. Fixed with launch token guard + full reset.
+2. **Index mismatch**: `slPlaySetlist(idx)` re-sorted setlists by date but `idx` was `_origIdx` from unsorted Firebase array. Removed the re-sort.
+3. **Spotify popup blocked**: `_openSpotify()` was async — `window.open()` lost gesture context on mobile Safari. Fixed by opening window synchronously before await.
+4. **"Opening best version..." hung forever**: fallback had no timeout/terminal state. Replaced with actionable in-app fallback UI.
+5. **Fallback search hardcoded "Grateful Dead"**: 502/585 songs searched with wrong artist. Fixed with `_buildSearchQuery()` using real artist/band lookup.
 
 ## Pending Work
 
 ### HIGH
-1. Deploy Cloudflare Worker with /spotify-config
-2. Add redirect URI to Spotify Dashboard
-3. Test Spotify connect → sync → playlist flow
-4. YouTube OAuth playlists (Phase 2)
-5. Observe usage via FeedMetrics
+1. Test setlist player in-app playback across multiple setlists
+2. Deploy Cloudflare Worker with /spotify-config
+3. Add redirect URI to Spotify Dashboard
+4. Test Spotify connect → sync → playlist flow
+5. Wire chart panel into song detail view + setlist player
+6. YouTube OAuth playlists (Phase 2)
 
 ### MEDIUM
-6. Archive.org launch experience (Phase 3)
-7. Push notification Cloud Function (for closed-app delivery)
-8. Settings UI for notification preferences
-9. Setlist player: start from any song in setlist view
+7. Archive.org in-app embed (needs identifier resolution from Archive API)
+8. Observe usage via FeedMetrics
+9. Push notification Cloud Function (for closed-app delivery)
+10. Setlist player: start from any song in setlist view
 
 ### LOW
-10. Scroll position restoration on feed return
-11. App-dev.js cleanup
-12. Band alignment on Play dashboard
+11. Scroll position restoration on feed return
+12. App-dev.js cleanup
+13. Band alignment on Play dashboard
 
 ---
 
