@@ -238,7 +238,7 @@ console.log('✅ navigation.js loaded');
     var VALID = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
                  'venues','finances','tuner','metronome','bestshot','admin',
                  'social','notifications','pocketmeter','help','equipment','contacts',
-                 'rehearsal-intel','stageplot','ideas'];
+                 'rehearsal-intel','stageplot','ideas','feed'];
     document.addEventListener('DOMContentLoaded', function() {
         try {
             var last = localStorage.getItem('glLastPage');

@@ -5896,8 +5896,10 @@ async function handleGoogleDriveAuth(silent) {
                     var _h = document.getElementById('page-hero');
                     if (_h) _h.classList.add('hidden');
                     var _lastP = localStorage.getItem('glLastPage');
-                    if ((!_lastP || _lastP === 'home') && !window._glPageRestorePending) {
-                        if (typeof showPage === 'function') showPage('home');
+                    if (!window._glPageRestorePending) {
+                        // If no page restore is pending, navigate now.
+                        // Use saved page if valid, otherwise fall back to home.
+                        if (typeof showPage === 'function') showPage((!_lastP || _lastP === 'home') ? 'home' : _lastP);
                     }
                     console.log('✅ Session restored from cache:', savedEmail);
                 } else {
