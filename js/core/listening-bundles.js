@@ -640,23 +640,18 @@ window.ListeningBundles = (function() {
         // Save hash for "already up to date" detection
         _lastSyncHash[bundleType] = hash;
 
-        // Open playlist
-        var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
-        if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
-        else window.open(playlistUrl, '_blank');
-
-        // Detailed feedback
-        var syncResult = { ok: true, matched: resolved.matched, locked: resolved.locked, searched: resolved.searched, failed: resolved.failed, failedSongs: resolved.failedSongs, playlistId: playlistId };
+        var syncResult = { ok: true, matched: resolved.matched, locked: resolved.locked, searched: resolved.searched, failed: resolved.failed, failedSongs: resolved.failedSongs, playlistId: playlistId, bundleType: bundleType };
         _lastSyncResult = syncResult;
 
-        var msg = resolved.matched + ' songs synced';
-        if (resolved.failed > 0) msg += ', ' + resolved.failed + ' need review';
-        msg += ' \u2014 opening Spotify';
-        if (typeof showToast === 'function') showToast(msg);
-
-        // Auto-show review if there are failed songs
         if (resolved.failed > 0) {
-            setTimeout(function() { showReviewAfterSync(syncResult); }, 1500);
+            // Don't open Spotify yet — show choice
+            _showSyncChoice(syncResult);
+        } else {
+            // All matched — open directly
+            var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
+            if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
+            else window.open(playlistUrl, '_blank');
+            if (typeof showToast === 'function') showToast(resolved.matched + ' songs synced \u2014 opening Spotify');
         }
 
         return syncResult;
@@ -723,6 +718,41 @@ window.ListeningBundles = (function() {
         }
     }
 
+    // Sync choice overlay — shows before review when there are failures
+    function _showSyncChoice(result) {
+        var existing = document.getElementById('spReviewOverlay');
+        if (existing) existing.remove();
+
+        var overlay = document.createElement('div');
+        overlay.id = 'spReviewOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px';
+        overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;max-width:360px;width:100%;padding:24px;text-align:center">'
+            + '<div style="font-size:1.1em;font-weight:800;color:var(--text);margin-bottom:6px">' + result.matched + ' songs ready</div>'
+            + '<div style="font-size:0.85em;color:#fbbf24;margin-bottom:16px">' + result.failed + ' need review</div>'
+            + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+            + '<button onclick="ListeningBundles._openReviewFromChoice()" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Fix matches</button>'
+            + '<button onclick="ListeningBundles._openPlaylistAnyway()" style="padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Open anyway</button>'
+            + '</div></div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+
+    function _openReviewFromChoice() {
+        var overlay = document.getElementById('spReviewOverlay');
+        if (overlay) overlay.remove();
+        if (_lastSyncResult) showReviewAfterSync(_lastSyncResult);
+    }
+
+    function _openPlaylistAnyway() {
+        var overlay = document.getElementById('spReviewOverlay');
+        if (overlay) overlay.remove();
+        if (_lastSyncResult && _lastSyncResult.playlistId) {
+            var url = 'https://open.spotify.com/playlist/' + _lastSyncResult.playlistId;
+            if (typeof openMusicLink === 'function') openMusicLink(url);
+            else window.open(url, '_blank');
+        }
+    }
+
     // Render review UI into a container
     function renderReviewUI(containerId, failedSongs, onComplete) {
         var el = document.getElementById(containerId);
@@ -732,24 +762,36 @@ window.ListeningBundles = (function() {
             return;
         }
 
+        var totalToFix = failedSongs.length;
         var html = '<div style="padding:12px">'
-            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:8px">' + failedSongs.length + ' song' + (failedSongs.length > 1 ? 's' : '') + ' need review</div>';
+            + '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:10px">We\u2019ll remember your choices for next time.</div>'
+            + '<div id="spReviewProgress" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+            + '<div style="flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden"><div id="spReviewProgressBar" style="height:100%;width:0%;background:#6366f1;border-radius:2px;transition:width 0.3s"></div></div>'
+            + '<span id="spReviewProgressText" style="font-size:0.72em;font-weight:700;color:var(--text-dim);white-space:nowrap">0/' + totalToFix + ' fixed</span>'
+            + '</div>';
         failedSongs.forEach(function(title, idx) {
             var safeTitle = (title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            html += '<div id="spReviewItem_' + idx + '" style="padding:10px;margin-bottom:6px;background:var(--bg-card,#1e293b);border:1px solid rgba(245,158,11,0.15);border-radius:8px">'
-                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">'
-                + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">' + (title || '') + '</span>'
-                + '<button onclick="ListeningBundles._reviewSearch(' + idx + ',\'' + safeTitle + '\')" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Search</button>'
+            html += '<div id="spReviewItem_' + idx + '" data-song="' + safeTitle + '" style="padding:10px;margin-bottom:6px;background:var(--bg-card,#1e293b);border:1px solid rgba(245,158,11,0.15);border-radius:8px">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">'
+                + '<span style="font-size:0.85em;font-weight:700;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (title || '') + '</span>'
+                + '<button onclick="ListeningBundles._reviewSearch(' + idx + ',\'' + safeTitle + '\')" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap">Search</button>'
+                + '<button onclick="ListeningBundles._reviewSkip(' + idx + ')" style="font-size:0.68em;padding:4px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);white-space:nowrap">Skip</button>'
                 + '</div>'
                 + '<div id="spReviewResults_' + idx + '" style="font-size:0.78em;color:var(--text-dim)">Tap Search to find on Spotify</div>'
                 + '</div>';
         });
+        // Re-sync button (hidden initially, shown when all fixed)
+        html += '<div id="spReviewResync" style="display:none;text-align:center;padding:12px 0">'
+            + '<div style="font-size:0.88em;font-weight:700;color:#86efac;margin-bottom:8px">\u2705 All matches fixed</div>'
+            + '<button onclick="ListeningBundles._resyncAfterReview()" style="padding:10px 24px;border-radius:8px;cursor:pointer;font-size:0.85em;font-weight:700;border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.1);color:#1ed760">\uD83D\uDD04 Re-sync playlist</button>'
+            + '</div>';
         html += '</div>';
         el.innerHTML = html;
-        // Store callback
         el._onComplete = onComplete;
         el._failedSongs = failedSongs;
         el._fixedCount = 0;
+        el._skippedCount = 0;
+        el._totalToFix = totalToFix;
     }
 
     // Search handler (called from onclick)
@@ -786,14 +828,8 @@ window.ListeningBundles = (function() {
     async function _reviewSelect(idx, trackId, trackUrl) {
         var container = document.getElementById('spReviewItem_' + idx);
         if (!container) return;
-        var parent = container.closest('[id]');
-        var songTitle = parent && parent._failedSongs ? parent._failedSongs[idx] : null;
-
-        // Try to get songTitle from the item header
-        if (!songTitle) {
-            var header = container.querySelector('span');
-            songTitle = header ? header.textContent : null;
-        }
+        var songTitle = container.dataset.song || null;
+        if (!songTitle) { var h = container.querySelector('span'); songTitle = h ? h.textContent : null; }
 
         container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px"><span style="color:#86efac">\u2705</span><span style="font-size:0.85em;font-weight:600;color:#86efac">Locked</span></div>';
 
@@ -804,16 +840,51 @@ window.ListeningBundles = (function() {
                 return;
             }
         }
+        _reviewAdvance('fixed');
+    }
 
-        // Track completion
-        var reviewContainer = document.getElementById(container.parentElement ? container.parentElement.id : '');
-        if (reviewContainer && reviewContainer._failedSongs) {
-            reviewContainer._fixedCount = (reviewContainer._fixedCount || 0) + 1;
-            if (reviewContainer._fixedCount >= reviewContainer._failedSongs.length && reviewContainer._onComplete) {
-                reviewContainer._onComplete();
-            }
+    function _reviewSkip(idx) {
+        var container = document.getElementById('spReviewItem_' + idx);
+        if (!container) return;
+        container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px"><span style="color:var(--text-dim)">\u23ED</span><span style="font-size:0.82em;color:var(--text-dim)">Skipped</span></div>';
+        _reviewAdvance('skipped');
+    }
+
+    function _reviewAdvance(type) {
+        var content = document.getElementById('spReviewContent');
+        if (!content) return;
+        if (type === 'fixed') content._fixedCount = (content._fixedCount || 0) + 1;
+        else content._skippedCount = (content._skippedCount || 0) + 1;
+
+        var fixed = content._fixedCount || 0;
+        var skipped = content._skippedCount || 0;
+        var total = content._totalToFix || 1;
+        var handled = fixed + skipped;
+
+        // Update progress bar
+        var pct = Math.round((handled / total) * 100);
+        var bar = document.getElementById('spReviewProgressBar');
+        var text = document.getElementById('spReviewProgressText');
+        if (bar) bar.style.width = pct + '%';
+        if (text) text.textContent = fixed + '/' + total + ' fixed' + (skipped > 0 ? ' (' + skipped + ' skipped)' : '');
+        if (bar && handled >= total) bar.style.background = '#22c55e';
+
+        // Show re-sync when all handled
+        if (handled >= total) {
+            var resync = document.getElementById('spReviewResync');
+            if (resync) resync.style.display = '';
+            if (content._onComplete) content._onComplete();
         }
-        if (typeof showToast === 'function') showToast('\u2705 Track locked for future syncs');
+
+        if (type === 'fixed' && typeof showToast === 'function') showToast('\u2705 Locked for future syncs');
+    }
+
+    async function _resyncAfterReview() {
+        var overlay = document.getElementById('spReviewOverlay');
+        if (overlay) overlay.remove();
+        if (_lastSyncResult && _lastSyncResult.bundleType) {
+            await syncToSpotify(_lastSyncResult.bundleType);
+        }
     }
 
     // Show review modal/panel after sync
@@ -827,7 +898,7 @@ window.ListeningBundles = (function() {
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px';
         overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;max-width:400px;width:100%;max-height:80vh;overflow-y:auto">'
             + '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06)">'
-            + '<span style="font-size:0.9em;font-weight:700;color:var(--text)">\uD83D\uDD0D Review Spotify Matches</span>'
+            + '<span style="font-size:0.9em;font-weight:700;color:var(--text)">\uD83C\uDFB5 Fix your playlist</span>'
             + '<button onclick="document.getElementById(\'spReviewOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em">\u2715</button>'
             + '</div>'
             + '<div id="spReviewContent"></div>'
@@ -892,6 +963,10 @@ window.ListeningBundles = (function() {
         _reviewSearch: _reviewSearch,
         _reviewCustomSearch: _reviewCustomSearch,
         _reviewSelect: _reviewSelect,
+        _reviewSkip: _reviewSkip,
+        _resyncAfterReview: _resyncAfterReview,
+        _openReviewFromChoice: _openReviewFromChoice,
+        _openPlaylistAnyway: _openPlaylistAnyway,
 
         // UI
         renderDestinationChooser: renderDestinationChooser,
