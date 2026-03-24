@@ -389,9 +389,10 @@ function _renderListeningCard(bundleType, title, subtitle) {
     var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
     if (!lb) return '';
 
-    var defaultDest = lb.getDefaultDestination();
-    var destLabel = { spotify: 'Spotify', youtube: 'YouTube', archive: 'Archive.org', auto: '' }[defaultDest] || '';
-    var btnLabel = destLabel ? ('Listen in ' + destLabel) : 'Listen';
+    // Spotify button reflects real connection state
+    var spotifyConnected = lb.isSpotifyConnected();
+    var spotifyLabel = spotifyConnected ? '\uD83C\uDFB5 Sync to Spotify' : '\uD83C\uDFB5 Connect Spotify';
+    var spotifyAction = 'ListeningBundles.syncToSpotify(\'' + bundleType + '\')';
 
     return '<div class="app-card home-anim-cards" style="border-left:3px solid rgba(99,102,241,0.2)">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
@@ -400,7 +401,7 @@ function _renderListeningCard(bundleType, title, subtitle) {
         + '</div>'
         + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px">' + _escHtml(subtitle) + '</div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
-        + '<button onclick="ListeningBundles.syncToSpotify(\'' + bundleType + '\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:700;border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.08);color:#1ed760">\uD83C\uDFB5 Sync to Spotify</button>'
+        + '<button onclick="' + spotifyAction + '" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75em;font-weight:700;border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.08);color:#1ed760">' + spotifyLabel + '</button>'
         + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'spotify\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(30,215,96,0.15);background:none;color:rgba(30,215,96,0.6)">\u25B6 Play Now</button>'
         + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'youtube\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">\uD83D\uDCFA YouTube</button>'
         + '<button onclick="ListeningBundles.quickLaunch(\'' + bundleType + '\',\'archive\')" style="display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">\uD83C\uDFDB\uFE0F Archive</button>'

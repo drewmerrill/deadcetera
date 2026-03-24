@@ -226,6 +226,30 @@ window.ListeningBundles = (function() {
         launchUrl(sorted[0].url);
     }
 
+    function _showQuickLaunchFallback(bundle, destination) {
+        // Never leave user hanging — show explicit actions
+        var firstSong = bundle.songs[0];
+        var q = encodeURIComponent((firstSong ? firstSong.songTitle : '') + ' Grateful Dead');
+        var existing = document.getElementById('glQuickLaunchFallback');
+        if (existing) existing.remove();
+
+        var overlay = document.createElement('div');
+        overlay.id = 'glQuickLaunchFallback';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:340px;width:100%;text-align:center">'
+            + '<div style="font-size:1em;font-weight:800;color:#e2e8f0;margin-bottom:6px">No auto-match found</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">Choose where to listen:</div>'
+            + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+            + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glQuickLaunchFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.05);color:#f87171;text-decoration:none;cursor:pointer">\uD83D\uDCFA YouTube</a>'
+            + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glQuickLaunchFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:rgba(30,215,96,0.05);color:#1ed760;text-decoration:none;cursor:pointer">\uD83C\uDFB5 Spotify</a>'
+            + '<a href="https://archive.org/search?query=' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glQuickLaunchFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;text-decoration:none;cursor:pointer">\uD83C\uDFDB\uFE0F Archive</a>'
+            + '</div>'
+            + '<button onclick="this.closest(\'#glQuickLaunchFallback\').remove()" style="margin-top:12px;background:none;border:none;color:#475569;cursor:pointer;font-size:0.82em">Close</button>'
+            + '</div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+
     // ── Destination Chooser HTML ────────────────────────────────────────────
 
     function renderDestinationChooser(bundleType, containerId) {
@@ -256,21 +280,29 @@ window.ListeningBundles = (function() {
     // ── Quick Launch (1-tap) ────────────────────────────────────────────────
 
     async function quickLaunch(bundleType, destination) {
-        if (typeof showToast === 'function') showToast('Preparing ' + bundleType + '...');
-        var bundle = await computeBundle(bundleType);
+        if (typeof showToast === 'function') showToast('Preparing ' + bundleType + '\u2026');
+        var bundle;
+        try { bundle = await computeBundle(bundleType); } catch(e) { bundle = { songs: [] }; }
         if (!bundle.songs.length) {
             if (typeof showToast === 'function') showToast('No songs found for ' + bundleType);
             return;
         }
         var result = await deliverBundle(bundle, destination);
         if (result.matched === 0) {
-            if (typeof showToast === 'function') showToast('Finding best version\u2026');
+            // No matches — show explicit fallback, never hang
+            _showQuickLaunchFallback(bundle, destination);
             return;
         }
-        launchBundle(result);
+        // Show match count then open — use timeout to let toast render first
         if (typeof showToast === 'function') {
-            showToast(result.matched + '/' + result.total + ' matched in ' + destination);
+            showToast(result.matched + '/' + result.total + ' matched \u2014 opening\u2026');
         }
+        // Open via user-gesture-safe timeout (short, synchronous-ish)
+        var firstUrl = result.urls.sort(function(a, b) { return a.order - b.order; })[0].url;
+        setTimeout(function() {
+            if (typeof openMusicLink === 'function') openMusicLink(firstUrl);
+            else window.open(firstUrl, '_blank');
+        }, 100);
     }
 
     // ── Spotify Sync Engine ────────────────────────────────────────────────
@@ -489,6 +521,10 @@ window.ListeningBundles = (function() {
                 localStorage.removeItem('gl_spotify_pkce_return');
                 window.history.replaceState({}, '', returnUrl);
                 if (typeof showToast === 'function') showToast('\u2705 Spotify connected');
+                // Re-render dashboard to reflect connected state
+                if (typeof window.renderHomeDashboard === 'function') {
+                    setTimeout(window.renderHomeDashboard, 500);
+                }
                 return true;
             }
         } catch(e) {

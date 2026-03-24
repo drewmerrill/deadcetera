@@ -353,7 +353,12 @@ window.SetlistPlayer = (function() {
         var container = document.getElementById('slpVideoContainer');
         if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>';
 
+        // Timeout: if search takes > 10s, go straight to fallback
+        var timedOut = false;
+        var timer = setTimeout(function() { timedOut = true; _showFallback(song); }, 10000);
         var ytId = await _resolveYouTubeId(song.title, song.band);
+        clearTimeout(timer);
+        if (timedOut) return; // fallback already shown
         if (ytId) {
             song.youtubeId = ytId;
             _playYouTube(ytId);
