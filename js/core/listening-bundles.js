@@ -649,20 +649,7 @@ window.ListeningBundles = (function() {
             _showSyncChoice(syncResult);
         } else {
             // All matched — show identity then open
-            var _bundleLabel = { gig: 'Gig', rehearsal: 'Rehearsal', focus: 'Focus', northstar: 'North Star' }[bundleType] || bundleType;
-            // First-time playlist moment
-            var isFirst = !localStorage.getItem('gl_first_playlist');
-            if (isFirst) {
-                localStorage.setItem('gl_first_playlist', '1');
-                if (typeof showToast === 'function') showToast('\uD83C\uDFB6 Your first GrooveLinx playlist is ready');
-            } else {
-                if (typeof showToast === 'function') showToast(_bundleLabel + ' playlist ready \u2014 ' + resolved.matched + ' songs \u2014 stay locked in');
-            }
-            setTimeout(function() {
-                var playlistUrl = 'https://open.spotify.com/playlist/' + playlistId;
-                if (typeof openMusicLink === 'function') openMusicLink(playlistUrl);
-                else window.open(playlistUrl, '_blank');
-            }, isFirst ? 600 : 400);
+            _showPlaylistReady(bundleType, resolved.matched, playlistId);
         }
 
         return syncResult;
@@ -727,6 +714,24 @@ window.ListeningBundles = (function() {
             console.warn('[Spotify] Lock failed:', e);
             return false;
         }
+    }
+
+    // ── Playlist Ready Toast + Open ────────────────────────────────────────
+
+    function _showPlaylistReady(bundleType, matchedCount, playlistId) {
+        var label = { gig: 'Gig', rehearsal: 'Rehearsal', focus: 'Focus', northstar: 'North Star' }[bundleType] || bundleType;
+        var isFirst = !localStorage.getItem('gl_first_playlist');
+        if (isFirst) {
+            localStorage.setItem('gl_first_playlist', '1');
+            if (typeof showToast === 'function') showToast('\uD83C\uDFB6 Your first GrooveLinx playlist is ready');
+        } else {
+            if (typeof showToast === 'function') showToast(label + ' playlist ready \u2014 ' + matchedCount + ' songs \u2014 stay locked in');
+        }
+        setTimeout(function() {
+            var url = 'https://open.spotify.com/playlist/' + playlistId;
+            if (typeof openMusicLink === 'function') openMusicLink(url);
+            else window.open(url, '_blank');
+        }, isFirst ? 600 : 400);
     }
 
     // Sync choice overlay — shows before review when there are failures
@@ -898,9 +903,11 @@ window.ListeningBundles = (function() {
         if (overlay) overlay.remove();
         if (_lastSyncResult && _lastSyncResult.bundleType) {
             var prevFixed = _lastSyncResult.failed || 0;
+            var hadFirstPlaylist = !!localStorage.getItem('gl_first_playlist');
             var result = await syncToSpotify(_lastSyncResult.bundleType);
-            // Show improvement feedback
-            if (result && result.ok && prevFixed > 0) {
+            var firstJustFired = !hadFirstPlaylist && !!localStorage.getItem('gl_first_playlist');
+            // Show improvement feedback (skip if first-time moment just fired)
+            if (result && result.ok && prevFixed > 0 && !firstJustFired) {
                 var improved = prevFixed - (result.failed || 0);
                 var nowFailed = result.failed || 0;
                 if (improved > 0) {
