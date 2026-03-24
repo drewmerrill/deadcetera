@@ -237,9 +237,14 @@ window._feedDismissHelp = function() {
 };
 
 window._feedShowHelpRecall = function() {
-    // Re-show explainer without resetting visit counter
+    // Run the guided walkthrough instead of static banner
+    if (typeof glSpotlight !== 'undefined') {
+        _feedRunWalkthrough();
+        return;
+    }
+    // Fallback: static banner
     var existing = document.getElementById('feedHelpBanner');
-    if (existing) { existing.remove(); return; } // toggle off if already showing
+    if (existing) { existing.remove(); return; }
     _feedRenderHelpBanner(true);
 };
 
@@ -559,6 +564,9 @@ window.renderBandFeedPage = async function(el) {
     _feedRenderFilterBar(items);
     _feedRender(items);
     _feedSyncNavBadge();
+
+    // Trigger walkthrough on first visit
+    _feedTriggerWalkthrough();
 
     // Save current count for next-session new-items detection
     var fas2 = _fas();
@@ -1436,5 +1444,64 @@ if ('serviceWorker' in navigator) {
         }
     });
 }
+
+// ── Feed Spotlight Walkthrough ───────────────────────────────────────────────
+// Guided behavior onboarding. 7 steps targeting real UI elements.
+// Runs once on first feed visit. Replayable via help button.
+
+var _FEED_WT_KEY = 'feed-walkthrough-v1';
+
+function _feedRegisterWalkthrough() {
+    if (typeof glSpotlight === 'undefined' || !glSpotlight.register) return;
+
+    glSpotlight.register(_FEED_WT_KEY, [
+        // Step 1 — Purpose
+        { target: '.page-header',
+          text: 'This is your band\u2019s command center. Everything the band needs to decide, review, or act on lives here.' },
+
+        // Step 2 — Action clarity
+        { target: function() { return document.querySelector('[style*="You owe this"]') || document.querySelector('#feedAttentionBar > div'); },
+          text: 'When you see \u201cYou owe this\u201d \u2014 you need to act. Vote, respond, or acknowledge.' },
+
+        // Step 3 — Ownership
+        { target: function() { return document.querySelector('[style*="Needs input from"]') || document.querySelector('[style*="Waiting on"]') || document.querySelector('#feedFilterBar'); },
+          text: 'Some items are for specific people. You\u2019ll see exactly who needs to respond.' },
+
+        // Step 4 — Creation (critical)
+        { target: '#feedCreateBar',
+          text: 'Type here to share something with the band instantly. Use the buttons below for polls, ideas, or notes.' },
+
+        // Step 5 — Interaction
+        { target: function() { return document.querySelector('[id^="feedItem_"]'); },
+          text: 'Tap any item to vote, respond, or review. You can also vote on polls directly without leaving this page.' },
+
+        // Step 6 — Navigation
+        { target: function() { return document.getElementById('feedBackBar') || document.querySelector('#feedFilterBar'); },
+          text: 'When you navigate away, a \u201c\u2190 Back to Feed\u201d bar appears so you can always return.' },
+
+        // Step 7 — Completion
+        { target: '#feedAttentionBar',
+          text: 'When nothing needs you, you\u2019ll see \u201cYou\u2019re locked in.\u201d That\u2019s the goal. Clear your items and feel done.' }
+    ]);
+}
+
+function _feedTriggerWalkthrough() {
+    if (typeof glSpotlight === 'undefined') return;
+    // Only auto-run on first-ever feed visit
+    try {
+        if (localStorage.getItem('gl_wt_' + _FEED_WT_KEY) === '1') return;
+    } catch(e) {}
+    setTimeout(function() { glSpotlight.run(_FEED_WT_KEY); }, 1200);
+}
+
+// Replay from help button
+window._feedRunWalkthrough = function() {
+    if (typeof glSpotlight !== 'undefined') {
+        glSpotlight.run(_FEED_WT_KEY, null, { force: true });
+    }
+};
+
+// Register on file load
+_feedRegisterWalkthrough();
 
 console.log('\uD83D\uDCE1 band-feed.js v5 loaded \u2014 unified action engine');
