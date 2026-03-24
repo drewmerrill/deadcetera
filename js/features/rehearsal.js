@@ -660,69 +660,182 @@ async function _rhRenderSessionReview() {
     el.innerHTML = html;
 }
 
-async function _rhRenderSessionHistory() {
-    var el = document.getElementById('rhSessionHistory');
-    if (!el) return;
+var _rhBulkMode = false;
+var _rhBulkSelected = {};
+var _rhSessionsCache = null;
+
+async function _rhLoadSessions() {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (!db || typeof bandPath !== 'function') return;
-    var sessions = [];
+    if (!db || typeof bandPath !== 'function') return [];
     try {
         var snap = await db.ref(bandPath('rehearsal_sessions')).once('value');
         var val = snap.val();
-        if (val) sessions = Object.values(val).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 10);
-    } catch(e) { return; }
-    if (sessions.length < 2) return; // don't show if only 1 (already in Last Rehearsal card)
+        if (!val) return [];
+        _rhSessionsCache = Object.keys(val).map(function(k) { var s = val[k]; s.sessionId = s.sessionId || k; return s; });
+        _rhSessionsCache.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+        return _rhSessionsCache;
+    } catch(e) { return []; }
+}
 
-    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">📋 Past Rehearsals (' + sessions.length + ')</summary>'
-        + '<div style="margin-top:6px">';
+async function _rhDeleteSession(sessionId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).remove(); } catch(e) {}
+    _rhSessionsCache = null;
+}
 
-    sessions.forEach(function(s) {
+window._rhDeleteSessionUI = async function(sessionId) {
+    if (!confirm('Delete this rehearsal session?')) return;
+    await _rhDeleteSession(sessionId);
+    if (typeof showToast === 'function') showToast('Session deleted');
+    _rhRenderSessionHistory();
+};
+
+window._rhToggleBulkMode = function() {
+    _rhBulkMode = !_rhBulkMode;
+    _rhBulkSelected = {};
+    _rhRenderSessionHistory();
+};
+
+window._rhBulkToggle = function(sessionId) {
+    if (_rhBulkSelected[sessionId]) delete _rhBulkSelected[sessionId];
+    else _rhBulkSelected[sessionId] = true;
+    var cb = document.getElementById('rhBulkCb_' + sessionId);
+    if (cb) cb.checked = !!_rhBulkSelected[sessionId];
+    var countEl = document.getElementById('rhBulkCount');
+    if (countEl) countEl.textContent = Object.keys(_rhBulkSelected).length + ' selected';
+};
+
+window._rhBulkDelete = async function() {
+    var ids = Object.keys(_rhBulkSelected);
+    if (!ids.length) { if (typeof showToast === 'function') showToast('Nothing selected'); return; }
+    if (!confirm('Delete ' + ids.length + ' session' + (ids.length > 1 ? 's' : '') + '? This cannot be undone.')) return;
+    for (var i = 0; i < ids.length; i++) await _rhDeleteSession(ids[i]);
+    if (typeof showToast === 'function') showToast(ids.length + ' session' + (ids.length > 1 ? 's' : '') + ' deleted');
+    _rhBulkMode = false;
+    _rhBulkSelected = {};
+    _rhRenderSessionHistory();
+};
+
+async function _rhRenderSessionHistory() {
+    var el = document.getElementById('rhSessionHistory');
+    if (!el) return;
+    var sessions = await _rhLoadSessions();
+
+    // Filter: hide noisy micro-sessions (< 2 min, 0 blocks, or missing data)
+    var clean = sessions.filter(function(s) {
+        if (!s.date) return false;
+        if ((s.totalActualMin || 0) < 2 && (s.blocksCompleted || 0) === 0) return false;
+        return true;
+    });
+
+    if (!clean.length) { el.innerHTML = ''; return; }
+
+    var html = '<div style="margin-bottom:12px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">\uD83D\uDCCB Past Rehearsals (' + clean.length + ')</div>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<button onclick="_rhToggleBulkMode()" style="font-size:0.65em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (_rhBulkMode ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_rhBulkMode ? 'rgba(239,68,68,0.1)' : 'none') + ';color:' + (_rhBulkMode ? '#f87171' : '#475569') + '">' + (_rhBulkMode ? '\u2715 Cancel' : '\u2611 Select') + '</button>';
+    html += '</div></div>';
+
+    if (_rhBulkMode) {
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px">'
+            + '<span id="rhBulkCount" style="font-size:0.72em;font-weight:600;color:#f87171">0 selected</span>'
+            + '<button onclick="_rhBulkDelete()" style="margin-left:auto;font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.1);color:#f87171">\uD83D\uDDD1 Delete Selected</button>'
+            + '</div>';
+    }
+
+    clean.forEach(function(s) {
         var d = s.date ? new Date(s.date) : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
         var totalActual = s.totalActualMin || 0;
         var totalBudget = s.totalBudgetMin || 0;
-        var delta = totalActual - totalBudget;
-        var verdict = '', verdictColor = '';
-        if (!totalBudget) { verdict = totalActual + ' min'; verdictColor = 'var(--text-dim)'; }
-        else if (Math.abs(delta) <= 3) { verdict = 'On track'; verdictColor = '#22c55e'; }
-        else if (delta > 0 && delta <= 10) { verdict = delta + 'min over'; verdictColor = '#fbbf24'; }
-        else if (delta > 10) { verdict = delta + 'min over'; verdictColor = '#ef4444'; }
-        else { verdict = Math.abs(delta) + 'min under'; verdictColor = '#60a5fa'; }
-
         var blocksCompleted = s.blocksCompleted || (s.blocks ? s.blocks.length : 0);
         var totalBlocks = s.totalBlocks || blocksCompleted;
 
-        // Expandable block detail
-        var blockDetail = '';
+        // Duration label
+        var durLabel = '';
+        if (totalActual >= 60) durLabel = Math.floor(totalActual / 60) + 'h ' + (totalActual % 60) + 'm';
+        else durLabel = totalActual + ' min';
+
+        // Song list from blocks
+        var songList = '';
         if (s.blocks && s.blocks.length) {
-            blockDetail = '<div style="padding:4px 0 6px 8px;display:none" id="rhSessDetail_' + s.sessionId + '">';
+            var songNames = s.blocks.map(function(b) { return b.title; }).filter(Boolean);
+            if (songNames.length > 3) songList = songNames.slice(0, 3).join(' \u00B7 ') + ' +' + (songNames.length - 3) + ' more';
+            else if (songNames.length) songList = songNames.join(' \u00B7 ');
+        }
+
+        // Verdict
+        var verdict = '', verdictColor = '';
+        if (!totalBudget) { verdict = ''; }
+        else {
+            var delta = totalActual - totalBudget;
+            if (Math.abs(delta) <= 3) { verdict = 'On track'; verdictColor = '#22c55e'; }
+            else if (delta > 0) { verdict = '+' + delta + 'm'; verdictColor = delta > 10 ? '#ef4444' : '#fbbf24'; }
+            else { verdict = delta + 'm'; verdictColor = '#60a5fa'; }
+        }
+
+        // Notes
+        var notesPreview = s.notes ? escHtml(s.notes).substring(0, 60) + (s.notes.length > 60 ? '\u2026' : '') : '';
+
+        // Mixdown link
+        var mixdownHtml = '';
+        if (s.mixdown_id) {
+            mixdownHtml = '<span style="font-size:0.65em;color:#fbbf24;cursor:pointer" title="Has mixdown">\uD83C\uDFA4</span>';
+        }
+
+        html += '<div class="app-card" style="padding:8px 12px;margin-bottom:6px">';
+
+        // Bulk checkbox
+        if (_rhBulkMode) {
+            html += '<div style="float:left;margin-right:8px;margin-top:2px">'
+                + '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer">'
+                + '</div>';
+        }
+
+        // Header: date + duration + verdict
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
+        html += '<span style="font-weight:700;font-size:0.85em;color:var(--text)">' + dateStr + '</span>';
+        html += '<span style="font-size:0.78em;color:var(--text-muted);font-weight:600">' + durLabel + '</span>';
+        if (verdict) html += '<span style="font-size:0.72em;font-weight:700;color:' + verdictColor + '">' + verdict + '</span>';
+        html += mixdownHtml;
+        html += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + blocksCompleted + '/' + totalBlocks + ' songs</span>';
+        html += '</div>';
+
+        // Songs preview
+        if (songList) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(songList) + '</div>';
+
+        // Notes
+        if (notesPreview) html += '<div style="font-size:0.72em;color:#475569;margin-bottom:3px">' + notesPreview + '</div>';
+
+        // Actions
+        html += '<div style="display:flex;gap:6px;align-items:center">';
+        html += '<button onclick="var d=document.getElementById(\'rhSessDetail_' + s.sessionId + '\');if(d)d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Details</button>';
+        html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b">\uD83D\uDDD1\uFE0F</button>';
+        html += '</div>';
+
+        // Expandable block detail
+        if (s.blocks && s.blocks.length) {
+            html += '<div style="padding:4px 0 2px 4px;display:none;margin-top:4px;border-top:1px solid rgba(255,255,255,0.04)" id="rhSessDetail_' + s.sessionId + '">';
             s.blocks.forEach(function(b) {
                 if (!b.budgetMin && !b.actualMin) return;
                 var over = b.budgetMin > 0 && b.actualMin > b.budgetMin;
                 var pct = b.budgetMin > 0 ? Math.min(Math.round((b.actualMin / b.budgetMin) * 100), 200) : 100;
                 var barColor = pct <= 100 ? '#22c55e' : '#ef4444';
-                blockDetail += '<div style="display:flex;align-items:center;gap:6px;padding:1px 0;font-size:0.7em">'
-                    + '<span style="min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (over ? '#fca5a5' : 'var(--text-dim)') + '">' + escHtml(b.title) + '</span>'
+                html += '<div style="display:flex;align-items:center;gap:6px;padding:1px 0;font-size:0.68em">'
+                    + '<span style="min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (over ? '#fca5a5' : 'var(--text-dim)') + '">' + escHtml(b.title) + '</span>'
                     + '<div style="flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden"><div style="width:' + Math.min(pct, 100) + '%;height:100%;background:' + barColor + ';border-radius:2px"></div></div>'
-                    + '<span style="color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';white-space:nowrap">' + b.actualMin + 'm' + (b.budgetMin ? ' / ' + b.budgetMin + 'm' : '') + '</span>'
+                    + '<span style="color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';white-space:nowrap">' + b.actualMin + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : '') + '</span>'
                     + '</div>';
             });
-            blockDetail += '</div>';
+            html += '</div>';
         }
 
-        html += '<div style="border-bottom:1px solid rgba(255,255,255,0.03)">'
-            + '<div onclick="var d=document.getElementById(\'rhSessDetail_' + s.sessionId + '\');if(d)d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;font-size:0.78em">'
-            + '<span style="color:var(--text-muted);min-width:90px">' + dateStr + '</span>'
-            + '<span style="color:var(--text);font-weight:600">' + totalActual + ' min</span>'
-            + (totalBudget ? '<span style="font-size:0.85em;color:var(--text-dim)">/ ' + totalBudget + 'm</span>' : '')
-            + '<span style="font-size:0.85em;font-weight:700;color:' + verdictColor + ';margin-left:auto">' + verdict + '</span>'
-            + '<span style="font-size:0.72em;color:var(--text-dim)">' + blocksCompleted + '/' + totalBlocks + '</span>'
-            + '</div>'
-            + blockDetail
-            + '</div>';
+        html += '</div>';
     });
 
-    html += '</div></details>';
+    html += '</div>';
     el.innerHTML = html;
 }
 

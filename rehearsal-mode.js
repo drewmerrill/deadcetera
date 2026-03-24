@@ -1022,13 +1022,23 @@ async function _rmSaveSessionSummary() {
     var totalBudgetMin = _rmBlockTimings.reduce(function(s, t) { return s + (t.budgetMin || 0); }, 0);
     var totalActualMs = _rmBlockTimings.reduce(function(s, t) { return s + t.actualMs; }, 0);
     var totalActualMin = Math.round(totalActualMs / 60000);
+    // Collect unique song titles worked
+    var songsWorked = [];
+    var seen = {};
+    _rmBlockTimings.forEach(function(t) { if (t.title && !seen[t.title]) { seen[t.title] = true; songsWorked.push(t.title); } });
+
     var summary = {
         sessionId: 'rsess_' + Date.now().toString(36),
         date: new Date().toISOString(),
+        start_time: _rmSessionStart ? new Date(_rmSessionStart).toISOString() : null,
+        end_time: new Date().toISOString(),
         totalBudgetMin: totalBudgetMin,
         totalActualMin: totalActualMin,
         blocksCompleted: _rmBlockTimings.length,
         totalBlocks: rmQueue.length,
+        songsWorked: songsWorked,
+        notes: '',
+        mixdown_id: null,
         blocks: _rmBlockTimings.map(function(t) {
             return { title: t.title, budgetMin: t.budgetMin, actualMin: Math.round(t.actualMs / 60000) };
         })
