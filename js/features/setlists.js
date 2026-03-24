@@ -122,19 +122,19 @@ function _slRenderCard(sl, isNext) {
     var borderColor = isNext ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)';
     var bgColor = isNext ? 'rgba(99,102,241,0.04)' : 'rgba(255,255,255,0.02)';
 
-    return '<div style="padding:10px 14px;border-radius:8px;border:1px solid ' + borderColor + ';background:' + bgColor + ';margin-bottom:6px;display:flex;align-items:center;gap:10px">'
-        // Left: info
-        + '<div style="flex:1;min-width:0">'
-        + (isNext ? '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px">NEXT UP' + (dateLabel ? ' · ' + dateLabel : '') + ' · ' + dateDisplay + '</div>' : '')
-        + '<div style="font-weight:700;font-size:0.9em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (sl.locked ? '🔒 ' : '') + (sl.name || 'Untitled') + '</div>'
-        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">'
-        + dateDisplay + ' · ' + songCount + ' songs · ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
-        + (!isNext && dateLabel ? ' · ' + dateLabel : '')
+    return '<div style="padding:10px 14px;border-radius:8px;border:1px solid ' + borderColor + ';background:' + bgColor + ';margin-bottom:6px;display:flex;align-items:flex-start;gap:10px">'
+        // Left: info — explicit block display, safe word wrapping
+        + '<div style="flex:1;min-width:0;display:block;overflow:hidden">'
+        + (isNext ? '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px;line-height:1.4;word-break:normal;overflow-wrap:normal;white-space:normal">NEXT UP' + (dateLabel ? ' \u00B7 ' + dateLabel : '') + ' \u00B7 ' + dateDisplay + '</div>' : '')
+        + '<div style="font-weight:700;font-size:0.9em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:1.4">' + (sl.locked ? '\uD83D\uDD12 ' : '') + (sl.name || 'Untitled') + '</div>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px;display:block;line-height:1.4;word-break:normal;overflow-wrap:normal;white-space:normal">'
+        + dateDisplay + ' \u00B7 ' + songCount + ' songs \u00B7 ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
+        + (!isNext && dateLabel ? ' \u00B7 ' + dateLabel : '')
         + '</div>'
-        + (preview ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + preview + '</div>' : '')
+        + (preview ? '<div style="font-size:0.68em;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">' + preview + '</div>' : '')
         + '</div>'
-        // Right: actions
-        + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center">'
+        // Right: actions — wrap on narrow screens, constrain width
+        + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center;flex-wrap:wrap;max-width:45%">'
         + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">\u25B6 Open</button>'
         + '<button onclick="slPlaySetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer;font-weight:600" title="Play through setlist">\uD83C\uDFA7</button>'
         + (sl.locked
