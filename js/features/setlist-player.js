@@ -415,7 +415,6 @@ window.SetlistPlayer = (function() {
         _dismissResume();
         var state = getResumeState();
         if (!state) return;
-        // Load setlist and launch from saved index
         try {
             var slData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'setlists') : null;
             if (!slData) { if (typeof showToast === 'function') showToast('Could not load setlist'); return; }
@@ -423,6 +422,11 @@ window.SetlistPlayer = (function() {
             var sl = all.find(function(s) { return s && (s.id === state.setlistId || s.name === state.setlistId || s.title === state.setlistId); });
             if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); clearResumeState(); return; }
             await launch(sl, state.setlistName, state.songIdx);
+            // Confidence signal
+            if (typeof showToast === 'function') {
+                var songName = state.songTitle || ('song ' + (state.songIdx + 1));
+                showToast('\u25B6 Resumed: ' + songName + ' (' + (state.songIdx + 1) + '/' + (state.total || '?') + ')');
+            }
         } catch(e) { if (typeof showToast === 'function') showToast('Resume failed'); }
     }
 
@@ -464,14 +468,21 @@ window.SetlistPlayer = (function() {
 
 })();
 
-// Auto-show resume prompt on app load — no delay
+// Smart resume on app load — auto-resume if fresh, prompt if older
 document.addEventListener('DOMContentLoaded', function() {
-    // Use requestAnimationFrame for earliest safe DOM access
     requestAnimationFrame(function() {
-        if (typeof SetlistPlayer !== 'undefined' && SetlistPlayer.getResumeState()) {
+        if (typeof SetlistPlayer === 'undefined') return;
+        var state = SetlistPlayer.getResumeState();
+        if (!state) return;
+        var ageMs = Date.now() - (state.ts || 0);
+        if (ageMs < 7200000) {
+            // < 2 hours: auto-resume without asking
+            SetlistPlayer._resumeFromState();
+        } else {
+            // 2–24 hours: show prompt
             SetlistPlayer.showResumePrompt();
         }
-    }, 3000);
+    });
 });
 
 console.log('\u25B6\uFE0F setlist-player.js v3 loaded');
