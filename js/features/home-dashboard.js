@@ -1127,7 +1127,10 @@ function _renderBandHealthRow(bundle) {
 
     // 4. Weak Songs count
     var rc = bundle.readinessCache || {};
+    var _wkSc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var _wkA = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     var weakCount = Object.entries(rc).filter(function(e) {
+        if (!_wkA[(_wkSc[e[0]]) || '']) return false;
         var keys = Object.keys(e[1] || {}).filter(function(k) { return typeof e[1][k] === 'number' && e[1][k] > 0; });
         return keys.length && _bandAvgForSong(e[1]) < 3;
     }).length;
@@ -1731,7 +1734,8 @@ function deriveHdConfidenceTone(bundle) {
 
 function deriveHdMissionSummary(bundle) {
     var pct=_computeBandReadinessPct(bundle),rc=bundle.readinessCache||{},nextGig=bundle.gigs&&bundle.gigs[0],nextPlan=bundle.plans&&bundle.plans[0],rl=deriveHdReadinessLabel(pct);
-    var we=Object.entries(rc).filter(function(e){return e[1]&&_bandAvgForSong(e[1])<3;}),wc=we.length,tw=we.sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];
+    var _msSc=(typeof statusCache!=='undefined')?statusCache:{},_msA={prospect:1,learning:1,rotation:1,gig_ready:1};
+    var we=Object.entries(rc).filter(function(e){return _msA[(_msSc[e[0]])||'']&&e[1]&&_bandAvgForSong(e[1])<3;}),wc=we.length,tw=we.sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];
     var line1='',line2='';
     if(nextGig){var diff=nextGig.date?_dayDiff(_todayStr(),nextGig.date):null,when=diff===0?'Tonight':diff===1?'Tomorrow':(nextGig.date?_formatDateShort(nextGig.date):'');line1=_escHtml(nextGig.venue||'Your next show')+' is next.';if(rl&&wc===0)line1+=' Your band is '+rl.long.toLowerCase()+'.';else if(rl)line1+=' Your band is '+rl.long.toLowerCase()+', but '+wc+' song'+(wc!==1?'s':'')+' need'+(wc===1?'s':'')+' work.';var d2=[];if(when)d2.push(when);if(nextGig.startTime)d2.push('Set '+_escHtml(nextGig.startTime));if(tw)d2.push('Focus: '+_escHtml(tw[0]));if(nextGig.linkedSetlist)d2.push('Setlist: '+_escHtml(nextGig.linkedSetlist));line2=d2.join(' \xb7 ');
     }else if(nextPlan){var diff2=nextPlan.date?_dayDiff(_todayStr(),nextPlan.date):null,when2=diff2===0?'Tonight':diff2===1?'Tomorrow':(nextPlan.date?_formatDateShort(nextPlan.date):'');line1='Rehearsal '+(when2?when2.toLowerCase():'coming up')+'.';if(rl&&wc>0)line1+=' '+wc+' song'+(wc!==1?'s':'')+' need'+(wc===1?'s':'')+' work before then.';else if(rl)line1+=' Band is '+rl.long.toLowerCase()+'.';if(tw)line2='Focus: '+_escHtml(tw[0]);
@@ -1743,7 +1747,8 @@ function deriveHdPrepFocus(bundle) {
     var rc=bundle.readinessCache||{},myKey=bundle.memberKey,nextGig=bundle.gigs&&bundle.gigs[0];
     if(!myKey)return null;
     var weak=[];
-    Object.entries(rc).forEach(function(e){var t=e[0],r=e[1]||{},m=r[myKey];if(typeof m==='number'&&m>0&&m<3){var rs=m<=1?['Low readiness']:['Needs work'];if(_bandAvgForSong(r)<3)rs.push('Band also needs work');weak.push({title:t,score:m,reasons:rs});}});
+    var _wpSc=(typeof statusCache!=='undefined')?statusCache:{},_wpA={prospect:1,learning:1,rotation:1,gig_ready:1};
+    Object.entries(rc).forEach(function(e){var t=e[0];if(!_wpA[(_wpSc[t])||''])return;var r=e[1]||{},m=r[myKey];if(typeof m==='number'&&m>0&&m<3){var rs=m<=1?['Low readiness']:['Needs work'];if(_bandAvgForSong(r)<3)rs.push('Band also needs work');weak.push({title:t,score:m,reasons:rs});}});
     weak.sort(function(a,b){return a.score-b.score;});
     if(!weak.length)return{empty:true};
     return{top:weak[0],rest:weak.slice(1),total:weak.length,eventTie:nextGig?('Needed for '+_escHtml(nextGig.venue||'your next show')):null};
@@ -1754,7 +1759,8 @@ function deriveHdBandIntel(bundle) {
     if(pct!==null&&rl)lines.push({label:'Readiness',icon:'\ud83d\udcca',value:pct+'% \u2014 '+rl.long,color:rl.color});
     if(nextPlan){var diff=nextPlan.date?_dayDiff(_todayStr(),nextPlan.date):null,dl=diff===0?'Tonight':diff===1?'Tomorrow':_formatDateShort(nextPlan.date),ps=(nextPlan.plan&&Array.isArray(nextPlan.plan.songs))?nextPlan.plan.songs.length:0;lines.push({label:'Next rehearsal',icon:'\ud83d\udcc5',value:dl+(ps?' \xb7 '+ps+' songs planned':'')}); }
     if(nextGig&&nextGig.linkedSetlist){var slR=_computeSetlistReadiness(nextGig,rc);lines.push({label:'Setlist',icon:'\ud83c\udfb6',value:_escHtml(nextGig.linkedSetlist)+(slR?' \xb7 '+slR:'')});}
-    var we=Object.entries(rc).filter(function(e){return e[1]&&_bandAvgForSong(e[1])<3;});
+    var _biSc=(typeof statusCache!=='undefined')?statusCache:{},_biA={prospect:1,learning:1,rotation:1,gig_ready:1};
+    var we=Object.entries(rc).filter(function(e){return _biA[(_biSc[e[0]])||'']&&e[1]&&_bandAvgForSong(e[1])<3;});
     if(we.length){var top=we.sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);})[0];lines.push({label:'Biggest risk',value:_escHtml(top[0]),color:'#f97316'});}
     return lines.slice(0,4);
 }
@@ -3373,8 +3379,11 @@ function _renderPracticeCard(bundle, isStoner) {
     }
 
     var weak = [];
+    var _pqSc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var _pqA = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     Object.entries(rc).forEach(function(entry) {
         var title = entry[0];
+        if (!_pqA[(_pqSc[title]) || '']) return;
         var ratings = entry[1] || {};
         var mine = ratings[myKey];
         if (typeof mine === 'number' && mine > 0 && mine < 3) {
@@ -3695,8 +3704,10 @@ function _renderBandReadinessScore(bundle) {
     var color = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--yellow)' : 'var(--red)';
     var label = pct >= 80 ? 'Gig ready' : pct >= 55 ? 'Getting there' : 'Needs work';
     var rc = bundle.readinessCache || {};
+    var _rbSc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var _rbA = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     var weakTitles = Object.entries(rc)
-        .filter(function(e) { return e[1] && _bandAvgForSong(e[1]) < 3; })
+        .filter(function(e) { return _rbA[(_rbSc[e[0]]) || ''] && e[1] && _bandAvgForSong(e[1]) < 3; })
         .map(function(e) { return e[0]; });
     var onclickVal = weakTitles.length
         ? 'homeGoWeakSongs(' + JSON.stringify(weakTitles) + ')'
