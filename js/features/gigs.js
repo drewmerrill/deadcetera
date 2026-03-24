@@ -436,7 +436,8 @@ function _gigRenderCard(g, isUpcoming) {
         + '</div></div>'
         + (g.notes ? '<div style="font-size:0.78em;color:var(--text-muted);margin-top:4px">' + g.notes + '</div>' : '')
         + ((g.setlistId || g.linkedSetlist) ? '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:0.75em;color:var(--accent-light)">📋 ' + (g.linkedSetlist || 'linked') + '</span>'
-            + '<button onclick="gigLaunchLinkedSetlist(\'' + (g.setlistId || '').replace(/'/g,'\\\'') + '\')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:3px 10px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer">🎤 Go Live</button></div>' : '')
+            + '<button onclick="gigLaunchLinkedSetlist(\'' + (g.setlistId || '').replace(/'/g,'\\\'') + '\')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:3px 10px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer">\uD83C\uDFA4 Go Live</button>'
+            + '<button onclick="gigPlaySetlist(\'' + (g.setlistId || '').replace(/'/g,'\\\'') + '\')" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:3px 10px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer">\u25B6\uFE0F Play Setlist</button></div>' : '')
         + _gigRenderAvailability(g)
         + '</div>';
 }
@@ -1457,6 +1458,18 @@ window.saveGig = saveGig;
 window.launchGigMode = launchGigMode;
 window.openGigMode = openGigMode;
 window.closeGigMode = closeGigMode;
+
+window.gigPlaySetlist = async function(setlistId) {
+    if (typeof SetlistPlayer === 'undefined') { if (typeof showToast === 'function') showToast('Player not available'); return; }
+    try {
+        var slData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'setlists') : null;
+        if (!slData) { showToast('Could not load setlists'); return; }
+        var all = Array.isArray(slData) ? slData : Object.values(slData);
+        var sl = all.find(function(s) { return s && (s.id === setlistId || s.name === setlistId || s.title === setlistId); });
+        if (!sl) { showToast('Setlist not found'); return; }
+        SetlistPlayer.launch(sl, sl.name || sl.title || 'Setlist');
+    } catch(e) { if (typeof showToast === 'function') showToast('Error: ' + e.message); }
+};
 window.gmNavigate = gmNavigate;
 window.gmMarkPlayed = gmMarkPlayed;
 window.rmCaptureSave = rmCaptureSave;

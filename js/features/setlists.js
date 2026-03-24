@@ -135,7 +135,8 @@ function _slRenderCard(sl, isNext) {
         + '</div>'
         // Right: actions
         + '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center">'
-        + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">▶ Open</button>'
+        + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600" title="Open">\u25B6 Open</button>'
+        + '<button onclick="slPlaySetlist(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer;font-weight:600" title="Play through setlist">\uD83C\uDFA7</button>'
         + (sl.locked
             ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;cursor:pointer;opacity:0.4" title="Locked — click to unlock and edit">✏️</button>'
               + '<button onclick="slUnlockWithWarning(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;cursor:pointer" title="Unlock for editing">🔓 Unlock</button>'
@@ -1520,6 +1521,16 @@ window._slMarkDirty = function() {
     if (ind) ind.style.display = '';
 };
 window.editSetlist = editSetlist;
+
+window.slPlaySetlist = async function(idx) {
+    if (typeof SetlistPlayer === 'undefined') { if (typeof showToast === 'function') showToast('Player not available'); return; }
+    var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    allSetlists.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    var sl = allSetlists[idx];
+    if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
+    SetlistPlayer.launch(sl, sl.name || sl.title || 'Setlist');
+};
+
 window.slShareSetlist = slShareSetlist;
 window.slShareCopyText = slShareCopyText;
 window.slSharePrint = slSharePrint;
