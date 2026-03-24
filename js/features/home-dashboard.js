@@ -2008,7 +2008,12 @@ function renderHdNextRehearsalGoal(bundle) {
 
 function renderHdSongsNeedingWork(bundle) {
     var rc = bundle.readinessCache || {};
+    var _hwSc = (typeof statusCache !== 'undefined') ? statusCache
+        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+    var _hwActive = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     var weak = Object.entries(rc).filter(function(e){
+        var st = (_hwSc && _hwSc[e[0]]) || '';
+        if (!_hwActive[st]) return false;
         var keys = Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;});
         return keys.length && _bandAvgForSong(e[1]) < 3;
     }).sort(function(a,b){return _bandAvgForSong(a[1])-_bandAvgForSong(b[1]);}).slice(0,4);
@@ -2022,7 +2027,7 @@ function renderHdSongsNeedingWork(bundle) {
             '<span style="font-size:11px;font-weight:700;color:'+color+'">'+avg.toFixed(1)+'/5</span>'+
             '</div>';
     }).join('');
-    var total = Object.entries(rc).filter(function(e){ var k=Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;}); return k.length&&_bandAvgForSong(e[1])<3; }).length;
+    var total = Object.entries(rc).filter(function(e){ var st=(_hwSc&&_hwSc[e[0]])||''; if(!_hwActive[st])return false; var k=Object.keys(e[1]||{}).filter(function(k){return typeof e[1][k]==='number'&&e[1][k]>0;}); return k.length&&_bandAvgForSong(e[1])<3; }).length;
     var more = total > 4 ? '<div class="hd-bucket__more">+'+(total-4)+' more below threshold</div>' : '';
     return ['<div class="hd-bucket hd-bucket--weak">',
         '<div class="hd-bucket__header"><span class="hd-bucket__icon">\u26a0\ufe0f</span><span class="hd-bucket__title">SONGS NEEDING WORK</span><span class="hd-bucket__count">'+total+'</span></div>',

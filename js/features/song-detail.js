@@ -1770,7 +1770,7 @@ function _sdPopulateSingLens(title) {
         panel.innerHTML='<div class="sd-panel-inner"><div id="sd-harmony-lab-mount"></div></div>';
         renderHarmonyLab(title,'sd-harmony-lab-mount');
     } else {
-        panel.innerHTML='<div class="sd-panel-inner"><div class="sd-card sd-coming-soon"><div class="sd-cs-icon">🎤</div><div class="sd-cs-title">Harmony Lab</div><div class="sd-cs-desc">Loading…</div></div></div>';
+        panel.innerHTML='<div class="sd-panel-inner"><div class="sd-card sd-coming-soon"><div class="sd-cs-icon">🎤</div><div class="sd-cs-title">Harmony Lab</div><div class="sd-cs-desc">Coming soon</div></div></div>';
     }
 }
 

@@ -215,9 +215,16 @@ function _stonerBuildQueue() {
             agenda.items.forEach(function(item) { if (!seen[item.songId]) { _stonerQueue.push(item.songId); seen[item.songId] = true; } });
         }
     }
-    // 3. Fallback: all rated songs
+    // 3. Fallback: all rated ACTIVE songs
     if (typeof readinessCache !== 'undefined') {
-        Object.keys(readinessCache).forEach(function(title) { if (!seen[title]) { _stonerQueue.push(title); seen[title] = true; } });
+        var _smSc = (typeof statusCache !== 'undefined') ? statusCache : {};
+        var _smActive = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
+        Object.keys(readinessCache).forEach(function(title) {
+            if (seen[title]) return;
+            var st = (_smSc && _smSc[title]) || '';
+            if (!_smActive[st]) return;
+            _stonerQueue.push(title); seen[title] = true;
+        });
     }
     _stonerQueueIdx = 0;
 }
