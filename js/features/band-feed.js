@@ -60,18 +60,38 @@ function _feedHelpViewCount() {
 }
 
 function _feedAdvanceOnboarding() {
-    // Called on any meaningful action — dismiss highlight
-    if (!localStorage.getItem(_FEED_HIGHLIGHT_KEY)) {
+    // Called on any meaningful action — dismiss highlight + show nudge
+    var wasFirst = !localStorage.getItem(_FEED_HIGHLIGHT_KEY);
+    if (wasFirst) {
         localStorage.setItem(_FEED_HIGHLIGHT_KEY, '1');
         var hl = document.querySelector('.feed-first-action');
         if (hl) hl.classList.remove('feed-first-action');
+        // Remove micro-guidance label
+        var mg = document.getElementById('feedMicroGuide');
+        if (mg) mg.remove();
+        // Momentum nudge
+        var fas = _fas();
+        var remaining = 0;
+        if (fas && _feedCache) {
+            var summary = fas.computeSummary(_feedCache, _feedMeta);
+            remaining = summary.needsMyInput - 1; // minus the one just completed
+        }
+        var nudge = remaining > 0 ? ('Nice \u2014 ' + remaining + ' left') : 'Nice \u2014 keep going';
+        _feedShowToast(nudge);
     }
 }
 
 window._feedDismissHelp = function() {
-    localStorage.setItem(_FEED_HELP_KEY, '99'); // never show again
+    localStorage.setItem(_FEED_HELP_KEY, '99');
     var b = document.getElementById('feedHelpBanner');
     if (b) { b.style.opacity = '0'; b.style.transition = 'opacity 0.2s'; setTimeout(function() { b.remove(); }, 250); }
+};
+
+window._feedShowHelpRecall = function() {
+    // Re-show explainer without resetting visit counter
+    var existing = document.getElementById('feedHelpBanner');
+    if (existing) { existing.remove(); return; } // toggle off if already showing
+    _feedRenderHelpBanner(true);
 };
 
 function _feedRenderOnboarding() {
@@ -79,9 +99,12 @@ function _feedRenderOnboarding() {
     if (existing) existing.remove();
 
     var views = _feedHelpViewCount();
-    if (views >= 3) return; // auto-hide after 3 visits
+    if (views >= 3) return;
     localStorage.setItem(_FEED_HELP_KEY, String(views + 1));
+    _feedRenderHelpBanner(false);
+}
 
+function _feedRenderHelpBanner(isRecall) {
     var el = document.getElementById('page-feed');
     if (!el) return;
     var banner = document.createElement('div');
@@ -93,15 +116,15 @@ function _feedRenderOnboarding() {
         + '<div style="font-size:0.78em;color:var(--text-dim);line-height:1.6">'
         + '\uD83D\uDD25 <strong style="color:#fbbf24">I Owe</strong> \u2192 what you need to do<br>'
         + '\u23F3 <strong style="color:#a5b4fc">Waiting</strong> \u2192 what others still need to do<br>'
-        + '\u2705 When this is clear, you\u2019re locked in'
+        + '\u2705 When this is clear, you\u2019re locked in<br>'
+        + '<span style="color:var(--text-muted)">Start by completing the first item below.</span>'
         + '</div></div>'
-        + '<button onclick="_feedDismissHelp()" style="flex-shrink:0;font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u2715</button>'
+        + '<button onclick="' + (isRecall ? '_feedShowHelpRecall()' : '_feedDismissHelp()') + '" style="flex-shrink:0;font-size:0.72em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u2715</button>'
         + '</div>';
 
     var attnBar = document.getElementById('feedAttentionBar');
     if (attnBar) attnBar.parentNode.insertBefore(banner, attnBar);
     else el.insertBefore(banner, el.firstChild);
-
     _injectGuidanceStyles();
 }
 
@@ -131,8 +154,11 @@ window.renderBandFeedPage = async function(el) {
     }
 
     _feedRemoveBackBar();
-    el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCE1 Band Feed</h1>'
-        + '<p>What do you owe? What\u2019s waiting on others? What changed?</p></div>'
+    el.innerHTML = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">'
+        + '<div><h1 style="margin:0">\uD83D\uDCE1 Band Feed</h1>'
+        + '<p style="margin:4px 0 0">What do you owe? What\u2019s waiting on others? What changed?</p></div>'
+        + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
+        + '</div>'
         + '<div id="feedAttentionBar"></div>'
         + '<div id="feedFilterBar"></div>'
         + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed\u2026</div></div>';
@@ -723,6 +749,11 @@ function _feedRenderItem(item, isFirstAction) {
 
     var highlightClass = isFirstAction ? ' feed-first-action' : '';
     var html = '<div id="feedItem_' + safeType + '_' + safeId + '" class="' + highlightClass + '" style="' + cardStyle + '">';
+
+    // Micro-guidance on first action item
+    if (isFirstAction) {
+        html += '<div id="feedMicroGuide" style="font-size:0.68em;font-weight:600;color:#fbbf24;margin-bottom:6px;opacity:0.8">\u2192 Tap to complete this</div>';
+    }
 
     // Header
     html += '<div' + clickAttr + ' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer">'
