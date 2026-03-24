@@ -59,6 +59,7 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(bundle);
         _scheduleActionOwedFill();
+        _scheduleBandAlignFill();
         _renderHdPollCard();
     } catch (err) {
         console.warn('[Home] Load error:', err);
@@ -79,6 +80,7 @@ window.refreshHomeDashboard = function refreshHomeDashboard() {
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(_homeBundle);
         _scheduleActionOwedFill();
+        _scheduleBandAlignFill();
         _renderHdPollCard();
     } else {
         window.renderHomeDashboard();
@@ -382,6 +384,78 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 // Uses FeedActionState as single source of truth. Shows personal action debt
 // or completion state. Populated async after feed data loads.
 
+// ── Band Alignment Card (Lock In mode) ──────────────────────────────────────
+// Shows how close the band is to having all decisions resolved.
+// Uses FeedActionState.computeBandAlignment() — populated async.
+
+function _renderBandAlignmentCard() {
+    return '<div id="hdBandAlignCard" class="app-card home-anim-cards" style="border-left:3px solid rgba(99,102,241,0.3)">'
+        + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<span style="font-size:1em">\uD83C\uDFAF</span>'
+        + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">Band Alignment</span>'
+        + '</div>'
+        + '<div id="hdBandAlignContent" style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">Checking\u2026</div>'
+        + '</div>';
+}
+
+function _fillBandAlignmentCard() {
+    var el = document.getElementById('hdBandAlignContent');
+    var card = document.getElementById('hdBandAlignCard');
+    if (!el || !card) return;
+
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) { el.innerHTML = 'Not available'; return; }
+
+    // Use feed cache if available, otherwise lightweight poll query
+    if (typeof _feedCache !== 'undefined' && _feedCache && typeof _feedMeta !== 'undefined') {
+        var align = fas.computeBandAlignment(_feedCache, _feedMeta);
+        _renderBandAlignContent(el, card, align);
+        return;
+    }
+
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') { el.innerHTML = 'Offline'; return; }
+
+    db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
+        var polls = snap.val();
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var actionable = 0, resolved = 0;
+        if (polls) {
+            Object.values(polls).forEach(function(p) {
+                if (!p || !p.ts) return;
+                actionable++;
+                var vc = p.votes ? Object.keys(p.votes).length : 0;
+                if (vc >= memberCount) resolved++;
+            });
+        }
+        var pct = actionable > 0 ? Math.round((resolved / actionable) * 100) : 100;
+        var label = pct >= 100 ? 'Locked in' : pct >= 75 ? 'Almost there' : pct >= 50 ? 'Making progress' : 'Needs work';
+        _renderBandAlignContent(el, card, { pct: pct, actionable: actionable, resolved: resolved, label: label });
+    }).catch(function() { el.innerHTML = 'Could not load'; });
+}
+
+function _renderBandAlignContent(el, card, align) {
+    var color = align.pct >= 100 ? '#86efac' : align.pct >= 75 ? '#818cf8' : align.pct >= 50 ? '#fbbf24' : '#f87171';
+    card.style.borderLeftColor = align.pct >= 100 ? 'rgba(34,197,94,0.3)' : 'rgba(99,102,241,0.3)';
+
+    var html = '<div style="display:flex;align-items:center;gap:10px">'
+        + '<div style="font-size:1.4em;font-weight:800;color:' + color + ';line-height:1">' + align.pct + '%</div>'
+        + '<div style="flex:1">'
+        + '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:4px">'
+        + '<div style="height:100%;width:' + align.pct + '%;background:' + color + ';border-radius:2px;transition:width 0.4s"></div></div>'
+        + '<div style="font-size:0.78em;font-weight:600;color:' + color + '">' + _escHtml(align.label) + '</div>'
+        + '</div></div>';
+
+    if (align.actionable > 0 && align.pct < 100) {
+        html += '<div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">' + align.resolved + '/' + align.actionable + ' decisions resolved</div>';
+    }
+    el.innerHTML = html;
+}
+
+function _scheduleBandAlignFill() {
+    setTimeout(_fillBandAlignmentCard, 400);
+}
+
 function _renderActionOwedCard() {
     return '<div id="hdActionOwedCard" class="app-card home-anim-cards" style="border-left:3px solid rgba(245,158,11,0.3)">'
         + '<div style="display:flex;align-items:center;gap:8px">'
@@ -616,6 +690,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Here\'s what the band should work on today.'),
         _renderActionOwedCard(),
+        _renderBandAlignmentCard(),
         _renderSessionPlan(bundle),
         _renderBandReadinessSnapshot(bundle),
         _renderSetupGuidance(bundle, wf),

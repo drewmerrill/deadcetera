@@ -972,6 +972,15 @@ function _feedRenderItem(item, isFirstAction) {
 
     if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
 
+    // "Waiting on" indicator for polls where I voted but others haven't
+    if (item.type === 'poll' && state && state.waitingOnOthers && fas) {
+        var waiting = fas.getWaitingMembers(item);
+        if (waiting.length > 0) {
+            var names = waiting.length <= 3 ? waiting.join(', ') : waiting.slice(0, 2).join(', ') + ' +' + (waiting.length - 2) + ' more';
+            html += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px;opacity:0.7">Waiting on: ' + _feedEsc(names) + '</div>';
+        }
+    }
+
     // Inline poll voting — show options when I haven't voted yet
     if (item.type === 'poll' && state && state.needsMyInput && item.pollOptions && item.pollOptions.length) {
         html += '<div style="margin-top:8px" onclick="event.stopPropagation()">';

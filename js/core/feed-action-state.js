@@ -251,6 +251,39 @@ window.FeedActionState = (function() {
         };
     }
 
+    // ── Band Alignment ────────────────────────────────────────────────────
+
+    function computeBandAlignment(items, metaMap) {
+        metaMap = metaMap || {};
+        var actionable = 0, resolved = 0;
+        for (var i = 0; i < items.length; i++) {
+            var meta = metaMap[items[i].type + ':' + items[i].id] || {};
+            if (meta.archived) continue;
+            var tag = meta.tag || items[i].tag || 'fyi';
+            if (tag !== 'needs_input' && tag !== 'mission_critical') continue;
+            actionable++;
+            var state = getActionState(items[i], meta);
+            if (state.isResolved || state.completeForBand) resolved++;
+        }
+        if (actionable === 0) return { pct: 100, actionable: 0, resolved: 0, label: 'All clear' };
+        var pct = Math.round((resolved / actionable) * 100);
+        var label = pct >= 100 ? 'Locked in' : pct >= 75 ? 'Almost there' : pct >= 50 ? 'Making progress' : 'Needs work';
+        return { pct: pct, actionable: actionable, resolved: resolved, label: label };
+    }
+
+    // Determine who hasn't responded to a poll
+    function getWaitingMembers(item) {
+        if (item.type !== 'poll' || !item.pollVotes) return [];
+        var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var voted = item.pollVotes || {};
+        var waiting = [];
+        Object.keys(members).forEach(function(key) {
+            var name = members[key].name;
+            if (name && voted[name] === undefined) waiting.push(name);
+        });
+        return waiting;
+    }
+
     function sortByPriority(items, metaMap) {
         metaMap = metaMap || {};
         var decorated = items.map(function(item) {
@@ -390,6 +423,10 @@ window.FeedActionState = (function() {
 
         // Actions
         voteOnPoll: voteOnPoll,
+
+        // Band alignment
+        computeBandAlignment: computeBandAlignment,
+        getWaitingMembers: getWaitingMembers,
 
         // Nav badge
         setActionCount: setActionCount, getActionCount: getActionCount,
