@@ -344,11 +344,11 @@ function _feedRenderCreateBar() {
         nudge = '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px;opacity:0.7">Have an idea? Add something for the band.</div>';
     }
     bar.innerHTML = nudge
-        + '<div style="display:flex;gap:6px;margin-bottom:6px">'
-        + '<input id="feedQuickAdd" type="text" placeholder="Quick note\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.82em;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);color:var(--text);outline:none">'
-        + '<button onclick="_feedQuickPost()" style="flex-shrink:0;font-size:0.78em;font-weight:700;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u2191</button>'
+        + '<div style="display:flex;gap:6px;margin-bottom:8px">'
+        + '<input id="feedQuickAdd" type="text" placeholder="Share something with the band\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.85em;padding:10px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.15);background:rgba(0,0,0,0.12);color:var(--text);outline:none" onfocus="this.style.borderColor=\'rgba(99,102,241,0.35)\'" onblur="this.style.borderColor=\'rgba(99,102,241,0.15)\'">'
+        + '<button onclick="_feedQuickPost()" title="Send" style="flex-shrink:0;font-size:0.85em;font-weight:700;padding:10px 16px;border-radius:10px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u2191</button>'
         + '</div>'
-        + '<button onclick="_feedToggleCreateMenu()" id="feedCreateBtn" style="display:flex;align-items:center;gap:6px;width:100%;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px dashed rgba(99,102,241,0.2);background:none;color:var(--text-dim);font-size:0.78em;font-weight:600;text-align:left;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.04)\'" onmouseout="this.style.background=\'none\'">'
+        + '<button onclick="_feedToggleCreateMenu()" id="feedCreateBtn" style="display:flex;align-items:center;gap:6px;width:100%;padding:7px 14px;border-radius:8px;cursor:pointer;border:1px dashed rgba(99,102,241,0.15);background:none;color:var(--text-dim);font-size:0.75em;font-weight:600;text-align:left;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.04)\'" onmouseout="this.style.background=\'none\'">'
         + '<span style="color:#a5b4fc">+</span> Poll, Idea, or more</button>'
         + '<div id="feedCreateMenu" style="display:none;margin-top:6px;padding:6px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
         + '<button onclick="_feedCreateItem(\'poll\')" style="display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;color:var(--text-muted);font-size:0.82em;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDDF3\uFE0F Poll / Decision</button>'
@@ -534,9 +534,9 @@ window.renderBandFeedPage = async function(el) {
     }
 
     _feedRemoveBackBar();
-    el.innerHTML = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">'
-        + '<div><h1 style="margin:0">\uD83D\uDCE1 Band Feed</h1>'
-        + '<p style="margin:4px 0 0">What do you owe? What\u2019s waiting on others? What changed?</p></div>'
+    el.innerHTML = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:12px;border-bottom:2px solid rgba(99,102,241,0.15);margin-bottom:12px">'
+        + '<div><h1 style="margin:0;font-size:1.4em">\uD83D\uDCE1 Band Feed</h1>'
+        + '<p style="margin:4px 0 0;font-size:0.82em;color:var(--text-dim)">What do you owe? What\u2019s waiting? What changed?</p></div>'
         + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
         + '</div>'
         + '<div id="feedCreateBar" style="margin-bottom:8px"></div>'
@@ -585,12 +585,12 @@ function _feedRenderAttentionBar(items) {
     var summary = fas.computeSummary(items, _feedMeta);
 
     if (summary.allClear) {
-        var acHtml = '<div style="padding:14px 16px;background:linear-gradient(135deg,rgba(34,197,94,0.08),rgba(16,185,129,0.04));border:1px solid rgba(34,197,94,0.2);border-radius:12px;margin-bottom:10px;display:flex;align-items:center;gap:12px">'
-            + '<div style="width:36px;height:36px;border-radius:50%;background:rgba(34,197,94,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:1.2em">\u2705</span></div>'
-            + '<div><div style="font-size:0.88em;font-weight:800;color:#86efac">You\u2019re locked in.</div>'
-            + '<div style="font-size:0.78em;color:var(--text-dim);margin-top:1px">Nothing needs you right now.</div>';
+        var acHtml = '<div style="padding:16px 18px;background:linear-gradient(135deg,rgba(34,197,94,0.08),rgba(16,185,129,0.04));border:1px solid rgba(34,197,94,0.2);border-radius:12px;margin-bottom:10px;display:flex;align-items:center;gap:14px">'
+            + '<div style="width:40px;height:40px;border-radius:50%;background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:1.3em">\u2705</span></div>'
+            + '<div><div style="font-size:0.92em;font-weight:800;color:#86efac">You\u2019re locked in.</div>'
+            + '<div style="font-size:0.78em;color:#6ee7b7;margin-top:2px">The band is tighter because you showed up.</div>';
         if (summary.waitingOnBand > 0) {
-            acHtml += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px;opacity:0.7">Waiting on band: ' + summary.waitingOnBand + ' item' + (summary.waitingOnBand > 1 ? 's' : '') + '</div>';
+            acHtml += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px;opacity:0.7">Waiting on band: ' + summary.waitingOnBand + ' item' + (summary.waitingOnBand > 1 ? 's' : '') + '</div>';
         }
         acHtml += '</div></div>';
         bar.innerHTML = acHtml;
@@ -1152,11 +1152,12 @@ function _feedRender(items) {
     }
 
     if (!html) {
-        html = '<div style="text-align:center;padding:40px">'
-            + '<div style="font-size:1.2em;margin-bottom:4px">\u2705</div>'
-            + '<div style="font-size:0.88em;font-weight:700;color:#86efac;margin-bottom:4px">You\u2019re locked in</div>'
-            + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Nothing blocking rehearsal</div>'
-            + '<button onclick="_feedCreateItem(\'note\')" style="font-size:0.78em;font-weight:700;padding:8px 18px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">+ Add something for the band</button>'
+        html = '<div style="text-align:center;padding:48px 20px">'
+            + '<div style="font-size:1.6em;margin-bottom:8px">\u2705</div>'
+            + '<div style="font-size:1em;font-weight:800;color:#86efac;margin-bottom:4px">You\u2019re locked in</div>'
+            + '<div style="font-size:0.82em;color:#6ee7b7;margin-bottom:4px">Nothing blocking rehearsal.</div>'
+            + '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:16px">The band is tighter because you showed up.</div>'
+            + '<button onclick="_feedCreateItem(\'note\')" style="font-size:0.82em;font-weight:700;padding:10px 22px;border-radius:10px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">+ Add something for the band</button>'
             + '</div>';
     }
     el.innerHTML = html;

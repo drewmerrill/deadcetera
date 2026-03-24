@@ -469,13 +469,13 @@ function _scheduleBandAlignFill() {
 }
 
 function _renderActionOwedCard() {
-    return '<div id="hdActionOwedCard" class="app-card home-anim-cards" style="border-left:3px solid rgba(245,158,11,0.3);cursor:pointer" onclick="showPage(\'feed\')">'
+    return '<div id="hdActionOwedCard" class="app-card home-anim-cards" style="border-left:4px solid rgba(245,158,11,0.4);cursor:pointer;background:linear-gradient(135deg,var(--bg-card,#1e293b),rgba(245,158,11,0.02));box-shadow:0 2px 12px rgba(0,0,0,0.15)" onclick="showPage(\'feed\')">'
         + '<div style="display:flex;align-items:center;gap:8px">'
-        + '<span style="font-size:1em">\uD83D\uDCE1</span>'
-        + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">Band Feed</span>'
-        + '<span style="margin-left:auto;font-size:0.72em;color:var(--text-dim)">\u2192</span>'
+        + '<span style="font-size:1.1em">\uD83D\uDCE1</span>'
+        + '<span style="font-size:0.9em;font-weight:800;color:var(--text)">Band Feed</span>'
+        + '<span style="margin-left:auto;font-size:0.75em;font-weight:600;color:#a5b4fc;padding:3px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06)">Open \u2192</span>'
         + '</div>'
-        + '<div id="hdActionOwedContent" style="margin-top:8px;font-size:0.82em;color:var(--text-dim)">Checking\u2026</div>'
+        + '<div id="hdActionOwedContent" style="margin-top:10px;font-size:0.82em;color:var(--text-dim)">Checking\u2026</div>'
         + '</div>';
 }
 
@@ -545,13 +545,12 @@ function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, t
 
     // Action owed state
     card.style.borderLeftColor = 'rgba(245,158,11,0.5)';
-    var html = '<div style="font-weight:700;color:#fbbf24;margin-bottom:6px">'
+    var html = '<div style="font-weight:800;color:#fbbf24;font-size:0.9em;margin-bottom:6px">'
         + summary.needsMyInput + ' item' + (summary.needsMyInput > 1 ? 's' : '') + ' need your input</div>';
 
-    // Show top items if available
+    // Show top items — first one gets "Do this next:" emphasis
     var items = topItems || [];
     if (!items.length && feedCache && fas) {
-        // Extract top 3 from feed cache
         for (var i = 0; i < feedCache.length && items.length < 3; i++) {
             var meta = feedMeta ? (feedMeta[feedCache[i].type + ':' + feedCache[i].id] || {}) : {};
             var state = fas.getActionState(feedCache[i], meta);
@@ -561,11 +560,15 @@ function _renderActionOwedContent(el, card, summary, feedCache, feedMeta, fas, t
         }
     }
     if (items.length) {
-        items.forEach(function(it) {
-            var t = (it.text || '').substring(0, 60);
-            if ((it.text || '').length > 60) t += '\u2026';
-            html += '<div style="font-size:0.85em;color:var(--text-muted);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">\u2022 ' + _escHtml(t) + '</div>';
-        });
+        var first = items[0];
+        var ft = (first.text || '').substring(0, 55);
+        if ((first.text || '').length > 55) ft += '\u2026';
+        html += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;font-weight:600">\u25B6 Do this next: ' + _escHtml(ft) + '</div>';
+        for (var ii = 1; ii < items.length; ii++) {
+            var t = (items[ii].text || '').substring(0, 55);
+            if ((items[ii].text || '').length > 55) t += '\u2026';
+            html += '<div style="font-size:0.82em;color:var(--text-dim);padding:2px 0">\u2022 ' + _escHtml(t) + '</div>';
+        }
     }
 
     el.innerHTML = html;
@@ -582,8 +585,10 @@ function _scheduleActionOwedFill() {
 function _renderModeHeader(icon, title, subtitle) {
     var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
-    // Mode micro-guidance — subtle context for what this mode is about
-    // Auto-hides after 3 views per mode
+    // Mode color accent
+    var modeColor = { 'Sharpen': '#f97316', 'Lock In': '#6366f1', 'Play': '#10b981' }[title] || '#6366f1';
+
+    // Mode micro-guidance
     var guidanceHtml = '';
     var modeGuide = {
         'Sharpen': 'Personal reps. Get your part down before rehearsal.',
@@ -600,9 +605,9 @@ function _renderModeHeader(icon, title, subtitle) {
         }
     }
 
-    return '<div class="hd-cc-header home-anim-header">'
+    return '<div class="hd-cc-header home-anim-header" style="border-bottom:2px solid ' + modeColor + '">'
         + '<div class="hd-cc-header__left">'
-        + '<div class="hd-cc-header__title">' + icon + ' ' + title + '</div>'
+        + '<div class="hd-cc-header__title" style="color:' + modeColor + '">' + icon + ' ' + title + '</div>'
         + '<div class="hd-cc-header__date">' + dateStr + '</div>'
         + '</div>'
         + '</div>'
