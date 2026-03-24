@@ -646,12 +646,198 @@ window.ListeningBundles = (function() {
         else window.open(playlistUrl, '_blank');
 
         // Detailed feedback
+        var syncResult = { ok: true, matched: resolved.matched, locked: resolved.locked, searched: resolved.searched, failed: resolved.failed, failedSongs: resolved.failedSongs, playlistId: playlistId };
+        _lastSyncResult = syncResult;
+
         var msg = resolved.matched + ' songs synced';
         if (resolved.failed > 0) msg += ', ' + resolved.failed + ' need review';
         msg += ' \u2014 opening Spotify';
         if (typeof showToast === 'function') showToast(msg);
 
-        return { ok: true, matched: resolved.matched, locked: resolved.locked, searched: resolved.searched, failed: resolved.failed, failedSongs: resolved.failedSongs, playlistId: playlistId };
+        // Auto-show review if there are failed songs
+        if (resolved.failed > 0) {
+            setTimeout(function() { showReviewAfterSync(syncResult); }, 1500);
+        }
+
+        return syncResult;
+    }
+
+    // ── Review & Fix Matches ───────────────────────────────────────────────
+    //
+    // After sync, if songs failed to match, user can review and fix them.
+    // Searching Spotify returns candidates; selecting one locks the track ID.
+
+    var _lastSyncResult = null;
+
+    function getLastSyncResult() { return _lastSyncResult; }
+
+    async function searchSpotifyForSong(songTitle) {
+        if (!_getSpotifyToken()) return [];
+        var q = encodeURIComponent(songTitle);
+        var data = await _spotifyApi('/search?q=' + q + '&type=track&limit=5');
+        if (!data || !data.tracks || !data.tracks.items) return [];
+        return data.tracks.items.map(function(t) {
+            return {
+                trackId: t.id,
+                name: t.name,
+                artist: t.artists && t.artists.length ? t.artists[0].name : '',
+                album: t.album ? t.album.name : '',
+                uri: t.uri,
+                url: t.external_urls ? t.external_urls.spotify : ''
+            };
+        });
+    }
+
+    async function lockSpotifyTrack(songTitle, trackId, trackUrl) {
+        if (!songTitle || !trackId) return false;
+        try {
+            var versions = (typeof loadBandDataFromDrive === 'function')
+                ? await loadBandDataFromDrive(songTitle, 'spotify_versions') : null;
+            var arr = versions ? (Array.isArray(versions) ? versions : Object.values(versions)) : [];
+
+            // Check if already locked to this track
+            var existing = arr.find(function(v) { return v && v.spotifyTrackId === trackId; });
+            if (existing && existing.spotifyMatchLocked) return true;
+
+            // Add or update locked version
+            var newVersion = {
+                id: 'spotify_locked_' + Date.now(),
+                url: trackUrl || ('https://open.spotify.com/track/' + trackId),
+                spotifyTrackId: trackId,
+                spotifyMatchLocked: true,
+                platform: 'spotify',
+                title: 'Spotify (locked)',
+                isDefault: false,
+                addedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : 'system',
+                dateAdded: new Date().toISOString().split('T')[0],
+                notes: 'Locked via match review'
+            };
+            arr.push(newVersion);
+            if (typeof saveBandDataToDrive === 'function') {
+                await saveBandDataToDrive(songTitle, 'spotify_versions', arr);
+            }
+            return true;
+        } catch(e) {
+            console.warn('[Spotify] Lock failed:', e);
+            return false;
+        }
+    }
+
+    // Render review UI into a container
+    function renderReviewUI(containerId, failedSongs, onComplete) {
+        var el = document.getElementById(containerId);
+        if (!el) return;
+        if (!failedSongs || !failedSongs.length) {
+            el.innerHTML = '<div style="text-align:center;padding:16px;color:#86efac;font-size:0.85em;font-weight:700">\u2705 All songs matched</div>';
+            return;
+        }
+
+        var html = '<div style="padding:12px">'
+            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:8px">' + failedSongs.length + ' song' + (failedSongs.length > 1 ? 's' : '') + ' need review</div>';
+        failedSongs.forEach(function(title, idx) {
+            var safeTitle = (title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            html += '<div id="spReviewItem_' + idx + '" style="padding:10px;margin-bottom:6px;background:var(--bg-card,#1e293b);border:1px solid rgba(245,158,11,0.15);border-radius:8px">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">'
+                + '<span style="font-size:0.85em;font-weight:700;color:var(--text)">' + (title || '') + '</span>'
+                + '<button onclick="ListeningBundles._reviewSearch(' + idx + ',\'' + safeTitle + '\')" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Search</button>'
+                + '</div>'
+                + '<div id="spReviewResults_' + idx + '" style="font-size:0.78em;color:var(--text-dim)">Tap Search to find on Spotify</div>'
+                + '</div>';
+        });
+        html += '</div>';
+        el.innerHTML = html;
+        // Store callback
+        el._onComplete = onComplete;
+        el._failedSongs = failedSongs;
+        el._fixedCount = 0;
+    }
+
+    // Search handler (called from onclick)
+    async function _reviewSearch(idx, songTitle) {
+        var resultsEl = document.getElementById('spReviewResults_' + idx);
+        if (!resultsEl) return;
+        resultsEl.innerHTML = '<span style="color:var(--text-dim)">Searching\u2026</span>';
+
+        var results = await searchSpotifyForSong(songTitle);
+        if (!results.length) {
+            resultsEl.innerHTML = '<span style="color:#f87171">No results found. Try a different search.</span>'
+                + '<div style="margin-top:4px"><input id="spReviewCustomSearch_' + idx + '" type="text" value="' + (songTitle || '').replace(/"/g, '&quot;') + '" placeholder="Custom search\u2026" style="font-size:0.82em;padding:5px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);width:70%;box-sizing:border-box">'
+                + ' <button onclick="ListeningBundles._reviewCustomSearch(' + idx + ')" style="font-size:0.72em;padding:4px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Search</button></div>';
+            return;
+        }
+
+        var html = '';
+        results.forEach(function(r) {
+            html += '<div onclick="ListeningBundles._reviewSelect(' + idx + ',\'' + r.trackId + '\',\'' + (r.url || '').replace(/'/g, "\\'") + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:3px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.04);transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.06)\'" onmouseout="this.style.background=\'none\'">'
+                + '<div style="flex:1;min-width:0"><div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.name || '') + '</div>'
+                + '<div style="font-size:0.85em;color:var(--text-dim)">' + (r.artist || '') + ' \u00B7 ' + (r.album || '') + '</div></div>'
+                + '<span style="font-size:0.72em;color:var(--text-dim);flex-shrink:0">Select</span>'
+                + '</div>';
+        });
+        resultsEl.innerHTML = html;
+    }
+
+    async function _reviewCustomSearch(idx) {
+        var inp = document.getElementById('spReviewCustomSearch_' + idx);
+        if (!inp || !inp.value.trim()) return;
+        await _reviewSearch(idx, inp.value.trim());
+    }
+
+    async function _reviewSelect(idx, trackId, trackUrl) {
+        var container = document.getElementById('spReviewItem_' + idx);
+        if (!container) return;
+        var parent = container.closest('[id]');
+        var songTitle = parent && parent._failedSongs ? parent._failedSongs[idx] : null;
+
+        // Try to get songTitle from the item header
+        if (!songTitle) {
+            var header = container.querySelector('span');
+            songTitle = header ? header.textContent : null;
+        }
+
+        container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px"><span style="color:#86efac">\u2705</span><span style="font-size:0.85em;font-weight:600;color:#86efac">Locked</span></div>';
+
+        if (songTitle) {
+            var locked = await lockSpotifyTrack(songTitle, trackId, trackUrl);
+            if (!locked) {
+                container.innerHTML = '<div style="color:#f87171;font-size:0.82em">Failed to save \u2014 try again</div>';
+                return;
+            }
+        }
+
+        // Track completion
+        var reviewContainer = document.getElementById(container.parentElement ? container.parentElement.id : '');
+        if (reviewContainer && reviewContainer._failedSongs) {
+            reviewContainer._fixedCount = (reviewContainer._fixedCount || 0) + 1;
+            if (reviewContainer._fixedCount >= reviewContainer._failedSongs.length && reviewContainer._onComplete) {
+                reviewContainer._onComplete();
+            }
+        }
+        if (typeof showToast === 'function') showToast('\u2705 Track locked for future syncs');
+    }
+
+    // Show review modal/panel after sync
+    function showReviewAfterSync(result) {
+        if (!result || !result.failedSongs || !result.failedSongs.length) return;
+        _lastSyncResult = result;
+
+        // Create review overlay
+        var overlay = document.createElement('div');
+        overlay.id = 'spReviewOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px';
+        overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;max-width:400px;width:100%;max-height:80vh;overflow-y:auto">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06)">'
+            + '<span style="font-size:0.9em;font-weight:700;color:var(--text)">\uD83D\uDD0D Review Spotify Matches</span>'
+            + '<button onclick="document.getElementById(\'spReviewOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em">\u2715</button>'
+            + '</div>'
+            + '<div id="spReviewContent"></div>'
+            + '</div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+
+        renderReviewUI('spReviewContent', result.failedSongs, function() {
+            if (typeof showToast === 'function') showToast('All matches fixed \u2014 sync again for updated playlist');
+        });
     }
 
     // ── PKCE Helpers ────────────────────────────────────────────────────────
@@ -696,6 +882,16 @@ window.ListeningBundles = (function() {
         handleSpotifyCallback: handleSpotifyCallback,
         syncToSpotify: syncToSpotify,
         resolveSpotifyTrackIds: resolveSpotifyTrackIds,
+
+        // Review & Fix
+        searchSpotifyForSong: searchSpotifyForSong,
+        lockSpotifyTrack: lockSpotifyTrack,
+        showReviewAfterSync: showReviewAfterSync,
+        renderReviewUI: renderReviewUI,
+        getLastSyncResult: getLastSyncResult,
+        _reviewSearch: _reviewSearch,
+        _reviewCustomSearch: _reviewCustomSearch,
+        _reviewSelect: _reviewSelect,
 
         // UI
         renderDestinationChooser: renderDestinationChooser,
