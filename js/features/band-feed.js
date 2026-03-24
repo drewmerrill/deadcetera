@@ -502,9 +502,6 @@ window._feedSubmitCreate = async function(type) {
             var ideaData = { title: text, link: link, author: author, ts: new Date().toISOString(), tag: 'needs_input' };
             Object.assign(ideaData, targetPayload);
             await db.ref(bandPath('ideas/posts')).push(ideaData);
-                title: text, link: link, author: author,
-                ts: new Date().toISOString(), tag: 'needs_input'
-            });
         } else if (type === 'note') {
             await db.ref(bandPath('ideas/posts')).push({
                 title: text, author: author,
