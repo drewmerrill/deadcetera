@@ -1,12 +1,10 @@
 // ============================================================================
-// js/core/playback-session.js — Playback Orchestrator
+// js/core/playback-session.js — Playback Orchestrator v2
 //
 // Single entry point for all playback. Enforces terminal states.
-// Every attempt resolves to: playing | fallback_shown | error
-//
 // State machine: idle → preparing → ready → starting → playing | fallback | error
 //
-// DEPENDS ON: ListeningBundles, SetlistPlayer, openMusicLink, showToast
+// DEPENDS ON: ListeningBundles, openMusicLink, showToast
 // LOAD ORDER: after listening-bundles.js
 // ============================================================================
 
@@ -18,73 +16,67 @@ window.PlaybackSession = (function() {
 
     var STATES = { IDLE: 'idle', PREPARING: 'preparing', READY: 'ready', STARTING: 'starting', PLAYING: 'playing', FALLBACK: 'fallback', ERROR: 'error' };
     var _state = STATES.IDLE;
-    var _bundle = null;       // current bundle result
+    var _bundle = null;
     var _trackIdx = 0;
     var _bundleType = '';
     var _destination = '';
 
     function getState() { return _state; }
+    function _setState(s) { _state = s; }
 
-    function _setState(s) {
-        _state = s;
-        console.log('[Playback] State:', s);
-    }
-
-    // ── Spotify State Resolver ──────────────────────────────────────────────
-    //
-    // Single source of truth for Spotify connection + playlist state.
-    // Called by all UI surfaces. No ad-hoc render-time logic.
+    // ── Spotify State Resolver (4 states) ───────────────────────────────────
 
     function getSpotifyState(bundleType) {
         var lb = (typeof ListeningBundles !== 'undefined') ? ListeningBundles : null;
-        if (!lb) return 'unavailable';
+        if (!lb || !lb.isSpotifyConnected) return 'disconnected';
 
-        // Check config
-        var failState = null;
-        try { failState = lb._getSpotifyFailureState ? lb._getSpotifyFailureState() : null; } catch(e) {}
+        if (!lb.isSpotifyConnected()) return 'disconnected';
 
-        if (!lb.isSpotifyConnected()) {
-            return 'disconnected'; // → "Connect Spotify"
-        }
-
-        // Connected — check playlist
         var playlists = {};
         try { playlists = JSON.parse(localStorage.getItem('gl_spotify_playlists') || '{}'); } catch(e) {}
-        if (!playlists[bundleType]) {
-            return 'connected_no_playlist'; // → "Create Playlist"
-        }
+        if (!playlists[bundleType]) return 'connected_no_playlist';
 
-        // Has playlist — check if stale (bundle hash changed since last sync)
+        // Check staleness via sync hash
         var lastHash = null;
         try { lastHash = sessionStorage.getItem('gl_sync_hash_' + bundleType); } catch(e) {}
-        if (lastHash === null) {
-            return 'synced'; // can't determine staleness without computing bundle
-        }
+        // If we have a hash stored from a previous sync and it differs from current,
+        // we'd mark stale. For now, if a playlist exists and we can't prove staleness, it's synced.
+        // Staleness detected: when ListeningBundles stores hash after sync, we compare.
+        var currentHash = null;
+        try { currentHash = sessionStorage.getItem('gl_current_bundle_hash_' + bundleType); } catch(e) {}
+        if (lastHash && currentHash && lastHash !== currentHash) return 'stale';
 
-        return 'synced'; // → "✅ Synced to Spotify"
+        return 'synced';
     }
 
     function getSpotifyLabel(bundleType) {
-        var state = getSpotifyState(bundleType);
         var labels = {
             'disconnected':          '\uD83C\uDFB5 Connect Spotify',
             'connected_no_playlist': '\uD83C\uDFB5 Create Playlist',
             'synced':                '\u2705 Synced to Spotify',
-            'unavailable':           '\uD83C\uDFB5 Spotify'
+            'stale':                 '\uD83D\uDD04 Update Playlist'
         };
-        return labels[state] || labels.unavailable;
+        return labels[getSpotifyState(bundleType)] || labels.disconnected;
     }
 
     function getSpotifyStyle(bundleType) {
         var state = getSpotifyState(bundleType);
         if (state === 'synced') return 'border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac';
+        if (state === 'stale') return 'border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24';
         if (state === 'disconnected' || state === 'connected_no_playlist') return 'border:1px solid rgba(30,215,96,0.3);background:rgba(30,215,96,0.08);color:#1ed760';
         return 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)';
+    }
+
+    // ── Interaction Lock ────────────────────────────────────────────────────
+
+    function _isLocked() {
+        return _state === STATES.PREPARING || _state === STATES.STARTING;
     }
 
     // ── Prepare Bundle ──────────────────────────────────────────────────────
 
     async function preparePlaybackBundle(bundleType, destination) {
+        if (_isLocked()) return null; // prevent double-trigger
         _setState(STATES.PREPARING);
         _bundleType = bundleType;
         _destination = destination || 'spotify';
@@ -122,9 +114,9 @@ window.PlaybackSession = (function() {
     // ── Launch ──────────────────────────────────────────────────────────────
 
     function launchPlaybackOption(opts) {
+        if (_isLocked()) return; // prevent double-trigger
         opts = opts || {};
-        var idx = opts.trackIndex || _trackIdx;
-        var source = opts.source || _destination;
+        var idx = (typeof opts.trackIndex === 'number') ? opts.trackIndex : _trackIdx;
 
         if (!_bundle || !_bundle.urls || !_bundle.urls.length) {
             _setState(STATES.ERROR);
@@ -139,13 +131,11 @@ window.PlaybackSession = (function() {
         var item = sorted[idx];
         if (!item || !item.url) {
             _setState(STATES.FALLBACK);
-            _showError('No playable URL for this track');
+            _showError('No playable URL \u2014 tap below to search manually');
             return;
         }
 
         _setState(STATES.STARTING);
-
-        // Detect source from URL
         var detectedSource = _detectSource(item.url);
 
         try {
@@ -155,11 +145,13 @@ window.PlaybackSession = (function() {
             _showNowPlayingBar(item, detectedSource, sorted);
         } catch(e) {
             _setState(STATES.ERROR);
-            _showError('Couldn\u2019t start playback \u2014 try opening manually');
+            _showError('Popup blocked \u2014 tap the link below to open');
+            _showFallbackOverlay(_bundle._raw || { songs: [{ songTitle: item.songTitle }] });
         }
     }
 
     function advancePlaybackBundle() {
+        if (_isLocked()) return;
         _trackIdx++;
         if (!_bundle || !_bundle.urls) return;
         var sorted = _bundle.urls.sort(function(a, b) { return a.order - b.order; });
@@ -175,7 +167,7 @@ window.PlaybackSession = (function() {
     // ── Source Detection ────────────────────────────────────────────────────
 
     function _detectSource(url) {
-        if (!url) return 'link';
+        if (!url) return 'Link';
         var l = url.toLowerCase();
         if (l.indexOf('spotify.com') >= 0) return 'Spotify';
         if (l.indexOf('youtube.com') >= 0 || l.indexOf('youtu.be') >= 0) return 'YouTube';
@@ -183,7 +175,7 @@ window.PlaybackSession = (function() {
         return 'Link';
     }
 
-    // ── Now Playing Bar ─────────────────────────────────────────────────────
+    // ── Now Playing Bar (with source context) ───────────────────────────────
 
     function _showNowPlayingBar(item, source, allItems) {
         _removeBar();
@@ -191,6 +183,7 @@ window.PlaybackSession = (function() {
         var hasNext = nextIdx < allItems.length;
         var nextItem = hasNext ? allItems[nextIdx] : null;
         var nextSource = nextItem ? _detectSource(nextItem.url) : '';
+        var sourceChanged = hasNext && nextSource !== source;
 
         var bar = document.createElement('div');
         bar.id = 'glPlaybackBar';
@@ -198,8 +191,9 @@ window.PlaybackSession = (function() {
 
         var info = '<div style="flex:1;min-width:0">'
             + '<div style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(item.songTitle) + '</div>'
-            + '<div style="font-size:0.68em;color:#64748b">Playing from ' + source + (hasNext ? (' \u00B7 Next: ' + _esc(nextItem.songTitle) + (nextSource !== source ? ' (' + nextSource + ')' : '')) : ' \u00B7 Last song') + '</div>'
-            + '</div>';
+            + '<div style="font-size:0.68em;color:#64748b">Playing from ' + source
+            + (hasNext ? (' \u00B7 Next: ' + _esc(nextItem.songTitle) + (sourceChanged ? ' (' + nextSource + ')' : '')) : ' \u00B7 Last song')
+            + '</div></div>';
 
         var controls = hasNext
             ? '<button onclick="PlaybackSession.advancePlaybackBundle()" style="padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.8em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;white-space:nowrap">Next \u2192</button>'
@@ -213,6 +207,7 @@ window.PlaybackSession = (function() {
     function _removeBar() {
         var el = document.getElementById('glPlaybackBar');
         if (el) el.remove();
+        if (_state === STATES.PLAYING) _setState(STATES.IDLE);
     }
 
     // ── Fallback Overlay ────────────────────────────────────────────────────
@@ -221,15 +216,15 @@ window.PlaybackSession = (function() {
         var existing = document.getElementById('glPlaybackFallback');
         if (existing) existing.remove();
 
-        var firstSong = bundle.songs[0];
+        var firstSong = bundle.songs && bundle.songs[0];
         var q = encodeURIComponent((firstSong ? firstSong.songTitle : '') + ' Grateful Dead');
 
         var overlay = document.createElement('div');
         overlay.id = 'glPlaybackFallback';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
         overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:24px;max-width:340px;width:100%;text-align:center">'
-            + '<div style="font-size:1em;font-weight:800;color:#e2e8f0;margin-bottom:6px">Pick where to listen</div>'
-            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">We couldn\u2019t match automatically \u2014 choose a platform:</div>'
+            + '<div style="font-size:1em;font-weight:800;color:#e2e8f0;margin-bottom:6px">No matches found</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px">Try searching manually:</div>'
             + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
             + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glPlaybackFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.05);color:#f87171;text-decoration:none">\uD83D\uDCFA YouTube</a>'
             + '<a href="https://open.spotify.com/search/' + q + '" target="_blank" rel="noopener" onclick="this.closest(\'#glPlaybackFallback\').remove()" style="padding:10px 20px;border-radius:8px;font-size:0.85em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:rgba(30,215,96,0.05);color:#1ed760;text-decoration:none">\uD83C\uDFB5 Spotify</a>'
@@ -241,7 +236,7 @@ window.PlaybackSession = (function() {
         document.body.appendChild(overlay);
     }
 
-    // ── Error ───────────────────────────────────────────────────────────────
+    // ── Error (actionable) ──────────────────────────────────────────────────
 
     function _showError(msg) {
         if (typeof showToast === 'function') showToast('\u26A0\uFE0F ' + msg);
@@ -249,82 +244,91 @@ window.PlaybackSession = (function() {
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
-    // ── Help System ─────────────────────────────────────────────────────────
+    // ── Help System (object storage) ────────────────────────────────────────
     //
-    // Per-surface one-time help. Stored in localStorage gl_help_flags.
-    // "?" button replays. "Got it" dismisses permanently.
+    // Storage shape: { surface: { seen: bool, disabled: bool } }
+    // Auto-trigger: only if !seen && !disabled
+    // "Got it": sets seen=true
+    // "Don't show again": sets disabled=true
+    // "?" replay: works even if seen, NOT if disabled
 
     var _HELP_KEY = 'gl_help_flags';
 
-    function _getHelpFlags() {
+    function _getHelpData() {
         try { return JSON.parse(localStorage.getItem(_HELP_KEY) || '{}'); } catch(e) { return {}; }
     }
 
-    function _setHelpFlag(surface, val) {
-        var flags = _getHelpFlags();
-        flags[surface] = val;
-        try { localStorage.setItem(_HELP_KEY, JSON.stringify(flags)); } catch(e) {}
+    function _setHelpData(surface, data) {
+        var all = _getHelpData();
+        all[surface] = data;
+        try { localStorage.setItem(_HELP_KEY, JSON.stringify(all)); } catch(e) {}
+    }
+
+    function _getSurfaceHelp(surface) {
+        var all = _getHelpData();
+        return all[surface] || { seen: false, disabled: false };
     }
 
     function shouldShowHelp(surface) {
-        var flags = _getHelpFlags();
-        return !flags[surface];
+        var h = _getSurfaceHelp(surface);
+        return !h.seen && !h.disabled;
     }
 
     function dismissHelp(surface) {
-        _setHelpFlag(surface, true);
+        // "Got it" — marks seen but not disabled (can replay)
+        var h = _getSurfaceHelp(surface);
+        h.seen = true;
+        _setHelpData(surface, h);
     }
 
-    function resetHelp(surface) {
-        _setHelpFlag(surface, false);
+    function disableHelp(surface) {
+        // "Don't show again" — permanently disabled
+        var h = _getSurfaceHelp(surface);
+        h.seen = true;
+        h.disabled = true;
+        _setHelpData(surface, h);
+    }
+
+    function canReplayHelp(surface) {
+        var h = _getSurfaceHelp(surface);
+        return !h.disabled;
     }
 
     function showSurfaceHelp(surface, text, targetId) {
-        if (!shouldShowHelp(surface) && !targetId) return;
-        // Use spotlight if available
+        var forceReplay = !!targetId;
+        if (!forceReplay && !shouldShowHelp(surface)) return;
+        if (forceReplay && !canReplayHelp(surface)) return;
+
         if (typeof glSpotlight !== 'undefined' && glSpotlight.run) {
             glSpotlight.run('help_' + surface, [
                 { target: targetId || 'body', text: text }
-            ], { force: !!targetId });
-            if (!targetId) dismissHelp(surface);
+            ], { force: forceReplay });
+            if (!forceReplay) dismissHelp(surface);
             return;
         }
-        // Fallback: toast
         if (typeof showToast === 'function') showToast(text);
-        dismissHelp(surface);
+        if (!forceReplay) dismissHelp(surface);
     }
 
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
-        // State
-        getState: getState,
-        STATES: STATES,
-
-        // Spotify
-        getSpotifyState: getSpotifyState,
-        getSpotifyLabel: getSpotifyLabel,
-        getSpotifyStyle: getSpotifyStyle,
-
-        // Playback
+        getState: getState, STATES: STATES,
+        getSpotifyState: getSpotifyState, getSpotifyLabel: getSpotifyLabel, getSpotifyStyle: getSpotifyStyle,
         preparePlaybackBundle: preparePlaybackBundle,
         launchPlaybackOption: launchPlaybackOption,
         advancePlaybackBundle: advancePlaybackBundle,
         _removeBar: _removeBar,
-
-        // Help
-        shouldShowHelp: shouldShowHelp,
-        dismissHelp: dismissHelp,
-        resetHelp: resetHelp,
+        shouldShowHelp: shouldShowHelp, dismissHelp: dismissHelp,
+        disableHelp: disableHelp, canReplayHelp: canReplayHelp,
         showSurfaceHelp: showSurfaceHelp
     };
 
 })();
 
-// GLStore bridge
 if (typeof GLStore !== 'undefined') {
     GLStore.getSpotifyState = function(bt) { return PlaybackSession.getSpotifyState(bt); };
     GLStore.getSpotifyLabel = function(bt) { return PlaybackSession.getSpotifyLabel(bt); };
 }
 
-console.log('\uD83C\uDFAC playback-session.js loaded');
+console.log('\uD83C\uDFAC playback-session.js v2 loaded');
