@@ -1,9 +1,10 @@
 // ============================================================================
-// js/features/band-feed.js — Band Feed v3: Actionable Workflow Surface
+// js/features/band-feed.js — Band Feed v4: Attention Layer
 // Aggregates existing data. Prioritizes critical + needs-input items.
 // Click-through navigation, inline actions, archive, tag editing, notes.
+// Attention summary bar, back-to-feed navigation, collapsible notes.
 // Feed metadata (archive, resolved, tags, notes) stored in feed_meta.
-// No chat. No messaging.
+// No chat. No messaging. No notifications.
 // ============================================================================
 
 'use strict';
@@ -12,6 +13,7 @@ var _feedCache = null;
 var _feedMeta = {};   // feed_meta from Firebase: { itemKey: { archived, resolved, tag, notes[] } }
 var _feedFilter = 'all'; // all | critical | needs_input | mine | since_rehearsal | archived
 var _feedLastRehearsalTs = null; // ISO timestamp of most recent rehearsal
+var _feedNavigatedFrom = false; // tracks if user deep-linked from feed
 
 // ── Song Title Resolver ──────────────────────────────────────────────────────
 
@@ -43,17 +45,68 @@ function _feedItemKey(item) {
 
 window.renderBandFeedPage = async function(el) {
     if (!el) return;
+    _feedNavigatedFrom = false; // reset on feed load
+    _feedRemoveBackBar(); // clean up any stale back bar
     el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCE1 Band Feed</h1>'
         + '<p>Everything the band said, noted, and decided \u2014 actionable.</p></div>'
+        + '<div id="feedAttentionBar"></div>'
         + '<div id="feedFilterBar"></div>'
         + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed...</div></div>';
-    // Load feed_meta first, then items
     await _feedLoadMeta();
     var items = await _feedLoadAll();
     _feedCache = items;
+    _feedRenderAttentionBar(items);
     _feedRenderFilterBar(items);
     _feedRender(items);
 };
+
+// ── Attention Summary Bar ───────────────────────────────────────────────────
+
+function _feedRenderAttentionBar(items) {
+    var bar = document.getElementById('feedAttentionBar');
+    if (!bar) return;
+
+    var visible = items.filter(function(i) { return !_feedIsArchived(i); });
+    var critCount = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; }).length;
+    var inputCount = visible.filter(function(i) { return _feedGetTag(i) === 'needs_input' && !_feedIsResolved(i); }).length;
+
+    if (critCount === 0 && inputCount === 0) {
+        bar.innerHTML = '<div style="padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
+            + '<span style="font-size:1.1em">\u2705</span>'
+            + '<span style="font-size:0.82em;font-weight:700;color:#86efac">All clear \u2014 nothing needs attention right now</span>'
+            + '</div>';
+        return;
+    }
+
+    var html = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+
+    if (critCount > 0) {
+        html += '<button onclick="_feedSetFilter(\'critical\')" style="flex:1;min-width:140px;padding:12px 16px;border-radius:10px;cursor:pointer;'
+            + 'background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);'
+            + 'display:flex;align-items:center;gap:10px;transition:background 0.15s"'
+            + ' onmouseover="this.style.background=\'rgba(239,68,68,0.15)\'" onmouseout="this.style.background=\'rgba(239,68,68,0.08)\'">'
+            + '<span style="width:10px;height:10px;border-radius:50%;background:#ef4444;flex-shrink:0"></span>'
+            + '<div>'
+            + '<div style="font-size:1.2em;font-weight:800;color:#f87171;line-height:1">' + critCount + '</div>'
+            + '<div style="font-size:0.68em;font-weight:600;color:#fca5a5;letter-spacing:0.03em">Critical</div>'
+            + '</div></button>';
+    }
+
+    if (inputCount > 0) {
+        html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:140px;padding:12px 16px;border-radius:10px;cursor:pointer;'
+            + 'background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);'
+            + 'display:flex;align-items:center;gap:10px;transition:background 0.15s"'
+            + ' onmouseover="this.style.background=\'rgba(245,158,11,0.12)\'" onmouseout="this.style.background=\'rgba(245,158,11,0.06)\'">'
+            + '<span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>'
+            + '<div>'
+            + '<div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + inputCount + '</div>'
+            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d;letter-spacing:0.03em">Need Your Input</div>'
+            + '</div></button>';
+    }
+
+    html += '</div>';
+    bar.innerHTML = html;
+}
 
 // ── Filter Bar (with counts) ─────────────────────────────────────────────────
 
@@ -61,7 +114,6 @@ function _feedRenderFilterBar(items) {
     var bar = document.getElementById('feedFilterBar');
     if (!bar) return;
 
-    // Exclude archived from all counts except the archive filter
     var visible = items.filter(function(i) { return !_feedIsArchived(i); });
     var critCount = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; }).length;
     var inputCount = visible.filter(function(i) { return _feedGetTag(i) === 'needs_input' && !_feedIsResolved(i); }).length;
@@ -116,7 +168,6 @@ function _feedIsArchived(item) {
 }
 
 function _feedIsResolved(item) {
-    // Check feed_meta override first, then original item data
     var meta = _feedGetMeta(item);
     if (meta.resolved !== undefined) return !!meta.resolved;
     return !!item.resolved;
@@ -164,8 +215,8 @@ window._feedAction = async function(action, type, id) {
         _feedShowToast('Restored from archive');
     }
 
-    // Re-render
     if (_feedCache) {
+        _feedRenderAttentionBar(_feedCache);
         _feedRenderFilterBar(_feedCache);
         _feedRender(_feedCache);
     }
@@ -177,12 +228,12 @@ window._feedChangeTag = async function(type, id) {
     var currentTag = _feedGetTag(item);
     var tags = ['fyi', 'needs_input', 'mission_critical', 'fun'];
     var labels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
-    // Cycle to next tag
     var idx = tags.indexOf(currentTag);
     var nextTag = tags[(idx + 1) % tags.length];
     await _feedSaveMeta(item, { tag: nextTag });
     _feedShowToast('Tag: ' + labels[nextTag]);
     if (_feedCache) {
+        _feedRenderAttentionBar(_feedCache);
         _feedRenderFilterBar(_feedCache);
         _feedRender(_feedCache);
     }
@@ -208,7 +259,7 @@ window._feedSaveNote = async function(type, id) {
     var item = _feedFindItem(type, id);
     if (!item) return;
 
-    var notes = _feedGetNotes(item).slice(); // clone
+    var notes = _feedGetNotes(item).slice();
     var userName = (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName.split(' ')[0]
         : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'Me';
@@ -218,12 +269,29 @@ window._feedSaveNote = async function(type, id) {
     input.value = '';
     _feedShowToast('Note added');
     if (_feedCache) {
+        _feedRenderAttentionBar(_feedCache);
         _feedRenderFilterBar(_feedCache);
         _feedRender(_feedCache);
     }
 };
 
+// ── Toggle older notes ──────────────────────────────────────────────────────
+
+window._feedToggleOlderNotes = function(type, id) {
+    var el = document.getElementById('feedOlderNotes_' + type + '_' + id);
+    var btn = document.getElementById('feedOlderNotesBtn_' + type + '_' + id);
+    if (!el || !btn) return;
+    var hidden = el.style.display === 'none';
+    el.style.display = hidden ? '' : 'none';
+    btn.textContent = hidden ? 'Hide older notes' : btn.dataset.label;
+};
+
+// ── Navigation with back-to-feed support ────────────────────────────────────
+
 window._feedNavigate = function(type, id, songId) {
+    _feedNavigatedFrom = true;
+    _feedShowBackBar();
+
     if (type === 'song_moment' || type === 'rehearsal_note') {
         if (songId) {
             var displayTitle = _feedResolveSongTitle(songId);
@@ -235,6 +303,40 @@ window._feedNavigate = function(type, id, songId) {
     }
 };
 
+window._feedBackToFeed = function() {
+    _feedRemoveBackBar();
+    showPage('feed');
+};
+
+function _feedShowBackBar() {
+    _feedRemoveBackBar(); // prevent duplicates
+    var bar = document.createElement('div');
+    bar.id = 'feedBackBar';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:900;'
+        + 'display:flex;align-items:center;gap:8px;padding:8px 16px;'
+        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(99,102,241,0.2);'
+        + 'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    bar.innerHTML = '<button onclick="_feedBackToFeed()" style="display:flex;align-items:center;gap:6px;'
+        + 'font-size:0.8em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;'
+        + 'border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">'
+        + '\u2190 Back to Feed</button>';
+    document.body.appendChild(bar);
+}
+
+function _feedRemoveBackBar() {
+    var existing = document.getElementById('feedBackBar');
+    if (existing) existing.remove();
+}
+
+// Clean up back bar when navigating to feed or any non-deep-linked page
+if (typeof GLStore !== 'undefined' && GLStore.subscribe) {
+    GLStore.subscribe('pageChanged', function(payload) {
+        if (payload.page === 'feed' || !_feedNavigatedFrom) {
+            _feedRemoveBackBar();
+        }
+    });
+}
+
 function _feedFindItem(type, id) {
     if (!_feedCache) return null;
     for (var i = 0; i < _feedCache.length; i++) {
@@ -245,7 +347,6 @@ function _feedFindItem(type, id) {
 
 function _feedShowToast(msg) {
     if (typeof showToast === 'function') { showToast(msg); return; }
-    // Fallback mini-toast
     var t = document.createElement('div');
     t.textContent = msg;
     t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:8px 18px;background:#334155;color:#e2e8f0;border-radius:8px;font-size:0.82em;font-weight:600;z-index:9999;opacity:0;transition:opacity 0.3s';
@@ -381,7 +482,6 @@ function _feedRender(items) {
     var myEmail = (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '';
     var myName = (typeof currentUserName !== 'undefined') ? currentUserName : '';
 
-    // Apply archive filter + tag overrides from meta
     var visible;
     if (_feedFilter === 'archived') {
         visible = items.filter(function(i) { return _feedIsArchived(i); });
@@ -389,11 +489,9 @@ function _feedRender(items) {
         visible = items.filter(function(i) { return !_feedIsArchived(i); });
     }
 
-    // Separate by effective tag (meta overrides original)
     var critical = visible.filter(function(i) { return _feedGetTag(i) === 'mission_critical'; });
     var needsInput = visible.filter(function(i) { return _feedGetTag(i) === 'needs_input' && !_feedIsResolved(i); });
 
-    // Apply filter
     var filtered;
     if (_feedFilter === 'critical') {
         filtered = critical;
@@ -411,7 +509,7 @@ function _feedRender(items) {
             filtered = visible;
         }
     } else if (_feedFilter === 'archived') {
-        filtered = visible; // already filtered above
+        filtered = visible;
     } else {
         filtered = null; // "all" handled below
     }
@@ -426,7 +524,6 @@ function _feedRender(items) {
     var html = '';
 
     if (_feedFilter === 'all') {
-        // PINNED: Critical items at top
         if (critical.length > 0) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;border-left:4px solid #ef4444">';
             html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u26A0\uFE0F CRITICAL (' + critical.length + ')</div>';
@@ -434,7 +531,6 @@ function _feedRender(items) {
             html += '</div>';
         }
 
-        // GROUPED: Needs Input (unresolved)
         if (needsInput.length > 0) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
             html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u2753 NEEDS INPUT (' + needsInput.length + ' pending)</div>';
@@ -442,7 +538,6 @@ function _feedRender(items) {
             html += '</div>';
         }
 
-        // REST: chronological (exclude critical and unresolved needs_input already shown)
         var restItems = visible.filter(function(i) {
             return _feedGetTag(i) !== 'mission_critical' && !(_feedGetTag(i) === 'needs_input' && !_feedIsResolved(i));
         });
@@ -458,7 +553,6 @@ function _feedRender(items) {
             });
         }
     } else {
-        // Filtered views — simple chronological
         var lastDate = '';
         filtered.forEach(function(item) {
             var itemDate = (item.timestamp || '').substring(0, 10);
@@ -479,7 +573,6 @@ function _feedRenderItem(item) {
     var resolved = _feedIsResolved(item);
     var archived = _feedIsArchived(item);
 
-    // Tag badge (uses effective tag from meta)
     var tagBadge = '';
     if (effectiveTag === 'mission_critical') tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25)">\u26A0\uFE0F Critical</span>';
     else if (effectiveTag === 'needs_input' && !resolved) tagBadge = '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.25)">\u2753 Input needed</span>';
@@ -489,22 +582,19 @@ function _feedRenderItem(item) {
     var timeStr = _feedTimeAgo(item.timestamp);
     var contextStr = item.context ? '<span style="font-size:0.72em;color:var(--accent-light)">' + _feedEsc(item.context) + '</span>' : '';
 
-    // Escape values for onclick attributes
     var safeType = _feedEsc(item.type);
     var safeId = _feedEsc(item.id);
     var safeSongId = item.songId ? _feedEsc(item.songId) : '';
 
-    // Click-through: whole card is clickable (except action buttons)
-    var clickAttr = ' onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')" style="cursor:pointer"';
+    var clickAttr = ' onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')"';
 
-    // Resolved styling: dim the card
     var cardStyle = 'padding:10px 14px;background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;margin-bottom:6px';
     if (resolved) cardStyle += ';opacity:0.6';
     if (archived) cardStyle += ';opacity:0.45';
 
     var html = '<div style="' + cardStyle + '">';
 
-    // Header row: clickable for navigation
+    // Header row
     html += '<div' + clickAttr + ' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer">'
         + '<span style="font-size:1em">' + typeIcon + '</span>'
         + '<span style="font-size:0.82em;font-weight:700;color:var(--text)">' + _feedEsc(item.author) + '</span>'
@@ -512,48 +602,67 @@ function _feedRenderItem(item) {
         + '<span style="margin-left:auto;font-size:0.68em;color:var(--text-dim);flex-shrink:0">' + timeStr + '</span>'
         + '</div>';
 
-    // Body: clickable
+    // Body
     html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedEsc(item.text) + '</div>';
 
-    // Link (if present)
     if (item.link) {
         html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 Link</a>';
     }
 
-    // Feed notes (from meta)
+    // Notes — most recent prominent, older collapsed
     var notes = _feedGetNotes(item);
     if (notes.length > 0) {
         html += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
-        notes.forEach(function(n) {
-            html += '<div style="font-size:0.75em;color:var(--text-dim);padding:2px 0">'
-                + '<span style="font-weight:700;color:var(--text-muted)">' + _feedEsc(n.by) + ':</span> '
-                + _feedEsc(n.text)
-                + ' <span style="opacity:0.5">' + _feedTimeAgo(n.ts) + '</span>'
-                + '</div>';
-        });
+
+        // Most recent note: prominent
+        var latest = notes[notes.length - 1];
+        var isNew = latest.ts && (Date.now() - new Date(latest.ts).getTime() < 86400000); // < 24h
+        html += '<div style="font-size:0.78em;padding:4px 0;' + (isNew ? 'color:var(--text);font-weight:600' : 'color:var(--text-muted)') + '">'
+            + (isNew ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#818cf8;margin-right:5px;vertical-align:middle"></span>' : '')
+            + '<span style="font-weight:700;color:' + (isNew ? '#a5b4fc' : 'var(--text-muted)') + '">' + _feedEsc(latest.by) + ':</span> '
+            + _feedEsc(latest.text)
+            + ' <span style="opacity:0.5;font-size:0.9em">' + _feedTimeAgo(latest.ts) + '</span>'
+            + '</div>';
+
+        // Older notes: collapsed behind toggle
+        if (notes.length > 1) {
+            var olderCount = notes.length - 1;
+            html += '<button id="feedOlderNotesBtn_' + safeType + '_' + safeId + '" '
+                + 'data-label="View ' + olderCount + ' older note' + (olderCount > 1 ? 's' : '') + '" '
+                + 'onclick="event.stopPropagation();_feedToggleOlderNotes(\'' + safeType + '\',\'' + safeId + '\')" '
+                + 'style="font-size:0.68em;font-weight:600;color:var(--accent-light,#818cf8);background:none;border:none;cursor:pointer;padding:2px 0;opacity:0.7">'
+                + 'View ' + olderCount + ' older note' + (olderCount > 1 ? 's' : '') + '</button>';
+            html += '<div id="feedOlderNotes_' + safeType + '_' + safeId + '" style="display:none">';
+            // Render older notes in reverse chronological (newest first, excluding the latest already shown)
+            for (var ni = notes.length - 2; ni >= 0; ni--) {
+                var n = notes[ni];
+                html += '<div style="font-size:0.75em;color:var(--text-dim);padding:2px 0">'
+                    + '<span style="font-weight:700;color:var(--text-muted)">' + _feedEsc(n.by) + ':</span> '
+                    + _feedEsc(n.text)
+                    + ' <span style="opacity:0.5">' + _feedTimeAgo(n.ts) + '</span>'
+                    + '</div>';
+            }
+            html += '</div>';
+        }
         html += '</div>';
     }
 
     // Action bar
     html += '<div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">';
 
-    // Resolve toggle
-    html += '<button onclick="_feedAction(\'' + (resolved ? 'resolve' : 'resolve') + '\',\'' + safeType + '\',\'' + safeId + '\')" '
+    html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" '
         + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:' + (resolved ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (resolved ? '#86efac' : 'var(--text-dim)') + '">'
         + (resolved ? '\u2705 Resolved' : '\u2611\uFE0F Resolve') + '</button>';
 
-    // Tag cycle
     var tagLabels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
     html += '<button onclick="_feedChangeTag(\'' + safeType + '\',\'' + safeId + '\')" '
         + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">'
         + '\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || effectiveTag) + '</button>';
 
-    // Add note
     html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" '
         + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">'
         + '\uD83D\uDCDD Note</button>';
 
-    // Archive / Unarchive
     if (archived) {
         html += '<button onclick="_feedAction(\'unarchive\',\'' + safeType + '\',\'' + safeId + '\')" '
             + 'style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">'
@@ -565,7 +674,7 @@ function _feedRenderItem(item) {
     }
     html += '</div>';
 
-    // Inline note input (hidden by default)
+    // Inline note input
     html += '<div id="feedNote_' + safeType + '_' + safeId + '" style="display:none;margin-top:6px" onclick="event.stopPropagation()">'
         + '<div style="display:flex;gap:6px">'
         + '<input type="text" placeholder="Add a note..." onkeydown="if(event.key===\'Enter\')_feedSaveNote(\'' + safeType + '\',\'' + safeId + '\')" '
@@ -608,4 +717,4 @@ if (typeof pageRenderers !== 'undefined') {
     pageRenderers.feed = function(el) { renderBandFeedPage(el); };
 }
 
-console.log('\uD83D\uDCE1 band-feed.js v3 loaded — actionable workflow surface');
+console.log('\uD83D\uDCE1 band-feed.js v4 loaded \u2014 attention layer');
