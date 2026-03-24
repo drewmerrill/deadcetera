@@ -61,6 +61,64 @@ window.SetlistPlayer = (function() {
 
     // ── Resolve YouTube ID ──────────────────────────────────────────────────
 
+    // ── Result Ranking ────────────────────────────────────────────────────
+    // Scores Invidious results to find the best version.
+    // Prefers: longer videos, higher views, titles matching artist.
+    // Avoids: short clips (<120s), covers, karaoke.
+
+    function _pickBestResult(results, songTitle, bandName) {
+        if (!results || !results.length) return null;
+        var artist = (bandName || 'Grateful Dead').toLowerCase();
+        var titleLower = (songTitle || '').toLowerCase();
+        var avoidWords = ['cover', 'karaoke', 'tutorial', 'lesson', 'reaction', 'parody'];
+
+        var scored = [];
+        for (var i = 0; i < results.length && i < 8; i++) {
+            var r = results[i];
+            if (!r || !r.videoId) continue;
+            var dur = r.lengthSeconds || 0;
+            var views = r.viewCount || 0;
+            var rTitle = (r.title || '').toLowerCase();
+            var rAuthor = (r.author || '').toLowerCase();
+
+            // Skip short clips
+            if (dur > 0 && dur < 120) continue;
+
+            // Skip covers/karaoke/tutorials
+            var skip = false;
+            for (var a = 0; a < avoidWords.length; a++) {
+                if (rTitle.indexOf(avoidWords[a]) >= 0) { skip = true; break; }
+            }
+            if (skip) continue;
+
+            // Scoring
+            var score = 0;
+            // Artist name in title or author = strong signal
+            if (rTitle.indexOf(artist) >= 0 || rAuthor.indexOf(artist) >= 0) score += 50;
+            // Song title in video title
+            if (rTitle.indexOf(titleLower) >= 0) score += 30;
+            // Duration: prefer 3-15 minutes (typical song range)
+            if (dur >= 180 && dur <= 900) score += 20;
+            else if (dur > 900) score += 10; // long jams still ok
+            // View count bonus (log scale)
+            if (views > 1000000) score += 15;
+            else if (views > 100000) score += 10;
+            else if (views > 10000) score += 5;
+            // Position bonus (relevance from search)
+            score += Math.max(0, 5 - i);
+
+            scored.push({ videoId: r.videoId, score: score });
+        }
+
+        if (!scored.length) {
+            // Fallback: just take first result even if it didn't pass filters
+            return results[0].videoId;
+        }
+
+        scored.sort(function(a, b) { return b.score - a.score; });
+        return scored[0].videoId;
+    }
+
     async function _resolveYouTubeId(songTitle, bandName) {
         // 1. Check local cache first (instant)
         var cached = _getCachedYtId(songTitle);
@@ -84,9 +142,9 @@ window.SetlistPlayer = (function() {
         } catch(e) {}
 
         // 3. Auto-search YouTube (no API key — uses Invidious public API)
+        // Invidious returns: videoId, title, viewCount, lengthSeconds, author
         try {
             var q = encodeURIComponent(songTitle + ' ' + (bandName || 'Grateful Dead'));
-            // Try Invidious public instances for search (returns JSON, no API key)
             var searchUrls = [
                 'https://vid.puffyan.us/api/v1/search?q=' + q + '&type=video&sort_by=relevance',
                 'https://invidious.fdn.fr/api/v1/search?q=' + q + '&type=video&sort_by=relevance'
@@ -96,10 +154,10 @@ window.SetlistPlayer = (function() {
                     var resp = await fetch(searchUrls[si], { signal: AbortSignal.timeout(5000) }).catch(function() { return null; });
                     if (resp && resp.ok) {
                         var results = await resp.json();
-                        if (results && results.length && results[0].videoId) {
-                            var foundId = results[0].videoId;
-                            _setCachedYtId(songTitle, foundId);
-                            return foundId;
+                        var best = _pickBestResult(results, songTitle, bandName);
+                        if (best) {
+                            _setCachedYtId(songTitle, best);
+                            return best;
                         }
                     }
                 } catch(e2) { continue; }
@@ -214,8 +272,11 @@ window.SetlistPlayer = (function() {
             + '<button id="slpPlayPause" onclick="SetlistPlayer.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em">\u23F8</button>'
             + '<button onclick="SetlistPlayer.next()" style="width:60px;height:60px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.5em">\u23ED</button>'
             + '</div>'
-            // Up next
-            + '<div id="slpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
+            // Up next + version control
+            + '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0">'
+            + '<div id="slpUpNext" style="font-size:0.82em;color:#64748b;flex:1"></div>'
+            + '<button id="slpLockBtn" onclick="SetlistPlayer._lockCurrentVersion()" style="font-size:0.68em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;white-space:nowrap">\uD83D\uDD12 Use this version</button>'
+            + '</div>';
         document.body.appendChild(_overlay);
     }
 
@@ -289,13 +350,46 @@ window.SetlistPlayer = (function() {
         var container = document.getElementById('slpVideoContainer');
         if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>';
 
-        // Search YouTube automatically
         var ytId = await _resolveYouTubeId(song.title, song.band);
         if (ytId) {
             song.youtubeId = ytId;
             _playYouTube(ytId);
+            if (typeof showToast === 'function') showToast('\u2705 Found a great version');
         } else {
             _showFallback(song);
+        }
+    }
+
+    async function _lockCurrentVersion() {
+        if (_currentIdx < 0 || _currentIdx >= _queue.length) return;
+        var song = _queue[_currentIdx];
+        if (!song.youtubeId) { if (typeof showToast === 'function') showToast('No video playing to lock'); return; }
+
+        // Save to Firebase as locked version
+        try {
+            var versions = (typeof loadBandDataFromDrive === 'function')
+                ? await loadBandDataFromDrive(song.title, 'spotify_versions') : null;
+            var arr = versions ? (Array.isArray(versions) ? versions : Object.values(versions)) : [];
+            arr.push({
+                id: 'yt_locked_' + Date.now(),
+                url: 'https://www.youtube.com/watch?v=' + song.youtubeId,
+                platform: 'youtube',
+                title: 'YouTube (locked)',
+                isDefault: false,
+                addedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : 'player',
+                dateAdded: new Date().toISOString().split('T')[0],
+                notes: 'Locked from Play Mode'
+            });
+            if (typeof saveBandDataToDrive === 'function') {
+                await saveBandDataToDrive(song.title, 'spotify_versions', arr);
+            }
+            _setCachedYtId(song.title, song.youtubeId);
+            // Update button
+            var btn = document.getElementById('slpLockBtn');
+            if (btn) { btn.textContent = '\u2705 Locked'; btn.style.color = '#86efac'; btn.disabled = true; }
+            if (typeof showToast === 'function') showToast('\uD83D\uDD12 Version locked for ' + song.title);
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Could not save');
         }
     }
 
@@ -494,6 +588,7 @@ window.SetlistPlayer = (function() {
         _resumeFromState: _resumeFromState,
         _dismissResume: _dismissResume,
         _openSpotify: _openSpotify,
+        _lockCurrentVersion: _lockCurrentVersion,
         _npTogglePlay: _npTogglePlay,
         _npReturnToPlayer: _npReturnToPlayer
     };
