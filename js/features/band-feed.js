@@ -547,9 +547,15 @@ window.renderBandFeedPage = async function(el) {
         + '<div id="feedAttentionBar"></div>'
         + '<div id="feedFilterBar"></div>'
         + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed\u2026</div></div>';
-    await _feedLoadMeta();
-    var items = await _feedLoadAll();
-    _feedCache = items;
+    try {
+        await _feedLoadMeta();
+        var items = await _feedLoadAll();
+        _feedCache = items;
+    } catch(loadErr) {
+        console.warn('[Feed] Data load failed:', loadErr);
+        _feedCache = [];
+        var items = [];
+    }
     _feedSessionTotal = 0;
     _feedSessionCompleted = 0;
     if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('feed_visit');
@@ -1338,7 +1344,15 @@ function _feedEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&l
 // ── Register ────────────────────────────────────────────────────────────────
 
 if (typeof pageRenderers !== 'undefined') {
-    pageRenderers.feed = function(el) { renderBandFeedPage(el); };
+    pageRenderers.feed = function(el) {
+        // Render header immediately (sync) so page is never blank
+        el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCE1 Band Feed</h1><p style="color:var(--text-dim)">Loading\u2026</p></div>';
+        renderBandFeedPage(el).catch(function(err) {
+            console.error('[Feed] Render failed:', err);
+            el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCE1 Band Feed</h1></div>'
+                + '<div style="text-align:center;padding:40px;color:var(--text-dim)">Could not load feed. <button onclick="showPage(\'feed\')" style="color:#a5b4fc;background:none;border:none;cursor:pointer;font-weight:700">Retry</button></div>';
+        });
+    };
 }
 
 // ── Background badge refresh (runs on app startup, not just feed page) ──────
