@@ -512,96 +512,188 @@ function getFullBandName(bandAbbr) {
 // ============================================================================
 
 // ── PWA: Register service worker (single owner — PL-9.2) ───────────────────
-// ── PWA: Simple service worker registration ─────────────────────────────────
+// ── PWA: Service worker registration + update detection ─────────────────────
 if ('serviceWorker' in navigator && !_rt.swInitialized) {
     _rt.swInitialized = true;
     var _isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (_isLocalhost) {
-        // Dev: unregister any stale SW to avoid caching headaches
         navigator.serviceWorker.getRegistrations().then(function(regs) {
             regs.forEach(function(r) { r.unregister(); });
         });
     } else {
-        window.addEventListener('load', () => {
+        window.addEventListener('load', function() {
             navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
-                .then(reg => {
+                .then(function(reg) {
                     // Poll for SW updates every 60s
-                    setInterval(() => reg.update(), 60 * 1000);
+                    setInterval(function() { reg.update(); }, 60000);
+                    // Detect waiting worker (new version ready)
+                    if (reg.waiting) { _pwaShowUpdateBanner(); return; }
+                    reg.addEventListener('updatefound', function() {
+                        var newSW = reg.installing;
+                        if (!newSW) return;
+                        newSW.addEventListener('statechange', function() {
+                            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                                _pwaShowUpdateBanner();
+                            }
+                        });
+                    });
                 })
-                .catch(() => {});
+                .catch(function() {});
+        });
+        // Also detect controller change (another tab triggered update)
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+            if (window._pwaReloading) return;
+            window._pwaReloading = true;
+            location.reload();
         });
     }
 }
 
-// ── PWA: Capture install prompt and show smart banner ───────────────────────
-let pwaInstallPrompt = null;
-let pwaInstalled = false;
+// ── PWA: Install + Update banner system ─────────────────────────────────────
+var _pwaInstallPrompt = null;
 
-window.addEventListener('beforeinstallprompt', e => {
+window.addEventListener('beforeinstallprompt', function(e) {
     e.preventDefault();
-    pwaInstallPrompt = e;
-    // Install banner disabled — stored for manual trigger only
+    _pwaInstallPrompt = e;
+    _pwaShowInstallBanner();
 });
 
-window.addEventListener('appinstalled', () => {
-    pwaInstalled = true;
-    pwaInstallPrompt = null;
-    hidePWAInstallBanner();
+window.addEventListener('appinstalled', function() {
+    _pwaInstallPrompt = null;
+    _pwaRemoveBanner('gl-pwa-install');
     console.log('[PWA] App installed!');
 });
 
-function showPWAInstallBanner() {
-    if (pwaInstalled || document.getElementById('pwa-install-banner')) return;
-    if (window.matchMedia('(display-mode: standalone)').matches) return;
+// ── Install banner (iOS safe) ───────────────────────────────────────────────
 
-    const banner = document.createElement('div');
-    banner.id = 'pwa-install-banner';
-    banner.style.cssText = 'position:fixed;bottom:70px;left:12px;right:12px;background:linear-gradient(135deg,#1e2a4a,#252d4a);border:1px solid rgba(99,102,241,0.5);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:8000;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
-    banner.innerHTML = '<div style="flex:1"><div style="font-weight:700;color:white;font-size:0.92em">📱 Install GrooveLinx</div><div style="font-size:0.78em;color:rgba(255,255,255,0.7);margin-top:2px">Add to home screen for quick access</div></div>';
+function _pwaShowInstallBanner() {
+    // Don't show if already standalone, already dismissed, or banner exists
+    if (_pwaIsStandalone()) return;
+    if (localStorage.getItem('gl_pwa_install_dismissed')) return;
+    if (document.getElementById('gl-pwa-install')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'gl-pwa-install';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8500;display:flex;align-items:center;gap:10px;padding:10px 14px;max-height:60px;overflow:hidden;'
+        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(99,102,241,0.25);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#c7d2fe;line-height:1.3">'
+        + '\uD83D\uDCF2 Install GrooveLinx for faster access during rehearsal</div>';
+
     var installBtn = document.createElement('button');
     installBtn.textContent = 'Install';
-    installBtn.style.cssText = 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:0.85em';
+    installBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap';
     installBtn.addEventListener('click', function() {
-        if (pwaInstallPrompt) {
-            pwaInstallPrompt.prompt();
-            pwaInstallPrompt.userChoice.then(function(result) {
-                if (result.outcome === 'accepted') console.log('[PWA] App installed');
-                pwaInstallPrompt = null;
-                hidePWAInstallBanner();
+        if (_pwaInstallPrompt) {
+            // Android/Desktop: native install prompt
+            _pwaInstallPrompt.prompt();
+            _pwaInstallPrompt.userChoice.then(function(result) {
+                if (result.outcome === 'accepted') console.log('[PWA] Installed via prompt');
+                _pwaInstallPrompt = null;
+                _pwaRemoveBanner('gl-pwa-install');
             });
+        } else {
+            // iOS: show instructions modal
+            _pwaShowIOSInstructions();
         }
     });
     banner.appendChild(installBtn);
+
     var dismissBtn = document.createElement('button');
-    dismissBtn.textContent = '✕';
-    dismissBtn.style.cssText = 'background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:1.2em;padding:0 4px';
-    dismissBtn.addEventListener('click', function() { hidePWAInstallBanner(); });
+    dismissBtn.textContent = '\u2715';
+    dismissBtn.style.cssText = 'flex-shrink:0;background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:1em;padding:0 4px';
+    dismissBtn.addEventListener('click', function() {
+        localStorage.setItem('gl_pwa_install_dismissed', '1');
+        _pwaRemoveBanner('gl-pwa-install');
+    });
     banner.appendChild(dismissBtn);
+
     document.body.appendChild(banner);
 }
 
-function hidePWAInstallBanner() {
-    const b = document.getElementById('pwa-install-banner');
-    if (b) { b.style.opacity = '0'; b.style.transition = 'opacity 0.2s'; setTimeout(() => b.remove(), 250); }
+function _pwaShowIOSInstructions() {
+    _pwaRemoveBanner('gl-pwa-install');
+    var overlay = document.createElement('div');
+    overlay.id = 'gl-pwa-ios-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:24px;max-width:320px;width:100%;text-align:center">'
+        + '<div style="font-size:1.2em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:16px">Install GrooveLinx</div>'
+        + '<div style="text-align:left;font-size:0.85em;color:var(--text-muted,#94a3b8);line-height:1.8">'
+        + '<div style="margin-bottom:8px"><span style="font-weight:700;color:#a5b4fc">1.</span> Tap the <span style="font-weight:700;color:#f1f5f9">Share</span> icon <span style="font-size:1.1em">\u2B1B\u2191</span> in Safari</div>'
+        + '<div style="margin-bottom:8px"><span style="font-weight:700;color:#a5b4fc">2.</span> Scroll down and tap <span style="font-weight:700;color:#f1f5f9">"Add to Home Screen"</span></div>'
+        + '<div><span style="font-weight:700;color:#a5b4fc">3.</span> Tap <span style="font-weight:700;color:#f1f5f9">"Add"</span> in the top right</div>'
+        + '</div>'
+        + '<button onclick="document.getElementById(\'gl-pwa-ios-modal\').remove()" style="margin-top:20px;font-size:0.82em;font-weight:700;padding:8px 24px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.15);color:#a5b4fc">Got it</button>'
+        + '</div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
-async function pwaTriggerInstall() {
-    if (!pwaInstallPrompt) {
-        // No install prompt available — guide user to manual install
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        if (isIOS) {
-            showToast('On iPhone: tap Share (□↑) in Safari → "Add to Home Screen"');
-        } else {
-            showToast('Use your browser menu → "Install app" or "Add to Home Screen"');
+// ── Update banner ───────────────────────────────────────────────────────────
+
+function _pwaShowUpdateBanner() {
+    if (document.getElementById('gl-pwa-update')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'gl-pwa-update';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8600;display:flex;align-items:center;gap:10px;padding:10px 14px;max-height:60px;overflow:hidden;'
+        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(34,197,94,0.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#86efac;line-height:1.3">'
+        + '\uD83D\uDE80 New version available</div>';
+
+    var updateBtn = document.createElement('button');
+    updateBtn.textContent = 'Update';
+    updateBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.15);color:#86efac;white-space:nowrap';
+    updateBtn.addEventListener('click', function() {
+        // Tell waiting SW to activate, then reload
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(function(reg) {
+                if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            });
         }
-        return;
-    }
-    hidePWAInstallBanner();
-    pwaInstallPrompt.prompt();
-    const { outcome } = await pwaInstallPrompt.userChoice;
-    console.log('[PWA] Install outcome:', outcome);
-    pwaInstallPrompt = null;
+        // Reload after a brief pause for SW activation
+        window._pwaReloading = true;
+        setTimeout(function() { location.reload(); }, 500);
+    });
+    banner.appendChild(updateBtn);
+
+    var laterBtn = document.createElement('button');
+    laterBtn.textContent = 'Later';
+    laterBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:600;padding:6px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim,#64748b)';
+    laterBtn.addEventListener('click', function() { _pwaRemoveBanner('gl-pwa-update'); });
+    banner.appendChild(laterBtn);
+
+    document.body.appendChild(banner);
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function _pwaIsStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+}
+
+function _pwaRemoveBanner(id) {
+    var el = document.getElementById(id);
+    if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.2s'; setTimeout(function() { el.remove(); }, 250); }
+}
+
+// Show install banner on load (after 2s delay so it's not jarring)
+window.addEventListener('load', function() {
+    if (!_pwaIsStandalone() && !localStorage.getItem('gl_pwa_install_dismissed')) {
+        setTimeout(_pwaShowInstallBanner, 2000);
+    }
+});
+
+// Legacy compat — kept for any code that calls these directly
+window.pwaTriggerInstall = function() {
+    if (_pwaInstallPrompt) {
+        _pwaInstallPrompt.prompt();
+    } else {
+        _pwaShowIOSInstructions();
+    }
+};
+function showPWAInstallBanner() { _pwaShowInstallBanner(); }
+function hidePWAInstallBanner() { _pwaRemoveBanner('gl-pwa-install'); }
 
 // ── Handle deep-link shortcuts (?page=xxx from manifest shortcuts) ──────────
 window.addEventListener('DOMContentLoaded', () => {
