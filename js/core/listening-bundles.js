@@ -282,11 +282,28 @@ window.ListeningBundles = (function() {
     //
     // NOTE: Requires a Spotify App registered at developer.spotify.com
     // with redirect URI matching the app's origin + /callback
-    // Drew must register the app and set SPOTIFY_CLIENT_ID below.
+    // Spotify Client ID — fetched from Cloudflare Worker where secrets are stored.
+    // Falls back to empty string (triggers "not configured" dialog).
 
-    var SPOTIFY_CLIENT_ID = ''; // TODO: Register at developer.spotify.com
+    var SPOTIFY_CLIENT_ID = '';
+    var _spotifyConfigLoaded = false;
     var SPOTIFY_REDIRECT = window.location.origin + '/';
     var SPOTIFY_SCOPES = 'playlist-modify-public playlist-modify-private';
+
+    async function _ensureSpotifyConfig() {
+        if (SPOTIFY_CLIENT_ID || _spotifyConfigLoaded) return;
+        _spotifyConfigLoaded = true;
+        try {
+            var workerUrl = (typeof WORKER_URL !== 'undefined' && WORKER_URL) ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev';
+            var resp = await fetch(workerUrl + '/spotify-config', { signal: AbortSignal.timeout(3000) }).catch(function() { return null; });
+            if (resp && resp.ok) {
+                var data = await resp.json();
+                if (data && data.clientId) SPOTIFY_CLIENT_ID = data.clientId;
+            }
+        } catch(e) {
+            console.warn('[Spotify] Config fetch failed:', e.message);
+        }
+    }
     var _SPOTIFY_TOKEN_KEY = 'gl_spotify_token';
     var _SPOTIFY_PLAYLISTS_KEY = 'gl_spotify_playlists';
 
@@ -413,6 +430,7 @@ window.ListeningBundles = (function() {
 
     // PKCE OAuth flow
     async function connectSpotify() {
+        await _ensureSpotifyConfig();
         if (!SPOTIFY_CLIENT_ID) {
             _showSpotifyDialog('not_configured');
             return { ok: false, reason: 'not_configured' };
@@ -617,7 +635,8 @@ window.ListeningBundles = (function() {
     }
 
     async function syncToSpotify(bundleType) {
-        // Check failure state and show appropriate dialog
+        // Ensure config is loaded from worker
+        await _ensureSpotifyConfig();
         var failState = _getSpotifyFailureState();
         if (failState === 'not_configured') {
             _showSpotifyDialog('not_configured', bundleType);

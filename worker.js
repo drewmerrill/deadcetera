@@ -54,6 +54,8 @@ export default {
       return handlePhishInSearch(request);
     if (path === '/spotify-search' && request.method === 'POST')
       return handleSpotifySearch(request, env);
+    if (path === '/spotify-config' && request.method === 'GET')
+      return jsonResp({ clientId: env.SPOTIFY_CLIENT_ID || '' });
     if (path === '/odesli-links' && request.method === 'POST')
       return handleOdesliLinks(request);
     if (path === '/fadr-diag' && request.method === 'GET')
