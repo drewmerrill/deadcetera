@@ -802,7 +802,12 @@ window.ListeningBundles = (function() {
             }
         }
         if (resp.status === 204) return {};
-        if (!resp.ok) { console.warn('[Spotify] API ' + resp.status + ' on ' + path); return null; }
+        if (!resp.ok) {
+            var errBody = null;
+            try { errBody = await resp.json(); } catch(e) {}
+            console.warn('[Spotify] API ' + resp.status + ' on ' + path, errBody);
+            return errBody || null; // return error body so caller can read error.message
+        }
         return resp.json();
     }
 
@@ -990,13 +995,16 @@ window.ListeningBundles = (function() {
                 description: 'Auto-synced by GrooveLinx \u2014 ' + new Date().toLocaleDateString(),
                 public: false
             });
+            console.log('[Spotify] Create playlist response:', created);
             if (created && created.id) {
                 playlistId = created.id;
                 playlists[bundleType] = playlistId;
                 _setPlaylistIds(playlists);
             } else {
-                if (typeof showToast === 'function') showToast('Could not create Spotify playlist');
-                return { ok: false, reason: 'create failed' };
+                var errMsg = (created && created.error && created.error.message) ? created.error.message : 'unknown error';
+                console.warn('[Spotify] Playlist creation failed:', errMsg, created);
+                if (typeof showToast === 'function') showToast('Could not create playlist \u2014 ' + errMsg);
+                return { ok: false, reason: 'create failed: ' + errMsg };
             }
         }
 
