@@ -742,7 +742,24 @@
     };
     </script>
     <script>
-    // Service Worker registration handled by app.js (single owner — PL-9.2)
+    // Force SW update + cache purge on every load
+    // Fixes stuck PWA installs (especially iOS Safari)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(r) { r.update(); });
+        });
+        // Nuclear: if ?purge=1 in URL, unregister all SWs and clear caches
+        if (new URLSearchParams(window.location.search).get('purge') === '1') {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                regs.forEach(function(r) { r.unregister(); });
+            });
+            caches.keys().then(function(keys) {
+                keys.forEach(function(k) { caches.delete(k); });
+            });
+            window.history.replaceState({}, '', window.location.pathname);
+            setTimeout(function() { location.reload(); }, 500);
+        }
+    }
     </script>
     <script>
     // Strip stale share params (?playlist=, ?pack=) from URL on every load.
