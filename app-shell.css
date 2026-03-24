@@ -270,13 +270,20 @@ header h1{color:var(--text)!important;}
 footer{color:var(--text-dim)!important;}
 footer p{color:var(--text-dim)!important;}
 
-/* Safe-area for all fixed top/bottom bars (JS-injected) */
-#feedBackBar,#gl-pwa-install,#gl-pwa-update,#glPersistPlaying,#slpNowPlayingBar,#glNextSongBar,#glPlaybackBar{
-    padding-top:calc(8px + var(--gl-safe-top))!important;
+/* Safe-area for full-screen overlays (inset:0 — bypass body padding) */
+#stonerOverlay,#slPlayerOverlay,#gmOverlay,#rmOverlay,.gl-spot-overlay,#spReviewOverlay,#glSpotifyDialog,#glPlaybackFallback,#glPlayConfirm{
+    padding-top:var(--gl-safe-top)!important;
+    padding-bottom:var(--gl-safe-bottom)!important;
+    padding-left:var(--gl-safe-left)!important;
+    padding-right:var(--gl-safe-right)!important;
 }
+/* Fixed top bars — offset below notch */
+#feedBackBar,#gl-pwa-install,#gl-pwa-update,#glPersistPlaying{
+    top:var(--gl-safe-top)!important;
+}
+/* Fixed bottom bars — offset above home indicator */
 #slpNowPlayingBar,#glNextSongBar,#glPlaybackBar{
-    padding-top:8px!important;
-    padding-bottom:calc(8px + var(--gl-safe-bottom))!important;
+    padding-bottom:calc(10px + var(--gl-safe-bottom))!important;
 }
 
 @media(max-width:500px){
