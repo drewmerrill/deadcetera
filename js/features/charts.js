@@ -256,7 +256,11 @@ window.ChartSystem = (function() {
                 label.style.cssText = 'font-size:0.68em;font-weight:700;color:#22c55e;margin-bottom:2px';
                 label.textContent = '\u25CF Now playing';
                 els[i].insertBefore(label, els[i].firstChild);
-                els[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Only scroll if not already visible
+                var rect = els[i].getBoundingClientRect();
+                if (rect.top < 0 || rect.bottom > window.innerHeight) {
+                    els[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 break;
             }
         }

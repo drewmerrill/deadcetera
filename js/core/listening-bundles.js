@@ -318,6 +318,7 @@ window.ListeningBundles = (function() {
 
     window._qlPlayUrl = null; // for the next-song bar
     var _qlPlaying = false;
+    var _qlGuidanceCount = 0; // throttle toasts after first 2 songs
 
     function _qlPlay() {
         var confirm = document.getElementById('glPlayConfirm');
@@ -328,55 +329,74 @@ window.ListeningBundles = (function() {
         if (typeof openMusicLink === 'function') openMusicLink(item.url);
         else window.open(item.url, '_blank');
 
-        // Show playing indicator
         _qlPlaying = true;
+        _qlGuidanceCount++;
         _qlShowPlayingState(item.songTitle);
 
-        // Hint + next song bar
+        // Throttled guidance: full toasts only for first 2 songs
         if (_qlSortedUrls.length > 1) {
-            setTimeout(function() {
-                if (typeof showToast === 'function') showToast('Tap play in Spotify \u2014 come back here for next song');
-            }, 1500);
+            if (_qlGuidanceCount <= 2) {
+                setTimeout(function() {
+                    if (typeof showToast === 'function') showToast('Tap play in Spotify \u2014 come back here for next song');
+                }, 1500);
+                if (_qlGuidanceCount === 1) {
+                    setTimeout(function() {
+                        if (typeof showToast === 'function') showToast('Next up ready \uD83D\uDC47');
+                    }, 4000);
+                }
+            }
             _showNextSongBar();
-            // Flow reinforcement after first play
-            setTimeout(function() {
-                if (typeof showToast === 'function') showToast('Next up ready \uD83D\uDC47');
-            }, 4000);
         }
 
-        // Listen for window focus return (user comes back from Spotify)
         _qlListenForReturn();
     }
 
     function _qlShowPlayingState(songTitle) {
-        // Update playing indicator in overlay (if still open)
+        // Persistent indicator — visible across navigation
+        _qlEnsurePersistentIndicator(songTitle);
+        // Update overlay indicator (if still open)
         var indicator = document.getElementById('glPlayingIndicator');
         if (indicator) {
             indicator.textContent = '\u25CF Playing (in Spotify): ' + (songTitle || '');
             indicator.style.display = '';
         }
-        // Update next-song bar if visible
-        var bar = document.getElementById('glNextSongBar');
-        if (bar) {
-            var existing = document.getElementById('glNowPlayingLabel');
-            if (!existing) {
-                var label = document.createElement('div');
-                label.id = 'glNowPlayingLabel';
-                label.style.cssText = 'font-size:0.68em;color:#22c55e;font-weight:600;margin-bottom:2px';
-                label.textContent = '\u25CF Playing: ' + (songTitle || '');
-                bar.insertBefore(label, bar.firstChild);
-            } else {
-                existing.textContent = '\u25CF Playing: ' + (songTitle || '');
-            }
+    }
+
+    function _qlEnsurePersistentIndicator(songTitle) {
+        var existing = document.getElementById('glPersistPlaying');
+        if (existing) {
+            existing.querySelector('span').textContent = '\u25CF Playing: ' + (songTitle || '');
+            return;
         }
+        var el = document.createElement('div');
+        el.id = 'glPersistPlaying';
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:850;padding:4px 14px;background:rgba(34,197,94,0.08);border-bottom:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;gap:6px;font-size:0.72em';
+        el.innerHTML = '<span style="color:#22c55e;font-weight:600">\u25CF Playing: ' + _esc(songTitle || '') + '</span>'
+            + '<span style="margin-left:auto;color:#475569;font-size:0.9em;cursor:pointer" onclick="this.parentElement.remove()">\u2715</span>';
+        document.body.appendChild(el);
     }
 
     function _qlClearPlayingState() {
         _qlPlaying = false;
         var indicator = document.getElementById('glPlayingIndicator');
         if (indicator) indicator.style.display = 'none';
-        var label = document.getElementById('glNowPlayingLabel');
-        if (label) label.remove();
+        var persist = document.getElementById('glPersistPlaying');
+        if (persist) persist.remove();
+    }
+
+    function _qlFullReset() {
+        _qlClearPlayingState();
+        _removeNextSongBar();
+        _qlSortedUrls = [];
+        _qlCurrentIdx = 0;
+        _qlGuidanceCount = 0;
+        if (_qlReturnListenerActive) {
+            _qlReturnListenerActive = false;
+        }
+        // Clear chart highlights
+        if (typeof ChartSystem !== 'undefined' && ChartSystem.highlightActiveSong) {
+            ChartSystem.highlightActiveSong(null);
+        }
     }
 
     var _qlReturnListenerActive = false;
@@ -385,7 +405,10 @@ window.ListeningBundles = (function() {
         _qlReturnListenerActive = true;
         var handler = function() {
             if (!_qlPlaying) { window.removeEventListener('focus', handler); _qlReturnListenerActive = false; return; }
-            if (typeof showToast === 'function') showToast('Back in GrooveLinx \u2014 tap Next to continue');
+            // Throttle return toast after first 2 songs
+            if (_qlGuidanceCount <= 2) {
+                if (typeof showToast === 'function') showToast('Back in GrooveLinx \u2014 tap Next to continue');
+            }
             window.removeEventListener('focus', handler);
             _qlReturnListenerActive = false;
         };
@@ -396,7 +419,7 @@ window.ListeningBundles = (function() {
         _qlClearPlayingState();
         _qlCurrentIdx++;
         if (_qlCurrentIdx >= _qlSortedUrls.length) {
-            _removeNextSongBar();
+            _qlFullReset();
             if (typeof showToast === 'function') showToast('\uD83C\uDFB6 All songs played');
             return;
         }
@@ -432,7 +455,7 @@ window.ListeningBundles = (function() {
         bar.innerHTML = (nextSpotifyId
             ? '<div style="flex:1;min-width:0"><div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">\u25CF Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong> \u2014 tap Next when ready</div>' + _buildSpotifyEmbed(nextSpotifyId, true) + '</div>'
             : '<span style="flex:1;font-size:0.82em;color:#94a3b8">\u25CF Up next: <strong style="color:#e2e8f0">' + _esc(next.songTitle) + '</strong> \u2014 tap Next when ready \u00B7 ' + (nextIdx + 1) + '/' + _qlSortedUrls.length + '</span>')
-            + '<button onclick="ListeningBundles._qlNext()" style="padding:6px 16px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;flex-shrink:0">Next \u2192</button>'
+            + '<button onclick="ListeningBundles._qlNext()" style="padding:8px 20px;border-radius:8px;cursor:pointer;font-size:0.88em;font-weight:800;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc;flex-shrink:0">Next \u2192</button>'
             + '<button onclick="ListeningBundles._removeNextSongBar()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:4px;flex-shrink:0">\u2715</button>';
     }
 
@@ -1392,6 +1415,7 @@ window.ListeningBundles = (function() {
         _qlPlay: _qlPlay,
         _qlNext: _qlNext,
         _removeNextSongBar: _removeNextSongBar,
+        _qlFullReset: _qlFullReset,
         buildSpotifyEmbed: _buildSpotifyEmbed,
         getSpotifyTrackId: _getSpotifyTrackId,
 
