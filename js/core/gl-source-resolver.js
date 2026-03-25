@@ -293,7 +293,7 @@ window.GLSourceResolver = (function() {
         for (var i = 0; i < chain.length; i++) {
             var src = chain[i];
             var srcTimeout = timeouts[i] || 800;
-            if (options.onStatus) options.onStatus('Trying ' + labels[src] + '\u2026');
+            if (options.onStatus) options.onStatus('Checking ' + labels[src] + '\u2026');
 
             // First attempt
             try {

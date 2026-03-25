@@ -98,6 +98,14 @@ window.GLPlayerUI = (function() {
             + '<div id="glpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
         document.body.appendChild(_overlayEl);
 
+        // Inject transition styles
+        if (!document.getElementById('glpTransitionStyles')) {
+            var st = document.createElement('style');
+            st.id = 'glpTransitionStyles';
+            st.textContent = '@keyframes glpFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}#glpOverlay{animation:glpFadeIn 0.25s ease}';
+            document.head.appendChild(st);
+        }
+
         // Render current state
         var song = E.getCurrentSong();
         if (song) _renderSong({ idx: E.getCurrentIdx(), song: song, total: E.getQueue().length });
@@ -181,24 +189,29 @@ window.GLPlayerUI = (function() {
 
     function _renderSong(d) {
         var song = d.song;
-        // Overlay elements
-        _setText('glpSongTitle', song.title);
+        // Overlay elements — smooth transition
+        var titleEl = document.getElementById('glpSongTitle');
+        if (titleEl) { titleEl.style.opacity = '0'; titleEl.textContent = song.title; titleEl.style.transition = 'opacity 0.25s ease'; requestAnimationFrame(function() { titleEl.style.opacity = '1'; }); }
         _setText('glpSongArtist', song.bandName || song.band || '');
-        _setText('glpProgress', (d.idx + 1) + ' of ' + d.total);
-        _setText('glpSourceLabel', '');
-        // Clear video container immediately — no stale embed during resolution
+        // Now Playing label
+        var sourceEl = document.getElementById('glpSourceLabel');
+        if (sourceEl) { sourceEl.innerHTML = '<span style="color:#64748b">Finding best version\u2026</span>'; sourceEl.style.color = ''; }
+        // Progress with Now Playing context
+        var progressEl = document.getElementById('glpProgress');
+        if (progressEl) progressEl.innerHTML = '<span style="color:#a5b4fc;font-weight:700">Now Playing</span> \u00B7 ' + (d.idx + 1) + ' of ' + d.total;
+        // Clear video container — smooth transition to loading
         var vc = document.getElementById('glpVideoContainer');
-        if (vc) vc.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Loading\u2026</div>';
+        if (vc) { vc.style.transition = 'opacity 0.2s ease'; vc.style.opacity = '0.5'; setTimeout(function() { vc.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>'; vc.style.opacity = '1'; }, 150); }
         // Clear fallback
         var fb = document.getElementById('glpFallback');
         if (fb) { fb.style.display = 'none'; fb.innerHTML = ''; }
-        // Up next
+        // Up next — persistent context
         var E = window.GLPlayerEngine;
         var nextEl = document.getElementById('glpUpNext');
         if (nextEl && E) {
             var q = E.getQueue();
-            if (d.idx < q.length - 1) nextEl.innerHTML = 'Up next: <strong style="color:#e2e8f0">' + _esc(q[d.idx + 1].title) + '</strong>';
-            else nextEl.innerHTML = 'Last song';
+            if (d.idx < q.length - 1) nextEl.innerHTML = 'Next up: <strong style="color:#e2e8f0">' + _esc(q[d.idx + 1].title) + '</strong>';
+            else nextEl.innerHTML = '\uD83C\uDFB6 Last song in the set';
         }
         // Float
         _setText('glpFloatTitle', song.title);
@@ -214,16 +227,36 @@ window.GLPlayerUI = (function() {
         var badge = _confidenceLabels[conf] || '';
         var color = _sourceColors[src] || '#475569';
 
-        // Confident messaging: "Playing now" not "Playing via"
-        var label = icon + ' Playing now \u00B7 ' + name + (badge ? ' \u00B7 ' + badge : '');
+        // Success confirmation: "✔ Playing: [Song Title]"
+        var E = window.GLPlayerEngine;
+        var song = E ? E.getCurrentSong() : null;
+        var songTitle = song ? song.title : '';
+
         var el = document.getElementById('glpSourceLabel');
-        if (el) { el.innerHTML = label; el.style.color = color; }
+        if (el) {
+            el.innerHTML = '\u2714 Playing: <strong>' + _esc(songTitle) + '</strong> <span style="opacity:0.7">\u00B7 ' + name + (badge ? ' \u00B7 ' + badge : '') + '</span>';
+            el.style.color = color;
+            // Brief highlight animation
+            el.style.transition = 'opacity 0.3s ease';
+            el.style.opacity = '0';
+            requestAnimationFrame(function() { el.style.opacity = '1'; });
+        }
         _setText('glpFloatSource', icon + ' ' + name + (badge ? ' \u00B7 ' + badge : ''));
+
+        // Fade in the video container smoothly
+        var vc = document.getElementById('glpVideoContainer');
+        if (vc) { vc.style.transition = 'opacity 0.3s ease'; vc.style.opacity = '1'; }
     }
 
     function _renderStatus(msg) {
+        // Map system language to confident language
+        var friendlyMsg = msg;
+        if (msg === 'Loading\u2026' || msg === 'Loading...') friendlyMsg = 'Finding best version\u2026';
+        if (msg === 'Retrying\u2026' || msg === 'Retrying...') friendlyMsg = 'Searching again\u2026';
+        if (msg && msg.indexOf('Trying') === 0) friendlyMsg = msg.replace('Trying', 'Checking');
+
         var container = document.getElementById('glpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">' + _esc(msg) + '</div>';
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">' + _esc(friendlyMsg) + '</div>';
     }
 
     function _renderState(d) {
@@ -263,21 +296,40 @@ window.GLPlayerUI = (function() {
     function _showFallbackUI() {
         var fb = document.getElementById('glpFallback');
         var container = document.getElementById('glpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.82em;text-align:center;padding:12px">Searching for a version\u2026</div>';
+
+        // Get current song for external links
+        var E = window.GLPlayerEngine;
+        var song = E ? E.getCurrentSong() : null;
+        var songTitle = song ? song.title : '';
+        var songBand = song ? (song.bandName || song.band || '') : '';
+        var q = encodeURIComponent(songTitle + (songBand ? ' ' + songBand : ''));
+
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:16px">'
+            + '<div style="font-size:0.88em;font-weight:700;color:#94a3b8;margin-bottom:4px">Couldn\u2019t find a perfect match</div>'
+            + '<div style="font-size:0.75em;color:#475569">Choose how to listen:</div>'
+            + '</div>';
+
         if (!fb) return;
 
         fb.style.display = '';
         fb.innerHTML = ''
-            + '<button onclick="GLPlayerEngine.retryCurrentSong()" style="width:100%;padding:10px;border-radius:8px;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;margin-bottom:8px">\uD83D\uDD04 Retry</button>'
-            + '<details style="text-align:left;margin-bottom:8px">'
-            + '<summary style="font-size:0.78em;color:#475569;cursor:pointer;text-align:center">More options</summary>'
-            + '<div style="padding:8px 0">'
-            + '<div style="font-size:0.75em;color:#64748b;margin-bottom:4px">Paste a YouTube link:</div>'
-            + '<div style="display:flex;gap:6px">'
+            // Primary actions — feel like choices, not failures
+            + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+            + '<button onclick="GLPlayerEngine.retryCurrentSong()" style="flex:1;padding:10px;border-radius:10px;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">\uD83D\uDD04 Try Again</button>'
+            + '<button onclick="GLPlayerEngine.next()" style="flex:1;padding:10px;border-radius:10px;font-size:0.82em;font-weight:700;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">Next Song \u23ED</button>'
+            + '</div>'
+            // External platform links — framed as choices
+            + '<div style="display:flex;gap:6px;margin-bottom:8px">'
+            + '<a href="https://www.youtube.com/results?search_query=' + q + '" target="_blank" rel="noopener" style="flex:1;padding:8px;border-radius:8px;font-size:0.75em;font-weight:600;border:1px solid rgba(255,0,0,0.2);background:rgba(255,0,0,0.04);color:#f87171;text-decoration:none;text-align:center;cursor:pointer">Open in YouTube</a>'
+            + '<a href="https://open.spotify.com/search/' + encodeURIComponent(songTitle) + '" target="_blank" rel="noopener" style="flex:1;padding:8px;border-radius:8px;font-size:0.75em;font-weight:600;border:1px solid rgba(30,215,96,0.2);background:rgba(30,215,96,0.04);color:#1ed760;text-decoration:none;text-align:center;cursor:pointer">Open in Spotify</a>'
+            + '</div>'
+            // Paste URL — collapsible
+            + '<details style="text-align:left">'
+            + '<summary style="font-size:0.72em;color:#475569;cursor:pointer;text-align:center">Have a link? Paste it here</summary>'
+            + '<div style="padding:8px 0"><div style="display:flex;gap:6px">'
             + '<input id="glpYtUrlInput" type="url" placeholder="youtube.com/watch?v=..." style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#f1f5f9;font-size:0.82em;min-width:0">'
-            + '<button onclick="GLPlayerUI._playPastedUrl()" style="padding:8px 14px;border-radius:8px;font-size:0.82em;font-weight:700;border:1px solid rgba(255,0,0,0.3);background:rgba(255,0,0,0.08);color:#f87171;cursor:pointer;white-space:nowrap">\u25B6 Play</button>'
-            + '</div></div></details>'
-            + '<button onclick="GLPlayerEngine.next()" style="width:100%;padding:10px;border-radius:8px;font-size:0.82em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:#64748b;cursor:pointer">Skip \u23ED</button>';
+            + '<button onclick="GLPlayerUI._playPastedUrl()" style="padding:8px 14px;border-radius:8px;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;white-space:nowrap">\u25B6 Play</button>'
+            + '</div></div></details>';
     }
 
     function _playPastedUrl() {
