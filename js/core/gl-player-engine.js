@@ -23,6 +23,7 @@ window.GLPlayerEngine = (function() {
     var _queueName = '';
     var _queueId = null;
     var _mode = 'default'; // 'default' | 'jam'
+    var _queueContext = ''; // e.g. "Practicing weakest songs (3)"
     var _setOverrides = null;
     var _activeSource = null; // 'youtube' | 'spotify' | 'archive'
     var _activeResult = null;
@@ -57,6 +58,7 @@ window.GLPlayerEngine = (function() {
     function getCurrentIdx() { return _currentIdx; }
     function getCurrentSong() { return _queue[_currentIdx] || null; }
     function getQueueName() { return _queueName; }
+    function getQueueContext() { return _queueContext; }
     function getActiveSource() { return _activeSource; }
     function getActiveResult() { return _activeResult; }
     function isPlaying() { return _isPlaying; }
@@ -96,6 +98,7 @@ window.GLPlayerEngine = (function() {
         _currentIdx = -1;
         _queueName = options.name || 'Queue';
         _queueId = options.id || options.name || null;
+        _queueContext = options.context || '';
         _mode = options.mode || 'default';
         _setOverrides = options.setOverrides || null;
         _activeSource = null;
@@ -409,6 +412,7 @@ window.GLPlayerEngine = (function() {
         getCurrentIdx: getCurrentIdx,
         getCurrentSong: getCurrentSong,
         getQueueName: getQueueName,
+        getQueueContext: getQueueContext,
         getActiveSource: getActiveSource,
         getActiveResult: getActiveResult,
         isPlaying: isPlaying,

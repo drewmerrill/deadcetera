@@ -369,16 +369,15 @@ function _renderDashboard(bundle, context) {
 
 // ── SHARPEN dashboard: solo practice focus ────────────────────────────────────
 function _renderSharpenDashboard(bundle, wf, isStoner) {
+    // Simplified: Next Action drives everything. Supporting cards below.
     return [
         '<div class="home-dashboard hd-command-center">',
-        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Three steps. That\'s all it takes to get better.'),
+        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Focus. Practice. Improve.'),
         _renderNextActionCard(bundle, wf),
+        _renderTopSongsToWork(bundle),
         _renderActionOwedCard(),
         _renderListeningCard('focus', '\uD83C\uDFA7 Practice Your Set', 'Listen to your weakest songs and lock them in'),
-        _renderTopSongsToWork(bundle),
-        _renderSharpenPracticeCard(bundle),
         _renderSharpenWeakSongs(bundle),
-        _renderSharpenRecentPractice(bundle),
         '</div>'
     ].join('');
 }
@@ -387,37 +386,97 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 function _renderNextActionCard(bundle, wf) {
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
+    var practiced = _didPracticeToday();
     var action = null;
 
-    // Decision tree: what's the highest-impact next action?
-    if (daysOut === 0) {
-        action = { icon: '\uD83C\uDFA4', title: 'Showtime', sub: nextGig.venue || 'Today', cta: 'Go Live', onclick: 'homeGoLive(\'' + _escHtml(nextGig.name || nextGig.venue || '') + '\')' };
-    } else if (daysOut <= 2 && daysOut > 0) {
-        action = { icon: '\u26A1', title: 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : ''), sub: (nextGig.venue || '') + ' \u2014 run the set', cta: 'Practice Set', onclick: 'hdPlayBundle(\'gig\')' };
-    } else if (wf && wf.nextActionLabel && wf.nextActionTarget) {
-        action = { icon: '\uD83C\uDFAF', title: wf.nextActionLabel, sub: wf.nextActionDescription || '', cta: 'Go', onclick: 'showPage(\'' + wf.nextActionTarget + '\')' };
-    } else {
-        // Default: rehearsal focus
+    // If already practiced today, acknowledge it first
+    if (practiced && daysOut > 2) {
         var weakCount = _countWeakSongs(bundle);
         if (weakCount > 0) {
-            action = { icon: '\uD83D\uDD25', title: weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work', sub: 'Focus on your weakest songs first', cta: 'Start Practicing', onclick: 'hdPlayBundle(\'focus\')' };
+            action = { icon: '\u2705', title: 'Practiced today', sub: weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' still need attention', cta: 'Keep Going', onclick: 'hdPlayBundle(\'focus\')', completed: true };
         } else {
-            action = { icon: '\uD83D\uDCAA', title: 'You\'re in good shape', sub: 'Keep it tight \u2014 run through the set', cta: 'Practice Set', onclick: 'hdPlayBundle(\'gig\')' };
+            action = { icon: '\u2705', title: 'Practiced today \u2014 you\'re locked in', sub: 'Everything\u2019s in good shape', cta: 'Run the Set', onclick: 'hdPlayBundle(\'gig\')', completed: true };
+        }
+    }
+
+    // Override with time-sensitive actions
+    if (!action) {
+        if (daysOut === 0) {
+            action = { icon: '\uD83C\uDFA4', title: 'Showtime', sub: nextGig.venue || 'Today', cta: 'Go Live', onclick: 'homeGoLive(\'' + _escHtml(nextGig.name || nextGig.venue || '') + '\')' };
+        } else if (daysOut <= 2 && daysOut > 0) {
+            action = { icon: '\u26A1', title: 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : ''), sub: (nextGig.venue || '') + ' \u2014 run the set', cta: 'Practice Set', onclick: 'hdPlayBundle(\'gig\')' };
+        } else if (wf && wf.nextActionLabel && wf.nextActionTarget) {
+            action = { icon: '\uD83C\uDFAF', title: wf.nextActionLabel, sub: wf.nextActionDescription || '', cta: 'Go', onclick: 'showPage(\'' + wf.nextActionTarget + '\')' };
+        } else {
+            var weakCount2 = _countWeakSongs(bundle);
+            if (weakCount2 > 0) {
+                action = { icon: '\uD83D\uDD25', title: weakCount2 + ' song' + (weakCount2 > 1 ? 's' : '') + ' need work', sub: 'Focus on your weakest songs first', cta: 'Start Practicing', onclick: 'hdPlayBundle(\'focus\')' };
+            } else {
+                action = { icon: '\uD83D\uDCAA', title: 'You\'re in good shape', sub: 'Keep it tight \u2014 run through the set', cta: 'Practice Set', onclick: 'hdPlayBundle(\'gig\')' };
+            }
         }
     }
 
     if (!action) return '';
 
-    return '<div class="app-card" style="padding:16px;margin-bottom:12px;border:1px solid rgba(99,102,241,0.25);background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(139,92,246,0.04))">'
+    var borderColor = action.completed ? 'rgba(34,197,94,0.3)' : 'rgba(99,102,241,0.25)';
+    var bgGradient = action.completed ? 'linear-gradient(135deg,rgba(34,197,94,0.06),rgba(16,185,129,0.04))' : 'linear-gradient(135deg,rgba(99,102,241,0.06),rgba(139,92,246,0.04))';
+    var btnBg = action.completed ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#6366f1,#8b5cf6)';
+    var labelColor = action.completed ? '#22c55e' : '#818cf8';
+
+    var html = '<div class="app-card" style="padding:16px;margin-bottom:12px;border:1px solid ' + borderColor + ';background:' + bgGradient + '">'
         + '<div style="display:flex;align-items:center;gap:12px">'
-        + '<div style="width:44px;height:44px;border-radius:12px;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:1.3em;flex-shrink:0">' + action.icon + '</div>'
+        + '<div style="width:44px;height:44px;border-radius:12px;background:' + (action.completed ? 'rgba(34,197,94,0.12)' : 'rgba(99,102,241,0.12)') + ';display:flex;align-items:center;justify-content:center;font-size:1.3em;flex-shrink:0">' + action.icon + '</div>'
         + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:#818cf8;text-transform:uppercase;margin-bottom:2px">Next Up</div>'
+        + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:' + labelColor + ';text-transform:uppercase;margin-bottom:2px">' + (action.completed ? 'Done Today' : 'Next Up') + '</div>'
         + '<div style="font-size:1em;font-weight:800;color:var(--text)">' + _escHtml(action.title) + '</div>'
         + (action.sub ? '<div style="font-size:0.78em;color:var(--text-dim);margin-top:1px">' + _escHtml(action.sub) + '</div>' : '')
         + '</div>'
-        + '<button onclick="' + action.onclick + '" style="padding:10px 18px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.85em;cursor:pointer;white-space:nowrap">' + _escHtml(action.cta) + '</button>'
+        + '<button onclick="' + action.onclick + '" style="padding:10px 18px;border-radius:10px;border:none;background:' + btnBg + ';color:white;font-weight:800;font-size:0.85em;cursor:pointer;white-space:nowrap">' + _escHtml(action.cta) + '</button>'
         + '</div></div>';
+
+    // Progression indicator
+    html += _renderProgressionSignal(bundle);
+
+    return html;
+}
+
+// ── Progression Signal ──────────────────────────────────────────────────────
+function _renderProgressionSignal(bundle) {
+    var signals = [];
+
+    // Songs improved this week (readiness increased)
+    var weekActions = _getActionsThisWeek();
+    var practiceCount = weekActions.filter(function(a) { return a.type === 'practice_set' || a.type === 'practice_all'; }).length;
+    if (practiceCount > 0) signals.push('\uD83C\uDFB5 ' + practiceCount + ' practice session' + (practiceCount > 1 ? 's' : '') + ' this week');
+
+    // Rehearsal trend (from session data if available)
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        // Use cached sessions if available
+        if (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache && _rhSessionsCache.length >= 2) {
+            var rated = _rhSessionsCache.filter(function(s) { return s.rating; }).slice(0, 5);
+            if (rated.length >= 2) {
+                var ratingValues = { great: 3, solid: 2, needs_work: 1 };
+                var recentAvg = rated.slice(0, Math.ceil(rated.length / 2)).reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / Math.ceil(rated.length / 2);
+                var olderAvg = rated.slice(Math.ceil(rated.length / 2)).reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / (rated.length - Math.ceil(rated.length / 2));
+                if (recentAvg > olderAvg + 0.3) signals.push('\u2191 Last ' + rated.length + ' rehearsals trending up');
+                else if (recentAvg >= olderAvg - 0.3) signals.push('\u2192 Rehearsals holding steady');
+            }
+        }
+    } catch(e) {}
+
+    // Weak song count direction
+    var weakCount = _countWeakSongs(bundle);
+    if (weakCount === 0) signals.push('\uD83D\uDD12 All songs in good shape');
+
+    if (!signals.length) return '';
+
+    return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">'
+        + signals.map(function(s) {
+            return '<div style="font-size:0.7em;font-weight:600;color:#94a3b8;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)">' + s + '</div>';
+        }).join('')
+        + '</div>';
 }
 
 // ── Top Songs to Work ────────────────────────────────────────────────────────
@@ -504,6 +563,48 @@ function _renderListeningCard(bundleType, title, subtitle) {
         + '</div>';
 }
 
+// ── Action Completion Tracking ──────────────────────────────────────────────
+// Lightweight localStorage tracker: what did the user do today?
+
+var _ACTION_LOG_KEY = 'gl_action_log';
+
+function _logAction(actionType) {
+    try {
+        var log = JSON.parse(localStorage.getItem(_ACTION_LOG_KEY) || '{}');
+        var today = _todayStr();
+        if (!log[today]) log[today] = [];
+        log[today].push({ type: actionType, ts: Date.now() });
+        // Keep last 14 days
+        var keys = Object.keys(log).sort();
+        while (keys.length > 14) { delete log[keys.shift()]; }
+        localStorage.setItem(_ACTION_LOG_KEY, JSON.stringify(log));
+    } catch(e) {}
+}
+
+function _getActionsToday() {
+    try {
+        var log = JSON.parse(localStorage.getItem(_ACTION_LOG_KEY) || '{}');
+        return log[_todayStr()] || [];
+    } catch(e) { return []; }
+}
+
+function _getActionsThisWeek() {
+    try {
+        var log = JSON.parse(localStorage.getItem(_ACTION_LOG_KEY) || '{}');
+        var now = new Date();
+        var weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
+        var actions = [];
+        Object.keys(log).forEach(function(date) {
+            if (date >= weekAgo) actions = actions.concat(log[date]);
+        });
+        return actions;
+    } catch(e) { return []; }
+}
+
+function _didPracticeToday() {
+    return _getActionsToday().some(function(a) { return a.type === 'practice_set' || a.type === 'practice_all' || a.type === 'rehearsal'; });
+}
+
 // ── Play Bundle via Unified Engine ──────────────────────────────────────────
 
 window.hdPlayBundle = async function(bundleType) {
@@ -517,9 +618,18 @@ window.hdPlayBundle = async function(bundleType) {
             }
             var songs = bundle.songs.map(function(s) { return s.songTitle || s.title || s; });
             var labels = { gig: 'Gig Set', rehearsal: 'Rehearsal Set', focus: 'Focus Set', northstar: 'North Star' };
-            GLPlayerEngine.loadQueue(songs, { name: labels[bundleType] || 'Listen & Learn', mode: 'default' });
+            var contextLabels = { focus: 'Practicing weakest songs (' + songs.length + ')', gig: 'Running the gig set (' + songs.length + ' songs)', rehearsal: 'Rehearsal prep (' + songs.length + ' songs)' };
+            GLPlayerEngine.loadQueue(songs, { name: labels[bundleType] || 'Practice', mode: 'default', context: contextLabels[bundleType] || '' });
             GLPlayerUI.showOverlay();
             GLPlayerEngine.play(0);
+            // Log action
+            var actionTypes = { focus: 'practice_all', gig: 'practice_set', rehearsal: 'practice_set' };
+            _logAction(actionTypes[bundleType] || 'practice_set');
+            // Listen for queue completion
+            GLPlayerEngine.on('queueEnd', function _hdQueueDone() {
+                _logAction('completed_' + (actionTypes[bundleType] || 'set'));
+                GLPlayerEngine.off('queueEnd', _hdQueueDone);
+            });
             return;
         } catch(e) { console.warn('[hdPlayBundle] unified engine failed:', e); }
     }

@@ -68,7 +68,7 @@ window.GLPlayerUI = (function() {
         _overlayEl.innerHTML = ''
             // Header
             + '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;flex-shrink:0">'
-            + '<div id="glpHeader" style="font-size:0.75em;font-weight:600;color:#64748b">' + _esc(E.getQueueName()) + '</div>'
+            + '<div id="glpHeader" style="font-size:0.75em;font-weight:600;color:#64748b">' + _esc(E.getQueueName()) + (E.getQueueContext ? (E.getQueueContext() ? ' <span style="color:#94a3b8;font-weight:400">\u00B7 ' + _esc(E.getQueueContext()) + '</span>' : '') : '') + '</div>'
             + '<div style="display:flex;align-items:center;gap:8px">'
             + '<select id="glpSourcePref" onchange="GLPlayerUI._onPrefChange(this.value)" style="font-size:0.7em;padding:3px 6px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#94a3b8;cursor:pointer">'
             + '<option value="youtube"' + (pref === 'youtube' ? ' selected' : '') + '>YouTube first</option>'
