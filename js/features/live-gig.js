@@ -65,6 +65,26 @@
     // Milestone 4: notify shell we're entering performance mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('performance');
     if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('live-gig');
+
+    // Entrance transition
+    var overlay = document.getElementById('lgOverlay');
+    if (overlay) { overlay.style.opacity = '0'; overlay.style.transition = 'opacity 0.25s ease'; requestAnimationFrame(function() { overlay.style.opacity = '1'; }); }
+
+    // First-use audio hint
+    if (!localStorage.getItem('gl_lg_audio_hint_seen')) {
+      setTimeout(function() {
+        var btn = document.getElementById('lgAudioBtn');
+        if (!btn) return;
+        var hint = document.createElement('div');
+        hint.id = 'lgAudioHint';
+        hint.style.cssText = 'position:absolute;top:100%;right:0;margin-top:6px;padding:6px 12px;background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:8px;font-size:0.7em;color:#a5b4fc;white-space:nowrap;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,0.4)';
+        hint.textContent = '\uD83C\uDFA7 Play audio with charts';
+        btn.style.position = 'relative';
+        btn.appendChild(hint);
+        setTimeout(function() { if (hint.parentNode) hint.remove(); }, 4000);
+        localStorage.setItem('gl_lg_audio_hint_seen', '1');
+      }, 800);
+    }
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -338,7 +358,7 @@
     // Counter
     if (counter) counter.textContent = (_lg.cursor + 1) + ' / ' + total;
 
-    // Song info bar — title + badges
+    // Song info bar — emphasized current song + badges + quick note
     if (songBar) {
       var keyStr = song.key ? ('<span class="lg-key-badge">' + _esc(song.key) + '</span>') : '';
       var bpmStr = song.bpm ? ('<span class="lg-bpm-badge">&#9834; ' + _esc(String(song.bpm)) + '</span>') : '';
@@ -349,27 +369,35 @@
           STATUS_LABELS[song.statusTag] + '</span>';
       }
       songBar.innerHTML =
-        '<span class="lg-song-title">' + _esc(song.title) + '</span>' +
-        '<span class="lg-song-badges">' + keyStr + bpmStr + statusStr + '</span>';
+        '<span class="lg-song-title" style="font-size:1.3rem;text-shadow:0 0 12px rgba(99,102,241,0.2)">' + _esc(song.title) + '</span>' +
+        '<span class="lg-song-badges">' + keyStr + bpmStr + statusStr + '</span>' +
+        '<button onclick="lgQuickNote()" style="margin-left:auto;padding:3px 8px;border-radius:5px;font-size:0.6em;font-weight:700;border:1px solid rgba(255,255,255,0.1);background:none;color:#64748b;cursor:pointer;flex-shrink:0" title="Add a quick note">+ Note</button>';
+      // Pulse animation on song change
+      songBar.style.transition = 'background 0.3s ease';
+      songBar.style.background = 'rgba(99,102,241,0.08)';
+      setTimeout(function() { songBar.style.background = ''; }, 400);
     }
 
     // Load chart
     _loadChart(song.title);
 
-    // Up-next queue
+    // Up-next queue — clear visual separation
     if (queue) {
       var next1 = _lg.songs[_lg.cursor + 1];
       var next2 = _lg.songs[_lg.cursor + 2];
       if (next1) {
-        var qParts = ['<span class="lg-queue-label">UP NEXT:</span>',
-          '<span class="lg-queue-song">' + _esc(next1.title) + '</span>'];
+        var qHtml = '<span class="lg-queue-label" style="color:#818cf8">COMING UP \u2192</span> '
+          + '<span class="lg-queue-song" style="font-weight:700;color:#e2e8f0">' + _esc(next1.title) + '</span>';
+        if (next1.key) qHtml += ' <span style="font-size:0.65em;color:#818cf8;opacity:0.6">' + _esc(next1.key) + '</span>';
         if (next2) {
-          qParts.push('<span class="lg-queue-arrow">&#8594;</span>');
-          qParts.push('<span class="lg-queue-song lg-queue-dim">' + _esc(next2.title) + '</span>');
+          qHtml += ' <span class="lg-queue-arrow" style="color:#334155">\u2192</span> '
+            + '<span class="lg-queue-song lg-queue-dim">' + _esc(next2.title) + '</span>';
         }
-        queue.innerHTML = qParts.join(' ');
+        queue.innerHTML = qHtml;
+        queue.style.borderTop = '1px solid rgba(99,102,241,0.1)';
       } else {
-        queue.innerHTML = '<span class="lg-queue-label">End of set</span>';
+        queue.innerHTML = '<span class="lg-queue-label" style="color:#22c55e">\uD83C\uDFB6 LAST SONG \u2014 FINISH STRONG</span>';
+        queue.style.borderTop = '1px solid rgba(34,197,94,0.15)';
       }
     }
   }
@@ -677,6 +705,42 @@
     _origLgExit();
   };
 
+  // ── Quick Notes ──────────────────────────────────────────────────────────
+  var _lgNotes = []; // session notes: [{song, text, ts}]
+
+  function lgQuickNote() {
+    var song = _lg.songs[_lg.cursor];
+    if (!song) return;
+    var existing = document.getElementById('lgNoteInput');
+    if (existing) { existing.parentElement.remove(); return; } // toggle off
+
+    var songBar = document.getElementById('lgSongBar');
+    if (!songBar) return;
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;gap:6px;padding:6px 16px;background:rgba(0,0,0,0.3);border-bottom:1px solid rgba(255,255,255,0.04)';
+    wrap.innerHTML = '<input id="lgNoteInput" type="text" placeholder="Quick note for ' + _esc(song.title) + '..." style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#f1f5f9;font-size:0.78em" onkeydown="if(event.key===\'Enter\')lgSaveNote()">'
+      + '<button onclick="lgSaveNote()" style="padding:6px 12px;border-radius:6px;font-size:0.72em;font-weight:700;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:#86efac;cursor:pointer">Save</button>';
+    songBar.parentNode.insertBefore(wrap, songBar.nextSibling);
+    document.getElementById('lgNoteInput').focus();
+  }
+
+  function lgSaveNote() {
+    var input = document.getElementById('lgNoteInput');
+    if (!input || !input.value.trim()) return;
+    var song = _lg.songs[_lg.cursor];
+    _lgNotes.push({ song: song ? song.title : '', text: input.value.trim(), ts: new Date().toISOString() });
+    input.parentElement.remove();
+    if (typeof showToast === 'function') showToast('Note saved for ' + (song ? song.title : 'song'));
+
+    // Persist to Firebase session if available
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function' && _lg.setlistId) {
+      try { db.ref(bandPath('live_gig_notes/' + _lg.setlistId)).set(_lgNotes); } catch(e) {}
+    }
+  }
+
+  window.lgQuickNote        = lgQuickNote;
+  window.lgSaveNote         = lgSaveNote;
   window.initLiveGig        = initLiveGig;
   window.lgNext             = lgNext;
   window.lgPrev             = lgPrev;
