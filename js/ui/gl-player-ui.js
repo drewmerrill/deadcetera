@@ -46,8 +46,8 @@ window.GLPlayerUI = (function() {
         E.on('status', function(d) { _renderStatus(d.message); });
         E.on('embedReady', function(d) { _createEmbed(d); });
         E.on('queueEnd', function() {
-            if (typeof showToast === 'function') showToast('\uD83C\uDFB6 Set complete \u2014 nice run');
             E.clearResumeState();
+            _showCompletionScreen();
         });
     }
 
@@ -205,13 +205,16 @@ window.GLPlayerUI = (function() {
         // Clear fallback
         var fb = document.getElementById('glpFallback');
         if (fb) { fb.style.display = 'none'; fb.innerHTML = ''; }
-        // Up next — persistent context
+        // Up next — momentum language
         var E = window.GLPlayerEngine;
         var nextEl = document.getElementById('glpUpNext');
         if (nextEl && E) {
             var q = E.getQueue();
-            if (d.idx < q.length - 1) nextEl.innerHTML = 'Next up: <strong style="color:#e2e8f0">' + _esc(q[d.idx + 1].title) + '</strong>';
-            else nextEl.innerHTML = '\uD83C\uDFB6 Last song in the set';
+            if (d.idx < q.length - 1) {
+                nextEl.innerHTML = 'Coming up \u2192 <strong style="color:#e2e8f0">' + _esc(q[d.idx + 1].title) + '</strong>';
+            } else {
+                nextEl.innerHTML = '\uD83C\uDFB6 Last song \u2014 finish strong';
+            }
         }
         // Float
         _setText('glpFloatTitle', song.title);
@@ -330,6 +333,68 @@ window.GLPlayerUI = (function() {
             + '<input id="glpYtUrlInput" type="url" placeholder="youtube.com/watch?v=..." style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#f1f5f9;font-size:0.82em;min-width:0">'
             + '<button onclick="GLPlayerUI._playPastedUrl()" style="padding:8px 14px;border-radius:8px;font-size:0.82em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;white-space:nowrap">\u25B6 Play</button>'
             + '</div></div></details>';
+    }
+
+    // ── Completion Screen ─────────────────────────────────────────────────
+    function _showCompletionScreen() {
+        var E = window.GLPlayerEngine;
+        if (!E) return;
+        var q = E.getQueue();
+        var name = E.getQueueName();
+        var context = E.getQueueContext ? E.getQueueContext() : '';
+        var songCount = q.length;
+
+        // Replace video + song info with completion state
+        var vc = document.getElementById('glpVideoContainer');
+        if (vc) vc.innerHTML = '';
+
+        var titleEl = document.getElementById('glpSongTitle');
+        if (titleEl) { titleEl.textContent = ''; titleEl.style.opacity = '1'; }
+        var artistEl = document.getElementById('glpSongArtist');
+        if (artistEl) artistEl.textContent = '';
+
+        var sourceEl = document.getElementById('glpSourceLabel');
+        if (sourceEl) sourceEl.innerHTML = '';
+
+        var progressEl = document.getElementById('glpProgress');
+        if (progressEl) progressEl.innerHTML = '';
+
+        // Show completion in fallback area
+        var fb = document.getElementById('glpFallback');
+        if (!fb) return;
+
+        // Inject completion animation
+        if (!document.getElementById('glpCompletionStyles')) {
+            var cst = document.createElement('style');
+            cst.id = 'glpCompletionStyles';
+            cst.textContent = '@keyframes glpBounce{0%{transform:scale(0)}50%{transform:scale(1.15)}100%{transform:scale(1)}}';
+            document.head.appendChild(cst);
+        }
+
+        var html = '<div style="padding:20px 0;text-align:center">';
+        // Celebration
+        html += '<div style="width:64px;height:64px;margin:0 auto 12px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.15),rgba(99,102,241,0.1));display:flex;align-items:center;justify-content:center;animation:glpBounce 0.4s ease"><span style="font-size:1.8em">\u2705</span></div>';
+        html += '<div style="font-size:1.2em;font-weight:800;color:#e2e8f0;margin-bottom:4px">Set Complete</div>';
+        html += '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:4px">You practiced ' + songCount + ' song' + (songCount !== 1 ? 's' : '') + '</div>';
+        if (context) html += '<div style="font-size:0.75em;color:#64748b;margin-bottom:12px">' + _esc(context) + '</div>';
+
+        // Next actions
+        html += '<div style="font-size:0.72em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">What\u2019s next?</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:6px;max-width:280px;margin:0 auto">';
+        html += '<button onclick="GLPlayerUI.closeAll();if(typeof showPage===\'function\')showPage(\'home\')" style="padding:10px;border-radius:10px;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">\uD83C\uDFE0 Back to Home</button>';
+        html += '<button onclick="GLPlayerEngine.play(0)" style="padding:10px;border-radius:10px;font-size:0.85em;font-weight:700;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:#86efac;cursor:pointer">\uD83D\uDD01 Run It Again</button>';
+        html += '<button onclick="GLPlayerUI.closeAll();if(typeof showPage===\'function\')showPage(\'rehearsal\')" style="padding:10px;border-radius:10px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">\uD83C\uDFB8 Start Rehearsal</button>';
+        html += '</div>';
+        html += '</div>';
+
+        fb.innerHTML = html;
+        fb.style.display = '';
+
+        // Update up next
+        var nextEl = document.getElementById('glpUpNext');
+        if (nextEl) nextEl.innerHTML = '\uD83C\uDFB6 Nice run \u2014 keep the momentum going';
+
+        if (typeof showToast === 'function') showToast('\u2705 Set complete \u2014 ' + songCount + ' songs practiced');
     }
 
     function _playPastedUrl() {
