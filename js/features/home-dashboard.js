@@ -2779,8 +2779,8 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         _nbaLabel = 'Practice weakest song: ' + riskEntry[0];
         _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
     } else if (!agenda || agenda.empty) {
-        _nbaLabel = 'Generate rehearsal agenda';
-        _nbaOnclick = "if(typeof GLStore!=='undefined'&&GLStore.regenerateRehearsalAgenda){GLStore.regenerateRehearsalAgenda();if(typeof renderHomeDashboard==='function')renderHomeDashboard();}";
+        _nbaLabel = 'Plan next rehearsal';
+        _nbaOnclick = "showPage('rehearsal');setTimeout(function(){if(typeof renderRehearsalPlanner==='function')renderRehearsalPlanner();},300)";
     } else if (!tl || !tl.summary) {
         _nbaLabel = 'Upload rehearsal to improve readiness';
         _nbaOnclick = "if(typeof openRehearsalChopper==='function')openRehearsalChopper()";
