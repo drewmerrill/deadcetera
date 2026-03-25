@@ -145,6 +145,24 @@ Band Feed
 
 ---
 
+## AUTO-ENGAGE MODE (Latest Update)
+
+First-session focused overlay when ≥3 songs reached:
+- Background dims with blur (click-to-dismiss)
+- Avatar button hidden during focused state
+- Centered card: "Nice — let's run one. Just hit play — I've got the rest."
+- Single CTA: "▶ Run What Matters" (gradient, prominent)
+- Secondary: "I'll explore first" (dismisses cleanly)
+- Auto-dismisses after 20 seconds
+- Avatar button restored on dismiss
+- No competing CTAs visible during this state
+
+Language pass complete: zero instances of "Want to", "You can", "Try" remaining in guidance.
+
+> **ChatGPT**: See `groovelinx_supporting_files/session_2026-03-25_full_manifest.md` for complete file manifest.
+
+---
+
 ## SCREENSHOTS NEEDED
 
 > **DREW**: Capture these screenshots and save to `02_GrooveLinx/outputs/groovelinx_supporting_files/`:

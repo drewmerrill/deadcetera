@@ -242,20 +242,50 @@ window.GLAvatarUI = (function() {
         var existing = document.getElementById('glAvAutoLaunch');
         if (existing) return;
 
+        // Hide avatar button during focused state — no distractions
+        if (_btnEl) _btnEl.style.display = 'none';
+
+        // Focused overlay — dims background, centers attention on play
+        var dim = document.createElement('div');
+        dim.id = 'glAvAutoLaunchDim';
+        dim.style.cssText = 'position:fixed;inset:0;z-index:9150;background:rgba(0,0,0,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);transition:opacity 0.3s;opacity:0';
+        dim.onclick = function() { _dismissAutoLaunch(); };
+        document.body.appendChild(dim);
+        requestAnimationFrame(function() { dim.style.opacity = '1'; });
+
         var ov = document.createElement('div');
         ov.id = 'glAvAutoLaunch';
-        ov.style.cssText = 'position:fixed;bottom:100px;right:16px;z-index:9200;max-width:300px;padding:16px;background:linear-gradient(135deg,#1e293b,#1a2540);border:1px solid rgba(99,102,241,0.4);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:glAvSlideIn 0.3s ease;color:#f1f5f9';
+        ov.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9200;width:320px;max-width:90vw;padding:28px 24px;background:linear-gradient(160deg,#1e293b,#0f172a);border:1px solid rgba(99,102,241,0.4);border-radius:18px;box-shadow:0 12px 48px rgba(0,0,0,0.6);animation:glAvSlideIn 0.3s ease;color:#f1f5f9;text-align:center';
         ov.innerHTML = ''
-            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.1em">\uD83C\uDFB8</span><span style="font-size:0.72em;font-weight:700;color:#818cf8">GrooveMate</span></div>'
-            + '<div style="font-size:0.92em;font-weight:700;margin-bottom:4px">Nice \u2014 let\u2019s run one.</div>'
-            + '<div style="font-size:0.75em;color:#94a3b8;margin-bottom:10px">Your songs are in. Hit play.</div>'
-            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.88em;cursor:pointer">\u25B6 Run What Matters</button>'
-            + '<button onclick="document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Later</button>';
+            + '<div style="font-size:1.6em;margin-bottom:12px">\uD83C\uDFB8</div>'
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:#818cf8;text-transform:uppercase;margin-bottom:6px">GrooveMate</div>'
+            + '<div style="font-size:1.1em;font-weight:800;margin-bottom:4px">Nice \u2014 let\u2019s run one.</div>'
+            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px">Just hit play \u2014 I\u2019ve got the rest.</div>'
+            + '<button onclick="_glAvAutoLaunchPlay()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.95em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3)">\u25B6 Run What Matters</button>'
+            + '<button onclick="_glAvAutoLaunchDismiss()" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.75em">I\u2019ll explore first</button>';
         document.body.appendChild(ov);
 
-        // Auto-dismiss after 15 seconds
-        setTimeout(function() { var el = document.getElementById('glAvAutoLaunch'); if (el) el.remove(); }, 15000);
+        // Auto-dismiss after 20 seconds
+        setTimeout(function() { _dismissAutoLaunch(); }, 20000);
     }
+
+    function _dismissAutoLaunch() {
+        var ov = document.getElementById('glAvAutoLaunch');
+        var dim = document.getElementById('glAvAutoLaunchDim');
+        if (ov) ov.remove();
+        if (dim) { dim.style.opacity = '0'; setTimeout(function() { if (dim.parentNode) dim.remove(); }, 300); }
+        // Restore avatar button
+        if (_btnEl) _btnEl.style.display = '';
+    }
+
+    window._glAvAutoLaunchPlay = function() {
+        _dismissAutoLaunch();
+        if (typeof hdPlayBundle === 'function') hdPlayBundle('focus');
+    };
+
+    window._glAvAutoLaunchDismiss = function() {
+        _dismissAutoLaunch();
+    };
 
     // ── Magic Moment ─────────────────────────────────────────────────────────
     // After first playback completion, offer weak-song follow-up.

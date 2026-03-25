@@ -127,7 +127,7 @@ window.GLAvatarGuide = (function() {
         // ── COACH stage: insight-driven ──
         { id: 'transitions_slow', stage: 'coach', trigger: 'sessions_running_long', page: 'home',
           message: 'Recent rehearsals are running long. Transitions might need tightening.',
-          coach: 'Try setting stricter time budgets for each song.',
+          coach: 'Stricter time budgets per song will fix this.',
           actions: [{ label: 'Plan Rehearsal', onclick: "showPage('rehearsal')" }],
           cooldown: 172800000, dismissible: true },
 
