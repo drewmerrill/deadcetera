@@ -2357,8 +2357,37 @@ async function rhSaveEvent(eventId) {
     try {
         await firebaseDB.ref(bandPath('rehearsals/' + id)).update(ev);
         document.getElementById('rhModal')?.remove();
-        showToast(eventId ? '✅ Rehearsal updated' : '✅ Rehearsal created');
-        await rhLoadEvents();
+        if (eventId) {
+            showToast('✅ Rehearsal updated');
+            await rhLoadEvents();
+        } else {
+            // New rehearsal — navigate to the plan builder so user can build the agenda
+            showToast('✅ Rehearsal created — now build your plan');
+            // Also create a calendar event so the plan tab picks it up
+            if (typeof saveBandDataToDrive === 'function') {
+                try {
+                    var calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+                    var alreadyExists = calEvents.some(function(ce) { return ce.type === 'rehearsal' && ce.date === ev.date; });
+                    if (!alreadyExists) {
+                        calEvents.push({
+                            id: 'cal_' + Date.now(),
+                            type: 'rehearsal',
+                            date: ev.date,
+                            time: ev.time || '',
+                            location: ev.location || '',
+                            notes: ev.notes || '',
+                            createdAt: new Date().toISOString()
+                        });
+                        await saveBandDataToDrive('_band', 'calendar_events', calEvents);
+                    }
+                } catch(e) { /* calendar sync best-effort */ }
+            }
+            // Switch to Tonight tab and open the planner for the new date
+            setTimeout(function() {
+                if (typeof practicePlanActiveDate !== 'undefined') practicePlanActiveDate = ev.date;
+                rhShowTab('tonight');
+            }, 300);
+        }
     } catch(e) { showToast('Could not save: ' + e.message); }
 }
 
