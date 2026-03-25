@@ -3243,6 +3243,19 @@
     { id: 'harmony',       label: 'Harmony Vocals', critical: false }
   ];
 
+  // Coverage strength labels (used in backup player UI)
+  var COVERAGE_STRENGTHS = {
+    confident: { label: 'Confident', color: '#22c55e', description: 'Can perform reliably in a gig' },
+    can_sub:   { label: 'Can Sub',   color: '#f59e0b', description: 'Can step in if needed but not primary strength' }
+  };
+
+  // Migrate legacy 'full'/'partial' values to new terminology
+  function _normalizeStrength(val) {
+    if (val === 'full' || val === 'confident') return 'confident';
+    if (val === 'partial' || val === 'can_sub') return 'can_sub';
+    return 'confident'; // default
+  }
+
   // Map bandMembers role strings to canonical role IDs
   function _mapMemberToRoleIds(memberRole) {
     if (!memberRole) return [];
@@ -3358,7 +3371,7 @@
       return role && role.critical;
     });
     var criticalUncovered = criticalMissing.filter(function(rid) { return !backupCoverage[rid]; });
-    var partialBackups = Object.values(backupCoverage).filter(function(bc) { return bc.strength === 'partial'; });
+    var partialBackups = Object.values(backupCoverage).filter(function(bc) { var s = _normalizeStrength(bc.strength); return s === 'can_sub'; });
 
     var status = 'full_core';
     if (missingRoleIds.length === 0) status = 'full_core';
@@ -3881,6 +3894,8 @@
 
     // Band Roles + Backup Players
     BAND_ROLES:                BAND_ROLES,
+    COVERAGE_STRENGTHS:        COVERAGE_STRENGTHS,
+    normalizeStrength:         _normalizeStrength,
     getBackupPlayers:          getBackupPlayers,
     getActiveBackupPlayers:    getActiveBackupPlayers,
     saveBackupPlayer:          saveBackupPlayer,

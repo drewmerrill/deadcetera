@@ -32,9 +32,13 @@ window.GLAvatarUI = (function() {
             + '@keyframes glAvPulse{0%,100%{box-shadow:0 2px 12px rgba(99,102,241,0.3)}50%{box-shadow:0 2px 20px rgba(99,102,241,0.5)}}'
             + '@keyframes glAvSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}'
             + '@keyframes glAvSlideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}'
-            + '#glAvatarBtn{position:fixed;bottom:80px;right:16px;z-index:9000;width:48px;height:48px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:linear-gradient(135deg,#1e293b,#0f172a);color:#a5b4fc;cursor:pointer;font-size:1.3em;display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 2px 12px rgba(99,102,241,0.3)}'
-            + '#glAvatarBtn:hover{transform:scale(1.08);border-color:rgba(99,102,241,0.6)}'
-            + '#glAvatarBtn.has-tip{animation:glAvPulse 2s ease infinite}'
+            + '@keyframes glAvIdle{0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.15),inset 0 0 6px rgba(99,102,241,0.05)}50%{box-shadow:0 0 14px rgba(99,102,241,0.25),inset 0 0 8px rgba(99,102,241,0.08)}}'
+            + '#glAvatarBtn{position:fixed;bottom:80px;right:16px;z-index:9000;width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(99,102,241,0.25);background:rgba(15,23,42,0.9);backdrop-filter:blur(8px);color:#818cf8;cursor:pointer;font-size:0;display:flex;align-items:center;justify-content:center;transition:all 0.25s ease;animation:glAvIdle 4s ease-in-out infinite}'
+            + '#glAvatarBtn::after{content:"";width:14px;height:14px;border-radius:50%;background:radial-gradient(circle,rgba(129,140,248,0.6) 0%,rgba(99,102,241,0.15) 70%,transparent 100%);transition:all 0.25s}'
+            + '#glAvatarBtn:hover{transform:scale(1.06);border-color:rgba(99,102,241,0.45)}'
+            + '#glAvatarBtn:hover::after{width:16px;height:16px;background:radial-gradient(circle,rgba(129,140,248,0.8) 0%,rgba(99,102,241,0.2) 70%,transparent 100%)}'
+            + '#glAvatarBtn.has-tip{animation:glAvPulse 2.5s ease infinite}'
+            + '#glAvatarBtn.has-tip::after{width:16px;height:16px;background:radial-gradient(circle,rgba(129,140,248,0.9) 0%,rgba(99,102,241,0.3) 70%,transparent 100%)}'
             + '#glAvatarPanel{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:85vw;z-index:9100;background:#0f172a;border-left:1px solid rgba(99,102,241,0.2);display:flex;flex-direction:column;animation:glAvSlideIn 0.25s ease;box-shadow:-4px 0 24px rgba(0,0,0,0.4)}'
             + '#glAvatarPanel.closing{animation:glAvSlideOut 0.2s ease forwards}'
             + '.gl-av-dot{position:absolute;top:2px;right:2px;width:10px;height:10px;border-radius:50%;background:#6366f1;border:2px solid #0f172a}';
@@ -49,7 +53,7 @@ window.GLAvatarUI = (function() {
         _btnEl = document.createElement('button');
         _btnEl.id = 'glAvatarBtn';
         _btnEl.title = _AVATAR_NAME + ' \u2014 your band guide';
-        _btnEl.innerHTML = '\uD83C\uDFB8';
+        _btnEl.innerHTML = ''; // Visual is CSS ::after radial glow
         _btnEl.onclick = function() { _isOpen ? closePanel() : openPanel(); };
         document.body.appendChild(_btnEl);
     }
@@ -89,7 +93,7 @@ window.GLAvatarUI = (function() {
         var html = '';
         // Header
         html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">';
-        html += '<div><div style="font-size:0.88em;font-weight:800;color:#e2e8f0">\uD83C\uDFB8 ' + _AVATAR_NAME + '</div>';
+        html += '<div><div style="font-size:0.88em;font-weight:800;color:#e2e8f0">' + _AVATAR_NAME + '</div>';
         html += '<div style="font-size:0.65em;color:#64748b">' + (stageLabels[stage] || '') + '</div></div>';
         html += '<button onclick="GLAvatarUI.closePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px 8px">\u2715</button>';
         html += '</div>';

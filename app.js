@@ -4,6 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
+console.log('%c🔗 GrooveLinx BUILD: 20260325-184546', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -15,7 +16,6 @@ if (!BUILD_VERSION) {
     } catch(e) {}
 }
 if (!BUILD_VERSION) BUILD_VERSION = '0';
-console.log('%c🔗 GrooveLinx BUILD: ' + BUILD_VERSION, 'color:#667eea;font-weight:bold;font-size:14px');
 var _loadedVersion = BUILD_VERSION;
 var DEBUG = location.search.includes('debug=true');
 
@@ -775,6 +775,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
+        // Restore home address from Firebase (ensures persistence across sessions/devices)
+        if (typeof _restoreHomeAddress === 'function') _restoreHomeAddress();
         
         // ── Dev mode: auto-seed test data, then reload caches ──
         if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.autoSeedIfNeeded === 'function') {
@@ -5761,6 +5763,8 @@ async function getCurrentUserEmail() {
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
+        // Still transition past hero — user IS signed in, just couldn't fetch profile
+        if (typeof window.glHeroCheck === 'function') window.glHeroCheck(true);
     }
 }
 
@@ -5947,9 +5951,38 @@ function avatarClearCustom() {
 // AUTHENTICATION
 // ============================================================================
 
+// Guard: prevents concurrent handleGoogleDriveAuth calls from racing
+var _glAuthInProgress = false;
+
 async function handleGoogleDriveAuth(silent) {
     // Guard: onclick handlers pass Event as first arg — treat non-boolean as interactive
     if (typeof silent !== 'boolean') silent = false;
+
+    // Prevent concurrent auth calls from racing.
+    // If an interactive call comes in while silent auto-reconnect is running,
+    // queue it to run after the silent call finishes.
+    if (_glAuthInProgress) {
+        if (!silent) {
+            console.log('🔑 Auth already in progress — queuing interactive sign-in');
+            var _waitForAuth = setInterval(function() {
+                if (!_glAuthInProgress) {
+                    clearInterval(_waitForAuth);
+                    handleGoogleDriveAuth(false);
+                }
+            }, 100);
+        }
+        return;
+    }
+    _glAuthInProgress = true;
+
+    try {
+        await _handleGoogleDriveAuthInner(silent);
+    } finally {
+        _glAuthInProgress = false;
+    }
+}
+
+async function _handleGoogleDriveAuthInner(silent) {
     if (!isGoogleDriveInitialized) {
         try {
             console.log('🔥 Loading Firebase...');
@@ -5965,6 +5998,8 @@ async function handleGoogleDriveAuth(silent) {
                     currentUserEmail = _fallbackEmail;
                     currentUserName = localStorage.getItem('deadcetera_google_name') || '';
                     currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
+                    updateSignInStatus(true);
+                    updateDriveAuthButton();
                     var _fh = document.getElementById('page-hero');
                     if (_fh) _fh.classList.add('hidden');
                     if (!window._glPageRestorePending && typeof showPage === 'function') {
@@ -5979,23 +6014,28 @@ async function handleGoogleDriveAuth(silent) {
             return;
         }
     }
-    
+
     if (isUserSignedIn) {
         if (silent) return; // Don't sign out in silent mode
-        // Sign out
-        google.accounts.oauth2.revoke(accessToken, () => {
-            console.log('👋 User signed out');
-            accessToken = null;
-            currentUserEmail = null;
-            currentUserName = null;
-            currentUserPicture = null;
-            localStorage.removeItem('deadcetera_google_email');
-            localStorage.removeItem('deadcetera_google_name');
-            localStorage.removeItem('deadcetera_google_picture');
-            localStorage.removeItem('glLastPage');
-            window._justSignedOut = true;
-            updateSignInStatus(false);
-        });
+        // Sign out — wrap revoke in try/catch since accessToken may be null
+        // (e.g., after a cache-only silent restore)
+        try {
+            google.accounts.oauth2.revoke(accessToken, function() {
+                console.log('👋 User signed out');
+            });
+        } catch (e) {
+            console.log('👋 Token revoke skipped (no active token)');
+        }
+        accessToken = null;
+        currentUserEmail = null;
+        currentUserName = null;
+        currentUserPicture = null;
+        localStorage.removeItem('deadcetera_google_email');
+        localStorage.removeItem('deadcetera_google_name');
+        localStorage.removeItem('deadcetera_google_picture');
+        localStorage.removeItem('glLastPage');
+        window._justSignedOut = true;
+        updateSignInStatus(false);
     } else {
         // Sign in
         try {
@@ -10175,7 +10215,7 @@ function settingsTab(tab, btn) {
                     </select></div>
                 <div class="form-row"><label class="form-label">Your Role</label>
                     <div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:0.88em;color:var(--text-muted)">
-                        ${(function(){var m=bandMembers[cu];if(!m)return'<span style="color:var(--text-dim)">Select your name above to see your role</span>';var parts=[m.role];if(m.leadVocals)parts.push('Lead Vocals');else if(m.sings)parts.push('Harmony Vocals');return parts.join(' · ');})()}
+                        ${(function(){var m=bandMembers[cu];if(!m)return'<span style="color:var(--text-dim)">Select your name above to see your role</span>';return typeof _memberDisplayRole==='function'?_memberDisplayRole(m):(m.role+(m.sings?' · Vocals':'')+(m.leadVocals?' (Lead)':''));})()}
                     </div>
                     <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Instrument and vocal role are managed in the Band tab.</div>
                 </div>
@@ -10214,10 +10254,10 @@ function settingsTab(tab, btn) {
         
     band: `
         <div class="app-card"><h3>🎸 Band Configuration</h3>
-            <div class="form-row"><label class="form-label">Band Display Name</label>
+            <div class="form-row"><label class="form-label">Band Name</label>
                 <div style="display:flex;gap:8px"><input class="app-input" id="setBandName" value="${bn}">
-                <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_band_name',document.getElementById('setBandName').value);settingsTab('band')">Save</button></div>
-                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">This is your display name. Your band ID is <code style="color:var(--accent-light)">${currentBandSlug}</code>.</div></div>
+                <button class="btn btn-sm btn-primary" id="saveBandNameBtn" onclick="_saveBandName(this)">Save</button></div>
+                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Used across your band workspace. Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div></div>
             <div class="form-row" style="margin-top:12px"><label class="form-label">Band Logo</label>
                 <div style="display:flex;align-items:center;gap:12px">
                     <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
@@ -10240,7 +10280,7 @@ function settingsTab(tab, btn) {
                 <div class="list-item" style="padding:10px 12px">
                     <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;color:var(--accent-light)">${m.name.charAt(0)}</div>
                     <div style="flex:1"><div style="font-weight:600;font-size:0.9em">${m.name}</div>
-                        <div style="font-size:0.75em;color:var(--text-dim)">${m.role}${m.sings?' · Vocals':''}${m.leadVocals?' (Lead)':''}</div></div>
+                        <div style="font-size:0.75em;color:var(--text-dim)">${typeof _memberDisplayRole==='function'?_memberDisplayRole(m):(m.role+(m.sings?' · Vocals':'')+(m.leadVocals?' (Lead)':''))}</div></div>
                     <button class="btn btn-sm btn-ghost" onclick="editMember('${k}')" title="Edit">✏️</button>
                     <button class="btn btn-sm btn-ghost" onclick="removeMember('${k}')" title="Remove" style="color:var(--red)">✕</button>
                 </div>`).join('')}</div>
@@ -10248,9 +10288,9 @@ function settingsTab(tab, btn) {
                 <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
                 <div class="form-grid">
                     <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="newMemberName" placeholder="First name"></div>
-                    <div class="form-row"><label class="form-label">Role / Instrument</label><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Vocals">Vocals</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
+                    <div class="form-row"><label class="form-label">Primary Instrument</label><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
                     <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
-                    <div class="form-row"><label class="form-label">Sings?</label><select class="app-select" id="newMemberSings"><option value="no">No</option><option value="harmony">Harmony</option><option value="lead">Lead + Harmony</option></select></div>
+                    <div class="form-row"><label class="form-label">Vocal Role</label><select class="app-select" id="newMemberSings"><option value="none">None</option><option value="backing">Backing</option><option value="co-lead">Co-Lead</option><option value="lead">Lead</option></select></div>
                 </div>
                 <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">+ Add Member</button>
             </div>
@@ -10261,9 +10301,13 @@ function settingsTab(tab, btn) {
             <button class="btn btn-primary btn-sm" onclick="showAddBackupPlayerModal()" style="margin-top:8px">+ Add Backup Player</button>
         </div>
         <div class="app-card"><h3>&#127760; Multi-Band</h3>
-            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong> <span style="font-size:0.8em;color:var(--text-dim)">(${currentBandSlug})</span></div>
-            <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:12px">All songs, readiness, setlists, and gigs are scoped to this band. To switch bands, select a different one below or create a new one.</div>
-            <button class="btn btn-primary" onclick="showCreateBandModal()">+ Create New Band</button>
+            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong></div>
+            <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:4px">All songs, readiness, setlists, and gigs are scoped to this band.</div>
+            <div style="font-size:0.72em;color:var(--text-dim);margin-bottom:12px">Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary" id="settingsBandSwitchBtn" onclick="_showBandSwitcherDropdown(this)">Switch Band</button>
+                <button class="btn btn-ghost" onclick="showCreateBandModal()">+ New Band</button>
+            </div>
         </div>`,
         
     data: `
@@ -10434,28 +10478,92 @@ function checkSyncStatus() {
         </div>`;
 }
 
+// ── Standardized Save UX ─────────────────────────────────────────────────────
+// Usage: _glSaveBtn(buttonEl, saveFn) — handles Saving.../Saved/Failed states
+function _glSaveBtn(btn, saveFn) {
+    if (!btn) return;
+    var origText = btn.textContent;
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    try {
+        var result = saveFn();
+        // Handle both sync and async
+        if (result && typeof result.then === 'function') {
+            result.then(function() {
+                btn.textContent = 'Saved';
+                btn.style.opacity = '1';
+                showToast('Saved successfully');
+                setTimeout(function() { btn.textContent = origText; btn.disabled = false; }, 1500);
+            }).catch(function(err) {
+                btn.textContent = origText;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                showToast('Failed to save changes');
+                console.error('Save failed:', err);
+            });
+        } else {
+            btn.textContent = 'Saved';
+            btn.style.opacity = '1';
+            showToast('Saved successfully');
+            setTimeout(function() { btn.textContent = origText; btn.disabled = false; }, 1500);
+        }
+    } catch(err) {
+        btn.textContent = origText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        showToast('Failed to save changes');
+        console.error('Save failed:', err);
+    }
+}
+
+function _saveBandName(btn) {
+    _glSaveBtn(btn, function() {
+        var val = (document.getElementById('setBandName') || {}).value || '';
+        if (!val.trim()) throw new Error('Band name required');
+        localStorage.setItem('deadcetera_band_name', val.trim());
+        // Also update Firebase band meta if possible
+        if (firebaseDB && typeof bandPath === 'function') {
+            return firebaseDB.ref(bandPath('meta/name')).set(val.trim());
+        }
+    });
+}
+
 // Address edit form HTML (reusable for initial render and Edit button)
 window._settingsAddressEditHTML = function() {
     var current = localStorage.getItem('deadcetera_home_address') || '';
     return '<div style="display:flex;gap:8px;align-items:center">'
         + '<input class="app-input" id="settingsHomeAddress" placeholder="Enter your home address..." style="flex:1" value="' + current.replace(/"/g, '&quot;') + '">'
-        + '<button class="btn btn-sm btn-primary" onclick="saveHomeAddress()">Save</button>'
+        + '<button class="btn btn-sm btn-primary" id="saveAddressBtn" onclick="saveHomeAddress(this)">Save</button>'
         + (current ? '<button class="btn btn-sm btn-ghost" onclick="settingsTab(\'profile\')">Cancel</button>' : '')
         + '</div>';
 };
 
-function saveHomeAddress() {
+function saveHomeAddress(btn) {
     var val = (document.getElementById('settingsHomeAddress') || {}).value || '';
     if (!val.trim()) { showToast('Please enter an address'); return; }
-    localStorage.setItem('deadcetera_home_address', val.trim());
-    // Also save to Firebase under member record if signed in
+    _glSaveBtn(btn || document.getElementById('saveAddressBtn'), function() {
+        localStorage.setItem('deadcetera_home_address', val.trim());
+        // Save to Firebase under user profile (canonical source of truth)
+        var key = localStorage.getItem('deadcetera_current_user');
+        if (key && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+            return firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim());
+        }
+    });
+    // Re-render to show saved state after a brief delay
+    setTimeout(function() { settingsTab('profile'); }, 1600);
+}
+
+// Load home address from Firebase on init (ensures persistence across sessions)
+function _restoreHomeAddress() {
     var key = localStorage.getItem('deadcetera_current_user');
-    if (key && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-        try { firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim()); } catch(e) {}
-    }
-    showToast('Address saved');
-    // Re-render to show saved state
-    settingsTab('profile');
+    if (!key || !firebaseDB || typeof bandPath !== 'function') return;
+    firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).once('value').then(function(snap) {
+        var val = snap.val();
+        if (val && typeof val === 'string' && val.trim()) {
+            localStorage.setItem('deadcetera_home_address', val.trim());
+        }
+    }).catch(function() {});
 }
 
 async function initSettingsAddressAutocomplete() {
@@ -10484,19 +10592,50 @@ async function initSettingsAddressAutocomplete() {
 
 function addNewMember() {
     const name = document.getElementById('newMemberName')?.value;
-    const role = document.getElementById('newMemberRole')?.value;
-    const sings = document.getElementById('newMemberSings')?.value;
-    if (!name) { alert('Name required'); return; }
+    const instrument = document.getElementById('newMemberRole')?.value;
+    const vocalRole = document.getElementById('newMemberSings')?.value || 'none';
+    if (!name) { showToast('Name required'); return; }
     const key = name.toLowerCase().replace(/\s/g,'');
-    bandMembers[key] = { name, role: role||'Member', sings: sings!=='no', leadVocals: sings==='lead', harmonies: sings!=='no' };
-    alert('✅ ' + name + ' added! Note: To make permanent, update data.js on GitHub.');
+    // Structured role model
+    var role = instrument || 'Member';
+    var sings = vocalRole !== 'none';
+    var leadVocals = (vocalRole === 'lead' || vocalRole === 'co-lead');
+    var harmonies = sings;
+    bandMembers[key] = {
+        name: name,
+        role: role,
+        primaryInstrument: instrument || '',
+        secondaryInstruments: [],
+        vocalRole: vocalRole,
+        sings: sings,
+        leadVocals: leadVocals,
+        harmonies: harmonies
+    };
+    showToast(name + ' added to the band');
     settingsTab('band');
+}
+
+// Generate display label from structured member fields
+function _memberDisplayRole(m) {
+    if (!m) return '';
+    var parts = [];
+    if (m.primaryInstrument) parts.push(m.primaryInstrument);
+    else if (m.role) parts.push(m.role);
+    if (m.vocalRole && m.vocalRole !== 'none') {
+        var vocalLabels = { backing: 'Backing Vocals', 'co-lead': 'Vocals (Co-Lead)', lead: 'Vocals (Lead)' };
+        parts.push(vocalLabels[m.vocalRole] || 'Vocals');
+    } else if (m.leadVocals) {
+        parts.push('Vocals (Lead)');
+    } else if (m.sings) {
+        parts.push('Vocals');
+    }
+    return parts.join(' \u00b7 ');
 }
 
 function removeMember(key) {
     if (!confirm('Remove ' + (bandMembers[key]?.name||key) + ' from the band roster?')) return;
     delete bandMembers[key];
-    alert('Removed. Update data.js on GitHub to make permanent.');
+    showToast('Member removed');
     settingsTab('band');
 }
 
@@ -10516,20 +10655,23 @@ async function editMember(key) {
         <input id="memberRoleInput_${key}" class="app-input" value="${m.role || ''}"
             placeholder="e.g. Lead Guitar, Vocals..."
             style="flex:1;min-width:150px" autocomplete="off">
-        <button onclick="saveMemberRole('${key}')" class="btn btn-primary btn-sm">Save</button>
+        <button id="saveMemberBtn_${key}" onclick="saveMemberRole('${key}', this)" class="btn btn-primary btn-sm">Save</button>
         <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
     `;
     editBtn.after(form);
     document.getElementById(`memberRoleInput_${key}`)?.focus();
 }
 
-async function saveMemberRole(key) {
+async function saveMemberRole(key, btn) {
     const newRole = document.getElementById(`memberRoleInput_${key}`)?.value?.trim();
     if (newRole === undefined) return;
-    bandMembers[key].role = newRole;
-    document.getElementById(`editMemberForm_${key}`)?.remove();
-    showToast('✅ Role updated');
-    settingsTab('band');
+    _glSaveBtn(btn || document.getElementById(`saveMemberBtn_${key}`), function() {
+        bandMembers[key].role = newRole;
+    });
+    setTimeout(function() {
+        document.getElementById(`editMemberForm_${key}`)?.remove();
+        settingsTab('band');
+    }, 1600);
 }
 
 // ── Backup Players CRUD ──────────────────────────────────────────────────────
@@ -10543,8 +10685,11 @@ async function _renderBackupPlayersList() {
     el.innerHTML = players.map(function(p) {
         var roleChips = (p.coverageRoles || []).map(function(cr) {
             var role = roles.find(function(r) { return r.id === cr.roleId; });
-            var color = cr.strength === 'partial' ? '#f59e0b' : '#22c55e';
-            return '<span style="font-size:0.68em;padding:1px 6px;border-radius:4px;background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + (role ? role.label : cr.roleId) + (cr.strength === 'partial' ? ' (partial)' : '') + '</span>';
+            var ns = (typeof GLStore !== 'undefined' && GLStore.normalizeStrength) ? GLStore.normalizeStrength(cr.strength) : (cr.strength === 'partial' ? 'can_sub' : 'confident');
+            var cs = (typeof GLStore !== 'undefined' && GLStore.COVERAGE_STRENGTHS) ? GLStore.COVERAGE_STRENGTHS[ns] : null;
+            var color = cs ? cs.color : (ns === 'can_sub' ? '#f59e0b' : '#22c55e');
+            var label = cs ? cs.label : (ns === 'can_sub' ? 'Can Sub' : 'Confident');
+            return '<span style="font-size:0.68em;padding:1px 6px;border-radius:4px;background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + (role ? role.label : cr.roleId) + (ns === 'can_sub' ? ' (' + label + ')' : '') + '</span>';
         }).join(' ');
         return '<div class="list-item" style="padding:8px 10px;align-items:center">'
             + '<div style="flex:1;min-width:0">'
@@ -10575,13 +10720,13 @@ function _showBackupPlayerModal(existing) {
     var roleCheckboxes = roles.map(function(r) {
         var cr = coverageMap[r.id];
         var checked = cr ? ' checked' : '';
-        var strength = cr ? cr.strength : 'full';
+        var ns = cr ? ((typeof GLStore !== 'undefined' && GLStore.normalizeStrength) ? GLStore.normalizeStrength(cr.strength) : 'confident') : 'confident';
         return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.82em;cursor:pointer">'
             + '<input type="checkbox" data-role="' + r.id + '"' + checked + ' style="accent-color:var(--accent)">'
             + r.label + (r.critical ? ' <span style="font-size:0.7em;color:#f59e0b">*</span>' : '')
             + '<select data-role-strength="' + r.id + '" style="margin-left:auto;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)">'
-            + '<option value="full"' + (strength === 'full' ? ' selected' : '') + '>Full</option>'
-            + '<option value="partial"' + (strength === 'partial' ? ' selected' : '') + '>Partial</option>'
+            + '<option value="confident"' + (ns === 'confident' ? ' selected' : '') + '>Confident</option>'
+            + '<option value="can_sub"' + (ns === 'can_sub' ? ' selected' : '') + '>Can Sub</option>'
             + '</select></label>';
     }).join('');
 
@@ -10598,11 +10743,12 @@ function _showBackupPlayerModal(existing) {
         + '<input id="bpEmail" value="' + (p.email || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
         + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Notes</label>'
         + '<input id="bpNotes" value="' + (p.notes || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="e.g. available weekends only">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Roles Covered <span style="font-weight:400;color:var(--text-dim)">(* = critical)</span></label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:2px">Roles They Can Cover <span style="font-weight:400;color:var(--text-dim)">(* = critical for your band)</span></label>'
+        + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">How well can they cover this role? <strong style="color:#22c55e">Confident</strong> = can perform reliably in a gig. <strong style="color:#f59e0b">Can Sub</strong> = can step in if needed but not primary strength.</div>'
         + '<div id="bpRoleChecks" style="margin-bottom:10px">' + roleCheckboxes + '</div>'
         + '<label style="display:flex;align-items:center;gap:6px;font-size:0.82em;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="bpActive"' + (p.active !== false ? ' checked' : '') + ' style="accent-color:var(--accent)"> Active</label>'
         + '<div style="display:flex;gap:8px">'
-        + '<button onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
+        + '<button id="bpSaveBtn" onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
         + '<button onclick="document.getElementById(\'bpModal\').remove()" class="btn btn-ghost">Cancel</button>'
         + '</div></div>';
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
@@ -10611,14 +10757,16 @@ function _showBackupPlayerModal(existing) {
 
 window._saveBackupPlayer = async function(existingId) {
     var name = (document.getElementById('bpName') || {}).value || '';
-    if (!name.trim()) { alert('Name is required'); return; }
+    if (!name.trim()) { showToast('Name is required'); return; }
     var roles = [];
     var checks = document.querySelectorAll('#bpRoleChecks input[type="checkbox"]');
     checks.forEach(function(cb) {
         if (!cb.checked) return;
         var roleId = cb.dataset.role;
         var strengthEl = document.querySelector('[data-role-strength="' + roleId + '"]');
-        roles.push({ roleId: roleId, strength: strengthEl ? strengthEl.value : 'full' });
+        var rawStrength = strengthEl ? strengthEl.value : 'confident';
+        var normStrength = (typeof GLStore !== 'undefined' && GLStore.normalizeStrength) ? GLStore.normalizeStrength(rawStrength) : rawStrength;
+        roles.push({ roleId: roleId, strength: normStrength });
     });
     var player = {
         id: existingId || null,
@@ -10630,10 +10778,17 @@ window._saveBackupPlayer = async function(existingId) {
         coverageRoles: roles,
         availabilityMode: 'manual'
     };
-    await GLStore.saveBackupPlayer(player);
-    document.getElementById('bpModal').remove();
-    showToast('Backup player saved');
-    _renderBackupPlayersList();
+    var btn = document.getElementById('bpSaveBtn');
+    if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
+    try {
+        await GLStore.saveBackupPlayer(player);
+        if (btn) btn.textContent = 'Saved';
+        showToast('Saved successfully');
+        setTimeout(function() { document.getElementById('bpModal')?.remove(); _renderBackupPlayersList(); }, 800);
+    } catch(err) {
+        if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+        showToast('Failed to save changes');
+    }
 };
 
 window._deleteBackupPlayer = async function(playerId) {
@@ -10837,24 +10992,126 @@ function copyInviteLink() {
 
 async function switchToBand(slug) {
     if (!slug) return;
-    // Verify band exists
+    if (slug === currentBandSlug) { showToast('Already on this band'); return; }
+
+    // Verify band exists and get display name
+    var displayName = slug;
     if (firebaseDB) {
         try {
             var snap = await firebaseDB.ref('bands/' + slug + '/meta').once('value');
-            if (!snap.val()) { showToast('Band not found'); return; }
+            var meta = snap.val();
+            if (!meta) { showToast('Band not found'); return; }
+            displayName = meta.name || slug;
         } catch(e) { /* proceed optimistically */ }
     }
 
+    // ── Reset ALL band-scoped state before switching ──
+    // Caches
+    if (typeof statusCacheLoaded !== 'undefined') statusCacheLoaded = false;
+    if (typeof readinessCacheLoaded !== 'undefined') readinessCacheLoaded = false;
+    if (typeof readinessCache !== 'undefined') { for (var k in readinessCache) delete readinessCache[k]; }
+    if (typeof statusCache !== 'undefined') { for (var k in statusCache) delete statusCache[k]; }
+    if (typeof northStarCache !== 'undefined') { for (var k in northStarCache) delete northStarCache[k]; }
+    if (typeof harmonyBadgeCacheLoaded !== 'undefined') harmonyBadgeCacheLoaded = false;
+    // Store caches
+    if (typeof GLStore !== 'undefined') {
+        if (GLStore.setSetlistCache) GLStore.setSetlistCache([]);
+    }
+    window._glCachedSetlists = [];
+    window._cachedSetlists = [];
+    window._glCachedBlockedDates = [];
+
+    // Set new band
     currentBandSlug = slug;
     localStorage.setItem('deadcetera_current_band', slug);
+    // Save display name
+    localStorage.setItem('deadcetera_band_name', displayName);
 
-    // Close modal
+    // Close any modals
     var overlay = document.getElementById('createBandOverlay');
     if (overlay) overlay.style.display = 'none';
+    var bsDropdown = document.getElementById('glBandSwitcherDropdown');
+    if (bsDropdown) bsDropdown.remove();
 
-    // Reload to pick up new band data
-    showToast('Switching to ' + slug + '...');
-    setTimeout(function() { location.reload(); }, 800);
+    // Reload to pick up new band data from clean state
+    showToast('Switching to ' + displayName + '...');
+    setTimeout(function() { location.reload(); }, 600);
+}
+
+// ── Band Switcher: Load user's bands from Firebase ──
+async function _loadUserBands() {
+    if (!firebaseDB || !currentUserEmail) return [];
+    try {
+        var snap = await firebaseDB.ref('bands').once('value');
+        var all = snap.val();
+        if (!all) return [{ slug: currentBandSlug, name: localStorage.getItem('deadcetera_band_name') || currentBandSlug }];
+        var bands = [];
+        Object.keys(all).forEach(function(slug) {
+            var meta = all[slug] && all[slug].meta;
+            if (!meta) return;
+            // Check if user is a member (by email match)
+            var members = meta.members || {};
+            var isMember = Object.values(members).some(function(m) {
+                return m.email && m.email.toLowerCase() === currentUserEmail.toLowerCase();
+            });
+            // Also include if it's the current band (always show)
+            if (isMember || slug === currentBandSlug) {
+                bands.push({ slug: slug, name: meta.name || slug });
+            }
+        });
+        if (!bands.length) bands.push({ slug: currentBandSlug, name: localStorage.getItem('deadcetera_band_name') || currentBandSlug });
+        return bands;
+    } catch(e) {
+        return [{ slug: currentBandSlug, name: localStorage.getItem('deadcetera_band_name') || currentBandSlug }];
+    }
+}
+
+function _showBandSwitcherDropdown(anchorEl) {
+    var existing = document.getElementById('glBandSwitcherDropdown');
+    if (existing) { existing.remove(); return; }
+
+    var dd = document.createElement('div');
+    dd.id = 'glBandSwitcherDropdown';
+    dd.style.cssText = 'position:absolute;z-index:9500;background:var(--card-bg,#1a2340);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:10px;padding:6px 0;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-height:300px;overflow-y:auto';
+    dd.innerHTML = '<div style="padding:6px 14px;font-size:0.7em;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Switch Band</div><div style="padding:4px 8px;color:var(--text-dim);font-size:0.8em">Loading...</div>';
+
+    // Position below anchor
+    if (anchorEl) {
+        var rect = anchorEl.getBoundingClientRect();
+        dd.style.top = (rect.bottom + 4) + 'px';
+        dd.style.left = Math.max(8, rect.left) + 'px';
+    } else {
+        dd.style.top = '50px';
+        dd.style.right = '16px';
+    }
+    dd.style.position = 'fixed';
+    document.body.appendChild(dd);
+
+    // Close on outside click
+    setTimeout(function() {
+        document.addEventListener('click', function _closeBs(e) {
+            if (!dd.contains(e.target) && e.target !== anchorEl) {
+                dd.remove();
+                document.removeEventListener('click', _closeBs);
+            }
+        });
+    }, 50);
+
+    // Load bands
+    _loadUserBands().then(function(bands) {
+        var html = '<div style="padding:6px 14px;font-size:0.7em;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Switch Band</div>';
+        bands.forEach(function(b) {
+            var isActive = b.slug === currentBandSlug;
+            html += '<button onclick="switchToBand(\'' + b.slug + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:' + (isActive ? 'rgba(99,102,241,0.1)' : 'transparent') + ';color:var(--text);cursor:pointer;font-family:inherit;font-size:0.88em;text-align:left;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseleave="this.style.background=\'' + (isActive ? 'rgba(99,102,241,0.1)' : 'transparent') + '\'">'
+                + (isActive ? '<span style="color:#22c55e">&#10003;</span>' : '<span style="width:14px"></span>')
+                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (b.name || b.slug).replace(/</g, '&lt;') + '</span>'
+                + (isActive ? '<span style="font-size:0.7em;color:var(--text-dim)">active</span>' : '')
+                + '</button>';
+        });
+        html += '<div style="border-top:1px solid var(--border,rgba(255,255,255,0.08));margin:4px 0"></div>';
+        html += '<button onclick="showCreateBandModal()" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:transparent;color:var(--accent-light,#a5b4fc);cursor:pointer;font-family:inherit;font-size:0.88em;text-align:left;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseleave="this.style.background=\'transparent\'">+ Create New Band</button>';
+        dd.innerHTML = html;
+    });
 }
 
 // ── Join via invite link ────────────────────────────────────────────────────

@@ -239,6 +239,8 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                         if (response.error) {
                             console.error('Token error:', response);
                             window.updateSignInStatus(false);
+                            // Show hero/login if no page is visible (user may be stuck)
+                            if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
                             return;
                         }
                         accessToken = response.access_token;

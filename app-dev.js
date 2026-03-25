@@ -4,9 +4,18 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260319-230459', 'color:#667eea;font-weight:bold;font-size:14px');
-// ── Version baseline — read from <meta> tag to stay in sync with build stamps ─
-var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '0';
+console.log('%c🔗 GrooveLinx BUILD: 20260325-184546', 'color:#667eea;font-weight:bold;font-size:14px');
+// ── Version baseline — immutable client build stamp ───────────────────────────
+// Try meta tag first, then fall back to ?v= param on the app.js script tag.
+var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
+if (!BUILD_VERSION) {
+    try {
+        var _appScript = document.querySelector('script[src*="app.js"]');
+        var _vMatch = _appScript && _appScript.src.match(/[?&]v=([^&]+)/);
+        if (_vMatch) BUILD_VERSION = _vMatch[1];
+    } catch(e) {}
+}
+if (!BUILD_VERSION) BUILD_VERSION = '0';
 var _loadedVersion = BUILD_VERSION;
 var DEBUG = location.search.includes('debug=true');
 
@@ -417,7 +426,7 @@ function getPlayButtonLabel(version) {
     if (p === 'archive' || url.includes('archive.org')) return '▶️ Listen on Archive.org';
     if (p === 'soundcloud' || url.includes('soundcloud')) return '▶️ Play on SoundCloud';
     if (p === 'tidal' || url.includes('tidal')) return '▶️ Play on Tidal';
-    if (url.includes('spotify')) return '▶️ Play on Spotify';
+    if (url.includes('spotify')) return '▶️ Open in Spotify';
     return '▶️ Listen';
 }
 
@@ -503,97 +512,188 @@ function getFullBandName(bandAbbr) {
 // ============================================================================
 
 // ── PWA: Register service worker (single owner — PL-9.2) ───────────────────
-// ── PWA: Simple service worker registration ─────────────────────────────────
+// ── PWA: Service worker registration + update detection ─────────────────────
 if ('serviceWorker' in navigator && !_rt.swInitialized) {
     _rt.swInitialized = true;
     var _isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (_isLocalhost) {
-        // Dev: unregister any stale SW to avoid caching headaches
         navigator.serviceWorker.getRegistrations().then(function(regs) {
             regs.forEach(function(r) { r.unregister(); });
         });
     } else {
-        window.addEventListener('load', () => {
+        window.addEventListener('load', function() {
             navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
-                .then(reg => {
+                .then(function(reg) {
                     // Poll for SW updates every 60s
-                    setInterval(() => reg.update(), 60 * 1000);
+                    setInterval(function() { reg.update(); }, 60000);
+                    // Detect waiting worker (new version ready)
+                    if (reg.waiting) { _pwaShowUpdateBanner(); return; }
+                    reg.addEventListener('updatefound', function() {
+                        var newSW = reg.installing;
+                        if (!newSW) return;
+                        newSW.addEventListener('statechange', function() {
+                            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                                _pwaShowUpdateBanner();
+                            }
+                        });
+                    });
                 })
-                .catch(() => {});
+                .catch(function() {});
+        });
+        // Also detect controller change (another tab triggered update)
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+            if (window._pwaReloading) return;
+            window._pwaReloading = true;
+            location.reload();
         });
     }
 }
 
-// ── PWA: Capture install prompt and show smart banner ───────────────────────
-let pwaInstallPrompt = null;
-let pwaInstalled = false;
+// ── PWA: Install + Update banner system ─────────────────────────────────────
+var _pwaInstallPrompt = null;
 
-window.addEventListener('beforeinstallprompt', e => {
+window.addEventListener('beforeinstallprompt', function(e) {
     e.preventDefault();
-    pwaInstallPrompt = e;
-    // Install banner disabled — user prefers not to see it on dev
-    // To re-enable: setTimeout(showPWAInstallBanner, 3000);
+    _pwaInstallPrompt = e;
+    _pwaShowInstallBanner();
 });
 
-window.addEventListener('appinstalled', () => {
-    pwaInstalled = true;
-    pwaInstallPrompt = null;
-    hidePWAInstallBanner();
+window.addEventListener('appinstalled', function() {
+    _pwaInstallPrompt = null;
+    _pwaRemoveBanner('gl-pwa-install');
     console.log('[PWA] App installed!');
 });
 
-function showPWAInstallBanner() {
-    if (pwaInstalled || document.getElementById('pwa-install-banner')) return;
-    if (window.matchMedia('(display-mode: standalone)').matches) return;
+// ── Install banner (iOS safe) ───────────────────────────────────────────────
 
-    const banner = document.createElement('div');
-    banner.id = 'pwa-install-banner';
-    banner.style.cssText = 'position:fixed;bottom:70px;left:12px;right:12px;background:linear-gradient(135deg,#1e2a4a,#252d4a);border:1px solid rgba(99,102,241,0.5);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:8000;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
-    banner.innerHTML = '<div style="flex:1"><div style="font-weight:700;color:white;font-size:0.92em">📱 Install GrooveLinx</div><div style="font-size:0.78em;color:rgba(255,255,255,0.7);margin-top:2px">Add to home screen for quick access</div></div>';
+function _pwaShowInstallBanner() {
+    // Don't show if already standalone, already dismissed, or banner exists
+    if (_pwaIsStandalone()) return;
+    if (localStorage.getItem('gl_pwa_install_dismissed')) return;
+    if (document.getElementById('gl-pwa-install')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'gl-pwa-install';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8500;display:flex;align-items:center;gap:10px;padding:10px 14px;max-height:60px;overflow:hidden;'
+        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(99,102,241,0.25);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#c7d2fe;line-height:1.3">'
+        + '\uD83D\uDCF2 Install GrooveLinx\u2122 for faster access during rehearsal</div>';
+
     var installBtn = document.createElement('button');
     installBtn.textContent = 'Install';
-    installBtn.style.cssText = 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:0.85em';
+    installBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.15);color:#a5b4fc;white-space:nowrap';
     installBtn.addEventListener('click', function() {
-        if (pwaInstallPrompt) {
-            pwaInstallPrompt.prompt();
-            pwaInstallPrompt.userChoice.then(function(result) {
-                if (result.outcome === 'accepted') console.log('[PWA] App installed');
-                pwaInstallPrompt = null;
-                hidePWAInstallBanner();
+        if (_pwaInstallPrompt) {
+            // Android/Desktop: native install prompt
+            _pwaInstallPrompt.prompt();
+            _pwaInstallPrompt.userChoice.then(function(result) {
+                if (result.outcome === 'accepted') console.log('[PWA] Installed via prompt');
+                _pwaInstallPrompt = null;
+                _pwaRemoveBanner('gl-pwa-install');
             });
+        } else {
+            // iOS: show instructions modal
+            _pwaShowIOSInstructions();
         }
     });
     banner.appendChild(installBtn);
+
     var dismissBtn = document.createElement('button');
-    dismissBtn.textContent = '✕';
-    dismissBtn.style.cssText = 'background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:1.2em;padding:0 4px';
-    dismissBtn.addEventListener('click', function() { hidePWAInstallBanner(); });
+    dismissBtn.textContent = '\u2715';
+    dismissBtn.style.cssText = 'flex-shrink:0;background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:1em;padding:0 4px';
+    dismissBtn.addEventListener('click', function() {
+        localStorage.setItem('gl_pwa_install_dismissed', '1');
+        _pwaRemoveBanner('gl-pwa-install');
+    });
     banner.appendChild(dismissBtn);
+
     document.body.appendChild(banner);
 }
 
-function hidePWAInstallBanner() {
-    const b = document.getElementById('pwa-install-banner');
-    if (b) { b.style.opacity = '0'; b.style.transition = 'opacity 0.2s'; setTimeout(() => b.remove(), 250); }
+function _pwaShowIOSInstructions() {
+    _pwaRemoveBanner('gl-pwa-install');
+    var overlay = document.createElement('div');
+    overlay.id = 'gl-pwa-ios-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:24px;max-width:320px;width:100%;text-align:center">'
+        + '<div style="font-size:1.2em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:16px">Install GrooveLinx\u2122</div>'
+        + '<div style="text-align:left;font-size:0.85em;color:var(--text-muted,#94a3b8);line-height:1.8">'
+        + '<div style="margin-bottom:8px"><span style="font-weight:700;color:#a5b4fc">1.</span> Tap the <span style="font-weight:700;color:#f1f5f9">Share</span> icon <span style="font-size:1.1em">\u2B1B\u2191</span> in Safari</div>'
+        + '<div style="margin-bottom:8px"><span style="font-weight:700;color:#a5b4fc">2.</span> Scroll down and tap <span style="font-weight:700;color:#f1f5f9">"Add to Home Screen"</span></div>'
+        + '<div><span style="font-weight:700;color:#a5b4fc">3.</span> Tap <span style="font-weight:700;color:#f1f5f9">"Add"</span> in the top right</div>'
+        + '</div>'
+        + '<button onclick="document.getElementById(\'gl-pwa-ios-modal\').remove()" style="margin-top:20px;font-size:0.82em;font-weight:700;padding:8px 24px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.15);color:#a5b4fc">Got it</button>'
+        + '</div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
-async function pwaTriggerInstall() {
-    if (!pwaInstallPrompt) {
-        // No install prompt available — guide user to manual install
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        if (isIOS) {
-            showToast('On iPhone: tap Share (□↑) in Safari → "Add to Home Screen"');
-        } else {
-            showToast('Use your browser menu → "Install app" or "Add to Home Screen"');
+// ── Update banner ───────────────────────────────────────────────────────────
+
+function _pwaShowUpdateBanner() {
+    if (document.getElementById('gl-pwa-update')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'gl-pwa-update';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8600;display:flex;align-items:center;gap:10px;padding:10px 14px;max-height:60px;overflow:hidden;'
+        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(34,197,94,0.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#86efac;line-height:1.3">'
+        + '\uD83D\uDE80 New version available</div>';
+
+    var updateBtn = document.createElement('button');
+    updateBtn.textContent = 'Update';
+    updateBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.15);color:#86efac;white-space:nowrap';
+    updateBtn.addEventListener('click', function() {
+        // Tell waiting SW to activate, then reload
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(function(reg) {
+                if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            });
         }
-        return;
-    }
-    hidePWAInstallBanner();
-    pwaInstallPrompt.prompt();
-    const { outcome } = await pwaInstallPrompt.userChoice;
-    console.log('[PWA] Install outcome:', outcome);
-    pwaInstallPrompt = null;
+        // Reload after a brief pause for SW activation
+        window._pwaReloading = true;
+        setTimeout(function() { location.reload(); }, 500);
+    });
+    banner.appendChild(updateBtn);
+
+    var laterBtn = document.createElement('button');
+    laterBtn.textContent = 'Later';
+    laterBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:600;padding:6px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim,#64748b)';
+    laterBtn.addEventListener('click', function() { _pwaRemoveBanner('gl-pwa-update'); });
+    banner.appendChild(laterBtn);
+
+    document.body.appendChild(banner);
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function _pwaIsStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+}
+
+function _pwaRemoveBanner(id) {
+    var el = document.getElementById(id);
+    if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.2s'; setTimeout(function() { el.remove(); }, 250); }
+}
+
+// Show install banner on load (after 2s delay so it's not jarring)
+window.addEventListener('load', function() {
+    if (!_pwaIsStandalone() && !localStorage.getItem('gl_pwa_install_dismissed')) {
+        setTimeout(_pwaShowInstallBanner, 2000);
+    }
+});
+
+// Legacy compat — kept for any code that calls these directly
+window.pwaTriggerInstall = function() {
+    if (_pwaInstallPrompt) {
+        _pwaInstallPrompt.prompt();
+    } else {
+        _pwaShowIOSInstructions();
+    }
+};
+function showPWAInstallBanner() { _pwaShowInstallBanner(); }
+function hidePWAInstallBanner() { _pwaRemoveBanner('gl-pwa-install'); }
 
 // ── Handle deep-link shortcuts (?page=xxx from manifest shortcuts) ──────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -605,10 +705,23 @@ window.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', function() {
     // Parachute: render gig pack if URL has ?gigpack=1#...
     if (parachuteCheckUrlHash()) return;
+    // Spotify OAuth callback handler (async — must complete before page renders)
+    if (typeof ListeningBundles !== 'undefined' && ListeningBundles.handleSpotifyCallback) {
+        ListeningBundles.handleSpotifyCallback().then(function(connected) {
+            if (connected && typeof window.renderHomeDashboard === 'function') {
+                setTimeout(window.renderHomeDashboard, 300);
+            }
+        });
+    }
     // ── Auto-init Firebase DB on page load ──────────────────────────────────
     // Firebase RTDB doesn't require user sign-in to read/write. 
     // We initialize it immediately so all saves go to Firebase, not just localStorage.
     // Google Identity (for user email) is still loaded on first "Connect" click.
+    // ── Dev mode activation (before any renders) ──
+    if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.activate === 'function') {
+        GLT.activate();
+    }
+
     // Render songs immediately from built-in data (fast, no Firebase needed)
     renderSongs();
 
@@ -634,8 +747,11 @@ document.addEventListener('DOMContentLoaded', function() {
         preloadNorthStarCache();
         backgroundScanNorthStars();
         preloadReadinessCache().then(function() {
+            console.log('📊 Readiness loaded:', Object.keys(readinessCache).length, 'songs');
             // Signal that bulk readiness data loaded — invalidates Practice Attention cache
             if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
+            // Re-render song list so readiness bars fill in (they render inline from cache)
+            if (typeof renderSongs === 'function') { console.log('📊 Re-rendering songs with readiness'); requestAnimationFrame(function() { renderSongs(); }); }
             // Re-render dashboard now that readiness data is available (Practice Radar needs it)
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
@@ -646,7 +762,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
-            window._glCachedSetlists = toArray(data || []);
+            var _slArr = toArray(data || []);
+            if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slArr);
+            else { window._glCachedSetlists = _slArr; window._cachedSetlists = _slArr; }
             _rt.setlistsCached = true;
         }).catch(function() {});
         loadBandDataFromDrive('_band', 'blocked_dates').then(function(data) {
@@ -657,17 +775,37 @@ document.addEventListener('DOMContentLoaded', function() {
         // Re-render home dashboard now that Firebase is ready — gigs load correctly
         if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
         if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
+        // Restore home address from Firebase (ensures persistence across sessions/devices)
+        if (typeof _restoreHomeAddress === 'function') _restoreHomeAddress();
         
-        // Auto-re-authenticate if user was previously signed in
-        var savedEmail = localStorage.getItem('deadcetera_google_email');
-        var savedName  = localStorage.getItem('deadcetera_google_name');
-        if (savedEmail || savedName) {
-            // Either full session or partial (email cleared but name present) — attempt reconnect
-            console.log('🔑 Auto-reconnecting (was signed in)...');
-            handleGoogleDriveAuth(true);
+        // ── Dev mode: auto-seed test data, then reload caches ──
+        if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.autoSeedIfNeeded === 'function') {
+            GLT.autoSeedIfNeeded().then(function() {
+                // Re-render with seeded data
+                renderSongs();
+                if (typeof addStatusBadges === 'function') addStatusBadges();
+                // Re-load setlists from the seeded data
+                loadBandDataFromDrive('_band', 'setlists').then(function(data) {
+                    var _slArr = toArray(data || []);
+                    if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slArr);
+                    else { window._glCachedSetlists = _slArr; window._cachedSetlists = _slArr; }
+                }).catch(function() {});
+            });
+        }
+
+        // Auto-re-authenticate if user was previously signed in (skip in dev mode)
+        if (typeof GLT !== 'undefined' && GLT.ACTIVE) {
+            // Dev mode — already "signed in" as test user, skip Google auth
+            if (typeof window.glHeroCheck === 'function') window.glHeroCheck(true);
         } else {
-            // No saved session at all — show hero to signed-out users
-            if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
+            var savedEmail = localStorage.getItem('deadcetera_google_email');
+            var savedName  = localStorage.getItem('deadcetera_google_name');
+            if (savedEmail || savedName) {
+                console.log('🔑 Auto-reconnecting (was signed in)...');
+                handleGoogleDriveAuth(true);
+            } else {
+                if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
+            }
         }
         
         // Check for ?join= invite link
@@ -676,6 +814,11 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
         // Fallback: try loading custom songs from localStorage anyway
         loadCustomSongs().then(() => renderSongs());
+        // CRITICAL: still show a page — without this, blank screen on offline PWA
+        var _savedEmail = localStorage.getItem('deadcetera_google_email');
+        if (typeof window.glHeroCheck === 'function') {
+            window.glHeroCheck(!!_savedEmail);
+        }
     });
     setupSearchAndFilters();
     setupInstrumentSelector();
@@ -3081,18 +3224,26 @@ async function renderRefVersions(songTitle, bandData) {
         const isDefault = version.isDefault;
         const displayTitle = version.fetchedTitle || version.title;
         const hasVoted = version.votes && version.votes[currentUserEmail];
-        
+        const majority = Math.ceil(totalMembers / 2);
+        const votesNeeded = Math.max(0, majority - voteCount);
+
         return `
             <div class="spotify-version-card ${isDefault ? 'default' : ''}" style="position: relative;">
-                <button onclick="deleteRefVersion(${index})" 
-                    style="position: absolute; top: 10px; right: 10px; background: #ef4444!important; color: #ffffff!important; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; line-height:24px; text-align:center; font-weight:700;">✕</button>
-                
+                <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px;z-index:10">
+                    <button onclick="editRefVersionUrl(${index})"
+                        style="background:rgba(102,126,234,0.15);color:#818cf8;border:1px solid rgba(102,126,234,0.3);border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:12px;line-height:26px;text-align:center" title="Edit URL">✏️</button>
+                    <button onclick="deleteRefVersion(${index})"
+                        style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:12px;line-height:26px;text-align:center;font-weight:700" title="Delete">✕</button>
+                </div>
+
                 <div class="version-header">
                     <div class="version-title">${displayTitle}</div>
-                    ${isDefault ? `<div class="version-badge">👑 BAND CHOICE (${voteCount}/${totalMembers})</div>` : ''}
+                    ${isDefault ? `<div class="version-badge">👑 BAND CHOICE (${voteCount}/${totalMembers})</div>` :
+                        voteCount > 0 ? `<div style="font-size:0.78em;color:var(--text-dim)">${voteCount}/${totalMembers} votes — ${votesNeeded} more for Band Choice</div>` : ''}
                 </div>
-                
+
                 <div class="votes-container">
+                    <div style="font-size:0.68em;color:var(--text-dim);margin-bottom:4px">Tap a name to vote:</div>
                     ${Object.entries(bandMembers).map(([email, member]) => {
                         const voted = version.votes && version.votes[email];
                         return `
@@ -3102,10 +3253,10 @@ async function renderRefVersions(songTitle, bandData) {
                         `;
                     }).join('')}
                 </div>
-                
+
                 ${version.notes ? `<p style="margin-bottom:12px;font-style:italic;color:var(--text-muted,#94a3b8);display:flex;align-items:center;gap:6px">${version.notes} <button onclick="editVersionNotes(${index})" style="background:none;border:none;color:var(--accent-light,#818cf8);cursor:pointer;font-size:0.8em" title="Edit notes">✏️</button></p>` : ''}
-                
-                <button class="spotify-play-btn" onclick="window.open('${version.url || version.spotifyUrl}', '_blank')" style="${getPlayButtonStyle(version)}">
+
+                <button class="spotify-play-btn" onclick="openMusicLink('${version.url || version.spotifyUrl}')" style="${getPlayButtonStyle(version)}">
                     ${getPlayButtonLabel(version)}
                 </button>
             </div>
@@ -3118,6 +3269,9 @@ async function addRefVersion() {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) { alert('Please select a song first!'); return; }
 
+    // Capture song title NOW — prevents race condition if selectedSong changes while modal is open
+    window._refModalSongTitle = songTitle;
+
     const existing = document.getElementById('addRefModal');
     if (existing) existing.remove();
     const modal = document.createElement('div');
@@ -3129,6 +3283,7 @@ async function addRefVersion() {
             <h3 style="margin:0;color:var(--accent-light)">⭐ Add Reference Version</h3>
             <button onclick="document.getElementById('addRefModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
         </div>
+        <div style="font-size:0.78em;color:var(--accent-light);font-weight:600;margin-bottom:12px;background:rgba(102,126,234,0.08);padding:6px 10px;border-radius:6px">Adding version for: ${songTitle}</div>
         <!-- Tab toggle -->
         <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px">
             <button id="refTabLink" onclick="refSwitchTab('link')"
@@ -3142,7 +3297,7 @@ async function addRefVersion() {
         </div>
         <!-- Link panel -->
         <div id="refPanelLink">
-            <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, or any URL.</p>
+            <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, MP3, or any URL.</p>
             <div id="refUrlDetect" style="height:24px;margin-bottom:6px;font-size:0.8em;color:var(--text-muted)"></div>
             <div class="form-row">
                 <label class="form-label">URL</label>
@@ -3208,7 +3363,8 @@ function refSwitchTab(tab) {
 }
 
 async function saveRefVersionUpload() {
-    const songTitle = selectedSong?.title || selectedSong;
+    // Use captured title from when modal opened — NOT current selectedSong (race condition fix)
+    const songTitle = window._refModalSongTitle || selectedSong?.title || selectedSong;
     if (!songTitle) return;
 
     const fileInput = document.getElementById('refAudioFile');
@@ -3298,7 +3454,8 @@ function detectRefPlatform(url) {
 
 async function saveRefVersionFromModal() {
     if (!requireSignIn()) return;
-    const songTitle = selectedSong?.title || selectedSong;
+    // Use captured title from when modal opened — NOT current selectedSong (race condition fix)
+    const songTitle = window._refModalSongTitle || selectedSong?.title || selectedSong;
     const url = document.getElementById('refUrl')?.value.trim();
     const title = document.getElementById('refTitle')?.value.trim();
     const notes = document.getElementById('refNotes')?.value.trim();
@@ -3437,6 +3594,35 @@ async function deleteRefVersion(versionIndex) {
     
     const bandData = bandKnowledgeBase[songTitle] || {};
     await renderRefVersions(songTitle, bandData);
+}
+
+async function editRefVersionUrl(versionIndex) {
+    if (!requireSignIn()) return;
+    const songTitle = selectedSong?.title || selectedSong;
+    if (!songTitle) return;
+    let versions = await loadRefVersions(songTitle) || [];
+    if (!versions[versionIndex]) return;
+    const currentUrl = versions[versionIndex].url || versions[versionIndex].spotifyUrl || '';
+    const newUrl = prompt('Edit URL for this reference version:\n(Paste any link — YouTube, Spotify, Archive, SoundCloud, MP3, etc.)', currentUrl);
+    if (newUrl === null || newUrl.trim() === '' || newUrl.trim() === currentUrl) return;
+    const trimmed = newUrl.trim();
+    // Validate URL
+    try { new URL(trimmed); } catch(e) { alert('Please paste a valid URL'); return; }
+    versions[versionIndex].url = trimmed;
+    versions[versionIndex].spotifyUrl = trimmed; // backward compat
+    // Update platform detection
+    let platform = 'link';
+    if (trimmed.includes('spotify.com')) platform = 'spotify';
+    else if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) platform = 'youtube';
+    else if (trimmed.includes('music.apple.com')) platform = 'apple_music';
+    else if (trimmed.includes('tidal.com')) platform = 'tidal';
+    else if (trimmed.includes('soundcloud.com')) platform = 'soundcloud';
+    else if (trimmed.includes('archive.org')) platform = 'archive';
+    versions[versionIndex].platform = platform;
+    await saveRefVersions(songTitle, versions);
+    const bandData = bandKnowledgeBase[songTitle] || {};
+    await renderRefVersions(songTitle, bandData);
+    showToast('✅ URL updated');
 }
 
 async function saveRefVersions(songTitle, versions) {
@@ -5387,13 +5573,13 @@ function generateSheetMusic(sectionIndex, section) {
 // Default: 'deadcetera' (the original band). Future: band switcher sets this.
 // var currentBandSlug → js/core/firebase-service.js (Wave-1 refactor)
 
-function bandPath(subpath) {
-    return 'bands/' + currentBandSlug + '/' + subpath;
-}
+// bandPath → js/core/firebase-service.js (window.bandPath)
+// Declaration removed — global window.bandPath is used directly via scope chain.
 
-// ── One-time migration: copy flat /songs and /master to /bands/deadcetera/ ──
-// Runs once per device. Safe to re-run (checks for existing data first).
-async function migrateToMultiBand() {
+// migrateToMultiBand → js/core/firebase-service.js (window.migrateToMultiBand)
+// Duplicate declaration removed — was overwriting the canonical window.* version.
+// Original kept as dead code reference (commented out):
+/* REMOVED: async function migrateToMultiBand() {
     if (!firebaseDB) return;
     var migrationKey = 'deadcetera_migrated_to_multiband';
     if (localStorage.getItem(migrationKey) === 'done') return;
@@ -5449,9 +5635,8 @@ async function migrateToMultiBand() {
         showToast('Data migrated to multi-band format');
     } catch (err) {
         console.error('Migration error:', err);
-        // Don't mark done so it retries next load
     }
-}
+} */
 
 // ============================================================================
 // FIREBASE INITIALIZATION
@@ -5529,141 +5714,22 @@ window.requireSignIn = function requireSignIn() {
     return false;
 };
 
-// ── Lightweight Firebase-only init (no Google Identity) ─────────────────────
-// Called automatically on page load so firebaseDB is ready immediately.
-// loadGoogleDriveAPI() (full init including Google Identity) is called on 
-// first "Connect" click and handles sign-in + email attribution.
-async function initFirebaseOnly() {
-    if (firebaseDB) return; // Already initialized
-    
-    const loadScript = (src) => new Promise((res, rej) => {
-        // Check if already loaded
-        if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-        const s = document.createElement('script');
-        s.src = src; s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-    });
+// ── REMOVED: initFirebaseOnly, loadGoogleDriveAPI, initFirebase ──────────────
+// These functions are now ONLY defined in js/core/firebase-service.js.
+// The app.js duplicates were overwriting the canonical versions, which blocked
+// the _band routing fix and migrateBandLevelData() from running.
+// ~100 lines of duplicate code deleted.
 
-    // Load Firebase app compat then database compat
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js');
-    
-    if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
-    }
-    firebaseDB = firebase.database();
-    
-    // Also try storage
-    try {
-        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js');
-        if (firebase.storage) firebaseStorage = firebase.storage();
-    } catch(e) { /* storage optional */ }
-
-    console.log('🔥 Firebase DB ready (auto-init)');
-    
-    // Run one-time data migration to multi-band structure
-    migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
-}
-
-function loadGoogleDriveAPI() {
-    // Now loads Firebase SDK + Google Identity Services for sign-in
-    return new Promise((resolve, reject) => {
-        console.log('🔥 Loading Firebase + Google Identity...');
-        
-        const loadScript = (src) => new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = src; s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
-
-        const loadGIS = new Promise((res, rej) => {
-            if (window.google?.accounts?.oauth2) { res(); return; }
-            loadScript('https://accounts.google.com/gsi/client').then(res).catch(rej);
-        });
-
-        // CRITICAL: firebase-app-compat MUST fully execute before database/storage load
-        // Do NOT create DB/Storage script elements until after app-compat onload fires
-        const firebaseAppReady = window.firebase?.apps !== undefined
-            ? Promise.resolve()
-            : loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-
-        firebaseAppReady
-            .then(() => Promise.all([
-                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js'),
-                loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js'),
-                loadGIS
-            ]))
-            .then(() => {
-                console.log('✅ Firebase + Google scripts loaded');
-                initFirebase().then(resolve).catch(reject);
-            })
-            .catch(reject);
-    });
-}
-
-async function initFirebase() {
-    try {
-        console.log('⚙️ Initializing Firebase...');
-        
-        // Initialize Firebase app if not already done (may have been done by initFirebaseOnly)
-        if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-        }
-        
-        // Re-use existing firebaseDB if already set by initFirebaseOnly
-        if (!firebaseDB) {
-            firebaseDB = firebase.database();
-        }
-        
-        // Firebase Storage is optional - we primarily use RTDB for audio (base64)
-        try {
-            if (firebase.storage && !firebaseStorage) {
-                firebaseStorage = firebase.storage();
-            }
-        } catch(e) {
-            console.log('⚠️ Firebase Storage not available (not critical - using RTDB for audio)');
-        }
-        
-        console.log('✅ Firebase initialized');
-        
-        // Initialize Google Identity Services for sign-in (identity only, no Drive)
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: GOOGLE_DRIVE_CONFIG.clientId,
-            scope: GOOGLE_DRIVE_CONFIG.scope,
-            callback: async (response) => {
-                if (response.error) {
-                    console.error('Token error:', response);
-                    updateSignInStatus(false);
-                    return;
-                }
-                accessToken = response.access_token;
-                updateSignInStatus(true);
-                console.log('✅ User signed in');
-
-                // Get user email from Google
-                await getCurrentUserEmail();
-
-                // No shared folder init needed - Firebase is always ready!
-                console.log('🔥 Firebase ready - no folder sharing needed!');
-            }
-        });
-        
-        isGoogleDriveInitialized = true;
-        console.log('✅ Backend initialized (Firebase + Google Identity)');
-        
-        // Run one-time data migration to multi-band structure
-        migrateToMultiBand().catch(err => console.log('Migration skipped:', err.message));
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Firebase initialization failed:', error);
-        throw error;
-    }
-}
-
+// updateSignInStatus — KEEP: extends firebase-service.js version with hero hide logic
 function updateSignInStatus(signedIn) {
     isUserSignedIn = signedIn;
     updateDriveAuthButton();
+    // Always hide hero when signed in — catches edge cases where
+    // localStorage was cleared but Firebase data loaded successfully
+    if (signedIn) {
+        var _hero = document.getElementById('page-hero');
+        if (_hero) _hero.classList.add('hidden');
+    }
 }
 
 async function getCurrentUserEmail() {
@@ -5697,6 +5763,8 @@ async function getCurrentUserEmail() {
     } catch (error) {
         console.error('Could not get user email:', error);
         currentUserEmail = 'unknown';
+        // Still transition past hero — user IS signed in, just couldn't fetch profile
+        if (typeof window.glHeroCheck === 'function') window.glHeroCheck(true);
     }
 }
 
@@ -5708,10 +5776,7 @@ async function recoverLocalStorageToFirebase() {
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (!key || !key.startsWith('deadcetera_')) continue;
-        // Key format: deadcetera_{dataType}_{songTitle}
-        // Extract parts — dataType is the second segment, songTitle is the rest
         const withoutPrefix = key.replace('deadcetera_', '');
-        // Known dataTypes used in saveBandDataToDrive
         const dataTypes = ['spotify_versions','song_status','song_metadata','song_structure',
                           'best_shot_takes','best_shot_ratings','best_shot_section_notes',
                           'practice_tracks','rehearsal_notes','gig_notes','moises_stems',
@@ -5728,16 +5793,17 @@ async function recoverLocalStorageToFirebase() {
         }
         if (!matchedType || !matchedSong) continue;
         try {
-            // Check if Firebase already has this data
-            const path = songPath(matchedSong, matchedType);
+            // Band-level data routes to top-level, NOT through songPath
+            const path = (matchedSong === '_band')
+                ? bandPath(sanitizeFirebasePath(matchedType))
+                : songPath(matchedSong, matchedType);
             const snap = await firebaseDB.ref(path).once('value');
-            if (snap.val() !== null) continue; // Firebase already has it — skip
-            // Push to Firebase
+            if (snap.val() !== null) continue;
             const data = JSON.parse(localStorage.getItem(key));
             if (!data || (Array.isArray(data) && data.length === 0)) continue;
             await firebaseDB.ref(path).set(data);
             recovered++;
-            console.log(`🔄 Recovered ${matchedType} for "${matchedSong}" from localStorage to Firebase`);
+            console.log(`🔄 Recovered ${matchedType} for "${matchedSong}" → ${path}`);
         } catch(e) { /* skip errors on individual keys */ }
     }
     if (recovered > 0) {
@@ -5885,9 +5951,38 @@ function avatarClearCustom() {
 // AUTHENTICATION
 // ============================================================================
 
+// Guard: prevents concurrent handleGoogleDriveAuth calls from racing
+var _glAuthInProgress = false;
+
 async function handleGoogleDriveAuth(silent) {
     // Guard: onclick handlers pass Event as first arg — treat non-boolean as interactive
     if (typeof silent !== 'boolean') silent = false;
+
+    // Prevent concurrent auth calls from racing.
+    // If an interactive call comes in while silent auto-reconnect is running,
+    // queue it to run after the silent call finishes.
+    if (_glAuthInProgress) {
+        if (!silent) {
+            console.log('🔑 Auth already in progress — queuing interactive sign-in');
+            var _waitForAuth = setInterval(function() {
+                if (!_glAuthInProgress) {
+                    clearInterval(_waitForAuth);
+                    handleGoogleDriveAuth(false);
+                }
+            }, 100);
+        }
+        return;
+    }
+    _glAuthInProgress = true;
+
+    try {
+        await _handleGoogleDriveAuthInner(silent);
+    } finally {
+        _glAuthInProgress = false;
+    }
+}
+
+async function _handleGoogleDriveAuthInner(silent) {
     if (!isGoogleDriveInitialized) {
         try {
             console.log('🔥 Loading Firebase...');
@@ -5895,26 +5990,52 @@ async function handleGoogleDriveAuth(silent) {
         } catch (error) {
             console.error('Failed to load Firebase:', error);
             if (!silent) alert('Failed to initialize.\n\nError: ' + error.message);
+            // CRITICAL: still restore session from localStorage to prevent blank screen.
+            // GIS failed but we can still show the app with cached identity.
+            if (silent) {
+                var _fallbackEmail = localStorage.getItem('deadcetera_google_email');
+                if (_fallbackEmail) {
+                    currentUserEmail = _fallbackEmail;
+                    currentUserName = localStorage.getItem('deadcetera_google_name') || '';
+                    currentUserPicture = localStorage.getItem('deadcetera_google_picture') || '';
+                    updateSignInStatus(true);
+                    updateDriveAuthButton();
+                    var _fh = document.getElementById('page-hero');
+                    if (_fh) _fh.classList.add('hidden');
+                    if (!window._glPageRestorePending && typeof showPage === 'function') {
+                        var _fp = localStorage.getItem('glLastPage');
+                        showPage((!_fp || _fp === 'home') ? 'home' : _fp);
+                    }
+                    console.log('⚠️ GIS failed but session restored from cache:', _fallbackEmail);
+                } else if (typeof window.glHeroCheck === 'function') {
+                    window.glHeroCheck(false);
+                }
+            }
             return;
         }
     }
-    
+
     if (isUserSignedIn) {
         if (silent) return; // Don't sign out in silent mode
-        // Sign out
-        google.accounts.oauth2.revoke(accessToken, () => {
-            console.log('👋 User signed out');
-            accessToken = null;
-            currentUserEmail = null;
-            currentUserName = null;
-            currentUserPicture = null;
-            localStorage.removeItem('deadcetera_google_email');
-            localStorage.removeItem('deadcetera_google_name');
-            localStorage.removeItem('deadcetera_google_picture');
-            localStorage.removeItem('glLastPage');
-            window._justSignedOut = true;
-            updateSignInStatus(false);
-        });
+        // Sign out — wrap revoke in try/catch since accessToken may be null
+        // (e.g., after a cache-only silent restore)
+        try {
+            google.accounts.oauth2.revoke(accessToken, function() {
+                console.log('👋 User signed out');
+            });
+        } catch (e) {
+            console.log('👋 Token revoke skipped (no active token)');
+        }
+        accessToken = null;
+        currentUserEmail = null;
+        currentUserName = null;
+        currentUserPicture = null;
+        localStorage.removeItem('deadcetera_google_email');
+        localStorage.removeItem('deadcetera_google_name');
+        localStorage.removeItem('deadcetera_google_picture');
+        localStorage.removeItem('glLastPage');
+        window._justSignedOut = true;
+        updateSignInStatus(false);
     } else {
         // Sign in
         try {
@@ -5939,8 +6060,10 @@ async function handleGoogleDriveAuth(silent) {
                     var _h = document.getElementById('page-hero');
                     if (_h) _h.classList.add('hidden');
                     var _lastP = localStorage.getItem('glLastPage');
-                    if ((!_lastP || _lastP === 'home') && !window._glPageRestorePending) {
-                        if (typeof showPage === 'function') showPage('home');
+                    if (!window._glPageRestorePending) {
+                        // If no page restore is pending, navigate now.
+                        // Use saved page if valid, otherwise fall back to home.
+                        if (typeof showPage === 'function') showPage((!_lastP || _lastP === 'home') ? 'home' : _lastP);
                     }
                     console.log('✅ Session restored from cache:', savedEmail);
                 } else {
@@ -5967,15 +6090,8 @@ async function handleGoogleDriveAuth(silent) {
 // Firebase converts arrays to objects with numeric keys - this normalizes them back
 // toArray() → js/core/utils.js (Wave-1 refactor)
 
-function songPath(songTitle, dataType) {
-    return bandPath(`songs/${sanitizeFirebasePath(songTitle)}/${sanitizeFirebasePath(dataType)}`);
-}
-
-function masterPath(fileName) {
-    // Remove file extension for cleaner paths
-    const name = fileName.replace('.json', '');
-    return bandPath(`master/${sanitizeFirebasePath(name)}`);
-}
+// songPath, masterPath → js/core/firebase-service.js (window.songPath, window.masterPath)
+// Declarations removed — global window.* versions used directly via scope chain.
 
 // ============================================================================
 // UPLOAD AUDIO TO FIREBASE STORAGE
@@ -6581,9 +6697,10 @@ async function updateSongStatus(status) {
         await saveBandDataToDrive(selectedSong.title, 'song_status', { status, updatedAt: new Date().toISOString(), updatedBy: currentUserEmail });
     }
 
-    // Update cache immediately
-    statusCache[selectedSong.title] = status;
-    
+    // Update cache immediately (via GLStore setter if available)
+    if (typeof GLStore !== 'undefined' && GLStore.setStatus) GLStore.setStatus(selectedSong.title, status);
+    else statusCache[selectedSong.title] = status;
+
     // Save updated master file (so next page load is instant)
     saveMasterFile(MASTER_STATUS_FILE, statusCache).then(() => {
         console.log('Master status file updated');
@@ -6830,9 +6947,13 @@ async function loadSongKey(songTitle) {
 let harmonyCache = {};
 
 // Cache for song statuses - loaded from single master file
-let statusCache = {};
-let statusCacheLoaded = false;
-let statusPreloadRunning = false;
+// NOTE: must be var (not let) so statusCache is a window-accessible global.
+// groovelinx_store.js loads before app.js and references statusCache —
+// let creates a script-scoped binding invisible to other <script> tags,
+// causing ReferenceError in getAllStatus() / getStatus().
+var statusCache = {};
+var statusCacheLoaded = false;
+var statusPreloadRunning = false;
 
 // ============================================================================
 // MASTER STATUS FILE - Single Drive file for ALL song statuses (FAST!)
@@ -7152,101 +7273,23 @@ const BAND_DATA_TYPES = {
 // SAVE TO FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
-async function saveBandDataToDrive(songTitle, dataType, data) {
-    // Always save to localStorage as backup
-    const localKey = `deadcetera_${dataType}_${songTitle}`;
-    localStorage.setItem(localKey, JSON.stringify(data));
-    
-    if (!firebaseDB) {
-        console.warn('⚠️ Firebase not ready — saved to localStorage only (not shared with band)');
-        showSignInNudge();
-        return false;
-    }
-    
-    try {
-        const path = songPath(songTitle, dataType);
-        await firebaseDB.ref(path).set(data);
-        return true;
-    } catch (error) {
-        console.error('❌ Failed to save to Firebase:', error);
-        // Show error toast so user knows their save didn't reach the band
-        showToast('⚠️ Could not sync to band — check your connection');
-        return false;
-    }
-}
+// saveBandDataToDrive → js/core/firebase-service.js (window.saveBandDataToDrive)
+// Declaration removed — was overwriting window.* and causing infinite recursion.
 
 // ============================================================================
 // LOAD FROM FIREBASE (Shared with all band members automatically!)
 // ============================================================================
 
-async function loadBandDataFromDrive(songTitle, dataType) {
-    if (firebaseDB) {
-        try {
-            const path = songPath(songTitle, dataType);
-            const snapshot = await firebaseDB.ref(path).once('value');
-            const data = snapshot.val();
-            
-            if (data !== null) {
-                return data;
-            }
-        } catch (error) {
-            console.log(`⚠️ Firebase error for ${dataType}:`, error.message);
-        }
-    }
-    
-    // Fallback to localStorage
-    return loadFromLocalStorageFallback(songTitle, dataType);
-}
-
-function loadFromLocalStorageFallback(songTitle, dataType) {
-    const key = `deadcetera_${dataType}_${songTitle}`;
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-}
+// loadBandDataFromDrive, loadFromLocalStorageFallback → js/core/firebase-service.js
+// Declarations removed — were overwriting window.* and causing infinite recursion.
+// All callers resolve to window.* via global scope chain.
 
 // ============================================================================
 // MASTER FILES (aggregated data like all statuses, all harmonies)
 // ============================================================================
 
-async function loadMasterFile(fileName) {
-    if (firebaseDB) {
-        try {
-            const path = masterPath(fileName);
-            const snapshot = await firebaseDB.ref(path).once('value');
-            const data = snapshot.val();
-            if (data !== null) return data;
-        } catch (error) {
-            console.log(`Could not load master file from Firebase: ${fileName}`);
-        }
-    }
-    
-    // Try localStorage
-    const key = `deadcetera_${fileName}`;
-    const localData = localStorage.getItem(key);
-    return localData ? JSON.parse(localData) : null;
-}
-
-async function saveMasterFile(fileName, data) {
-    // Always save to localStorage as backup (with original keys)
-    const key = `deadcetera_${fileName}`;
-    localStorage.setItem(key, JSON.stringify(data));
-    
-    if (!firebaseDB) return false;
-    
-    try {
-        // Sanitize all object keys for Firebase (no . # $ / [ ])
-        const sanitized = (typeof data === 'object' && data !== null && !Array.isArray(data))
-            ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k.replace(/[.#$\[\]\/]/g, '_'), v]))
-            : data;
-        const path = masterPath(fileName);
-        await firebaseDB.ref(path).set(sanitized);
-        console.log(`Saved master file: ${fileName}`);
-        return true;
-    } catch (error) {
-        console.error('Error saving master file:', error);
-        return false;
-    }
-}
+// loadMasterFile, saveMasterFile → js/core/firebase-service.js (window.*)
+// Duplicate declarations removed — were overwriting the canonical window.* versions.
 
 // ============================================================================
 // PRACTICE TRACKS / REHEARSAL NOTES / SPOTIFY URLS / PART NOTES
@@ -9635,42 +9678,68 @@ function addVenue() {
 }
 
 async function vInitPlacesAutocomplete() {
-    var input = document.getElementById('vPlacesSearch');
-    if (!input) return;
+    var container = document.getElementById('vPlacesSearch');
+    if (!container) return;
     try {
         if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
     } catch(e) {}
     if (!window.google || !window.google.maps || !window.google.maps.places) {
-        input.placeholder = 'Google Maps not loaded — fill fields manually';
+        container.placeholder = 'Google Maps not loaded — fill fields manually';
         return;
     }
-    var ac = new google.maps.places.Autocomplete(input, {
-        types: ['establishment'],
-        fields: ['name','formatted_address','formatted_phone_number','website','geometry']
-    });
-    ac.addListener('place_changed', function() {
-        var place = ac.getPlace();
-        if (!place) return;
-        var setVal = function(id, val) {
-            var el = document.getElementById(id);
-            if (el && val) el.value = val;
-        };
-        setVal('vName',    place.name || '');
-        setVal('vAddress', place.formatted_address || '');
-        setVal('vPhone',   place.formatted_phone_number || '');
-        setVal('vWebsite', place.website || '');
-        // Store placeId for later directions use
-        if (place.geometry && place.geometry.location) {
-            var inp = document.getElementById('vName');
-            if (inp) {
-                inp.dataset.lat = place.geometry.location.lat();
-                inp.dataset.lng = place.geometry.location.lng();
+    // Use new PlaceAutocompleteElement API (replaces deprecated Autocomplete)
+    if (container._acInit) return;
+    container._acInit = true;
+    try {
+        var acEl = new google.maps.places.PlaceAutocompleteElement({
+            types: ['establishment']
+        });
+        acEl.style.cssText = 'width:100%;font-size:0.9em';
+        // Replace the input placeholder with the autocomplete element
+        container.style.display = 'none';
+        container.parentNode.insertBefore(acEl, container.nextSibling);
+        acEl.addEventListener('gmp-placeselect', async function(ev) {
+            var place = ev.place;
+            if (!place) return;
+            try { await place.fetchFields({ fields: ['displayName','formattedAddress','nationalPhoneNumber','websiteURI','location'] }); } catch(e) {}
+            var setVal = function(id, val) {
+                var el = document.getElementById(id);
+                if (el && val) el.value = val;
+            };
+            setVal('vName',    (place.displayName || '') + '');
+            setVal('vAddress', (place.formattedAddress || '') + '');
+            setVal('vPhone',   (place.nationalPhoneNumber || '') + '');
+            setVal('vWebsite', (place.websiteURI || '') + '');
+            if (place.location) {
+                var inp = document.getElementById('vName');
+                if (inp) {
+                    inp.dataset.lat = place.location.lat();
+                    inp.dataset.lng = place.location.lng();
+                }
             }
-        }
-        // Scroll to form
-        var card = document.getElementById('addVenueCard');
-        if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
-    });
+            var card = document.getElementById('addVenueCard');
+            if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+        });
+    } catch(e) {
+        // Fallback: if PlaceAutocompleteElement not available, use legacy
+        console.log('[Places] PlaceAutocompleteElement not available, using legacy Autocomplete');
+        container.style.display = '';
+        var ac = new google.maps.places.Autocomplete(container, {
+            types: ['establishment'],
+            fields: ['name','formatted_address','formatted_phone_number','website','geometry']
+        });
+        ac.addListener('place_changed', function() {
+            var place = ac.getPlace();
+            if (!place) return;
+            var setVal = function(id, val) { var el = document.getElementById(id); if (el && val) el.value = val; };
+            setVal('vName', place.name || ''); setVal('vAddress', place.formatted_address || '');
+            setVal('vPhone', place.formatted_phone_number || ''); setVal('vWebsite', place.website || '');
+            if (place.geometry && place.geometry.location) {
+                var inp = document.getElementById('vName');
+                if (inp) { inp.dataset.lat = place.geometry.location.lat(); inp.dataset.lng = place.geometry.location.lng(); }
+            }
+        });
+    }
 }
 
 function searchVenueGoogle() {
@@ -9764,7 +9833,7 @@ function openGigPocketMeter(songTitle, bpm, songKey, bpArg) {
         // Close button
         var closeBtn = document.createElement('button');
         closeBtn.innerHTML = '\u2715 Close';
-        closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#94a3b8;padding:6px 14px;border-radius:8px;font-size:0.82em;cursor:pointer;font-weight:600;z-index:10011';
+        closeBtn.style.cssText = 'position:absolute;top:max(16px, env(safe-area-inset-top, 16px));right:max(16px, env(safe-area-inset-right, 16px));background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#94a3b8;padding:6px 14px;border-radius:8px;font-size:0.82em;cursor:pointer;font-weight:600;z-index:10011';
         closeBtn.onclick = closeGigPocketMeter;
         wrap.appendChild(closeBtn);
         container = document.createElement('div');
@@ -10113,6 +10182,7 @@ function renderSettingsPage(el) {
         <button class="tab-btn active" onclick="settingsTab('profile',this)">👤 Profile</button>
         <button class="tab-btn" onclick="settingsTab('band',this)">🎸 Band</button>
         <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
+        <button class="tab-btn" onclick="settingsTab('notifications',this)">🔔 Notifications</button>
         <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Bugs</button>
         <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
     </div>
@@ -10145,23 +10215,25 @@ function settingsTab(tab, btn) {
                     </select></div>
                 <div class="form-row"><label class="form-label">Your Role</label>
                     <div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:0.88em;color:var(--text-muted)">
-                        ${(function(){var m=bandMembers[cu];if(!m)return'<span style="color:var(--text-dim)">Select your name above to see your role</span>';var parts=[m.role];if(m.leadVocals)parts.push('Lead Vocals');else if(m.sings)parts.push('Harmony Vocals');return parts.join(' · ');})()}
+                        ${(function(){var m=bandMembers[cu];if(!m)return'<span style="color:var(--text-dim)">Select your name above to see your role</span>';return typeof _memberDisplayRole==='function'?_memberDisplayRole(m):(m.role+(m.sings?' · Vocals':'')+(m.leadVocals?' (Lead)':''));})()}
                     </div>
                     <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Instrument and vocal role are managed in the Band tab.</div>
                 </div>
                 <div class="form-row"><label class="form-label">🏠 Home Address</label>
-                    ${localStorage.getItem('deadcetera_home_address') ? `
-                    <div id="savedAddressDisplay" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:6px">
-                        <span style="flex:1;font-size:0.85em;color:var(--text)">${localStorage.getItem('deadcetera_home_address')}</span>
-                        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('savedAddressDisplay').style.display='none';document.getElementById('addressEditRow').style.display='flex'">Edit</button>
+                    <div id="addressSection">
+                        ${(function(){
+                            var addr = localStorage.getItem('deadcetera_home_address') || '';
+                            if (addr) {
+                                return '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px">'
+                                    + '<span style="flex:1;font-size:0.88em;color:var(--text)">' + addr.replace(/</g,'&lt;') + '</span>'
+                                    + '<button class="btn btn-sm btn-ghost" onclick="document.getElementById(\'addressSection\').innerHTML=_settingsAddressEditHTML()">Edit</button>'
+                                    + '</div>';
+                            } else {
+                                return _settingsAddressEditHTML();
+                            }
+                        })()}
                     </div>
-                    <div id="addressEditRow" style="display:none;gap:8px">` : `
-                    <div id="addressEditRow" style="display:flex;gap:8px">`}
-                        <input class="app-input" id="settingsHomeAddress" placeholder="Start typing your address..." style="flex:1"
-                            value="${localStorage.getItem('deadcetera_home_address')||''}">
-                        <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_home_address',document.getElementById('settingsHomeAddress').value);settingsTab('profile')">Save</button>
-                    </div>
-                    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used as default starting point for gig directions & leave-time calculations.</div>
+                    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used for gig directions & leave-time estimates.</div>
                 </div>
             </div>
             <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
@@ -10182,10 +10254,10 @@ function settingsTab(tab, btn) {
         
     band: `
         <div class="app-card"><h3>🎸 Band Configuration</h3>
-            <div class="form-row"><label class="form-label">Band Display Name</label>
+            <div class="form-row"><label class="form-label">Band Name</label>
                 <div style="display:flex;gap:8px"><input class="app-input" id="setBandName" value="${bn}">
-                <button class="btn btn-sm btn-primary" onclick="localStorage.setItem('deadcetera_band_name',document.getElementById('setBandName').value);settingsTab('band')">Save</button></div>
-                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">This is your display name. Your band ID is <code style="color:var(--accent-light)">${currentBandSlug}</code>.</div></div>
+                <button class="btn btn-sm btn-primary" id="saveBandNameBtn" onclick="_saveBandName(this)">Save</button></div>
+                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Used across your band workspace. Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div></div>
             <div class="form-row" style="margin-top:12px"><label class="form-label">Band Logo</label>
                 <div style="display:flex;align-items:center;gap:12px">
                     <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
@@ -10193,12 +10265,22 @@ function settingsTab(tab, btn) {
                     <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in the top navigation bar and metronome screen.</div></div>
                 </div></div>
         </div>
+        <div class="app-card"><h3>🎧 Playback Preference</h3>
+            <div class="form-row"><label class="form-label">Preferred playback source</label>
+                <select class="app-select" id="settingsSourcePref" onchange="if(typeof SetlistPlayer!=='undefined')SetlistPlayer.setSourcePref(this.value)" style="max-width:240px">
+                    <option value="youtube"${(typeof SetlistPlayer !== 'undefined' && SetlistPlayer.getSourcePref() === 'youtube') || (!typeof SetlistPlayer !== 'undefined' && (localStorage.getItem('gl_player_source_pref')||'youtube') === 'youtube') ? ' selected' : ''}>YouTube (default)</option>
+                    <option value="spotify"${(localStorage.getItem('gl_player_source_pref')) === 'spotify' ? ' selected' : ''}>Spotify</option>
+                    <option value="archive"${(localStorage.getItem('gl_player_source_pref')) === 'archive' ? ' selected' : ''}>Archive.org</option>
+                </select>
+                <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">The setlist player tries your preferred source first, then automatically falls back to others.</div>
+            </div>
+        </div>
         <div class="app-card"><h3>👥 Band Members</h3>
             <div id="membersList">${Object.entries(bandMembers).map(([k,m])=>`
                 <div class="list-item" style="padding:10px 12px">
                     <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;color:var(--accent-light)">${m.name.charAt(0)}</div>
                     <div style="flex:1"><div style="font-weight:600;font-size:0.9em">${m.name}</div>
-                        <div style="font-size:0.75em;color:var(--text-dim)">${m.role}${m.sings?' · Vocals':''}${m.leadVocals?' (Lead)':''}</div></div>
+                        <div style="font-size:0.75em;color:var(--text-dim)">${typeof _memberDisplayRole==='function'?_memberDisplayRole(m):(m.role+(m.sings?' · Vocals':'')+(m.leadVocals?' (Lead)':''))}</div></div>
                     <button class="btn btn-sm btn-ghost" onclick="editMember('${k}')" title="Edit">✏️</button>
                     <button class="btn btn-sm btn-ghost" onclick="removeMember('${k}')" title="Remove" style="color:var(--red)">✕</button>
                 </div>`).join('')}</div>
@@ -10206,9 +10288,9 @@ function settingsTab(tab, btn) {
                 <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
                 <div class="form-grid">
                     <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="newMemberName" placeholder="First name"></div>
-                    <div class="form-row"><label class="form-label">Role / Instrument</label><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Vocals">Vocals</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
+                    <div class="form-row"><label class="form-label">Primary Instrument</label><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
                     <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
-                    <div class="form-row"><label class="form-label">Sings?</label><select class="app-select" id="newMemberSings"><option value="no">No</option><option value="harmony">Harmony</option><option value="lead">Lead + Harmony</option></select></div>
+                    <div class="form-row"><label class="form-label">Vocal Role</label><select class="app-select" id="newMemberSings"><option value="none">None</option><option value="backing">Backing</option><option value="co-lead">Co-Lead</option><option value="lead">Lead</option></select></div>
                 </div>
                 <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">+ Add Member</button>
             </div>
@@ -10219,9 +10301,13 @@ function settingsTab(tab, btn) {
             <button class="btn btn-primary btn-sm" onclick="showAddBackupPlayerModal()" style="margin-top:8px">+ Add Backup Player</button>
         </div>
         <div class="app-card"><h3>&#127760; Multi-Band</h3>
-            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong> <span style="font-size:0.8em;color:var(--text-dim)">(${currentBandSlug})</span></div>
-            <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:12px">All songs, readiness, setlists, and gigs are scoped to this band. To switch bands, select a different one below or create a new one.</div>
-            <button class="btn btn-primary" onclick="showCreateBandModal()">+ Create New Band</button>
+            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong></div>
+            <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:4px">All songs, readiness, setlists, and gigs are scoped to this band.</div>
+            <div style="font-size:0.72em;color:var(--text-dim);margin-bottom:12px">Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary" id="settingsBandSwitchBtn" onclick="_showBandSwitcherDropdown(this)">Switch Band</button>
+                <button class="btn btn-ghost" onclick="showCreateBandModal()">+ New Band</button>
+            </div>
         </div>`,
         
     data: `
@@ -10258,14 +10344,14 @@ function settingsTab(tab, btn) {
         <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
         
     about: `
-        <div class="app-card"><h3>ℹ️ About GrooveLinx</h3>
+        <div class="app-card"><h3>ℹ️ About GrooveLinx™</h3>
             <div style="text-align:center;padding:16px 0">
                 <div style="font-size:2.5em;margin-bottom:8px">🎸</div>
                 <div style="font-size:1.3em;font-weight:800;background:linear-gradient(135deg,#667eea,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${bn}</div>
                 <div style="font-size:0.85em;color:var(--text-dim);margin-top:4px">Band HQ — Less admin. More jams. 🤘</div>
             </div>
             <div style="font-size:0.85em;line-height:2;color:var(--text-muted)">
-                ${[['Version','3.1.0'],['Build', (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'unknown')],['Created by','Drew Merrill'],['Platform','Firebase + GitHub Pages'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
+                ${[['Version','3.2.0'],['Build', (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'unknown')],['Created by','Drew Merrill'],['Platform','Firebase + Vercel'],['Band Members',Object.values(bandMembers).map(m=>m.name).join(', ')],['Total Songs',''+(typeof allSongs!=='undefined'?allSongs.length:0)],['License','Private — All Rights Reserved']].map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+k+'</span><span style="color:var(--text);font-weight:600">'+v+'</span></div>').join('')}
             </div>
             <div style="margin-top:16px;text-align:center;font-size:0.78em;color:var(--text-dim);line-height:1.6">
                 © 2025–2026 Drew Merrill. All rights reserved.<br>
@@ -10273,16 +10359,90 @@ function settingsTab(tab, btn) {
                 <a href="https://github.com" target="_blank" style="color:var(--accent-light)">GitHub</a> · 
                 <a href="mailto:drewmerrill1029@gmail.com" style="color:var(--accent-light)">Contact</a>
             </div>
+        </div>`,
+
+    notifications: `
+        <div class="app-card"><h3>🔔 Notifications</h3>
+            <p style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Get notified when the band needs you. No spam — only action items and urgent changes.</p>
+            <div id="notifSettingsContent" style="font-size:0.85em;color:var(--text-dim)">Loading...</div>
         </div>`
     };
-    
+
     el.innerHTML = panels[tab] || panels.profile;
-    
-    // Post-render: load feedback history
+
+    // Post-render hooks
+    if (tab === 'notifications') _renderNotifSettings();
     if (tab === 'feedback') loadFeedbackHistory();
     if (tab === 'data') checkSyncStatus();
     if (tab === 'profile' || !tab) setTimeout(initSettingsAddressAutocomplete, 300);
 }
+
+function _renderNotifSettings() {
+    var el = document.getElementById('notifSettingsContent');
+    if (!el) return;
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) { el.innerHTML = 'Notification engine not available.'; return; }
+
+    var pushState = fas.getPushState();
+    var enabled = fas.isPushEnabled();
+    var prefs = fas.getNotifPrefs();
+
+    var html = '';
+
+    // Master toggle
+    if (pushState === 'unsupported') {
+        html += '<div style="padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;margin-bottom:12px;color:#f87171">Your browser does not support notifications.</div>';
+    } else if (pushState === 'denied') {
+        html += '<div style="padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;margin-bottom:12px;color:#f87171">Notifications are blocked. To enable, update your browser or device notification settings for this site.</div>';
+    } else {
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+            + '<div><div style="font-weight:700;color:var(--text)">Enable Notifications</div>'
+            + '<div style="font-size:0.85em;color:var(--text-dim)">Get notified when the band needs you</div></div>'
+            + '<button id="notifMasterToggle" onclick="_toggleNotifMaster()" style="padding:6px 16px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;border:1px solid ' + (enabled ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)') + ';background:' + (enabled ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (enabled ? '#86efac' : 'var(--text-dim)') + '">' + (enabled ? 'On' : 'Off') + '</button>'
+            + '</div>';
+    }
+
+    // Preference toggles (only if enabled)
+    if (enabled) {
+        var rows = [
+            { key: 'action_required', label: 'Action required', desc: 'Polls, decisions needing your input', val: prefs.action_required },
+            { key: 'critical_change', label: 'Rehearsal & gig changes', desc: 'Setlist changes, urgent updates near events', val: prefs.critical_change },
+            { key: 'band_updates', label: 'Band updates', desc: 'Ideas, notes, general activity', val: prefs.band_updates }
+        ];
+        rows.forEach(function(r) {
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<div><div style="font-weight:600;color:var(--text)">' + r.label + '</div>'
+                + '<div style="font-size:0.82em;color:var(--text-dim)">' + r.desc + '</div></div>'
+                + '<button onclick="_toggleNotifPref(\'' + r.key + '\')" style="padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.78em;font-weight:700;border:1px solid ' + (r.val ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)') + ';background:' + (r.val ? 'rgba(34,197,94,0.06)' : 'none') + ';color:' + (r.val ? '#86efac' : 'var(--text-dim)') + '">' + (r.val ? 'On' : 'Off') + '</button>'
+                + '</div>';
+        });
+    }
+
+    el.innerHTML = html;
+}
+
+window._toggleNotifMaster = async function() {
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) return;
+    if (fas.isPushEnabled()) {
+        await fas.disablePush();
+    } else {
+        var result = await fas.enablePush();
+        if (!result.ok) {
+            if (typeof showToast === 'function') showToast('Could not enable: ' + (result.reason || 'unknown'));
+        }
+    }
+    _renderNotifSettings();
+};
+
+window._toggleNotifPref = function(key) {
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (!fas) return;
+    var prefs = fas.getNotifPrefs();
+    prefs[key] = !prefs[key];
+    fas.setNotifPrefs(prefs);
+    _renderNotifSettings();
+};
 
 async function loadFeedbackHistory() {
     const el = document.getElementById('fbHistory');
@@ -10318,54 +10478,164 @@ function checkSyncStatus() {
         </div>`;
 }
 
-function saveHomeAddress() {
-    var val = (document.getElementById('settingsHomeAddress') || {}).value || '';
-    if (!val.trim()) { alert('Please enter an address first.'); return; }
-    localStorage.setItem('deadcetera_home_address', val.trim());
-    // Also save to Firebase under member record if signed in
-    var key = localStorage.getItem('deadcetera_current_user');
-    if (key && typeof bandPath === 'function') {
-        firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim());
+// ── Standardized Save UX ─────────────────────────────────────────────────────
+// Usage: _glSaveBtn(buttonEl, saveFn) — handles Saving.../Saved/Failed states
+function _glSaveBtn(btn, saveFn) {
+    if (!btn) return;
+    var origText = btn.textContent;
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    try {
+        var result = saveFn();
+        // Handle both sync and async
+        if (result && typeof result.then === 'function') {
+            result.then(function() {
+                btn.textContent = 'Saved';
+                btn.style.opacity = '1';
+                showToast('Saved successfully');
+                setTimeout(function() { btn.textContent = origText; btn.disabled = false; }, 1500);
+            }).catch(function(err) {
+                btn.textContent = origText;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                showToast('Failed to save changes');
+                console.error('Save failed:', err);
+            });
+        } else {
+            btn.textContent = 'Saved';
+            btn.style.opacity = '1';
+            showToast('Saved successfully');
+            setTimeout(function() { btn.textContent = origText; btn.disabled = false; }, 1500);
+        }
+    } catch(err) {
+        btn.textContent = origText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        showToast('Failed to save changes');
+        console.error('Save failed:', err);
     }
-    var btn = document.querySelector('#settingsHomeAddress + button') ||
-              document.querySelector('[onclick="saveHomeAddress()"]');
-    if (btn) { btn.textContent = 'Saved!'; setTimeout(function(){ btn.textContent = 'Save'; }, 1500); }
 }
 
-async function initSettingsAddressAutocomplete() {
-    var input = document.getElementById('settingsHomeAddress');
-    if (!input) return;
-    try {
-        if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
-    } catch(e) {}
-    if (!window.google || !window.google.maps || !window.google.maps.places) return;
-    if (input._acInit) return;
-    input._acInit = true;
-    var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });
-    ac.addListener('place_changed', function() {
-        var place = ac.getPlace();
-        if (place && place.formatted_address) {
-            input.value = place.formatted_address;
-            localStorage.setItem('deadcetera_home_address', place.formatted_address);
+function _saveBandName(btn) {
+    _glSaveBtn(btn, function() {
+        var val = (document.getElementById('setBandName') || {}).value || '';
+        if (!val.trim()) throw new Error('Band name required');
+        localStorage.setItem('deadcetera_band_name', val.trim());
+        // Also update Firebase band meta if possible
+        if (firebaseDB && typeof bandPath === 'function') {
+            return firebaseDB.ref(bandPath('meta/name')).set(val.trim());
         }
     });
 }
 
+// Address edit form HTML (reusable for initial render and Edit button)
+window._settingsAddressEditHTML = function() {
+    var current = localStorage.getItem('deadcetera_home_address') || '';
+    return '<div style="display:flex;gap:8px;align-items:center">'
+        + '<input class="app-input" id="settingsHomeAddress" placeholder="Enter your home address..." style="flex:1" value="' + current.replace(/"/g, '&quot;') + '">'
+        + '<button class="btn btn-sm btn-primary" id="saveAddressBtn" onclick="saveHomeAddress(this)">Save</button>'
+        + (current ? '<button class="btn btn-sm btn-ghost" onclick="settingsTab(\'profile\')">Cancel</button>' : '')
+        + '</div>';
+};
+
+function saveHomeAddress(btn) {
+    var val = (document.getElementById('settingsHomeAddress') || {}).value || '';
+    if (!val.trim()) { showToast('Please enter an address'); return; }
+    _glSaveBtn(btn || document.getElementById('saveAddressBtn'), function() {
+        localStorage.setItem('deadcetera_home_address', val.trim());
+        // Save to Firebase under user profile (canonical source of truth)
+        var key = localStorage.getItem('deadcetera_current_user');
+        if (key && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+            return firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim());
+        }
+    });
+    // Re-render to show saved state after a brief delay
+    setTimeout(function() { settingsTab('profile'); }, 1600);
+}
+
+// Load home address from Firebase on init (ensures persistence across sessions)
+function _restoreHomeAddress() {
+    var key = localStorage.getItem('deadcetera_current_user');
+    if (!key || !firebaseDB || typeof bandPath !== 'function') return;
+    firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).once('value').then(function(snap) {
+        var val = snap.val();
+        if (val && typeof val === 'string' && val.trim()) {
+            localStorage.setItem('deadcetera_home_address', val.trim());
+        }
+    }).catch(function() {});
+}
+
+async function initSettingsAddressAutocomplete() {
+    var input = document.getElementById('settingsHomeAddress');
+    if (!input || input._acInit) return;
+    try {
+        if (window.google && google.maps && google.maps.importLibrary) await google.maps.importLibrary('places');
+    } catch(e) {}
+    if (!window.google || !window.google.maps || !window.google.maps.places) return;
+    input._acInit = true;
+    // Use legacy Autocomplete (most reliable across browsers + dark themes)
+    try {
+        var ac = new google.maps.places.Autocomplete(input, { types: ['address'] });
+        ac.addListener('place_changed', function() {
+            var place = ac.getPlace();
+            if (place && place.formatted_address) {
+                input.value = place.formatted_address;
+                // Auto-save on selection
+                saveHomeAddress();
+            }
+        });
+    } catch(e) {
+        // Google Places not available — plain text input still works with Save button
+    }
+}
+
 function addNewMember() {
     const name = document.getElementById('newMemberName')?.value;
-    const role = document.getElementById('newMemberRole')?.value;
-    const sings = document.getElementById('newMemberSings')?.value;
-    if (!name) { alert('Name required'); return; }
+    const instrument = document.getElementById('newMemberRole')?.value;
+    const vocalRole = document.getElementById('newMemberSings')?.value || 'none';
+    if (!name) { showToast('Name required'); return; }
     const key = name.toLowerCase().replace(/\s/g,'');
-    bandMembers[key] = { name, role: role||'Member', sings: sings!=='no', leadVocals: sings==='lead', harmonies: sings!=='no' };
-    alert('✅ ' + name + ' added! Note: To make permanent, update data.js on GitHub.');
+    // Structured role model
+    var role = instrument || 'Member';
+    var sings = vocalRole !== 'none';
+    var leadVocals = (vocalRole === 'lead' || vocalRole === 'co-lead');
+    var harmonies = sings;
+    bandMembers[key] = {
+        name: name,
+        role: role,
+        primaryInstrument: instrument || '',
+        secondaryInstruments: [],
+        vocalRole: vocalRole,
+        sings: sings,
+        leadVocals: leadVocals,
+        harmonies: harmonies
+    };
+    showToast(name + ' added to the band');
     settingsTab('band');
+}
+
+// Generate display label from structured member fields
+function _memberDisplayRole(m) {
+    if (!m) return '';
+    var parts = [];
+    if (m.primaryInstrument) parts.push(m.primaryInstrument);
+    else if (m.role) parts.push(m.role);
+    if (m.vocalRole && m.vocalRole !== 'none') {
+        var vocalLabels = { backing: 'Backing Vocals', 'co-lead': 'Vocals (Co-Lead)', lead: 'Vocals (Lead)' };
+        parts.push(vocalLabels[m.vocalRole] || 'Vocals');
+    } else if (m.leadVocals) {
+        parts.push('Vocals (Lead)');
+    } else if (m.sings) {
+        parts.push('Vocals');
+    }
+    return parts.join(' \u00b7 ');
 }
 
 function removeMember(key) {
     if (!confirm('Remove ' + (bandMembers[key]?.name||key) + ' from the band roster?')) return;
     delete bandMembers[key];
-    alert('Removed. Update data.js on GitHub to make permanent.');
+    showToast('Member removed');
     settingsTab('band');
 }
 
@@ -10385,20 +10655,23 @@ async function editMember(key) {
         <input id="memberRoleInput_${key}" class="app-input" value="${m.role || ''}"
             placeholder="e.g. Lead Guitar, Vocals..."
             style="flex:1;min-width:150px" autocomplete="off">
-        <button onclick="saveMemberRole('${key}')" class="btn btn-primary btn-sm">Save</button>
+        <button id="saveMemberBtn_${key}" onclick="saveMemberRole('${key}', this)" class="btn btn-primary btn-sm">Save</button>
         <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
     `;
     editBtn.after(form);
     document.getElementById(`memberRoleInput_${key}`)?.focus();
 }
 
-async function saveMemberRole(key) {
+async function saveMemberRole(key, btn) {
     const newRole = document.getElementById(`memberRoleInput_${key}`)?.value?.trim();
     if (newRole === undefined) return;
-    bandMembers[key].role = newRole;
-    document.getElementById(`editMemberForm_${key}`)?.remove();
-    showToast('✅ Role updated');
-    settingsTab('band');
+    _glSaveBtn(btn || document.getElementById(`saveMemberBtn_${key}`), function() {
+        bandMembers[key].role = newRole;
+    });
+    setTimeout(function() {
+        document.getElementById(`editMemberForm_${key}`)?.remove();
+        settingsTab('band');
+    }, 1600);
 }
 
 // ── Backup Players CRUD ──────────────────────────────────────────────────────
@@ -10412,8 +10685,11 @@ async function _renderBackupPlayersList() {
     el.innerHTML = players.map(function(p) {
         var roleChips = (p.coverageRoles || []).map(function(cr) {
             var role = roles.find(function(r) { return r.id === cr.roleId; });
-            var color = cr.strength === 'partial' ? '#f59e0b' : '#22c55e';
-            return '<span style="font-size:0.68em;padding:1px 6px;border-radius:4px;background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + (role ? role.label : cr.roleId) + (cr.strength === 'partial' ? ' (partial)' : '') + '</span>';
+            var ns = (typeof GLStore !== 'undefined' && GLStore.normalizeStrength) ? GLStore.normalizeStrength(cr.strength) : (cr.strength === 'partial' ? 'can_sub' : 'confident');
+            var cs = (typeof GLStore !== 'undefined' && GLStore.COVERAGE_STRENGTHS) ? GLStore.COVERAGE_STRENGTHS[ns] : null;
+            var color = cs ? cs.color : (ns === 'can_sub' ? '#f59e0b' : '#22c55e');
+            var label = cs ? cs.label : (ns === 'can_sub' ? 'Can Sub' : 'Confident');
+            return '<span style="font-size:0.68em;padding:1px 6px;border-radius:4px;background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + (role ? role.label : cr.roleId) + (ns === 'can_sub' ? ' (' + label + ')' : '') + '</span>';
         }).join(' ');
         return '<div class="list-item" style="padding:8px 10px;align-items:center">'
             + '<div style="flex:1;min-width:0">'
@@ -10444,13 +10720,13 @@ function _showBackupPlayerModal(existing) {
     var roleCheckboxes = roles.map(function(r) {
         var cr = coverageMap[r.id];
         var checked = cr ? ' checked' : '';
-        var strength = cr ? cr.strength : 'full';
+        var ns = cr ? ((typeof GLStore !== 'undefined' && GLStore.normalizeStrength) ? GLStore.normalizeStrength(cr.strength) : 'confident') : 'confident';
         return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.82em;cursor:pointer">'
             + '<input type="checkbox" data-role="' + r.id + '"' + checked + ' style="accent-color:var(--accent)">'
             + r.label + (r.critical ? ' <span style="font-size:0.7em;color:#f59e0b">*</span>' : '')
             + '<select data-role-strength="' + r.id + '" style="margin-left:auto;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)">'
-            + '<option value="full"' + (strength === 'full' ? ' selected' : '') + '>Full</option>'
-            + '<option value="partial"' + (strength === 'partial' ? ' selected' : '') + '>Partial</option>'
+            + '<option value="confident"' + (ns === 'confident' ? ' selected' : '') + '>Confident</option>'
+            + '<option value="can_sub"' + (ns === 'can_sub' ? ' selected' : '') + '>Can Sub</option>'
             + '</select></label>';
     }).join('');
 
@@ -10467,11 +10743,12 @@ function _showBackupPlayerModal(existing) {
         + '<input id="bpEmail" value="' + (p.email || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
         + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Notes</label>'
         + '<input id="bpNotes" value="' + (p.notes || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="e.g. available weekends only">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Roles Covered <span style="font-weight:400;color:var(--text-dim)">(* = critical)</span></label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:2px">Roles They Can Cover <span style="font-weight:400;color:var(--text-dim)">(* = critical for your band)</span></label>'
+        + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">How well can they cover this role? <strong style="color:#22c55e">Confident</strong> = can perform reliably in a gig. <strong style="color:#f59e0b">Can Sub</strong> = can step in if needed but not primary strength.</div>'
         + '<div id="bpRoleChecks" style="margin-bottom:10px">' + roleCheckboxes + '</div>'
         + '<label style="display:flex;align-items:center;gap:6px;font-size:0.82em;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="bpActive"' + (p.active !== false ? ' checked' : '') + ' style="accent-color:var(--accent)"> Active</label>'
         + '<div style="display:flex;gap:8px">'
-        + '<button onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
+        + '<button id="bpSaveBtn" onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
         + '<button onclick="document.getElementById(\'bpModal\').remove()" class="btn btn-ghost">Cancel</button>'
         + '</div></div>';
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
@@ -10480,14 +10757,16 @@ function _showBackupPlayerModal(existing) {
 
 window._saveBackupPlayer = async function(existingId) {
     var name = (document.getElementById('bpName') || {}).value || '';
-    if (!name.trim()) { alert('Name is required'); return; }
+    if (!name.trim()) { showToast('Name is required'); return; }
     var roles = [];
     var checks = document.querySelectorAll('#bpRoleChecks input[type="checkbox"]');
     checks.forEach(function(cb) {
         if (!cb.checked) return;
         var roleId = cb.dataset.role;
         var strengthEl = document.querySelector('[data-role-strength="' + roleId + '"]');
-        roles.push({ roleId: roleId, strength: strengthEl ? strengthEl.value : 'full' });
+        var rawStrength = strengthEl ? strengthEl.value : 'confident';
+        var normStrength = (typeof GLStore !== 'undefined' && GLStore.normalizeStrength) ? GLStore.normalizeStrength(rawStrength) : rawStrength;
+        roles.push({ roleId: roleId, strength: normStrength });
     });
     var player = {
         id: existingId || null,
@@ -10499,10 +10778,17 @@ window._saveBackupPlayer = async function(existingId) {
         coverageRoles: roles,
         availabilityMode: 'manual'
     };
-    await GLStore.saveBackupPlayer(player);
-    document.getElementById('bpModal').remove();
-    showToast('Backup player saved');
-    _renderBackupPlayersList();
+    var btn = document.getElementById('bpSaveBtn');
+    if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
+    try {
+        await GLStore.saveBackupPlayer(player);
+        if (btn) btn.textContent = 'Saved';
+        showToast('Saved successfully');
+        setTimeout(function() { document.getElementById('bpModal')?.remove(); _renderBackupPlayersList(); }, 800);
+    } catch(err) {
+        if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+        showToast('Failed to save changes');
+    }
 };
 
 window._deleteBackupPlayer = async function(playerId) {
@@ -10706,24 +10992,126 @@ function copyInviteLink() {
 
 async function switchToBand(slug) {
     if (!slug) return;
-    // Verify band exists
+    if (slug === currentBandSlug) { showToast('Already on this band'); return; }
+
+    // Verify band exists and get display name
+    var displayName = slug;
     if (firebaseDB) {
         try {
             var snap = await firebaseDB.ref('bands/' + slug + '/meta').once('value');
-            if (!snap.val()) { showToast('Band not found'); return; }
+            var meta = snap.val();
+            if (!meta) { showToast('Band not found'); return; }
+            displayName = meta.name || slug;
         } catch(e) { /* proceed optimistically */ }
     }
 
+    // ── Reset ALL band-scoped state before switching ──
+    // Caches
+    if (typeof statusCacheLoaded !== 'undefined') statusCacheLoaded = false;
+    if (typeof readinessCacheLoaded !== 'undefined') readinessCacheLoaded = false;
+    if (typeof readinessCache !== 'undefined') { for (var k in readinessCache) delete readinessCache[k]; }
+    if (typeof statusCache !== 'undefined') { for (var k in statusCache) delete statusCache[k]; }
+    if (typeof northStarCache !== 'undefined') { for (var k in northStarCache) delete northStarCache[k]; }
+    if (typeof harmonyBadgeCacheLoaded !== 'undefined') harmonyBadgeCacheLoaded = false;
+    // Store caches
+    if (typeof GLStore !== 'undefined') {
+        if (GLStore.setSetlistCache) GLStore.setSetlistCache([]);
+    }
+    window._glCachedSetlists = [];
+    window._cachedSetlists = [];
+    window._glCachedBlockedDates = [];
+
+    // Set new band
     currentBandSlug = slug;
     localStorage.setItem('deadcetera_current_band', slug);
+    // Save display name
+    localStorage.setItem('deadcetera_band_name', displayName);
 
-    // Close modal
+    // Close any modals
     var overlay = document.getElementById('createBandOverlay');
     if (overlay) overlay.style.display = 'none';
+    var bsDropdown = document.getElementById('glBandSwitcherDropdown');
+    if (bsDropdown) bsDropdown.remove();
 
-    // Reload to pick up new band data
-    showToast('Switching to ' + slug + '...');
-    setTimeout(function() { location.reload(); }, 800);
+    // Reload to pick up new band data from clean state
+    showToast('Switching to ' + displayName + '...');
+    setTimeout(function() { location.reload(); }, 600);
+}
+
+// ── Band Switcher: Load user's bands from Firebase ──
+async function _loadUserBands() {
+    if (!firebaseDB || !currentUserEmail) return [];
+    try {
+        var snap = await firebaseDB.ref('bands').once('value');
+        var all = snap.val();
+        if (!all) return [{ slug: currentBandSlug, name: localStorage.getItem('deadcetera_band_name') || currentBandSlug }];
+        var bands = [];
+        Object.keys(all).forEach(function(slug) {
+            var meta = all[slug] && all[slug].meta;
+            if (!meta) return;
+            // Check if user is a member (by email match)
+            var members = meta.members || {};
+            var isMember = Object.values(members).some(function(m) {
+                return m.email && m.email.toLowerCase() === currentUserEmail.toLowerCase();
+            });
+            // Also include if it's the current band (always show)
+            if (isMember || slug === currentBandSlug) {
+                bands.push({ slug: slug, name: meta.name || slug });
+            }
+        });
+        if (!bands.length) bands.push({ slug: currentBandSlug, name: localStorage.getItem('deadcetera_band_name') || currentBandSlug });
+        return bands;
+    } catch(e) {
+        return [{ slug: currentBandSlug, name: localStorage.getItem('deadcetera_band_name') || currentBandSlug }];
+    }
+}
+
+function _showBandSwitcherDropdown(anchorEl) {
+    var existing = document.getElementById('glBandSwitcherDropdown');
+    if (existing) { existing.remove(); return; }
+
+    var dd = document.createElement('div');
+    dd.id = 'glBandSwitcherDropdown';
+    dd.style.cssText = 'position:absolute;z-index:9500;background:var(--card-bg,#1a2340);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:10px;padding:6px 0;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-height:300px;overflow-y:auto';
+    dd.innerHTML = '<div style="padding:6px 14px;font-size:0.7em;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Switch Band</div><div style="padding:4px 8px;color:var(--text-dim);font-size:0.8em">Loading...</div>';
+
+    // Position below anchor
+    if (anchorEl) {
+        var rect = anchorEl.getBoundingClientRect();
+        dd.style.top = (rect.bottom + 4) + 'px';
+        dd.style.left = Math.max(8, rect.left) + 'px';
+    } else {
+        dd.style.top = '50px';
+        dd.style.right = '16px';
+    }
+    dd.style.position = 'fixed';
+    document.body.appendChild(dd);
+
+    // Close on outside click
+    setTimeout(function() {
+        document.addEventListener('click', function _closeBs(e) {
+            if (!dd.contains(e.target) && e.target !== anchorEl) {
+                dd.remove();
+                document.removeEventListener('click', _closeBs);
+            }
+        });
+    }, 50);
+
+    // Load bands
+    _loadUserBands().then(function(bands) {
+        var html = '<div style="padding:6px 14px;font-size:0.7em;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Switch Band</div>';
+        bands.forEach(function(b) {
+            var isActive = b.slug === currentBandSlug;
+            html += '<button onclick="switchToBand(\'' + b.slug + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:' + (isActive ? 'rgba(99,102,241,0.1)' : 'transparent') + ';color:var(--text);cursor:pointer;font-family:inherit;font-size:0.88em;text-align:left;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseleave="this.style.background=\'' + (isActive ? 'rgba(99,102,241,0.1)' : 'transparent') + '\'">'
+                + (isActive ? '<span style="color:#22c55e">&#10003;</span>' : '<span style="width:14px"></span>')
+                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (b.name || b.slug).replace(/</g, '&lt;') + '</span>'
+                + (isActive ? '<span style="font-size:0.7em;color:var(--text-dim)">active</span>' : '')
+                + '</button>';
+        });
+        html += '<div style="border-top:1px solid var(--border,rgba(255,255,255,0.08));margin:4px 0"></div>';
+        html += '<button onclick="showCreateBandModal()" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:transparent;color:var(--accent-light,#a5b4fc);cursor:pointer;font-family:inherit;font-size:0.88em;text-align:left;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseleave="this.style.background=\'transparent\'">+ Create New Band</button>';
+        dd.innerHTML = html;
+    });
 }
 
 // ── Join via invite link ────────────────────────────────────────────────────
@@ -11571,15 +11959,31 @@ function onPartyEnded() {
 
 async function checkForAppUpdate() {
     try {
-        var base = location.hostname === 'localhost' ? '' : '/deadcetera';
-        var res = await fetch(base + '/version.json?t=' + Date.now(), { cache: 'no-store' });
-        if (!res.ok) return;
+        // Skip on localhost and preview environments
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+        if (window.__glDevAuthBypass) return;
+        // GitHub Pages serves at /deadcetera/, Vercel serves at /
+        var base = location.hostname.indexOf('github.io') !== -1 ? '/deadcetera' : '';
+        var url = base + '/version.json?t=' + Date.now();
+        var res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) {
+            console.log('[Update] version.json fetch failed:', res.status, url);
+            return;
+        }
         var data = await res.json();
         _rt.lastUpdateCheck = new Date().toISOString();
-        if (data.version && data.version !== _loadedVersion) {
+        if (!data.version) { console.log('[Update] version.json missing version field'); return; }
+        // Compare server version against the immutable client baseline.
+        // Both are now the same short SHA, stamped atomically by GitHub Actions.
+        if (_loadedVersion === '0') { console.log('[Update] No client version — skipping'); return; }
+        var same = data.version === _loadedVersion;
+        console.log('[Update] client=' + _loadedVersion + ' server=' + data.version + ' → ' + (same ? 'current' : 'NEW'));
+        if (!same) {
             showUpdateBanner();
         }
-    } catch(e) {}
+    } catch(e) {
+        console.log('[Update] Error:', e.message || e);
+    }
 }
 
 var _updateBannerShown = false;
@@ -13220,6 +13624,10 @@ var BAND_MEMBERS_ORDERED = [
 ];
 
 function getCurrentMemberReadinessKey() {
+    // Dev mode: test user bypasses email lookup
+    if (typeof GLT !== 'undefined' && GLT.ACTIVE && currentUserEmail === 'test@groovelinx.com') {
+        return 'test_user';
+    }
     var emailToKey = {
         'drewmerrill1029@gmail.com': 'drew',
         'cmjalbert@gmail.com': 'chris',
@@ -13245,12 +13653,16 @@ function readinessLabel(score) {
 async function preloadReadinessCache() {
     if (readinessCacheLoaded) return;
     try {
+        console.log('📊 preloadReadinessCache: loading from', MASTER_READINESS_FILE, 'firebaseDB:', !!firebaseDB, 'bandSlug:', currentBandSlug);
         var data = await loadMasterFile(MASTER_READINESS_FILE);
+        console.log('📊 preloadReadinessCache: got', data ? Object.keys(data).length : 'null', 'entries');
         if (data && typeof data === 'object') {
             readinessCache = data;
+            if (typeof GLStore !== 'undefined' && GLStore.setAllReadiness) GLStore.setAllReadiness(data);
         }
         readinessCacheLoaded = true;
     } catch(e) {
+        console.error('📊 preloadReadinessCache ERROR:', e);
         readinessCacheLoaded = true;
     }
 }
@@ -13261,44 +13673,56 @@ async function preloadReadinessCache() {
 // GLStore (one-time write). Filters and intelligence only check allSongs[].
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
-    if (typeof GLStore === 'undefined' || !GLStore.loadFieldMeta) return;
-    var _promoted = 0;
+    // Single bulk read: fetch ALL song nodes at once, extract key/bpm from each
     try {
-        var cap = Math.min(allSongs.length, 600);
-        for (var batch = 0; batch < cap; batch += 20) {
-            var promises = [];
-            for (var i = batch; i < Math.min(batch + 20, cap); i++) {
-                var s = allSongs[i];
-                if (!s || !s.title) continue;
-                // Key: load from Firebase → populate allSongs[].key
-                promises.push((function(song) {
-                    return GLStore.loadFieldMeta(song.title, 'key').then(function(data) {
-                        if (data && data.key) {
-                            song.key = data.key;
-                        } else if (song.key && !data) {
-                            // Seed has value, Firebase doesn't — promote seed into GLStore
-                            GLStore.saveSongData(song.title, 'key', { key: song.key, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
-                            _promoted++;
-                        }
-                    }).catch(function() {});
-                })(s));
-                // BPM: load from Firebase → populate allSongs[].bpm
-                promises.push((function(song) {
-                    return GLStore.loadFieldMeta(song.title, 'song_bpm').then(function(data) {
-                        if (data && data.bpm) {
-                            song.bpm = data.bpm;
-                        } else if (song.bpm && !data) {
-                            // Seed has value, Firebase doesn't — promote seed into GLStore
-                            GLStore.saveSongData(song.title, 'song_bpm', { bpm: song.bpm, promotedFrom: 'seed', promotedAt: new Date().toISOString() });
-                            _promoted++;
-                        }
-                    }).catch(function() {});
-                })(s));
+        var snap = await firebaseDB.ref(bandPath('songs')).once('value');
+        var allData = snap.val();
+        if (!allData || typeof allData !== 'object') return;
+        var populated = 0;
+        allSongs.forEach(function(song) {
+            if (!song || !song.title) return;
+            var key = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(song.title) : song.title;
+            var songData = allData[key] || allData[song.title];
+            if (!songData) return;
+            // Key: stored as { key: "Am", ... } under /key
+            if (songData.key && typeof songData.key === 'object' && songData.key.key) {
+                song.key = songData.key.key;
+                populated++;
+            } else if (songData.key && typeof songData.key === 'string') {
+                song.key = songData.key;
+                populated++;
             }
-            if (promises.length) await Promise.all(promises);
-        }
-        if (_promoted > 0) console.log('[DNA preload] Promoted ' + _promoted + ' seed values into GLStore');
-    } catch(e) {}
+            // BPM: stored as { bpm: 120, ... } under /song_bpm
+            if (songData.song_bpm && typeof songData.song_bpm === 'object' && songData.song_bpm.bpm) {
+                song.bpm = songData.song_bpm.bpm;
+            } else if (songData.bpm) {
+                song.bpm = songData.bpm;
+            }
+            // Lead singer
+            if (songData.lead_singer) {
+                var ls = songData.lead_singer;
+                song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
+            }
+            // Structure (for "No Structure" filter)
+            if (songData.song_structure) {
+                var st = songData.song_structure;
+                if (st.sections && st.sections.length > 0) {
+                    song._hasStructure = true;
+                }
+            }
+            // Status (supplement statusCache if not yet loaded)
+            if (songData.song_status) {
+                var ss = songData.song_status;
+                var statusVal = (typeof ss === 'object' && ss.status) ? ss.status : (typeof ss === 'string' ? ss : '');
+                if (statusVal && typeof statusCache !== 'undefined' && !statusCache[song.title]) {
+                    statusCache[song.title] = statusVal;
+                }
+            }
+        });
+        console.log('[DNA] Bulk loaded key/bpm/lead/structure for ' + populated + ' songs (1 Firebase call)');
+    } catch(e) {
+        console.warn('[DNA] Bulk load failed, falling back to nothing:', e.message);
+    }
 }
 
 // ── Lead singer preload (for triage accuracy) ────────────────────────────────
@@ -13431,8 +13855,9 @@ async function renderReadinessSection(songTitle) {
         var snap = await firebaseDB.ref(bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/readiness')).once('value');
         if (snap.val()) {
             scores = snap.val();
-            // Update cache
-            readinessCache[songTitle] = scores;
+            // Update cache (via GLStore setter if available)
+            if (typeof GLStore !== 'undefined' && GLStore.setReadiness) GLStore.setReadiness(songTitle, scores);
+            else readinessCache[songTitle] = scores;
         }
     } catch(e) {}
 
@@ -13527,9 +13952,10 @@ async function saveMyReadiness(songTitle, value) {
     var path = bandPath('songs/' + sanitizeFirebasePath(songTitle) + '/readiness/' + memberKey);
     try {
         await firebaseDB.ref(path).set(v);
-        // Update local cache
+        // Update local cache (via GLStore setter if available)
         if (!readinessCache[songTitle]) readinessCache[songTitle] = {};
         readinessCache[songTitle][memberKey] = v;
+        if (typeof GLStore !== 'undefined' && GLStore.setReadiness) GLStore.setReadiness(songTitle, readinessCache[songTitle]);
         // Persist to master file
         saveMasterFile(MASTER_READINESS_FILE, readinessCache).catch(function(){});
         // Write to aggregated readiness index (used by Home Dashboard)
