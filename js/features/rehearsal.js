@@ -445,6 +445,7 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer" title="Start over with a new AI-generated plan (current plan is auto-saved)">🔄 Rebuild</button>'
             + '</div>'
             + '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
+            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer">+ New Rehearsal</button>'
             + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer" title="Save a copy of this plan so you can reuse or restore it later">📸 Save Snapshot</button>'
             + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">Past Rehearsals</button>'
             + '</div>'
