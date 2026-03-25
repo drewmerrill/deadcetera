@@ -369,12 +369,12 @@ function _renderDashboard(bundle, context) {
 
 // ── SHARPEN dashboard: solo practice focus ────────────────────────────────────
 function _renderSharpenDashboard(bundle, wf, isStoner) {
-    // Simplified: Next Action drives everything. Supporting cards below.
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Focus. Practice. Improve.'),
         _renderNextActionCard(bundle, wf),
         _renderTopSongsToWork(bundle),
+        _renderBandScorecard(bundle),
         _renderActionOwedCard(),
         _renderListeningCard('focus', '\uD83C\uDFA7 Practice Your Set', 'Listen to your weakest songs and lock them in'),
         _renderSharpenWeakSongs(bundle),
@@ -1058,6 +1058,8 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Here\'s what the band should work on today.'),
+        _renderNextActionCard(bundle, wf),
+        _renderBandScorecard(bundle),
         _renderActionOwedCard(),
         _renderBandAlignmentCard(),
         _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
@@ -1068,6 +1070,183 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         '</div>'
     ].join('');
 }
+
+// ============================================================================
+// BAND SCORECARD — "Are we getting better as a band?"
+// ============================================================================
+
+function _renderBandScorecard(bundle) {
+    var sc = _computeScorecard(bundle);
+    if (!sc) return '';
+
+    var trendIcons = { improving: '\u2191', steady: '\u2192', declining: '\u2193' };
+    var trendColors = { improving: '#22c55e', steady: '#94a3b8', declining: '#fbbf24' };
+    var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
+    var ratingColors = { great: '#22c55e', solid: '#a5b4fc', needs_work: '#fbbf24' };
+
+    var html = '<div class="app-card" style="padding:14px;margin-bottom:12px;border:1px solid rgba(99,102,241,0.2);background:linear-gradient(160deg,rgba(99,102,241,0.04),rgba(15,23,42,0.5))">';
+
+    // Header
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<div style="font-size:0.82em;font-weight:800;color:var(--text)">\uD83D\uDCCA Band Scorecard</div>';
+    if (sc.trend) html += '<div style="font-size:0.75em;font-weight:700;color:' + (trendColors[sc.trend] || '#94a3b8') + '">' + (trendIcons[sc.trend] || '') + ' ' + _capitalize(sc.trend) + '</div>';
+    html += '</div>';
+
+    // Health summary — the answer to "are we getting better?"
+    html += '<div style="font-size:0.88em;font-weight:700;color:' + (sc.healthColor || '#94a3b8') + ';margin-bottom:10px;line-height:1.4">' + _escHtml(sc.healthSummary) + '</div>';
+
+    // Rating dots (last 5 sessions)
+    if (sc.ratingDots) {
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">';
+        html += '<span style="font-size:0.68em;color:#475569">Last ' + sc.sessionCount + ':</span>';
+        html += '<span style="font-size:0.85em;letter-spacing:2px">' + sc.ratingDots + '</span>';
+        html += '</div>';
+    }
+
+    // Strengths + Issues
+    if (sc.strengths.length || sc.issues.length) {
+        html += '<div style="display:flex;gap:12px;margin-bottom:8px">';
+        if (sc.strengths.length) {
+            html += '<div style="flex:1">';
+            html += '<div style="font-size:0.65em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Strengths</div>';
+            sc.strengths.forEach(function(s) { html += '<div style="font-size:0.72em;color:#94a3b8;padding:1px 0">\u2022 ' + _escHtml(s) + '</div>'; });
+            html += '</div>';
+        }
+        if (sc.issues.length) {
+            html += '<div style="flex:1">';
+            html += '<div style="font-size:0.65em;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Work On</div>';
+            sc.issues.forEach(function(s) { html += '<div style="font-size:0.72em;color:#94a3b8;padding:1px 0">\u2022 ' + _escHtml(s) + '</div>'; });
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    // Song movement
+    if (sc.songsImproved > 0 || sc.songsDeclining > 0) {
+        html += '<div style="display:flex;gap:10px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.04);margin-top:4px;font-size:0.7em">';
+        if (sc.songsImproved > 0) html += '<span style="color:#22c55e;font-weight:600">\u2191 ' + sc.songsImproved + ' song' + (sc.songsImproved > 1 ? 's' : '') + ' improved</span>';
+        if (sc.songsDeclining > 0) html += '<span style="color:#fbbf24;font-weight:600">\u2193 ' + sc.songsDeclining + ' declining</span>';
+        if (sc.songsUnchanged > 0) html += '<span style="color:#475569">\u2192 ' + sc.songsUnchanged + ' steady</span>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function _computeScorecard(bundle) {
+    var sessions = [];
+    try {
+        if (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache) sessions = _rhSessionsCache;
+    } catch(e) {}
+
+    var rc = bundle.readinessCache || {};
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
+    var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+    var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
+
+    // Need at least some data
+    var hasSessions = sessions.length > 0;
+    var hasReadiness = Object.keys(rc).length > 0;
+    if (!hasSessions && !hasReadiness) return null;
+
+    var sc = {
+        trend: null, healthSummary: '', healthColor: '#94a3b8',
+        ratingDots: '', sessionCount: 0,
+        strengths: [], issues: [],
+        songsImproved: 0, songsDeclining: 0, songsUnchanged: 0
+    };
+
+    // ── Session analysis ──
+    var rated = sessions.filter(function(s) { return s.rating; }).slice(0, 5);
+    var ratingValues = { great: 3, solid: 2, needs_work: 1 };
+    var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
+
+    if (rated.length >= 2) {
+        sc.sessionCount = rated.length;
+        sc.ratingDots = rated.map(function(s) { return ratingIcons[s.rating] || '\u25CB'; }).reverse().join('');
+        var recentHalf = rated.slice(0, Math.ceil(rated.length / 2));
+        var olderHalf = rated.slice(Math.ceil(rated.length / 2));
+        var recentAvg = recentHalf.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / recentHalf.length;
+        var olderAvg = olderHalf.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / olderHalf.length;
+        if (recentAvg > olderAvg + 0.3) sc.trend = 'improving';
+        else if (recentAvg < olderAvg - 0.3) sc.trend = 'declining';
+        else sc.trend = 'steady';
+
+        // Session strengths/issues
+        var avgRating = rated.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / rated.length;
+        if (avgRating >= 2.5) sc.strengths.push('Consistent quality rehearsals');
+        var onTimeCount = sessions.slice(0, 5).filter(function(s) { return s.totalBudgetMin && Math.abs((s.totalActualMin || 0) - s.totalBudgetMin) <= 3; }).length;
+        if (onTimeCount >= 3) sc.strengths.push('Good time management');
+        var overCount = sessions.slice(0, 5).filter(function(s) { return s.totalBudgetMin && (s.totalActualMin || 0) - s.totalBudgetMin > 10; }).length;
+        if (overCount >= 2) sc.issues.push('Sessions running long');
+
+        // Frequency
+        var weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        var weekSessions = sessions.filter(function(s) { return (s.date || '') >= weekAgo; });
+        if (weekSessions.length >= 2) sc.strengths.push('Active rehearsal schedule');
+        else if (weekSessions.length === 0 && sessions.length > 0) sc.issues.push('No rehearsals this week');
+    }
+
+    // ── Readiness analysis ──
+    var totalActive = 0, highReady = 0, lowReady = 0, midReady = 0;
+    allSongsList.forEach(function(s) {
+        var st = statusCache ? statusCache.getStatus(s.title) : null;
+        if (st && !activeStatuses[st]) return;
+        totalActive++;
+        var scores = rc[s.title] || {};
+        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+        var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+        if (avg >= 4) highReady++;
+        else if (avg <= 2 && avg > 0) lowReady++;
+        else if (avg > 0) midReady++;
+    });
+
+    if (totalActive > 0) {
+        var readyPct = Math.round(highReady / totalActive * 100);
+        if (readyPct >= 80) sc.strengths.push(readyPct + '% of songs gig-ready');
+        else if (readyPct >= 50) { /* ok, no signal */ }
+        if (lowReady > 3) sc.issues.push(lowReady + ' songs below readiness threshold');
+
+        // Song movement (simplified — compare high/low counts as proxy)
+        sc.songsImproved = highReady;
+        sc.songsDeclining = lowReady;
+        sc.songsUnchanged = midReady;
+    }
+
+    // Cap strengths/issues
+    sc.strengths = sc.strengths.slice(0, 3);
+    sc.issues = sc.issues.slice(0, 3);
+
+    // ── Health summary — the headline answer ──
+    if (sc.trend === 'improving' && highReady > lowReady) {
+        sc.healthSummary = 'Band is trending up and nearing gig-ready';
+        sc.healthColor = '#22c55e';
+    } else if (sc.trend === 'improving') {
+        sc.healthSummary = 'Momentum building \u2014 keep rehearsing';
+        sc.healthColor = '#22c55e';
+    } else if (sc.trend === 'steady' && highReady > totalActive * 0.6) {
+        sc.healthSummary = 'Holding strong \u2014 band is in good shape';
+        sc.healthColor = '#a5b4fc';
+    } else if (sc.trend === 'steady') {
+        sc.healthSummary = 'Steady but not growing \u2014 push harder';
+        sc.healthColor = '#94a3b8';
+    } else if (sc.trend === 'declining') {
+        sc.healthSummary = 'Needs attention \u2014 recent sessions slipping';
+        sc.healthColor = '#fbbf24';
+    } else if (totalActive > 0 && highReady > totalActive * 0.5) {
+        sc.healthSummary = 'Songs are in decent shape \u2014 start tracking rehearsals';
+        sc.healthColor = '#94a3b8';
+    } else {
+        sc.healthSummary = 'Getting started \u2014 keep practicing and rehearsing';
+        sc.healthColor = '#64748b';
+    }
+
+    return sc;
+}
+
+function _capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
 function _hdEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
