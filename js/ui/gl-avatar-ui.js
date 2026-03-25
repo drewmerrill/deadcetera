@@ -1,0 +1,255 @@
+// ============================================================================
+// js/ui/gl-avatar-ui.js — Avatar Button + Panel UI
+//
+// Bottom-right floating button. Right-side slide-in panel.
+// Renders guidance from GLAvatarGuide engine.
+// Non-intrusive, persistent, optional.
+//
+// DEPENDS ON: GLAvatarGuide
+// ============================================================================
+
+'use strict';
+
+window.GLAvatarUI = (function() {
+
+    var _btnEl = null;
+    var _panelEl = null;
+    var _isOpen = false;
+    var _currentTip = null;
+    var _hasUnread = false;
+
+    var _AVATAR_NAME = 'Roadie'; // default — can be changed
+
+    function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    // ── Inject Styles ────────────────────────────────────────────────────────
+
+    function _injectStyles() {
+        if (document.getElementById('glAvatarStyles')) return;
+        var s = document.createElement('style');
+        s.id = 'glAvatarStyles';
+        s.textContent = ''
+            + '@keyframes glAvPulse{0%,100%{box-shadow:0 2px 12px rgba(99,102,241,0.3)}50%{box-shadow:0 2px 20px rgba(99,102,241,0.5)}}'
+            + '@keyframes glAvSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}'
+            + '@keyframes glAvSlideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}'
+            + '#glAvatarBtn{position:fixed;bottom:80px;right:16px;z-index:9000;width:48px;height:48px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:linear-gradient(135deg,#1e293b,#0f172a);color:#a5b4fc;cursor:pointer;font-size:1.3em;display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 2px 12px rgba(99,102,241,0.3)}'
+            + '#glAvatarBtn:hover{transform:scale(1.08);border-color:rgba(99,102,241,0.6)}'
+            + '#glAvatarBtn.has-tip{animation:glAvPulse 2s ease infinite}'
+            + '#glAvatarPanel{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:85vw;z-index:9100;background:#0f172a;border-left:1px solid rgba(99,102,241,0.2);display:flex;flex-direction:column;animation:glAvSlideIn 0.25s ease;box-shadow:-4px 0 24px rgba(0,0,0,0.4)}'
+            + '#glAvatarPanel.closing{animation:glAvSlideOut 0.2s ease forwards}'
+            + '.gl-av-dot{position:absolute;top:2px;right:2px;width:10px;height:10px;border-radius:50%;background:#6366f1;border:2px solid #0f172a}';
+        document.head.appendChild(s);
+    }
+
+    // ── Button ───────────────────────────────────────────────────────────────
+
+    function _createButton() {
+        if (_btnEl) return;
+        _injectStyles();
+        _btnEl = document.createElement('button');
+        _btnEl.id = 'glAvatarBtn';
+        _btnEl.title = _AVATAR_NAME + ' \u2014 your band guide';
+        _btnEl.innerHTML = '\uD83C\uDFB8';
+        _btnEl.onclick = function() { _isOpen ? closePanel() : openPanel(); };
+        document.body.appendChild(_btnEl);
+    }
+
+    function _updateButtonState() {
+        if (!_btnEl) return;
+        if (_hasUnread) {
+            _btnEl.classList.add('has-tip');
+            if (!_btnEl.querySelector('.gl-av-dot')) {
+                var dot = document.createElement('div');
+                dot.className = 'gl-av-dot';
+                _btnEl.style.position = 'fixed'; // already fixed, but ensure
+                _btnEl.appendChild(dot);
+            }
+        } else {
+            _btnEl.classList.remove('has-tip');
+            var dot = _btnEl.querySelector('.gl-av-dot');
+            if (dot) dot.remove();
+        }
+    }
+
+    // ── Panel ────────────────────────────────────────────────────────────────
+
+    function openPanel() {
+        if (_panelEl) return;
+        _isOpen = true;
+        _hasUnread = false;
+        _updateButtonState();
+
+        _panelEl = document.createElement('div');
+        _panelEl.id = 'glAvatarPanel';
+
+        var G = window.GLAvatarGuide;
+        var stage = G ? G.getStage() : 'fan';
+        var stageLabels = { fan: 'Your Band Guide', bandmate: 'Band Intel', coach: 'Band Coach' };
+
+        var html = '';
+        // Header
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">';
+        html += '<div><div style="font-size:0.88em;font-weight:800;color:#e2e8f0">\uD83C\uDFB8 ' + _AVATAR_NAME + '</div>';
+        html += '<div style="font-size:0.65em;color:#64748b">' + (stageLabels[stage] || '') + '</div></div>';
+        html += '<button onclick="GLAvatarUI.closePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px 8px">\u2715</button>';
+        html += '</div>';
+
+        // Message area
+        html += '<div id="glAvMessages" style="flex:1;overflow-y:auto;padding:16px"></div>';
+
+        // Quick actions footer
+        html += '<div id="glAvActions" style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0"></div>';
+
+        _panelEl.innerHTML = html;
+        document.body.appendChild(_panelEl);
+
+        // Populate with current guidance
+        _renderGuidance();
+    }
+
+    function closePanel() {
+        if (!_panelEl) return;
+        _panelEl.classList.add('closing');
+        setTimeout(function() {
+            if (_panelEl) { _panelEl.remove(); _panelEl = null; }
+            _isOpen = false;
+        }, 200);
+    }
+
+    function _renderGuidance() {
+        var msgArea = document.getElementById('glAvMessages');
+        var actArea = document.getElementById('glAvActions');
+        if (!msgArea || !actArea) return;
+
+        var G = window.GLAvatarGuide;
+        if (!G) { msgArea.innerHTML = '<div style="color:#64748b;font-size:0.82em;text-align:center;padding:20px">Guide loading\u2026</div>'; return; }
+
+        var ctx = G.buildContext(_getPage());
+        var tip = G.evaluate(ctx);
+
+        if (tip) {
+            G.markShown(tip.id);
+            _currentTip = tip;
+
+            var html = '<div style="margin-bottom:16px">';
+            html += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5;margin-bottom:6px">' + _esc(tip.message) + '</div>';
+            if (tip.coach) html += '<div style="font-size:0.78em;color:#64748b;font-style:italic;line-height:1.4">' + _esc(tip.coach) + '</div>';
+            html += '</div>';
+
+            // Conversation-style history placeholder
+            html += '<div style="border-top:1px solid rgba(255,255,255,0.04);padding-top:12px">';
+            html += '<div style="font-size:0.68em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Quick Actions</div>';
+            // Common quick actions based on page
+            var quickActions = _getQuickActions(ctx);
+            quickActions.forEach(function(qa) {
+                html += '<button onclick="' + qa.onclick + ';GLAvatarUI.closePanel()" style="display:block;width:100%;text-align:left;padding:8px 12px;margin-bottom:4px;border-radius:8px;font-size:0.78em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:#94a3b8;cursor:pointer">' + _esc(qa.label) + '</button>';
+            });
+            html += '</div>';
+
+            msgArea.innerHTML = html;
+
+            // Tip-specific actions
+            if (tip.actions && tip.actions.length) {
+                actArea.innerHTML = tip.actions.map(function(a) {
+                    if (a.dismiss) return '<button onclick="GLAvatarUI.dismissCurrent()" style="padding:8px 14px;border-radius:8px;font-size:0.78em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">' + _esc(a.label) + '</button>';
+                    return '<button onclick="' + a.onclick + ';GLAvatarUI.closePanel()" style="padding:8px 14px;border-radius:8px;font-size:0.78em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">' + _esc(a.label) + '</button>';
+                }).join(' ');
+            } else {
+                actArea.innerHTML = '';
+            }
+        } else {
+            // No active tip — show general state
+            msgArea.innerHTML = '<div style="text-align:center;padding:20px">'
+                + '<div style="font-size:1.2em;margin-bottom:8px">\uD83C\uDFB8</div>'
+                + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0;margin-bottom:4px">All good</div>'
+                + '<div style="font-size:0.78em;color:#64748b">No suggestions right now. Keep it up!</div>'
+                + '</div>';
+
+            var quickActions2 = _getQuickActions(ctx);
+            actArea.innerHTML = '<div style="font-size:0.68em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Quick Actions</div>'
+                + quickActions2.map(function(qa) {
+                    return '<button onclick="' + qa.onclick + ';GLAvatarUI.closePanel()" style="padding:6px 12px;margin-right:4px;margin-bottom:4px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer">' + _esc(qa.label) + '</button>';
+                }).join('');
+        }
+    }
+
+    function _getQuickActions(ctx) {
+        var actions = [];
+        if ((ctx.songCount || 0) >= 3) actions.push({ label: '\u25B6 Practice Set', onclick: "hdPlayBundle('focus')" });
+        if ((ctx.setlistCount || 0) > 0) actions.push({ label: '\uD83C\uDFA7 Play Setlist', onclick: "showPage('setlists')" });
+        actions.push({ label: '\uD83C\uDFB8 Rehearsal', onclick: "showPage('rehearsal')" });
+        if ((ctx.songCount || 0) < 5) actions.push({ label: '+ Add Songs', onclick: "showPage('songs')" });
+        return actions.slice(0, 4);
+    }
+
+    function _getPage() {
+        try {
+            var pages = document.querySelectorAll('.app-page');
+            for (var i = 0; i < pages.length; i++) {
+                if (pages[i].style.display !== 'none' && pages[i].offsetParent !== null) {
+                    return (pages[i].id || '').replace('page-', '');
+                }
+            }
+        } catch(e) {}
+        return 'home';
+    }
+
+    function dismissCurrent() {
+        if (_currentTip && window.GLAvatarGuide) {
+            window.GLAvatarGuide.dismiss(_currentTip.id);
+            _currentTip = null;
+            _renderGuidance();
+        }
+    }
+
+    // ── Auto-Evaluate ────────────────────────────────────────────────────────
+
+    function checkForTips(page) {
+        var G = window.GLAvatarGuide;
+        if (!G) return;
+        var ctx = G.buildContext(page || _getPage());
+        var tip = G.evaluate(ctx);
+        _hasUnread = !!tip;
+        _updateButtonState();
+        // If panel is open, refresh
+        if (_isOpen) _renderGuidance();
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+
+    function init() {
+        _createButton();
+        // Check on page load
+        setTimeout(function() { checkForTips(); }, 2000);
+        // Check on navigation
+        if (typeof window.addEventListener === 'function') {
+            // Poll for page changes (lightweight)
+            var _lastPage = '';
+            setInterval(function() {
+                var p = _getPage();
+                if (p !== _lastPage) { _lastPage = p; checkForTips(p); }
+            }, 3000);
+        }
+    }
+
+    // Auto-init after DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(init, 1500); });
+    } else {
+        setTimeout(init, 1500);
+    }
+
+    // ── Public API ──────────────────────────────────────────────────────────
+
+    return {
+        openPanel: openPanel,
+        closePanel: closePanel,
+        checkForTips: checkForTips,
+        dismissCurrent: dismissCurrent,
+        init: init,
+        setName: function(n) { _AVATAR_NAME = n; }
+    };
+
+})();
+
+console.log('\uD83C\uDFB8 gl-avatar-ui.js loaded');
