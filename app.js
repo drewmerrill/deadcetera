@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-230412', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260325-233347', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -1812,7 +1812,7 @@ function showBandResources(songTitle) {
     if (subtitleEl) subtitleEl.textContent = `Everything your band needs at a glance`;
     
     // Get band data from data.js if available
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     
     // Render each section IN PARALLEL for fast loading
     Promise.all([
@@ -2353,7 +2353,7 @@ async function uploadMoisesStems() {
         console.log('✅ All stems uploaded successfully!');
         
         setTimeout(async () => {
-            const bandData = bandKnowledgeBase[songTitle] || {};
+            const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
             await renderMoisesStems(songTitle, bandData);
         }, 1000);
         
@@ -2455,7 +2455,7 @@ async function saveMoisesStems() {
     await saveMoisesData(songTitle, newStems);
     document.getElementById('moisesModal')?.remove();
     showToast('✅ Stems saved');
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData && typeof renderMoisesStems === 'function') renderMoisesStems(songTitle, bandData);
 }
 
@@ -2711,7 +2711,7 @@ async function saveGigNoteInline() {
     notes.push(note);
     await saveGigNotes(songTitle, notes);
     document.getElementById('gigNoteInlineForm')?.remove();
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderGigNotes(songTitle, bandData);
 }
 
@@ -2723,7 +2723,7 @@ async function deleteGigNote(index, btn) {
         let notes = await loadGigNotes(songTitle) || [];
         notes.splice(index, 1);
         await saveGigNotes(songTitle, notes);
-        const bandData = bandKnowledgeBase[songTitle] || {};
+        const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
         await renderGigNotes(songTitle, bandData);
 
         showToast('🗑️ Tip removed');
@@ -2751,7 +2751,7 @@ async function editGigNote(index) {
     input.style.cssText = 'flex:1;font-size:0.88em;padding:4px 8px';
     input.onkeydown = async (e) => {
         if (e.key === 'Enter') await saveGigNoteEdit(index, input.value);
-        if (e.key === 'Escape') { const bd = bandKnowledgeBase[songTitle]||{}; await renderGigNotes(songTitle,bd); }
+        if (e.key === 'Escape') { const bd = {} /* Firebase is canonical */||{}; await renderGigNotes(songTitle,bd); }
     };
     textEl.replaceWith(input);
     input.focus();
@@ -2767,7 +2767,7 @@ async function saveGigNoteEdit(index, value) {
     let notes = await loadGigNotes(songTitle) || [];
     notes[index] = value.trim();
     await saveGigNotes(songTitle, notes);
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderGigNotes(songTitle, bandData);
 }
 
@@ -3016,7 +3016,7 @@ async function addPracticeTrackUpload() {
 
 async function renderPracticeTracksSimplified(songTitle) {
     const container = document.getElementById('practiceTracksContainer');
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     
     // Get tracks from both sources
     const storedTracks = await loadPracticeTracksFromStorage(songTitle);
@@ -3445,7 +3445,7 @@ async function saveRefVersionUpload() {
         let versions = toArray(await loadRefVersions(songTitle) || []);
         versions.push(version);
         await saveRefVersions(songTitle, versions);
-        const bandData = bandKnowledgeBase[songTitle] || {};
+        const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
         await renderRefVersions(songTitle, bandData);
         showToast('✅ Uploaded & added as reference version!');
     } catch (err) {
@@ -3513,7 +3513,7 @@ async function saveRefVersionFromModal() {
     let versions = toArray(await loadRefVersions(songTitle) || []);
     versions.push(version);
     await saveRefVersions(songTitle, versions);
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderRefVersions(songTitle, bandData);
 }
 
@@ -3545,7 +3545,7 @@ async function toggleRefVote(versionIndex, voterEmail) {
     await saveRefVersions(songTitle, versions);
     
     // Re-render
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderRefVersions(songTitle, bandData);
 }
 
@@ -3592,7 +3592,7 @@ async function saveVersionNotes(versionIndex) {
     versions[versionIndex].notes = newNotes;
     await saveRefVersions(songTitle, versions);
     document.getElementById(`versionNotesForm_${versionIndex}`)?.remove();
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderRefVersions(songTitle, bandData);
     showToast('✅ Notes saved');
 }
@@ -3609,7 +3609,7 @@ async function deleteRefVersion(versionIndex) {
     
     await saveRefVersions(songTitle, versions);
     
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderRefVersions(songTitle, bandData);
 }
 
@@ -3637,7 +3637,7 @@ async function editRefVersionUrl(versionIndex) {
     else if (trimmed.includes('archive.org')) platform = 'archive';
     versions[versionIndex].platform = platform;
     await saveRefVersions(songTitle, versions);
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderRefVersions(songTitle, bandData);
     showToast('✅ URL updated');
 }
@@ -3873,7 +3873,7 @@ async function deleteRehearsalNoteInline(songTitle, index, btn) {
 
 async function renderRehearsalNotesWithStorage(songTitle) {
     const container = document.getElementById('rehearsalNotesContainer');
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     
     // Get notes from both sources
     const dataJsNotes = (bandData && bandData.rehearsalNotes) || [];
@@ -4046,7 +4046,7 @@ async function uploadHarmonyAudio(sectionIndex) {
         hideHarmonyAudioForm();
         
         // Refresh harmony display
-        const bandData = bandKnowledgeBase[selectedSong.title];
+        const bandData = {} /* Firebase is canonical */;
         if (bandData) {
             renderHarmoniesEnhanced(selectedSong.title, bandData);
         } else {
@@ -4093,7 +4093,7 @@ async function deleteHarmonySnippet(songTitle, sectionIndex, snippetIndex) {
     localStorage.setItem(localKey, JSON.stringify(snippets));
     
     // Refresh display
-    const bandData = bandKnowledgeBase[selectedSong.title];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) {
         renderHarmoniesEnhanced(selectedSong.title, bandData);
     }
@@ -4138,7 +4138,7 @@ async function saveSnippetRename(songTitle, sectionIndex, snippetIndex) {
     localStorage.setItem(key, JSON.stringify(snippets));
     saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
     document.getElementById(`renameSnippetForm_${sectionIndex}_${snippetIndex}`)?.remove();
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
     showToast('✅ Renamed');
 }
@@ -4152,7 +4152,7 @@ function deleteHarmonySnippetEnhanced(songTitle, sectionIndex, snippetIndex) {
     localStorage.setItem(key, JSON.stringify(snippets));
     saveBandDataToDrive(songTitle, `harmony_audio_section_${sectionIndex}`, snippets);
     
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
@@ -4221,7 +4221,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
             // Found harmony data - use it
             if (!bandData) bandData = {};
             bandData.harmonies = driveHarmonies;
-            bandKnowledgeBase[songTitle] = bandData;
+            // bandKnowledgeBase write-back removed — Firebase is canonical
             console.log(`🎤 Loaded ${driveHarmonies.sections.length} harmony sections from Firebase for "${songTitle}"`);
         } else {
             container.innerHTML = `
@@ -4253,7 +4253,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
             driveHarmonies.sections = toArray(driveHarmonies.sections);
             driveHarmonies.sections.forEach(s => { if (s.parts) s.parts = toArray(s.parts); });
             bandData.harmonies = driveHarmonies;
-            bandKnowledgeBase[songTitle] = bandData;
+            // bandKnowledgeBase write-back removed — Firebase is canonical
             // Continue rendering with Firebase data (don't return)
         } else {
             container.innerHTML = `
@@ -4496,7 +4496,7 @@ async function updatePartMetadata(songTitle, sectionIndex, singer, field, value)
     await saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata);
     
     // Refresh display
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) {
         renderHarmoniesEnhanced(songTitle, bandData);
     }
@@ -4511,7 +4511,7 @@ async function movePartUp(songTitle, sectionIndex, singer) {
     
     await saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata);
     
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) {
         renderHarmoniesEnhanced(songTitle, bandData);
     }
@@ -4526,7 +4526,7 @@ async function movePartDown(songTitle, sectionIndex, singer) {
     
     await saveHarmonyMetadataToDrive(songTitle, sectionIndex, metadata);
     
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) {
         renderHarmoniesEnhanced(songTitle, bandData);
     }
@@ -4992,7 +4992,7 @@ async function saveABCNotation(sectionIndex) {
     if (modal) modal.remove();
     
     // Refresh harmony display
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     renderHarmoniesEnhanced(songTitle, bandData);
 }
 
@@ -5366,7 +5366,7 @@ function convertBasicPitchToABC(noteData, title) {
 // const FADR_PROXY → js/core/worker-api.js
 
 async function importHarmoniesFromFadr(songTitle) {
-    const bandData = bandKnowledgeBase[songTitle] || {};
+    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     const archiveLink = (bandData.links || []).find(l => l && l.url && l.url.includes('archive.org'));
     const defaultUrl = archiveLink?.url || '';
     const modal = document.createElement('div');
@@ -5542,7 +5542,7 @@ K:${songKey}
                 }
                 setProgress('🎉 Import complete!', 100, `${abcParts.length} vocal part(s) • Key: ${songKey} • ${Math.round(songBpm)} BPM`);
                 if (progressText) { progressText.style.color = '#34d399'; progressText.innerHTML = `🎉 <strong>Import complete!</strong> ${abcParts.length} vocal part(s) imported.`; }
-                if (startBtn) { startBtn.textContent = '✅ Done — Close & View'; startBtn.disabled = false; startBtn.style.background = '#047857'; startBtn.onclick = () => { document.getElementById('fadrImportModal')?.remove(); renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle] || {}); }; }
+                if (startBtn) { startBtn.textContent = '✅ Done — Close & View'; startBtn.disabled = false; startBtn.style.background = '#047857'; startBtn.onclick = () => { document.getElementById('fadrImportModal')?.remove(); renderHarmoniesEnhanced(songTitle, {} /* bandKnowledgeBase removed — Firebase is canonical */); }; }
                 return;
             }
             if (assetData.status === 'failed') throw new Error('Fadr stem separation failed');
@@ -6168,7 +6168,7 @@ async function savePartNote(songTitle, sectionIndex, singer) {
     notes.push(note);
     await savePartNotes(songTitle, sectionIndex, singer, notes);
     document.getElementById(`addPartNoteForm_${sectionIndex}_${singer}`)?.remove();
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
@@ -6203,7 +6203,7 @@ async function saveEditedPartNote(songTitle, sectionIndex, singer, noteIndex) {
     notes[noteIndex] = newNote;
     await savePartNotes(songTitle, sectionIndex, singer, notes);
     document.getElementById(`editPartNoteForm_${sectionIndex}_${singer}_${noteIndex}`)?.remove();
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) renderHarmoniesEnhanced(songTitle, bandData);
 }
 
@@ -6215,7 +6215,7 @@ async function deletePartNote(songTitle, sectionIndex, singer, noteIndex) {
     await savePartNotes(songTitle, sectionIndex, singer, notes);
     
     // Refresh display
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) {
         renderHarmoniesEnhanced(songTitle, bandData);
     }
@@ -6495,7 +6495,7 @@ async function addFirstHarmonySection(songTitle) {
         
         <div style="display:flex;gap:8px">
             <button class="btn btn-success" onclick="buildHarmonySections('${songTitle.replace(/'/g,"\\'")}')">🎤 Create Harmony Sections</button>
-            <button class="btn btn-ghost" onclick="renderHarmoniesEnhanced('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+            <button class="btn btn-ghost" onclick="renderHarmoniesEnhanced('${songTitle.replace(/'/g,"\\'")}',{})">Cancel</button>
         </div>
     </div>`;
 }
@@ -6530,10 +6530,10 @@ async function buildHarmonySections(songTitle) {
     }
     
     // Build harmony sections
-    if (!bandKnowledgeBase[songTitle]) bandKnowledgeBase[songTitle] = {};
-    
+    var _bkbStub = {}; // bandKnowledgeBase removed — Firebase is canonical
+
     // Preserve existing sections
-    let existing = bandKnowledgeBase[songTitle].harmonies;
+    let existing = _bkbStub.harmonies;
     if (!existing || !existing.sections) {
         const driveData = await loadBandDataFromDrive(songTitle, 'harmonies_data');
         if (driveData && driveData.sections) existing = driveData;
@@ -6572,8 +6572,7 @@ async function buildHarmonySections(songTitle) {
     });
     const harmonies = { sections: allSections, lyrics: lyrics || undefined };
     
-    // Update in-memory
-    bandKnowledgeBase[songTitle].harmonies = harmonies;
+    // bandKnowledgeBase in-memory update removed — Firebase is canonical
     harmonyCache[songTitle] = true;
     harmonyBadgeCache[songTitle] = true;
     
@@ -6588,7 +6587,7 @@ async function buildHarmonySections(songTitle) {
     } catch (e) { console.warn('Could not save harmony data:', e); }
     
     // Re-render
-    await renderHarmoniesEnhanced(songTitle, bandKnowledgeBase[songTitle]);
+    await renderHarmoniesEnhanced(songTitle, {} /* Firebase is canonical */);
     logActivity('harmony_add', { song: songTitle, extra: sectionNames.join(', ') });
     
     alert('✅ Created ' + newSections.length + ' harmony section(s): ' + sectionNames.join(', '));
@@ -6620,7 +6619,7 @@ async function updateHasHarmonies(hasHarmonies) {
     if (membersRow) membersRow.style.display = hasHarmonies ? 'flex' : 'none';
     
     // Refresh harmonies display
-    const bandData = bandKnowledgeBase[selectedSong.title];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData) {
         renderHarmoniesEnhanced(selectedSong.title, bandData);
     }
@@ -7204,12 +7203,7 @@ async function addHarmonyBadges() {
 async function preloadNorthStarCache() {
     if (northStarCacheLoaded) return;
     try {
-        (allSongs || []).forEach(song => {
-            const bk = bandKnowledgeBase[song.title];
-            if (bk && bk.spotifyVersions && bk.spotifyVersions.length > 0) {
-                northStarCache[song.title] = true;
-            }
-        });
+        // bandKnowledgeBase scan removed — Firebase master file is canonical
         const masterData = await loadMasterFile(MASTER_NORTH_STAR_FILE);
         if (masterData && typeof masterData === 'object') {
             Object.assign(northStarCache, masterData);
@@ -7387,7 +7381,7 @@ async function renderSongStructure(songTitle) {
     let structure = await loadBandDataFromDrive(songTitle, 'song_structure');
     if (!structure || (!structure.whoStarts && !structure.howStarts && !structure.whoCuesEnding && !structure.howEnds)) {
         // Check bandKnowledgeBase (data.js) for pre-populated data
-        const bk = bandKnowledgeBase[songTitle];
+        const bk = {} /* Firebase is canonical */;
         if (bk) {
             structure = {
                 whoStarts: bk.songStructure?.whoStarts || bk.whoStarts || [],
@@ -7532,7 +7526,7 @@ async function saveSongStructure() {
     document.getElementById('songStructureModal')?.remove();
     showToast('✅ Song structure saved');
     // Refresh the song detail view if open
-    const bandData = bandKnowledgeBase[songTitle];
+    const bandData = {} /* Firebase is canonical */;
     if (bandData && typeof renderSongStructure === 'function') renderSongStructure(songTitle, bandData);
 }
 
@@ -11418,7 +11412,7 @@ function moisesAddYouTube() {
         <div style="display:flex;gap:8px">
             <button class="btn btn-primary" onclick="saveMoisesYTLink()">💾 Save Link</button>
             <button class="btn btn-ghost" onclick="window.open('https://moises.ai','_blank')">🔗 Open Moises</button>
-            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',{})">Cancel</button>
         </div>
     </div>`;
 }
@@ -11435,7 +11429,7 @@ async function saveMoisesYTLink() {
     existing.sourceVersion = desc || url;
     await saveMoisesStems(songTitle, existing);
     alert('✅ YouTube link saved!');
-    renderMoisesStems(songTitle, bandKnowledgeBase[songTitle]||{});
+    renderMoisesStems(songTitle, {} /* Firebase is canonical */||{});
 }
 
 function moisesShowSplitter() {
@@ -11465,7 +11459,7 @@ function moisesShowSplitter() {
         </div>
         <div style="display:flex;gap:8px">
             <button class="btn btn-primary" onclick="saveSplitterInfo()">💾 Save Timestamps</button>
-            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',bandKnowledgeBase['${songTitle.replace(/'/g,"\\'")}']||{})">Cancel</button>
+            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',{})">Cancel</button>
         </div>
     </div>`;
 }
@@ -11480,7 +11474,7 @@ async function saveSplitterInfo() {
     existing.showSplitter = { source, startTime: start, endTime: end, addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() };
     await saveMoisesStems(songTitle, existing);
     alert('✅ Timestamps saved!');
-    renderMoisesStems(songTitle, bandKnowledgeBase[songTitle]||{});
+    renderMoisesStems(songTitle, {} /* Firebase is canonical */||{});
 }
 
 // ---- SETLIST SONG HISTORY (#24) ----
