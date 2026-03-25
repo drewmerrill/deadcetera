@@ -571,7 +571,7 @@ window.ListeningBundles = (function() {
     var SPOTIFY_CLIENT_ID = '';
     var _spotifyConfigLoaded = false;
     var SPOTIFY_REDIRECT = window.location.origin + '/';
-    var SPOTIFY_SCOPES = 'user-read-email user-read-private playlist-modify-public playlist-modify-private';
+    var SPOTIFY_SCOPES = 'user-read-email user-read-private playlist-modify-public playlist-modify-private streaming user-read-playback-state user-modify-playback-state';
 
     async function _ensureSpotifyConfig() {
         if (SPOTIFY_CLIENT_ID || _spotifyConfigLoaded) return;

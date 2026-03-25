@@ -292,12 +292,43 @@ window.GLPlayerEngine = (function() {
         if (result.source === 'youtube') {
             _playYouTube(result.videoId);
         } else if (result.source === 'spotify') {
-            _setState(State.PLAYING, { source: 'spotify' });
-            _emit('embedReady', { source: 'spotify', trackId: result.trackId });
+            // Prefer Web Playback SDK for full-track playback
+            _playSpotify(result.trackId);
         } else if (result.source === 'archive') {
             _setState(State.PLAYING, { source: 'archive' });
             _emit('embedReady', { source: 'archive', identifier: result.identifier });
         }
+    }
+
+    async function _playSpotify(trackId) {
+        var SP = (typeof GLSpotifyPlayer !== 'undefined') ? GLSpotifyPlayer : null;
+
+        // Try Web Playback SDK first
+        if (SP && SP.isAvailable()) {
+            _emit('status', { message: 'Starting Spotify\u2026' });
+            var ok = await SP.playTrackId(trackId);
+            if (ok) {
+                _setState(State.PLAYING, { source: 'spotify', method: 'sdk' });
+                _emit('embedReady', { source: 'spotify_sdk', trackId: trackId });
+                _isPlaying = true;
+                _emit('stateChange', { state: State.PLAYING, isPlaying: true });
+                return;
+            }
+            // SDK failed — check if it's a hard unavailable or soft error
+            var spState = SP.getState();
+            if (spState === SP.State.REQUIRES_INTERACTION) {
+                _setState(State.PLAYING, { source: 'spotify', method: 'sdk_interaction' });
+                _emit('embedReady', { source: 'spotify_sdk_interaction', trackId: trackId, message: SP.getStatusMessage() });
+                return;
+            }
+            if (spState === SP.State.UNAVAILABLE) {
+                console.log('[GLPlayer] Spotify SDK unavailable, falling back to embed');
+            }
+        }
+
+        // Fallback: Spotify embed iframe
+        _setState(State.PLAYING, { source: 'spotify', method: 'embed' });
+        _emit('embedReady', { source: 'spotify', trackId: trackId });
     }
 
     function _playYouTube(videoId) {

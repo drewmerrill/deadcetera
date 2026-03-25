@@ -279,17 +279,38 @@ window.GLPlayerUI = (function() {
 
     function _createEmbed(d) {
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
+        var container = document.getElementById(containerId);
 
         if (d.source === 'youtube' && d.videoId) {
             var E = window.GLPlayerEngine;
             if (E) E.createYouTubePlayer(containerId, d.videoId);
         }
+
+        // Spotify SDK — full-track playback (no iframe needed, SDK controls audio)
+        if (d.source === 'spotify_sdk' && d.trackId) {
+            if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px">'
+                + '<div style="font-size:1.5em;margin-bottom:8px">\uD83C\uDFB5</div>'
+                + '<div style="font-size:0.88em;font-weight:700;color:#1ed760">Playing in Spotify</div>'
+                + '<div style="font-size:0.72em;color:#b3b3b3;margin-top:4px">Full track \u00B7 GrooveLinx player</div>'
+                + '</div>';
+        }
+
+        // Spotify SDK requires interaction (iOS)
+        if (d.source === 'spotify_sdk_interaction' && d.trackId) {
+            if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;cursor:pointer" onclick="if(typeof GLSpotifyPlayer!==\'undefined\')GLSpotifyPlayer.playTrackId(\'' + d.trackId + '\')">'
+                + '<div style="width:56px;height:56px;border-radius:50%;background:#1ed760;display:flex;align-items:center;justify-content:center;margin-bottom:10px"><span style="font-size:1.5em;color:#000;margin-left:3px">\u25B6</span></div>'
+                + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0">' + _esc(d.message || 'Tap play to start Spotify') + '</div>'
+                + '<div style="font-size:0.68em;color:#b3b3b3;margin-top:4px">Full track playback on this device</div>'
+                + '</div>';
+        }
+
+        // Spotify embed fallback (iframe)
         if (d.source === 'spotify' && d.trackId) {
-            var oc = document.getElementById(containerId);
-            if (oc) oc.innerHTML = '<iframe src="https://open.spotify.com/embed/track/' + d.trackId + '?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:8px"></iframe>';
+            if (container) container.innerHTML = '<iframe src="https://open.spotify.com/embed/track/' + d.trackId + '?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:8px"></iframe>';
             var fb = document.getElementById('glpFallback');
             if (fb) { fb.style.display = ''; fb.innerHTML = '<div style="font-size:0.78em;color:#1ed760;margin-top:6px">Tap play in Spotify to start</div>'; }
         }
+
         if (d.source === 'archive' && d.identifier) {
             var oc2 = document.getElementById(containerId);
             if (oc2) oc2.innerHTML = '<iframe src="https://archive.org/embed/' + _esc(d.identifier) + '" width="100%" height="100%" frameborder="0" allowfullscreen style="border-radius:8px"></iframe>';
