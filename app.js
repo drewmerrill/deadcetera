@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-234039', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260325-234833', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10501,6 +10501,67 @@ function checkSyncStatus() {
             Local Storage: ${Object.keys(localStorage).filter(k=>k.startsWith('deadcetera')).length} keys cached
         </div>`;
 }
+
+// ── Quick Start Rehearsal (onboarding shortcut) ─────────────────────────────
+// Skips the rehearsal create modal. Auto-creates a rehearsal for today,
+// loads the latest setlist into the plan, and navigates to Start Rehearsal.
+window._glQuickStartRehearsal = async function() {
+    if (!requireSignIn()) return;
+    if (!firebaseDB) { showToast('Not connected'); return; }
+
+    var today = new Date().toISOString().split('T')[0];
+    var id = 'rh_' + Date.now();
+
+    // Create rehearsal event
+    try {
+        await firebaseDB.ref(bandPath('rehearsals/' + id)).set({
+            id: id,
+            date: today,
+            time: '',
+            location: '',
+            notes: 'Quick rehearsal',
+            createdBy: currentUserEmail || '',
+            createdAt: new Date().toISOString()
+        });
+
+        // Sync calendar event
+        try {
+            var calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var exists = calEvents.some(function(ce) { return ce.type === 'rehearsal' && ce.date === today; });
+            if (!exists) {
+                calEvents.push({ id: 'cal_' + Date.now(), type: 'rehearsal', date: today, createdAt: new Date().toISOString() });
+                await saveBandDataToDrive('_band', 'calendar_events', calEvents);
+            }
+        } catch(e) {}
+
+        showToast('Rehearsal created \u2014 loading plan...');
+
+        // Navigate to rehearsal page and load the plan
+        showPage('rehearsal');
+        setTimeout(function() {
+            // Try to auto-load latest setlist into the planner queue
+            var sl = window._cachedSetlists || window._glCachedSetlists || [];
+            if (sl.length > 0) {
+                var latest = sl[sl.length - 1];
+                var songs = [];
+                (latest.sets || []).forEach(function(set) {
+                    (set.songs || []).forEach(function(s) {
+                        songs.push({ title: typeof s === 'string' ? s : s.title || s });
+                    });
+                });
+                if (songs.length > 0 && typeof openRehearsalModeWithQueue === 'function') {
+                    openRehearsalModeWithQueue(songs);
+                    return;
+                }
+            }
+            // Fallback: open plan builder
+            if (typeof practicePlanActiveDate !== 'undefined') practicePlanActiveDate = today;
+            if (typeof rhShowTab === 'function') rhShowTab('tonight');
+        }, 800);
+    } catch(e) {
+        showToast('Could not create rehearsal: ' + e.message);
+    }
+};
 
 // ── Standardized Save UX ─────────────────────────────────────────────────────
 // Usage: _glSaveBtn(buttonEl, saveFn) — handles Saving.../Saved/Failed states

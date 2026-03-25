@@ -285,12 +285,21 @@ async function createNewSetlist() {
     window._slSets = [{ name: 'All Songs', songs: [] }];
     window._slSelectedVenueId = null;
     window._slSelectedVenueName = null;
+    // Auto-generate name and date so user can focus on adding songs
+    var _today = new Date().toISOString().split('T')[0];
+    var _autoName = 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
-        <div class="form-grid" style="margin-bottom:12px">
-            <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="slName" placeholder="e.g. Buckhead Theatre 3/15"></div>
-            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date"></div>
-            <div class="form-row"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
-            <div class="form-row"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
+        <div style="margin-bottom:12px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <div style="flex:2;min-width:150px"><label class="form-label">Name</label><input class="app-input" id="slName" value="${_autoName}" placeholder="e.g. Friday Rehearsal"></div>
+                <div style="flex:1;min-width:120px"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${_today}"></div>
+            </div>
+            <details style="font-size:0.82em;color:var(--text-dim)"><summary style="cursor:pointer;padding:4px 0">More options</summary>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+                    <div style="flex:1;min-width:120px"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
+                    <div style="flex:1;min-width:120px"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
+                </div>
+            </details>
         </div>
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>

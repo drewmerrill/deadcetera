@@ -87,26 +87,26 @@ window.GLAvatarGuide = (function() {
         // Each step has a localStorage flag that gates the next step.
 
         { id: 'onboard_create_setlist', stage: 'fan', trigger: 'onboard_step_1', page: 'any',
-          message: 'Let\u2019s start simple \u2014 build your first setlist so you have something to rehearse.',
-          coach: 'Pick 5\u201310 songs you\u2019re playing. You can change it later.',
-          actions: [{ label: 'Create Setlist \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
+          message: 'First things first \u2014 pick the songs you\u2019re playing.',
+          coach: 'I\u2019ll create a setlist for you. Just tap to add songs.',
+          actions: [{ label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_start_rehearsal', stage: 'fan', trigger: 'onboard_step_2', page: 'any',
-          message: 'Nice \u2014 now let\u2019s run your first rehearsal using that setlist.',
-          coach: 'Set a date and I\u2019ll help you track it.',
-          actions: [{ label: 'Start Rehearsal \u2192', onclick: "showPage('rehearsal');setTimeout(function(){if(typeof rhOpenCreateModal==='function')rhOpenCreateModal();},400)" }],
+          message: 'Setlist ready. Let\u2019s rehearse it.',
+          coach: 'I\u2019ll set up the rehearsal \u2014 just hit go.',
+          actions: [{ label: 'Start Rehearsal \u2192', onclick: "_glQuickStartRehearsal()" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_review_outcome', stage: 'fan', trigger: 'onboard_step_3', page: 'any',
-          message: 'Good run. Let\u2019s quickly capture what worked and what didn\u2019t.',
-          coach: 'One tap \u2014 that\u2019s all it takes.',
-          actions: [{ label: 'Review Rehearsal \u2192', onclick: "showPage('rehearsal')" }],
+          message: 'How\u2019d it go? One tap.',
+          coach: 'This is how your band tracks improvement.',
+          actions: [{ label: 'Rate It \u2192', onclick: "showPage('rehearsal')" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_complete', stage: 'fan', trigger: 'onboard_done', page: 'any',
-          message: 'You\u2019re up and running. Your scorecard will track improvement from here.',
-          coach: 'I\u2019ll check in before your next rehearsal.',
+          message: 'First rehearsal logged. From here, your scorecard tracks every session.',
+          coach: 'The more you rehearse, the sharper the data gets. I\u2019ll check in before your next one.',
           actions: [{ label: 'Got it', dismiss: true }],
           cooldown: 0, dismissible: true, onboard: true },
 
@@ -229,7 +229,7 @@ window.GLAvatarGuide = (function() {
     function _checkTrigger(trigger, ctx) {
         switch (trigger) {
             // Onboarding triggers (sequential, highest priority)
-            case 'onboard_step_1': return _onboardStep() === 1 && (ctx.songCount || 0) >= 3 && (ctx.setlistCount || 0) === 0;
+            case 'onboard_step_1': return _onboardStep() === 1 && (ctx.setlistCount || 0) === 0;
             case 'onboard_step_2': return _onboardStep() === 2;
             case 'onboard_step_3': return _onboardStep() === 3;
             case 'onboard_done':   return _onboardStep() === 0 && !localStorage.getItem('gl_onboard_celebrated');
