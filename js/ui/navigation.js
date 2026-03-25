@@ -131,7 +131,16 @@ window.showPage = function showPage(page) {
     if (el && page !== 'songs') {
         var renderer = pageRenderers[page];
         if (typeof renderer === 'function') {
-            renderer(el);
+            // Lazy-load page scripts if needed, then render
+            if (_glPageScripts[page]) {
+                var _lazyStart = performance.now();
+                _glLazyLoadPage(page, function() {
+                    console.log('[Startup] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
+                    renderer(el);
+                });
+            } else {
+                renderer(el);
+            }
         }
     }
 
@@ -157,6 +166,77 @@ window.toggleMenu = function toggleMenu() {
     menu.classList.toggle('open', !isOpen);
     if (overlay) overlay.classList.toggle('open', !isOpen);
 };
+
+// ── Lazy Script Loader ──────────────────────────────────────────────────────
+// Loads feature scripts on-demand instead of at boot.
+// Scripts are loaded once and cached. Build version is appended for cache busting.
+
+var _glLazyLoaded = {};
+
+window.glLazy = function glLazy(src) {
+    if (_glLazyLoaded[src]) return _glLazyLoaded[src];
+    // Check if already in DOM (loaded at boot or previous lazy load)
+    if (document.querySelector('script[src^="' + src + '"]')) {
+        _glLazyLoaded[src] = Promise.resolve();
+        return _glLazyLoaded[src];
+    }
+    var buildV = (typeof BUILD_VERSION !== 'undefined') ? BUILD_VERSION : '';
+    var fullSrc = src + (buildV ? '?v=' + buildV : '');
+    console.log('[Lazy] Loading ' + src);
+    _glLazyLoaded[src] = new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = fullSrc;
+        s.onload = function() {
+            console.log('[Lazy] Loaded ' + src);
+            resolve();
+        };
+        s.onerror = function() {
+            console.error('[Lazy] Failed to load ' + src);
+            _glLazyLoaded[src] = null; // allow retry
+            reject(new Error('Failed to load ' + src));
+        };
+        document.body.appendChild(s);
+    });
+    return _glLazyLoaded[src];
+};
+
+// Map pages to their lazy-loaded script(s).
+// Only scripts removed from index.html need entries here.
+var _glPageScripts = {
+    rehearsal:       ['js/features/rehearsal.js', 'js/features/rehearsal-mixdowns.js'],
+    'rehearsal-intel': ['js/features/rehearsal.js'],
+    gigs:            ['js/features/gigs.js'],
+    bestshot:        ['js/features/bestshot.js'],
+    stageplot:       ['js/features/stage-plot.js'],
+    finances:        ['js/features/finances.js'],
+    social:          ['js/features/social.js'],
+    notifications:   ['js/features/notifications.js'],
+    playlists:       ['js/features/playlists.js'],
+    calendar:        ['js/features/calendar.js', 'js/core/calendar-export.js'],
+    ideas:           ['js/features/band-comms.js'],
+    feed:            ['js/features/band-feed.js'],
+    'rehearsal-mode': ['rehearsal-mode.js'],
+    help:            ['help.js', 'js/ui/gl-help-v2.js']
+};
+
+// Load all scripts for a page, then run callback
+function _glLazyLoadPage(page, callback) {
+    var scripts = _glPageScripts[page];
+    if (!scripts || !scripts.length) { callback(); return; }
+    Promise.all(scripts.map(function(src) { return glLazy(src); })).then(callback).catch(function(err) {
+        console.error('[Lazy] Page load failed for ' + page + ':', err);
+        callback(); // render anyway — typeof guards will prevent crashes
+    });
+}
+
+// ── Stubs for lazy-loaded functions referenced from boot scripts ─────────────
+// These provide safe fallbacks until the real implementation loads.
+if (typeof venueShortLabel === 'undefined') {
+    window.venueShortLabel = function(v) {
+        if (!v) return '';
+        return (v.name || '') + (v.city ? ' — ' + v.city : '');
+    };
+}
 
 /**
  * Map of page names to their render functions.
