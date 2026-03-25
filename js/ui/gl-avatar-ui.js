@@ -158,12 +158,31 @@ window.GLAvatarUI = (function() {
                 actArea.innerHTML = '';
             }
         } else {
-            // No active tip — show general state
-            msgArea.innerHTML = '<div style="text-align:center;padding:20px">'
-                + '<div style="font-size:1.2em;margin-bottom:8px">\uD83C\uDFB8</div>'
-                + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0;margin-bottom:4px">All good</div>'
-                + '<div style="font-size:0.78em;color:#64748b">No suggestions right now. Keep it up!</div>'
-                + '</div>';
+            // No tip — show Next Best Action from engine
+            var nba = G.getNextBestAction ? G.getNextBestAction(ctx) : null;
+            if (nba) {
+                msgArea.innerHTML = '<div style="margin-bottom:16px">'
+                    + '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5;margin-bottom:10px">' + _esc(nba.message) + '</div>'
+                    + '<button onclick="' + nba.primaryAction.onclick + ';GLAvatarUI.closePanel()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.88em;cursor:pointer;margin-bottom:6px">' + _esc(nba.primaryAction.label) + '</button>'
+                    + (nba.secondaryActions || []).map(function(a) {
+                        if (a.dismiss) return '';
+                        return '<button onclick="' + a.onclick + ';GLAvatarUI.closePanel()" style="width:100%;padding:8px;border-radius:8px;font-size:0.78em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer;margin-bottom:4px">' + _esc(a.label) + '</button>';
+                    }).join('')
+                    + '</div>';
+
+                // Spotify status if relevant
+                var spMsg = G.getSpotifyMessage ? G.getSpotifyMessage() : null;
+                if (spMsg) {
+                    var spColors = { success: '#1ed760', action: '#fbbf24', info: '#94a3b8', warning: '#f87171' };
+                    msgArea.innerHTML += '<div style="font-size:0.72em;color:' + (spColors[spMsg.type] || '#94a3b8') + ';padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-top:8px">' + _esc(spMsg.message) + '</div>';
+                }
+            } else {
+                msgArea.innerHTML = '<div style="text-align:center;padding:20px">'
+                    + '<div style="font-size:1.2em;margin-bottom:8px">\uD83C\uDFB8</div>'
+                    + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0;margin-bottom:4px">All good</div>'
+                    + '<div style="font-size:0.78em;color:#64748b">No suggestions right now. Keep it up!</div>'
+                    + '</div>';
+            }
 
             var quickActions2 = _getQuickActions(ctx);
             actArea.innerHTML = '<div style="font-size:0.68em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Quick Actions</div>'
@@ -215,21 +234,74 @@ window.GLAvatarUI = (function() {
         if (_isOpen) _renderGuidance();
     }
 
+    // ── Auto-Launch Nudge ──────────────────────────────────────────────────
+    // Shown when user reaches ≥3 songs for the first time.
+    // Overlays a play prompt — gets to playback in < 60 seconds.
+
+    function _showAutoLaunchNudge() {
+        var existing = document.getElementById('glAvAutoLaunch');
+        if (existing) return;
+
+        var ov = document.createElement('div');
+        ov.id = 'glAvAutoLaunch';
+        ov.style.cssText = 'position:fixed;bottom:100px;right:16px;z-index:9200;max-width:300px;padding:16px;background:linear-gradient(135deg,#1e293b,#1a2540);border:1px solid rgba(99,102,241,0.4);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:glAvSlideIn 0.3s ease;color:#f1f5f9';
+        ov.innerHTML = ''
+            + '<div style="font-size:0.88em;font-weight:700;margin-bottom:6px">Let\u2019s run one. Hit play.</div>'
+            + '<div style="font-size:0.75em;color:#94a3b8;margin-bottom:10px">Your songs are in \u2014 time to hear them.</div>'
+            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.88em;cursor:pointer">\u25B6 Run What Matters</button>'
+            + '<button onclick="document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Not now</button>';
+        document.body.appendChild(ov);
+
+        // Auto-dismiss after 15 seconds
+        setTimeout(function() { var el = document.getElementById('glAvAutoLaunch'); if (el) el.remove(); }, 15000);
+    }
+
+    // ── Magic Moment ─────────────────────────────────────────────────────────
+    // After first playback completion, offer weak-song follow-up.
+
+    function _checkMagicMoment() {
+        var G = window.GLAvatarGuide;
+        if (!G || !G.checkMagicMoment) return;
+        var magic = G.checkMagicMoment();
+        if (!magic) return;
+
+        var existing = document.getElementById('glAvMagicMoment');
+        if (existing) return;
+
+        var ov = document.createElement('div');
+        ov.id = 'glAvMagicMoment';
+        ov.style.cssText = 'position:fixed;bottom:100px;right:16px;z-index:9200;max-width:300px;padding:16px;background:linear-gradient(135deg,#1e293b,#0f2a1a);border:1px solid rgba(34,197,94,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:glAvSlideIn 0.3s ease;color:#f1f5f9';
+        ov.innerHTML = ''
+            + '<div style="font-size:0.88em;font-weight:700;line-height:1.4;margin-bottom:10px;white-space:pre-line">' + _esc(magic.message) + '</div>'
+            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.85em;cursor:pointer">\u25B6 Play Weak Songs</button>'
+            + '<button onclick="document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Not now</button>';
+        document.body.appendChild(ov);
+
+        setTimeout(function() { var el = document.getElementById('glAvMagicMoment'); if (el) el.remove(); }, 20000);
+    }
+
     // ── Init ─────────────────────────────────────────────────────────────────
 
     function init() {
         _createButton();
         // Check on page load
         setTimeout(function() { checkForTips(); }, 2000);
-        // Check on navigation
-        if (typeof window.addEventListener === 'function') {
-            // Poll for page changes (lightweight)
-            var _lastPage = '';
-            setInterval(function() {
-                var p = _getPage();
-                if (p !== _lastPage) { _lastPage = p; checkForTips(p); }
-            }, 3000);
-        }
+        // Auto-launch check (≥3 songs, first time)
+        setTimeout(function() {
+            var G = window.GLAvatarGuide;
+            if (G && G.checkAutoLaunch) G.checkAutoLaunch();
+        }, 3000);
+        // Listen for playback completion (magic moment)
+        setTimeout(function() {
+            var E = window.GLPlayerEngine;
+            if (E) E.on('queueEnd', function() { setTimeout(_checkMagicMoment, 1000); });
+        }, 2000);
+        // Poll for page changes
+        var _lastPage = '';
+        setInterval(function() {
+            var p = _getPage();
+            if (p !== _lastPage) { _lastPage = p; checkForTips(p); }
+        }, 3000);
     }
 
     // Auto-init after DOM ready
@@ -247,7 +319,9 @@ window.GLAvatarUI = (function() {
         checkForTips: checkForTips,
         dismissCurrent: dismissCurrent,
         init: init,
-        setName: function(n) { _AVATAR_NAME = n; }
+        setName: function(n) { _AVATAR_NAME = n; },
+        _showAutoLaunchNudge: _showAutoLaunchNudge,
+        _checkMagicMoment: _checkMagicMoment
     };
 
 })();

@@ -311,17 +311,141 @@ window.GLAvatarGuide = (function() {
         return ctx;
     }
 
+    // ── Intent Layer ────────────────────────────────────────────────────────
+    // Maps user state to a single intent — simplifies all downstream logic.
+
+    var INTENT = { SETUP: 'setup', FIRST_RUN: 'first_run', IMPROVE: 'improve', PREPARE: 'prepare', REHEARSE: 'rehearse', IDLE: 'idle' };
+
+    function getIntent(ctx) {
+        if (!ctx) ctx = buildContext();
+        if ((ctx.songCount || 0) < 3) return INTENT.SETUP;
+        if (!localStorage.getItem('gl_avatar_first_practice')) return INTENT.FIRST_RUN;
+        if (ctx.daysToGig >= 0 && ctx.daysToGig <= 2) return INTENT.PREPARE;
+        if (ctx.justFinishedRehearsal) return INTENT.REHEARSE;
+        if ((ctx.weakCount || 0) > 0 || !ctx.practicedToday) return INTENT.IMPROVE;
+        return INTENT.IDLE;
+    }
+
+    // ── Next Best Action Engine ──────────────────────────────────────────────
+    // Returns ONE primary action. No ambiguity.
+
+    function getNextBestAction(ctx) {
+        if (!ctx) ctx = buildContext();
+        var intent = getIntent(ctx);
+
+        if (intent === INTENT.SETUP) {
+            return { intent: intent, message: 'Add a few songs to get started.', primaryAction: { label: 'Add Songs', onclick: "showPage('songs')" }, secondaryActions: [{ label: 'Import Starter Pack', onclick: 'showStarterPackImport()' }] };
+        }
+        if (intent === INTENT.FIRST_RUN) {
+            return { intent: intent, message: 'Let\u2019s run one. Hit play.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }, secondaryActions: [] };
+        }
+        if (intent === INTENT.PREPARE) {
+            return { intent: intent, message: 'Gig in ' + (ctx.daysToGig || '?') + ' day' + ((ctx.daysToGig || 0) !== 1 ? 's' : '') + '. Run the set.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('gig')" }, secondaryActions: [{ label: 'Go Live', onclick: "homeGoLive()" }] };
+        }
+        if (intent === INTENT.REHEARSE) {
+            return { intent: intent, message: 'Good session. Log notes or attach the mixdown.', primaryAction: { label: 'Add Notes', onclick: "showPage('rehearsal')" }, secondaryActions: [] };
+        }
+        if (intent === INTENT.IMPROVE) {
+            var wc = ctx.weakCount || 0;
+            if (wc > 0) return { intent: intent, message: wc + ' song' + (wc > 1 ? 's' : '') + ' need reps.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }, secondaryActions: [{ label: 'See Weak Songs', onclick: "showPage('home')" }] };
+            return { intent: intent, message: 'Keep it tight \u2014 run the set.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('gig')" }, secondaryActions: [] };
+        }
+        return { intent: intent, message: 'All good. Keep the rhythm going.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }, secondaryActions: [] };
+    }
+
+    // ── Tip Suppression ─────────────────────────────────────────────────────
+    // Max 2 tips per day. Enforced in evaluate().
+
+    var _DAILY_TIP_KEY = 'gl_avatar_tips_today';
+
+    function _getTipCountToday() {
+        try {
+            var raw = localStorage.getItem(_DAILY_TIP_KEY);
+            if (!raw) return 0;
+            var data = JSON.parse(raw);
+            if (data.date !== new Date().toISOString().split('T')[0]) return 0;
+            return data.count || 0;
+        } catch(e) { return 0; }
+    }
+
+    function _incrementTipCount() {
+        try {
+            var today = new Date().toISOString().split('T')[0];
+            var raw = localStorage.getItem(_DAILY_TIP_KEY);
+            var data = raw ? JSON.parse(raw) : {};
+            if (data.date !== today) data = { date: today, count: 0 };
+            data.count++;
+            localStorage.setItem(_DAILY_TIP_KEY, JSON.stringify(data));
+        } catch(e) {}
+    }
+
+    // Patch evaluate to enforce daily limit
+    var _origEvaluate = evaluate;
+    evaluate = function(context) {
+        if (_getTipCountToday() >= 2) return null; // max 2 tips per day
+        var result = _origEvaluate(context);
+        if (result) _incrementTipCount();
+        return result;
+    };
+
+    // ── Auto-Launch Practice ─────────────────────────────────────────────────
+    // When user reaches ≥3 songs for the first time, nudge toward play.
+
+    function checkAutoLaunch() {
+        if (localStorage.getItem('gl_avatar_autolaunch_done')) return;
+        var songCount = (typeof allSongs !== 'undefined') ? allSongs.length : 0;
+        if (songCount < 3) return;
+        localStorage.setItem('gl_avatar_autolaunch_done', '1');
+        // Show overlay nudge via UI
+        if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI._showAutoLaunchNudge) {
+            GLAvatarUI._showAutoLaunchNudge();
+        }
+    }
+
+    // ── Magic Moment ─────────────────────────────────────────────────────────
+    // After first playback, offer weak-song follow-up.
+
+    function checkMagicMoment() {
+        if (localStorage.getItem('gl_avatar_magic_done')) return null;
+        if (!localStorage.getItem('gl_avatar_first_practice')) return null;
+        localStorage.setItem('gl_avatar_magic_done', '1');
+        return {
+            message: 'Nice \u2014 that tightened up already.\nWant me to line up your weakest songs next?',
+            primaryAction: { label: '\u25B6 Play Weak Songs', onclick: "hdPlayBundle('focus')" },
+            secondaryActions: [{ label: 'Not Now', dismiss: true }]
+        };
+    }
+
+    // ── Spotify UX Messages ──────────────────────────────────────────────────
+
+    function getSpotifyMessage() {
+        var SP = (typeof GLSpotifyPlayer !== 'undefined') ? GLSpotifyPlayer : null;
+        if (!SP) return null;
+        var state = SP.getState();
+        if (state === 'READY') return { message: 'Spotify connected \u2014 full tracks available.', type: 'success' };
+        if (state === 'REQUIRES_INTERACTION') return { message: 'Tap play to start Spotify on this device.', type: 'action' };
+        if (state === 'UNAVAILABLE') return { message: 'Spotify SDK unavailable \u2014 using embed player.', type: 'info' };
+        if (state === 'ERROR') return { message: 'Spotify issue: ' + (SP.getLastError() || 'unknown') + '. Using fallback.', type: 'warning' };
+        return null;
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
         STAGE: STAGE,
+        INTENT: INTENT,
         getStage: getStage,
+        getIntent: getIntent,
+        getNextBestAction: getNextBestAction,
         evaluate: evaluate,
         buildContext: buildContext,
         markShown: markShown,
         dismiss: dismiss,
         snooze: snooze,
         resetAll: resetAll,
+        checkAutoLaunch: checkAutoLaunch,
+        checkMagicMoment: checkMagicMoment,
+        getSpotifyMessage: getSpotifyMessage,
         GUIDANCE: GUIDANCE
     };
 
