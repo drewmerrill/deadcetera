@@ -249,7 +249,7 @@ window.GLAvatarUI = (function() {
         var dim = document.createElement('div');
         dim.id = 'glAvAutoLaunchDim';
         dim.style.cssText = 'position:fixed;inset:0;z-index:9150;background:rgba(0,0,0,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);transition:opacity 0.3s;opacity:0';
-        dim.onclick = function() { _dismissAutoLaunch(); };
+        // No click-to-dismiss on dim — only explicit buttons close
         document.body.appendChild(dim);
         requestAnimationFrame(function() { dim.style.opacity = '1'; });
 
@@ -262,11 +262,10 @@ window.GLAvatarUI = (function() {
             + '<div style="font-size:1.1em;font-weight:800;margin-bottom:4px">Nice \u2014 let\u2019s run one.</div>'
             + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px">Just hit play \u2014 I\u2019ve got the rest.</div>'
             + '<button onclick="_glAvAutoLaunchPlay()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.95em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3)">\u25B6 Run What Matters</button>'
-            + '<button onclick="_glAvAutoLaunchDismiss()" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.75em">I\u2019ll explore first</button>';
+            + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;text-align:center">We picked the best songs for you to work on right now</div>'
+            + '<button onclick="_glAvAutoLaunchDismiss()" style="width:100%;margin-top:10px;padding:6px;border-radius:6px;border:none;background:none;color:#334155;cursor:pointer;font-size:0.68em">Skip for now</button>';
         document.body.appendChild(ov);
-
-        // Auto-dismiss after 20 seconds
-        setTimeout(function() { _dismissAutoLaunch(); }, 20000);
+        // No auto-dismiss — only user action closes this
     }
 
     function _dismissAutoLaunch() {
@@ -281,6 +280,13 @@ window.GLAvatarUI = (function() {
     window._glAvAutoLaunchPlay = function() {
         _dismissAutoLaunch();
         if (typeof hdPlayBundle === 'function') hdPlayBundle('focus');
+        // Mid-playback reinforcement — show after ~25 seconds
+        setTimeout(function() {
+            var E = window.GLPlayerEngine;
+            if (E && E.isPlaying && E.isPlaying()) {
+                if (typeof showToast === 'function') showToast('\uD83D\uDD12 You\u2019re locking in already', 3000);
+            }
+        }, 25000);
     };
 
     window._glAvAutoLaunchDismiss = function() {
@@ -304,13 +310,25 @@ window.GLAvatarUI = (function() {
         ov.style.cssText = 'position:fixed;bottom:100px;right:16px;z-index:9200;max-width:300px;padding:16px;background:linear-gradient(135deg,#1e293b,#0f2a1a);border:1px solid rgba(34,197,94,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:glAvSlideIn 0.3s ease;color:#f1f5f9';
         ov.innerHTML = ''
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.1em">\uD83C\uDFB8</span><span style="font-size:0.72em;font-weight:700;color:#22c55e">GrooveMate</span></div>'
-            + '<div style="font-size:0.88em;font-weight:700;line-height:1.4;margin-bottom:10px;white-space:pre-line">' + _esc(magic.message) + '</div>'
-            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.85em;cursor:pointer">\u25B6 Play Weak Songs</button>'
-            + '<button onclick="document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Later</button>';
+            + '<div style="font-size:0.88em;font-weight:700;line-height:1.5;margin-bottom:12px;white-space:pre-line">' + _esc(magic.message) + '</div>'
+            + '<button onclick="_glAvMagicPlay()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.85em;cursor:pointer">\u25B6 Play Weak Songs</button>'
+            + '<button onclick="_glAvMagicDismiss()" style="width:100%;margin-top:6px;padding:6px;border-radius:6px;border:none;background:none;color:#334155;cursor:pointer;font-size:0.68em">Skip for now</button>';
         document.body.appendChild(ov);
-
-        setTimeout(function() { var el = document.getElementById('glAvMagicMoment'); if (el) el.remove(); }, 20000);
+        // No auto-dismiss — user must choose
     }
+
+    window._glAvMagicPlay = function() {
+        var el = document.getElementById('glAvMagicMoment');
+        if (el) el.remove();
+        if (_btnEl) _btnEl.style.display = ''; // restore avatar
+        if (typeof hdPlayBundle === 'function') hdPlayBundle('focus');
+    };
+
+    window._glAvMagicDismiss = function() {
+        var el = document.getElementById('glAvMagicMoment');
+        if (el) el.remove();
+        if (_btnEl) _btnEl.style.display = ''; // restore avatar
+    };
 
     // ── Init ─────────────────────────────────────────────────────────────────
 

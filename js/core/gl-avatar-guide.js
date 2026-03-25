@@ -419,10 +419,28 @@ window.GLAvatarGuide = (function() {
         if (localStorage.getItem('gl_avatar_magic_done')) return null;
         if (!localStorage.getItem('gl_avatar_first_practice')) return null;
         localStorage.setItem('gl_avatar_magic_done', '1');
+
+        // Find the weakest song for a specific callout
+        var weakSong = '';
+        try {
+            if (typeof _getWeakSongs === 'function' && typeof _homeBundle !== 'undefined' && _homeBundle) {
+                var weak = _getWeakSongs(_homeBundle, 1);
+                if (weak.length) weakSong = weak[0].title;
+            }
+        } catch(e) {}
+
+        var msg = 'That felt tighter already.';
+        if (weakSong) {
+            msg += '\n\n\u201C' + weakSong + '\u201D still needs reps \u2014 hit that next?';
+        } else {
+            msg += '\nLet me line up your weakest songs next.';
+        }
+
         return {
-            message: 'That already sounded tighter.\nLet me line up your weakest songs next.',
+            message: msg,
+            weakSong: weakSong,
             primaryAction: { label: '\u25B6 Play Weak Songs', onclick: "hdPlayBundle('focus')" },
-            secondaryActions: [{ label: 'Not Now', dismiss: true }]
+            secondaryActions: [{ label: 'Later', dismiss: true }]
         };
     }
 

@@ -145,7 +145,21 @@ Band Feed
 
 ---
 
-## AUTO-ENGAGE MODE (Latest Update)
+## AUTO-ENGAGE MODE POLISH (Latest Update)
+
+### Changes applied:
+1. **No auto-dismiss** — overlay stays until user clicks Run or Skip
+2. **No click-on-dim dismiss** — only explicit buttons close
+3. **De-emphasized exit** — "Skip for now" in smaller, lower-contrast text (was "I'll explore first")
+4. **CTA sub-text** — "We picked the best songs for you to work on right now" below Run What Matters
+5. **Mid-playback toast** — "🔒 You're locking in already" after 25 seconds of active playback
+6. **Smarter magic moment** — names the weakest song: "'Scarlet Begonias' still needs reps — hit that next?"
+7. **No magic auto-dismiss** — user must choose Play or Skip
+8. **Avatar suppressed** through auto-engage AND magic moment, restored on dismiss
+
+---
+
+## AUTO-ENGAGE MODE (Previous Update)
 
 First-session focused overlay when ≥3 songs reached:
 - Background dims with blur (click-to-dismiss)
