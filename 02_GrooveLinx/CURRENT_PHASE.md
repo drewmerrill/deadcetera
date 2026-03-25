@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-24 (setlist player v5 — in-app playback overhaul)_
+_Updated: 2026-03-25 (Avatar Guide + Unified Player + Band Mode + Scorecard)_
 
-## Active Phase: Band Feed Action Engine + Listening System + Play Mode
+## Active Phase: Guided Band Operating System
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main)
@@ -10,152 +10,119 @@ Production URL: **https://app.groovelinx.com**
 
 ---
 
-## GrooveLinx Product Philosophy
+## Shipped This Session (2026-03-24 → 2026-03-25)
 
-**Three-mode system:**
-- 🔥 Sharpen = personal practice (get your part down)
-- 🎯 Lock In = band alignment (starts, endings, transitions)
-- 🎤 Play = live execution (no thinking, automatic)
+### Unified Player Engine
+- GLPlayerEngine: state machine (IDLE→LOADING→RESOLVING→PLAYING→FALLBACK→ERROR)
+- GLSourceResolver: curation + YouTube/Spotify/Archive resolution
+- GLPlayerUI: overlay, float, bar modes
+- Per-play token race guard, 4s terminal state guarantee
+- Progressive status: "Finding best version..." → "Checking YouTube..."
+- Confidence messaging: "✔ Playing: Song Title · Best available version"
+- Completion screen: reflection + streak + band signal + next actions
+- "Coming up →" momentum language
 
-**Band Feed = central action hub.** Answers: "What needs me? What's waiting? What changed?"
+### Spotify Web Playback SDK
+- gl-spotify-player.js: full SDK subsystem
+- Creates "GrooveLinx" device in Spotify Connect
+- Premium: full-track in-app playback
+- iOS: "Tap play to start" CTA
+- Fallback chain: SDK → embed → external
+- Scopes: streaming, user-read-playback-state, user-modify-playback-state
 
-**Listening Bundles = fastest path to hearing.** Answers: "What should I listen to, and where?"
+### GrooveMate (Avatar Guide)
+- gl-avatar-guide.js: 15 triggers, 3 stages (Fan → Bandmate → Coach)
+- gl-avatar-ui.js: floating 🎸 button + slide-in panel
+- Intent layer: setup / first_run / improve / prepare / rehearse / idle
+- Next Best Action engine: ONE primary action always
+- "▶ Run What Matters" universal CTA
+- Auto-launch: ≥3 songs → Play dashboard → "Let's run one" nudge
+- Magic moment: first completion → "That already sounded tighter"
+- Max 2 tips/day, cooldowns, dismiss
 
----
+### Band Mode (wired, not rebuilt)
+- Play dashboard: Next Action + Scorecard (same components as Sharpen)
+- Go Live + float audio: 🎧 toggles GLPlayerUI.showFloat() over charts
+- Bidirectional sync: Live Gig nav ↔ audio player
+- Quick notes in Go Live → Firebase
+- Player conflict fix: gigPlaySetlist uses unified engine first
 
-## Shipped This Session (2026-03-24) — ~60 commits
+### Band Scorecard
+- Health headline with coach line
+- Top Focus callout
+- "✔ What's Working" / "▶ Focus Here"
+- Rating dots + trend (Getting Better / Holding Steady / Needs Focus)
+- Song movement with timeframe
+- On all 3 dashboards
 
-### Band Feed v5 (Action Engine)
-- FeedActionState: centralized ownership, completion, badges, CTAs, priority
-- Personal vs band input split ("Needs You" / "Waiting on Band")
-- Inline poll voting (no navigation required)
-- Inline idea acknowledgment ("Got it")
-- Identity-aware vote tracking via _feedGetMyVoteKey()
-- Progress bar + auto-advance + momentum nudges
-- Completion celebration + session summary
-- New-items indicator + weekly action history
-- Band alignment card (Lock In dashboard)
-- Time + urgency layer (event-aware priority, rehearsal blockers)
-- Creation bar (quick add + structured: poll/idea/note)
-- Responsibility targeting (everyone / specific people)
-- 8-step spotlight walkthrough (guided behavior onboarding)
-- Micro-reinforcement system (first post, first vote, all clear, targeted, momentum)
-- Collaborative language ("Needs You", "Jump in", "the band is locked in")
-- Persistent return-to-feed navigation via sessionStorage
-- Feed events for playlist sync
+### Rehearsal System
+- Session lifecycle: Plan → Active → Summary → Save
+- Summary screen: rating, reflection, notes, mixdown attachment
+- Headline insights per session
+- Trend indicator
+- Delete + bulk delete
+- Micro-session filtering
 
-### Listening Bundles + Destinations
-- Bundle abstraction: gig, rehearsal, focus, northstar
-- Multi-destination: Spotify, YouTube, Archive.org
-- Spotify PKCE OAuth (Client ID from Cloudflare Worker)
-- Persistent synced playlists (create/update/reuse)
-- Match review + fix system (search, select, lock)
-- Auto version resolution (Invidious YouTube search + ranking)
-- Result quality scoring (views, duration, artist match)
-- Version locking (isPrimary, single source of truth)
-- Token refresh (silent, reduces forced re-auth)
-- "Already up to date" detection
-- Failure state dialogs (not configured / not connected / expired)
-- Playlist events posted to Band Feed
+### Rehearsal Mixdowns
+- Session-level recording archive
+- Upload MP3 / paste Drive link
+- In-app audio player
+- Chopper integration
 
-### In-App Setlist Player v5 (Play Mode)
-- Full-screen YouTube embed player with lazy per-song resolution
-- 7 parallel search backends (5 Invidious + 2 Piped) — first result wins
-- Launch guard (token-based) prevents race conditions between concurrent launches
-- Full reset on every launch — no stale state leaks between setlists
-- Queue isolation: builds into local array, assigned only on completion
-- In-app fallback (no external links):
-  - Retry Search (clears cache, re-resolves all backends)
-  - YouTube URL paste → extract ID → embed via IFrame API
-  - Spotify embed iframe (track search + embed)
-  - Skip to next song
-- Auto-advance on song end
-- Car-friendly UI (1.8em title, 80px play button)
-- YouTube ID caching (localStorage, permanent)
-- Playback persistence (resume within 2h auto, 2-24h prompt)
-- Now-playing bar with play/pause + skip
-- "Use this version" lock button
-- Safe-area padding (iPhone notch/Dynamic Island)
-- Index mismatch fix: slPlaySetlist uses _origIdx (unsorted Firebase order)
-- Spotify button: window.open fires synchronously (no popup blocker)
-- Fallback search uses correct artist per band (not hardcoded "Grateful Dead")
+### Band Feed Cleanup
+- Post types: note, link, photo + pin to Band Room + edit
+- Single + bulk delete (creator/admin permissions)
+- System filter + auto-post suppression
+- Type filters: Links, Photos, Pinned
 
-### Global Systems
-- FeedActionState on GLStore (getActionSummary, getActionState)
-- Left rail Feed badge (needsMyInput count)
-- App icon badge (navigator.setAppBadge)
-- Background badge refresh (polls, every 2min)
-- Notification architecture (local triggers + push prep)
-- Notification preferences (Settings UI)
-- VAPID keys + subscription storage in Firebase
-- Usage instrumentation (FeedMetrics: visits, actions, creates, bounces)
-- Song pitch filters (Need My Vote / Voted / progress bar)
+### Progression Tracking
+- Action log (14-day localStorage)
+- Completion-aware Next Action Card
+- Practice streaks + milestones
+- Band activity signals + momentum visual
+- Top Songs to Work card
 
-### Reliability Fixes
-- P0 blank screen: boot watchdog + auth path gaps
-- Band Feed syntax error (merge residue)
-- Status filter on all 7 readiness surfaces
-- "Loading weak songs" hang (element ID mismatch)
-- Weak songs card async fill fallback
-- Harmony Lab "Loading..." → "Coming soon"
-- PWA app icon fix (full-bleed, no white padding)
-- PWA install + update notification system
-- Service worker cache management
+### Fixes
+- Song picker crash (undeclared _slPickerShowLibrary in strict mode)
+- Setlist player race condition (launch token guard)
+- Index mismatch in slPlaySetlist (removed re-sort)
+- Spotify popup blocked (synchronous window.open)
+- Back to Feed button hidden (z-index + safe-area)
+- Spotify/Archive embeds not rendering (missing embedReady emit)
 
 ---
-
-## In Progress
-
-- Testing setlist player v5 in-app playback
-- Spotify Worker deploy (`/spotify-config` endpoint)
-- Redirect URI in Spotify Developer Dashboard
-
-## Bugs Fixed This Session (2026-03-24 evening)
-
-1. **Setlist player race condition**: concurrent `launch()` calls (auto-resume + user click) shared closure state, corrupting queue and showing wrong setlist header. Fixed with launch token guard + full reset.
-2. **Index mismatch**: `slPlaySetlist(idx)` re-sorted setlists by date but `idx` was `_origIdx` from unsorted Firebase array. Removed the re-sort.
-3. **Spotify popup blocked**: `_openSpotify()` was async — `window.open()` lost gesture context on mobile Safari. Fixed by opening window synchronously before await.
-4. **"Opening best version..." hung forever**: fallback had no timeout/terminal state. Replaced with actionable in-app fallback UI.
-5. **Fallback search hardcoded "Grateful Dead"**: 502/585 songs searched with wrong artist. Fixed with `_buildSearchQuery()` using real artist/band lookup.
 
 ## Pending Work
 
 ### HIGH
-1. Test setlist player in-app playback across multiple setlists
-2. Deploy Cloudflare Worker with /spotify-config
-3. Add redirect URI to Spotify Dashboard
-4. Test Spotify connect → sync → playlist flow
-5. Wire chart panel into song detail view + setlist player
-6. YouTube OAuth playlists (Phase 2)
+1. Test GrooveMate avatar flow end-to-end
+2. Test unified player across setlists + listening bundles
+3. Test Spotify SDK with Premium account
+4. Test Go Live + float audio sync
+5. Wire curation UI (choose version / set North Star / reset to auto)
 
 ### MEDIUM
-7. Archive.org in-app embed (needs identifier resolution from Archive API)
-8. Observe usage via FeedMetrics
-9. Push notification Cloud Function (for closed-app delivery)
-10. Setlist player: start from any song in setlist view
+6. Decommission legacy setlist-player.js once unified engine stable
+7. GrooveMate Phase 2: Claude API conversational guide
+8. Archive.org in-app embed improvements
+9. YouTube OAuth playlists (Phase 2)
+10. Push notification Cloud Function
 
 ### LOW
-11. Scroll position restoration on feed return
-12. App-dev.js cleanup
-13. Band alignment on Play dashboard
+11. GrooveMate Phase 3: passive capture + automation
+12. Stoner Mode → Go Live alias
+13. Scroll position restoration on feed return
 
 ---
 
-## Firebase Paths Added This Session
+## Key Architecture Files
 
 ```
-bands/{slug}/feed_meta/{type:id}         — feed item overlay (archive, resolved, tags, notes)
-bands/{slug}/push_subscriptions/{key}     — push subscription per member
-bands/{slug}/metrics/{key}/{date}         — daily usage rollup per member
-```
-
----
-
-## Key Architecture Files (new this session)
-
-```
-js/core/feed-action-state.js    — Global Action Engine
-js/core/feed-metrics.js         — Usage instrumentation
-js/core/listening-bundles.js    — Bundle + destination + Spotify sync
-js/features/setlist-player.js   — In-app setlist player
+js/core/gl-player-engine.js    — Unified Player Engine (state machine)
+js/core/gl-source-resolver.js  — Source Resolution + Curation
+js/core/gl-spotify-player.js   — Spotify Web Playback SDK
+js/core/gl-avatar-guide.js     — GrooveMate Engine (guidance + triggers)
+js/ui/gl-player-ui.js          — Player UI (overlay/float/bar)
+js/ui/gl-avatar-ui.js          — GrooveMate UI (button/panel)
+js/features/rehearsal-mixdowns.js — Mixdown archive
 ```
