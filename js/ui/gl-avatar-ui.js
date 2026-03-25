@@ -363,12 +363,17 @@ window.GLAvatarUI = (function() {
             var E = window.GLPlayerEngine;
             if (E) E.on('queueEnd', function() { setTimeout(_checkMagicMoment, 1000); });
         }, 2000);
-        // Poll for page changes
+        // Listen for page changes via showPage event instead of polling
         var _lastPage = '';
-        setInterval(function() {
+        var _checkPageChange = function() {
             var p = _getPage();
             if (p !== _lastPage) { _lastPage = p; checkForTips(p); }
-        }, 3000);
+        };
+        // Hook into showPage if available, with fallback poll at 10s (was 3s)
+        if (typeof window.addEventListener === 'function') {
+            window.addEventListener('gl:pagechange', _checkPageChange);
+        }
+        setInterval(_checkPageChange, 10000);
     }
 
     // Auto-init after DOM ready

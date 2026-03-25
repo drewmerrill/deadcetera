@@ -105,6 +105,8 @@ window.showPage = function showPage(page) {
     if (typeof GLStore !== 'undefined' && typeof GLStore.setActivePage === 'function') {
         GLStore.setActivePage(page);
     }
+    // Emit page change event (used by avatar and other listeners instead of polling)
+    try { window.dispatchEvent(new CustomEvent('gl:pagechange', { detail: { page: page } })); } catch(e) {}
     // Release wake locks for utility pages when navigating away
     if (typeof glWakeLock !== 'undefined') {
         var _wlPages = { pocketmeter: 'pocket-meter', tuner: 'tuner', metronome: 'metronome' };

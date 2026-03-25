@@ -1634,8 +1634,8 @@ if (typeof pageRenderers !== 'undefined') {
     }
     // Run after Firebase is likely ready
     setTimeout(refresh, 4000);
-    // Periodic refresh every 2 minutes
-    setInterval(refresh, 120000);
+    // Periodic refresh every 5 minutes (was 2min — reduce for mobile perf)
+    setInterval(refresh, 300000);
 })();
 
 // ── Real-time notification listener ──────────────────────────────────────────

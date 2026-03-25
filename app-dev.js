@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-185926', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260325-210951', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -524,8 +524,8 @@ if ('serviceWorker' in navigator && !_rt.swInitialized) {
         window.addEventListener('load', function() {
             navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
                 .then(function(reg) {
-                    // Poll for SW updates every 60s
-                    setInterval(function() { reg.update(); }, 60000);
+                    // Poll for SW updates every 5 min (was 60s — too aggressive for mobile)
+                    setInterval(function() { reg.update(); }, 300000);
                     // Detect waiting worker (new version ready)
                     if (reg.waiting) { _pwaShowUpdateBanner(); return; }
                     reg.addEventListener('updatefound', function() {
@@ -703,6 +703,11 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    // ── Startup profiling ──
+    var _bootStart = performance.now();
+    console.log('[Startup] DOMContentLoaded at ' + Math.round(_bootStart) + 'ms');
+    window._glBootTimings = { domContentLoaded: _bootStart };
+
     // Parachute: render gig pack if URL has ?gigpack=1#...
     if (parachuteCheckUrlHash()) return;
     // Spotify OAuth callback handler (async — must complete before page renders)
@@ -713,39 +718,43 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    // ── Auto-init Firebase DB on page load ──────────────────────────────────
-    // Firebase RTDB doesn't require user sign-in to read/write. 
-    // We initialize it immediately so all saves go to Firebase, not just localStorage.
-    // Google Identity (for user email) is still loaded on first "Connect" click.
     // ── Dev mode activation (before any renders) ──
     if (typeof GLT !== 'undefined' && GLT.ACTIVE && typeof GLT.activate === 'function') {
         GLT.activate();
     }
 
+    // ── STAGE 1: Immediate critical render ──
     // Render songs immediately from built-in data (fast, no Firebase needed)
     renderSongs();
+    console.log('[Startup] Initial render at ' + Math.round(performance.now()) + 'ms');
+    window._glBootTimings.initialRender = performance.now();
 
     // Hide hero immediately if user was previously signed in (suppress flash).
-    // Only hides the element — does NOT call showPage('home'), because page/panel
-    // restore flags aren't set yet at this point in script execution.
-    // Home navigation is handled later by cache restore → glHeroCheck(true).
     if (localStorage.getItem('deadcetera_google_email')) {
         var _hero = document.getElementById('page-hero');
         if (_hero) _hero.classList.add('hidden');
     }
 
-    // Then init Firebase and reload everything that depends on it
+    // ── STAGE 2: Firebase init + data preloads ──
     initFirebaseOnly().then(() => {
+        console.log('[Startup] Firebase ready at ' + Math.round(performance.now()) + 'ms');
+        window._glBootTimings.firebaseReady = performance.now();
         // Now that Firebase is ready, load custom songs and re-render
-        // (Running before this would fall back to localStorage → invisible in incognito)
         loadCustomSongs().then(() => renderSongs());
 
-        // Also load statuses and north stars with live Firebase data
+        // ── STAGE 3: Deferred preloads (idle/background) ──
+        // Use requestIdleCallback where available for non-critical preloads
+        var _scheduleIdle = window.requestIdleCallback || function(cb) { setTimeout(cb, 200); };
+
+        // Status + NorthStar preloads — slightly deferred to not compete with initial render
         statusCacheLoaded = false;
         statusPreloadRunning = false;
-        preloadAllStatuses();
-        preloadNorthStarCache();
-        backgroundScanNorthStars();
+        _scheduleIdle(function() {
+            preloadAllStatuses();
+            preloadNorthStarCache();
+            backgroundScanNorthStars();
+            console.log('[Startup] Deferred preloads started at ' + Math.round(performance.now()) + 'ms');
+        });
         preloadReadinessCache().then(function() {
             console.log('📊 Readiness loaded:', Object.keys(readinessCache).length, 'songs');
             // Signal that bulk readiness data loaded — invalidates Practice Attention cache
@@ -12023,7 +12032,8 @@ function showUpdateBanner() {
     if (DEBUG) console.log('[Update] Banner appended. In DOM:', !!document.getElementById('dc-update-banner'));
 }
 
-setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 60 * 1000); }, 10000);
+// Update check: every 5 minutes (was 60s — too aggressive for mobile)
+setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 300 * 1000); }, 15000);
 
 // ── Debug panel (visible only with ?debug=true) ──────────────────────────────
 if (DEBUG) {
@@ -12050,7 +12060,7 @@ if (DEBUG) {
                     + '<button onclick="document.getElementById(\'gl-debug-panel\').remove()" style="margin-top:6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px">Close</button>';
             }
             _debugRefresh();
-            setInterval(_debugRefresh, 5000);
+            setInterval(_debugRefresh, 30000); // was 5s — reduce debug panel churn
             document.body.appendChild(panel);
         }, 3000);
     });

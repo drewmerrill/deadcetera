@@ -258,7 +258,7 @@
   }
   // Check badge on init and periodically
   setTimeout(_updateBandRoomBadge, 3000);
-  setInterval(_updateBandRoomBadge, 120000); // refresh every 2 min
+  setInterval(_updateBandRoomBadge, 300000); // was 2min — reduce to 5min for mobile perf
 
   // ── Active state ────────────────────────────────────────────────────────
 
