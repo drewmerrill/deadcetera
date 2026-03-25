@@ -24,7 +24,7 @@ window.GLPlayerUI = (function() {
     var _sourceLabels = { youtube: 'YouTube', spotify: 'Spotify', archive: 'Archive' };
     var _sourceIcons = { youtube: '\u25B6', spotify: '\uD83C\uDFB5', archive: '\uD83C\uDFDB\uFE0F' };
     var _sourceColors = { youtube: '#f87171', spotify: '#1ed760', archive: '#94a3b8' };
-    var _confidenceLabels = { best: 'Best match', close: 'Close match', live: 'Live version' };
+    var _confidenceLabels = { best: 'Best available version', close: 'Found version', live: 'Live recording' };
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
@@ -214,7 +214,8 @@ window.GLPlayerUI = (function() {
         var badge = _confidenceLabels[conf] || '';
         var color = _sourceColors[src] || '#475569';
 
-        var label = icon + ' Playing via ' + name + (badge ? ' \u00B7 ' + badge : '');
+        // Confident messaging: "Playing now" not "Playing via"
+        var label = icon + ' Playing now \u00B7 ' + name + (badge ? ' \u00B7 ' + badge : '');
         var el = document.getElementById('glpSourceLabel');
         if (el) { el.innerHTML = label; el.style.color = color; }
         _setText('glpFloatSource', icon + ' ' + name + (badge ? ' \u00B7 ' + badge : ''));
@@ -262,7 +263,7 @@ window.GLPlayerUI = (function() {
     function _showFallbackUI() {
         var fb = document.getElementById('glpFallback');
         var container = document.getElementById('glpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.82em;text-align:center;padding:12px">No embeddable version found</div>';
+        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:0.82em;text-align:center;padding:12px">Searching for a version\u2026</div>';
         if (!fb) return;
 
         fb.style.display = '';

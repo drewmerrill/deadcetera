@@ -372,13 +372,102 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Three steps. That\'s all it takes to get better.'),
+        _renderNextActionCard(bundle, wf),
         _renderActionOwedCard(),
-        _renderListeningCard('focus', '\uD83C\uDFA7 Listen & Learn', 'Focus on your weakest songs'),
+        _renderListeningCard('focus', '\uD83C\uDFA7 Practice Your Set', 'Listen to your weakest songs and lock them in'),
+        _renderTopSongsToWork(bundle),
         _renderSharpenPracticeCard(bundle),
         _renderSharpenWeakSongs(bundle),
         _renderSharpenRecentPractice(bundle),
         '</div>'
     ].join('');
+}
+
+// ── Next Action Card — "What should I do next?" ─────────────────────────────
+function _renderNextActionCard(bundle, wf) {
+    var nextGig = bundle.gigs && bundle.gigs[0];
+    var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
+    var action = null;
+
+    // Decision tree: what's the highest-impact next action?
+    if (daysOut === 0) {
+        action = { icon: '\uD83C\uDFA4', title: 'Showtime', sub: nextGig.venue || 'Today', cta: 'Go Live', onclick: 'homeGoLive(\'' + _escHtml(nextGig.name || nextGig.venue || '') + '\')' };
+    } else if (daysOut <= 2 && daysOut > 0) {
+        action = { icon: '\u26A1', title: 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : ''), sub: (nextGig.venue || '') + ' \u2014 run the set', cta: 'Practice Set', onclick: 'hdPlayBundle(\'gig\')' };
+    } else if (wf && wf.nextActionLabel && wf.nextActionTarget) {
+        action = { icon: '\uD83C\uDFAF', title: wf.nextActionLabel, sub: wf.nextActionDescription || '', cta: 'Go', onclick: 'showPage(\'' + wf.nextActionTarget + '\')' };
+    } else {
+        // Default: rehearsal focus
+        var weakCount = _countWeakSongs(bundle);
+        if (weakCount > 0) {
+            action = { icon: '\uD83D\uDD25', title: weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work', sub: 'Focus on your weakest songs first', cta: 'Start Practicing', onclick: 'hdPlayBundle(\'focus\')' };
+        } else {
+            action = { icon: '\uD83D\uDCAA', title: 'You\'re in good shape', sub: 'Keep it tight \u2014 run through the set', cta: 'Practice Set', onclick: 'hdPlayBundle(\'gig\')' };
+        }
+    }
+
+    if (!action) return '';
+
+    return '<div class="app-card" style="padding:16px;margin-bottom:12px;border:1px solid rgba(99,102,241,0.25);background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(139,92,246,0.04))">'
+        + '<div style="display:flex;align-items:center;gap:12px">'
+        + '<div style="width:44px;height:44px;border-radius:12px;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:1.3em;flex-shrink:0">' + action.icon + '</div>'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:#818cf8;text-transform:uppercase;margin-bottom:2px">Next Up</div>'
+        + '<div style="font-size:1em;font-weight:800;color:var(--text)">' + _escHtml(action.title) + '</div>'
+        + (action.sub ? '<div style="font-size:0.78em;color:var(--text-dim);margin-top:1px">' + _escHtml(action.sub) + '</div>' : '')
+        + '</div>'
+        + '<button onclick="' + action.onclick + '" style="padding:10px 18px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.85em;cursor:pointer;white-space:nowrap">' + _escHtml(action.cta) + '</button>'
+        + '</div></div>';
+}
+
+// ── Top Songs to Work ────────────────────────────────────────────────────────
+function _renderTopSongsToWork(bundle) {
+    var songs = _getWeakSongs(bundle, 3);
+    if (!songs.length) return '';
+
+    var html = '<div class="app-card" style="padding:12px 14px;margin-bottom:12px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text)">\uD83C\uDFAF Top Songs to Work</div>';
+    html += '<button onclick="hdPlayBundle(\'focus\')" style="font-size:0.68em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc">\u25B6 Practice All</button>';
+    html += '</div>';
+
+    songs.forEach(function(s, i) {
+        var urgency = s.avg <= 2 ? '#ef4444' : s.avg <= 3 ? '#fbbf24' : '#94a3b8';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
+        html += '<span style="font-size:0.72em;font-weight:700;color:' + urgency + ';width:18px;text-align:center">' + (i + 1) + '</span>';
+        html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(s.title) + '</span>';
+        html += '<span style="font-size:0.68em;font-weight:700;color:' + urgency + '">' + (s.avg ? s.avg.toFixed(1) : '?') + '/5</span>';
+        html += '</div>';
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function _getWeakSongs(bundle, limit) {
+    var rc = bundle.readinessCache || {};
+    var memberKey = bundle.memberKey || '';
+    var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
+    var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+    var songs = [];
+    var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
+
+    allSongsList.forEach(function(s) {
+        var st = statusCache ? statusCache.getStatus(s.title) : null;
+        if (st && !activeStatuses[st]) return;
+        var scores = rc[s.title] || {};
+        var myScore = memberKey ? (scores[memberKey] || 0) : 0;
+        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+        var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+        if (myScore <= 3 || avg <= 3) songs.push({ title: s.title, myScore: myScore, avg: avg });
+    });
+
+    songs.sort(function(a, b) { return (a.myScore || 0) - (b.myScore || 0) || (a.avg || 0) - (b.avg || 0); });
+    return songs.slice(0, limit || 5);
+}
+
+function _countWeakSongs(bundle) {
+    return _getWeakSongs(bundle, 100).length;
 }
 
 // ── Listening Card ──────────────────────────────────────────────────────────
