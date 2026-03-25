@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-224734', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260325-225633', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -739,6 +739,15 @@ document.addEventListener('DOMContentLoaded', function() {
     initFirebaseOnly().then(() => {
         console.log('[Startup] Firebase ready at ' + Math.round(performance.now()) + 'ms');
         window._glBootTimings.firebaseReady = performance.now();
+        // Load band members from Firebase (canonical source — replaces hardcoded data.js members)
+        _seedDeadceteraMembersIfNeeded().then(function() {
+            return loadBandMembersFromFirebase();
+        }).then(function() {
+            // Re-render settings if on that page (member list uses bandMembers)
+            if (typeof currentPage !== 'undefined' && currentPage === 'admin' && typeof settingsTab === 'function') {
+                settingsTab('band');
+            }
+        }).catch(function() {});
         // Now that Firebase is ready, load custom songs and re-render
         loadCustomSongs().then(() => renderSongs());
 
@@ -1984,16 +1993,15 @@ function getCurrentMemberKey() {
     // Try localStorage first
     const stored = localStorage.getItem('deadcetera_current_user');
     if (stored && bandMembers[stored]) return stored;
-    // Fall back to email match
+    // Dynamic lookup: find member key by email from bandMembers (loaded from Firebase)
     if (currentUserEmail) {
-        const emailToKey = {
-            'drewmerrill1029@gmail.com': 'drew',
-            'cmjalbert@gmail.com': 'chris',
-            'brian@hrestoration.com': 'brian',
-            'pierce.d.hale@gmail.com': 'pierce',
-            'jnault@fegholdings.com': 'jay'
-        };
-        return emailToKey[currentUserEmail] || null;
+        var keys = Object.keys(bandMembers);
+        for (var i = 0; i < keys.length; i++) {
+            var m = bandMembers[keys[i]];
+            if (m && m.email && m.email.toLowerCase() === currentUserEmail.toLowerCase()) {
+                return keys[i];
+            }
+        }
     }
     return null;
 }
@@ -10610,16 +10618,24 @@ function addNewMember() {
     var sings = vocalRole !== 'none';
     var leadVocals = (vocalRole === 'lead' || vocalRole === 'co-lead');
     var harmonies = sings;
-    bandMembers[key] = {
+    var memberData = {
         name: name,
         role: role,
+        email: (document.getElementById('newMemberEmail') || {}).value || '',
         primaryInstrument: instrument || '',
         secondaryInstruments: [],
         vocalRole: vocalRole,
         sings: sings,
         leadVocals: leadVocals,
-        harmonies: harmonies
+        harmonies: harmonies,
+        joined: Date.now(),
+        sortOrder: Object.keys(bandMembers).length + 1
     };
+    bandMembers[key] = memberData;
+    // Persist to Firebase
+    if (firebaseDB && typeof bandPath === 'function') {
+        firebaseDB.ref(bandPath('meta/members/' + key)).set(memberData).catch(function(e) { console.warn('Member save failed:', e.message); });
+    }
     showToast(name + ' added to the band');
     settingsTab('band');
 }
@@ -10644,6 +10660,14 @@ function _memberDisplayRole(m) {
 function removeMember(key) {
     if (!confirm('Remove ' + (bandMembers[key]?.name||key) + ' from the band roster?')) return;
     delete bandMembers[key];
+    // Remove from Firebase
+    if (firebaseDB && typeof bandPath === 'function') {
+        firebaseDB.ref(bandPath('meta/members/' + key)).remove().catch(function(e) { console.warn('Member remove failed:', e.message); });
+    }
+    // Remove from BAND_MEMBERS_ORDERED
+    for (var i = BAND_MEMBERS_ORDERED.length - 1; i >= 0; i--) {
+        if (BAND_MEMBERS_ORDERED[i].key === key) BAND_MEMBERS_ORDERED.splice(i, 1);
+    }
     showToast('Member removed');
     settingsTab('band');
 }
@@ -10676,6 +10700,10 @@ async function saveMemberRole(key, btn) {
     if (newRole === undefined) return;
     _glSaveBtn(btn || document.getElementById(`saveMemberBtn_${key}`), function() {
         bandMembers[key].role = newRole;
+        // Persist to Firebase
+        if (firebaseDB && typeof bandPath === 'function') {
+            return firebaseDB.ref(bandPath('meta/members/' + key + '/role')).set(newRole);
+        }
     });
     setTimeout(function() {
         document.getElementById(`editMemberForm_${key}`)?.remove();
@@ -13625,6 +13653,8 @@ var MASTER_READINESS_FILE = '_master_readiness.json';
 var readinessCache = {};       // { songTitle: { drew:4, chris:3, ... } }
 var readinessCacheLoaded = false;
 
+// Default fallback — overwritten by loadBandMembersFromFirebase() after Firebase init.
+// This ensures Deadcetera renders immediately while Firebase loads.
 var BAND_MEMBERS_ORDERED = [
     { key: 'drew',   name: 'Drew Merrill',  emoji: '🎸' },
     { key: 'chris',  name: 'Chris Jalbert', emoji: '🎸' },
@@ -13633,19 +13663,98 @@ var BAND_MEMBERS_ORDERED = [
     { key: 'jay',    name: 'Jay Nault',     emoji: '🥁' }
 ];
 
+// ── Load band members from Firebase (canonical source) ──────────────────────
+// Replaces hardcoded bandMembers + BAND_MEMBERS_ORDERED with real per-band data.
+// Called after initFirebaseOnly() resolves.
+var _bandMembersLoaded = false;
+async function loadBandMembersFromFirebase() {
+    if (!firebaseDB || typeof bandPath !== 'function') return;
+    try {
+        var snap = await firebaseDB.ref(bandPath('meta/members')).once('value');
+        var members = snap.val();
+        if (!members || typeof members !== 'object') {
+            console.log('[Members] No members in Firebase for ' + currentBandSlug + ' — using fallback');
+            return;
+        }
+        // Rebuild bandMembers from Firebase
+        var newMembers = {};
+        var newOrdered = [];
+        var roleEmojiMap = { drums: '🥁', bass: '🎸', keyboard: '🎹', keys: '🎹', piano: '🎹' };
+        Object.keys(members).forEach(function(key) {
+            var m = members[key];
+            if (!m || !m.name) return;
+            newMembers[key] = {
+                name: m.name,
+                role: m.role || 'Member',
+                email: m.email || '',
+                sings: !!m.sings,
+                leadVocals: !!m.leadVocals,
+                harmonies: !!m.harmonies,
+                primaryInstrument: m.primaryInstrument || m.role || '',
+                vocalRole: m.vocalRole || 'none',
+                isOwner: !!m.isOwner
+            };
+            var roleLower = (m.role || '').toLowerCase();
+            var emoji = '🎸'; // default
+            Object.keys(roleEmojiMap).forEach(function(r) { if (roleLower.indexOf(r) > -1) emoji = roleEmojiMap[r]; });
+            newOrdered.push({
+                key: key,
+                name: m.name,
+                emoji: m.emoji || emoji,
+                sortOrder: m.sortOrder || 999
+            });
+        });
+        // Sort by sortOrder, then by joined timestamp, then alphabetically
+        newOrdered.sort(function(a, b) { return (a.sortOrder || 999) - (b.sortOrder || 999) || a.name.localeCompare(b.name); });
+        // Apply
+        if (Object.keys(newMembers).length > 0) {
+            // Clear old keys and repopulate (preserves the same object reference)
+            Object.keys(bandMembers).forEach(function(k) { delete bandMembers[k]; });
+            Object.keys(newMembers).forEach(function(k) { bandMembers[k] = newMembers[k]; });
+            BAND_MEMBERS_ORDERED.length = 0;
+            newOrdered.forEach(function(m) { BAND_MEMBERS_ORDERED.push(m); });
+            _bandMembersLoaded = true;
+            console.log('[Members] Loaded ' + Object.keys(newMembers).length + ' members from Firebase for ' + currentBandSlug);
+        }
+    } catch(e) {
+        console.warn('[Members] Firebase load failed, using fallback:', e.message);
+    }
+}
+
+// ── One-time migration: seed Deadcetera members to Firebase if missing ──────
+async function _seedDeadceteraMembersIfNeeded() {
+    if (!firebaseDB || currentBandSlug !== 'deadcetera') return;
+    try {
+        var snap = await firebaseDB.ref(bandPath('meta/members')).once('value');
+        if (snap.val()) return; // already seeded
+        var seed = {
+            drew:   { name: 'Drew Merrill',  role: 'Rhythm Guitar', email: 'drewmerrill1029@gmail.com', sings: true, leadVocals: true, harmonies: true, isOwner: true, joined: Date.now(), sortOrder: 1 },
+            chris:  { name: 'Chris Jalbert', role: 'Bass', email: 'cmjalbert@gmail.com', sings: false, harmonies: true, joined: Date.now(), sortOrder: 2 },
+            brian:  { name: 'Brian Hillman', role: 'Lead Guitar', email: 'brian@hrestoration.com', sings: true, harmonies: true, joined: Date.now(), sortOrder: 3 },
+            pierce: { name: 'Pierce Hale',   role: 'Keyboard', email: 'pierce.d.hale@gmail.com', sings: true, leadVocals: true, harmonies: true, joined: Date.now(), sortOrder: 4 },
+            jay:    { name: 'Jay Nault',     role: 'Drums', email: 'jnault@fegholdings.com', sings: false, harmonies: false, joined: Date.now(), sortOrder: 5 }
+        };
+        await firebaseDB.ref(bandPath('meta/members')).set(seed);
+        console.log('[Members] Seeded Deadcetera members to Firebase');
+    } catch(e) { console.warn('[Members] Seed failed:', e.message); }
+}
+
 function getCurrentMemberReadinessKey() {
     // Dev mode: test user bypasses email lookup
     if (typeof GLT !== 'undefined' && GLT.ACTIVE && currentUserEmail === 'test@groovelinx.com') {
         return 'test_user';
     }
-    var emailToKey = {
-        'drewmerrill1029@gmail.com': 'drew',
-        'cmjalbert@gmail.com': 'chris',
-        'brian@hrestoration.com': 'brian',
-        'pierce.d.hale@gmail.com': 'pierce',
-        'jnault@fegholdings.com': 'jay'
-    };
-    return currentUserEmail ? (emailToKey[currentUserEmail] || null) : null;
+    // Dynamic lookup: find member key by email from bandMembers (loaded from Firebase)
+    if (currentUserEmail) {
+        var keys = Object.keys(bandMembers);
+        for (var i = 0; i < keys.length; i++) {
+            var m = bandMembers[keys[i]];
+            if (m && m.email && m.email.toLowerCase() === currentUserEmail.toLowerCase()) {
+                return keys[i];
+            }
+        }
+    }
+    return null;
 }
 
 function readinessColor(score) {
