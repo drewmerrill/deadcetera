@@ -516,7 +516,7 @@ function _renderProgressionSignal(bundle) {
         var totalActive = 0;
         allSongsList.forEach(function(s) {
             var st = statusCache ? statusCache.getStatus(s.title) : null;
-            if (st && !activeStatuses[st]) return;
+            if (!st || !activeStatuses[st]) return;
             totalActive++;
             var scores = rc2[s.title] || {};
             var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
@@ -608,7 +608,7 @@ function _getWeakSongs(bundle, limit) {
 
     allSongsList.forEach(function(s) {
         var st = statusCache ? statusCache.getStatus(s.title) : null;
-        if (st && !activeStatuses[st]) return;
+        if (!st || !activeStatuses[st]) return;
         var scores = rc[s.title] || {};
         var myScore = memberKey ? (scores[memberKey] || 0) : 0;
         var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
@@ -1219,7 +1219,7 @@ function _computeScorecard(bundle) {
     var totalActive = 0, highReady = 0, lowReady = 0, midReady = 0;
     allSongsList.forEach(function(s) {
         var st = statusCache ? statusCache.getStatus(s.title) : null;
-        if (st && !activeStatuses[st]) return;
+        if (!st || !activeStatuses[st]) return;
         totalActive++;
         var scores = rc[s.title] || {};
         var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });

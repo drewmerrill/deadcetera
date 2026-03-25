@@ -163,6 +163,23 @@ Language pass complete: zero instances of "Want to", "You can", "Try" remaining 
 
 ---
 
+## CRITICAL BUG FIX: Non-Active Songs in Top Songs to Work
+
+**Root cause**: `_getWeakSongs()` used `if (st && !activeStatuses[st]) return;` — songs with `null`/`undefined` status (never explicitly set) passed through because `null && anything` is falsy.
+
+**Fix**: Changed to `if (!st || !activeStatuses[st]) return;` — songs MUST have an explicit active status to appear. No status = excluded.
+
+**Scope**: 3 instances in home-dashboard.js (lines 519, 611, 1222) all fixed with `replace_all`. Affected:
+- `_getWeakSongs()` → Top Songs to Work card
+- `_countWeakSongs()` → Next Action Card weak song count
+- Scorecard readiness analysis → song movement counts
+
+**Full codebase audit**: setlists.js and practice.js already use the correct pattern (return false for null status). The broken pattern only existed in home-dashboard.js.
+
+> **ChatGPT**: See `groovelinx_supporting_files/session_2026-03-25_full_manifest.md` for complete file manifest.
+
+---
+
 ## SCREENSHOTS NEEDED
 
 > **DREW**: Capture these screenshots and save to `02_GrooveLinx/outputs/groovelinx_supporting_files/`:
