@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-223245', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260325-224039', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -86,6 +86,8 @@ window.openRehearsalModeWithQueue = function(queue) {
     if (!queue || !queue.length) return;
     rmQueue = queue;
     rmIndex = 0;
+    // Onboarding: mark rehearsal started
+    if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('rehearsal');
     // Init session timing
     _rmSessionStart = Date.now();
     _rmBlockStartTime = Date.now();

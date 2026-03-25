@@ -353,9 +353,19 @@ window.GLAvatarUI = (function() {
         } catch(e) {}
         // Check on page load
         setTimeout(function() { checkForTips(); }, 2000);
-        // Auto-launch check (≥3 songs, first time)
+        // Auto-open panel for onboarding if user has songs but hasn't started the flow
         setTimeout(function() {
             var G = window.GLAvatarGuide;
+            if (G && G.getOnboardStep) {
+                var step = G.getOnboardStep();
+                if (step >= 1 && step <= 3 && !_isOpen) {
+                    _hasUnread = true;
+                    _updateButtonState();
+                    // Auto-open panel after a brief delay so user sees the app first
+                    setTimeout(function() { if (!_isOpen) openPanel(); }, 1500);
+                }
+            }
+            // Auto-launch check (≥3 songs, first time)
             if (G && G.checkAutoLaunch) G.checkAutoLaunch();
         }, 3000);
         // Listen for playback completion (magic moment)

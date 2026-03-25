@@ -606,6 +606,8 @@ async function slSaveSetlist() {
     } else {
         showToast('✅ Setlist saved');
     }
+    // Onboarding: mark setlist step complete
+    if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     loadSetlists();
@@ -1048,6 +1050,8 @@ async function slSaveSetlistEdit(idx) {
         return;
     }
     showToast('✅ Setlist saved to band');
+    // Onboarding: mark setlist step complete
+    if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     loadSetlists();

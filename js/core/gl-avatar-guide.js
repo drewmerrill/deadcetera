@@ -60,7 +60,56 @@ window.GLAvatarGuide = (function() {
 
     // ── Guidance Library ─────────────────────────────────────────────────────
 
+    // ── Onboarding state keys ──────────────────────────────────────────────
+    var _OB_SETLIST_KEY  = 'gl_onboard_setlist_done';
+    var _OB_REHEARSAL_KEY = 'gl_onboard_rehearsal_done';
+    var _OB_REVIEW_KEY   = 'gl_onboard_review_done';
+
+    function _onboardStep() {
+        if (!localStorage.getItem(_OB_SETLIST_KEY))  return 1; // need setlist
+        if (!localStorage.getItem(_OB_REHEARSAL_KEY)) return 2; // need rehearsal
+        if (!localStorage.getItem(_OB_REVIEW_KEY))   return 3; // need review
+        return 0; // complete
+    }
+
+    // Completion hooks — called from app code when user completes each step
+    function completeOnboardStep(step) {
+        if (step === 'setlist')  localStorage.setItem(_OB_SETLIST_KEY, Date.now());
+        if (step === 'rehearsal') localStorage.setItem(_OB_REHEARSAL_KEY, Date.now());
+        if (step === 'review')   localStorage.setItem(_OB_REVIEW_KEY, Date.now());
+        // Refresh avatar state
+        if (window.GLAvatarUI && GLAvatarUI.checkForTips) GLAvatarUI.checkForTips();
+    }
+
     var GUIDANCE = [
+        // ── ONBOARDING: 3-step first rehearsal experience ──
+        // These fire in sequence and take absolute priority over all other guidance.
+        // Each step has a localStorage flag that gates the next step.
+
+        { id: 'onboard_create_setlist', stage: 'fan', trigger: 'onboard_step_1', page: 'any',
+          message: 'Let\u2019s start simple \u2014 build your first setlist so you have something to rehearse.',
+          coach: 'Pick 5\u201310 songs you\u2019re playing. You can change it later.',
+          actions: [{ label: 'Create Setlist \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
+          cooldown: 0, dismissible: true, onboard: true },
+
+        { id: 'onboard_start_rehearsal', stage: 'fan', trigger: 'onboard_step_2', page: 'any',
+          message: 'Nice \u2014 now let\u2019s run your first rehearsal using that setlist.',
+          coach: 'Set a date and I\u2019ll help you track it.',
+          actions: [{ label: 'Start Rehearsal \u2192', onclick: "showPage('rehearsal');setTimeout(function(){if(typeof rhOpenCreateModal==='function')rhOpenCreateModal();},400)" }],
+          cooldown: 0, dismissible: true, onboard: true },
+
+        { id: 'onboard_review_outcome', stage: 'fan', trigger: 'onboard_step_3', page: 'any',
+          message: 'Good run. Let\u2019s quickly capture what worked and what didn\u2019t.',
+          coach: 'One tap \u2014 that\u2019s all it takes.',
+          actions: [{ label: 'Review Rehearsal \u2192', onclick: "showPage('rehearsal')" }],
+          cooldown: 0, dismissible: true, onboard: true },
+
+        { id: 'onboard_complete', stage: 'fan', trigger: 'onboard_done', page: 'any',
+          message: 'You\u2019re up and running. Your scorecard will track improvement from here.',
+          coach: 'I\u2019ll check in before your next rehearsal.',
+          actions: [{ label: 'Got it', dismiss: true }],
+          cooldown: 0, dismissible: true, onboard: true },
+
         // ── FAN stage: welcoming, simple ──
         { id: 'welcome', stage: 'fan', trigger: 'first_visit', page: 'home',
           message: 'Welcome to GrooveLinx! I\u2019m here to help your band get tighter.',
@@ -179,6 +228,12 @@ window.GLAvatarGuide = (function() {
 
     function _checkTrigger(trigger, ctx) {
         switch (trigger) {
+            // Onboarding triggers (sequential, highest priority)
+            case 'onboard_step_1': return _onboardStep() === 1 && (ctx.songCount || 0) >= 3 && (ctx.setlistCount || 0) === 0;
+            case 'onboard_step_2': return _onboardStep() === 2;
+            case 'onboard_step_3': return _onboardStep() === 3;
+            case 'onboard_done':   return _onboardStep() === 0 && !localStorage.getItem('gl_onboard_celebrated');
+
             case 'first_visit': return !localStorage.getItem('gl_avatar_welcomed');
             case 'no_songs': return (ctx.songCount || 0) < 3;
             case 'songs_added_first': return (ctx.songCount || 0) >= 3 && !localStorage.getItem('gl_avatar_first_songs');
@@ -214,6 +269,7 @@ window.GLAvatarGuide = (function() {
         if (tipId === 'welcome') localStorage.setItem('gl_avatar_welcomed', '1');
         if (tipId === 'first_songs_added') localStorage.setItem('gl_avatar_first_songs', '1');
         if (tipId === 'first_practice_done') localStorage.setItem('gl_avatar_first_practice', '1');
+        if (tipId === 'onboard_complete') localStorage.setItem('gl_onboard_celebrated', '1');
     }
 
     function dismiss(tipId, permanent) {
@@ -234,6 +290,10 @@ window.GLAvatarGuide = (function() {
         localStorage.removeItem('gl_avatar_welcomed');
         localStorage.removeItem('gl_avatar_first_songs');
         localStorage.removeItem('gl_avatar_first_practice');
+        localStorage.removeItem(_OB_SETLIST_KEY);
+        localStorage.removeItem(_OB_REHEARSAL_KEY);
+        localStorage.removeItem(_OB_REVIEW_KEY);
+        localStorage.removeItem('gl_onboard_celebrated');
     }
 
     // ── Context Builder ──────────────────────────────────────────────────────
@@ -459,6 +519,22 @@ window.GLAvatarGuide = (function() {
 
     // ── Public API ──────────────────────────────────────────────────────────
 
+    // Listen for rehearsal session completion to mark onboard review step
+    if (typeof GLStore !== 'undefined' && GLStore.on) {
+        GLStore.on('agendaSessionCompleted', function() {
+            completeOnboardStep('review');
+        });
+    }
+    // Fallback: also listen after a delay in case GLStore loads after this file
+    setTimeout(function() {
+        if (typeof GLStore !== 'undefined' && GLStore.on && !window._glOnboardReviewWired) {
+            window._glOnboardReviewWired = true;
+            GLStore.on('agendaSessionCompleted', function() {
+                completeOnboardStep('review');
+            });
+        }
+    }, 3000);
+
     return {
         STAGE: STAGE,
         INTENT: INTENT,
@@ -474,6 +550,8 @@ window.GLAvatarGuide = (function() {
         checkAutoLaunch: checkAutoLaunch,
         checkMagicMoment: checkMagicMoment,
         getSpotifyMessage: getSpotifyMessage,
+        completeOnboardStep: completeOnboardStep,
+        getOnboardStep: _onboardStep,
         GUIDANCE: GUIDANCE
     };
 
