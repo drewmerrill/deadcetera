@@ -75,9 +75,9 @@ window.GLAvatarGuide = (function() {
           cooldown: 86400000, dismissible: true },
 
         { id: 'first_songs_added', stage: 'fan', trigger: 'songs_added_first', page: 'home',
-          message: 'Nice \u2014 you\u2019ve got songs in. Want to run a quick practice set?',
+          message: 'Nice \u2014 let\u2019s run one.',
           coach: 'Listening through your set is the fastest way to tighten up.',
-          actions: [{ label: 'Practice Set', onclick: "hdPlayBundle('focus')" }],
+          actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
           cooldown: 0, dismissible: true },
 
         { id: 'empty_setlist', stage: 'fan', trigger: 'no_setlists', page: 'setlists',
@@ -86,21 +86,21 @@ window.GLAvatarGuide = (function() {
           cooldown: 86400000, dismissible: true },
 
         { id: 'first_practice_done', stage: 'fan', trigger: 'first_practice_complete', page: 'home',
-          message: 'You just ran your first practice set! That\u2019s how bands get tighter.',
-          coach: 'Next step: try a full rehearsal with timing.',
-          actions: [{ label: 'Start Rehearsal', onclick: "showPage('rehearsal')" }],
+          message: 'First set done. That\u2019s how bands get tighter.',
+          coach: 'Next: run a full rehearsal with timing.',
+          actions: [{ label: '\uD83C\uDFB8 Start Rehearsal', onclick: "showPage('rehearsal')" }],
           cooldown: 0, dismissible: true },
 
         { id: 'practice_nudge', stage: 'fan', trigger: 'not_practiced_today', page: 'home',
-          message: 'Haven\u2019t practiced today. Even a quick run helps.',
-          actions: [{ label: 'Quick Practice', onclick: "hdPlayBundle('focus')" }],
+          message: 'No reps today yet. A quick run makes a difference.',
+          actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
           cooldown: 43200000, dismissible: true },
 
         // ── BANDMATE stage: context-aware ──
         { id: 'weak_songs_exist', stage: 'bandmate', trigger: 'has_weak_songs', page: 'home',
-          message: '{weakCount} songs still need work before the gig.',
-          coach: 'Focus on the weakest ones first \u2014 biggest bang for your time.',
-          actions: [{ label: 'Practice Weak Songs', onclick: "hdPlayBundle('focus')" }],
+          message: '{weakCount} songs still need reps.',
+          coach: 'Weakest ones first \u2014 biggest bang for your time.',
+          actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
           cooldown: 43200000, dismissible: true },
 
         { id: 'gig_soon', stage: 'bandmate', trigger: 'gig_within_2_days', page: 'home',
@@ -114,7 +114,7 @@ window.GLAvatarGuide = (function() {
           cooldown: 0, dismissible: true },
 
         { id: 'no_rehearsal_this_week', stage: 'bandmate', trigger: 'no_rehearsal_this_week', page: 'home',
-          message: 'No rehearsal logged this week. Schedule one?',
+          message: 'No rehearsal this week. Time to schedule one.',
           actions: [{ label: 'Open Calendar', onclick: "showPage('calendar')" }],
           cooldown: 86400000, dismissible: true },
 
@@ -396,10 +396,20 @@ window.GLAvatarGuide = (function() {
         var songCount = (typeof allSongs !== 'undefined') ? allSongs.length : 0;
         if (songCount < 3) return;
         localStorage.setItem('gl_avatar_autolaunch_done', '1');
-        // Show overlay nudge via UI
-        if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI._showAutoLaunchNudge) {
-            GLAvatarUI._showAutoLaunchNudge();
+        localStorage.setItem('gl_avatar_first_play_ready', '1');
+
+        // Navigate to Play dashboard if not already there, then show nudge
+        if (typeof GLStore !== 'undefined' && GLStore.getProductMode && GLStore.getProductMode() !== 'play') {
+            if (typeof GLStore.setProductMode === 'function') GLStore.setProductMode('play');
         }
+        if (typeof showPage === 'function') showPage('home');
+
+        // Show overlay nudge after brief delay for page render
+        setTimeout(function() {
+            if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI._showAutoLaunchNudge) {
+                GLAvatarUI._showAutoLaunchNudge();
+            }
+        }, 500);
     }
 
     // ── Magic Moment ─────────────────────────────────────────────────────────
@@ -410,7 +420,7 @@ window.GLAvatarGuide = (function() {
         if (!localStorage.getItem('gl_avatar_first_practice')) return null;
         localStorage.setItem('gl_avatar_magic_done', '1');
         return {
-            message: 'Nice \u2014 that tightened up already.\nWant me to line up your weakest songs next?',
+            message: 'That already sounded tighter.\nLet me line up your weakest songs next.',
             primaryAction: { label: '\u25B6 Play Weak Songs', onclick: "hdPlayBundle('focus')" },
             secondaryActions: [{ label: 'Not Now', dismiss: true }]
         };

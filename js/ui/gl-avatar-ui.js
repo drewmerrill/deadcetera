@@ -18,7 +18,7 @@ window.GLAvatarUI = (function() {
     var _currentTip = null;
     var _hasUnread = false;
 
-    var _AVATAR_NAME = 'Roadie'; // default — can be changed
+    var _AVATAR_NAME = 'GrooveMate'; // band guide avatar
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
@@ -246,10 +246,11 @@ window.GLAvatarUI = (function() {
         ov.id = 'glAvAutoLaunch';
         ov.style.cssText = 'position:fixed;bottom:100px;right:16px;z-index:9200;max-width:300px;padding:16px;background:linear-gradient(135deg,#1e293b,#1a2540);border:1px solid rgba(99,102,241,0.4);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:glAvSlideIn 0.3s ease;color:#f1f5f9';
         ov.innerHTML = ''
-            + '<div style="font-size:0.88em;font-weight:700;margin-bottom:6px">Let\u2019s run one. Hit play.</div>'
-            + '<div style="font-size:0.75em;color:#94a3b8;margin-bottom:10px">Your songs are in \u2014 time to hear them.</div>'
-            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.88em;cursor:pointer">\u25B6 Run What Matters</button>'
-            + '<button onclick="document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Not now</button>';
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.1em">\uD83C\uDFB8</span><span style="font-size:0.72em;font-weight:700;color:#818cf8">GrooveMate</span></div>'
+            + '<div style="font-size:0.92em;font-weight:700;margin-bottom:4px">Nice \u2014 let\u2019s run one.</div>'
+            + '<div style="font-size:0.75em;color:#94a3b8;margin-bottom:10px">Your songs are in. Hit play.</div>'
+            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.88em;cursor:pointer">\u25B6 Run What Matters</button>'
+            + '<button onclick="document.getElementById(\'glAvAutoLaunch\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Later</button>';
         document.body.appendChild(ov);
 
         // Auto-dismiss after 15 seconds
@@ -272,9 +273,10 @@ window.GLAvatarUI = (function() {
         ov.id = 'glAvMagicMoment';
         ov.style.cssText = 'position:fixed;bottom:100px;right:16px;z-index:9200;max-width:300px;padding:16px;background:linear-gradient(135deg,#1e293b,#0f2a1a);border:1px solid rgba(34,197,94,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:glAvSlideIn 0.3s ease;color:#f1f5f9';
         ov.innerHTML = ''
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:1.1em">\uD83C\uDFB8</span><span style="font-size:0.72em;font-weight:700;color:#22c55e">GrooveMate</span></div>'
             + '<div style="font-size:0.88em;font-weight:700;line-height:1.4;margin-bottom:10px;white-space:pre-line">' + _esc(magic.message) + '</div>'
-            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.85em;cursor:pointer">\u25B6 Play Weak Songs</button>'
-            + '<button onclick="document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Not now</button>';
+            + '<button onclick="hdPlayBundle(\'focus\');document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.85em;cursor:pointer">\u25B6 Play Weak Songs</button>'
+            + '<button onclick="document.getElementById(\'glAvMagicMoment\').remove()" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;border:none;background:none;color:#475569;cursor:pointer;font-size:0.72em">Later</button>';
         document.body.appendChild(ov);
 
         setTimeout(function() { var el = document.getElementById('glAvMagicMoment'); if (el) el.remove(); }, 20000);
