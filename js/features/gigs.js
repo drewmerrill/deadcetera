@@ -1460,14 +1460,23 @@ window.openGigMode = openGigMode;
 window.closeGigMode = closeGigMode;
 
 window.gigPlaySetlist = async function(setlistId) {
-    if (typeof SetlistPlayer === 'undefined') { if (typeof showToast === 'function') showToast('Player not available'); return; }
     try {
         var slData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'setlists') : null;
         if (!slData) { showToast('Could not load setlists'); return; }
         var all = Array.isArray(slData) ? slData : Object.values(slData);
         var sl = all.find(function(s) { return s && (s.id === setlistId || s.name === setlistId || s.title === setlistId); });
         if (!sl) { showToast('Setlist not found'); return; }
-        SetlistPlayer.launch(sl, sl.name || sl.title || 'Setlist');
+        var name = sl.name || sl.title || 'Setlist';
+        // Use unified engine if available (prevents z-index conflict with SetlistPlayer)
+        if (typeof GLPlayerEngine !== 'undefined' && typeof GLPlayerUI !== 'undefined') {
+            GLPlayerEngine.loadFromSetlist(sl, { name: name });
+            GLPlayerUI.showOverlay();
+            GLPlayerEngine.play(0);
+        } else if (typeof SetlistPlayer !== 'undefined') {
+            SetlistPlayer.launch(sl, name);
+        } else {
+            showToast('Player not available');
+        }
     } catch(e) { if (typeof showToast === 'function') showToast('Error: ' + e.message); }
 };
 window.gmNavigate = gmNavigate;

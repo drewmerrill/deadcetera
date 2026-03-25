@@ -291,6 +291,7 @@
         '</div>' +
         '<div class="lg-header-right">' +
           '<span class="lg-song-counter" id="lgCounter">1 / ' + totalSongs + '</span>' +
+          '<button class="lg-btn-fs" id="lgAudioBtn" onclick="lgToggleAudio()" title="Play audio" style="font-size:0.7em">&#x1F3A7;</button>' +
           '<button class="lg-btn-fs" id="lgFsBtn" onclick="lgToggleFullscreen()" title="Fullscreen">&#x26F6;</button>' +
           '<button class="lg-btn-fs" id="lgZenBtn" onclick="lgToggleZen()" title="Zen mode">&#x1F9D8;</button>' +
         '</div>' +
@@ -600,11 +601,88 @@
   /* ─────────────────────────────────────────────────────────────
      EXPORTS
   ───────────────────────────────────────────────────────────── */
+  // ── Audio float player integration ─────────────────────────────────────
+  var _lgAudioActive = false;
+
+  function lgToggleAudio() {
+    var E = window.GLPlayerEngine;
+    var UI = window.GLPlayerUI;
+    if (!E || !UI) { if (typeof showToast === 'function') showToast('Player not available'); return; }
+
+    if (_lgAudioActive) {
+      // Stop audio
+      UI.closeAll();
+      _lgAudioActive = false;
+      _lgUpdateAudioBtn();
+      return;
+    }
+
+    // Build song queue from current setlist
+    var songs = _lg.songs.map(function(s) { return s.title || s; });
+    if (!songs.length) { if (typeof showToast === 'function') showToast('No songs to play'); return; }
+
+    E.loadQueue(songs, { name: _lg.setlistName || 'Live Set', context: 'Playing with charts' });
+    UI.showFloat();
+    E.play(_lg.cursor || 0);
+    _lgAudioActive = true;
+    _lgUpdateAudioBtn();
+
+    // Sync: when live gig navigates, advance the audio player too
+    E.on('songChange', _lgSyncFromEngine);
+  }
+
+  function _lgUpdateAudioBtn() {
+    var btn = document.getElementById('lgAudioBtn');
+    if (!btn) return;
+    btn.style.background = _lgAudioActive ? 'rgba(99,102,241,0.3)' : '';
+    btn.style.color = _lgAudioActive ? '#a5b4fc' : '';
+    btn.title = _lgAudioActive ? 'Stop audio' : 'Play audio';
+  }
+
+  // When user navigates in Live Gig, sync the audio player
+  var _origLgNext = lgNext;
+  var _origLgPrev = lgPrev;
+
+  lgNext = function() {
+    _origLgNext();
+    if (_lgAudioActive && window.GLPlayerEngine) {
+      window.GLPlayerEngine.play(_lg.cursor);
+    }
+  };
+
+  lgPrev = function() {
+    _origLgPrev();
+    if (_lgAudioActive && window.GLPlayerEngine) {
+      window.GLPlayerEngine.play(_lg.cursor);
+    }
+  };
+
+  // When engine advances (auto-advance), sync Live Gig cursor
+  function _lgSyncFromEngine(d) {
+    if (!_lgAudioActive) return;
+    if (d.idx !== undefined && d.idx !== _lg.cursor && d.idx < _lg.songs.length) {
+      _lg.cursor = d.idx;
+      _updateSongCard();
+    }
+  }
+
+  // Clean up audio on exit
+  var _origLgExit = lgExit;
+  lgExit = function() {
+    if (_lgAudioActive && window.GLPlayerUI) {
+      window.GLPlayerUI.closeAll();
+      _lgAudioActive = false;
+    }
+    if (window.GLPlayerEngine) window.GLPlayerEngine.off('songChange', _lgSyncFromEngine);
+    _origLgExit();
+  };
+
   window.initLiveGig        = initLiveGig;
   window.lgNext             = lgNext;
   window.lgPrev             = lgPrev;
   window.lgJumpTo           = lgJumpTo;
   window.lgToggleFullscreen = lgToggleFullscreen;
+  window.lgToggleAudio      = lgToggleAudio;
   window.lgExit             = lgExit;
   window.lgToggleJumpMenu   = lgToggleJumpMenu;
 

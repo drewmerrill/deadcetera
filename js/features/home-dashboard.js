@@ -1374,10 +1374,12 @@ function _renderPlayDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         _renderModeHeader('\uD83C\uDFA4', 'Play', 'Everything you need. Nothing you don\'t.'),
-        _renderActionOwedCard(),
+        _renderNextActionCard(bundle, wf),
+        _renderBandScorecard(bundle),
         _renderListeningCard('gig', '\uD83C\uDFA7 Play Your Set', 'Listen through the gig setlist'),
         _renderPlayUpcomingSet(bundle),
         _renderPlayReadiness(bundle),
+        _renderActionOwedCard(),
         '</div>'
     ].join('');
 }
