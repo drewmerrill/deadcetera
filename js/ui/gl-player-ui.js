@@ -336,65 +336,134 @@ window.GLPlayerUI = (function() {
     }
 
     // ── Completion Screen ─────────────────────────────────────────────────
+
+    function _generateReflection(songCount, context) {
+        // Derive a meaningful reflection line
+        if (context && context.indexOf('weakest') >= 0) {
+            if (songCount >= 5) return 'Deep focus session \u2014 your weak spots are getting stronger';
+            return 'Targeted practice \u2014 every rep counts';
+        }
+        if (context && context.indexOf('gig') >= 0) {
+            if (songCount >= 10) return 'Full run-through \u2014 you\u2019re gig-ready';
+            return 'Tight run \u2014 ready for the stage';
+        }
+        if (songCount >= 8) return 'Strong session \u2014 stayed locked in';
+        if (songCount >= 4) return 'Good work \u2014 building momentum';
+        return 'Every practice counts \u2014 keep showing up';
+    }
+
+    function _getStreakForCompletion() {
+        // Read streak from home-dashboard's action log
+        try {
+            var log = JSON.parse(localStorage.getItem('gl_action_log') || '{}');
+            var streak = 0;
+            var d = new Date();
+            for (var i = 0; i < 30; i++) {
+                var ds = d.toISOString().split('T')[0];
+                var acts = log[ds] || [];
+                if (acts.some(function(a) { return a.type === 'practice_set' || a.type === 'practice_all' || a.type === 'rehearsal'; })) streak++;
+                else if (i > 0) break;
+                d.setDate(d.getDate() - 1);
+            }
+            return streak;
+        } catch(e) { return 0; }
+    }
+
+    function _getBandSignalForCompletion() {
+        // Light band-level message
+        try {
+            if (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache) {
+                var rated = _rhSessionsCache.filter(function(s) { return s.rating; }).slice(0, 5);
+                if (rated.length >= 2) {
+                    var rv = { great: 3, solid: 2, needs_work: 1 };
+                    var recent = rated.slice(0, Math.ceil(rated.length / 2));
+                    var older = rated.slice(Math.ceil(rated.length / 2));
+                    var ra = recent.reduce(function(s, r) { return s + (rv[r.rating] || 0); }, 0) / recent.length;
+                    var oa = older.reduce(function(s, r) { return s + (rv[r.rating] || 0); }, 0) / older.length;
+                    if (ra > oa + 0.3) return '\u2191 Band trending up this week';
+                    if (ra >= oa - 0.3) return '\u2192 Band holding steady';
+                }
+            }
+        } catch(e) {}
+        return '';
+    }
+
     function _showCompletionScreen() {
         var E = window.GLPlayerEngine;
         if (!E) return;
         var q = E.getQueue();
-        var name = E.getQueueName();
         var context = E.getQueueContext ? E.getQueueContext() : '';
         var songCount = q.length;
+        var reflection = _generateReflection(songCount, context);
+        var streak = _getStreakForCompletion();
+        var bandSignal = _getBandSignalForCompletion();
 
-        // Replace video + song info with completion state
+        // Clear song info areas
         var vc = document.getElementById('glpVideoContainer');
         if (vc) vc.innerHTML = '';
-
-        var titleEl = document.getElementById('glpSongTitle');
-        if (titleEl) { titleEl.textContent = ''; titleEl.style.opacity = '1'; }
-        var artistEl = document.getElementById('glpSongArtist');
-        if (artistEl) artistEl.textContent = '';
-
+        _setText('glpSongTitle', '');
+        _setText('glpSongArtist', '');
         var sourceEl = document.getElementById('glpSourceLabel');
         if (sourceEl) sourceEl.innerHTML = '';
-
         var progressEl = document.getElementById('glpProgress');
         if (progressEl) progressEl.innerHTML = '';
 
-        // Show completion in fallback area
         var fb = document.getElementById('glpFallback');
         if (!fb) return;
 
-        // Inject completion animation
+        // Stronger animation
         if (!document.getElementById('glpCompletionStyles')) {
             var cst = document.createElement('style');
             cst.id = 'glpCompletionStyles';
-            cst.textContent = '@keyframes glpBounce{0%{transform:scale(0)}50%{transform:scale(1.15)}100%{transform:scale(1)}}';
+            cst.textContent = '@keyframes glpBounce{0%{transform:scale(0) rotate(-10deg)}40%{transform:scale(1.2) rotate(3deg)}70%{transform:scale(0.95) rotate(-1deg)}100%{transform:scale(1) rotate(0)}}@keyframes glpFadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes glpGlow{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}50%{box-shadow:0 0 24px 6px rgba(34,197,94,0.12)}}';
             document.head.appendChild(cst);
         }
 
-        var html = '<div style="padding:20px 0;text-align:center">';
-        // Celebration
-        html += '<div style="width:64px;height:64px;margin:0 auto 12px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.15),rgba(99,102,241,0.1));display:flex;align-items:center;justify-content:center;animation:glpBounce 0.4s ease"><span style="font-size:1.8em">\u2705</span></div>';
-        html += '<div style="font-size:1.2em;font-weight:800;color:#e2e8f0;margin-bottom:4px">Set Complete</div>';
-        html += '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:4px">You practiced ' + songCount + ' song' + (songCount !== 1 ? 's' : '') + '</div>';
-        if (context) html += '<div style="font-size:0.75em;color:#64748b;margin-bottom:12px">' + _esc(context) + '</div>';
+        var html = '<div style="padding:16px 0;text-align:center;animation:glpFadeUp 0.4s ease">';
+
+        // Celebration icon
+        html += '<div style="width:72px;height:72px;margin:0 auto 14px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(99,102,241,0.12));display:flex;align-items:center;justify-content:center;animation:glpBounce 0.5s ease 0.1s both, glpGlow 1.5s ease 0.5s"><span style="font-size:2em">\u2705</span></div>';
+
+        // Headline
+        html += '<div style="font-size:1.3em;font-weight:800;color:#e2e8f0;margin-bottom:6px">Set Complete</div>';
+
+        // Reflection
+        html += '<div style="font-size:0.88em;color:#94a3b8;margin-bottom:4px;font-style:italic">' + _esc(reflection) + '</div>';
+
+        // Stats
+        html += '<div style="font-size:0.82em;color:#64748b;margin-bottom:8px">' + songCount + ' song' + (songCount !== 1 ? 's' : '') + ' practiced</div>';
+
+        // Streak
+        if (streak >= 2) {
+            var streakColor = streak >= 5 ? '#ef4444' : streak >= 3 ? '#fbbf24' : '#a5b4fc';
+            var streakIcon = streak >= 5 ? '\uD83D\uDD25' : streak >= 3 ? '\u26A1' : '\uD83D\uDCAA';
+            html += '<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px">';
+            html += '<span style="font-size:0.88em">' + streakIcon + '</span>';
+            html += '<span style="font-size:0.78em;font-weight:700;color:' + streakColor + '">' + streak + ' day' + (streak > 1 ? 's' : '') + ' in a row</span>';
+            html += '</div>';
+        }
+
+        // Band signal
+        if (bandSignal) {
+            html += '<div style="font-size:0.72em;color:#818cf8;margin-bottom:10px">' + bandSignal + '</div>';
+        }
 
         // Next actions
-        html += '<div style="font-size:0.72em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">What\u2019s next?</div>';
+        html += '<div style="font-size:0.68em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px">What\u2019s next?</div>';
         html += '<div style="display:flex;flex-direction:column;gap:6px;max-width:280px;margin:0 auto">';
         html += '<button onclick="GLPlayerUI.closeAll();if(typeof showPage===\'function\')showPage(\'home\')" style="padding:10px;border-radius:10px;font-size:0.85em;font-weight:700;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">\uD83C\uDFE0 Back to Home</button>';
         html += '<button onclick="GLPlayerEngine.play(0)" style="padding:10px;border-radius:10px;font-size:0.85em;font-weight:700;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:#86efac;cursor:pointer">\uD83D\uDD01 Run It Again</button>';
-        html += '<button onclick="GLPlayerUI.closeAll();if(typeof showPage===\'function\')showPage(\'rehearsal\')" style="padding:10px;border-radius:10px;font-size:0.85em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">\uD83C\uDFB8 Start Rehearsal</button>';
+        html += '<button onclick="GLPlayerUI.closeAll();if(typeof showPage===\'function\')showPage(\'rehearsal\')" style="padding:10px;border-radius:10px;font-size:0.82em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">\uD83C\uDFB8 Start Rehearsal</button>';
         html += '</div>';
         html += '</div>';
 
         fb.innerHTML = html;
         fb.style.display = '';
 
-        // Update up next
         var nextEl = document.getElementById('glpUpNext');
-        if (nextEl) nextEl.innerHTML = '\uD83C\uDFB6 Nice run \u2014 keep the momentum going';
+        if (nextEl) nextEl.innerHTML = streak >= 3 ? '\uD83D\uDD25 ' + streak + '-day streak \u2014 don\u2019t break it' : '\uD83C\uDFB6 Keep the momentum going';
 
-        if (typeof showToast === 'function') showToast('\u2705 Set complete \u2014 ' + songCount + ' songs practiced');
+        if (typeof showToast === 'function') showToast('\u2705 Set complete \u2014 ' + songCount + ' songs practiced' + (streak >= 2 ? ' \u00B7 ' + streak + '-day streak' : ''));
     }
 
     function _playPastedUrl() {
