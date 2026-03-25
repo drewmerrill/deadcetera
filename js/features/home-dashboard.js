@@ -1101,6 +1101,14 @@ function _renderBandScorecard(bundle) {
     // Coach line
     if (sc.coachLine) html += '<div style="font-size:0.78em;color:#64748b;font-style:italic;margin-bottom:10px">' + _escHtml(sc.coachLine) + '</div>';
 
+    // Top focus — single most important issue as callout
+    if (sc.topFocus) {
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">';
+        html += '<span style="font-size:0.65em;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.06em;flex-shrink:0">Top Focus</span>';
+        html += '<span style="font-size:0.78em;font-weight:600;color:#e2e8f0">' + _escHtml(sc.topFocus) + '</span>';
+        html += '</div>';
+    }
+
     // Rating dots
     if (sc.ratingDots) {
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;background:rgba(0,0,0,0.15);border-radius:8px">';
@@ -1127,12 +1135,13 @@ function _renderBandScorecard(bundle) {
         html += '</div>';
     }
 
-    // Song movement
+    // Song movement with timeframe
     if (sc.songsImproved > 0 || sc.songsDeclining > 0) {
-        html += '<div style="display:flex;gap:12px;padding:8px 0;border-top:1px solid rgba(255,255,255,0.04);font-size:0.7em">';
+        html += '<div style="display:flex;gap:12px;padding:8px 0;border-top:1px solid rgba(255,255,255,0.04);font-size:0.7em;flex-wrap:wrap">';
         if (sc.songsImproved > 0) html += '<span style="color:#22c55e;font-weight:600">\u2191 ' + sc.songsImproved + ' song' + (sc.songsImproved > 1 ? 's' : '') + ' locked in</span>';
         if (sc.songsDeclining > 0) html += '<span style="color:#fbbf24;font-weight:600">\u2193 ' + sc.songsDeclining + ' need attention</span>';
         if (sc.songsUnchanged > 0) html += '<span style="color:#475569">\u2192 ' + sc.songsUnchanged + ' in progress</span>';
+        html += '<span style="color:#334155;margin-left:auto">current snapshot</span>';
         html += '</div>';
     }
 
@@ -1233,6 +1242,9 @@ function _computeScorecard(bundle) {
     // Cap at 3 each, most important first
     sc.strengths = sc.strengths.slice(0, 3);
     sc.issues = sc.issues.slice(0, 3);
+
+    // Top focus: single highest-priority issue as headline
+    sc.topFocus = sc.issues.length ? sc.issues[0] : '';
 
     // ── Health summary + coach line ──
     if (sc.trend === 'improving' && highReady > lowReady) {
