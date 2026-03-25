@@ -129,18 +129,17 @@ window.showPage = function showPage(page) {
 
     // Run renderer (songs page is rendered by selectSong / renderSongs, not here)
     if (el && page !== 'songs') {
-        var renderer = pageRenderers[page];
-        if (typeof renderer === 'function') {
-            // Lazy-load page scripts if needed, then render
-            if (_glPageScripts[page]) {
-                var _lazyStart = performance.now();
-                _glLazyLoadPage(page, function() {
-                    console.log('[Startup] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
-                    renderer(el);
-                });
-            } else {
-                renderer(el);
-            }
+        if (_glPageScripts[page]) {
+            // Lazy-load page scripts first, then run renderer (which may be registered by the loaded script)
+            var _lazyStart = performance.now();
+            _glLazyLoadPage(page, function() {
+                console.log('[Startup] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
+                var renderer = pageRenderers[page];
+                if (typeof renderer === 'function') renderer(el);
+            });
+        } else {
+            var renderer = pageRenderers[page];
+            if (typeof renderer === 'function') renderer(el);
         }
     }
 
