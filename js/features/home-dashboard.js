@@ -441,42 +441,137 @@ function _renderNextActionCard(bundle, wf) {
     return html;
 }
 
-// ── Progression Signal ──────────────────────────────────────────────────────
+// ── Progression + Band Activity Signals ──────────────────────────────────────
 function _renderProgressionSignal(bundle) {
     var signals = [];
+    var milestones = [];
 
-    // Songs improved this week (readiness increased)
+    // ── Personal signals ──
     var weekActions = _getActionsThisWeek();
     var practiceCount = weekActions.filter(function(a) { return a.type === 'practice_set' || a.type === 'practice_all'; }).length;
-    if (practiceCount > 0) signals.push('\uD83C\uDFB5 ' + practiceCount + ' practice session' + (practiceCount > 1 ? 's' : '') + ' this week');
+    if (practiceCount > 0) signals.push({ text: '\uD83C\uDFB5 ' + practiceCount + ' practice session' + (practiceCount > 1 ? 's' : '') + ' this week', type: 'personal' });
 
-    // Rehearsal trend (from session data if available)
+    // Streak detection
+    var streak = _getPracticeStreak();
+    if (streak >= 5) milestones.push({ icon: '\uD83D\uDD25', text: streak + '-day practice streak!', color: '#ef4444' });
+    else if (streak >= 3) milestones.push({ icon: '\u26A1', text: streak + '-day streak \u2014 keep it going', color: '#fbbf24' });
+
+    // ── Band signals ──
+    // Rehearsal sessions this week (shared data from Firebase)
     try {
-        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-        // Use cached sessions if available
-        if (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache && _rhSessionsCache.length >= 2) {
+        if (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache && _rhSessionsCache.length > 0) {
+            var weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+            var weekSessions = _rhSessionsCache.filter(function(s) { return (s.date || '') >= weekAgo; });
+            if (weekSessions.length > 0) {
+                signals.push({ text: '\uD83C\uDFB8 Band rehearsed ' + weekSessions.length + ' time' + (weekSessions.length > 1 ? 's' : '') + ' this week', type: 'band' });
+            }
+
+            // Band momentum: last 5 ratings as visual
             var rated = _rhSessionsCache.filter(function(s) { return s.rating; }).slice(0, 5);
             if (rated.length >= 2) {
                 var ratingValues = { great: 3, solid: 2, needs_work: 1 };
+                var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
+                var dots = rated.map(function(s) { return ratingIcons[s.rating] || '\u25CB'; }).reverse().join('');
                 var recentAvg = rated.slice(0, Math.ceil(rated.length / 2)).reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / Math.ceil(rated.length / 2);
                 var olderAvg = rated.slice(Math.ceil(rated.length / 2)).reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / (rated.length - Math.ceil(rated.length / 2));
-                if (recentAvg > olderAvg + 0.3) signals.push('\u2191 Last ' + rated.length + ' rehearsals trending up');
-                else if (recentAvg >= olderAvg - 0.3) signals.push('\u2192 Rehearsals holding steady');
+                var trendLabel = '', trendColor = '';
+                if (recentAvg > olderAvg + 0.3) { trendLabel = '\u2191 Improving'; trendColor = '#22c55e'; }
+                else if (recentAvg < olderAvg - 0.3) { trendLabel = '\u2193 Needs attention'; trendColor = '#fbbf24'; }
+                else { trendLabel = '\u2192 Steady'; trendColor = '#94a3b8'; }
+                signals.push({ text: 'Band momentum: ' + dots + ' <span style="color:' + trendColor + '">' + trendLabel + '</span>', type: 'band', html: true });
             }
         }
     } catch(e) {}
 
-    // Weak song count direction
+    // Active members (check readiness updates this week)
+    try {
+        var rc = bundle.readinessCache || {};
+        var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+        var activeMembers = 0;
+        var weekAgoDate = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+        // Count members who have any readiness scores (proxy for activity)
+        members.forEach(function(m) {
+            var hasScores = false;
+            Object.keys(rc).forEach(function(song) {
+                if (rc[song] && rc[song][m.key] && rc[song][m.key] > 0) hasScores = true;
+            });
+            if (hasScores) activeMembers++;
+        });
+        if (activeMembers > 1 && members.length > 1) {
+            signals.push({ text: '\uD83D\uDC65 ' + activeMembers + ' of ' + members.length + ' members active', type: 'band' });
+        }
+    } catch(e) {}
+
+    // ── Milestones ──
     var weakCount = _countWeakSongs(bundle);
-    if (weakCount === 0) signals.push('\uD83D\uDD12 All songs in good shape');
+    if (weakCount === 0) milestones.push({ icon: '\uD83D\uDD12', text: 'All songs locked in \u2014 band is ready', color: '#22c55e' });
 
-    if (!signals.length) return '';
+    // All members rated above threshold
+    try {
+        var rc2 = bundle.readinessCache || {};
+        var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
+        var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+        var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
+        var aboveThreshold = 0;
+        var totalActive = 0;
+        allSongsList.forEach(function(s) {
+            var st = statusCache ? statusCache.getStatus(s.title) : null;
+            if (st && !activeStatuses[st]) return;
+            totalActive++;
+            var scores = rc2[s.title] || {};
+            var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+            var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+            if (avg >= 4) aboveThreshold++;
+        });
+        if (totalActive > 0 && aboveThreshold >= totalActive * 0.8 && aboveThreshold > 5) {
+            milestones.push({ icon: '\uD83C\uDFC6', text: '80%+ of songs at gig-ready level', color: '#a5b4fc' });
+        }
+    } catch(e) {}
 
-    return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">'
-        + signals.map(function(s) {
-            return '<div style="font-size:0.7em;font-weight:600;color:#94a3b8;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)">' + s + '</div>';
-        }).join('')
-        + '</div>';
+    if (!signals.length && !milestones.length) return '';
+
+    var html = '';
+
+    // Milestones first (celebratory)
+    if (milestones.length) {
+        html += milestones.map(function(m) {
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:6px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">'
+                + '<span style="font-size:1em">' + m.icon + '</span>'
+                + '<span style="font-size:0.78em;font-weight:700;color:' + m.color + '">' + m.text + '</span>'
+                + '</div>';
+        }).join('');
+    }
+
+    // Signal chips
+    if (signals.length) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">';
+        html += signals.map(function(s) {
+            var content = s.html ? s.text : _escHtml(s.text);
+            var borderColor = s.type === 'band' ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.05)';
+            return '<div style="font-size:0.7em;font-weight:600;color:#94a3b8;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid ' + borderColor + '">' + content + '</div>';
+        }).join('');
+        html += '</div>';
+    }
+
+    return html;
+}
+
+// ── Practice Streak ─────────────────────────────────────────────────────────
+function _getPracticeStreak() {
+    try {
+        var log = JSON.parse(localStorage.getItem(_ACTION_LOG_KEY) || '{}');
+        var streak = 0;
+        var d = new Date();
+        for (var i = 0; i < 30; i++) {
+            var dateStr = d.toISOString().split('T')[0];
+            var dayActions = log[dateStr] || [];
+            var practiced = dayActions.some(function(a) { return a.type === 'practice_set' || a.type === 'practice_all' || a.type === 'rehearsal'; });
+            if (practiced) streak++;
+            else if (i > 0) break; // streak broken (skip today if no practice yet)
+            d.setDate(d.getDate() - 1);
+        }
+        return streak;
+    } catch(e) { return 0; }
 }
 
 // ── Top Songs to Work ────────────────────────────────────────────────────────
