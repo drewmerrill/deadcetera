@@ -145,6 +145,47 @@ Band Feed
 
 ---
 
+## ACTIVATION TRACKING (Latest Update)
+
+Lightweight localStorage tracking for real-world validation. No backend.
+
+### How to read:
+Open browser console on any device → type `GLActivation.report()`
+
+### What it tracks:
+
+| Event | When |
+|-------|------|
+| `first_run_started` | Auto-engage overlay shown |
+| `first_playback` | User taps "Run What Matters" |
+| `auto_engage_skipped` | User taps "Skip for now" |
+| `second_action` | User taps "Play Weak Songs" in magic moment |
+| `magic_moment_skipped` | User skips magic moment |
+| `return_session` | User returns after first playback |
+
+### Report output:
+```
+{
+  firstRunAt: "3/25/2026, 10:15 AM",
+  firstPlaybackAt: "3/25/2026, 10:15 AM",
+  timeToFirstPlayback: "12s",
+  secondActionAt: "3/25/2026, 10:19 AM",
+  timeToSecondAction: "45s",
+  returned: true,
+  loopComplete: true,
+  hesitations: [{ after: "first_run_started", before: "first_playback", gap: "12s" }]
+}
+```
+
+### Hesitation detection:
+Any gap > 10 seconds between events is flagged as a hesitation point. Shows exactly where users pause.
+
+### Reset: `GLActivation.reset()`
+
+> **ChatGPT**: See `groovelinx_supporting_files/session_2026-03-25_full_manifest.md` for file manifest.
+
+---
+
 ## AUTO-ENGAGE MODE POLISH (Latest Update)
 
 ### Changes applied:

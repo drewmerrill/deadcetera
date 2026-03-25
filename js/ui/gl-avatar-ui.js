@@ -244,6 +244,7 @@ window.GLAvatarUI = (function() {
 
         // Hide avatar button during focused state — no distractions
         if (_btnEl) _btnEl.style.display = 'none';
+        if (typeof _logActivation === 'function') _logActivation('first_run_started');
 
         // Focused overlay — dims background, centers attention on play
         var dim = document.createElement('div');
@@ -279,6 +280,7 @@ window.GLAvatarUI = (function() {
 
     window._glAvAutoLaunchPlay = function() {
         _dismissAutoLaunch();
+        if (typeof _logActivation === 'function') _logActivation('first_playback');
         if (typeof hdPlayBundle === 'function') hdPlayBundle('focus');
         // Mid-playback reinforcement — show after ~25 seconds
         setTimeout(function() {
@@ -290,6 +292,7 @@ window.GLAvatarUI = (function() {
     };
 
     window._glAvAutoLaunchDismiss = function() {
+        if (typeof _logActivation === 'function') _logActivation('auto_engage_skipped');
         _dismissAutoLaunch();
     };
 
@@ -321,6 +324,7 @@ window.GLAvatarUI = (function() {
         var el = document.getElementById('glAvMagicMoment');
         if (el) el.remove();
         if (_btnEl) _btnEl.style.display = ''; // restore avatar
+        if (typeof _logActivation === 'function') _logActivation('second_action');
         if (typeof hdPlayBundle === 'function') hdPlayBundle('focus');
     };
 
@@ -328,12 +332,21 @@ window.GLAvatarUI = (function() {
         var el = document.getElementById('glAvMagicMoment');
         if (el) el.remove();
         if (_btnEl) _btnEl.style.display = ''; // restore avatar
+        if (typeof _logActivation === 'function') _logActivation('magic_moment_skipped');
     };
 
     // ── Init ─────────────────────────────────────────────────────────────────
 
     function init() {
         _createButton();
+        // Track return sessions
+        try {
+            var actData = JSON.parse(localStorage.getItem('gl_activation') || '{}');
+            if (actData.firstPlaybackTs && !actData.returnTs) {
+                // User has played before but never logged a return — this is a return
+                if (typeof _logActivation === 'function') _logActivation('return_session');
+            }
+        } catch(e) {}
         // Check on page load
         setTimeout(function() { checkForTips(); }, 2000);
         // Auto-launch check (≥3 songs, first time)

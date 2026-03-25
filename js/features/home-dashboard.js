@@ -669,12 +669,69 @@ function _logAction(actionType) {
         var today = _todayStr();
         if (!log[today]) log[today] = [];
         log[today].push({ type: actionType, ts: Date.now() });
-        // Keep last 14 days
         var keys = Object.keys(log).sort();
         while (keys.length > 14) { delete log[keys.shift()]; }
         localStorage.setItem(_ACTION_LOG_KEY, JSON.stringify(log));
     } catch(e) {}
 }
+
+// ── Activation Tracking ─────────────────────────────────────────────────────
+// Lightweight localStorage signals — no backend needed.
+// Read these from console: GLActivation.report()
+
+var _ACT_KEY = 'gl_activation';
+
+function _logActivation(event) {
+    try {
+        var data = JSON.parse(localStorage.getItem(_ACT_KEY) || '{}');
+        if (!data.events) data.events = [];
+        data.events.push({ e: event, ts: Date.now() });
+        // Track specific milestones
+        if (event === 'first_run_started' && !data.firstRunTs) data.firstRunTs = Date.now();
+        if (event === 'first_playback' && !data.firstPlaybackTs) data.firstPlaybackTs = Date.now();
+        if (event === 'second_action' && !data.secondActionTs) data.secondActionTs = Date.now();
+        if (event === 'return_session' && !data.returnTs) data.returnTs = Date.now();
+        localStorage.setItem(_ACT_KEY, JSON.stringify(data));
+    } catch(e) {}
+}
+
+window.GLActivation = {
+    report: function() {
+        try {
+            var data = JSON.parse(localStorage.getItem(_ACT_KEY) || '{}');
+            var events = data.events || [];
+
+            var r = { totalEvents: events.length };
+            if (data.firstRunTs) r.firstRunAt = new Date(data.firstRunTs).toLocaleString();
+            if (data.firstPlaybackTs) {
+                r.firstPlaybackAt = new Date(data.firstPlaybackTs).toLocaleString();
+                if (data.firstRunTs) r.timeToFirstPlayback = Math.round((data.firstPlaybackTs - data.firstRunTs) / 1000) + 's';
+            }
+            if (data.secondActionTs) {
+                r.secondActionAt = new Date(data.secondActionTs).toLocaleString();
+                if (data.firstPlaybackTs) r.timeToSecondAction = Math.round((data.secondActionTs - data.firstPlaybackTs) / 1000) + 's';
+            }
+            if (data.returnTs) r.returnAt = new Date(data.returnTs).toLocaleString();
+
+            // Hesitation: events with > 10s gap
+            var hesitations = [];
+            for (var i = 1; i < events.length; i++) {
+                var gap = events[i].ts - events[i - 1].ts;
+                if (gap > 10000) hesitations.push({ after: events[i - 1].e, before: events[i].e, gap: Math.round(gap / 1000) + 's' });
+            }
+            r.hesitations = hesitations;
+
+            // Did they complete the loop?
+            r.loopComplete = !!(data.firstRunTs && data.firstPlaybackTs && data.secondActionTs);
+            r.returned = !!data.returnTs;
+
+            console.table([r]);
+            console.log('[GLActivation] Full events:', events);
+            return r;
+        } catch(e) { console.log('No activation data'); return null; }
+    },
+    reset: function() { localStorage.removeItem(_ACT_KEY); console.log('Activation data cleared'); }
+};
 
 function _getActionsToday() {
     try {
