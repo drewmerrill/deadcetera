@@ -1079,43 +1079,49 @@ function _renderBandScorecard(bundle) {
     var sc = _computeScorecard(bundle);
     if (!sc) return '';
 
+    var trendLabels = { improving: 'Getting Better', steady: 'Holding Steady', declining: 'Needs Focus' };
     var trendIcons = { improving: '\u2191', steady: '\u2192', declining: '\u2193' };
     var trendColors = { improving: '#22c55e', steady: '#94a3b8', declining: '#fbbf24' };
-    var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
-    var ratingColors = { great: '#22c55e', solid: '#a5b4fc', needs_work: '#fbbf24' };
 
-    var html = '<div class="app-card" style="padding:14px;margin-bottom:12px;border:1px solid rgba(99,102,241,0.2);background:linear-gradient(160deg,rgba(99,102,241,0.04),rgba(15,23,42,0.5))">';
+    // Elevated card with subtle gradient border
+    var html = '<div class="app-card" style="padding:16px 16px 14px;margin-bottom:14px;border:1px solid rgba(99,102,241,0.15);background:linear-gradient(165deg,rgba(99,102,241,0.05) 0%,rgba(15,23,42,0.6) 100%);border-radius:14px;position:relative;overflow:hidden">';
 
-    // Header
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-    html += '<div style="font-size:0.82em;font-weight:800;color:var(--text)">\uD83D\uDCCA Band Scorecard</div>';
-    if (sc.trend) html += '<div style="font-size:0.75em;font-weight:700;color:' + (trendColors[sc.trend] || '#94a3b8') + '">' + (trendIcons[sc.trend] || '') + ' ' + _capitalize(sc.trend) + '</div>';
+    // Subtle accent line at top
+    html += '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,' + (sc.healthColor || '#64748b') + ',transparent)"></div>';
+
+    // Header row
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text);letter-spacing:-0.01em">\uD83D\uDCCA Band Scorecard</div>';
+    if (sc.trend) html += '<div style="font-size:0.72em;font-weight:700;color:' + (trendColors[sc.trend] || '#94a3b8') + ';padding:3px 10px;border-radius:6px;background:' + (trendColors[sc.trend] || '#94a3b8') + '15">' + (trendIcons[sc.trend] || '') + ' ' + (trendLabels[sc.trend] || '') + '</div>';
     html += '</div>';
 
-    // Health summary — the answer to "are we getting better?"
-    html += '<div style="font-size:0.88em;font-weight:700;color:' + (sc.healthColor || '#94a3b8') + ';margin-bottom:10px;line-height:1.4">' + _escHtml(sc.healthSummary) + '</div>';
+    // Health summary — the answer
+    html += '<div style="font-size:0.92em;font-weight:700;color:' + (sc.healthColor || '#94a3b8') + ';margin-bottom:4px;line-height:1.35">' + _escHtml(sc.healthSummary) + '</div>';
 
-    // Rating dots (last 5 sessions)
+    // Coach line
+    if (sc.coachLine) html += '<div style="font-size:0.78em;color:#64748b;font-style:italic;margin-bottom:10px">' + _escHtml(sc.coachLine) + '</div>';
+
+    // Rating dots
     if (sc.ratingDots) {
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">';
-        html += '<span style="font-size:0.68em;color:#475569">Last ' + sc.sessionCount + ':</span>';
-        html += '<span style="font-size:0.85em;letter-spacing:2px">' + sc.ratingDots + '</span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;background:rgba(0,0,0,0.15);border-radius:8px">';
+        html += '<span style="font-size:0.65em;color:#475569;font-weight:600">Last ' + sc.sessionCount + '</span>';
+        html += '<span style="font-size:0.9em;letter-spacing:3px">' + sc.ratingDots + '</span>';
         html += '</div>';
     }
 
-    // Strengths + Issues
+    // Strengths + Issues (side by side)
     if (sc.strengths.length || sc.issues.length) {
-        html += '<div style="display:flex;gap:12px;margin-bottom:8px">';
+        html += '<div style="display:flex;gap:14px;margin-bottom:10px">';
         if (sc.strengths.length) {
             html += '<div style="flex:1">';
-            html += '<div style="font-size:0.65em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Strengths</div>';
-            sc.strengths.forEach(function(s) { html += '<div style="font-size:0.72em;color:#94a3b8;padding:1px 0">\u2022 ' + _escHtml(s) + '</div>'; });
+            html += '<div style="font-size:0.62em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">\u2714 What\u2019s Working</div>';
+            sc.strengths.forEach(function(s) { html += '<div style="font-size:0.73em;color:#94a3b8;padding:2px 0;line-height:1.4">\u2022 ' + _escHtml(s) + '</div>'; });
             html += '</div>';
         }
         if (sc.issues.length) {
             html += '<div style="flex:1">';
-            html += '<div style="font-size:0.65em;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Work On</div>';
-            sc.issues.forEach(function(s) { html += '<div style="font-size:0.72em;color:#94a3b8;padding:1px 0">\u2022 ' + _escHtml(s) + '</div>'; });
+            html += '<div style="font-size:0.62em;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">\u25B6 Focus Here</div>';
+            sc.issues.forEach(function(s) { html += '<div style="font-size:0.73em;color:#94a3b8;padding:2px 0;line-height:1.4">\u2022 ' + _escHtml(s) + '</div>'; });
             html += '</div>';
         }
         html += '</div>';
@@ -1123,10 +1129,10 @@ function _renderBandScorecard(bundle) {
 
     // Song movement
     if (sc.songsImproved > 0 || sc.songsDeclining > 0) {
-        html += '<div style="display:flex;gap:10px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.04);margin-top:4px;font-size:0.7em">';
-        if (sc.songsImproved > 0) html += '<span style="color:#22c55e;font-weight:600">\u2191 ' + sc.songsImproved + ' song' + (sc.songsImproved > 1 ? 's' : '') + ' improved</span>';
-        if (sc.songsDeclining > 0) html += '<span style="color:#fbbf24;font-weight:600">\u2193 ' + sc.songsDeclining + ' declining</span>';
-        if (sc.songsUnchanged > 0) html += '<span style="color:#475569">\u2192 ' + sc.songsUnchanged + ' steady</span>';
+        html += '<div style="display:flex;gap:12px;padding:8px 0;border-top:1px solid rgba(255,255,255,0.04);font-size:0.7em">';
+        if (sc.songsImproved > 0) html += '<span style="color:#22c55e;font-weight:600">\u2191 ' + sc.songsImproved + ' song' + (sc.songsImproved > 1 ? 's' : '') + ' locked in</span>';
+        if (sc.songsDeclining > 0) html += '<span style="color:#fbbf24;font-weight:600">\u2193 ' + sc.songsDeclining + ' need attention</span>';
+        if (sc.songsUnchanged > 0) html += '<span style="color:#475569">\u2192 ' + sc.songsUnchanged + ' in progress</span>';
         html += '</div>';
     }
 
@@ -1141,18 +1147,16 @@ function _computeScorecard(bundle) {
     } catch(e) {}
 
     var rc = bundle.readinessCache || {};
-    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
     var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
     var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
 
-    // Need at least some data
     var hasSessions = sessions.length > 0;
     var hasReadiness = Object.keys(rc).length > 0;
     if (!hasSessions && !hasReadiness) return null;
 
     var sc = {
-        trend: null, healthSummary: '', healthColor: '#94a3b8',
+        trend: null, healthSummary: '', healthColor: '#94a3b8', coachLine: '',
         ratingDots: '', sessionCount: 0,
         strengths: [], issues: [],
         songsImproved: 0, songsDeclining: 0, songsUnchanged: 0
@@ -1174,19 +1178,32 @@ function _computeScorecard(bundle) {
         else if (recentAvg < olderAvg - 0.3) sc.trend = 'declining';
         else sc.trend = 'steady';
 
-        // Session strengths/issues
+        // ── Strengths (human language, priority-ordered) ──
         var avgRating = rated.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / rated.length;
-        if (avgRating >= 2.5) sc.strengths.push('Consistent quality rehearsals');
-        var onTimeCount = sessions.slice(0, 5).filter(function(s) { return s.totalBudgetMin && Math.abs((s.totalActualMin || 0) - s.totalBudgetMin) <= 3; }).length;
-        if (onTimeCount >= 3) sc.strengths.push('Good time management');
-        var overCount = sessions.slice(0, 5).filter(function(s) { return s.totalBudgetMin && (s.totalActualMin || 0) - s.totalBudgetMin > 10; }).length;
-        if (overCount >= 2) sc.issues.push('Sessions running long');
 
-        // Frequency
+        // Frequency first (most actionable signal)
         var weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
         var weekSessions = sessions.filter(function(s) { return (s.date || '') >= weekAgo; });
-        if (weekSessions.length >= 2) sc.strengths.push('Active rehearsal schedule');
-        else if (weekSessions.length === 0 && sessions.length > 0) sc.issues.push('No rehearsals this week');
+        if (weekSessions.length >= 3) sc.strengths.push('Rehearsing regularly \u2014 great rhythm');
+        else if (weekSessions.length >= 2) sc.strengths.push('Staying active with rehearsals');
+
+        // Quality second
+        if (avgRating >= 2.5) sc.strengths.push('Quality is consistently high');
+
+        // Time management third
+        var onTimeCount = sessions.slice(0, 5).filter(function(s) { return s.totalBudgetMin && Math.abs((s.totalActualMin || 0) - s.totalBudgetMin) <= 3; }).length;
+        if (onTimeCount >= 3) sc.strengths.push('Staying on pace during rehearsals');
+
+        // ── Issues (clear but encouraging, priority-ordered) ──
+        // Frequency gap first
+        if (weekSessions.length === 0 && sessions.length > 0) sc.issues.push('Haven\u2019t rehearsed this week \u2014 schedule one');
+
+        // Timing issues second
+        var overCount = sessions.slice(0, 5).filter(function(s) { return s.totalBudgetMin && (s.totalActualMin || 0) - s.totalBudgetMin > 10; }).length;
+        if (overCount >= 2) sc.issues.push('Rehearsals running long \u2014 tighten transitions');
+
+        // Rating dip third
+        if (sc.trend === 'declining') sc.issues.push('Recent sessions dipping \u2014 refocus next rehearsal');
     }
 
     // ── Readiness analysis ──
@@ -1205,41 +1222,46 @@ function _computeScorecard(bundle) {
 
     if (totalActive > 0) {
         var readyPct = Math.round(highReady / totalActive * 100);
-        if (readyPct >= 80) sc.strengths.push(readyPct + '% of songs gig-ready');
-        else if (readyPct >= 50) { /* ok, no signal */ }
-        if (lowReady > 3) sc.issues.push(lowReady + ' songs below readiness threshold');
+        if (readyPct >= 80) sc.strengths.push(readyPct + '% of the setbook is gig-ready');
+        if (lowReady > 3) sc.issues.push(lowReady + ' songs need more reps');
 
-        // Song movement (simplified — compare high/low counts as proxy)
         sc.songsImproved = highReady;
         sc.songsDeclining = lowReady;
         sc.songsUnchanged = midReady;
     }
 
-    // Cap strengths/issues
+    // Cap at 3 each, most important first
     sc.strengths = sc.strengths.slice(0, 3);
     sc.issues = sc.issues.slice(0, 3);
 
-    // ── Health summary — the headline answer ──
+    // ── Health summary + coach line ──
     if (sc.trend === 'improving' && highReady > lowReady) {
-        sc.healthSummary = 'Band is trending up and nearing gig-ready';
+        sc.healthSummary = 'The band is getting tighter';
+        sc.coachLine = 'You\u2019re close \u2014 a couple more strong rehearsals and you\u2019re there.';
         sc.healthColor = '#22c55e';
     } else if (sc.trend === 'improving') {
-        sc.healthSummary = 'Momentum building \u2014 keep rehearsing';
+        sc.healthSummary = 'Momentum is building';
+        sc.coachLine = 'The work is paying off. Keep showing up.';
         sc.healthColor = '#22c55e';
     } else if (sc.trend === 'steady' && highReady > totalActive * 0.6) {
-        sc.healthSummary = 'Holding strong \u2014 band is in good shape';
+        sc.healthSummary = 'Band is in a good place';
+        sc.coachLine = 'Solid foundation \u2014 push for the next level.';
         sc.healthColor = '#a5b4fc';
     } else if (sc.trend === 'steady') {
-        sc.healthSummary = 'Steady but not growing \u2014 push harder';
+        sc.healthSummary = 'Holding steady \u2014 room to grow';
+        sc.coachLine = 'Consistency is good. Challenge yourselves this week.';
         sc.healthColor = '#94a3b8';
     } else if (sc.trend === 'declining') {
-        sc.healthSummary = 'Needs attention \u2014 recent sessions slipping';
+        sc.healthSummary = 'Recent sessions are slipping';
+        sc.coachLine = 'Not a crisis \u2014 just needs one focused rehearsal to turn it around.';
         sc.healthColor = '#fbbf24';
     } else if (totalActive > 0 && highReady > totalActive * 0.5) {
-        sc.healthSummary = 'Songs are in decent shape \u2014 start tracking rehearsals';
+        sc.healthSummary = 'Songs are coming together';
+        sc.coachLine = 'Start tracking rehearsals to see the full picture.';
         sc.healthColor = '#94a3b8';
     } else {
-        sc.healthSummary = 'Getting started \u2014 keep practicing and rehearsing';
+        sc.healthSummary = 'Just getting started';
+        sc.coachLine = 'Every rehearsal builds the foundation. Keep going.';
         sc.healthColor = '#64748b';
     }
 
