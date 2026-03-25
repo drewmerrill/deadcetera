@@ -1320,14 +1320,17 @@ function generateArchiveUrls(archiveId, trackNumber) {
 // Collaborative song resources for the whole band
 // ============================================================================
 
-// Band member configuration
-const bandMembers = {
-    brian: { name: "Brian", role: "Lead Guitar", sings: true, harmonies: true },
-    chris: { name: "Chris", role: "Bass", sings: false, harmonies: true },
-    drew: { name: "Drew", role: "Rhythm Guitar", sings: true, leadVocals: true, harmonies: true },
-    pierce: { name: "Pierce", role: "Keyboard", sings: true, leadVocals: true, harmonies: true },
-    jay: { name: "Jay", role: "Drums", sings: false, harmonies: false }
-};
+// Band member configuration — populated from Firebase by loadBandMembersFromFirebase().
+// Deadcetera defaults shown only as progressive fallback for that specific band.
+// Other bands start empty and load from Firebase.
+var _currentBandSlug = localStorage.getItem('deadcetera_current_band') || 'deadcetera';
+const bandMembers = _currentBandSlug === 'deadcetera' ? {
+    brian: { name: "Brian", role: "Lead Guitar", email: "brian@hrestoration.com", sings: true, harmonies: true },
+    chris: { name: "Chris", role: "Bass", email: "cmjalbert@gmail.com", sings: false, harmonies: true },
+    drew: { name: "Drew", role: "Rhythm Guitar", email: "drewmerrill1029@gmail.com", sings: true, leadVocals: true, harmonies: true },
+    pierce: { name: "Pierce", role: "Keyboard", email: "pierce.d.hale@gmail.com", sings: true, leadVocals: true, harmonies: true },
+    jay: { name: "Jay", role: "Drums", email: "jnault@fegholdings.com", sings: false, harmonies: false }
+} : {}; // Non-Deadcetera bands: empty until Firebase loads
 
 // bandKnowledgeBase — REMOVED (2026-03-25)
 // All song knowledge data now lives in Firebase per-band paths.

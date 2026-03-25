@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-233347', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260325-234039', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -724,8 +724,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ── STAGE 1: Immediate critical render ──
-    // Render songs immediately from built-in data (fast, no Firebase needed)
-    renderSongs();
+    // For Deadcetera: render songs immediately from catalog (fast, correct for this band)
+    // For other bands: show loading state until Firebase resolves with band-specific data
+    if (currentBandSlug === 'deadcetera') {
+        renderSongs();
+    } else {
+        // Show loading state for non-Deadcetera bands
+        var _songDd = document.getElementById('songDropdown');
+        if (_songDd) _songDd.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)"><div style="font-size:1.5em;margin-bottom:8px">Loading songs...</div></div>';
+    }
     console.log('[Startup] Initial render at ' + Math.round(performance.now()) + 'ms');
     window._glBootTimings.initialRender = performance.now();
 
@@ -739,17 +746,23 @@ document.addEventListener('DOMContentLoaded', function() {
     initFirebaseOnly().then(() => {
         console.log('[Startup] Firebase ready at ' + Math.round(performance.now()) + 'ms');
         window._glBootTimings.firebaseReady = performance.now();
-        // Load band members from Firebase (canonical source — replaces hardcoded data.js members)
+        // Load band members from Firebase FIRST (canonical source), then custom songs
         _seedDeadceteraMembersIfNeeded().then(function() {
             return loadBandMembersFromFirebase();
         }).then(function() {
-            // Re-render settings if on that page (member list uses bandMembers)
+            console.log('[Startup] Band members ready at ' + Math.round(performance.now()) + 'ms');
+            window._glBootTimings.membersReady = performance.now();
+            // Re-render settings if on that page
             if (typeof currentPage !== 'undefined' && currentPage === 'admin' && typeof settingsTab === 'function') {
                 settingsTab('band');
             }
         }).catch(function() {});
-        // Now that Firebase is ready, load custom songs and re-render
-        loadCustomSongs().then(() => renderSongs());
+        // Load custom songs and render (always — both Deadcetera and other bands need this)
+        loadCustomSongs().then(function() {
+            renderSongs();
+            console.log('[Startup] Songs rendered (with custom) at ' + Math.round(performance.now()) + 'ms');
+            window._glBootTimings.songsRendered = performance.now();
+        });
 
         // ── STAGE 3: Deferred preloads (idle/background) ──
         // Use requestIdleCallback where available for non-critical preloads
@@ -13647,15 +13660,15 @@ var MASTER_READINESS_FILE = '_master_readiness.json';
 var readinessCache = {};       // { songTitle: { drew:4, chris:3, ... } }
 var readinessCacheLoaded = false;
 
-// Default fallback — overwritten by loadBandMembersFromFirebase() after Firebase init.
-// This ensures Deadcetera renders immediately while Firebase loads.
-var BAND_MEMBERS_ORDERED = [
+// Populated from Firebase by loadBandMembersFromFirebase().
+// Deadcetera defaults shown only for that band; other bands start empty.
+var BAND_MEMBERS_ORDERED = (currentBandSlug === 'deadcetera') ? [
     { key: 'drew',   name: 'Drew Merrill',  emoji: '🎸' },
     { key: 'chris',  name: 'Chris Jalbert', emoji: '🎸' },
     { key: 'brian',  name: 'Brian Hillman', emoji: '🎸' },
     { key: 'pierce', name: 'Pierce Hale',   emoji: '🎹' },
     { key: 'jay',    name: 'Jay Nault',     emoji: '🥁' }
-];
+] : []; // Non-Deadcetera: empty until Firebase loads
 
 // ── Load band members from Firebase (canonical source) ──────────────────────
 // Replaces hardcoded bandMembers + BAND_MEMBERS_ORDERED with real per-band data.
