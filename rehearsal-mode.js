@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-010056', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-010608', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1376,14 +1376,130 @@ window._rmSummarySave = async function(sessionId) {
     _rmSummaryRating = null;
     _rmSuggestionAccepted = null;
 
-    // Brief pause to show the "Saved!" confirmation, then close
+    // Brief pause to show "Saved!", then transition to Reveal Screen
     setTimeout(function() {
         var ov = document.getElementById('rmSessionSummaryOverlay');
         if (ov) ov.remove();
+        // Show Rehearsal Reveal if Product Brain has insight
+        _rmShowRevealScreen();
     }, 800);
-
-    if (typeof showToast === 'function') showToast('\u2705 Session recorded' + (mixdownId ? ' with mixdown' : '') + (_rmSummaryRating ? ' \u2014 ' + _rmSummaryRating.replace('_', ' ') : ''));
 };
+
+// ── Rehearsal Reveal Screen ──────────────────────────────────────────────
+// The most important screen in the product.
+// Shows: what happened, what matters, what to do next.
+// Data source: GLProductBrain ONLY.
+
+function _rmShowRevealScreen() {
+    var insight = null;
+    if (typeof GLProductBrain !== 'undefined') {
+        insight = GLProductBrain.getInsightFromSession('latest');
+    }
+    // If no Product Brain insight, show simple confirmation and exit
+    if (!insight || insight._empty) {
+        if (typeof showToast === 'function') showToast('\u2705 Session saved');
+        // Auto-open avatar with guidance
+        if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.checkForTips) {
+            setTimeout(function() { GLAvatarUI.checkForTips(); }, 500);
+        }
+        return;
+    }
+
+    // Inject animation styles
+    if (!document.getElementById('rmRevealStyles')) {
+        var st = document.createElement('style');
+        st.id = 'rmRevealStyles';
+        st.textContent = '@keyframes rmRevealIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes rmRevealStagger{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}';
+        document.head.appendChild(st);
+    }
+
+    var SE = (typeof RehearsalStoryEngine !== 'undefined') ? RehearsalStoryEngine : null;
+    var tc = insight.ui.topCard;
+    var tl = insight.ui.timeline || [];
+    var hl = insight.ui.highlights || [];
+    var coaching = insight.coaching || {};
+
+    // Build HTML
+    var html = '<div style="max-width:480px;width:100%;max-height:92vh;overflow-y:auto;animation:rmRevealIn 0.5s ease">';
+
+    // ── Section 1: Headline ──
+    html += '<div style="text-align:center;padding:28px 20px 20px">';
+    html += '<div style="font-size:1.4em;font-weight:900;color:#f1f5f9;line-height:1.3;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
+    if (tc.whatHappened) {
+        html += '<div style="font-size:0.82em;color:#94a3b8;margin-top:10px;line-height:1.5">' + _rmEsc(tc.whatHappened) + '</div>';
+    }
+    html += '</div>';
+
+    // ── Section 2: Timeline ──
+    if (tl.length > 0) {
+        html += '<div style="padding:0 20px 16px">';
+        html += '<div style="font-size:0.65em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Timeline</div>';
+        for (var i = 0; i < tl.length; i++) {
+            var t = tl[i];
+            if (t.song === 'Discussion' || t.song === 'Jam Section') continue;
+            var flowIcons = '';
+            if (SE) {
+                flowIcons = t.flow.map(function(f) { return '<span style="color:' + (SE.UI_COLORS[f] || '#64748b') + '">' + (SE.UI_ICONS[f] || '') + '</span>'; }).join(' ');
+            } else {
+                flowIcons = t.flowLabel;
+            }
+            var rowBorder = t.hasFullRun ? 'rgba(34,197,94,0.2)' : t.hasRestart ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.04)';
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-left:3px solid ' + rowBorder + ';margin-bottom:4px;animation:rmRevealStagger 0.3s ease ' + (i * 0.08) + 's both">';
+            html += '<div style="flex:1;min-width:0"><div style="font-size:0.85em;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _rmEsc(t.song) + '</div>';
+            html += '<div style="font-size:0.68em;color:#64748b;margin-top:1px">' + flowIcons + '</div></div>';
+            html += '<div style="font-size:0.72em;color:#64748b;flex-shrink:0">' + t.totalTime + '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    // ── Section 3: Highlights ──
+    if (tc.strongestMoment || tc.biggestIssue) {
+        html += '<div style="padding:0 20px 16px">';
+        if (tc.strongestMoment) {
+            html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:6px">';
+            html += '<span style="font-size:1em;flex-shrink:0">\u2B50</span>';
+            html += '<div style="font-size:0.82em;color:#86efac;line-height:1.4">' + _rmEsc(tc.strongestMoment) + '</div>';
+            html += '</div>';
+        }
+        if (tc.biggestIssue && tc.biggestIssue !== 'No major issues. Keep this rhythm.') {
+            html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px">';
+            html += '<span style="font-size:1em;flex-shrink:0">\u26A0\uFE0F</span>';
+            html += '<div style="font-size:0.82em;color:#fbbf24;line-height:1.4">' + _rmEsc(tc.biggestIssue) + '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    // ── Section 4: Next Action CTA ──
+    if (coaching.nextAction) {
+        html += '<div style="padding:0 20px 24px">';
+        html += '<div style="padding:14px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">';
+        html += '<div style="font-size:0.65em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Next Rehearsal Focus</div>';
+        html += '<div style="font-size:0.88em;font-weight:700;color:#a5b4fc;line-height:1.4">' + _rmEsc(coaching.nextAction) + '</div>';
+        html += '</div>';
+        html += '</div>';
+    }
+
+    // ── Close button ──
+    html += '<div style="padding:0 20px 20px;text-align:center">';
+    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Done \u2192 Home</button>';
+    html += '</div>';
+
+    html += '</div>';
+
+    // Create overlay
+    var ov = document.createElement('div');
+    ov.id = 'rmRevealOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    ov.innerHTML = html;
+    document.body.appendChild(ov);
+
+    // Auto-open avatar after a brief delay
+    setTimeout(function() {
+        if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.checkForTips) GLAvatarUI.checkForTips();
+    }, 1500);
+}
 
 function _rmEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
