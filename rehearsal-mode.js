@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-095301', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-100231', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1396,12 +1396,21 @@ function _rmShowRevealScreen() {
     if (typeof GLProductBrain !== 'undefined') {
         insight = GLProductBrain.getInsightFromSession('latest');
     }
-    // If no Product Brain insight, show simple confirmation and exit
+    // Safe mode: if no Product Brain insight, show a clean confirmation (never blank)
     if (!insight || insight._empty) {
-        if (typeof showToast === 'function') showToast('\u2705 Session saved');
-        // Auto-open avatar with guidance
+        var safeOv = document.createElement('div');
+        safeOv.id = 'rmRevealOverlay';
+        safeOv.setAttribute('data-testid', 'rehearsal-reveal');
+        safeOv.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)';
+        safeOv.innerHTML = '<div style="max-width:400px;width:100%;text-align:center;animation:rmRevealIn 0.25s ease">'
+            + '<div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(99,102,241,0.2));display:flex;align-items:center;justify-content:center"><span style="font-size:1.6em">\u2705</span></div>'
+            + '<div style="font-size:1.3em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Session Saved</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:24px">Your scorecard is tracking this rehearsal.</div>'
+            + '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Done \u2192 Home</button>'
+            + '</div>';
+        document.body.appendChild(safeOv);
         if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.checkForTips) {
-            setTimeout(function() { GLAvatarUI.checkForTips(); }, 500);
+            setTimeout(function() { GLAvatarUI.checkForTips(); }, 1500);
         }
         return;
     }

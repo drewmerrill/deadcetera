@@ -130,17 +130,11 @@ window.showPage = function showPage(page) {
     // Run renderer (songs page is rendered by selectSong / renderSongs, not here)
     if (el && page !== 'songs') {
         if (_glPageScripts[page]) {
-            // Show loading state immediately so page is never blank during lazy load
-            if (!el.textContent.trim()) {
-                el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-dim,#64748b)">'
-                    + '<div style="width:24px;height:24px;border:2px solid rgba(99,102,241,0.2);border-top-color:#6366f1;border-radius:50%;animation:spin 0.6s linear infinite;margin:0 auto 12px"></div>'
-                    + '<div style="font-size:0.82em">Loading\u2026</div></div>';
-                if (!document.getElementById('glSpinStyle')) {
-                    var sp = document.createElement('style');
-                    sp.id = 'glSpinStyle';
-                    sp.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-                    document.head.appendChild(sp);
-                }
+            // Show loading state immediately via GLRenderState — never blank
+            if (typeof GLRenderState !== 'undefined') {
+                GLRenderState.set(page, { status: 'loading' });
+            } else if (!el.textContent.trim()) {
+                el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-dim)">Loading\u2026</div>';
             }
             // Lazy-load page scripts, then render
             var _lazyStart = performance.now();
@@ -232,25 +226,35 @@ var _glPageScripts = {
 
 // Load all scripts for a page, then run callback.
 // Includes timeout fallback — never leaves a blank screen.
-var LAZY_TIMEOUT_MS = 8000;
+var LAZY_WARN_MS = 3000;
+var LAZY_TIMEOUT_MS = 6000;
 
 function _glLazyLoadPage(page, callback) {
     var scripts = _glPageScripts[page];
     if (!scripts || !scripts.length) { callback(); return; }
     var done = false;
-    var timer = setTimeout(function() {
+
+    // Warning at 3s — show degraded state
+    var warnTimer = setTimeout(function() {
+        if (done) return;
+        console.warn('[Lazy] Scripts for "' + page + '" taking longer than ' + LAZY_WARN_MS + 'ms');
+        if (typeof GLRenderState !== 'undefined') {
+            GLRenderState.set(page, { status: 'loading', message: 'Still loading\u2026 this is taking longer than usual.' });
+        }
+    }, LAZY_WARN_MS);
+
+    // Hard timeout at 6s — show error with retry
+    var failTimer = setTimeout(function() {
         if (done) return;
         done = true;
         console.error('[Lazy] Timeout loading scripts for "' + page + '" after ' + LAZY_TIMEOUT_MS + 'ms');
-        // Show error state instead of blank screen
-        var el = document.getElementById('page-' + page);
-        if (el && !el.textContent.trim()) {
-            el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim,#94a3b8)">'
-                + '<div style="font-size:1.3em;margin-bottom:8px">\u26A0\uFE0F</div>'
-                + '<div style="font-weight:600;margin-bottom:6px">Page loading slowly</div>'
-                + '<div style="font-size:0.85em;margin-bottom:12px">Check your connection and try again.</div>'
-                + '<button onclick="showPage(\'' + page + '\')" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">Retry</button>'
-                + '</div>';
+        if (typeof GLRenderState !== 'undefined') {
+            GLRenderState.set(page, {
+                status: 'error',
+                title: 'Page loading slowly',
+                message: 'Check your connection and try again.',
+                retry: "showPage('" + page + "')"
+            });
         }
         callback(); // try rendering anyway — typeof guards prevent crashes
     }, LAZY_TIMEOUT_MS);
@@ -258,13 +262,18 @@ function _glLazyLoadPage(page, callback) {
     Promise.all(scripts.map(function(src) { return glLazy(src); })).then(function() {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        clearTimeout(warnTimer);
+        clearTimeout(failTimer);
         callback();
     }).catch(function(err) {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        clearTimeout(warnTimer);
+        clearTimeout(failTimer);
         console.error('[Lazy] Page load failed for ' + page + ':', err);
+        if (typeof GLRenderState !== 'undefined') {
+            GLRenderState.set(page, { status: 'error', title: 'Failed to load', message: err.message, retry: "showPage('" + page + "')" });
+        }
         callback();
     });
 }

@@ -34,6 +34,8 @@ EXCLUDE_JS = {
     'ARCHIVED_learning_resources.js',
     'playwright.config.js',
     'browserstack.config.js',
+    'package.json',
+    'package-lock.json',
 }
 
 # Non-runtime directories — never scanned
