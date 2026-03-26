@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-004013', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-004732', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -5607,66 +5607,7 @@ function generateSheetMusic(sectionIndex, section) {
 // Declaration removed — global window.bandPath is used directly via scope chain.
 
 // migrateToMultiBand → js/core/firebase-service.js (window.migrateToMultiBand)
-// Duplicate declaration removed — was overwriting the canonical window.* version.
-// Original kept as dead code reference (commented out):
-/* REMOVED: async function migrateToMultiBand() {
-    if (!firebaseDB) return;
-    var migrationKey = 'deadcetera_migrated_to_multiband';
-    if (localStorage.getItem(migrationKey) === 'done') return;
-
-    try {
-        // Check if migration already happened (data exists at new path)
-        var testSnap = await firebaseDB.ref('bands/deadcetera/master').once('value');
-        if (testSnap.val()) {
-            console.log('Multi-band migration already complete (data exists at new path)');
-            localStorage.setItem(migrationKey, 'done');
-            return;
-        }
-
-        // Check if old flat data exists
-        var oldSongsSnap = await firebaseDB.ref('songs').once('value');
-        var oldMasterSnap = await firebaseDB.ref('master').once('value');
-        var oldPartiesSnap = await firebaseDB.ref('listening_parties').once('value');
-
-        var oldSongs = oldSongsSnap.val();
-        var oldMaster = oldMasterSnap.val();
-        var oldParties = oldPartiesSnap.val();
-
-        if (!oldSongs && !oldMaster) {
-            console.log('No legacy data to migrate');
-            localStorage.setItem(migrationKey, 'done');
-            return;
-        }
-
-        console.log('Migrating data to /bands/deadcetera/ ...');
-        var updates = {};
-        if (oldSongs) updates['bands/deadcetera/songs'] = oldSongs;
-        if (oldMaster) updates['bands/deadcetera/master'] = oldMaster;
-        if (oldParties) updates['bands/deadcetera/listening_parties'] = oldParties;
-
-        // Write band metadata
-        updates['bands/deadcetera/meta'] = {
-            name: 'Deadcetera',
-            slug: 'deadcetera',
-            createdAt: Date.now(),
-            catalog: ['GD', 'JGB', 'Phish', 'WSP', 'ABB'],
-            members: {
-                drew: { name: 'Drew', role: 'Rhythm Guitar', email: 'drewmerrill1029@gmail.com', joined: Date.now() },
-                chris: { name: 'Chris', role: 'Bass', email: 'cmjalbert@gmail.com', joined: Date.now() },
-                brian: { name: 'Brian', role: 'Lead Guitar', email: 'brian@hrestoration.com', joined: Date.now() },
-                pierce: { name: 'Pierce', role: 'Keyboard', email: 'pierce.d.hale@gmail.com', joined: Date.now() },
-                jay: { name: 'Jay', role: 'Drums', email: 'jnault@fegholdings.com', joined: Date.now() }
-            }
-        };
-
-        await firebaseDB.ref().update(updates);
-        console.log('Multi-band migration complete!');
-        localStorage.setItem(migrationKey, 'done');
-        showToast('Data migrated to multi-band format');
-    } catch (err) {
-        console.error('Migration error:', err);
-    }
-} */
+// Duplicate removed — canonical version in firebase-service.js
 
 // ============================================================================
 // FIREBASE INITIALIZATION
