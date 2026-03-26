@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-101556', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-103346', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1433,72 +1433,47 @@ function _rmShowRevealScreen() {
         document.head.appendChild(st);
     }
 
-    var SE = (typeof RehearsalStoryEngine !== 'undefined') ? RehearsalStoryEngine : null;
     var tc = insight.ui.topCard;
-    var tl = insight.ui.timeline || [];
-    var hl = insight.ui.highlights || [];
     var coaching = insight.coaching || {};
+    var hasIssue = tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1;
 
-    // Build HTML
-    var html = '<div style="max-width:480px;width:100%;max-height:92vh;overflow-y:auto;animation:rmRevealIn 0.25s ease">';
+    // Build HTML — 3 elements max: headline, ONE insight card, next action
+    var html = '<div style="max-width:440px;width:100%;animation:rmRevealIn 0.25s ease">';
 
-    // ── Section 1: Headline (large, punchy — no paragraph underneath) ──
-    html += '<div style="text-align:center;padding:28px 20px 16px">';
-    html += '<div style="font-size:1.5em;font-weight:900;color:#f1f5f9;line-height:1.25;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
+    // ── Headline ──
+    html += '<div style="text-align:center;padding:32px 24px 20px">';
+    html += '<div style="font-size:1.6em;font-weight:900;color:#f1f5f9;line-height:1.2;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
     html += '</div>';
 
-    // ── Section 2: Highlights (emotional payload — shown first) ──
-    if (tc.strongestMoment || (tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1)) {
-        html += '<div style="padding:0 20px 14px">';
-        if (tc.strongestMoment) {
-            html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:12px;margin-bottom:8px">';
-            html += '<span style="font-size:1.1em;flex-shrink:0">\u2B50</span>';
-            html += '<div style="font-size:0.85em;color:#86efac;line-height:1.4;font-weight:600">' + _rmEsc(tc.strongestMoment) + '</div>';
-            html += '</div>';
-        }
-        if (tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1) {
-            html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px">';
-            html += '<span style="font-size:1.1em;flex-shrink:0">\u26A0\uFE0F</span>';
-            html += '<div style="font-size:0.85em;color:#fbbf24;line-height:1.4;font-weight:600">' + _rmEsc(tc.biggestIssue) + '</div>';
-            html += '</div>';
-        }
+    // ── ONE insight card (strongest moment OR biggest issue — not both) ──
+    html += '<div style="padding:0 24px 20px">';
+    if (hasIssue) {
+        // Issue takes priority — it's actionable
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px">';
+        html += '<span style="font-size:1.1em;flex-shrink:0">\u26A0\uFE0F</span>';
+        html += '<div style="font-size:0.88em;color:#fbbf24;line-height:1.4;font-weight:600">' + _rmEsc(tc.biggestIssue) + '</div>';
+        html += '</div>';
+    } else if (tc.strongestMoment) {
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:12px">';
+        html += '<span style="font-size:1.1em;flex-shrink:0">\u2B50</span>';
+        html += '<div style="font-size:0.88em;color:#86efac;line-height:1.4;font-weight:600">' + _rmEsc(tc.strongestMoment) + '</div>';
         html += '</div>';
     }
+    html += '</div>';
 
-    // ── Section 3: Timeline (compact, secondary) ──
-    if (tl.length > 0) {
-        // Only show songs, skip discussion/jam, limit to 8
-        var songRows = tl.filter(function(t) { return t.song !== 'Discussion' && t.song !== 'Jam Section'; }).slice(0, 8);
-        if (songRows.length > 0) {
-            html += '<div style="padding:0 20px 14px">';
-            html += '<div style="font-size:0.6em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Songs</div>';
-            for (var i = 0; i < songRows.length; i++) {
-                var t = songRows[i];
-                var icon = t.hasFullRun ? '\u2705' : t.hasRestart ? '\uD83D\uDD04' : '\u25B6';
-                var rowColor = t.hasFullRun ? '#22c55e' : t.hasRestart ? '#f87171' : '#64748b';
-                html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);animation:rmRevealStagger 0.15s ease ' + (i * 0.04) + 's both">';
-                html += '<span style="font-size:0.75em;color:' + rowColor + ';width:20px;text-align:center">' + icon + '</span>';
-                html += '<span style="flex:1;font-size:0.82em;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _rmEsc(t.song) + '</span>';
-                html += '<span style="font-size:0.7em;color:#475569;flex-shrink:0">' + t.totalTime + '</span>';
-                html += '</div>';
-            }
-            html += '</div>';
-        }
-    }
-
-    // ── Section 4: Next Action CTA ──
+    // ── Next Action ──
     if (coaching.nextAction) {
-        html += '<div style="padding:0 20px 24px">';
+        html += '<div style="padding:0 24px 28px">';
         html += '<div style="padding:14px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">';
-        html += '<div style="font-size:0.65em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Next Rehearsal Focus</div>';
-        html += '<div style="font-size:0.88em;font-weight:700;color:#a5b4fc;line-height:1.4">' + _rmEsc(coaching.nextAction) + '</div>';
+        html += '<div style="font-size:0.6em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Next Focus</div>';
+        html += '<div style="font-size:0.9em;font-weight:700;color:#a5b4fc;line-height:1.4">' + _rmEsc(coaching.nextAction) + '</div>';
         html += '</div>';
         html += '</div>';
     }
 
-    // ── Close button ──
-    html += '<div style="padding:0 20px 20px;text-align:center">';
-    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Done \u2192 Home</button>';
+    // ── Done ──
+    html += '<div style="padding:0 24px 24px">';
+    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer">Done \u2192 Home</button>';
     html += '</div>';
 
     html += '</div>';

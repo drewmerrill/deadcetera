@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-101556', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-103346', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10662,9 +10662,10 @@ function addNewMember() {
 // Generate display label from structured member fields
 function _memberDisplayRole(m) {
     if (!m) return '';
-    var parts = [];
-    if (m.primaryInstrument) parts.push(m.primaryInstrument);
-    else if (m.role) parts.push(m.role);
+    var base = m.primaryInstrument || m.role || 'Member';
+    // If the role text already mentions vocals, don't append vocal suffix
+    if (base.toLowerCase().indexOf('vocal') > -1) return base;
+    var parts = [base];
     if (m.vocalRole && m.vocalRole !== 'none') {
         var vocalLabels = { backing: 'Backing Vocals', 'co-lead': 'Vocals (Co-Lead)', lead: 'Vocals (Lead)' };
         parts.push(vocalLabels[m.vocalRole] || 'Vocals');
@@ -10718,10 +10719,15 @@ async function saveMemberRole(key, btn) {
     const newRole = document.getElementById(`memberRoleInput_${key}`)?.value?.trim();
     if (newRole === undefined) return;
     _glSaveBtn(btn || document.getElementById(`saveMemberBtn_${key}`), function() {
+        // Update all role-related fields so display stays in sync
         bandMembers[key].role = newRole;
-        // Persist to Firebase
+        bandMembers[key].primaryInstrument = newRole;
+        // Persist both fields to Firebase
         if (firebaseDB && typeof bandPath === 'function') {
-            return firebaseDB.ref(bandPath('meta/members/' + key + '/role')).set(newRole);
+            return firebaseDB.ref(bandPath('meta/members/' + key)).update({
+                role: newRole,
+                primaryInstrument: newRole
+            });
         }
     });
     setTimeout(function() {
