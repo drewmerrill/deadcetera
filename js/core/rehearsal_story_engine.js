@@ -75,14 +75,21 @@
     var coaching = _buildCoaching(events, timeline, planVsActual);
     var highlights = _buildHighlights(events);
 
+    var storyData = {
+      timeline: timeline,
+      planVsActual: planVsActual,
+      coaching: coaching,
+      highlights: highlights
+    };
+
+    var headline = generateHeadline(storyData);
+    var narrative = buildNarrative(storyData);
+
     return {
       events: events,
-      story: {
-        timeline: timeline,
-        planVsActual: planVsActual,
-        coaching: coaching,
-        highlights: highlights
-      }
+      headline: headline,
+      narrative: narrative,
+      story: storyData
     };
   }
 
@@ -330,23 +337,134 @@
   }
 
   // ── Headline Generator ────────────────────────────────────────────────────
-  // One-line summary for the rehearsal
+  // One sentence. Feels like a coach. References real behavior.
 
   function generateHeadline(story) {
     if (!story || !story.coaching) return 'Rehearsal complete.';
     var c = story.coaching;
+    var tl = story.timeline || [];
     var fullRuns = 0;
-    if (story.timeline) {
-      for (var i = 0; i < story.timeline.length; i++) {
-        if (story.timeline[i].hasFullRun) fullRuns++;
+    var songNames = [];
+    for (var i = 0; i < tl.length; i++) {
+      if (tl[i].hasFullRun) { fullRuns++; songNames.push(tl[i].song); }
+    }
+    var prob = c.problematicSongs || [];
+    var talkPct = c.timeAllocation && c.timeAllocation['Talk'] ? c.timeAllocation['Talk'].percent : 0;
+
+    // Clean session — no restarts, multiple full runs
+    if (c.restartCount === 0 && fullRuns >= 3)
+      return 'Clean session \u2014 ' + fullRuns + ' songs front to back, zero restarts.';
+    // Pushed through difficulty
+    if (c.restartCount >= 3 && fullRuns >= 2)
+      return 'You fought through ' + c.restartCount + ' restarts and still landed ' + fullRuns + ' full run' + (fullRuns !== 1 ? 's' : '') + '.';
+    // Heavy restart session
+    if (c.restartCount >= 4 && prob.length)
+      return prob[0].song + ' gave you trouble (' + prob[0].restarts + ' restarts) but you kept at it.';
+    // Talk-heavy
+    if (talkPct >= 30)
+      return talkPct + '% of the session was talking. Get the reps in first, discuss after.';
+    // Good volume
+    if (fullRuns >= 5)
+      return fullRuns + ' songs in ' + c.totalMinutes + ' minutes. That\u2019s the kind of volume that builds confidence.';
+    // Short but productive
+    if (c.totalMinutes < 30 && fullRuns >= 2)
+      return 'Short but focused \u2014 ' + fullRuns + ' full runs in ' + c.totalMinutes + ' min.';
+    // Default with real data
+    if (fullRuns > 0 && c.restartCount > 0)
+      return fullRuns + ' song' + (fullRuns !== 1 ? 's' : '') + ' landed, ' + c.restartCount + ' restart' + (c.restartCount !== 1 ? 's' : '') + '. ' + c.totalMinutes + ' min of work.';
+    if (fullRuns > 0)
+      return fullRuns + ' song' + (fullRuns !== 1 ? 's' : '') + ' covered in ' + c.totalMinutes + ' min.';
+    return c.totalMinutes + ' minutes of rehearsal. Keep building.';
+  }
+
+  // ── Narrative Builder ─────────────────────────────────────────────────────
+  // Converts story data into plain-English narrative fields.
+
+  function buildNarrative(story) {
+    if (!story) return { whatHappened: '', biggestIssue: '', strongestMoment: '', nextAction: '' };
+    var tl = story.timeline || [];
+    var c = story.coaching || {};
+    var h = story.highlights || [];
+
+    // ── What Happened ──
+    var whatParts = [];
+    for (var i = 0; i < tl.length; i++) {
+      var entry = tl[i];
+      if (entry.song === 'Discussion' || entry.song === 'Jam Section') continue;
+      if (entry.hasRestart && entry.hasFullRun) {
+        whatParts.push(entry.song + ' took a few tries before landing.');
+      } else if (entry.hasFullRun) {
+        whatParts.push(entry.song + ' \u2014 clean from top to bottom.');
+      } else if (entry.hasRestart && !entry.hasFullRun) {
+        whatParts.push(entry.song + ' never fully came together.');
+      } else if (entry.hasWork) {
+        whatParts.push('Spent time drilling ' + entry.song + '.');
+      }
+    }
+    // Pick best 3 narrative beats
+    var whatHappened = whatParts.slice(0, 3).join(' ');
+    if (!whatHappened) whatHappened = tl.length + ' sections covered.';
+
+    // ── Biggest Issue ──
+    var biggestIssue = '';
+    var prob = c.problematicSongs || [];
+    var talkPct = c.timeAllocation && c.timeAllocation['Talk'] ? c.timeAllocation['Talk'].percent : 0;
+    var restartCount = c.restartCount || 0;
+
+    if (prob.length > 0 && prob[0].restarts >= 2) {
+      biggestIssue = prob[0].song + ' needed ' + prob[0].restarts + ' restarts. That\u2019s where the time went.';
+    } else if (talkPct >= 25) {
+      biggestIssue = talkPct + '% of the session was discussion. Decisions eat rehearsal time.';
+    } else if (restartCount >= 3) {
+      biggestIssue = restartCount + ' false starts across the session. Try committing to full runs even when it\u2019s rough.';
+    } else {
+      biggestIssue = 'No major issues. Keep this rhythm.';
+    }
+
+    // ── Strongest Moment ──
+    var strongestMoment = '';
+    if (h.length > 0) {
+      var best = h[0];
+      strongestMoment = best.description;
+    } else {
+      // Find longest full run
+      var longestFull = null;
+      for (var j = 0; j < tl.length; j++) {
+        if (tl[j].hasFullRun && (!longestFull || tl[j].totalTimeSec > longestFull.totalTimeSec)) {
+          longestFull = tl[j];
+        }
+      }
+      if (longestFull) {
+        strongestMoment = longestFull.song + ' was the strongest run at ' + longestFull.totalTime + '.';
+      } else {
+        strongestMoment = 'Keep at it \u2014 the strong moments are coming.';
       }
     }
 
-    if (c.restartCount === 0 && fullRuns >= 3) return fullRuns + ' songs nailed \u2014 zero restarts. Strong session.';
-    if (c.restartCount >= 4) return 'Rough patches but you pushed through. ' + fullRuns + ' full run' + (fullRuns !== 1 ? 's' : '') + '.';
-    if (fullRuns >= 5) return fullRuns + ' songs covered in ' + c.totalMinutes + ' min. Productive.';
-    if (c.insights.length && c.insights[0].type === 'strength') return c.insights[0].text;
-    return fullRuns + ' full run' + (fullRuns !== 1 ? 's' : '') + ', ' + c.restartCount + ' restart' + (c.restartCount !== 1 ? 's' : '') + '. ' + c.totalMinutes + ' min total.';
+    // ── Next Action ──
+    var nextAction = '';
+    if (prob.length > 0 && prob[0].restarts >= 2) {
+      nextAction = 'Run ' + prob[0].song + ' section-by-section before your next full attempt.';
+    } else if (talkPct >= 25) {
+      nextAction = 'Come to the next rehearsal with arrangement decisions already made.';
+    } else if (restartCount >= 3) {
+      nextAction = 'Focus on playing through mistakes instead of stopping. Full runs build muscle memory.';
+    } else if (c.insights && c.insights.length) {
+      var focusInsight = c.insights.find(function(ins) { return ins.type === 'focus'; });
+      if (focusInsight) {
+        nextAction = focusInsight.text;
+      }
+    }
+    if (!nextAction) {
+      nextAction = 'Keep this pace. Schedule your next rehearsal.';
+    }
+
+    return {
+      whatHappened: whatHappened,
+      biggestIssue: biggestIssue,
+      strongestMoment: strongestMoment,
+      nextAction: nextAction
+    };
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -354,6 +472,7 @@
   window.RehearsalStoryEngine = {
     buildStory: buildStory,
     generateHeadline: generateHeadline,
+    buildNarrative: buildNarrative,
     UI_TYPES: UI_TYPES,
     UI_COLORS: UI_COLORS,
     UI_ICONS: UI_ICONS,
