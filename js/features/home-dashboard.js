@@ -1679,7 +1679,7 @@ function _renderWorkflowHero(wf) {
         + '<div class="hd-hero__actions">'
         + (onclick ? '<button class="hd-hero__cta hd-hero__cta--primary" onclick="' + onclick + '">Go</button>' : '')
         + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'gigs\')">Add Gig</button>'
-        + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'rehearsal\');setTimeout(function(){if(typeof renderRehearsalPlanner===\'function\')renderRehearsalPlanner();},800)">Plan Rehearsal</button>'
+        + '<button class="hd-hero__cta hd-hero__cta--secondary" onclick="showPage(\'rehearsal\');setTimeout(function(){if(typeof rhOpenCreateModal===\'function\')rhOpenCreateModal();},1200)">Plan Rehearsal</button>'
         + '</div></div>';
 }
 
@@ -2780,7 +2780,7 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         _nbaOnclick = "showPage('songs');setTimeout(function(){if(typeof GLStore!=='undefined')GLStore.selectSong('" + _riskSafeTitle + "');},200)";
     } else if (!agenda || agenda.empty) {
         _nbaLabel = 'Plan next rehearsal';
-        _nbaOnclick = "showPage('rehearsal');setTimeout(function(){if(typeof renderRehearsalPlanner==='function')renderRehearsalPlanner();},800)";
+        _nbaOnclick = "showPage('rehearsal');setTimeout(function(){if(typeof rhOpenCreateModal==='function')rhOpenCreateModal();},1200)";
     } else if (!tl || !tl.summary) {
         _nbaLabel = 'Upload rehearsal to improve readiness';
         _nbaOnclick = "if(typeof openRehearsalChopper==='function')openRehearsalChopper()";

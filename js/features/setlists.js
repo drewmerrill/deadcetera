@@ -584,7 +584,7 @@ function slAddSet(type) {
         <div class="app-card" style="background:rgba(255,255,255,0.02)">
             <h3 style="color:${color}">${name}</h3>
             <div id="slSet${idx}Songs"></div>
-            <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults${idx}"></div></div>
+            <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(${idx})" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults${idx}"></div></div>
         </div>`);
 }
 

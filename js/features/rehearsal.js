@@ -2315,13 +2315,13 @@ async function rhShowEventModal(eventId) {
             '<div style="font-weight:700;font-size:1em;color:var(--text);margin-bottom:16px">' + (existing ? '✏️ Edit Rehearsal' : '🎯 New Rehearsal') + '</div>' +
             '<div style="display:flex;flex-direction:column;gap:10px">' +
                 '<div><label style="font-size:0.78em;color:var(--text-muted);display:block;margin-bottom:4px">Date *</label>' +
-                '<input type="date" id="rhDate" value="' + (existing ? existing.date : today) + '" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);padding:9px 11px;font-size:0.9em;font-family:inherit"></div>' +
+                '<input type="date" id="rhDate" value="' + (existing ? existing.date : today) + '" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#f1f5f9;padding:9px 11px;font-size:0.9em;font-family:inherit;color-scheme:dark"></div>' +
                 '<div><label style="font-size:0.78em;color:var(--text-muted);display:block;margin-bottom:4px">Time</label>' +
-                '<input type="text" id="rhTime" value="' + (existing ? (existing.time || '') : '7:00 PM') + '" placeholder="e.g. 7:00 PM" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);padding:9px 11px;font-size:0.9em;font-family:inherit"></div>' +
+                '<input type="text" id="rhTime" value="' + (existing ? (existing.time || '') : '7:00 PM') + '" placeholder="e.g. 7:00 PM" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#f1f5f9;padding:9px 11px;font-size:0.9em;font-family:inherit"></div>' +
                 '<div><label style="font-size:0.78em;color:var(--text-muted);display:block;margin-bottom:4px">Location</label>' +
-                '<input type="text" id="rhLocation" value="' + (existing ? (existing.location || '') : '') + '" placeholder="e.g. Brian\'s garage" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);padding:9px 11px;font-size:0.9em;font-family:inherit"></div>' +
+                '<input type="text" id="rhLocation" value="' + (existing ? (existing.location || '') : '') + '" placeholder="e.g. Brian\'s garage" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#f1f5f9;padding:9px 11px;font-size:0.9em;font-family:inherit"></div>' +
                 '<div><label style="font-size:0.78em;color:var(--text-muted);display:block;margin-bottom:4px">Notes / Focus</label>' +
-                '<textarea id="rhNotes" rows="2" placeholder="e.g. Focus on new Phish tunes" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);padding:9px 11px;font-size:0.9em;font-family:inherit;resize:vertical">' + (existing ? (existing.notes || '') : '') + '</textarea></div>' +
+                '<textarea id="rhNotes" rows="2" placeholder="e.g. Focus on new Phish tunes" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#f1f5f9;padding:9px 11px;font-size:0.9em;font-family:inherit;resize:vertical">' + (existing ? (existing.notes || '') : '') + '</textarea></div>' +
             '</div>' +
             '<div style="display:flex;gap:8px;margin-top:16px">' +
                 '<button onclick="rhSaveEvent(\'' + (eventId || '') + '\')" class="btn btn-primary" style="flex:2">💾 ' + (existing ? 'Save Changes' : 'Create Rehearsal') + '</button>' +
@@ -2382,10 +2382,19 @@ async function rhSaveEvent(eventId) {
                     }
                 } catch(e) { /* calendar sync best-effort */ }
             }
-            // Switch to Tonight tab and open the planner for the new date
+            // Switch to the new date's plan — clear old saved plan so user starts fresh
             setTimeout(function() {
                 if (typeof practicePlanActiveDate !== 'undefined') practicePlanActiveDate = ev.date;
-                rhShowTab('tonight');
+                // Clear the old saved plan so the planner shows a fresh state for the new date
+                try { localStorage.removeItem('glPlannerQueue'); } catch(e) {}
+                try { localStorage.removeItem('glPlannerGuidance'); } catch(e) {}
+                try { localStorage.removeItem('glSavedPlanUnits'); } catch(e) {}
+                // Open the planner (auto-generates a new plan for the new date)
+                if (typeof renderRehearsalPlanner === 'function') {
+                    renderRehearsalPlanner();
+                } else {
+                    rhShowTab('tonight');
+                }
             }, 300);
         }
     } catch(e) { showToast('Could not save: ' + e.message); }
