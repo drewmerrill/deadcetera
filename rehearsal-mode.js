@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260325-234833', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-000422', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1063,6 +1063,73 @@ async function _rmSaveSessionSummary() {
     _rmSessionStart = 0;
 }
 
+// ── Smart Rating Assist ─────────────────────────────────────────────────
+// Suggests a rating based on session signals. User confirms or adjusts.
+
+function _rmSuggestRating(summary) {
+    var score = 0;
+    var reasons = [];
+    var completed = (summary.songsWorked || []).length;
+    var total = (summary.blocks || []).length || completed;
+    var actual = summary.totalActualMin || 0;
+    var budget = summary.totalBudgetMin || 0;
+    var delta = budget > 0 ? actual - budget : 0;
+    var overBlocks = (summary.blocks || []).filter(function(b) { return b.budgetMin > 0 && b.actualMin > b.budgetMin; });
+
+    // 1. Completion ratio (0-30 points)
+    if (total > 0) {
+        var ratio = completed / total;
+        if (ratio >= 0.9) { score += 30; reasons.push('Covered the full plan'); }
+        else if (ratio >= 0.6) { score += 20; reasons.push('Got through most of the plan'); }
+        else { score += 10; reasons.push('Covered ' + Math.round(ratio * 100) + '% of the plan'); }
+    } else if (completed > 0) {
+        score += 20;
+    }
+
+    // 2. Session length (0-20 points)
+    if (actual >= 45) { score += 20; reasons.push(actual + ' min session'); }
+    else if (actual >= 20) { score += 15; }
+    else if (actual >= 10) { score += 10; }
+    else { score += 5; reasons.push('Short session'); }
+
+    // 3. Pacing vs budget (0-20 points)
+    if (budget > 0) {
+        if (Math.abs(delta) <= 5) { score += 20; reasons.push('Stayed on schedule'); }
+        else if (delta > 15) { score += 5; reasons.push('Ran over by ' + delta + ' min'); }
+        else if (delta > 0) { score += 12; }
+        else { score += 15; reasons.push('Finished early'); }
+    } else {
+        score += 10; // no budget to compare
+    }
+
+    // 4. Few songs running over (0-15 points)
+    if (overBlocks.length === 0) { score += 15; }
+    else if (overBlocks.length <= 2) { score += 10; }
+    else { score += 3; reasons.push(overBlocks.length + ' songs ran over'); }
+
+    // 5. Song count bonus (0-15 points)
+    if (completed >= 8) { score += 15; }
+    else if (completed >= 5) { score += 10; }
+    else if (completed >= 3) { score += 7; }
+    else { score += 3; }
+
+    // Map score to rating
+    var suggested = 'solid';
+    var label = 'Solid';
+    var confidence = 'medium';
+    if (score >= 75) { suggested = 'great'; label = 'Strong'; confidence = 'high'; }
+    else if (score >= 50) { suggested = 'solid'; label = 'Solid'; confidence = 'medium'; }
+    else { suggested = 'needs_work'; label = 'Needs Work'; confidence = score >= 35 ? 'medium' : 'low'; }
+
+    return {
+        suggested: suggested,
+        label: label,
+        score: score,
+        confidence: confidence,
+        reasons: reasons.slice(0, 2)
+    };
+}
+
 // ── Session Summary Screen ──────────────────────────────────────────────
 // Shown after ending rehearsal. Feels like a completion moment.
 
@@ -1138,14 +1205,30 @@ function _rmShowSessionSummary(summary) {
         html += '<div style="font-size:0.72em;color:#64748b;text-align:center;margin-bottom:14px;max-height:48px;overflow-y:auto">' + _rmEsc(songList) + '</div>';
     }
 
-    // Quick Rating
+    // Smart Rating Assist
+    var _sra = _rmSuggestRating(summary);
+    _rmSummaryRating = _sra.suggested; // pre-select the suggestion
+    var _sraColors = { great: '#22c55e', solid: '#a5b4fc', needs_work: '#fbbf24' };
+    var _sraIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
     html += '<div style="margin-bottom:14px">';
-    html += '<div style="font-size:0.72em;font-weight:700;color:#475569;margin-bottom:6px;text-align:center">How was it?</div>';
+    // Suggestion card
+    html += '<div style="text-align:center;padding:12px;background:rgba(' + (_sra.suggested === 'great' ? '34,197,94' : _sra.suggested === 'solid' ? '99,102,241' : '245,158,11') + ',0.06);border:1px solid rgba(' + (_sra.suggested === 'great' ? '34,197,94' : _sra.suggested === 'solid' ? '99,102,241' : '245,158,11') + ',0.2);border-radius:12px;margin-bottom:8px">';
+    html += '<div style="font-size:0.88em;font-weight:700;color:' + (_sraColors[_sra.suggested] || '#a5b4fc') + '">' + _sraIcons[_sra.suggested] + ' That felt like a ' + _sra.label + ' rehearsal</div>';
+    if (_sra.reasons.length) html += '<div style="font-size:0.68em;color:#64748b;margin-top:3px">' + _sra.reasons.join(' \u00b7 ') + '</div>';
+    html += '</div>';
+    // Agree / Adjust buttons
+    html += '<div style="display:flex;gap:8px;justify-content:center">';
+    html += '<button onclick="_rmAcceptSuggested()" id="rmAgreeBtn" style="flex:2;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,' + (_sraColors[_sra.suggested] || '#6366f1') + ',' + (_sra.suggested === 'great' ? '#16a34a' : _sra.suggested === 'solid' ? '#4f46e5' : '#d97706') + ');color:white;cursor:pointer;font-weight:800;font-size:0.88em;transition:all 0.15s">\uD83D\uDC4D Agree</button>';
+    html += '<button onclick="_rmShowManualRating()" id="rmAdjustBtn" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:none;color:#94a3b8;cursor:pointer;font-weight:600;font-size:0.82em">\uD83D\uDC4E Adjust</button>';
+    html += '</div>';
+    // Hidden manual rating (shown on Adjust)
+    html += '<div id="rmManualRating" style="display:none;margin-top:8px">';
     html += '<div style="display:flex;gap:8px;justify-content:center">';
     html += '<button onclick="_rmSetRating(\'great\')" id="rmRate_great" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDD25 Great</button>';
-    html += '<button onclick="_rmSetRating(\'solid\')" id="rmRate_solid" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDCAA Solid</button>';
+    html += '<button onclick="_rmSetRating(\'solid\')" id="rmRate_solid" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDD27 Solid</button>';
     html += '<button onclick="_rmSetRating(\'needs_work\')" id="rmRate_needs_work" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer;font-weight:700;font-size:0.82em;transition:all 0.15s">\uD83D\uDD27 Needs Work</button>';
     html += '</div></div>';
+    html += '</div>';
 
     // Notes input
     html += '<div style="margin-bottom:12px">';
@@ -1175,6 +1258,27 @@ function _rmShowSessionSummary(summary) {
 
 var _rmSummaryFile = null;
 var _rmSummaryRating = null;
+var _rmSuggestionAccepted = null; // tracks if user accepted or adjusted
+
+window._rmAcceptSuggested = function() {
+    // Rating already pre-set by _rmSuggestRating
+    _rmSuggestionAccepted = true;
+    var btn = document.getElementById('rmAgreeBtn');
+    if (btn) { btn.textContent = '\u2705 Confirmed'; btn.style.opacity = '0.7'; btn.disabled = true; }
+    var adj = document.getElementById('rmAdjustBtn');
+    if (adj) adj.style.display = 'none';
+    showToast('\uD83D\uDC4D Rating confirmed');
+};
+
+window._rmShowManualRating = function() {
+    _rmSuggestionAccepted = false;
+    var manual = document.getElementById('rmManualRating');
+    if (manual) manual.style.display = 'block';
+    var agree = document.getElementById('rmAgreeBtn');
+    if (agree) agree.style.display = 'none';
+    var adjust = document.getElementById('rmAdjustBtn');
+    if (adjust) adjust.style.display = 'none';
+};
 
 window._rmSetRating = function(rating) {
     _rmSummaryRating = rating;
@@ -1254,6 +1358,7 @@ window._rmSummarySave = async function(sessionId) {
         if (notes) updates.notes = notes;
         if (mixdownId) updates.mixdown_id = mixdownId;
         if (_rmSummaryRating) updates.rating = _rmSummaryRating;
+        if (_rmSuggestionAccepted !== null) updates.ratingAcceptedSuggestion = _rmSuggestionAccepted;
         if (autoSummary) updates.summary = autoSummary;
         if (Object.keys(updates).length) {
             try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates); } catch(e) {}
@@ -1269,6 +1374,7 @@ window._rmSummarySave = async function(sessionId) {
 
     _rmSummaryFile = null;
     _rmSummaryRating = null;
+    _rmSuggestionAccepted = null;
 
     // Brief pause to show the "Saved!" confirmation, then close
     setTimeout(function() {

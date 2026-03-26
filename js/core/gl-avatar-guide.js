@@ -99,9 +99,9 @@ window.GLAvatarGuide = (function() {
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_review_outcome', stage: 'fan', trigger: 'onboard_step_3', page: 'any',
-          message: 'How\u2019d it go? One tap.',
-          coach: 'This is how your band tracks improvement.',
-          actions: [{ label: 'Rate It \u2192', onclick: "showPage('rehearsal')" }],
+          message: 'I\u2019ve got a read on how that went \u2014 just confirm.',
+          coach: 'One tap. That\u2019s how your band starts tracking improvement.',
+          actions: [{ label: 'See Rating \u2192', onclick: "showPage('rehearsal')" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_complete', stage: 'fan', trigger: 'onboard_done', page: 'any',
