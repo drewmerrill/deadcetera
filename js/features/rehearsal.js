@@ -1656,8 +1656,8 @@ async function rhShowPlansTab(container) {
         : '<div class="app-card" style="text-align:center;padding:32px 20px">'
           + '<div style="font-size:2em;margin-bottom:10px">📆</div>'
           + '<div style="font-weight:700;margin-bottom:6px">No rehearsals scheduled yet</div>'
-          + '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Add a rehearsal event in the Calendar to create a plan here.</div>'
-          + '<button class="btn btn-primary" onclick="showPage(\'calendar\')">📆 Go to Calendar</button>'
+          + '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Create your first rehearsal to start building a plan.</div>'
+          + '<button class="btn btn-primary" onclick="rhOpenCreateModal()">+ New Rehearsal</button>'
           + '</div>';
     container.innerHTML = tabsHtml + planBodyHtml;
     if (rehearsals.length && practicePlanActiveDate) renderPracticePlanForDate(practicePlanActiveDate);

@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-012218', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-012842', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -13658,15 +13658,9 @@ var MASTER_READINESS_FILE = '_master_readiness.json';
 var readinessCache = {};       // { songTitle: { drew:4, chris:3, ... } }
 var readinessCacheLoaded = false;
 
-// Populated from Firebase by loadBandMembersFromFirebase().
-// Deadcetera defaults shown only for that band; other bands start empty.
-var BAND_MEMBERS_ORDERED = (currentBandSlug === 'deadcetera') ? [
-    { key: 'drew',   name: 'Drew Merrill',  emoji: '🎸' },
-    { key: 'chris',  name: 'Chris Jalbert', emoji: '🎸' },
-    { key: 'brian',  name: 'Brian Hillman', emoji: '🎸' },
-    { key: 'pierce', name: 'Pierce Hale',   emoji: '🎹' },
-    { key: 'jay',    name: 'Jay Nault',     emoji: '🥁' }
-] : []; // Non-Deadcetera: empty until Firebase loads
+// Populated ONLY from Firebase by loadBandMembersFromFirebase().
+// Starts empty. Firebase fills it after boot. No hardcoded fallback.
+var BAND_MEMBERS_ORDERED = [];
 
 // ── Load band members from Firebase (canonical source) ──────────────────────
 // Replaces hardcoded bandMembers + BAND_MEMBERS_ORDERED with real per-band data.
@@ -13679,11 +13673,6 @@ async function loadBandMembersFromFirebase() {
         var members = snap.val();
         if (!members || typeof members !== 'object') {
             console.warn('[Members] \u26A0 No members found in Firebase for band "' + currentBandSlug + '". UI will show empty state.');
-            // Clear any Deadcetera fallback so empty state renders honestly
-            if (currentBandSlug !== 'deadcetera') {
-                Object.keys(bandMembers).forEach(function(k) { delete bandMembers[k]; });
-                BAND_MEMBERS_ORDERED.length = 0;
-            }
             return;
         }
         // Rebuild bandMembers from Firebase

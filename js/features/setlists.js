@@ -50,7 +50,7 @@ async function loadSetlists() {
         }).join('');
     }
 
-    if (data.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px">No setlists yet. Create one for your next gig!</div>'; return; }
+    if (data.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"><div style="font-size:1.5em;margin-bottom:8px">\uD83D\uDCCB</div><div style="font-weight:600;margin-bottom:4px">No setlists yet</div><div style="font-size:0.85em;margin-bottom:12px">Build your first setlist for a rehearsal or gig.</div><button class="btn btn-primary" onclick="createNewSetlist()">+ Create Setlist</button></div>'; return; }
 
     var today = new Date().toISOString().split('T')[0];
     var upcoming = data.filter(function(sl) { return (sl.date || '') >= today; }).sort(function(a,b) { return (a.date || '').localeCompare(b.date || ''); });

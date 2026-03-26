@@ -340,7 +340,7 @@ function renderGigsPage(el) {
             <div id="gigsMapContainer" style="height:320px;background:rgba(0,0,0,0.3)"></div>
         </div>
     </div>
-    <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div></div>`;
+    <div id="gigsList"><div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px"><div style="font-size:1.5em;margin-bottom:8px">\uD83C\uDFA4</div><div style="font-weight:600;margin-bottom:4px">No gigs yet</div><div style="font-size:0.85em">Add your first gig to start tracking shows.</div></div></div>`;
     loadGigs();
     // Map renders on expand — see toggleGigsMap()
 }
@@ -375,7 +375,7 @@ async function loadGigs() {
     if (!el) return;
     if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(rawData);
     else window._cachedGigs = rawData;
-    if (!rawData.length) { el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px">No gigs added yet.</div>'; return; }
+    if (!rawData.length) { el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px"><div style="font-size:1.5em;margin-bottom:8px">\uD83C\uDFA4</div><div style="font-weight:600;margin-bottom:4px">No gigs yet</div><div style="font-size:0.85em">Add your first gig to start tracking shows.</div></div>'; return; }
     var data = rawData.map(function(g, origIdx) { return Object.assign({}, g, { _origIdx: origIdx }); });
 
     // Filter tabs
