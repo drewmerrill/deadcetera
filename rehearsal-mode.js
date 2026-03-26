@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-100848', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-101556', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1255,14 +1255,24 @@ function _rmShowSessionSummary(summary) {
     html += '</div>';
     ov.innerHTML = html;
     document.body.appendChild(ov);
+
+    // Auto-confirm rating after 5 seconds if user doesn't interact
+    // This reduces friction to near-zero — user can just wait and it confirms
+    if (_rmAutoConfirmTimer) clearTimeout(_rmAutoConfirmTimer);
+    _rmAutoConfirmTimer = setTimeout(function() {
+        if (_rmSuggestionAccepted === null) { // user hasn't tapped Agree or Adjust
+            _rmAcceptSuggested();
+        }
+    }, 5000);
 }
 
 var _rmSummaryFile = null;
 var _rmSummaryRating = null;
-var _rmSuggestionAccepted = null; // tracks if user accepted or adjusted
+var _rmSuggestionAccepted = null;
+var _rmAutoConfirmTimer = null;
 
 window._rmAcceptSuggested = function() {
-    // Rating already pre-set by _rmSuggestRating
+    if (_rmAutoConfirmTimer) { clearTimeout(_rmAutoConfirmTimer); _rmAutoConfirmTimer = null; }
     _rmSuggestionAccepted = true;
     var btn = document.getElementById('rmAgreeBtn');
     if (btn) { btn.textContent = '\u2705 Confirmed'; btn.style.opacity = '0.7'; btn.disabled = true; }
@@ -1432,53 +1442,48 @@ function _rmShowRevealScreen() {
     // Build HTML
     var html = '<div style="max-width:480px;width:100%;max-height:92vh;overflow-y:auto;animation:rmRevealIn 0.25s ease">';
 
-    // ── Section 1: Headline ──
-    html += '<div style="text-align:center;padding:28px 20px 20px">';
-    html += '<div style="font-size:1.4em;font-weight:900;color:#f1f5f9;line-height:1.3;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
-    if (tc.whatHappened) {
-        html += '<div style="font-size:0.82em;color:#94a3b8;margin-top:10px;line-height:1.5">' + _rmEsc(tc.whatHappened) + '</div>';
-    }
+    // ── Section 1: Headline (large, punchy — no paragraph underneath) ──
+    html += '<div style="text-align:center;padding:28px 20px 16px">';
+    html += '<div style="font-size:1.5em;font-weight:900;color:#f1f5f9;line-height:1.25;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
     html += '</div>';
 
-    // ── Section 2: Timeline ──
-    if (tl.length > 0) {
-        html += '<div style="padding:0 20px 16px">';
-        html += '<div style="font-size:0.65em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Timeline</div>';
-        for (var i = 0; i < tl.length; i++) {
-            var t = tl[i];
-            if (t.song === 'Discussion' || t.song === 'Jam Section') continue;
-            var flowIcons = '';
-            if (SE) {
-                flowIcons = t.flow.map(function(f) { return '<span style="color:' + (SE.UI_COLORS[f] || '#64748b') + '">' + (SE.UI_ICONS[f] || '') + '</span>'; }).join(' ');
-            } else {
-                flowIcons = t.flowLabel;
-            }
-            var rowBorder = t.hasFullRun ? 'rgba(34,197,94,0.2)' : t.hasRestart ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.04)';
-            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-left:3px solid ' + rowBorder + ';margin-bottom:4px;animation:rmRevealStagger 0.2s ease ' + (i * 0.05) + 's both">';
-            html += '<div style="flex:1;min-width:0"><div style="font-size:0.85em;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _rmEsc(t.song) + '</div>';
-            html += '<div style="font-size:0.68em;color:#64748b;margin-top:1px">' + flowIcons + '</div></div>';
-            html += '<div style="font-size:0.72em;color:#64748b;flex-shrink:0">' + t.totalTime + '</div>';
+    // ── Section 2: Highlights (emotional payload — shown first) ──
+    if (tc.strongestMoment || (tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1)) {
+        html += '<div style="padding:0 20px 14px">';
+        if (tc.strongestMoment) {
+            html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:12px;margin-bottom:8px">';
+            html += '<span style="font-size:1.1em;flex-shrink:0">\u2B50</span>';
+            html += '<div style="font-size:0.85em;color:#86efac;line-height:1.4;font-weight:600">' + _rmEsc(tc.strongestMoment) + '</div>';
+            html += '</div>';
+        }
+        if (tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1) {
+            html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px">';
+            html += '<span style="font-size:1.1em;flex-shrink:0">\u26A0\uFE0F</span>';
+            html += '<div style="font-size:0.85em;color:#fbbf24;line-height:1.4;font-weight:600">' + _rmEsc(tc.biggestIssue) + '</div>';
             html += '</div>';
         }
         html += '</div>';
     }
 
-    // ── Section 3: Highlights ──
-    if (tc.strongestMoment || tc.biggestIssue) {
-        html += '<div style="padding:0 20px 16px">';
-        if (tc.strongestMoment) {
-            html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:6px">';
-            html += '<span style="font-size:1em;flex-shrink:0">\u2B50</span>';
-            html += '<div style="font-size:0.82em;color:#86efac;line-height:1.4">' + _rmEsc(tc.strongestMoment) + '</div>';
+    // ── Section 3: Timeline (compact, secondary) ──
+    if (tl.length > 0) {
+        // Only show songs, skip discussion/jam, limit to 8
+        var songRows = tl.filter(function(t) { return t.song !== 'Discussion' && t.song !== 'Jam Section'; }).slice(0, 8);
+        if (songRows.length > 0) {
+            html += '<div style="padding:0 20px 14px">';
+            html += '<div style="font-size:0.6em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Songs</div>';
+            for (var i = 0; i < songRows.length; i++) {
+                var t = songRows[i];
+                var icon = t.hasFullRun ? '\u2705' : t.hasRestart ? '\uD83D\uDD04' : '\u25B6';
+                var rowColor = t.hasFullRun ? '#22c55e' : t.hasRestart ? '#f87171' : '#64748b';
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);animation:rmRevealStagger 0.15s ease ' + (i * 0.04) + 's both">';
+                html += '<span style="font-size:0.75em;color:' + rowColor + ';width:20px;text-align:center">' + icon + '</span>';
+                html += '<span style="flex:1;font-size:0.82em;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _rmEsc(t.song) + '</span>';
+                html += '<span style="font-size:0.7em;color:#475569;flex-shrink:0">' + t.totalTime + '</span>';
+                html += '</div>';
+            }
             html += '</div>';
         }
-        if (tc.biggestIssue && tc.biggestIssue !== 'No major issues. Keep this rhythm.') {
-            html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px">';
-            html += '<span style="font-size:1em;flex-shrink:0">\u26A0\uFE0F</span>';
-            html += '<div style="font-size:0.82em;color:#fbbf24;line-height:1.4">' + _rmEsc(tc.biggestIssue) + '</div>';
-            html += '</div>';
-        }
-        html += '</div>';
     }
 
     // ── Section 4: Next Action CTA ──

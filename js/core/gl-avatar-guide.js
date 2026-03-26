@@ -87,26 +87,26 @@ window.GLAvatarGuide = (function() {
         // Each step has a localStorage flag that gates the next step.
 
         { id: 'onboard_create_setlist', stage: 'fan', trigger: 'onboard_step_1', page: 'any',
-          message: 'First things first \u2014 pick the songs you\u2019re playing.',
-          coach: 'I\u2019ll create a setlist for you. Just tap to add songs.',
+          message: 'Step 1 of 3 \u2014 Pick the songs you\u2019re playing.',
+          coach: 'I\u2019ll create a setlist. Just tap to add songs.',
           actions: [{ label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_start_rehearsal', stage: 'fan', trigger: 'onboard_step_2', page: 'any',
-          message: 'Setlist ready. Let\u2019s rehearse it.',
-          coach: 'I\u2019ll set up the rehearsal \u2014 just hit go.',
+          message: 'Step 2 of 3 \u2014 Run your first rehearsal.',
+          coach: 'I\u2019ll set it up. Just hit go.',
           actions: [{ label: 'Start Rehearsal \u2192', onclick: "_glQuickStartRehearsal()" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_review_outcome', stage: 'fan', trigger: 'onboard_step_3', page: 'any',
-          message: 'I\u2019ve got a read on how that went \u2014 just confirm.',
-          coach: 'One tap. That\u2019s how your band starts tracking improvement.',
+          message: 'Step 3 of 3 \u2014 How\u2019d it go?',
+          coach: 'One tap confirms. That\u2019s it.',
           actions: [{ label: 'See Rating \u2192', onclick: "showPage('rehearsal')" }],
           cooldown: 0, dismissible: true, onboard: true },
 
         { id: 'onboard_complete', stage: 'fan', trigger: 'onboard_done', page: 'any',
-          message: 'First rehearsal logged. From here, your scorecard tracks every session.',
-          coach: 'The more you rehearse, the sharper the data gets. I\u2019ll check in before your next one.',
+          message: 'You\u2019re set up. Your scorecard tracks every rehearsal from here.',
+          coach: 'I\u2019ll check in before your next one.',
           actions: [{ label: 'Got it', dismiss: true }],
           cooldown: 0, dismissible: true, onboard: true },
 
