@@ -162,7 +162,20 @@ window.GLAvatarUI = (function() {
                 actArea.innerHTML = '';
             }
         } else {
-            // No tip — show Next Best Action from engine
+            // Show Product Brain rehearsal insight if available
+            var _pbInsight = (typeof GLProductBrain !== 'undefined') ? GLProductBrain.getInsightFromSession('latest') : null;
+            if (_pbInsight && !_pbInsight._empty && _pbInsight.ui && _pbInsight.ui.topCard) {
+                var tc = _pbInsight.ui.topCard;
+                var pbHtml = '<div style="margin-bottom:16px">';
+                pbHtml += '<div style="font-size:0.65em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Last Rehearsal</div>';
+                pbHtml += '<div style="font-size:0.88em;font-weight:700;color:#e2e8f0;line-height:1.4;margin-bottom:8px">' + _esc(tc.headline) + '</div>';
+                if (tc.strongestMoment) pbHtml += '<div style="font-size:0.78em;color:#22c55e;margin-bottom:4px">\u2B50 ' + _esc(tc.strongestMoment) + '</div>';
+                if (tc.biggestIssue) pbHtml += '<div style="font-size:0.78em;color:#fbbf24;margin-bottom:4px">\u26A0 ' + _esc(tc.biggestIssue) + '</div>';
+                if (tc.nextAction) pbHtml += '<div style="font-size:0.78em;color:#a5b4fc;margin-bottom:4px">\u25B6 ' + _esc(tc.nextAction) + '</div>';
+                pbHtml += '</div>';
+                msgArea.innerHTML = pbHtml;
+            }
+            // Show Next Best Action from engine
             var nba = G.getNextBestAction ? G.getNextBestAction(ctx) : null;
             if (nba) {
                 msgArea.innerHTML = '<div style="margin-bottom:16px">'

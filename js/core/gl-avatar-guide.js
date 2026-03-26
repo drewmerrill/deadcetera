@@ -158,7 +158,21 @@ window.GLAvatarGuide = (function() {
           cooldown: 21600000, dismissible: true },
 
         { id: 'post_rehearsal', stage: 'bandmate', trigger: 'just_finished_rehearsal', page: 'home',
-          message: 'Good session. Don\u2019t forget to add notes or attach the mixdown.',
+          message: function() {
+            // Use Product Brain insight if available for a smarter post-rehearsal message
+            if (typeof GLProductBrain !== 'undefined') {
+              var insight = GLProductBrain.getInsightFromSession('latest');
+              if (insight && !insight._empty) return insight.headline;
+            }
+            return 'Good session. Don\u2019t forget to add notes or attach the mixdown.';
+          },
+          coach: function() {
+            if (typeof GLProductBrain !== 'undefined') {
+              var insight = GLProductBrain.getInsightFromSession('latest');
+              if (insight && !insight._empty && insight.narrative) return insight.narrative.nextAction;
+            }
+            return '';
+          },
           actions: [{ label: 'Add Notes', onclick: "showPage('rehearsal')" }],
           cooldown: 0, dismissible: true },
 
@@ -217,9 +231,12 @@ window.GLAvatarGuide = (function() {
 
             // Evaluate trigger
             if (_checkTrigger(g.trigger, context)) {
-                // Template message with context vars
-                var msg = _template(g.message, context);
-                var coach = g.coach ? _template(g.coach, context) : '';
+                // Resolve message/coach (may be string or function for dynamic content)
+                var rawMsg = typeof g.message === 'function' ? g.message() : g.message;
+                var rawCoach = typeof g.coach === 'function' ? g.coach() : (g.coach || '');
+                // Template with context vars
+                var msg = _template(rawMsg, context);
+                var coach = rawCoach ? _template(rawCoach, context) : '';
                 return { id: g.id, message: msg, coach: coach, actions: g.actions || [], dismissible: g.dismissible !== false, stage: g.stage };
             }
         }

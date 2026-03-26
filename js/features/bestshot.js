@@ -932,6 +932,7 @@ async function chopLoadFile(file) {
                 }
             }
             if (!timeline && typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio) {
+                // v1 fallback — only if Product Brain and v2 both unavailable
                 timeline = GLStore.segmentRehearsalAudio(chopAudioBuffer);
             }
             if (timeline && timeline.segments && timeline.segments.length > 1) {
