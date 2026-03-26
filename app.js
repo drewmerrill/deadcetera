@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-011153', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-012218', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -724,15 +724,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ── STAGE 1: Immediate critical render ──
-    // For Deadcetera: render songs immediately from catalog (fast, correct for this band)
-    // For other bands: show loading state until Firebase resolves with band-specific data
-    if (currentBandSlug === 'deadcetera') {
-        renderSongs();
-    } else {
-        // Show loading state for non-Deadcetera bands
-        var _songDd = document.getElementById('songDropdown');
-        if (_songDd) _songDd.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)"><div style="font-size:1.5em;margin-bottom:8px">Loading songs...</div></div>';
-    }
+    // Song catalog (allSongs) is shared reference data — safe to render for all bands.
+    // Band-specific data (readiness, status) fills in after Firebase resolves.
+    renderSongs();
     console.log('[Startup] Initial render at ' + Math.round(performance.now()) + 'ms');
     window._glBootTimings.initialRender = performance.now();
 
@@ -10241,14 +10235,16 @@ function settingsTab(tab, btn) {
             </div>
         </div>
         <div class="app-card"><h3>👥 Band Members</h3>
-            <div id="membersList">${Object.entries(bandMembers).map(([k,m])=>`
+            <div id="membersList">${Object.keys(bandMembers).length === 0 ?
+                '<div style="text-align:center;padding:20px;color:var(--text-dim)"><div style="font-size:1.5em;margin-bottom:8px">👥</div><div style="font-weight:600;margin-bottom:4px">No members yet</div><div style="font-size:0.82em;margin-bottom:12px">Add your bandmates below to get started.</div></div>'
+                : Object.entries(bandMembers).map(([k,m])=>`
                 <div class="list-item" style="padding:10px 12px">
                     <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;color:var(--accent-light)">${m.name.charAt(0)}</div>
                     <div style="flex:1"><div style="font-weight:600;font-size:0.9em">${m.name}</div>
                         <div style="font-size:0.75em;color:var(--text-dim)">${typeof _memberDisplayRole==='function'?_memberDisplayRole(m):(m.role+(m.sings?' · Vocals':'')+(m.leadVocals?' (Lead)':''))}</div></div>
                     <button class="btn btn-sm btn-ghost" onclick="editMember('${k}')" title="Edit">✏️</button>
                     <button class="btn btn-sm btn-ghost" onclick="removeMember('${k}')" title="Remove" style="color:var(--red)">✕</button>
-                </div>`).join('')}</div>
+                </div>`).join('') }</div>
             <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border:1px dashed var(--border);border-radius:8px">
                 <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
                 <div class="form-grid">
@@ -13682,7 +13678,12 @@ async function loadBandMembersFromFirebase() {
         var snap = await firebaseDB.ref(bandPath('meta/members')).once('value');
         var members = snap.val();
         if (!members || typeof members !== 'object') {
-            console.log('[Members] No members in Firebase for ' + currentBandSlug + ' — using fallback');
+            console.warn('[Members] \u26A0 No members found in Firebase for band "' + currentBandSlug + '". UI will show empty state.');
+            // Clear any Deadcetera fallback so empty state renders honestly
+            if (currentBandSlug !== 'deadcetera') {
+                Object.keys(bandMembers).forEach(function(k) { delete bandMembers[k]; });
+                BAND_MEMBERS_ORDERED.length = 0;
+            }
             return;
         }
         // Rebuild bandMembers from Firebase

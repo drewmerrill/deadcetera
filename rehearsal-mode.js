@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-011153', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-012218', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
