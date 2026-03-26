@@ -162,16 +162,23 @@ window.GLAvatarUI = (function() {
                 actArea.innerHTML = '';
             }
         } else {
-            // Show Product Brain rehearsal insight if available
+            // Show Product Brain rehearsal insight — max 2 sentences: headline + nextAction
             var _pbInsight = (typeof GLProductBrain !== 'undefined') ? GLProductBrain.getInsightFromSession('latest') : null;
             if (_pbInsight && !_pbInsight._empty && _pbInsight.ui && _pbInsight.ui.topCard) {
                 var tc = _pbInsight.ui.topCard;
+                var coaching = _pbInsight.coaching || {};
                 var pbHtml = '<div style="margin-bottom:16px">';
                 pbHtml += '<div style="font-size:0.65em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Last Rehearsal</div>';
-                pbHtml += '<div style="font-size:0.88em;font-weight:700;color:#e2e8f0;line-height:1.4;margin-bottom:8px">' + _esc(tc.headline) + '</div>';
-                if (tc.strongestMoment) pbHtml += '<div style="font-size:0.78em;color:#22c55e;margin-bottom:4px">\u2B50 ' + _esc(tc.strongestMoment) + '</div>';
-                if (tc.biggestIssue) pbHtml += '<div style="font-size:0.78em;color:#fbbf24;margin-bottom:4px">\u26A0 ' + _esc(tc.biggestIssue) + '</div>';
-                if (tc.nextAction) pbHtml += '<div style="font-size:0.78em;color:#a5b4fc;margin-bottom:4px">\u25B6 ' + _esc(tc.nextAction) + '</div>';
+                // Headline only — no whatHappened, no strongestMoment (Reveal Screen already showed those)
+                pbHtml += '<div style="font-size:0.88em;font-weight:700;color:#e2e8f0;line-height:1.4;margin-bottom:10px">' + _esc(tc.headline) + '</div>';
+                // Biggest issue — only if it's real (not the "no issues" fallback)
+                if (tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1) {
+                    pbHtml += '<div style="font-size:0.78em;color:#fbbf24;margin-bottom:8px">' + _esc(tc.biggestIssue) + '</div>';
+                }
+                // Next action as CTA
+                if (coaching.nextAction) {
+                    pbHtml += '<div style="font-size:0.78em;color:#a5b4fc;padding:8px 10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px">\u25B6 ' + _esc(coaching.nextAction) + '</div>';
+                }
                 pbHtml += '</div>';
                 msgArea.innerHTML = pbHtml;
             }

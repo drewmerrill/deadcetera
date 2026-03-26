@@ -329,52 +329,77 @@
       }
     }
 
+    // Filter: only keep highlights that are meaningful enough to change behavior
+    highlights = highlights.filter(function(h) {
+      // Strong moments must be at least 2 minutes to matter
+      if (h.type === 'strong_moment' && h.duration < 120) return false;
+      // Clean runs: only if the song has been a problem before (has restarts elsewhere in timeline)
+      // For now, keep all clean runs — they reinforce confidence
+      return true;
+    });
+
     // Sort by impact: strong_moment > clean_run > annotated
     var priority = { strong_moment: 0, clean_run: 1, annotated: 2 };
     highlights.sort(function(a, b) { return (priority[a.type] || 9) - (priority[b.type] || 9); });
 
-    return highlights.slice(0, 5); // top 5 highlights
+    return highlights.slice(0, 3); // top 3 only — less is more
   }
 
   // ── Headline Generator ────────────────────────────────────────────────────
-  // One sentence. Feels like a coach. References real behavior.
+  // One sentence. Coach delivering a verdict. References specific behavior.
+  // Never says "good session", "nice work", or anything generic.
 
   function generateHeadline(story) {
     if (!story || !story.coaching) return 'Rehearsal complete.';
     var c = story.coaching;
     var tl = story.timeline || [];
     var fullRuns = 0;
-    var songNames = [];
+    var restartSongs = [];
+    var cleanSongs = [];
     for (var i = 0; i < tl.length; i++) {
-      if (tl[i].hasFullRun) { fullRuns++; songNames.push(tl[i].song); }
+      if (tl[i].hasFullRun) {
+        fullRuns++;
+        if (!tl[i].hasRestart) cleanSongs.push(tl[i].song);
+      }
+      if (tl[i].hasRestart && !tl[i].hasFullRun) restartSongs.push(tl[i].song);
     }
     var prob = c.problematicSongs || [];
     var talkPct = c.timeAllocation && c.timeAllocation['Talk'] ? c.timeAllocation['Talk'].percent : 0;
+    var talkMin = c.timeAllocation && c.timeAllocation['Talk'] ? c.timeAllocation['Talk'].minutes : 0;
+    var playMin = (c.timeAllocation && c.timeAllocation['Full Run'] ? c.timeAllocation['Full Run'].minutes : 0) +
+                  (c.timeAllocation && c.timeAllocation['Partial'] ? c.timeAllocation['Partial'].minutes : 0);
 
-    // Clean session — no restarts, multiple full runs
-    if (c.restartCount === 0 && fullRuns >= 3)
-      return 'Clean session \u2014 ' + fullRuns + ' songs front to back, zero restarts.';
-    // Pushed through difficulty
+    // Zero restarts + 3+ clean runs = exceptional
+    if (c.restartCount === 0 && cleanSongs.length >= 3)
+      return cleanSongs.length + ' songs, zero false starts. This is what locked in sounds like.';
+    // Heavy restarts on one song specifically
+    if (prob.length && prob[0].restarts >= 3)
+      return prob[0].song + ' cost you ' + prob[0].restarts + ' restarts and ' + prob[0].totalTime + '. That\u2019s the song to drill.';
+    // Fought through and landed
     if (c.restartCount >= 3 && fullRuns >= 2)
-      return 'You fought through ' + c.restartCount + ' restarts and still landed ' + fullRuns + ' full run' + (fullRuns !== 1 ? 's' : '') + '.';
-    // Heavy restart session
-    if (c.restartCount >= 4 && prob.length)
-      return prob[0].song + ' gave you trouble (' + prob[0].restarts + ' restarts) but you kept at it.';
-    // Talk-heavy
+      return c.restartCount + ' breakdowns, but you landed ' + fullRuns + '. The grit matters.';
+    // Songs that never came together
+    if (restartSongs.length >= 2 && fullRuns <= 1)
+      return restartSongs.slice(0, 2).join(' and ') + ' didn\u2019t land. Slow them down next time.';
+    // Talk ate the session
     if (talkPct >= 30)
-      return talkPct + '% of the session was talking. Get the reps in first, discuss after.';
-    // Good volume
-    if (fullRuns >= 5)
-      return fullRuns + ' songs in ' + c.totalMinutes + ' minutes. That\u2019s the kind of volume that builds confidence.';
-    // Short but productive
-    if (c.totalMinutes < 30 && fullRuns >= 2)
-      return 'Short but focused \u2014 ' + fullRuns + ' full runs in ' + c.totalMinutes + ' min.';
-    // Default with real data
+      return _r1(talkMin) + ' minutes of talking, ' + _r1(playMin) + ' minutes of playing. Flip that ratio.';
+    if (talkPct >= 20)
+      return 'You lost ' + _r1(talkMin) + ' min to discussion. That\u2019s a song you could have run.';
+    // High volume
+    if (fullRuns >= 6)
+      return fullRuns + ' songs in ' + c.totalMinutes + ' min. That\u2019s how you build a set you trust.';
+    if (fullRuns >= 4 && c.restartCount <= 1)
+      return fullRuns + ' clean runs. The band is tightening.';
+    // Short session, got work done
+    if (c.totalMinutes < 25 && fullRuns >= 2)
+      return fullRuns + ' songs in ' + c.totalMinutes + ' min. Short and sharp.';
+    // Default: always reference real numbers
     if (fullRuns > 0 && c.restartCount > 0)
-      return fullRuns + ' song' + (fullRuns !== 1 ? 's' : '') + ' landed, ' + c.restartCount + ' restart' + (c.restartCount !== 1 ? 's' : '') + '. ' + c.totalMinutes + ' min of work.';
+      return fullRuns + ' run' + (fullRuns !== 1 ? 's' : '') + ' landed, ' + c.restartCount + ' breakdown' + (c.restartCount !== 1 ? 's' : '') + '. ' + c.totalMinutes + ' min.';
     if (fullRuns > 0)
       return fullRuns + ' song' + (fullRuns !== 1 ? 's' : '') + ' covered in ' + c.totalMinutes + ' min.';
-    return c.totalMinutes + ' minutes of rehearsal. Keep building.';
+    return c.totalMinutes + ' minutes. Every rep counts.';
   }
 
   // ── Narrative Builder ─────────────────────────────────────────────────────
@@ -442,13 +467,19 @@
     }
 
     // ── Next Action ──
+    // Must be behavioral, specific, and start with a verb.
+    // Format: "Start next rehearsal by [specific behavior]"
     var nextAction = '';
-    if (prob.length > 0 && prob[0].restarts >= 2) {
-      nextAction = 'Run ' + prob[0].song + ' section-by-section before your next full attempt.';
+    if (prob.length > 0 && prob[0].restarts >= 3) {
+      nextAction = 'Start next rehearsal with ' + prob[0].song + '. Play it at half speed, section by section, before attempting full speed.';
+    } else if (prob.length > 0 && prob[0].restarts >= 2) {
+      nextAction = 'Open next rehearsal with ' + prob[0].song + ' \u2014 tackle it while everyone\u2019s fresh.';
     } else if (talkPct >= 25) {
-      nextAction = 'Come to the next rehearsal with arrangement decisions already made.';
+      nextAction = 'Text arrangement decisions to the group chat before next rehearsal. Walk in ready to play.';
     } else if (restartCount >= 3) {
-      nextAction = 'Focus on playing through mistakes instead of stopping. Full runs build muscle memory.';
+      nextAction = 'Start next rehearsal with a rule: no stopping mid-song. Play through the rough parts. Fix after.';
+    } else if (restartCount >= 1 && prob.length > 0) {
+      nextAction = 'Run ' + prob[0].song + ' twice back-to-back at the start of next rehearsal.';
     } else if (c.insights && c.insights.length) {
       var focusInsight = c.insights.find(function(ins) { return ins.type === 'focus'; });
       if (focusInsight) {
@@ -456,7 +487,7 @@
       }
     }
     if (!nextAction) {
-      nextAction = 'Keep this pace. Schedule your next rehearsal.';
+      nextAction = 'Book your next rehearsal. Momentum is everything.';
     }
 
     return {

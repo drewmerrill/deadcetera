@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-010608', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-011153', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1409,7 +1409,7 @@ function _rmShowRevealScreen() {
     if (!document.getElementById('rmRevealStyles')) {
         var st = document.createElement('style');
         st.id = 'rmRevealStyles';
-        st.textContent = '@keyframes rmRevealIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes rmRevealStagger{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}';
+        st.textContent = '@keyframes rmRevealIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}@keyframes rmRevealStagger{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}';
         document.head.appendChild(st);
     }
 
@@ -1420,7 +1420,7 @@ function _rmShowRevealScreen() {
     var coaching = insight.coaching || {};
 
     // Build HTML
-    var html = '<div style="max-width:480px;width:100%;max-height:92vh;overflow-y:auto;animation:rmRevealIn 0.5s ease">';
+    var html = '<div style="max-width:480px;width:100%;max-height:92vh;overflow-y:auto;animation:rmRevealIn 0.25s ease">';
 
     // ── Section 1: Headline ──
     html += '<div style="text-align:center;padding:28px 20px 20px">';
@@ -1444,7 +1444,7 @@ function _rmShowRevealScreen() {
                 flowIcons = t.flowLabel;
             }
             var rowBorder = t.hasFullRun ? 'rgba(34,197,94,0.2)' : t.hasRestart ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.04)';
-            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-left:3px solid ' + rowBorder + ';margin-bottom:4px;animation:rmRevealStagger 0.3s ease ' + (i * 0.08) + 's both">';
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-left:3px solid ' + rowBorder + ';margin-bottom:4px;animation:rmRevealStagger 0.2s ease ' + (i * 0.05) + 's both">';
             html += '<div style="flex:1;min-width:0"><div style="font-size:0.85em;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _rmEsc(t.song) + '</div>';
             html += '<div style="font-size:0.68em;color:#64748b;margin-top:1px">' + flowIcons + '</div></div>';
             html += '<div style="font-size:0.72em;color:#64748b;flex-shrink:0">' + t.totalTime + '</div>';
