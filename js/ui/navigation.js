@@ -141,11 +141,27 @@ window.showPage = function showPage(page) {
             _glLazyLoadPage(page, function() {
                 console.log('[Startup] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
                 var renderer = pageRenderers[page];
-                if (typeof renderer === 'function') renderer(el);
+                if (typeof renderer === 'function') {
+                    try { renderer(el); }
+                    catch(renderErr) {
+                        console.error('[Render] Page "' + page + '" threw:', renderErr);
+                        if (typeof GLRenderState !== 'undefined') {
+                            GLRenderState.set(page, { status: 'error', title: 'Render failed', message: renderErr.message, retry: "showPage('" + page + "')" });
+                        }
+                    }
+                }
             });
         } else {
             var renderer = pageRenderers[page];
-            if (typeof renderer === 'function') renderer(el);
+            if (typeof renderer === 'function') {
+                try { renderer(el); }
+                catch(renderErr) {
+                    console.error('[Render] Page "' + page + '" threw:', renderErr);
+                    if (typeof GLRenderState !== 'undefined') {
+                        GLRenderState.set(page, { status: 'error', title: 'Render failed', message: renderErr.message, retry: "showPage('" + page + "')" });
+                    }
+                }
+            }
         }
     }
 
