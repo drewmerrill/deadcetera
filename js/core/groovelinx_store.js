@@ -2196,6 +2196,21 @@
     return _latestTimeline;
   }
 
+  /** Run event-based segmentation (v2) on audio buffer. */
+  function segmentRehearsalAudioV2(audioBuffer, opts) {
+    if (typeof RehearsalSegmentationEngine === 'undefined' || !RehearsalSegmentationEngine.segmentAudioV2) return null;
+    if (!audioBuffer) return null;
+    var features = {
+      channelData: audioBuffer.getChannelData(0),
+      sampleRate: audioBuffer.sampleRate,
+      duration: audioBuffer.duration,
+    };
+    var result = RehearsalSegmentationEngine.segmentAudioV2(features, opts);
+    try { localStorage.setItem(_TIMELINE_KEY + '_v2', JSON.stringify(result)); } catch(e) {}
+    emit('eventTimelineGenerated', { timeline: result });
+    return result;
+  }
+
   /** Get the latest segmented timeline. */
   function getLatestTimeline() {
     return _latestTimeline;
@@ -3799,6 +3814,7 @@
     getPocketTimeMetrics:              getPocketTimeMetrics,
     getRecentRehearsalPocketHistory:   getRecentRehearsalPocketHistory,
     segmentRehearsalAudio:             segmentRehearsalAudio,
+    segmentRehearsalAudioV2:           segmentRehearsalAudioV2,
     getLatestTimeline:                 getLatestTimeline,
     saveTimelineCorrections:           saveTimelineCorrections,
     clearRehearsalAgenda:              clearRehearsalAgenda,

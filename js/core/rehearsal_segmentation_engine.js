@@ -450,13 +450,280 @@
   function _r1(v) { return Math.round(v * 10) / 10; }
   function _r2(v) { return Math.round(v * 100) / 100; }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // EVENT-BASED SEGMENTATION (v2)
+  // Detects state changes, not silence. Produces typed rehearsal events.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  var EVENT_TYPES = {
+    WARMUP_JAM:    'warmup_jam',
+    SONG_ATTEMPT:  'song_attempt',
+    SONG_FULL:     'song_full',
+    SONG_PARTIAL:  'song_partial',
+    FALSE_START:   'false_start',
+    RETRY:         'retry',
+    DISCUSSION:    'discussion',
+    SECTION_WORK:  'section_work',
+    ENDING_WORK:   'ending_work',
+    JAM:           'jam',
+    OFF_RAILS:     'off_rails',
+    STRONG_MOMENT: 'strong_moment',
+    BREAK:         'break',
+    UNKNOWN:       'unknown'
+  };
+
+  // ── Enhanced Frame Analysis ───────────────────────────────────────────────
+  // Adds zero-crossing rate and spectral features to each window.
+
+  function _computeFrameFeatures(data, sr, windowSizeSec) {
+    var windowSize = Math.floor(sr * windowSizeSec);
+    var frames = [];
+    for (var i = 0; i < data.length; i += windowSize) {
+      var end = Math.min(i + windowSize, data.length);
+      var sum = 0, zcr = 0;
+      var prev = data[i] || 0;
+      for (var j = i; j < end; j++) {
+        sum += data[j] * data[j];
+        if ((data[j] >= 0 && prev < 0) || (data[j] < 0 && prev >= 0)) zcr++;
+        prev = data[j];
+      }
+      var count = end - i;
+      var rms = Math.sqrt(sum / count);
+      // Zero crossing rate normalized to per-second
+      var zcrRate = (zcr / count) * sr;
+      frames.push({
+        startSec: _r1(i / sr),
+        endSec: _r1(end / sr),
+        rms: rms,
+        zcr: zcrRate
+      });
+    }
+    return frames;
+  }
+
+  // ── Rhythm Detection (autocorrelation) ────────────────────────────────────
+  // Estimates rhythmic stability for a segment.
+  // Higher score = more stable beat. Uses short autocorrelation on energy envelope.
+
+  function _estimateRhythmStability(frames, startIdx, endIdx) {
+    if (endIdx - startIdx < 10) return 0;
+    var energies = [];
+    for (var i = startIdx; i < endIdx; i++) energies.push(frames[i].rms);
+    // Normalize
+    var maxE = Math.max.apply(null, energies) || 1;
+    var normed = energies.map(function(e) { return e / maxE; });
+    // Autocorrelation at likely beat lags (assuming ~100ms frames, beats at 60-180 BPM)
+    // At 100ms frames: 120 BPM = beat every 500ms = lag 5, 90 BPM = lag 6.7, 150 BPM = lag 4
+    var bestCorr = 0;
+    for (var lag = 3; lag <= 10; lag++) {
+      var corr = 0, count = 0;
+      for (var k = 0; k < normed.length - lag; k++) {
+        corr += normed[k] * normed[k + lag];
+        count++;
+      }
+      if (count > 0) corr /= count;
+      if (corr > bestCorr) bestCorr = corr;
+    }
+    return _r2(bestCorr);
+  }
+
+  // ── Event Classification (v2) ─────────────────────────────────────────────
+  // Replaces simple music/speech/silence with rehearsal event types.
+
+  function _classifyEvent(seg, index, allSegments, frames, baselines) {
+    var dur = seg.durationSec;
+    var kind = seg.kind;
+    var intent = seg.likelyIntent;
+    var conf = seg.confidence;
+
+    // Compute frame-level features for this segment
+    var startFrame = 0, endFrame = frames.length;
+    for (var f = 0; f < frames.length; f++) {
+      if (frames[f].startSec <= seg.startSec) startFrame = f;
+      if (frames[f].endSec >= seg.endSec) { endFrame = f + 1; break; }
+    }
+    var segFrames = frames.slice(startFrame, endFrame);
+    var avgZcr = segFrames.length ? segFrames.reduce(function(a, f) { return a + f.zcr; }, 0) / segFrames.length : 0;
+    var rmsVals = segFrames.map(function(f) { return f.rms; });
+    var energyVariance = _variance(rmsVals);
+    var rhythm = _estimateRhythmStability(frames, startFrame, endFrame);
+
+    // ── Classification Rules ──
+
+    // Break / silence
+    if (kind === 'silence') {
+      return _makeEvent(seg, dur > 30 ? EVENT_TYPES.BREAK : EVENT_TYPES.BREAK, conf, []);
+    }
+
+    // Discussion: low energy, high ZCR (speech-like), no rhythm
+    if (kind === 'speech' || (avgZcr > 2000 && rhythm < 0.15 && dur > 5)) {
+      return _makeEvent(seg, EVENT_TYPES.DISCUSSION, Math.max(conf, 0.6), []);
+    }
+
+    // False start: very short music
+    if (kind === 'music' && dur < 15) {
+      // Check if next segment is also music (→ retry pattern)
+      var next = (index + 1 < allSegments.length) ? allSegments[index + 1] : null;
+      var nextNext = (index + 2 < allSegments.length) ? allSegments[index + 2] : null;
+      if (next && (next.kind === 'silence' || next.kind === 'speech') && next.durationSec < 30 &&
+          nextNext && nextNext.kind === 'music') {
+        return _makeEvent(seg, EVENT_TYPES.FALSE_START, 0.7, ['followed by retry']);
+      }
+      return _makeEvent(seg, EVENT_TYPES.FALSE_START, 0.55, []);
+    }
+
+    // Retry: music right after a false start
+    if (kind === 'music' && index > 0) {
+      var prevSeg = allSegments[index - 1];
+      var prevPrev = (index > 1) ? allSegments[index - 2] : null;
+      if (prevPrev && prevPrev._eventType === EVENT_TYPES.FALSE_START &&
+          (prevSeg.kind === 'silence' || prevSeg.kind === 'speech') && prevSeg.durationSec < 30) {
+        return _makeEvent(seg, EVENT_TYPES.RETRY, 0.65, ['restart after false start']);
+      }
+    }
+
+    // Warmup jam: first music segment in the session, before any structured playing
+    if (kind === 'music' && index <= 2 && dur < 180 && rhythm < 0.3) {
+      return _makeEvent(seg, EVENT_TYPES.WARMUP_JAM, 0.5, ['session opener']);
+    }
+
+    // Full song: long, rhythmically stable
+    if (kind === 'music' && dur >= 120 && rhythm >= 0.2) {
+      var tags = [];
+      // Strong moment detection: low variance = tight playing
+      if (energyVariance < 0.0005 && rhythm >= 0.35) tags.push('strong_moment');
+      return _makeEvent(seg, EVENT_TYPES.SONG_FULL, Math.min(0.85, 0.6 + rhythm * 0.5), tags);
+    }
+
+    // Partial song: medium duration with rhythm
+    if (kind === 'music' && dur >= 30 && dur < 120 && rhythm >= 0.15) {
+      return _makeEvent(seg, EVENT_TYPES.SONG_PARTIAL, 0.55, []);
+    }
+
+    // Section work: short repeated musical phrases
+    if (kind === 'music' && dur >= 15 && dur < 60 && energyVariance > 0.001) {
+      return _makeEvent(seg, EVENT_TYPES.SECTION_WORK, 0.45, []);
+    }
+
+    // Jam: long, high variance, low rhythm stability
+    if (kind === 'music' && dur >= 120 && rhythm < 0.2 && energyVariance > 0.0008) {
+      return _makeEvent(seg, EVENT_TYPES.JAM, 0.5, []);
+    }
+
+    // Off rails: high energy, very high variance
+    if (kind === 'music' && energyVariance > 0.005) {
+      return _makeEvent(seg, EVENT_TYPES.OFF_RAILS, 0.4, []);
+    }
+
+    // Default: song attempt
+    return _makeEvent(seg, EVENT_TYPES.SONG_ATTEMPT, Math.max(conf, 0.45), []);
+  }
+
+  function _makeEvent(seg, eventType, confidence, tags) {
+    seg._eventType = eventType;
+    return {
+      id: seg.id,
+      start_time: seg.startSec,
+      end_time: seg.endSec,
+      duration: seg.durationSec,
+      type: eventType,
+      song: seg.likelySongTitle || null,
+      confidence: _r2(confidence),
+      tags: tags || [],
+      // Preserve original classification for debugging
+      _originalKind: seg.kind,
+      _originalIntent: seg.likelyIntent
+    };
+  }
+
+  // ── Manual Annotation Merge ───────────────────────────────────────────────
+  // Annotations override AI classification at specified timestamps.
+
+  function _mergeAnnotations(events, annotations) {
+    if (!annotations || !annotations.length) return events;
+    // Sort annotations by time
+    var sorted = annotations.slice().sort(function(a, b) { return a.timeSec - b.timeSec; });
+
+    for (var a = 0; a < sorted.length; a++) {
+      var ann = sorted[a];
+      // Find the event that contains this timestamp
+      for (var e = 0; e < events.length; e++) {
+        if (events[e].start_time <= ann.timeSec && events[e].end_time > ann.timeSec) {
+          // Override type and song
+          if (ann.type) events[e].type = ann.type;
+          if (ann.song) events[e].song = ann.song;
+          events[e].confidence = 1.0; // manual = maximum confidence
+          if (events[e].tags.indexOf('manual') === -1) events[e].tags.push('manual');
+          break;
+        }
+      }
+    }
+    return events;
+  }
+
+  // ── Main v2 Entry Point ───────────────────────────────────────────────────
+
+  function segmentAudioV2(audioFeatures, opts) {
+    if (!audioFeatures || !audioFeatures.channelData || !audioFeatures.sampleRate) {
+      return { events: [], duration: 0, error: 'No audio data' };
+    }
+
+    opts = _merge(DEFAULT_OPTS, opts || {});
+    var data = audioFeatures.channelData;
+    var sr = audioFeatures.sampleRate;
+    var duration = audioFeatures.duration || (data.length / sr);
+
+    // Step 1: Run v1 segmentation (proven pipeline — silence/gap/classify/merge)
+    var v1Result = segmentAudio(audioFeatures, opts);
+    var segments = v1Result.segments || [];
+
+    // Step 2: Enhanced frame features (ZCR for speech detection)
+    var frames = _computeFrameFeatures(data, sr, opts.windowSizeSec);
+
+    // Step 3: Compute baselines for frame-level reference
+    var blCount = Math.max(1, Math.round(opts.baselineWindowSec / opts.windowSizeSec));
+    var baselines = _computeBaseline(frames.map(function(f) { return { rms: f.rms }; }), blCount, opts.fallbackThreshold);
+
+    // Step 4: Classify each segment into event types
+    var events = [];
+    for (var i = 0; i < segments.length; i++) {
+      events.push(_classifyEvent(segments[i], i, segments, frames, baselines));
+    }
+
+    // Step 5: Merge manual annotations if provided
+    if (opts.annotations) {
+      events = _mergeAnnotations(events, opts.annotations);
+    }
+
+    // Step 6: Reindex
+    for (var ri = 0; ri < events.length; ri++) events[ri].id = 'evt_' + ri;
+
+    return {
+      id: 'timeline_' + Date.now(),
+      createdAt: new Date().toISOString(),
+      sourceType: 'event-analysis',
+      duration: _r1(duration),
+      events: events,
+      summary: {
+        totalEvents: events.length,
+        songFull: events.filter(function(e) { return e.type === EVENT_TYPES.SONG_FULL; }).length,
+        songPartial: events.filter(function(e) { return e.type === EVENT_TYPES.SONG_PARTIAL; }).length,
+        falseStarts: events.filter(function(e) { return e.type === EVENT_TYPES.FALSE_START; }).length,
+        discussions: events.filter(function(e) { return e.type === EVENT_TYPES.DISCUSSION; }).length,
+        strongMoments: events.filter(function(e) { return e.tags.indexOf('strong_moment') >= 0; }).length
+      }
+    };
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────────
 
   window.RehearsalSegmentationEngine = {
-    segmentAudio: segmentAudio,
+    segmentAudio: segmentAudio,       // v1: silence-based (backward compat)
+    segmentAudioV2: segmentAudioV2,   // v2: event-based
+    EVENT_TYPES: EVENT_TYPES,
     DEFAULT_OPTS: DEFAULT_OPTS,
   };
 
-  console.log('✅ RehearsalSegmentationEngine loaded');
+  console.log('✅ RehearsalSegmentationEngine loaded (v1 + v2 event-based)');
 
 })();
