@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-012842', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-095301', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -836,7 +836,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check for ?join= invite link
         checkInviteLink();
     }).catch(err => {
-        console.warn('⚠️ Firebase auto-init failed (offline?):', err.message);
+        console.error('[Startup] \u26A0 Firebase init FAILED:', err.message);
+        window._glBootTimings.firebaseError = err.message;
         // Fallback: try loading custom songs from localStorage anyway
         loadCustomSongs().then(() => renderSongs());
         // CRITICAL: still show a page — without this, blank screen on offline PWA
@@ -845,6 +846,19 @@ document.addEventListener('DOMContentLoaded', function() {
             window.glHeroCheck(!!_savedEmail);
         }
     });
+
+    // Boot summary — logged after everything settles
+    setTimeout(function() {
+        var t = window._glBootTimings || {};
+        var summary = '[Startup] Boot summary:';
+        if (t.domContentLoaded) summary += ' DOM=' + Math.round(t.domContentLoaded) + 'ms';
+        if (t.initialRender) summary += ' Render=' + Math.round(t.initialRender) + 'ms';
+        if (t.firebaseReady) summary += ' Firebase=' + Math.round(t.firebaseReady) + 'ms';
+        if (t.membersReady) summary += ' Members=' + Math.round(t.membersReady) + 'ms';
+        if (t.songsRendered) summary += ' Songs=' + Math.round(t.songsRendered) + 'ms';
+        if (t.firebaseError) summary += ' ERROR=' + t.firebaseError;
+        console.log(summary);
+    }, 6000);
     setupSearchAndFilters();
     setupInstrumentSelector();
     setupContinueButton();

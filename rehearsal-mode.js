@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-012842', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-095301', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1179,6 +1179,7 @@ function _rmShowSessionSummary(summary) {
 
     var ov = document.createElement('div');
     ov.id = 'rmSessionSummaryOverlay';
+    ov.setAttribute('data-testid', 'rehearsal-summary');
     ov.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)';
 
     var html = '<div id="rmSummaryCard" style="background:linear-gradient(160deg,#1e293b,#1a2540);border:1px solid rgba(99,102,241,0.3);border-radius:18px;max-width:440px;width:100%;padding:28px 24px;color:#f1f5f9;animation:rmFadeIn 0.4s ease;max-height:90vh;overflow-y:auto">';
@@ -1491,6 +1492,7 @@ function _rmShowRevealScreen() {
     // Create overlay
     var ov = document.createElement('div');
     ov.id = 'rmRevealOverlay';
+    ov.setAttribute('data-testid', 'rehearsal-reveal');
     ov.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
     ov.innerHTML = html;
     document.body.appendChild(ov);

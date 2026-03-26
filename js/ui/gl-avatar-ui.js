@@ -52,6 +52,7 @@ window.GLAvatarUI = (function() {
         _injectStyles();
         _btnEl = document.createElement('button');
         _btnEl.id = 'glAvatarBtn';
+        _btnEl.setAttribute('data-testid', 'avatar-button');
         _btnEl.title = _AVATAR_NAME + ' \u2014 your band guide';
         _btnEl.innerHTML = ''; // Visual is CSS ::after radial glow
         _btnEl.onclick = function() { _isOpen ? closePanel() : openPanel(); };
@@ -85,6 +86,7 @@ window.GLAvatarUI = (function() {
 
         _panelEl = document.createElement('div');
         _panelEl.id = 'glAvatarPanel';
+        _panelEl.setAttribute('data-testid', 'avatar-panel');
 
         var G = window.GLAvatarGuide;
         var stage = G ? G.getStage() : 'fan';

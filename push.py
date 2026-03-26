@@ -32,12 +32,14 @@ API    = f"https://api.github.com/repos/{REPO}"
 # Root-level JS files known to be internal tooling, NOT runtime
 EXCLUDE_JS = {
     'ARCHIVED_learning_resources.js',
+    'playwright.config.js',
+    'browserstack.config.js',
 }
 
 # Non-runtime directories — never scanned
 EXCLUDE_DIRS = {
     '.git', '.github', '.claude', 'node_modules',
-    '02_GrooveLinx', 'docs', '__pycache__',
+    '02_GrooveLinx', 'docs', '__pycache__', 'tests',
 }
 
 # Extensions auto-discovered as front-end runtime assets
