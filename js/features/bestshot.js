@@ -906,35 +906,32 @@ async function chopLoadFile(file) {
             chopComputeRestartHotspots();
             showToast('Restored ' + chopMarkers.length + ' saved segment boundaries');
         }
-        // If no stored timeline, run event-based segmentation (v2), fallback to v1
-        else if (typeof GLStore !== 'undefined' && (GLStore.segmentRehearsalAudioV2 || GLStore.segmentRehearsalAudio)) {
-            var v2Result = GLStore.segmentRehearsalAudioV2 ? GLStore.segmentRehearsalAudioV2(chopAudioBuffer) : null;
+        // If no stored timeline, run analysis via Product Brain (v2 → v1 fallback)
+        else if (typeof GLProductBrain !== 'undefined' || (typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio)) {
+            // Use Product Brain if available (unified API)
+            var insight = null;
             var timeline = null;
             var isV2 = false;
-            if (v2Result && v2Result.events && v2Result.events.length > 1) {
-                // Convert v2 events to v1 timeline format for chopper compatibility
-                timeline = {
-                    segments: v2Result.events.map(function(evt) {
-                        return {
-                            id: evt.id,
-                            startSec: evt.start_time,
-                            endSec: evt.end_time,
-                            durationSec: evt.duration,
-                            kind: (evt.type === 'discussion' || evt.type === 'break') ? evt.type === 'break' ? 'silence' : 'speech' : 'music',
-                            confidence: evt.confidence,
-                            likelyIntent: evt.type,
-                            likelySongTitle: evt.song,
-                            _eventType: evt.type,
-                            _eventTags: evt.tags
-                        };
-                    }),
-                    summary: { segmentCount: v2Result.events.length, musicSegments: v2Result.summary.songFull + v2Result.summary.songPartial, likelyRestarts: v2Result.summary.falseStarts },
-                    durationSec: v2Result.duration,
-                    _v2Events: v2Result.events
-                };
-                isV2 = true;
+            if (typeof GLProductBrain !== 'undefined') {
+                insight = GLProductBrain.getRehearsalInsight({ audioBuffer: chopAudioBuffer });
+                if (insight && !insight._empty && insight._raw && insight._raw.v2Result) {
+                    var v2Result = insight._raw.v2Result;
+                    timeline = {
+                        segments: v2Result.events.map(function(evt) {
+                            return {
+                                id: evt.id, startSec: evt.start_time, endSec: evt.end_time, durationSec: evt.duration,
+                                kind: (evt.type === 'discussion' || evt.type === 'break') ? evt.type === 'break' ? 'silence' : 'speech' : 'music',
+                                confidence: evt.confidence, likelyIntent: evt.type, likelySongTitle: evt.song,
+                                _eventType: evt.type, _eventTags: evt.tags
+                            };
+                        }),
+                        summary: { segmentCount: v2Result.events.length, musicSegments: v2Result.summary.songFull + v2Result.summary.songPartial, likelyRestarts: v2Result.summary.falseStarts },
+                        durationSec: v2Result.duration, _v2Events: v2Result.events, _insight: insight
+                    };
+                    isV2 = true;
+                }
             }
-            if (!timeline) {
+            if (!timeline && typeof GLStore !== 'undefined' && GLStore.segmentRehearsalAudio) {
                 timeline = GLStore.segmentRehearsalAudio(chopAudioBuffer);
             }
             if (timeline && timeline.segments && timeline.segments.length > 1) {
@@ -944,8 +941,8 @@ async function chopLoadFile(file) {
                 chopDrawWaveform();
                 chopRenderSegments();
                 chopRenderTimestampMarkerList();
-                var toastMsg = isV2
-                    ? 'Event analysis: ' + v2Result.summary.songFull + ' full songs, ' + v2Result.summary.falseStarts + ' false starts, ' + v2Result.summary.discussions + ' discussions'
+                var toastMsg = isV2 && insight
+                    ? insight.headline
                     : 'AI detected ' + timeline.summary.segmentCount + ' segments (' + timeline.summary.musicSegments + ' music, ' + timeline.summary.likelyRestarts + ' restarts)';
                 showToast(toastMsg);
                 // Show first-use help banner
