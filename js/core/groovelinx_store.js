@@ -2211,6 +2211,18 @@
     return result;
   }
 
+  /** Build a rehearsal story from v2 events + optional planned setlist. */
+  function buildRehearsalStory(v2Result, plannedSetlist) {
+    if (typeof RehearsalStoryEngine === 'undefined') return null;
+    return RehearsalStoryEngine.buildStory(v2Result, plannedSetlist);
+  }
+
+  /** Generate a one-line headline from a story. */
+  function getRehearsalHeadline(story) {
+    if (typeof RehearsalStoryEngine === 'undefined') return 'Rehearsal complete.';
+    return RehearsalStoryEngine.generateHeadline(story ? story.story : null);
+  }
+
   /** Get the latest segmented timeline. */
   function getLatestTimeline() {
     return _latestTimeline;
@@ -3815,6 +3827,8 @@
     getRecentRehearsalPocketHistory:   getRecentRehearsalPocketHistory,
     segmentRehearsalAudio:             segmentRehearsalAudio,
     segmentRehearsalAudioV2:           segmentRehearsalAudioV2,
+    buildRehearsalStory:               buildRehearsalStory,
+    getRehearsalHeadline:              getRehearsalHeadline,
     getLatestTimeline:                 getLatestTimeline,
     saveTimelineCorrections:           saveTimelineCorrections,
     clearRehearsalAgenda:              clearRehearsalAgenda,
