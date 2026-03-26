@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260326-103346', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260326-104237', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10693,45 +10693,72 @@ function removeMember(key) {
 }
 
 async function editMember(key) {
-    const m = bandMembers[key];
+    var m = bandMembers[key];
     if (!m) return;
-    const formId = `editMemberForm_${key}`;
+    var formId = 'editMemberForm_' + key;
     if (document.getElementById(formId)) return;
-    const editBtn = document.querySelector(`[onclick*="editMember('${key}')"]`) ||
-                    document.querySelector(`[onclick*='editMember("${key}")']`);
+    var editBtn = document.querySelector('[onclick*="editMember(\'' + key + '\')"]') ||
+                  document.querySelector('[onclick*=\'editMember("' + key + '")\']');
     if (!editBtn) return;
-    const form = document.createElement('div');
+
+    // Determine current values
+    var curInstrument = m.primaryInstrument || m.role || '';
+    var curVocal = m.vocalRole || (m.leadVocals ? 'lead' : m.sings ? 'backing' : 'none');
+    var instruments = ['Lead Guitar', 'Rhythm Guitar', 'Bass', 'Keys', 'Drums', 'Percussion', 'Other'];
+
+    var form = document.createElement('div');
     form.id = formId;
-    form.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 0;flex-wrap:wrap';
-    form.innerHTML = `
-        <span style="color:var(--text-muted);font-size:0.85em;min-width:60px">Role:</span>
-        <input id="memberRoleInput_${key}" class="app-input" value="${m.role || ''}"
-            placeholder="e.g. Lead Guitar, Vocals..."
-            style="flex:1;min-width:150px" autocomplete="off">
-        <button id="saveMemberBtn_${key}" onclick="saveMemberRole('${key}', this)" class="btn btn-primary btn-sm">Save</button>
-        <button onclick="document.getElementById('${formId}')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>
-    `;
-    editBtn.after(form);
-    document.getElementById(`memberRoleInput_${key}`)?.focus();
+    form.style.cssText = 'padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)';
+    form.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+        + '<div style="flex:1;min-width:120px"><label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">Instrument</label>'
+        + '<select id="editInstrument_' + key + '" class="app-select" style="width:100%;font-size:0.82em">'
+        + instruments.map(function(inst) { return '<option value="' + inst + '"' + (curInstrument === inst ? ' selected' : '') + '>' + inst + '</option>'; }).join('')
+        + '</select></div>'
+        + '<div style="flex:1;min-width:120px"><label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">Vocal Role</label>'
+        + '<select id="editVocal_' + key + '" class="app-select" style="width:100%;font-size:0.82em">'
+        + '<option value="none"' + (curVocal === 'none' ? ' selected' : '') + '>None</option>'
+        + '<option value="backing"' + (curVocal === 'backing' ? ' selected' : '') + '>Backing</option>'
+        + '<option value="co-lead"' + (curVocal === 'co-lead' ? ' selected' : '') + '>Co-Lead</option>'
+        + '<option value="lead"' + (curVocal === 'lead' ? ' selected' : '') + '>Lead</option>'
+        + '</select></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px">'
+        + '<button id="saveMemberBtn_' + key + '" onclick="saveMemberRole(\'' + key + '\', this)" class="btn btn-primary btn-sm">Save</button>'
+        + '<button onclick="document.getElementById(\'' + formId + '\')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>'
+        + '</div>';
+    editBtn.closest('.list-item').after(form);
 }
 
 async function saveMemberRole(key, btn) {
-    const newRole = document.getElementById(`memberRoleInput_${key}`)?.value?.trim();
-    if (newRole === undefined) return;
-    _glSaveBtn(btn || document.getElementById(`saveMemberBtn_${key}`), function() {
-        // Update all role-related fields so display stays in sync
-        bandMembers[key].role = newRole;
-        bandMembers[key].primaryInstrument = newRole;
-        // Persist both fields to Firebase
+    var instrumentEl = document.getElementById('editInstrument_' + key);
+    var vocalEl = document.getElementById('editVocal_' + key);
+    var newInstrument = instrumentEl ? instrumentEl.value : (bandMembers[key].role || '');
+    var newVocal = vocalEl ? vocalEl.value : 'none';
+    var sings = newVocal !== 'none';
+    var leadVocals = (newVocal === 'lead' || newVocal === 'co-lead');
+
+    _glSaveBtn(btn || document.getElementById('saveMemberBtn_' + key), function() {
+        bandMembers[key].role = newInstrument;
+        bandMembers[key].primaryInstrument = newInstrument;
+        bandMembers[key].vocalRole = newVocal;
+        bandMembers[key].sings = sings;
+        bandMembers[key].leadVocals = leadVocals;
+        bandMembers[key].harmonies = sings;
+        // Persist to Firebase
         if (firebaseDB && typeof bandPath === 'function') {
             return firebaseDB.ref(bandPath('meta/members/' + key)).update({
-                role: newRole,
-                primaryInstrument: newRole
+                role: newInstrument,
+                primaryInstrument: newInstrument,
+                vocalRole: newVocal,
+                sings: sings,
+                leadVocals: leadVocals,
+                harmonies: sings
             });
         }
     });
     setTimeout(function() {
-        document.getElementById(`editMemberForm_${key}`)?.remove();
+        var form = document.getElementById('editMemberForm_' + key);
+        if (form) form.remove();
         settingsTab('band');
     }, 1600);
 }
