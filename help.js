@@ -3,7 +3,7 @@
 // Full visual help with overview, feature walkthroughs, and tips
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-194928', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-195325', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 function renderHelpPage(el) {
     el.innerHTML = `

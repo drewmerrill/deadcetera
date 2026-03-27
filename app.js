@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-194928', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-195325', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -11184,16 +11184,24 @@ function _showBandSwitcherDropdown(anchorEl) {
     dd.style.cssText = 'position:absolute;z-index:9500;background:var(--card-bg,#1a2340);border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:10px;padding:6px 0;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-height:300px;overflow-y:auto';
     dd.innerHTML = '<div style="padding:6px 14px;font-size:0.7em;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Switch Band</div><div style="padding:4px 8px;color:var(--text-dim);font-size:0.8em">Loading...</div>';
 
-    // Position below anchor
+    // Position below anchor, but ensure it fits in viewport
+    dd.style.position = 'fixed';
     if (anchorEl) {
         var rect = anchorEl.getBoundingClientRect();
-        dd.style.top = (rect.bottom + 4) + 'px';
-        dd.style.left = Math.max(8, rect.left) + 'px';
+        var spaceBelow = window.innerHeight - rect.bottom - 8;
+        var spaceAbove = rect.top - 8;
+        // If not enough room below, show above
+        if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+            dd.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        } else {
+            dd.style.top = (rect.bottom + 4) + 'px';
+        }
+        dd.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 240)) + 'px';
     } else {
         dd.style.top = '50px';
         dd.style.right = '16px';
     }
-    dd.style.position = 'fixed';
+    dd.style.maxHeight = Math.min(300, window.innerHeight - 60) + 'px';
     document.body.appendChild(dd);
 
     // Close on outside click
@@ -11219,9 +11227,100 @@ function _showBandSwitcherDropdown(anchorEl) {
         });
         html += '<div style="border-top:1px solid var(--border,rgba(255,255,255,0.08));margin:4px 0"></div>';
         html += '<button onclick="showCreateBandModal()" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:transparent;color:var(--accent-light,#a5b4fc);cursor:pointer;font-family:inherit;font-size:0.88em;text-align:left;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseleave="this.style.background=\'transparent\'">+ Create New Band</button>';
+        // Delete band option — only for non-active bands, or active if there are others
+        if (bands.length > 1) {
+            html += '<div style="border-top:1px solid var(--border,rgba(255,255,255,0.08));margin:4px 0"></div>';
+            bands.forEach(function(b) {
+                if (b.slug === currentBandSlug) return; // can't delete active band from here
+                html += '<button onclick="_glConfirmDeleteBand(\'' + b.slug + '\',\'' + (b.name || b.slug).replace(/'/g, "\\'").replace(/</g, '&lt;') + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;border:none;background:transparent;color:#f87171;cursor:pointer;font-family:inherit;font-size:0.78em;text-align:left;transition:background 0.1s;opacity:0.7" onmouseenter="this.style.opacity=\'1\';this.style.background=\'rgba(248,113,113,0.08)\'" onmouseleave="this.style.opacity=\'0.7\';this.style.background=\'transparent\'">'
+                    + '<span style="font-size:0.9em">🗑</span> Delete ' + (b.name || b.slug).replace(/</g, '&lt;') + '</button>';
+            });
+        }
         dd.innerHTML = html;
     });
 }
+
+// ── Delete Band (with double confirmation) ──────────────────────────────────
+function _glConfirmDeleteBand(slug, name) {
+    // Close switcher dropdown
+    var dd = document.getElementById('glBandSwitcherDropdown');
+    if (dd) dd.remove();
+
+    // Show styled confirmation modal
+    var old = document.getElementById('glDeleteBandModal');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'glDeleteBandModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;animation:glFlowIn 0.15s ease';
+
+    overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(248,113,113,0.3);border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.1em;font-weight:800;color:#f87171;margin-bottom:8px">Delete Band</div>'
+        + '<div style="font-size:0.88em;color:#e2e8f0;margin-bottom:16px;line-height:1.5">Are you sure you want to permanently delete <strong>' + name + '</strong>? This removes all setlists, rehearsal data, and members. This cannot be undone.</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px">Type the band name to confirm:</div>'
+        + '<input id="glDeleteBandConfirmInput" class="app-input" placeholder="' + name + '" style="width:100%;margin-bottom:16px;padding:10px;font-size:0.9em">'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="document.getElementById(\'glDeleteBandModal\').remove()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;font-weight:600;font-size:0.88em;cursor:pointer">Cancel</button>'
+        + '<button id="glDeleteBandBtn" onclick="_glExecuteDeleteBand(\'' + slug + '\',\'' + name.replace(/'/g, "\\'") + '\')" style="flex:1;padding:12px;border-radius:10px;border:none;background:#dc2626;color:white;font-weight:700;font-size:0.88em;cursor:pointer;opacity:0.4" disabled>Delete Forever</button>'
+        + '</div></div>';
+
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+
+    // Enable delete button only when name matches
+    var inp = document.getElementById('glDeleteBandConfirmInput');
+    var btn = document.getElementById('glDeleteBandBtn');
+    if (inp) {
+        inp.focus();
+        inp.addEventListener('input', function() {
+            var matches = inp.value.trim().toLowerCase() === name.toLowerCase();
+            btn.disabled = !matches;
+            btn.style.opacity = matches ? '1' : '0.4';
+        });
+    }
+}
+window._glConfirmDeleteBand = _glConfirmDeleteBand;
+
+async function _glExecuteDeleteBand(slug, name) {
+    var modal = document.getElementById('glDeleteBandModal');
+    var inp = document.getElementById('glDeleteBandConfirmInput');
+    if (!inp || inp.value.trim().toLowerCase() !== name.toLowerCase()) return;
+
+    // Disable button to prevent double-tap
+    var btn = document.getElementById('glDeleteBandBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }
+
+    try {
+        if (firebaseDB) {
+            await firebaseDB.ref('bands/' + slug).remove();
+            console.log('[Band] Deleted:', slug);
+        }
+        if (modal) modal.remove();
+        showToast('Band "' + name + '" deleted');
+
+        // If we deleted the active band, switch to another
+        if (slug === currentBandSlug) {
+            var remaining = await _loadUserBands();
+            remaining = remaining.filter(function(b) { return b.slug !== slug; });
+            if (remaining.length > 0) {
+                switchToBand(remaining[0].slug);
+            } else {
+                // No bands left — reload to hero
+                localStorage.removeItem('deadcetera_current_band');
+                localStorage.removeItem('deadcetera_band_name');
+                location.reload();
+            }
+        }
+    } catch(e) {
+        console.error('[Band] Delete failed:', e);
+        showToast('Error deleting band. Try again.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Delete Forever'; }
+    }
+}
+window._glExecuteDeleteBand = _glExecuteDeleteBand;
 
 // ── Join via invite link ────────────────────────────────────────────────────
 async function checkInviteLink() {
