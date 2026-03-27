@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-103958', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-105017', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -102,7 +102,7 @@ window.openRehearsalModeWithQueue = function(queue) {
     rmShow();
 };
 
-// Nudge: show chart notes count before rehearsal starts
+// Nudge: show chart notes banner before rehearsal starts (unmissable)
 async function _rmCheckChartNotes(queue) {
     if (typeof ChartSystem === 'undefined' || !ChartSystem.loadOverlayNotes) return;
     var totalNotes = 0;
@@ -115,8 +115,19 @@ async function _rmCheckChartNotes(queue) {
             if (notes.length > 0) { totalNotes += notes.length; songsWithNotes.push(title); }
         } catch(e) {}
     }
-    if (totalNotes > 0 && typeof showToast === 'function') {
-        showToast('\uD83D\uDCCC ' + totalNotes + ' chart note' + (totalNotes > 1 ? 's' : '') + ' from last rehearsal \u2014 tap charts to review');
+    if (totalNotes > 0) {
+        // Show unmissable banner at top of rehearsal mode (not just a toast)
+        setTimeout(function() {
+            var banner = document.createElement('div');
+            banner.id = 'rmChartNotesBanner';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10003;background:linear-gradient(135deg,rgba(245,158,11,0.95),rgba(217,119,6,0.95));color:white;padding:12px 16px;display:flex;align-items:center;gap:10px;font-size:0.85em;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+            banner.innerHTML = '<span style="font-size:1.2em">\uD83D\uDCCC</span>'
+                + '<span style="flex:1">' + totalNotes + ' note' + (totalNotes > 1 ? 's' : '') + ' from last rehearsal on ' + songsWithNotes.slice(0, 2).join(', ') + (songsWithNotes.length > 2 ? ' +' + (songsWithNotes.length - 2) + ' more' : '') + '</span>'
+                + '<button onclick="document.getElementById(\'rmChartNotesBanner\').remove()" style="background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:700;font-size:0.85em">Got it</button>';
+            document.body.appendChild(banner);
+            // Auto-dismiss after 8 seconds
+            setTimeout(function() { var b = document.getElementById('rmChartNotesBanner'); if (b) b.remove(); }, 8000);
+        }, 1000);
     }
 }
 
@@ -1468,19 +1479,30 @@ function _rmShowRevealScreen() {
     html += '<div style="font-size:1.6em;font-weight:900;color:#f1f5f9;line-height:1.2;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
     html += '</div>';
 
-    // ── ONE insight card (strongest moment OR biggest issue — not both) ──
+    // ── ONE insight card with "why this matters" ──
     html += '<div style="padding:0 24px 20px">';
     if (hasIssue) {
-        // Issue takes priority — it's actionable
-        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px">';
+        html += '<div style="padding:14px 16px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px">';
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">';
         html += '<span style="font-size:1.1em;flex-shrink:0">\u26A0\uFE0F</span>';
         html += '<div style="font-size:0.88em;color:#fbbf24;line-height:1.4;font-weight:600">' + _rmEsc(tc.biggestIssue) + '</div>';
         html += '</div>';
+        html += '<div style="font-size:0.68em;color:#64748b;padding-left:28px">Why: fixing this one thing will save the most time next rehearsal.</div>';
+        html += '</div>';
     } else if (tc.strongestMoment) {
-        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:12px">';
+        html += '<div style="padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:12px">';
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">';
         html += '<span style="font-size:1.1em;flex-shrink:0">\u2B50</span>';
         html += '<div style="font-size:0.88em;color:#86efac;line-height:1.4;font-weight:600">' + _rmEsc(tc.strongestMoment) + '</div>';
         html += '</div>';
+        html += '<div style="font-size:0.68em;color:#64748b;padding-left:28px">This is what gig-ready sounds like. Build on it.</div>';
+        html += '</div>';
+    }
+    // Confidence + data basis
+    var confLabel = insight.confidence && insight.confidence.segmentation === 'high' ? 'High confidence' : insight.confidence && insight.confidence.segmentation === 'medium' ? 'Moderate confidence' : '';
+    var dataMin = coaching.totalMinutes ? 'Based on ' + coaching.totalMinutes + ' min of data' : '';
+    if (confLabel || dataMin) {
+        html += '<div style="font-size:0.6em;color:#475569;text-align:right;margin-top:4px">' + [confLabel, dataMin].filter(Boolean).join(' \u00b7 ') + '</div>';
     }
     html += '</div>';
 

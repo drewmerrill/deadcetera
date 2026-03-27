@@ -212,6 +212,28 @@ window.GLAvatarGuide = (function() {
 
     // ── Trigger Evaluation ───────────────────────────────────────────────────
 
+    // ── Daily tip limit: max 3 non-onboarding tips per day ──────────────────
+    var _MAX_TIPS_PER_DAY = 3;
+    function _getTipCountToday() {
+        try {
+            var raw = localStorage.getItem('gl_avatar_tips_today');
+            if (!raw) return 0;
+            var data = JSON.parse(raw);
+            if (data.date !== new Date().toISOString().split('T')[0]) return 0;
+            return data.count || 0;
+        } catch(e) { return 0; }
+    }
+    function _incrementTipCount() {
+        var today = new Date().toISOString().split('T')[0];
+        try {
+            var raw = localStorage.getItem('gl_avatar_tips_today');
+            var data = raw ? JSON.parse(raw) : { date: today, count: 0 };
+            if (data.date !== today) data = { date: today, count: 0 };
+            data.count++;
+            localStorage.setItem('gl_avatar_tips_today', JSON.stringify(data));
+        } catch(e) {}
+    }
+
     function evaluate(context) {
         _loadState();
         var stage = getStage();
@@ -228,6 +250,8 @@ window.GLAvatarGuide = (function() {
             if (_dismissed[g.id] === 'permanent') continue;
             // Cooldown
             if (g.cooldown && _cooldowns[g.id] && (now - _cooldowns[g.id]) < g.cooldown) continue;
+            // Daily tip limit: skip non-onboarding tips when at max
+            if (!g.onboard && _getTipCountToday() >= _MAX_TIPS_PER_DAY) continue;
 
             // Evaluate trigger
             if (_checkTrigger(g.trigger, context)) {
@@ -237,6 +261,8 @@ window.GLAvatarGuide = (function() {
                 // Template with context vars
                 var msg = _template(rawMsg, context);
                 var coach = rawCoach ? _template(rawCoach, context) : '';
+                // Increment daily count for non-onboarding tips
+                if (!g.onboard) _incrementTipCount();
                 return { id: g.id, message: msg, coach: coach, actions: g.actions || [], dismissible: g.dismissible !== false, stage: g.stage };
             }
         }
