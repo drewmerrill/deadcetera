@@ -101,6 +101,7 @@ window.showPage = function showPage(page) {
     });
 
     currentPage = page;
+    window._glCurrentPage = page; // For global error handler
     // Mirror into GLStore (Milestone 4) — currentPage global stays for compat
     if (typeof GLStore !== 'undefined' && typeof GLStore.setActivePage === 'function') {
         GLStore.setActivePage(page);
@@ -139,12 +140,16 @@ window.showPage = function showPage(page) {
             // Lazy-load page scripts, then render
             var _lazyStart = performance.now();
             _glLazyLoadPage(page, function() {
-                console.log('[Startup] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
+                console.log('[DependenciesReady] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
                 var renderer = pageRenderers[page];
                 if (typeof renderer === 'function') {
-                    try { renderer(el); }
+                    console.log('[RenderStart] ' + page);
+                    try {
+                        renderer(el);
+                        console.log('[RenderSuccess] ' + page);
+                    }
                     catch(renderErr) {
-                        console.error('[Render] Page "' + page + '" threw:', renderErr);
+                        console.error('[RenderError] ' + page + ':', renderErr);
                         if (typeof GLRenderState !== 'undefined') {
                             GLRenderState.set(page, { status: 'error', title: 'Render failed', message: renderErr.message, retry: "showPage('" + page + "')" });
                         }
@@ -154,9 +159,13 @@ window.showPage = function showPage(page) {
         } else {
             var renderer = pageRenderers[page];
             if (typeof renderer === 'function') {
-                try { renderer(el); }
+                console.log('[RenderStart] ' + page);
+                try {
+                    renderer(el);
+                    console.log('[RenderSuccess] ' + page);
+                }
                 catch(renderErr) {
-                    console.error('[Render] Page "' + page + '" threw:', renderErr);
+                    console.error('[RenderError] ' + page + ':', renderErr);
                     if (typeof GLRenderState !== 'undefined') {
                         GLRenderState.set(page, { status: 'error', title: 'Render failed', message: renderErr.message, retry: "showPage('" + page + "')" });
                     }

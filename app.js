@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-195611', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-202252', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -751,10 +751,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 settingsTab('band');
             }
         }).catch(function() {});
-        // Load custom songs and render (always — both Deadcetera and other bands need this)
-        loadCustomSongs().then(function() {
+        // Load band-scoped song library from Firebase (replaces allSongs contents)
+        (typeof loadBandSongLibrary === 'function' ? loadBandSongLibrary() : Promise.resolve()).then(function() {
+            console.log('[Startup] Band song library loaded at ' + Math.round(performance.now()) + 'ms');
+            window._glBootTimings.songLibReady = performance.now();
+            // Load custom songs and render (always — both Deadcetera and other bands need this)
+            return loadCustomSongs();
+        }).then(function() {
             renderSongs();
-            console.log('[Startup] Songs rendered (with custom) at ' + Math.round(performance.now()) + 'ms');
+            console.log('[Startup] Songs rendered at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songsRendered = performance.now();
         });
 

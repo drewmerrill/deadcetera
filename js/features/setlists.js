@@ -344,17 +344,36 @@ function slSearchSong(input, setIdx) {
     const results = document.getElementById('slSongResults' + setIdx);
     if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
     const _activeStatuses = ['prospect','wip','gig_ready'];
-    const matches = (typeof allSongs !== "undefined" ? allSongs : songs || [])
+    const songSource = (typeof allSongs !== "undefined" ? allSongs : []);
+    const matches = songSource
         .filter(s => s.title.toLowerCase().includes(q))
         .filter(s => !_slOnlyActive || _activeStatuses.includes(GLStore && GLStore.getStatus(s.title)))
-        .slice(0, 12);
-    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:8px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},this.dataset.title)" ontouchstart="slAddSongToSet(${setIdx},this.dataset.title)">
+        .slice(0, 10);
+    var html = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:8px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},this.dataset.title)" ontouchstart="slAddSongToSet(${setIdx},this.dataset.title)">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
+    // Always show "Add as new song" option — allows implicit song creation
+    var exactMatch = matches.some(s => s.title.toLowerCase() === q);
+    if (!exactMatch && input.value.trim().length >= 2) {
+        var safeVal = input.value.trim().replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        html += '<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddNewSongToSet(' + setIdx + ')" ontouchstart="slAddNewSongToSet(' + setIdx + ')">+ Add &quot;' + safeVal + '&quot; as new song</div>';
+    }
+    results.innerHTML = html;
 }
+
+function slAddNewSongToSet(setIdx) {
+    var input = document.getElementById('slAddSong' + setIdx);
+    if (!input || !input.value.trim()) return;
+    var title = input.value.trim();
+    slAddSongToSet(setIdx, title);
+}
+window.slAddNewSongToSet = slAddNewSongToSet;
+
 function slAddSongToSet(setIdx, title) {
     if (!requireSignIn()) return;
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
     window._slSets[setIdx].songs.push({title: title, segue: 'stop'});
+    // Auto-create song record in band library if it doesn't exist
+    if (typeof ensureBandSong === 'function') ensureBandSong(title);
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
     slRenderSetSongs(setIdx);
     document.getElementById('slAddSong' + setIdx).value = '';

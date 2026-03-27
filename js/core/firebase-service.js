@@ -558,4 +558,219 @@ window.migrateBandLevelData = async function migrateBandLevelData() {
     return { status: 'complete', stats: stats };
 };
 
+// ── Band Song Library — Firebase-scoped songs per band ────────────────────────
+//
+// Replaces the global allSongs[] catalog. Each band has its own song library
+// stored at /bands/{slug}/song_library/{songId}.
+// Songs are created implicitly when added to setlists.
+
+var _GL_SONG_LIB_LOADED = false;
+var _GL_SONG_LIB_MIGRATED_KEY = '_meta/song_library_migrated_v1';
+
+/**
+ * Generate a Firebase-safe song ID from a title.
+ * "Friend of the Devil" → "friend_of_the_devil"
+ */
+window.generateSongId = function generateSongId(title) {
+    return String(title || '').toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, '_')
+        .substring(0, 80);
+};
+
+/**
+ * Ensure a song exists in the band's Firebase library.
+ * Creates a minimal record if missing. Safe to call repeatedly.
+ */
+window.ensureBandSong = async function ensureBandSong(title) {
+    if (!title || !firebaseDB) return;
+    var songId = window.generateSongId(title);
+    if (!songId) return;
+
+    // Check local cache first
+    var exists = (typeof allSongs !== 'undefined') && allSongs.some(function(s) {
+        return s.title === title || s.songId === songId;
+    });
+    if (exists) return;
+
+    // Check Firebase
+    try {
+        var snap = await firebaseDB.ref(window.bandPath('song_library/' + songId + '/title')).once('value');
+        if (snap.val()) {
+            // Exists in Firebase but not in local cache — add to cache
+            _addSongToLocalCache({ songId: songId, title: title });
+            return;
+        }
+    } catch(e) { /* proceed to create */ }
+
+    // Create minimal record
+    var record = {
+        title: title,
+        songId: songId,
+        createdAt: Date.now(),
+        createdFrom: 'setlist',
+        createdBy: (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail : ''
+    };
+
+    try {
+        await firebaseDB.ref(window.bandPath('song_library/' + songId)).set(record);
+        _addSongToLocalCache(record);
+        console.log('[SongLib] Created:', title);
+    } catch(e) {
+        console.warn('[SongLib] Failed to create:', title, e.message);
+    }
+};
+
+/**
+ * Add a song to the in-memory allSongs array + rebuild GLStore indexes.
+ */
+function _addSongToLocalCache(record) {
+    if (typeof allSongs === 'undefined') return;
+    // Avoid duplicates
+    var exists = allSongs.some(function(s) { return s.songId === record.songId; });
+    if (exists) return;
+    allSongs.push({
+        songId: record.songId,
+        title: record.title,
+        artist: record.artist || '',
+        band: record.band || ''
+    });
+    allSongs.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
+    if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+}
+
+/**
+ * Load the band's song library from Firebase and replace allSongs contents.
+ * For Deadcetera: migrates from hardcoded allSongs on first run.
+ */
+window.loadBandSongLibrary = async function loadBandSongLibrary() {
+    if (!firebaseDB || _GL_SONG_LIB_LOADED) return;
+
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
+    if (!slug) return;
+
+    // Check if this band needs migration (Deadcetera only)
+    if (slug === 'deadcetera') {
+        try {
+            var migFlag = await firebaseDB.ref(window.bandPath(_GL_SONG_LIB_MIGRATED_KEY)).once('value');
+            if (!migFlag.val()) {
+                await _migrateSongLibrary();
+            }
+        } catch(e) { console.warn('[SongLib] Migration check failed:', e.message); }
+    }
+
+    // Load from Firebase
+    try {
+        var snap = await firebaseDB.ref(window.bandPath('song_library')).once('value');
+        var data = snap.val();
+        if (data && typeof data === 'object') {
+            var songs = [];
+            Object.keys(data).forEach(function(id) {
+                var s = data[id];
+                if (!s || !s.title) return;
+                songs.push({
+                    songId: s.songId || id,
+                    title: s.title,
+                    artist: s.artist || '',
+                    band: s.band || '',
+                    key: s.key || '',
+                    bpm: s.bpm || 0,
+                    status: s.status || ''
+                });
+            });
+            songs.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
+
+            // Replace allSongs contents in-place (all 263 references auto-update)
+            if (typeof allSongs !== 'undefined') {
+                allSongs.length = 0;
+                songs.forEach(function(s) { allSongs.push(s); });
+            }
+            console.log('[SongLib] Loaded ' + songs.length + ' songs for band: ' + slug);
+        } else if (slug !== 'deadcetera') {
+            // Non-DC band with no songs — clear allSongs
+            if (typeof allSongs !== 'undefined') {
+                allSongs.length = 0;
+            }
+            console.log('[SongLib] Empty library for band: ' + slug);
+        }
+
+        _GL_SONG_LIB_LOADED = true;
+        if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+
+        // Re-render songs page if visible
+        if (typeof renderSongs === 'function') {
+            try { renderSongs(); } catch(e) {}
+        }
+    } catch(e) {
+        console.error('[SongLib] Load failed:', e.message);
+    }
+};
+
+/**
+ * One-time migration: copy hardcoded allSongs + statuses to Firebase song_library.
+ * Only runs for Deadcetera.
+ */
+async function _migrateSongLibrary() {
+    if (typeof allSongs === 'undefined' || !allSongs.length || !firebaseDB) return;
+    console.log('[SongLib] Migrating ' + allSongs.length + ' songs to Firebase...');
+
+    var updates = {};
+    allSongs.forEach(function(s) {
+        var id = s.songId || window.generateSongId(s.title);
+        var record = {
+            title: s.title,
+            songId: id,
+            artist: s.artist || '',
+            band: s.band || '',
+            createdAt: Date.now(),
+            createdFrom: 'migration'
+        };
+        // Carry over status if available
+        if (typeof statusCache !== 'undefined' && statusCache[s.title]) {
+            record.status = statusCache[s.title];
+        }
+        updates[id] = record;
+    });
+
+    try {
+        await firebaseDB.ref(window.bandPath('song_library')).update(updates);
+        await firebaseDB.ref(window.bandPath(_GL_SONG_LIB_MIGRATED_KEY)).set({
+            completedAt: new Date().toISOString(),
+            songCount: allSongs.length
+        });
+        console.log('[SongLib] Migration complete: ' + allSongs.length + ' songs');
+    } catch(e) {
+        console.error('[SongLib] Migration failed:', e.message);
+    }
+}
+
+// ── Global Error Capture ──────────────────────────────────────────────────────
+// Route all uncaught errors to GLRenderState so pages never go blank silently.
+
+window.onerror = function(msg, source, line, col, error) {
+    console.error('[GlobalError]', msg, source + ':' + line + ':' + col);
+    // Don't show error state for non-critical issues
+    if (typeof GLRenderState !== 'undefined') {
+        var currentPage = (typeof window._glCurrentPage !== 'undefined') ? window._glCurrentPage : '';
+        if (currentPage) {
+            var state = GLRenderState.get(currentPage);
+            // Only show error if page is still loading
+            if (state && state.status === 'loading') {
+                GLRenderState.set(currentPage, {
+                    status: 'error',
+                    title: 'Something went wrong',
+                    message: String(msg).substring(0, 120),
+                    retry: "showPage('" + currentPage + "')"
+                });
+            }
+        }
+    }
+};
+
+window.onunhandledrejection = function(event) {
+    var reason = event.reason;
+    var msg = (reason && reason.message) ? reason.message : String(reason);
+    console.error('[UnhandledRejection]', msg);
+};
+
 console.log('✅ firebase-service.js loaded');

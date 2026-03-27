@@ -62,6 +62,18 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     var knownBands = ['GD','JGB','WSP','PHISH','ABB','GOOSE','DMB'];
 
+    // Empty band library — show setup CTA instead of empty search results
+    if (typeof allSongs !== 'undefined' && allSongs.length === 0 && !searchTerm) {
+        dropdown.innerHTML = '<div style="padding:40px 20px;text-align:center;display:block !important;grid-template-columns:none !important">'
+            + '<div style="font-size:2.5em;margin-bottom:12px">🎵</div>'
+            + '<div style="font-size:1.2em;font-weight:700;margin-bottom:8px;color:#f1f5f9">No songs yet</div>'
+            + '<div style="font-size:0.9em;color:#94a3b8;margin-bottom:20px;line-height:1.5">Songs are added automatically when you create a setlist.<br>Just type your song names — no catalog setup needed.</div>'
+            + '<button onclick="showPage(\'setlists\');setTimeout(function(){if(typeof createNewSetlist===\'function\')createNewSetlist();},300)" class="btn btn-primary" style="padding:14px 28px;font-size:1em;font-weight:700">Create a Setlist →</button>'
+            + '<div style="margin-top:16px"><button onclick="_glAddSongManually()" class="btn btn-ghost" style="font-size:0.85em">+ Add a song manually</button></div>'
+            + '</div>';
+        return;
+    }
+
     var filtered = allSongs.filter(function(song) {
         // Scope filter: active vs library view
         var _scope = getSongScope(song.title);
@@ -1161,6 +1173,50 @@ window._sqAdvanceNext = function(title) {
         var nextTitle = row.nextElementSibling.dataset.title;
         if (nextTitle) songQuickSetup(nextTitle);
     }
+};
+
+// ── Manual Song Add (for bands with empty library) ──────────────────────────
+window._glAddSongManually = function() {
+    var old = document.getElementById('glAddSongModal');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'glAddSongModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
+
+    overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:20px;max-width:360px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:0.95em;font-weight:700;color:#e2e8f0;margin-bottom:14px">Add a Song</div>'
+        + '<input id="glAddSongTitle" class="app-input" placeholder="Song title" style="width:100%;margin-bottom:10px;padding:10px;font-size:0.9em">'
+        + '<input id="glAddSongArtist" class="app-input" placeholder="Artist (optional)" style="width:100%;margin-bottom:14px;padding:10px;font-size:0.9em">'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="document.getElementById(\'glAddSongModal\').remove()" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;font-weight:600;font-size:0.85em;cursor:pointer">Cancel</button>'
+        + '<button onclick="_glDoAddSong()" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--accent);color:white;font-weight:600;font-size:0.85em;cursor:pointer">Add Song</button>'
+        + '</div></div>';
+
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    setTimeout(function() { var inp = document.getElementById('glAddSongTitle'); if (inp) inp.focus(); }, 100);
+};
+
+window._glDoAddSong = async function() {
+    var titleEl = document.getElementById('glAddSongTitle');
+    var artistEl = document.getElementById('glAddSongArtist');
+    var title = titleEl ? titleEl.value.trim() : '';
+    if (!title) { if (typeof showToast === 'function') showToast('Please enter a song title'); return; }
+
+    var artist = artistEl ? artistEl.value.trim() : '';
+    if (typeof ensureBandSong === 'function') await ensureBandSong(title);
+
+    // Set artist if provided
+    if (artist && typeof firebaseDB !== 'undefined' && firebaseDB) {
+        var songId = (typeof generateSongId === 'function') ? generateSongId(title) : title.toLowerCase().replace(/\s+/g, '_');
+        try { await firebaseDB.ref(window.bandPath('song_library/' + songId + '/artist')).set(artist); } catch(e) {}
+    }
+
+    var modal = document.getElementById('glAddSongModal');
+    if (modal) modal.remove();
+    if (typeof showToast === 'function') showToast('"' + title + '" added');
+    renderSongs();
 };
 
 console.log('✅ songs.js loaded');
