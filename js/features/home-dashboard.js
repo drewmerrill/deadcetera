@@ -401,6 +401,7 @@ function _renderNextActionCard(bundle, wf) {
         }
         return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(99,102,241,0.35);border-radius:16px;background:linear-gradient(160deg,rgba(99,102,241,0.1),rgba(139,92,246,0.05))">'
             + '<div style="text-align:center">'
+            + '<div style="font-size:0.72em;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step ' + onboardStep + ' of 3</div>'
             + '<div style="display:flex;gap:6px;justify-content:center;margin-bottom:10px">' + dots + '</div>'
             + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + stepLabels[onboardStep] + '</div>'
             + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + (onboardStep === 1 ? 'Pick 5\u201310 songs. You can always change them later.' : onboardStep === 2 ? 'One tap. We\u2019ll track everything.' : 'One tap to confirm. That\u2019s it.') + '</div>'

@@ -292,26 +292,27 @@ async function createNewSetlist() {
     container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
         <div style="margin-bottom:12px">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-                <div style="flex:2;min-width:150px"><label class="form-label">Name</label><input class="app-input" id="slName" value="${_autoName}" placeholder="e.g. Friday Rehearsal"></div>
-                <div style="flex:1;min-width:120px"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${_today}"></div>
+                <div style="flex:2;min-width:150px"><label class="form-label">Name</label><input class="app-input" id="slName" value="${_autoName}" placeholder="e.g. Gig Name or Rehearsal Date" title="Tip: use the gig name or date so it's easy to find later"></div>
+                <div style="flex:1;min-width:120px"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${_today}" style="color-scheme:dark"></div>
             </div>
             <details style="font-size:0.82em;color:var(--text-dim)"><summary style="cursor:pointer;padding:4px 0">More options</summary>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
                     <div style="flex:1;min-width:120px"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
-                    <div style="flex:1;min-width:120px"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="Optional"></div>
+                    <div style="flex:1;min-width:120px"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="e.g. Theme, special requests..." title="Notes saved with this setlist"></div>
                 </div>
             </details>
         </div>
         <div id="slQuickFillSection" style="margin-bottom:12px;padding:14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">
-            <div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:6px">Quick start: auto-fill with your active songs</div>
-            <button onclick="slQuickFill()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,0.3)">🎵 Auto-Fill Setlist</button>
-            <div style="font-size:0.72em;color:#475569;margin-top:6px">or add songs manually below</div>
+            <div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:6px">Pick songs for your setlist</div>
+            <button onclick="slQuickFill()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,0.3)">🎵 Choose Songs</button>
+            <div style="font-size:0.72em;color:#475569;margin-top:6px">or type song names in the search below</div>
         </div>
-        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
+        <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap" title="Toggle: show only gig-ready/active songs, or all songs">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn btn-success" onclick="slSaveSetlist()" style="margin-left:auto">💾 Save Setlist</button>
-        </div></div>`;
+        <div style="height:60px"></div></div>
+        <div id="slStickyFooter" style="position:sticky;bottom:0;z-index:100;padding:12px 16px;background:linear-gradient(to top,#0f172a 60%,transparent);display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3)">💾 Save Setlist</button>
+        </div>`;
     _slInitVenuePicker(await GLStore.getVenues(), null);
 }
 
@@ -327,29 +328,14 @@ function slToggleActiveFilter(btn) {
 
 // Quick Fill: auto-populate setlist with active songs (highest readiness first)
 function slQuickFill() {
-    var activeStatuses = ['prospect', 'wip', 'gig_ready'];
-    var songs = (typeof allSongs !== 'undefined' ? allSongs : [])
-        .filter(function(s) {
-            if (!s.title) return false;
-            var status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(s.title) : '';
-            return activeStatuses.indexOf(status) >= 0;
-        });
-    // If no active songs, take first 8 from catalog
-    if (songs.length < 3) {
-        songs = (typeof allSongs !== 'undefined' ? allSongs : []).slice(0, 8);
-    }
-    // Take up to 8 songs
-    var picked = songs.slice(0, 8);
+    // Open the song picker for set 0 — let the user choose their songs
     if (!window._slSets[0]) window._slSets[0] = { name: 'All Songs', songs: [] };
-    picked.forEach(function(s) {
-        window._slSets[0].songs.push({ title: s.title, segue: 'stop' });
-    });
-    if (typeof _slMarkDirty === 'function') _slMarkDirty();
-    slRenderSetSongs(0);
+    // Pre-select active songs so they're easy to pick
+    _slOnlyActive = true;
+    slOpenSongPicker(0);
     // Hide the quick fill section
     var qf = document.getElementById('slQuickFillSection');
     if (qf) qf.style.display = 'none';
-    if (typeof showToast === 'function') showToast(picked.length + ' songs added');
 }
 window.slQuickFill = slQuickFill;
 
@@ -418,11 +404,12 @@ function slRenderSetSongs(setIdx) {
             <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
             ${keyStr}${bpmStr}
             <select onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                title="Transition: · = Full Stop, → = Flow into next, ~ = Segue/blend, | = Hard cutoff"
                 style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:4px;padding:1px 3px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0">
-                <option value="stop" ${segue==='stop'?'selected':''}>·</option>
-                <option value="flow" ${segue==='flow'?'selected':''}>\u2192</option>
-                <option value="segue" ${segue==='segue'?'selected':''}>~</option>
-                <option value="cutoff" ${segue==='cutoff'?'selected':''}>|</option>
+                <option value="stop" ${segue==='stop'?'selected':''} title="Full stop between songs">·</option>
+                <option value="flow" ${segue==='flow'?'selected':''} title="Flow directly into next song">→</option>
+                <option value="segue" ${segue==='segue'?'selected':''} title="Segue / blend into next">~</option>
+                <option value="cutoff" ${segue==='cutoff'?'selected':''} title="Hard cutoff">|</option>
             </select>
             <button class="btn btn-sm btn-ghost" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
         </div>`;
@@ -615,7 +602,7 @@ function slAddSet(type) {
         <div class="app-card" style="background:rgba(255,255,255,0.02)">
             <h3 style="color:${color}">${name}</h3>
             <div id="slSet${idx}Songs"></div>
-            <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(${idx})" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults${idx}"></div></div>
+            <div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong${idx}" placeholder="Type song name..." oninput="slSearchSong(this,${idx})" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(${idx})" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap" title="Toggle: show only gig-ready/active songs, or all songs">⚡ All Songs</button></div><div id="slSongResults${idx}"></div></div>
         </div>`);
 }
 
@@ -674,7 +661,7 @@ async function editSetlist(idx) {
         // Compact header: row 1 = name + date + venue, row 2 = gig chip + notes
         + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
         + '<input class="app-input" id="slName" value="' + safeName + '" placeholder="Setlist name" style="flex:2;min-width:120px;font-weight:700;font-size:0.9em;padding:5px 8px">'
-        + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:130px;padding:5px 8px;font-size:0.82em;box-sizing:border-box">'
+        + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:130px;padding:5px 8px;font-size:0.82em;box-sizing:border-box;color-scheme:dark">'
         + '<div id="slVenuePicker" style="flex:1;min-width:100px"></div>'
         + '</div>'
         + (sl.locked ? '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;margin-bottom:8px;font-size:0.78em;color:#fbbf24"><span>🔒 This setlist is locked' + (sl.lockedBy ? ' by ' + _slMemberName(sl.lockedBy) : '') + '. Editing is view-only until unlocked.</span><button onclick="slUnlockWithWarning(' + idx + ')" style="margin-left:auto;padding:3px 10px;background:none;border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;white-space:nowrap">🔓 Unlock</button></div>' : '')

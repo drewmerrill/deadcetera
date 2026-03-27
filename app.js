@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-192537', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-193324', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -5703,11 +5703,13 @@ window.requireSignIn = function requireSignIn() {
 function updateSignInStatus(signedIn) {
     isUserSignedIn = signedIn;
     updateDriveAuthButton();
-    // Always hide hero when signed in — catches edge cases where
-    // localStorage was cleared but Firebase data loaded successfully
     if (signedIn) {
+        // Always hide hero when signed in
         var _hero = document.getElementById('page-hero');
         if (_hero) _hero.classList.add('hidden');
+    } else {
+        // Signed out — show Hero page immediately
+        if (typeof window.glHeroCheck === 'function') window.glHeroCheck(false);
     }
 }
 
@@ -11127,6 +11129,9 @@ async function switchToBand(slug) {
     if (overlay) overlay.style.display = 'none';
     var bsDropdown = document.getElementById('glBandSwitcherDropdown');
     if (bsDropdown) bsDropdown.remove();
+
+    // Clear last page so reload lands on Home (not whatever page the user was on)
+    localStorage.removeItem('glLastPage');
 
     // Reload to pick up new band data from clean state
     showToast('Switching to ' + displayName + '...');

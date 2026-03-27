@@ -33,7 +33,7 @@ window.GLAvatarUI = (function() {
             + '@keyframes glAvSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}'
             + '@keyframes glAvSlideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}'
             + '@keyframes glAvIdle{0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.15),inset 0 0 6px rgba(99,102,241,0.05)}50%{box-shadow:0 0 14px rgba(99,102,241,0.25),inset 0 0 8px rgba(99,102,241,0.08)}}'
-            + '#glAvatarBtn{position:fixed;bottom:80px;right:16px;z-index:9000;width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(99,102,241,0.25);background:rgba(15,23,42,0.9);backdrop-filter:blur(8px);color:#818cf8;cursor:pointer;font-size:0;display:flex;align-items:center;justify-content:center;transition:all 0.25s ease;animation:glAvIdle 4s ease-in-out infinite}'
+            + '#glAvatarBtn{position:fixed;bottom:90px;right:16px;z-index:9000;width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(99,102,241,0.25);background:rgba(15,23,42,0.9);backdrop-filter:blur(8px);color:#818cf8;cursor:pointer;font-size:0;display:flex;align-items:center;justify-content:center;transition:all 0.25s ease;animation:glAvIdle 4s ease-in-out infinite}'
             + '#glAvatarBtn::after{content:"";width:14px;height:14px;border-radius:50%;background:radial-gradient(circle,rgba(129,140,248,0.6) 0%,rgba(99,102,241,0.15) 70%,transparent 100%);transition:all 0.25s}'
             + '#glAvatarBtn:hover{transform:scale(1.06);border-color:rgba(99,102,241,0.45)}'
             + '#glAvatarBtn:hover::after{width:16px;height:16px;background:radial-gradient(circle,rgba(129,140,248,0.8) 0%,rgba(99,102,241,0.2) 70%,transparent 100%)}'
