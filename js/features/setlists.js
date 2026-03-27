@@ -280,6 +280,7 @@ async function exportSetlistToiPad(setlistIndex) {
 
 async function createNewSetlist() {
     if (!requireSignIn()) return;
+    if (typeof GLUXTracker !== 'undefined') GLUXTracker.startFlow('create_setlist');
     const container = document.getElementById('setlistsList');
     if (!container) return;
     window._slSets = [{ name: 'All Songs', songs: [] }];
@@ -615,6 +616,7 @@ async function slSaveSetlist() {
     } else {
         showToast('✅ Setlist saved');
     }
+    if (typeof GLUXTracker !== 'undefined') GLUXTracker.completeFlow('create_setlist');
     // Onboarding: mark setlist step complete
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();

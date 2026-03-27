@@ -57,6 +57,54 @@
     }
   });
 
+  // ── Hesitation Detection ───────────────────────────────────────────────
+  // User stays on a page 15+ seconds without any click = confused
+
+  var _lastClickTs = Date.now();
+  var _lastPage = '';
+  var _hesitationTimer = null;
+  var HESITATION_MS = 15000;
+
+  window.addEventListener('gl:pagechange', function(e) {
+    var page = (e.detail && e.detail.page) || '';
+    _lastPage = page;
+    _lastClickTs = Date.now();
+    if (_hesitationTimer) clearTimeout(_hesitationTimer);
+    _hesitationTimer = setTimeout(function() {
+      // Only log if still on the same page and no clicks happened
+      if (_currentPage() === page && (Date.now() - _lastClickTs) >= HESITATION_MS) {
+        _logEvent('hesitation', { page: page, duration_sec: Math.round((Date.now() - _lastClickTs) / 1000) });
+      }
+    }, HESITATION_MS);
+  });
+
+  // Reset hesitation on any click
+  document.addEventListener('click', function() { _lastClickTs = Date.now(); }, true);
+
+  // ── Abandoned Flow Detection ──────────────────────────────────────────
+  // User starts an action (modal open, form visible) then navigates away
+
+  var _activeFlows = {}; // { flowId: { page, startedAt } }
+
+  function startFlow(flowId) {
+    _activeFlows[flowId] = { page: _currentPage(), startedAt: Date.now() };
+  }
+
+  function completeFlow(flowId) {
+    delete _activeFlows[flowId];
+  }
+
+  window.addEventListener('gl:pagechange', function(e) {
+    var newPage = (e.detail && e.detail.page) || '';
+    Object.keys(_activeFlows).forEach(function(fid) {
+      var flow = _activeFlows[fid];
+      if (flow.page !== newPage) {
+        _logEvent('abandoned_flow', { flow: fid, startedOnPage: flow.page, navigatedTo: newPage, afterSec: Math.round((Date.now() - flow.startedAt) / 1000) });
+        delete _activeFlows[fid];
+      }
+    });
+  });
+
   // ── Render Timing ─────────────────────────────────────────────────────
 
   function logRenderTime(page, durationMs) {
@@ -112,6 +160,8 @@
     getEvents: function() { return _events.slice(); },
     logRenderTime: logRenderTime,
     getClickLog: function() { return _clickLog.slice(); },
+    startFlow: startFlow,
+    completeFlow: completeFlow,
     clearEvents: function() { _events = []; }
   };
 
