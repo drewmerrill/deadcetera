@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-025000', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-025438', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1537,10 +1537,13 @@ function _rmShowRevealScreen() {
     ov.innerHTML = html;
     document.body.appendChild(ov);
 
-    // Auto-open avatar after a brief delay
+    // Speak the headline via Voice Coach
     setTimeout(function() {
+        if (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled()) {
+            GLVoiceCoach.speakInsight(insight);
+        }
         if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.checkForTips) GLAvatarUI.checkForTips();
-    }, 1500);
+    }, 800);
 }
 
 window._rmRevealUndoChart = async function() {

@@ -103,8 +103,21 @@ window.GLAvatarUI = (function() {
         // Message area
         html += '<div id="glAvMessages" style="flex:1;overflow-y:auto;padding:16px"></div>';
 
+        // Ask anything input
+        html += '<div style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.04)">';
+        html += '<div style="display:flex;gap:6px">';
+        html += '<input id="glAvAskInput" placeholder="Ask me anything\u2026" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#e2e8f0;font-size:0.78em;font-family:inherit" onkeydown="if(event.key===\'Enter\')GLAvatarUI._askSubmit()">';
+        html += '<button onclick="GLAvatarUI._askSubmit()" style="padding:8px 12px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.75em;cursor:pointer;flex-shrink:0">Ask</button>';
+        html += '</div>';
+        // Voice toggle
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">';
+        html += '<button onclick="GLAvatarUI._toggleVoice()" id="glAvVoiceToggle" style="background:none;border:none;cursor:pointer;font-size:0.85em;padding:0;color:#64748b">' + (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled() ? '\uD83D\uDD0A' : '\uD83D\uDD07') + '</button>';
+        html += '<span style="font-size:0.62em;color:#475569">Voice ' + (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled() ? 'on' : 'off') + '</span>';
+        html += '</div>';
+        html += '</div>';
+
         // Quick actions footer
-        html += '<div id="glAvActions" style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0"></div>';
+        html += '<div id="glAvActions" style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0"></div>';
 
         _panelEl.innerHTML = html;
         document.body.appendChild(_panelEl);
@@ -417,6 +430,48 @@ window.GLAvatarUI = (function() {
 
     // ── Public API ──────────────────────────────────────────────────────────
 
+    // ── Ask Anything Handler ────────────────────────────────────────────────
+
+    async function _askSubmit() {
+        var input = document.getElementById('glAvAskInput');
+        if (!input || !input.value.trim()) return;
+        var question = input.value.trim();
+        input.value = '';
+        // Show thinking state
+        var msgArea = document.getElementById('glAvMessages');
+        if (msgArea) {
+            msgArea.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">'
+                + '<div style="font-size:0.82em;margin-bottom:6px">Thinking\u2026</div>'
+                + '</div>';
+        }
+        // Get response
+        var response = '';
+        if (typeof GLVoiceCoach !== 'undefined') {
+            response = await GLVoiceCoach.ask(question);
+            // Speak the response
+            if (GLVoiceCoach.isVoiceEnabled()) GLVoiceCoach.speak(response);
+        } else {
+            response = 'Voice coach is loading. Try again in a moment.';
+        }
+        // Display response
+        if (msgArea) {
+            msgArea.innerHTML = '<div style="margin-bottom:12px">'
+                + '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(question) + '</div>'
+                + '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(response) + '</div>'
+                + '</div>';
+        }
+    }
+
+    function _toggleVoice() {
+        if (typeof GLVoiceCoach === 'undefined') return;
+        var enabled = GLVoiceCoach.toggleVoice();
+        var btn = document.getElementById('glAvVoiceToggle');
+        if (btn) btn.textContent = enabled ? '\uD83D\uDD0A' : '\uD83D\uDD07';
+        var label = btn ? btn.nextElementSibling : null;
+        if (label) label.textContent = 'Voice ' + (enabled ? 'on' : 'off');
+        if (typeof showToast === 'function') showToast('Voice ' + (enabled ? 'enabled' : 'disabled'));
+    }
+
     return {
         openPanel: openPanel,
         closePanel: closePanel,
@@ -425,7 +480,9 @@ window.GLAvatarUI = (function() {
         init: init,
         setName: function(n) { _AVATAR_NAME = n; },
         _showAutoLaunchNudge: _showAutoLaunchNudge,
-        _checkMagicMoment: _checkMagicMoment
+        _checkMagicMoment: _checkMagicMoment,
+        _askSubmit: _askSubmit,
+        _toggleVoice: _toggleVoice
     };
 
 })();
