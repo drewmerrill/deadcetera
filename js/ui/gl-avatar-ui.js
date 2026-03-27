@@ -80,6 +80,8 @@ window.GLAvatarUI = (function() {
 
     function openPanel() {
         if (_panelEl) return;
+        // Request guidance lock
+        if (typeof GLGuidance !== 'undefined' && !GLGuidance.request('avatar')) return;
         _isOpen = true;
         _hasUnread = false;
         _updateButtonState();
@@ -132,6 +134,8 @@ window.GLAvatarUI = (function() {
         setTimeout(function() {
             if (_panelEl) { _panelEl.remove(); _panelEl = null; }
             _isOpen = false;
+            // Release guidance lock
+            if (typeof GLGuidance !== 'undefined') GLGuidance.release('avatar');
         }, 200);
     }
 
@@ -265,6 +269,8 @@ window.GLAvatarUI = (function() {
     function checkForTips(page) {
         var G = window.GLAvatarGuide;
         if (!G) return;
+        // Respect guidance orchestrator — don't show tips if another system is active
+        if (typeof GLGuidance !== 'undefined' && GLGuidance.isAnyActive() && !GLGuidance.isActive('avatar')) return;
         var ctx = G.buildContext(page || _getPage());
         var tip = G.evaluate(ctx);
         _hasUnread = !!tip;
