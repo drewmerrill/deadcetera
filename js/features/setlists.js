@@ -302,6 +302,11 @@ async function createNewSetlist() {
                 </div>
             </details>
         </div>
+        <div id="slQuickFillSection" style="margin-bottom:12px;padding:14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">
+            <div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:6px">Quick start: auto-fill with your active songs</div>
+            <button onclick="slQuickFill()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,0.3)">🎵 Auto-Fill Setlist</button>
+            <div style="font-size:0.72em;color:#475569;margin-top:6px">or add songs manually below</div>
+        </div>
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -322,6 +327,34 @@ function slToggleActiveFilter(btn) {
     btn.style.color = _slOnlyActive ? 'white' : 'var(--text-muted)';
     btn.textContent = _slOnlyActive ? '⚡ Active Only' : '⚡ All Songs';
 }
+
+// Quick Fill: auto-populate setlist with active songs (highest readiness first)
+function slQuickFill() {
+    var activeStatuses = ['prospect', 'wip', 'gig_ready'];
+    var songs = (typeof allSongs !== 'undefined' ? allSongs : [])
+        .filter(function(s) {
+            if (!s.title) return false;
+            var status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(s.title) : '';
+            return activeStatuses.indexOf(status) >= 0;
+        });
+    // If no active songs, take first 8 from catalog
+    if (songs.length < 3) {
+        songs = (typeof allSongs !== 'undefined' ? allSongs : []).slice(0, 8);
+    }
+    // Take up to 8 songs
+    var picked = songs.slice(0, 8);
+    if (!window._slSets[0]) window._slSets[0] = { name: 'All Songs', songs: [] };
+    picked.forEach(function(s) {
+        window._slSets[0].songs.push({ title: s.title, segue: 'stop' });
+    });
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    slRenderSetSongs(0);
+    // Hide the quick fill section
+    var qf = document.getElementById('slQuickFillSection');
+    if (qf) qf.style.display = 'none';
+    if (typeof showToast === 'function') showToast(picked.length + ' songs added');
+}
+window.slQuickFill = slQuickFill;
 
 function slSearchSong(input, setIdx) {
     const q = input.value.toLowerCase();

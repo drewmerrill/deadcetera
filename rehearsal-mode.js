@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-125242', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-135644', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1292,10 +1292,10 @@ function _rmShowSessionSummary(summary) {
     // This reduces friction to near-zero — user can just wait and it confirms
     if (_rmAutoConfirmTimer) clearTimeout(_rmAutoConfirmTimer);
     _rmAutoConfirmTimer = setTimeout(function() {
-        if (_rmSuggestionAccepted === null) { // user hasn't tapped Agree or Adjust
+        if (_rmSuggestionAccepted === null) {
             _rmAcceptSuggested();
         }
-    }, 5000);
+    }, 3000); // 3s — fast enough to feel automatic, long enough to override
 }
 
 var _rmSummaryFile = null;

@@ -74,9 +74,15 @@ window.GLAvatarGuide = (function() {
 
     // Completion hooks — called from app code when user completes each step
     function completeOnboardStep(step) {
-        if (step === 'setlist')  localStorage.setItem(_OB_SETLIST_KEY, Date.now());
-        if (step === 'rehearsal') localStorage.setItem(_OB_REHEARSAL_KEY, Date.now());
-        if (step === 'review')   localStorage.setItem(_OB_REVIEW_KEY, Date.now());
+        var now = Date.now();
+        if (step === 'setlist')  localStorage.setItem(_OB_SETLIST_KEY, now);
+        if (step === 'rehearsal') localStorage.setItem(_OB_REHEARSAL_KEY, now);
+        if (step === 'review')   localStorage.setItem(_OB_REVIEW_KEY, now);
+        // Track timing for funnel analysis
+        if (typeof logActivity === 'function') {
+            var firstStep = parseInt(localStorage.getItem(_OB_SETLIST_KEY)) || now;
+            logActivity('onboard_' + step, { minutesSinceStart: Math.round((now - firstStep) / 60000) });
+        }
         // Refresh avatar state
         if (window.GLAvatarUI && GLAvatarUI.checkForTips) GLAvatarUI.checkForTips();
     }
