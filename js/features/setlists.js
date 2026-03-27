@@ -667,11 +667,16 @@ async function slSaveSetlist() {
         showToast('✅ Setlist saved');
     }
     if (typeof GLUXTracker !== 'undefined') GLUXTracker.completeFlow('create_setlist');
-    // Onboarding: mark setlist step complete
+    // Onboarding: mark setlist step complete + navigate to Home for Step 2
+    var _wasOnboarding = typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.getOnboardStep && GLAvatarGuide.getOnboardStep() === 1;
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
-    loadSetlists();
+    if (_wasOnboarding && typeof showPage === 'function') {
+        setTimeout(function() { showPage('home'); }, 800);
+    } else {
+        loadSetlists();
+    }
 }
 
 async function editSetlist(idx) {
