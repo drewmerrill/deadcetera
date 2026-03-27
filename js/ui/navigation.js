@@ -226,7 +226,7 @@ window.glLazy = function glLazy(src) {
 var _glPageScripts = {
     rehearsal:       ['js/features/rehearsal.js', 'js/features/rehearsal-mixdowns.js'],
     'rehearsal-intel': ['js/features/rehearsal.js'],
-    gigs:            ['js/features/gigs.js'],
+    gigs:            ['js/features/gigs.js', 'js/features/stoner-mode.js'],
     bestshot:        ['js/features/bestshot.js'],
     stageplot:       ['js/features/stage-plot.js'],
     finances:        ['js/features/finances.js'],
