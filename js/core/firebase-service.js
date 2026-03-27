@@ -416,6 +416,11 @@ window.loadBandDataFromDrive = async function loadBandDataFromDrive(songTitle, d
 };
 
 window.loadFromLocalStorageFallback = function loadFromLocalStorageFallback(songTitle, dataType) {
+    // Only use localStorage fallback for the original Deadcetera band —
+    // other bands should never have localStorage data (Firebase is canonical)
+    if (typeof currentBandSlug !== 'undefined' && currentBandSlug && currentBandSlug !== 'deadcetera') {
+        return null;
+    }
     var key = 'deadcetera_' + dataType + '_' + songTitle;
     var data = localStorage.getItem(key);
     return data ? JSON.parse(data) : null;
@@ -436,6 +441,10 @@ window.loadMasterFile = async function loadMasterFile(fileName) {
         } catch (error) {
             console.log('Could not load master file from Firebase: ' + fileName);
         }
+    }
+    // Only use localStorage fallback for Deadcetera — other bands are Firebase-only
+    if (typeof currentBandSlug !== 'undefined' && currentBandSlug && currentBandSlug !== 'deadcetera') {
+        return null;
     }
     var key = 'deadcetera_' + fileName;
     var localData = localStorage.getItem(key);
