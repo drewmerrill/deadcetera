@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-105017', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-110340', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10276,13 +10276,19 @@ function settingsTab(tab, btn) {
             <button class="btn btn-primary btn-sm" onclick="showAddBackupPlayerModal()" style="margin-top:8px">+ Add Backup Player</button>
         </div>
         <div class="app-card"><h3>&#127760; Multi-Band</h3>
-            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong></div>
+            <div style="font-size:0.88em;color:var(--text-muted);margin-bottom:8px">Active band: <strong style="color:var(--accent-light)">${bn}</strong> ${typeof GLPlans!=='undefined'?'<span style="font-size:0.72em;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.1);color:'+GLPlans.getPlanBadge().color+';border:1px solid '+GLPlans.getPlanBadge().color+'30;font-weight:600">'+GLPlans.getPlanBadge().label+'</span>':''}</div>
             <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:4px">All songs, readiness, setlists, and gigs are scoped to this band.</div>
             <div style="font-size:0.72em;color:var(--text-dim);margin-bottom:12px">Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
                 <button class="btn btn-primary" id="settingsBandSwitchBtn" onclick="_showBandSwitcherDropdown(this)">Switch Band</button>
                 <button class="btn btn-ghost" onclick="showCreateBandModal()">+ New Band</button>
             </div>
+            <details style="font-size:0.78em;color:var(--text-dim)"><summary style="cursor:pointer;padding:4px 0">Have a founder code?</summary>
+                <div style="display:flex;gap:6px;margin-top:6px">
+                    <input id="founderCodeInput" class="app-input" placeholder="Enter code" style="flex:1;font-size:0.92em;padding:6px 10px">
+                    <button onclick="if(typeof GLPlans!=='undefined'){var r=GLPlans.redeemFounderCode(document.getElementById('founderCodeInput').value);if(!r)showToast('Invalid code');else settingsTab('band')}" class="btn btn-primary btn-sm">Activate</button>
+                </div>
+            </details>
         </div>`,
         
     data: `
