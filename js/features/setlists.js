@@ -310,9 +310,6 @@ async function createNewSetlist() {
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn btn-ghost" onclick="slAddSet()">+ Add Set</button>
-            <button class="btn btn-ghost" onclick="slAddSet('encore')">+ Encore</button>
-            <button class="btn btn-ghost" onclick="slAddSet('soundcheck')" style="color:var(--yellow)">🔊 Soundcheck</button>
             <button class="btn btn-success" onclick="slSaveSetlist()" style="margin-left:auto">💾 Save Setlist</button>
         </div></div>`;
     _slInitVenuePicker(await GLStore.getVenues(), null);
@@ -1185,30 +1182,56 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
     var set = window._slSets[setIdx];
     if (!set || !set.songs || afterSongIdx < 1 || afterSongIdx >= set.songs.length) return;
 
-    // Ask what kind of section starts after the break
-    var choice = prompt(
-        'What starts after this break?\n\n'
-        + '1 = Set (numbered)\n'
-        + '2 = Soundcheck\n'
-        + '3 = Encore\n'
-        + '4 = Custom name\n\n'
-        + 'Enter 1-4:', '1'
-    );
-    if (!choice) return;
+    // Show styled picker instead of prompt()
+    _slShowBreakPicker(setIdx, afterSongIdx);
+}
+
+function _slShowBreakPicker(setIdx, afterSongIdx) {
+    // Remove any existing picker
+    var old = document.getElementById('slBreakPicker');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'slBreakPicker';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;animation:glFlowIn 0.15s ease';
+
+    overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:20px;max-width:320px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:0.92em;font-weight:700;color:#e2e8f0;margin-bottom:14px">What starts after this break?</div>'
+        + '<div style="display:flex;flex-direction:column;gap:8px">'
+        + '<button class="btn" onclick="_slBreakChoice(' + setIdx + ',' + afterSongIdx + ',\'set\')" style="padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:600;font-size:0.88em;cursor:pointer;text-align:left">New Set</button>'
+        + '<button class="btn" onclick="_slBreakChoice(' + setIdx + ',' + afterSongIdx + ',\'soundcheck\')" style="padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:600;font-size:0.88em;cursor:pointer;text-align:left">🔊 Soundcheck</button>'
+        + '<button class="btn" onclick="_slBreakChoice(' + setIdx + ',' + afterSongIdx + ',\'encore\')" style="padding:12px;border-radius:10px;border:1px solid rgba(234,179,8,0.3);background:rgba(234,179,8,0.08);color:#fde047;font-weight:600;font-size:0.88em;cursor:pointer;text-align:left">Encore</button>'
+        + '</div>'
+        + '<button onclick="document.getElementById(\'slBreakPicker\').remove()" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;font-weight:600;font-size:0.82em;cursor:pointer">Cancel</button>'
+        + '</div>';
+
+    // Close on backdrop click
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+}
+window._slShowBreakPicker = _slShowBreakPicker;
+
+function _slBreakChoice(setIdx, afterSongIdx, type) {
+    // Remove picker
+    var picker = document.getElementById('slBreakPicker');
+    if (picker) picker.remove();
+
+    var set = window._slSets[setIdx];
+    if (!set || !set.songs) return;
 
     var firstHalf = set.songs.slice(0, afterSongIdx);
     var secondHalf = set.songs.slice(afterSongIdx);
 
     // Determine name for the new section
     var secondName = '';
-    if (choice === '2') {
+    if (type === 'soundcheck') {
         secondName = '🔊 Soundcheck';
-    } else if (choice === '3') {
+    } else if (type === 'encore') {
         secondName = 'Encore';
-    } else if (choice === '4') {
-        secondName = prompt('Section name:', '') || 'Set';
     } else {
-        // Default: next available set number
         var usedNums = {};
         window._slSets.forEach(function(s) {
             var m = (s.name || '').match(/^Set (\d+)$/);
@@ -1222,9 +1245,6 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
     // Name the first half if it was "All Songs"
     var firstName = set.name;
     if (set.name === 'All Songs') {
-        // If the new section is a non-set type (Soundcheck/Encore/custom),
-        // keep "All Songs" → will be renamed by the user or on next split.
-        // Only auto-rename to "Set 1" if the new section is also a numbered set.
         if (secondName.match(/^Set \d+$/)) firstName = 'Set 1';
     }
 
@@ -1237,17 +1257,51 @@ function slInsertSetBreak(setIdx, afterSongIdx) {
     _slReRenderSets();
     if (typeof showToast === 'function') showToast(secondName + ' added — now ' + window._slSets.length + ' sections');
 }
+window._slBreakChoice = _slBreakChoice;
 
 // Rename a set section
 function slRenameSet(setIdx) {
     if (!window._slSets[setIdx]) return;
     var current = window._slSets[setIdx].name || 'Set ' + (setIdx + 1);
-    var newName = prompt('Rename section:', current);
-    if (!newName || newName === current) return;
+
+    // Remove any existing rename dialog
+    var old = document.getElementById('slRenamePicker');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'slRenamePicker';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;animation:glFlowIn 0.15s ease';
+
+    overlay.innerHTML = '<div style="background:#1e293b;border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:20px;max-width:320px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:0.92em;font-weight:700;color:#e2e8f0;margin-bottom:12px">Rename section</div>'
+        + '<input id="slRenameInput" class="app-input" value="' + current.replace(/"/g, '&quot;') + '" style="width:100%;margin-bottom:14px;padding:10px;font-size:0.9em">'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="document.getElementById(\'slRenamePicker\').remove()" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;font-weight:600;font-size:0.85em;cursor:pointer">Cancel</button>'
+        + '<button onclick="_slDoRename(' + setIdx + ')" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--accent);color:white;font-weight:600;font-size:0.85em;cursor:pointer">Save</button>'
+        + '</div></div>';
+
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+    setTimeout(function() {
+        var inp = document.getElementById('slRenameInput');
+        if (inp) { inp.focus(); inp.select(); }
+    }, 100);
+}
+
+function _slDoRename(setIdx) {
+    var inp = document.getElementById('slRenameInput');
+    var newName = inp ? inp.value.trim() : '';
+    var picker = document.getElementById('slRenamePicker');
+    if (picker) picker.remove();
+    if (!newName || !window._slSets[setIdx]) return;
     window._slSets[setIdx].name = newName;
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
     _slReRenderSets();
 }
+window._slDoRename = _slDoRename;
 window.slRenameSet = slRenameSet;
 
 // Auto-renumber "Set N" sections sequentially after any structural change.
