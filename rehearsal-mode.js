@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-143235', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-152042', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1485,13 +1485,23 @@ function _rmShowRevealScreen() {
     html += '<div style="font-size:1.6em;font-weight:900;color:#f1f5f9;line-height:1.2;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
     html += '</div>';
 
-    // ── Progress Signal (cross-session improvement) ──
+    // ── Attribution Signal (what changed + why) ──
     if (progressSignal) {
-        var sigColor = progressSignal.type === 'improvement' ? '#22c55e' : '#94a3b8';
-        var sigIcon = progressSignal.type === 'improvement' ? '\u2191' : '\u2192';
-        html += '<div style="text-align:center;padding:0 24px 16px">';
-        html += '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(' + (progressSignal.type === 'improvement' ? '34,197,94' : '148,163,184') + ',0.08);border:1px solid rgba(' + (progressSignal.type === 'improvement' ? '34,197,94' : '148,163,184') + ',0.2);border-radius:20px;font-size:0.78em;font-weight:600;color:' + sigColor + '">';
-        html += '<span>' + sigIcon + '</span> ' + _rmEsc(progressSignal.text);
+        var sigColors = { improvement: '#22c55e', regression: '#f87171', steady: '#94a3b8' };
+        var sigIcons = { improvement: '\u2191', regression: '\u2193', steady: '\u2192' };
+        var sigBg = { improvement: '34,197,94', regression: '248,113,113', steady: '148,163,184' };
+        var sc = sigColors[progressSignal.type] || '#94a3b8';
+        var si = sigIcons[progressSignal.type] || '\u2192';
+        var sb = sigBg[progressSignal.type] || '148,163,184';
+
+        html += '<div style="padding:0 24px 16px">';
+        html += '<div style="padding:10px 14px;background:rgba(' + sb + ',0.06);border:1px solid rgba(' + sb + ',0.15);border-radius:12px">';
+        // What changed
+        html += '<div style="font-size:0.85em;font-weight:700;color:' + sc + ';margin-bottom:4px">' + si + ' ' + _rmEsc(progressSignal.text) + '</div>';
+        // Why it changed
+        if (progressSignal.whyItChanged) {
+            html += '<div style="font-size:0.75em;color:#94a3b8;line-height:1.4">' + _rmEsc(progressSignal.whyItChanged) + '</div>';
+        }
         html += '</div></div>';
     }
 

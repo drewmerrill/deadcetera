@@ -504,63 +504,117 @@
     };
   }
 
-  // ── Progress Signal (cross-session comparison) ────────────────────────────
-  // Compares current session to previous sessions to generate confidence messaging.
+  // ── Improvement Attribution ─────────────────────────────────────────────
+  // Compares current session to previous, attributes changes to specific causes.
+  // Returns: { type, whatChanged, whyItChanged, focusNext }
 
   function buildProgressSignal(story) {
     if (!story || !story.coaching) return null;
     var c = story.coaching;
-    // Get previous session data from completion history
+    var tl = story.timeline || [];
+    var prob = c.problematicSongs || [];
+
+    // Load previous session
     var history = [];
     try {
       var agenda = JSON.parse(localStorage.getItem('gl_rehearsal_agenda') || '{}');
       history = agenda.completionHistory || [];
     } catch(e) {}
-
-    if (history.length < 2) return null; // need at least 2 sessions to compare
-
-    var prev = history[1]; // [0] is current, [1] is previous
+    if (history.length < 2) return null;
+    var prev = history[1];
     if (!prev) return null;
 
-    var signals = [];
-
-    // Compare restart counts
+    // Current metrics
+    var currentFullRuns = 0, currentRestarts = c.restartCount || 0;
+    for (var i = 0; i < tl.length; i++) { if (tl[i].hasFullRun) currentFullRuns++; }
     var prevRestarts = prev.restartCount || prev.likelyRestarts || 0;
-    if (c.restartCount < prevRestarts && prevRestarts > 0) {
-      signals.push({ type: 'improvement', text: 'Fewer restarts than last time (' + c.restartCount + ' vs ' + prevRestarts + ').' });
-    }
-
-    // Compare song coverage
     var prevSongs = prev.songsCompleted || prev.songCount || 0;
-    var currentSongs = 0;
-    if (story.timeline) {
-      for (var i = 0; i < story.timeline.length; i++) {
-        if (story.timeline[i].hasFullRun) currentSongs++;
-      }
-    }
-    if (currentSongs > prevSongs && prevSongs > 0) {
-      signals.push({ type: 'improvement', text: 'Covered more songs (' + currentSongs + ' vs ' + prevSongs + ' last time).' });
-    }
-
-    // Compare duration efficiency
     var prevMin = prev.totalMinutes || prev.totalActualMin || 0;
-    if (c.totalMinutes > 0 && prevMin > 0 && currentSongs > 0 && prevSongs > 0) {
-      var currentPerSong = c.totalMinutes / currentSongs;
-      var prevPerSong = prevMin / prevSongs;
-      if (currentPerSong < prevPerSong * 0.85) {
-        signals.push({ type: 'improvement', text: 'Faster per song \u2014 the band is getting tighter.' });
+
+    // ── Attribution Rules ──
+
+    // 1. Restart reduction — identify which song improved
+    if (currentRestarts < prevRestarts && prevRestarts >= 2) {
+      var fixedSong = '';
+      // Check if a previously problematic song is now clean
+      if (prev.problematicSongs && prev.problematicSongs.length) {
+        var prevProbSong = prev.problematicSongs[0].song || prev.problematicSongs[0];
+        var stillBroken = prob.some(function(p) { return p.song === prevProbSong; });
+        if (!stillBroken) fixedSong = prevProbSong;
+      }
+      return {
+        type: 'improvement',
+        text: fixedSong
+          ? fixedSong + ' ran cleaner this time. Restarts down from ' + prevRestarts + ' to ' + currentRestarts + '.'
+          : 'Restarts dropped from ' + prevRestarts + ' to ' + currentRestarts + '. The band committed to playing through.',
+        whyItChanged: fixedSong ? 'Drilling ' + fixedSong + ' paid off.' : 'Fewer stops = more muscle memory building.',
+        focusNext: prob.length ? 'Now focus on ' + prob[0].song + '.' : 'Keep this discipline next time.'
+      };
+    }
+
+    // 2. Restart increase — regression
+    if (currentRestarts > prevRestarts + 1 && currentRestarts >= 3) {
+      var worstSong = prob.length ? prob[0].song : '';
+      return {
+        type: 'regression',
+        text: 'More breakdowns this session (' + currentRestarts + ' vs ' + prevRestarts + ' last time).',
+        whyItChanged: worstSong
+          ? worstSong + ' was the main culprit (' + prob[0].restarts + ' restarts).'
+          : 'The band stopped too quickly on rough spots.',
+        focusNext: worstSong
+          ? 'Slow ' + worstSong + ' down. Run it at half tempo until clean.'
+          : 'Next rehearsal: no stopping mid-song rule.'
+      };
+    }
+
+    // 3. More songs covered — efficiency improvement
+    if (currentFullRuns > prevSongs + 1 && prevSongs > 0) {
+      var perSongNow = c.totalMinutes > 0 ? _r1(c.totalMinutes / currentFullRuns) : 0;
+      return {
+        type: 'improvement',
+        text: currentFullRuns + ' full runs vs ' + prevSongs + ' last time. Covered more ground.',
+        whyItChanged: perSongNow ? 'Averaging ' + perSongNow + ' min per song \u2014 tighter transitions.' : 'Less time talking, more time playing.',
+        focusNext: 'Add a new song to next rehearsal. You have capacity.'
+      };
+    }
+
+    // 4. Time efficiency — faster per song
+    if (c.totalMinutes > 0 && prevMin > 0 && currentFullRuns > 0 && prevSongs > 0) {
+      var nowPerSong = c.totalMinutes / currentFullRuns;
+      var thenPerSong = prevMin / prevSongs;
+      if (nowPerSong < thenPerSong * 0.8) {
+        return {
+          type: 'improvement',
+          text: 'Faster per song (' + _r1(nowPerSong) + ' min vs ' + _r1(thenPerSong) + ' min last time).',
+          whyItChanged: 'Transitions between songs tightened up.',
+          focusNext: 'Maintain this pace. Focus on endings and count-ins.'
+        };
       }
     }
 
-    // No improvement detected
-    if (!signals.length) {
-      // Check if consistently strong
-      if (c.restartCount === 0 && currentSongs >= 3) {
-        signals.push({ type: 'steady', text: 'Holding strong \u2014 zero restarts again.' });
-      }
+    // 5. Consistently strong
+    if (currentRestarts === 0 && prevRestarts === 0 && currentFullRuns >= 3) {
+      return {
+        type: 'steady',
+        text: 'Zero restarts \u2014 second session in a row.',
+        whyItChanged: 'The band is building consistent confidence.',
+        focusNext: 'Time to raise the bar. Add harder material or tighten arrangements.'
+      };
     }
 
-    return signals.length ? signals[0] : null;
+    // 6. Talk time reduction
+    var talkPct = c.timeAllocation && c.timeAllocation['Talk'] ? c.timeAllocation['Talk'].percent : 0;
+    var prevTalkPct = prev.talkPercent || 0;
+    if (talkPct < prevTalkPct - 10 && prevTalkPct >= 20) {
+      return {
+        type: 'improvement',
+        text: 'Talk time dropped from ' + prevTalkPct + '% to ' + talkPct + '%.',
+        whyItChanged: 'More playing, less discussing. That\u2019s where the reps come from.',
+        focusNext: 'Keep arrangement decisions in the group chat.'
+      };
+    }
+
+    return null;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
