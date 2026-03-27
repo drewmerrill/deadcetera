@@ -504,12 +504,72 @@
     };
   }
 
+  // ── Progress Signal (cross-session comparison) ────────────────────────────
+  // Compares current session to previous sessions to generate confidence messaging.
+
+  function buildProgressSignal(story) {
+    if (!story || !story.coaching) return null;
+    var c = story.coaching;
+    // Get previous session data from completion history
+    var history = [];
+    try {
+      var agenda = JSON.parse(localStorage.getItem('gl_rehearsal_agenda') || '{}');
+      history = agenda.completionHistory || [];
+    } catch(e) {}
+
+    if (history.length < 2) return null; // need at least 2 sessions to compare
+
+    var prev = history[1]; // [0] is current, [1] is previous
+    if (!prev) return null;
+
+    var signals = [];
+
+    // Compare restart counts
+    var prevRestarts = prev.restartCount || prev.likelyRestarts || 0;
+    if (c.restartCount < prevRestarts && prevRestarts > 0) {
+      signals.push({ type: 'improvement', text: 'Fewer restarts than last time (' + c.restartCount + ' vs ' + prevRestarts + ').' });
+    }
+
+    // Compare song coverage
+    var prevSongs = prev.songsCompleted || prev.songCount || 0;
+    var currentSongs = 0;
+    if (story.timeline) {
+      for (var i = 0; i < story.timeline.length; i++) {
+        if (story.timeline[i].hasFullRun) currentSongs++;
+      }
+    }
+    if (currentSongs > prevSongs && prevSongs > 0) {
+      signals.push({ type: 'improvement', text: 'Covered more songs (' + currentSongs + ' vs ' + prevSongs + ' last time).' });
+    }
+
+    // Compare duration efficiency
+    var prevMin = prev.totalMinutes || prev.totalActualMin || 0;
+    if (c.totalMinutes > 0 && prevMin > 0 && currentSongs > 0 && prevSongs > 0) {
+      var currentPerSong = c.totalMinutes / currentSongs;
+      var prevPerSong = prevMin / prevSongs;
+      if (currentPerSong < prevPerSong * 0.85) {
+        signals.push({ type: 'improvement', text: 'Faster per song \u2014 the band is getting tighter.' });
+      }
+    }
+
+    // No improvement detected
+    if (!signals.length) {
+      // Check if consistently strong
+      if (c.restartCount === 0 && currentSongs >= 3) {
+        signals.push({ type: 'steady', text: 'Holding strong \u2014 zero restarts again.' });
+      }
+    }
+
+    return signals.length ? signals[0] : null;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   window.RehearsalStoryEngine = {
     buildStory: buildStory,
     generateHeadline: generateHeadline,
     buildNarrative: buildNarrative,
+    buildProgressSignal: buildProgressSignal,
     UI_TYPES: UI_TYPES,
     UI_COLORS: UI_COLORS,
     UI_ICONS: UI_ICONS,

@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-141936', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-143235', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1471,13 +1471,29 @@ function _rmShowRevealScreen() {
     var coaching = insight.coaching || {};
     var hasIssue = tc.biggestIssue && tc.biggestIssue.length > 0;
 
-    // Build HTML — 3 elements max: headline, ONE insight card, next action
+    // Check for cross-session progress signal
+    var progressSignal = null;
+    if (typeof RehearsalStoryEngine !== 'undefined' && RehearsalStoryEngine.buildProgressSignal && insight.story) {
+        progressSignal = RehearsalStoryEngine.buildProgressSignal(insight.story);
+    }
+
+    // Build HTML — headline, optional progress, ONE insight card, next action
     var html = '<div style="max-width:440px;width:100%;animation:rmRevealIn 0.25s ease">';
 
     // ── Headline ──
-    html += '<div style="text-align:center;padding:32px 24px 20px">';
+    html += '<div style="text-align:center;padding:32px 24px ' + (progressSignal ? '10px' : '20px') + '">';
     html += '<div style="font-size:1.6em;font-weight:900;color:#f1f5f9;line-height:1.2;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
     html += '</div>';
+
+    // ── Progress Signal (cross-session improvement) ──
+    if (progressSignal) {
+        var sigColor = progressSignal.type === 'improvement' ? '#22c55e' : '#94a3b8';
+        var sigIcon = progressSignal.type === 'improvement' ? '\u2191' : '\u2192';
+        html += '<div style="text-align:center;padding:0 24px 16px">';
+        html += '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(' + (progressSignal.type === 'improvement' ? '34,197,94' : '148,163,184') + ',0.08);border:1px solid rgba(' + (progressSignal.type === 'improvement' ? '34,197,94' : '148,163,184') + ',0.2);border-radius:20px;font-size:0.78em;font-weight:600;color:' + sigColor + '">';
+        html += '<span>' + sigIcon + '</span> ' + _rmEsc(progressSignal.text);
+        html += '</div></div>';
+    }
 
     // ── ONE insight card with "why this matters" ──
     html += '<div style="padding:0 24px 20px">';
