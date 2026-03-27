@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-024421', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-025000', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -97,8 +97,28 @@ window.openRehearsalModeWithQueue = function(queue) {
     if (window._rpBlockGuidance) {
         try { localStorage.setItem('glPlannerGuidance', JSON.stringify(window._rpBlockGuidance)); } catch(e) {}
     }
+    // Check for chart notes from last rehearsal — nudge before starting
+    _rmCheckChartNotes(queue);
     rmShow();
 };
+
+// Nudge: show chart notes count before rehearsal starts
+async function _rmCheckChartNotes(queue) {
+    if (typeof ChartSystem === 'undefined' || !ChartSystem.loadOverlayNotes) return;
+    var totalNotes = 0;
+    var songsWithNotes = [];
+    for (var i = 0; i < Math.min(queue.length, 5); i++) {
+        var title = queue[i].title || queue[i];
+        if (!title) continue;
+        try {
+            var notes = await ChartSystem.loadOverlayNotes(title);
+            if (notes.length > 0) { totalNotes += notes.length; songsWithNotes.push(title); }
+        } catch(e) {}
+    }
+    if (totalNotes > 0 && typeof showToast === 'function') {
+        showToast('\uD83D\uDCCC ' + totalNotes + ' chart note' + (totalNotes > 1 ? 's' : '') + ' from last rehearsal \u2014 tap charts to review');
+    }
+}
 
 // Alias for PM v2 button
 function pmOpenPracticeMode(songTitle) { openRehearsalMode(songTitle); }
@@ -1474,16 +1494,30 @@ function _rmShowRevealScreen() {
         html += '</div>';
     }
 
-    // ── Add to Chart (if there's an issue and a problematic song) ──
+    // ── Auto Chart Note (default YES — saved automatically, user can undo) ──
     var _revealProbSong = coaching.problematicSongs && coaching.problematicSongs.length ? coaching.problematicSongs[0].song : null;
     var _revealNoteText = hasIssue ? tc.biggestIssue : (coaching.nextAction || '');
     if (_revealProbSong && _revealNoteText && typeof ChartSystem !== 'undefined') {
-        html += '<div style="padding:0 24px 8px;text-align:center">';
-        html += '<button onclick="_rmRevealAddToChart()" id="rmRevealChartBtn" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600;font-size:0.82em;cursor:pointer">\uD83D\uDCCC Add to ' + _rmEsc(_revealProbSong) + '\u2019s Chart</button>';
-        html += '</div>';
-        // Store for the click handler
+        // Auto-save the note immediately (default YES)
         window._rmRevealChartSong = _revealProbSong;
         window._rmRevealChartNote = _revealNoteText;
+        window._rmRevealChartSaved = false;
+        setTimeout(function() {
+            ChartSystem.addOverlayNote(_revealProbSong, _revealNoteText).then(function(saved) {
+                window._rmRevealChartSaved = saved;
+                if (saved && typeof logActivity === 'function') logActivity('reveal_chart_note', { song: _revealProbSong });
+                var statusEl = document.getElementById('rmChartAutoStatus');
+                if (statusEl) statusEl.textContent = saved ? '\u2705 Added to chart' : '';
+            });
+        }, 500);
+        // Show inline confirmation with undo
+        html += '<div style="padding:0 24px 8px">';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.12);border-radius:10px;font-size:0.78em">';
+        html += '<span style="color:#fbbf24">\uD83D\uDCCC</span>';
+        html += '<span style="flex:1;color:var(--text-dim,#94a3b8)">Adding note to <strong style="color:#fbbf24">' + _rmEsc(_revealProbSong) + '</strong>\u2019s chart</span>';
+        html += '<span id="rmChartAutoStatus" style="color:#64748b;font-size:0.9em"></span>';
+        html += '<button onclick="_rmRevealUndoChart()" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.85em">Undo</button>';
+        html += '</div></div>';
     }
 
     // ── Done ──
@@ -1498,6 +1532,8 @@ function _rmShowRevealScreen() {
     ov.id = 'rmRevealOverlay';
     ov.setAttribute('data-testid', 'rehearsal-reveal');
     ov.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+    // Track reveal viewed
+    if (typeof logActivity === 'function') logActivity('reveal_viewed');
     ov.innerHTML = html;
     document.body.appendChild(ov);
 
@@ -1507,20 +1543,16 @@ function _rmShowRevealScreen() {
     }, 1500);
 }
 
-window._rmRevealAddToChart = async function() {
+window._rmRevealUndoChart = async function() {
     var song = window._rmRevealChartSong;
-    var note = window._rmRevealChartNote;
-    if (!song || !note || typeof ChartSystem === 'undefined') return;
-    var btn = document.getElementById('rmRevealChartBtn');
-    if (btn) { btn.textContent = 'Adding\u2026'; btn.disabled = true; }
-    var saved = await ChartSystem.addOverlayNote(song, note);
-    if (btn) {
-        btn.textContent = saved ? '\u2705 Added to chart' : '\u26A0\uFE0F Failed';
-        btn.style.opacity = '0.6';
-    }
-    // Track for analytics
-    if (saved && typeof logActivity === 'function') {
-        logActivity('reveal_chart_note', { song: song });
+    if (!song || typeof ChartSystem === 'undefined') return;
+    // Remove the last note (the one we just auto-added)
+    var notes = await ChartSystem.loadOverlayNotes(song);
+    if (notes.length > 0) {
+        await ChartSystem.removeOverlayNote(song, notes.length - 1);
+        if (typeof showToast === 'function') showToast('Chart note removed');
+        var statusEl = document.getElementById('rmChartAutoStatus');
+        if (statusEl) statusEl.textContent = 'Undone';
     }
 };
 
