@@ -335,11 +335,18 @@ function slToggleActiveFilter(btn) {
 
 // Quick Fill: auto-populate setlist with active songs (highest readiness first)
 function slQuickFill() {
-    // Open the song picker for set 0 — let the user choose their songs
     if (!window._slSets[0]) window._slSets[0] = { name: 'All Songs', songs: [] };
-    // Pre-select active songs so they're easy to pick
-    _slOnlyActive = true;
-    slOpenSongPicker(0);
+    var songSource = (typeof GLStore !== 'undefined' && GLStore.getSongs) ? GLStore.getSongs() : (typeof allSongs !== 'undefined' ? allSongs : []);
+    if (songSource.length > 0) {
+        // Band has songs — open the picker
+        _slOnlyActive = true;
+        slOpenSongPicker(0);
+    } else {
+        // Empty library — focus the search input so user can type song names
+        var input = document.getElementById('slAddSong0');
+        if (input) { input.focus(); input.placeholder = 'Type a song name to add it...'; }
+        if (typeof showToast === 'function') showToast('Type song names below — they\'ll be added to your library automatically', 4000);
+    }
     // Hide the quick fill section
     var qf = document.getElementById('slQuickFillSection');
     if (qf) qf.style.display = 'none';
@@ -351,7 +358,7 @@ function slSearchSong(input, setIdx) {
     const results = document.getElementById('slSongResults' + setIdx);
     if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
     const _activeStatuses = ['prospect','wip','gig_ready'];
-    const songSource = (typeof allSongs !== "undefined" ? allSongs : []);
+    const songSource = (typeof GLStore !== 'undefined' && GLStore.getSongs) ? GLStore.getSongs() : (typeof allSongs !== 'undefined' ? allSongs : []);
     const matches = songSource
         .filter(s => s.title.toLowerCase().includes(q))
         .filter(s => !_slOnlyActive || _activeStatuses.includes(GLStore && GLStore.getStatus(s.title)))
@@ -1516,7 +1523,7 @@ function slOpenSongPicker(setIdx) {
         if (t) inSet[t] = true;
     });
 
-    var songList = (typeof allSongs !== 'undefined' ? allSongs : []).slice();
+    var songList = ((typeof GLStore !== 'undefined' && GLStore.getSongs) ? GLStore.getSongs() : (typeof allSongs !== 'undefined' ? allSongs : [])).slice();
     songList.sort(function(a, b) {
         var aActive = _slIsActive(a.title);
         var bActive = _slIsActive(b.title);
@@ -1546,6 +1553,14 @@ function slOpenSongPicker(setIdx) {
     html += '</div></div>';
 
     html += '<div id="slPickerList" style="overflow-y:auto;flex:1;padding:8px 16px">';
+    if (songList.length === 0) {
+        html += '<div style="text-align:center;padding:30px 16px;color:var(--text-dim)">'
+            + '<div style="font-size:1.5em;margin-bottom:8px">🎵</div>'
+            + '<div style="font-weight:600;margin-bottom:6px">No songs in your library yet</div>'
+            + '<div style="font-size:0.82em;margin-bottom:14px;line-height:1.4">Type song names in the search box on the setlist editor — they\'ll be added automatically.</div>'
+            + '<button onclick="document.getElementById(\'slSongPickerOverlay\').remove()" class="btn btn-ghost" style="font-size:0.85em">Got it</button>'
+            + '</div>';
+    }
     songList.forEach(function(s) {
         var isActive = _slIsActive(s.title);
         // When Library is off, hide inactive songs entirely (not just dim)

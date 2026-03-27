@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-212331', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-213246', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -724,8 +724,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ── STAGE 1: Immediate critical render ──
-    // Song catalog (allSongs) is shared reference data — safe to render for all bands.
-    // Band-specific data (readiness, status) fills in after Firebase resolves.
+    // Clear allSongs for non-Deadcetera bands — they should NOT see the hardcoded jam catalog.
+    // Deadcetera keeps allSongs for instant render; Firebase will update it.
+    var _bootSlug = localStorage.getItem('deadcetera_current_band') || 'deadcetera';
+    if (_bootSlug !== 'deadcetera' && typeof allSongs !== 'undefined') {
+        allSongs.length = 0;
+        console.log('[Startup] Cleared allSongs for band: ' + _bootSlug);
+    }
     renderSongs();
     console.log('[Startup] Initial render at ' + Math.round(performance.now()) + 'ms');
     window._glBootTimings.initialRender = performance.now();

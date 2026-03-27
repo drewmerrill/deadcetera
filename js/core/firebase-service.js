@@ -703,6 +703,16 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
         }
     } catch(e) {
         console.error('[SongLib] Load failed:', e.message);
+        // Show toast so user knows something went wrong
+        if (typeof showToast === 'function') showToast('Song library loading — retrying...', 3000);
+        // Retry once after 3 seconds
+        if (!window._glSongLibRetried) {
+            window._glSongLibRetried = true;
+            setTimeout(function() {
+                _GL_SONG_LIB_LOADED = false;
+                window.loadBandSongLibrary();
+            }, 3000);
+        }
     }
 };
 
