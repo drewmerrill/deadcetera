@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-024008', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-024421', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1517,6 +1517,10 @@ window._rmRevealAddToChart = async function() {
     if (btn) {
         btn.textContent = saved ? '\u2705 Added to chart' : '\u26A0\uFE0F Failed';
         btn.style.opacity = '0.6';
+    }
+    // Track for analytics
+    if (saved && typeof logActivity === 'function') {
+        logActivity('reveal_chart_note', { song: song });
     }
 };
 
