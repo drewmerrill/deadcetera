@@ -161,10 +161,10 @@ function _slRenderCard(sl, isNext) {
         + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Open">\u25B6 Open</button>'
         + '<button onclick="slPlaySetlist(' + idx + ')" style="border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;font-weight:600" title="Play">\uD83C\uDFA7</button>'
         + (sl.locked
-            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;opacity:0.4" title="Locked">\u270F\uFE0F</button>'
-              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24" title="Unlock">\uD83D\uDD13 Unlock</button>'
+            ? '<button style="border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;opacity:0.3;cursor:not-allowed" title="Unlock to edit">\u270F\uFE0F</button>'
+              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600" title="Click to unlock">\uD83D\uDD12 Locked</button>'
             : '<button onclick="editSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Edit">\u270F\uFE0F</button>'
-              + '<button onclick="slToggleLock(' + idx + ')" style="border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e" title="Lock">\uD83D\uDD12 Lock</button>'
+              + '<button onclick="slToggleLock(' + idx + ')" style="border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e;font-weight:600" title="Lock this setlist">\uD83D\uDD13 Unlocked</button>'
               + '<button onclick="deleteSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b" title="Delete">\uD83D\uDDD1\uFE0F</button>')
         + '</div></div>';
 }
@@ -331,7 +331,7 @@ function slSearchSong(input, setIdx) {
         .filter(s => s.title.toLowerCase().includes(q))
         .filter(s => !_slOnlyActive || _activeStatuses.includes(GLStore && GLStore.getStatus(s.title)))
         .slice(0, 12);
-    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:6px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onclick="slAddSongToSet(${setIdx},this.dataset.title)">
+    results.innerHTML = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:8px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},this.dataset.title)" ontouchstart="slAddSongToSet(${setIdx},this.dataset.title)">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
 }
 function slAddSongToSet(setIdx, title) {
