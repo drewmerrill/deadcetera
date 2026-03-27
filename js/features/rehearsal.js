@@ -210,7 +210,10 @@ async function _rhRenderCommandFlow(el) {
         var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
         console.log('[Planner] Rendering saved plan:', savedUnits.length, 'units,', songCount, 'songs', savedUnits);
 
-        var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Next Rehearsal';
+        var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name
+            : (localStorage.getItem('glSavedPlanName') || (typeof practicePlanActiveDate !== 'undefined' && practicePlanActiveDate
+                ? new Date(practicePlanActiveDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }) + ' Rehearsal Plan'
+                : 'Rehearsal Plan'));
         // Compute total time BEFORE using it in the header
         var _rhNonSongDefaults_pre = { exercise: 10, business: 15, jam: 10, note: 5, section: 0 };
         var _preTotalMin = savedUnits.reduce(function(sum, u) {
@@ -441,12 +444,12 @@ async function _rhRenderCommandFlow(el) {
         // Actions
         html += '<div style="font-size:0.6em;color:var(--text-dim);padding:2px 0 4px;font-style:italic">Tap minutes on any block to make the plan realistic. Total: ' + totalLabel + '</div>'
             + '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Start Rehearsal</button>'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer" title="Start over with a new AI-generated plan (current plan is auto-saved)">🔄 Rebuild</button>'
+            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Start This Rehearsal</button>'
+            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.82em;cursor:pointer;min-height:48px">+ New Date</button>'
             + '</div>'
             + '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer">+ New Rehearsal</button>'
-            + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer" title="Save a copy of this plan so you can reuse or restore it later">📸 Save Snapshot</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer" title="Regenerate this plan">\uD83D\uDD04 Rebuild</button>'
+            + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer" title="Save a copy of this plan">\uD83D\uDCF8 Save Snapshot</button>'
             + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">Past Rehearsals</button>'
             + '</div>'
             + '<div id="rhSnapshots"></div>';
@@ -2385,11 +2388,17 @@ async function rhSaveEvent(eventId) {
             // Switch to the new date's plan — clear old saved plan so user starts fresh
             setTimeout(function() {
                 if (typeof practicePlanActiveDate !== 'undefined') practicePlanActiveDate = ev.date;
-                // Clear the old saved plan so the planner shows a fresh state for the new date
+                // Clear old plan completely
                 try { localStorage.removeItem('glPlannerQueue'); } catch(e) {}
                 try { localStorage.removeItem('glPlannerGuidance'); } catch(e) {}
                 try { localStorage.removeItem('glSavedPlanUnits'); } catch(e) {}
-                // Open the planner (auto-generates a new plan for the new date)
+                // Set plan name to the new date so the header is clear
+                var dateLabel = new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+                if (typeof _rhPlanCache !== 'undefined') {
+                    window._rhPlanCache = { name: dateLabel + ' Rehearsal Plan', date: ev.date };
+                }
+                try { localStorage.setItem('glSavedPlanName', dateLabel + ' Rehearsal Plan'); } catch(e) {}
+                // Open the planner for the new date
                 if (typeof renderRehearsalPlanner === 'function') {
                     renderRehearsalPlanner();
                 } else {
