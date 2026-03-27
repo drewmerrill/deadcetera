@@ -123,6 +123,52 @@
     });
   }
 
+  // ── Dependency Readiness Gate ─────────────────────────────────────────────
+  // GLStore.ready(['songs','members']) returns a Promise that resolves when
+  // all named dependencies have been marked ready via GLStore.markReady().
+  // Pages use this to block rendering until their data is loaded.
+
+  var _readyFlags = {};
+  var _readyWaiters = []; // { deps: [], resolve: fn }
+
+  function markReady(dep) {
+    _readyFlags[dep] = true;
+    console.log('[GLStore] Ready:', dep);
+    // Check all waiters
+    _readyWaiters = _readyWaiters.filter(function(w) {
+      var allReady = w.deps.every(function(d) { return _readyFlags[d]; });
+      if (allReady) { w.resolve(); return false; }
+      return true;
+    });
+  }
+
+  function isReady(dep) {
+    return !!_readyFlags[dep];
+  }
+
+  /**
+   * @param {string[]} deps - e.g. ['songs', 'members', 'statuses']
+   * @param {number} [timeoutMs=8000] - max wait before resolving anyway
+   * @returns {Promise<void>}
+   */
+  function ready(deps, timeoutMs) {
+    if (!deps || !deps.length) return Promise.resolve();
+    var allReady = deps.every(function(d) { return _readyFlags[d]; });
+    if (allReady) return Promise.resolve();
+
+    return new Promise(function(resolve) {
+      _readyWaiters.push({ deps: deps, resolve: resolve });
+      // Timeout safety — never block forever
+      setTimeout(function() {
+        var missing = deps.filter(function(d) { return !_readyFlags[d]; });
+        if (missing.length) {
+          console.warn('[GLStore] Ready timeout — missing:', missing.join(', '));
+        }
+        resolve();
+      }, timeoutMs || 8000);
+    });
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   function _db() {
@@ -3785,6 +3831,11 @@
     subscribe:         subscribe,
     on:                subscribe,  // alias for subscribe
     emit:              emit,
+
+    // Dependency readiness
+    ready:             ready,
+    markReady:         markReady,
+    isReady:           isReady,
 
     // Song Intelligence (Milestone 2)
     getSongIntelligence:    getSongIntelligence,

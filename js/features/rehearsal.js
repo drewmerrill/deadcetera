@@ -112,7 +112,9 @@ async function _rhRenderCommandFlow(el) {
 
     // Load context
     var ctx = null;
-    try { ctx = await buildRiContext(); } catch(e) {}
+    try { ctx = await buildRiContext(); } catch(e) {
+        console.error('[RenderError] rehearsal context load failed:', e);
+    }
     var focusSongs = ctx ? deriveRiFocusSongs(ctx) : [];
     window._riLastCtx = ctx;
     window._riLastFocusSongs = focusSongs;

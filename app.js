@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-202252', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-212019', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -740,12 +740,14 @@ document.addEventListener('DOMContentLoaded', function() {
     initFirebaseOnly().then(() => {
         console.log('[Startup] Firebase ready at ' + Math.round(performance.now()) + 'ms');
         window._glBootTimings.firebaseReady = performance.now();
+        if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('firebase');
         // Load band members from Firebase FIRST (canonical source), then custom songs
         _seedDeadceteraMembersIfNeeded().then(function() {
             return loadBandMembersFromFirebase();
         }).then(function() {
             console.log('[Startup] Band members ready at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.membersReady = performance.now();
+            if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('members');
             // Re-render settings if on that page
             if (typeof currentPage !== 'undefined' && currentPage === 'admin' && typeof settingsTab === 'function') {
                 settingsTab('band');
@@ -761,6 +763,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderSongs();
             console.log('[Startup] Songs rendered at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songsRendered = performance.now();
+            if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('songs');
         });
 
         // ── STAGE 3: Deferred preloads (idle/background) ──
@@ -796,6 +799,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slArr);
             else { window._glCachedSetlists = _slArr; window._cachedSetlists = _slArr; }
             _rt.setlistsCached = true;
+            if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('setlists');
         }).catch(function() {});
         loadBandDataFromDrive('_band', 'blocked_dates').then(function(data) {
             window._glCachedBlockedDates = toArray(data || []);
@@ -6990,12 +6994,12 @@ async function preloadAllStatuses() {
             Object.assign(statusCache, masterData);
             const count = Object.values(masterData).filter(v => v).length;
             console.log(`Loaded ${count} song statuses from master file (1 API call!)`);
-            statusCacheLoaded = true;
+            statusCacheLoaded = true; if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('statuses');
         } else if (isUserSignedIn) {
             // Drive is ready but no master file - migrate
             console.log('No master status file found. Migrating from individual files...');
             await migrateStatusesToMaster();
-            statusCacheLoaded = true;
+            statusCacheLoaded = true; if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('statuses');
         } else {
             // Drive not ready yet - try localStorage, don't mark as loaded
             const localData = localStorage.getItem('deadcetera__master_song_statuses.json');
@@ -7004,7 +7008,7 @@ async function preloadAllStatuses() {
                     Object.assign(statusCache, JSON.parse(localData));
                     const count = Object.values(statusCache).filter(v => v).length;
                     console.log(`Loaded ${count} statuses from localStorage (Drive not ready yet)`);
-                    statusCacheLoaded = true;
+                    statusCacheLoaded = true; if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('statuses');
                 } catch (e) {}
             }
             // Will retry on next render cycle
@@ -7016,7 +7020,7 @@ async function preloadAllStatuses() {
             try {
                 Object.assign(statusCache, JSON.parse(localData));
                 console.log('Loaded statuses from localStorage fallback');
-                statusCacheLoaded = true;
+                statusCacheLoaded = true; if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('statuses');
             } catch (e) {}
         }
     }

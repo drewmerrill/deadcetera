@@ -33,7 +33,14 @@ function renderSetlistsPage(el) {
 }
 
 async function loadSetlists() {
-    var rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var rawData;
+    try {
+        rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    } catch(e) {
+        console.error('[RenderError] setlists data load failed:', e);
+        if (typeof GLRenderState !== 'undefined') GLRenderState.set('setlists', { status: 'error', title: 'Failed to load setlists', message: e.message, retry: "loadSetlists()" });
+        return;
+    }
     if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(rawData);
     else { window._glCachedSetlists = rawData; window._cachedSetlists = rawData; }
     var data = rawData.map(function(sl, origIdx) { return Object.assign({}, sl, { _origIdx: origIdx }); });
