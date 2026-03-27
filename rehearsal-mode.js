@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-023200', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-023526', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1208,7 +1208,8 @@ function _rmShowSessionSummary(summary) {
 
     // Smart Rating Assist
     var _sra = _rmSuggestRating(summary);
-    _rmSummaryRating = _sra.suggested; // pre-select the suggestion
+    _rmSummaryRating = _sra.suggested;
+    window._rmLastSuggestedRating = _sra.suggested; // stored for analytics
     var _sraColors = { great: '#22c55e', solid: '#a5b4fc', needs_work: '#fbbf24' };
     var _sraIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
     html += '<div style="margin-bottom:14px">';
@@ -1370,6 +1371,8 @@ window._rmSummarySave = async function(sessionId) {
         if (mixdownId) updates.mixdown_id = mixdownId;
         if (_rmSummaryRating) updates.rating = _rmSummaryRating;
         if (_rmSuggestionAccepted !== null) updates.ratingAcceptedSuggestion = _rmSuggestionAccepted;
+        // Store the original suggestion for analytics (compare suggested vs final)
+        if (window._rmLastSuggestedRating) updates.ratingSuggested = window._rmLastSuggestedRating;
         if (autoSummary) updates.summary = autoSummary;
         if (Object.keys(updates).length) {
             try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates); } catch(e) {}
@@ -1435,7 +1438,7 @@ function _rmShowRevealScreen() {
 
     var tc = insight.ui.topCard;
     var coaching = insight.coaching || {};
-    var hasIssue = tc.biggestIssue && tc.biggestIssue.indexOf('No major issues') === -1;
+    var hasIssue = tc.biggestIssue && tc.biggestIssue.length > 0;
 
     // Build HTML — 3 elements max: headline, ONE insight card, next action
     var html = '<div style="max-width:440px;width:100%;animation:rmRevealIn 0.25s ease">';

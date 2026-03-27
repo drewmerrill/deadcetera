@@ -436,14 +436,20 @@
     var talkPct = c.timeAllocation && c.timeAllocation['Talk'] ? c.timeAllocation['Talk'].percent : 0;
     var restartCount = c.restartCount || 0;
 
-    if (prob.length > 0 && prob[0].restarts >= 2) {
-      biggestIssue = prob[0].song + ' needed ' + prob[0].restarts + ' restarts. That\u2019s where the time went.';
-    } else if (talkPct >= 25) {
-      biggestIssue = talkPct + '% of the session was discussion. Decisions eat rehearsal time.';
+    if (prob.length > 0 && prob[0].restarts >= 3) {
+      biggestIssue = prob[0].song + ' broke down ' + prob[0].restarts + ' times. That song is costing you ' + prob[0].totalTime + ' of rehearsal.';
+    } else if (prob.length > 0 && prob[0].restarts >= 2) {
+      biggestIssue = prob[0].song + ' needed ' + prob[0].restarts + ' attempts. It\u2019s not locked yet.';
+    } else if (talkPct >= 30) {
+      biggestIssue = 'You spent ' + _r1(talkPct) + '% of the session talking. That\u2019s ' + _r1(c.timeAllocation['Talk'].minutes) + ' min you didn\u2019t play.';
+    } else if (talkPct >= 20) {
+      biggestIssue = _r1(c.timeAllocation['Talk'].minutes) + ' minutes went to discussion. Every minute talking is a minute not playing.';
     } else if (restartCount >= 3) {
-      biggestIssue = restartCount + ' false starts across the session. Try committing to full runs even when it\u2019s rough.';
+      biggestIssue = restartCount + ' false starts. The band is stopping too fast \u2014 play through the ugly parts.';
+    } else if (restartCount >= 1 && prob.length > 0) {
+      biggestIssue = prob[0].song + ' stumbled. Run it first next time.';
     } else {
-      biggestIssue = 'No major issues. Keep this rhythm.';
+      biggestIssue = '';
     }
 
     // ── Strongest Moment ──
@@ -471,23 +477,23 @@
     // Format: "Start next rehearsal by [specific behavior]"
     var nextAction = '';
     if (prob.length > 0 && prob[0].restarts >= 3) {
-      nextAction = 'Start next rehearsal with ' + prob[0].song + '. Play it at half speed, section by section, before attempting full speed.';
+      nextAction = 'First 10 minutes of next rehearsal: ' + prob[0].song + ' at half tempo. Don\u2019t speed up until it\u2019s clean.';
     } else if (prob.length > 0 && prob[0].restarts >= 2) {
-      nextAction = 'Open next rehearsal with ' + prob[0].song + ' \u2014 tackle it while everyone\u2019s fresh.';
+      nextAction = 'Open next rehearsal with ' + prob[0].song + '. Run it twice before touching anything else.';
     } else if (talkPct >= 25) {
-      nextAction = 'Text arrangement decisions to the group chat before next rehearsal. Walk in ready to play.';
+      nextAction = 'Before next rehearsal: text the band any arrangement questions. Walk in and play for the first 30 minutes straight.';
     } else if (restartCount >= 3) {
-      nextAction = 'Start next rehearsal with a rule: no stopping mid-song. Play through the rough parts. Fix after.';
+      nextAction = 'Next rehearsal rule: no stopping mid-song. Play through mistakes. Fix endings after.';
     } else if (restartCount >= 1 && prob.length > 0) {
-      nextAction = 'Run ' + prob[0].song + ' twice back-to-back at the start of next rehearsal.';
+      nextAction = 'Start with ' + prob[0].song + ' next time. Two clean runs before moving on.';
+    } else if (fullRuns >= 4 && c.restartCount === 0) {
+      nextAction = 'Add two new songs to next rehearsal. You\u2019re ready to expand the set.';
     } else if (c.insights && c.insights.length) {
       var focusInsight = c.insights.find(function(ins) { return ins.type === 'focus'; });
-      if (focusInsight) {
-        nextAction = focusInsight.text;
-      }
+      if (focusInsight) nextAction = focusInsight.text;
     }
     if (!nextAction) {
-      nextAction = 'Book your next rehearsal. Momentum is everything.';
+      nextAction = 'Schedule next rehearsal within 7 days. Consistency beats intensity.';
     }
 
     return {
