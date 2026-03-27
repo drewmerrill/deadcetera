@@ -384,6 +384,25 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 
 // ── Next Action Card — "What should I do next?" ─────────────────────────────
 function _renderNextActionCard(bundle, wf) {
+    // ── First-time user: "Run Your First Rehearsal" launcher ──
+    var onboardStep = (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.getOnboardStep) ? GLAvatarGuide.getOnboardStep() : 0;
+    if (onboardStep >= 1 && onboardStep <= 3) {
+        var stepLabels = { 1: 'Create a setlist', 2: 'Start a rehearsal', 3: 'Review your session' };
+        var stepCtas = {
+            1: { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" },
+            2: { label: 'Start Rehearsal \u2192', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal()" },
+            3: { label: 'See Results \u2192', onclick: "showPage('rehearsal')" }
+        };
+        var cta = stepCtas[onboardStep] || stepCtas[1];
+        return '<div class="app-card" style="padding:20px;margin-bottom:12px;border:2px solid rgba(99,102,241,0.3);background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.04))">'
+            + '<div style="text-align:center">'
+            + '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:#818cf8;text-transform:uppercase;margin-bottom:6px">Your Next Step \u2014 ' + onboardStep + ' of 3</div>'
+            + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:4px">' + stepLabels[onboardStep] + '</div>'
+            + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:14px">Complete all 3 steps to run your first rehearsal.</div>'
+            + '<button onclick="' + cta.onclick + '" style="padding:14px 28px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.95em;cursor:pointer">' + cta.label + '</button>'
+            + '</div></div>';
+    }
+
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
     var practiced = _didPracticeToday();
