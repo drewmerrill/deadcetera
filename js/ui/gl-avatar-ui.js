@@ -394,16 +394,15 @@ window.GLAvatarUI = (function() {
         } catch(e) {}
         // Check on page load
         setTimeout(function() { checkForTips(); }, 2000);
-        // Auto-open panel for onboarding if user has songs but hasn't started the flow
+        // Pulse avatar for onboarding (but don't auto-open — dashboard card is dominant)
         setTimeout(function() {
             var G = window.GLAvatarGuide;
             if (G && G.getOnboardStep) {
                 var step = G.getOnboardStep();
-                if (step >= 1 && step <= 3 && !_isOpen) {
+                if (step >= 1 && step <= 3) {
                     _hasUnread = true;
                     _updateButtonState();
-                    // Auto-open panel after a brief delay so user sees the app first
-                    setTimeout(function() { if (!_isOpen) openPanel(); }, 1500);
+                    // Don't auto-open — the "Your Next Step" card on home is the primary guide
                 }
             }
             // Auto-launch check (≥3 songs, first time)

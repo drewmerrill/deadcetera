@@ -394,12 +394,18 @@ function _renderNextActionCard(bundle, wf) {
             3: { label: 'See Results \u2192', onclick: "showPage('rehearsal')" }
         };
         var cta = stepCtas[onboardStep] || stepCtas[1];
-        return '<div class="app-card" style="padding:20px;margin-bottom:12px;border:2px solid rgba(99,102,241,0.3);background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.04))">'
+        // Progress dots
+        var dots = '';
+        for (var d = 1; d <= 3; d++) {
+            dots += '<span style="width:8px;height:8px;border-radius:50%;background:' + (d < onboardStep ? '#22c55e' : d === onboardStep ? '#6366f1' : 'rgba(255,255,255,0.15)') + ';display:inline-block"></span>';
+        }
+        return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(99,102,241,0.35);border-radius:16px;background:linear-gradient(160deg,rgba(99,102,241,0.1),rgba(139,92,246,0.05))">'
             + '<div style="text-align:center">'
-            + '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:#818cf8;text-transform:uppercase;margin-bottom:6px">Your Next Step \u2014 ' + onboardStep + ' of 3</div>'
-            + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:4px">' + stepLabels[onboardStep] + '</div>'
-            + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:14px">Complete all 3 steps to run your first rehearsal.</div>'
-            + '<button onclick="' + cta.onclick + '" style="padding:14px 28px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.95em;cursor:pointer">' + cta.label + '</button>'
+            + '<div style="display:flex;gap:6px;justify-content:center;margin-bottom:10px">' + dots + '</div>'
+            + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + stepLabels[onboardStep] + '</div>'
+            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + (onboardStep === 1 ? 'Pick 5\u201310 songs. You can always change them later.' : onboardStep === 2 ? 'One tap. We\u2019ll track everything.' : 'One tap to confirm. That\u2019s it.') + '</div>'
+            + '<button onclick="' + cta.onclick + '" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(99,102,241,0.3)">' + cta.label + '</button>'
+            + (onboardStep === 1 ? '<div style="font-size:0.72em;color:#475569;margin-top:12px;font-style:italic">This gets smarter as you rehearse. Just start playing \u2014 we\u2019ll handle the rest.</div>' : '')
             + '</div></div>';
     }
 

@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-112708', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-113224', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1542,9 +1542,13 @@ function _rmShowRevealScreen() {
         html += '</div></div>';
     }
 
-    // ── Done ──
-    html += '<div style="padding:0 24px 24px">';
+    // ── Done + Next Rehearsal ──
+    html += '<div style="padding:0 24px 16px">';
     html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\');setTimeout(function(){if(typeof GLPlans!==\'undefined\'&&GLPlans.shouldShowValueSignal())GLPlans.showValueSignalPrompt();},2000)" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer">Done \u2192 Home</button>';
+    html += '</div>';
+    // Return loop — nudge to schedule next rehearsal
+    html += '<div style="padding:0 24px 24px;text-align:center">';
+    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();showPage(\'rehearsal\');setTimeout(function(){if(typeof rhOpenCreateModal===\'function\')rhOpenCreateModal();},1200)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.78em;text-decoration:underline">Schedule next rehearsal \u2192</button>';
     html += '</div>';
 
     html += '</div>';
