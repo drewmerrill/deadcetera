@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-212019', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-212331', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10942,63 +10942,224 @@ async function submitFeedback() {
 // BAND CREATION + MANAGEMENT (Multi-Band Architecture Stage 3)
 // ============================================================================
 
+// ── Band Types + Subtypes ────────────────────────────────────────────────────
+var _CB_BAND_TYPES = [
+    { id: 'jam',       label: 'Jam Band',             emoji: '&#127928;',  desc: 'Improv-heavy, extended sets' },
+    { id: 'cover',     label: 'Cover Band',           emoji: '&#127908;',  desc: 'Popular hits across decades' },
+    { id: 'tribute',   label: 'Tribute Band',         emoji: '&#11088;',   desc: 'Dedicated to one artist' },
+    { id: 'church',    label: 'Church / Worship',     emoji: '&#9962;&#65039;', desc: 'Worship, gospel, hymns' },
+    { id: 'wedding',   label: 'Wedding / Event',      emoji: '&#128141;',  desc: 'Receptions, cocktail hours' },
+    { id: 'campfire',  label: 'Campfire / Acoustic',  emoji: '&#128293;',  desc: 'Singalongs, easy guitar' },
+    { id: 'piano',     label: 'Piano Songbook',       emoji: '&#127929;',  desc: 'Piano-driven repertoire' },
+    { id: 'original',  label: 'Original Band',        emoji: '&#9999;&#65039;', desc: 'Your own music' }
+];
+
+var _CB_SUBTYPES = {
+    jam:      [
+        { id: 'GD',    label: 'Grateful Dead' },
+        { id: 'Phish', label: 'Phish' },
+        { id: 'WSP',   label: 'Widespread Panic' },
+        { id: 'ABB',   label: 'Allman Brothers' },
+        { id: 'Goose', label: 'Goose' },
+        { id: 'DMB',   label: 'Dave Matthews Band' },
+        { id: 'JGB',   label: 'Jerry Garcia Band' },
+        { id: 'mixed_jam', label: 'Mixed Jam' }
+    ],
+    cover:    [
+        { id: '60s',   label: '60s Classics' },
+        { id: '70s',   label: '70s Rock & Funk' },
+        { id: '80s',   label: '80s Pop & Rock' },
+        { id: '90s',   label: '90s Alt & Grunge' },
+        { id: '2000s', label: '2000s & Modern' },
+        { id: 'mixed_decades', label: 'Mixed Decades' }
+    ],
+    tribute:  [
+        { id: 'beatles',      label: 'Beatles' },
+        { id: 'dead',         label: 'Grateful Dead' },
+        { id: 'billy_joel',   label: 'Billy Joel' },
+        { id: 'elton_john',   label: 'Elton John' },
+        { id: 'taylor_swift', label: 'Taylor Swift' },
+        { id: 'fleetwood',    label: 'Fleetwood Mac' },
+        { id: 'led_zeppelin', label: 'Led Zeppelin' },
+        { id: 'custom_tribute', label: 'Other Artist' }
+    ],
+    church:   [
+        { id: 'contemporary', label: 'Contemporary Worship' },
+        { id: 'gospel',       label: 'Gospel' },
+        { id: 'traditional',  label: 'Traditional Hymns' },
+        { id: 'mixed_worship', label: 'Mixed' }
+    ],
+    wedding:  [
+        { id: 'dance_floor',  label: 'Dance Floor' },
+        { id: 'cocktail',     label: 'Cocktail Hour' },
+        { id: 'classics',     label: 'Wedding Classics' },
+        { id: 'modern_pop',   label: 'Modern Pop' }
+    ],
+    campfire: [
+        { id: 'singalong',    label: 'Singalong Favorites' },
+        { id: 'country',      label: 'Country' },
+        { id: 'classic_rock_acoustic', label: 'Classic Rock Acoustic' },
+        { id: 'easy_guitar',  label: 'Easy Guitar' }
+    ],
+    piano:    [
+        { id: 'billy_joel_p', label: 'Billy Joel' },
+        { id: 'elton_john_p', label: 'Elton John' },
+        { id: 'singer_songwriter', label: 'Singer-Songwriter' },
+        { id: 'standards',    label: 'Standards & Jazz' }
+    ],
+    original: []
+};
+
+var _cbSelectedType = '';
+var _cbSelectedSubtypes = [];
+
 function showCreateBandModal() {
     var overlay = document.getElementById('createBandOverlay');
-    if (overlay) { overlay.style.display = 'flex'; return; }
+    if (overlay) { overlay.remove(); }
+    _cbSelectedType = '';
+    _cbSelectedSubtypes = [];
+
     overlay = document.createElement('div');
     overlay.id = 'createBandOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn 0.2s';
-    overlay.innerHTML = '<div style="background:var(--card-bg,#1a2340);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:16px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding:24px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
-            '<h2 style="margin:0;font-size:1.2em">Create a New Band</h2>' +
-            '<button onclick="document.getElementById(\'createBandOverlay\').style.display=\'none\'" style="background:none;border:none;color:var(--text-muted);font-size:1.3em;cursor:pointer">&#x2715;</button>' +
-        '</div>' +
-        '<div id="cbStep1">' +
-            '<label class="form-label" style="margin-bottom:6px;display:block">Band Name</label>' +
-            '<input id="cbName" class="app-input" placeholder="e.g. Deadcetera, The Groove Machine" style="width:100%;margin-bottom:16px" autocomplete="off">' +
-            '<label class="form-label" style="margin-bottom:6px;display:block">What does your band play?</label>' +
-            '<div id="cbCatalogGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">' +
-                createCatalogCheckboxes() +
-            '</div>' +
-            '<label class="form-label" style="margin-bottom:6px;display:block">Your Name</label>' +
-            '<input id="cbOwnerName" class="app-input" placeholder="Your first name" style="width:100%;margin-bottom:6px" autocomplete="off">' +
-            '<label class="form-label" style="margin-bottom:6px;display:block">Your Role</label>' +
-            '<input id="cbOwnerRole" class="app-input" placeholder="e.g. Guitar, Vocals, Drums" style="width:100%;margin-bottom:20px" autocomplete="off">' +
-            '<button class="btn btn-primary" onclick="submitCreateBand()" style="width:100%;padding:14px;font-size:1em;font-weight:700">Create Band</button>' +
-        '</div>' +
-        '<div id="cbStep2" style="display:none;text-align:center">' +
-            '<div style="font-size:2.5em;margin-bottom:12px">&#127928;</div>' +
-            '<h3 id="cbCreatedName" style="margin-bottom:8px"></h3>' +
-            '<p style="color:var(--text-muted);font-size:0.88em;margin-bottom:20px">Your band is ready! Share this invite link with your bandmates:</p>' +
-            '<div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px;word-break:break-all">' +
-                '<code id="cbInviteLink" style="color:var(--accent-light);font-size:0.85em"></code>' +
-            '</div>' +
-            '<button onclick="copyInviteLink()" class="btn btn-primary" style="width:100%;margin-bottom:10px">Copy Invite Link</button>' +
-            '<button onclick="switchToBand(document.getElementById(\'cbCreatedSlug\').value)" class="btn btn-ghost" style="width:100%">Open Band Now</button>' +
-            '<input type="hidden" id="cbCreatedSlug">' +
-        '</div>' +
-    '</div>';
+    overlay.innerHTML = '<div style="background:var(--card-bg,#1a2340);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:16px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding:24px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">'
+        +   '<h2 style="margin:0;font-size:1.2em">Create a New Band</h2>'
+        +   '<button onclick="document.getElementById(\'createBandOverlay\').style.display=\'none\'" style="background:none;border:none;color:var(--text-muted);font-size:1.3em;cursor:pointer">&#x2715;</button>'
+        + '</div>'
+        // Step 1: Band Name + Type
+        + '<div id="cbStep1">'
+        +   '<label class="form-label" style="margin-bottom:6px;display:block">Band Name</label>'
+        +   '<input id="cbName" class="app-input" placeholder="e.g. The Groove Machine" style="width:100%;margin-bottom:16px" autocomplete="off">'
+        +   '<label class="form-label" style="margin-bottom:8px;display:block">What kind of band?</label>'
+        +   '<div id="cbTypeGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">' + _cbRenderTypes() + '</div>'
+        +   '<button class="btn btn-primary" onclick="_cbGoStep2()" style="width:100%;padding:14px;font-size:1em;font-weight:700" id="cbStep1Btn" disabled>Next →</button>'
+        + '</div>'
+        // Step 2: Subtypes / Catalogs
+        + '<div id="cbStep2Sub" style="display:none">'
+        +   '<div id="cbSubtypeHeader" style="margin-bottom:8px"></div>'
+        +   '<div id="cbSubtypeGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"></div>'
+        +   '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:16px">Select all that apply, or skip to start blank.</div>'
+        +   '<div style="display:flex;gap:8px">'
+        +     '<button class="btn btn-ghost" onclick="_cbBackStep1()" style="flex:1;padding:12px;font-size:0.9em">← Back</button>'
+        +     '<button class="btn btn-primary" onclick="_cbGoStep3()" style="flex:2;padding:12px;font-size:0.95em;font-weight:700">Next →</button>'
+        +   '</div>'
+        + '</div>'
+        // Step 3: Your Info
+        + '<div id="cbStep3Info" style="display:none">'
+        +   '<label class="form-label" style="margin-bottom:6px;display:block">Your Name</label>'
+        +   '<input id="cbOwnerName" class="app-input" placeholder="Your first name" style="width:100%;margin-bottom:10px" autocomplete="off">'
+        +   '<label class="form-label" style="margin-bottom:6px;display:block">Your Role</label>'
+        +   '<input id="cbOwnerRole" class="app-input" placeholder="e.g. Guitar, Vocals, Drums" style="width:100%;margin-bottom:20px" autocomplete="off">'
+        +   '<div style="display:flex;gap:8px">'
+        +     '<button class="btn btn-ghost" onclick="_cbBackStep2()" style="flex:1;padding:12px;font-size:0.9em">← Back</button>'
+        +     '<button class="btn btn-primary" onclick="submitCreateBand()" style="flex:2;padding:14px;font-size:1em;font-weight:700">Create Band</button>'
+        +   '</div>'
+        + '</div>'
+        // Step 4: Success
+        + '<div id="cbStep4" style="display:none;text-align:center">'
+        +   '<div style="font-size:2.5em;margin-bottom:12px">&#127928;</div>'
+        +   '<h3 id="cbCreatedName" style="margin-bottom:8px"></h3>'
+        +   '<p style="color:var(--text-muted);font-size:0.88em;margin-bottom:20px">Your band is ready! Share this invite link with your bandmates:</p>'
+        +   '<div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px;word-break:break-all">'
+        +     '<code id="cbInviteLink" style="color:var(--accent-light);font-size:0.85em"></code>'
+        +   '</div>'
+        +   '<button onclick="copyInviteLink()" class="btn btn-primary" style="width:100%;margin-bottom:10px">Copy Invite Link</button>'
+        +   '<button onclick="switchToBand(document.getElementById(\'cbCreatedSlug\').value)" class="btn btn-ghost" style="width:100%">Open Band Now →</button>'
+        +   '<input type="hidden" id="cbCreatedSlug">'
+        + '</div>'
+        + '</div>';
     document.body.appendChild(overlay);
+    setTimeout(function() { var inp = document.getElementById('cbName'); if (inp) inp.focus(); }, 100);
 }
 
-function createCatalogCheckboxes() {
-    var catalogs = [
-        { id: 'GD', label: 'Grateful Dead', emoji: '&#9760;&#65039;' },
-        { id: 'JGB', label: 'Jerry Garcia Band', emoji: '&#127928;' },
-        { id: 'Phish', label: 'Phish', emoji: '&#128031;' },
-        { id: 'WSP', label: 'Widespread Panic', emoji: '&#127908;' },
-        { id: 'ABB', label: 'Allman Brothers', emoji: '&#127925;' },
-        { id: 'Goose', label: 'Goose', emoji: '&#129414;' },
-        { id: 'DMB', label: 'Dave Matthews Band', emoji: '&#127926;' },
-        { id: 'originals', label: 'Originals', emoji: '&#11088;' }
-    ];
-    return catalogs.map(function(c) {
-        return '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s" ' +
-            'onchange="this.style.borderColor=this.querySelector(\'input\').checked?\'rgba(102,126,234,0.5)\':\'var(--border)\';this.style.background=this.querySelector(\'input\').checked?\'rgba(102,126,234,0.08)\':\'rgba(255,255,255,0.03)\'">' +
-            '<input type="checkbox" value="' + c.id + '" name="cbCatalog" style="accent-color:var(--accent);width:16px;height:16px">' +
-            '<span>' + c.emoji + ' ' + c.label + '</span></label>';
+function _cbRenderTypes() {
+    return _CB_BAND_TYPES.map(function(t) {
+        return '<button onclick="_cbSelectType(\'' + t.id + '\',this)" data-type="' + t.id + '" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s;text-align:left;color:var(--text)">'
+            + '<span style="font-size:1.1em">' + t.emoji + ' <span style="font-weight:700;font-size:0.88em">' + t.label + '</span></span>'
+            + '<span style="font-size:0.72em;color:var(--text-dim)">' + t.desc + '</span>'
+            + '</button>';
     }).join('');
 }
+
+function _cbSelectType(typeId, el) {
+    _cbSelectedType = typeId;
+    _cbSelectedSubtypes = [];
+    // Highlight selected
+    var btns = document.querySelectorAll('#cbTypeGrid button');
+    btns.forEach(function(b) {
+        var sel = b.dataset.type === typeId;
+        b.style.borderColor = sel ? 'rgba(99,102,241,0.5)' : 'var(--border)';
+        b.style.background = sel ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.03)';
+    });
+    var btn = document.getElementById('cbStep1Btn');
+    if (btn) btn.disabled = false;
+}
+window._cbSelectType = _cbSelectType;
+
+function _cbGoStep2() {
+    var name = (document.getElementById('cbName') || {}).value;
+    if (!name || !name.trim()) { showToast('Please enter a band name'); return; }
+    if (!_cbSelectedType) { showToast('Please select a band type'); return; }
+
+    document.getElementById('cbStep1').style.display = 'none';
+
+    var subs = _CB_SUBTYPES[_cbSelectedType] || [];
+    if (subs.length === 0) {
+        // Original band or type with no subtypes → skip to step 3
+        _cbGoStep3();
+        return;
+    }
+
+    var typeLabel = (_CB_BAND_TYPES.find(function(t) { return t.id === _cbSelectedType; }) || {}).label || '';
+    document.getElementById('cbSubtypeHeader').innerHTML = '<label class="form-label" style="margin-bottom:4px;display:block">What does your ' + typeLabel.toLowerCase() + ' focus on?</label>';
+
+    document.getElementById('cbSubtypeGrid').innerHTML = subs.map(function(s) {
+        return '<button onclick="_cbToggleSubtype(\'' + s.id + '\',this)" data-sub="' + s.id + '" style="padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s;font-weight:600;font-size:0.85em;color:var(--text);text-align:left">'
+            + s.label + '</button>';
+    }).join('');
+
+    document.getElementById('cbStep2Sub').style.display = 'block';
+}
+window._cbGoStep2 = _cbGoStep2;
+
+function _cbToggleSubtype(subId, el) {
+    var idx = _cbSelectedSubtypes.indexOf(subId);
+    if (idx >= 0) {
+        _cbSelectedSubtypes.splice(idx, 1);
+        el.style.borderColor = 'var(--border)';
+        el.style.background = 'rgba(255,255,255,0.03)';
+    } else {
+        _cbSelectedSubtypes.push(subId);
+        el.style.borderColor = 'rgba(99,102,241,0.5)';
+        el.style.background = 'rgba(99,102,241,0.1)';
+    }
+}
+window._cbToggleSubtype = _cbToggleSubtype;
+
+function _cbBackStep1() {
+    document.getElementById('cbStep2Sub').style.display = 'none';
+    document.getElementById('cbStep1').style.display = 'block';
+}
+window._cbBackStep1 = _cbBackStep1;
+
+function _cbGoStep3() {
+    document.getElementById('cbStep2Sub').style.display = 'none';
+    document.getElementById('cbStep3Info').style.display = 'block';
+    setTimeout(function() { var inp = document.getElementById('cbOwnerName'); if (inp) inp.focus(); }, 100);
+}
+window._cbGoStep3 = _cbGoStep3;
+
+function _cbBackStep2() {
+    document.getElementById('cbStep3Info').style.display = 'none';
+    var subs = _CB_SUBTYPES[_cbSelectedType] || [];
+    if (subs.length === 0) {
+        document.getElementById('cbStep1').style.display = 'block';
+    } else {
+        document.getElementById('cbStep2Sub').style.display = 'block';
+    }
+}
+window._cbBackStep2 = _cbBackStep2;
 
 async function submitCreateBand() {
     var nameInput = document.getElementById('cbName');
@@ -11015,11 +11176,10 @@ async function submitCreateBand() {
     var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     if (!slug) { showToast('Invalid band name'); return; }
 
-    // Collect selected catalogs
-    var catalogs = [];
-    document.querySelectorAll('input[name="cbCatalog"]:checked').forEach(function(cb) {
-        catalogs.push(cb.value);
-    });
+    // Collect band type + subtypes from multi-step flow
+    var catalogs = _cbSelectedSubtypes.slice();
+    var bandType = _cbSelectedType || '';
+    var bandSubtypes = _cbSelectedSubtypes.slice();
 
     // Generate invite code
     var inviteCode = slug + '-' + Math.random().toString(36).substr(2, 6);
@@ -11054,6 +11214,8 @@ async function submitCreateBand() {
         slug: slug,
         createdAt: Date.now(),
         createdBy: currentUserEmail || ownerKey,
+        bandType: bandType,
+        bandSubtypes: bandSubtypes,
         catalog: catalogs,
         inviteCode: inviteCode,
         members: memberEntry
@@ -11065,7 +11227,9 @@ async function submitCreateBand() {
 
         // Show success step
         document.getElementById('cbStep1').style.display = 'none';
-        document.getElementById('cbStep2').style.display = 'block';
+        document.getElementById('cbStep2Sub').style.display = 'none';
+        document.getElementById('cbStep3Info').style.display = 'none';
+        document.getElementById('cbStep4').style.display = 'block';
         document.getElementById('cbCreatedName').textContent = name;
         document.getElementById('cbCreatedSlug').value = slug;
         var inviteUrl = window.location.origin + window.location.pathname + '?join=' + inviteCode;
