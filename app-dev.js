@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-193324', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-194722', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -11132,6 +11132,12 @@ async function switchToBand(slug) {
 
     // Clear last page so reload lands on Home (not whatever page the user was on)
     localStorage.removeItem('glLastPage');
+
+    // Reset onboarding flags — new band should start fresh at Step 1
+    localStorage.removeItem('gl_onboard_setlist_done');
+    localStorage.removeItem('gl_onboard_rehearsal_done');
+    localStorage.removeItem('gl_onboard_review_done');
+    localStorage.removeItem('gl_flow_started_at');
 
     // Reload to pick up new band data from clean state
     showToast('Switching to ' + displayName + '...');
