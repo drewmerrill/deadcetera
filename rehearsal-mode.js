@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-023526', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260327-024008', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1474,6 +1474,18 @@ function _rmShowRevealScreen() {
         html += '</div>';
     }
 
+    // ── Add to Chart (if there's an issue and a problematic song) ──
+    var _revealProbSong = coaching.problematicSongs && coaching.problematicSongs.length ? coaching.problematicSongs[0].song : null;
+    var _revealNoteText = hasIssue ? tc.biggestIssue : (coaching.nextAction || '');
+    if (_revealProbSong && _revealNoteText && typeof ChartSystem !== 'undefined') {
+        html += '<div style="padding:0 24px 8px;text-align:center">';
+        html += '<button onclick="_rmRevealAddToChart()" id="rmRevealChartBtn" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600;font-size:0.82em;cursor:pointer">\uD83D\uDCCC Add to ' + _rmEsc(_revealProbSong) + '\u2019s Chart</button>';
+        html += '</div>';
+        // Store for the click handler
+        window._rmRevealChartSong = _revealProbSong;
+        window._rmRevealChartNote = _revealNoteText;
+    }
+
     // ── Done ──
     html += '<div style="padding:0 24px 24px">';
     html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer">Done \u2192 Home</button>';
@@ -1494,6 +1506,19 @@ function _rmShowRevealScreen() {
         if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.checkForTips) GLAvatarUI.checkForTips();
     }, 1500);
 }
+
+window._rmRevealAddToChart = async function() {
+    var song = window._rmRevealChartSong;
+    var note = window._rmRevealChartNote;
+    if (!song || !note || typeof ChartSystem === 'undefined') return;
+    var btn = document.getElementById('rmRevealChartBtn');
+    if (btn) { btn.textContent = 'Adding\u2026'; btn.disabled = true; }
+    var saved = await ChartSystem.addOverlayNote(song, note);
+    if (btn) {
+        btn.textContent = saved ? '\u2705 Added to chart' : '\u26A0\uFE0F Failed';
+        btn.style.opacity = '0.6';
+    }
+};
 
 function _rmEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 

@@ -266,11 +266,176 @@ window.ChartSystem = (function() {
         }
     }
 
+    // ── Chart URL (external chart links) ───────────────────────────────────
+    // Supports Ultimate Guitar, PDFs, Google Docs, any URL.
+
+    async function loadChartUrl(songTitle) {
+        try {
+            return await loadBandDataFromDrive(songTitle, 'chart_url') || '';
+        } catch(e) { return ''; }
+    }
+
+    async function saveChartUrl(songTitle, url) {
+        try {
+            await saveBandDataToDrive(songTitle, 'chart_url', url.trim());
+            if (typeof showToast === 'function') showToast('\u2705 Chart link saved');
+            return true;
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('\u26A0\uFE0F Could not save');
+            return false;
+        }
+    }
+
+    // ── Overlay Notes ────────────────────────────────────────────────────────
+    // Simple notes attached to a song's chart. No positioning, no timestamps.
+    // Schema: [{ text, createdAt, createdBy }]
+
+    async function loadOverlayNotes(songTitle) {
+        try {
+            var notes = await loadBandDataFromDrive(songTitle, 'chart_overlay_notes');
+            return Array.isArray(notes) ? notes : (notes ? Object.values(notes) : []);
+        } catch(e) { return []; }
+    }
+
+    async function addOverlayNote(songTitle, text) {
+        if (!text || !text.trim()) return false;
+        try {
+            var notes = await loadOverlayNotes(songTitle);
+            notes.push({
+                text: text.trim(),
+                createdAt: new Date().toISOString(),
+                createdBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
+            });
+            await saveBandDataToDrive(songTitle, 'chart_overlay_notes', notes);
+            if (typeof showToast === 'function') showToast('\u2705 Note added to chart');
+            return true;
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('\u26A0\uFE0F Could not save note');
+            return false;
+        }
+    }
+
+    async function removeOverlayNote(songTitle, index) {
+        try {
+            var notes = await loadOverlayNotes(songTitle);
+            if (index >= 0 && index < notes.length) {
+                notes.splice(index, 1);
+                await saveBandDataToDrive(songTitle, 'chart_overlay_notes', notes);
+                if (typeof showToast === 'function') showToast('Note removed');
+            }
+        } catch(e) {}
+    }
+
+    // ── Render Overlay Notes ─────────────────────────────────────────────────
+
+    function _renderOverlayNotes(notes, songTitle) {
+        if (!notes || !notes.length) return '';
+        var html = '<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.12);border-radius:8px">';
+        html += '<div style="font-size:0.65em;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">\uD83D\uDCCC Band Notes</div>';
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i];
+            var author = n.createdBy ? n.createdBy.split('@')[0] : '';
+            html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
+            html += '<div style="flex:1;font-size:0.78em;color:var(--text-muted);line-height:1.4">' + _esc(n.text) + '</div>';
+            if (author) html += '<span style="font-size:0.62em;color:#475569;flex-shrink:0">' + _esc(author) + '</span>';
+            html += '<button onclick="ChartSystem._removeNote(\'' + _esc(songTitle).replace(/'/g, "\\'") + '\',' + i + ')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.7em;flex-shrink:0;padding:0 2px">\u2715</button>';
+            html += '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // ── Enhanced Chart Panel (with URL + overlay notes) ─────────────────────
+
+    var _origRenderChartPanel = renderChartPanel;
+
+    renderChartPanel = async function(containerId, songTitle, songKey, songBpm) {
+        await _origRenderChartPanel(containerId, songTitle, songKey, songBpm);
+        var el = document.getElementById(containerId);
+        if (!el) return;
+
+        // Load chart URL
+        var chartUrl = await loadChartUrl(songTitle);
+
+        // Load overlay notes
+        var notes = await loadOverlayNotes(songTitle);
+
+        // Append URL viewer + notes + add note form below existing chart
+        var extra = '';
+
+        // Chart URL link
+        if (chartUrl) {
+            var isUG = chartUrl.indexOf('ultimate-guitar') >= 0;
+            var label = isUG ? '\uD83C\uDFB8 Ultimate Guitar' : chartUrl.indexOf('.pdf') >= 0 ? '\uD83D\uDCC4 PDF Chart' : '\uD83D\uDD17 External Chart';
+            extra += '<div style="margin-top:8px"><a href="' + _esc(chartUrl) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:0.78em;font-weight:600;color:#818cf8;text-decoration:none;padding:6px 12px;border:1px solid rgba(99,102,241,0.2);border-radius:6px;background:rgba(99,102,241,0.05)">' + label + ' \u2192</a></div>';
+        }
+
+        // Chart URL add/edit
+        extra += '<div style="margin-top:6px">';
+        extra += '<details style="font-size:0.72em;color:var(--text-dim)"><summary style="cursor:pointer;padding:2px 0">' + (chartUrl ? 'Change chart link' : '+ Add chart link') + '</summary>';
+        extra += '<div style="display:flex;gap:4px;margin-top:4px">';
+        extra += '<input id="chartUrlInput" class="app-input" placeholder="Paste UG, PDF, or any chart URL" value="' + _esc(chartUrl) + '" style="flex:1;font-size:0.95em;padding:5px 8px">';
+        extra += '<button onclick="ChartSystem._saveUrl(\'' + _esc(songTitle).replace(/'/g, "\\'") + '\')" style="font-size:0.82em;padding:5px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">Save</button>';
+        extra += '</div></details></div>';
+
+        // Overlay notes
+        extra += _renderOverlayNotes(notes, songTitle);
+
+        // Add note form
+        extra += '<div style="margin-top:6px;display:flex;gap:4px">';
+        extra += '<input id="chartNoteInput" class="app-input" placeholder="Add a note to this chart\u2026" style="flex:1;font-size:0.78em;padding:5px 8px">';
+        extra += '<button onclick="ChartSystem._addNote(\'' + _esc(songTitle).replace(/'/g, "\\'") + '\')" style="font-size:0.75em;padding:5px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;cursor:pointer">\uD83D\uDCCC Add</button>';
+        extra += '</div>';
+
+        // Append to existing content
+        var inner = el.querySelector('[style*="padding:12px"]');
+        if (inner) {
+            inner.insertAdjacentHTML('beforeend', extra);
+        }
+    };
+
+    async function _saveUrl(songTitle) {
+        var input = document.getElementById('chartUrlInput');
+        if (!input) return;
+        await saveChartUrl(songTitle, input.value);
+    }
+
+    async function _addNote(songTitle) {
+        var input = document.getElementById('chartNoteInput');
+        if (!input || !input.value.trim()) return;
+        var saved = await addOverlayNote(songTitle, input.value);
+        if (saved) {
+            input.value = '';
+            // Refresh the notes display
+            var notes = await loadOverlayNotes(songTitle);
+            var container = input.closest('[style*="padding:12px"]');
+            if (container) {
+                // Find and replace the notes section
+                var existing = container.querySelector('[style*="fbbf24"]');
+                if (existing && existing.closest('[style*="rgba(245,158,11"]')) {
+                    existing.closest('[style*="rgba(245,158,11"]').outerHTML = _renderOverlayNotes(notes, songTitle);
+                }
+            }
+        }
+    }
+
+    async function _removeNote(songTitle, index) {
+        await removeOverlayNote(songTitle, index);
+        // Re-render the chart panel
+        var container = document.querySelector('[id^="chart"]');
+        if (container) renderChartPanel(container.id, songTitle);
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
         loadChart: loadChart,
         saveChart: saveChart,
+        loadChartUrl: loadChartUrl,
+        saveChartUrl: saveChartUrl,
+        loadOverlayNotes: loadOverlayNotes,
+        addOverlayNote: addOverlayNote,
+        removeOverlayNote: removeOverlayNote,
         renderChartPanel: renderChartPanel,
         renderSetlistCharts: renderSetlistCharts,
         highlightActiveSong: highlightActiveSong,
@@ -280,7 +445,10 @@ window.ChartSystem = (function() {
         _showImport: _showImport,
         _cancelImport: _cancelImport,
         _confirmImport: _confirmImport,
-        _showMaster: _showMaster
+        _showMaster: _showMaster,
+        _saveUrl: _saveUrl,
+        _addNote: _addNote,
+        _removeNote: _removeNote
     };
 
 })();
