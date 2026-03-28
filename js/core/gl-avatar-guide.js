@@ -284,8 +284,51 @@ window.GLAvatarGuide = (function() {
             'No recording from last time \u2014 worth adding if you\u2019ve got one.'
           ]); },
           actions: [{ label: 'Add Mixdown', onclick: "showPage('rehearsal')" }],
+          cooldown: 86400000, dismissible: true },
+
+        // ── ADAPTIVE: feedback-driven guidance ──
+        { id: 'feedback_adaptive', stage: 'bandmate', trigger: 'has_feedback_cluster', page: 'any',
+          message: function() {
+            var tip = _getAdaptiveTip();
+            return tip || 'If anything feels off, just tell me.';
+          },
           cooldown: 86400000, dismissible: true }
     ];
+
+    // ── Adaptive tip from feedback clusters ──────────────────────────────────
+    function _getAdaptiveTip() {
+      try {
+        if (typeof firebaseDB === 'undefined' || !firebaseDB) return null;
+        var page = (typeof currentPage !== 'undefined') ? currentPage : '';
+        if (!page) return null;
+        // Check localStorage cache for cluster tips (refreshed periodically)
+        var cached = localStorage.getItem('gl_cluster_tips');
+        if (!cached) return null;
+        var tips = JSON.parse(cached);
+        return tips[page] || null;
+      } catch(e) { return null; }
+    }
+
+    // Refresh cluster tips every 5 minutes (lightweight)
+    function _refreshClusterTips() {
+      if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
+      firebaseDB.ref('feedback_clusters').limitToLast(20).once('value').then(function(snap) {
+        var data = snap.val();
+        if (!data) return;
+        var tips = {};
+        Object.keys(data).forEach(function(key) {
+          var parts = key.split('_');
+          var page = parts[1] || '';
+          var cluster = data[key];
+          if (cluster.recommendedFix && page) {
+            tips[page] = cluster.recommendedFix;
+          }
+        });
+        localStorage.setItem('gl_cluster_tips', JSON.stringify(tips));
+      }).catch(function() {});
+    }
+    setTimeout(_refreshClusterTips, 10000);
+    setInterval(_refreshClusterTips, 300000);
 
     // ── Trigger Evaluation ───────────────────────────────────────────────────
 
@@ -369,6 +412,7 @@ window.GLAvatarGuide = (function() {
             case 'trend_improving': return ctx.trend === 'improving';
             case 'practiced_but_weak_remain': return ctx.practicedToday && (ctx.weakCount || 0) > 0;
             case 'recent_session_no_mixdown': return ctx.recentSessionNoMixdown;
+            case 'has_feedback_cluster': return !!_getAdaptiveTip();
             default: return false;
         }
     }

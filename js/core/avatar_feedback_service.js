@@ -259,14 +259,100 @@
     } catch(e) { console.error('[Feedback] Update failed:', e.message); }
   }
 
+  // ── Root Cause Analysis (non-blocking Claude call) ──────────────────────
+
+  async function generateClusterInsight(clusterKey, reports) {
+    if (!reports || reports.length < 1) return null;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+
+    // Build local summary first (always available)
+    var topMessages = reports.slice(0, 5).map(function(r) { return (r.userMessageRaw || r.summary || '').substring(0, 100); }).filter(Boolean);
+    var page = (reports[0].context && reports[0].context.currentPage) || '';
+    var localInsight = {
+      summary: reports[0].title || clusterKey,
+      suspectedCause: 'Multiple users reported issues with ' + (reports[0].keyword || 'this feature') + ' on ' + (page || 'this page'),
+      recommendedFix: 'Review ' + (page || 'page') + ' — ' + (reports[0].keyword || 'area') + ' flow needs attention',
+      generatedAt: new Date().toISOString(),
+      reportCount: reports.length
+    };
+
+    // Try Claude enrichment (non-blocking)
+    if (typeof workerApi !== 'undefined' && workerApi && workerApi.claude && topMessages.length > 0) {
+      try {
+        var prompt = 'Analyze these user feedback reports and return JSON:\n'
+          + '{ "summary": "1-line issue summary", "suspectedCause": "likely root cause", "recommendedFix": "specific fix suggestion" }\n\n'
+          + 'Page: ' + page + '\nType: ' + reports[0].type + '\nReports:\n' + topMessages.join('\n');
+        var response = await workerApi.claude('You are a product analyst. Return ONLY valid JSON. Be specific and concise.', prompt, 150);
+        try {
+          var parsed = JSON.parse(response);
+          localInsight.summary = parsed.summary || localInsight.summary;
+          localInsight.suspectedCause = parsed.suspectedCause || localInsight.suspectedCause;
+          localInsight.recommendedFix = parsed.recommendedFix || localInsight.recommendedFix;
+          localInsight.aiEnriched = true;
+        } catch(e) {}
+      } catch(e) {}
+    }
+
+    // Store to Firebase
+    if (db) {
+      try { await db.ref('feedback_clusters/' + clusterKey.replace(/[.#$/\[\]]/g, '_')).set(localInsight); } catch(e) {}
+    }
+    return localInsight;
+  }
+
+  // ── Action Generation ──────────────────────────────────────────────────
+
+  async function createAction(clusterKey, actionType, reports) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || !reports || !reports.length) return null;
+
+    var r = reports[0];
+    var page = (r.context && r.context.currentPage) || '';
+    var id = 'action_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+
+    var action = {
+      id: id,
+      createdAt: new Date().toISOString(),
+      clusterKey: clusterKey,
+      actionType: actionType, // 'bug', 'ux_fix', 'feature'
+      title: (actionType === 'bug' ? 'Fix: ' : actionType === 'feature' ? 'Feature: ' : 'UX Fix: ') + (r.keyword || 'issue') + ' on ' + page,
+      description: r.title + ' (' + reports.length + ' reports)',
+      stepsToReproduce: 'Go to ' + page + ' page. ' + (r.userMessageRaw || r.summary || '').substring(0, 200),
+      impact: reports.length + ' users affected. Score: ' + (r.score || 0),
+      priority: r.severity || 'medium',
+      status: 'open',
+      reportCount: reports.length,
+      countAtCreation: reports.length
+    };
+
+    try { await db.ref('product_actions/' + id).set(action); } catch(e) {}
+    return action;
+  }
+
+  // ── Fix Verification ───────────────────────────────────────────────────
+
+  async function getClusterTrend(clusterKey, reports) {
+    if (!reports || reports.length < 2) return 'new';
+    var now = Date.now();
+    var d24h = 86400000;
+    var recent = reports.filter(function(r) { return (now - new Date(r.createdAt).getTime()) < d24h; }).length;
+    var older = reports.filter(function(r) { var t = now - new Date(r.createdAt).getTime(); return t >= d24h && t < d24h * 2; }).length;
+    if (recent < older) return 'improving';
+    if (recent > older) return 'worse';
+    return 'same';
+  }
+
   // Wire into existing friction detection systems
-  window.addEventListener('gl:pagechange', function() { _frictionScore = 0; }); // Reset on nav
+  window.addEventListener('gl:pagechange', function() {}); // Keep event listener
 
   window.GLFeedbackService = {
     submitExplicit: submitExplicit,
     recordFriction: recordFriction,
     listProductFeedback: listProductFeedback,
     updateFeedbackStatus: updateFeedbackStatus,
+    generateClusterInsight: generateClusterInsight,
+    createAction: createAction,
+    getClusterTrend: getClusterTrend,
     startFlow: startFlow,
     advanceFlow: advanceFlow,
     completeFlow: completeFlow

@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-132707', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-133907', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10155,6 +10155,7 @@ function renderSettingsPage(el) {
         <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
         <button class="tab-btn" onclick="settingsTab('notifications',this)">🔔 Notifications</button>
         <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Bugs</button>
+        <button class="tab-btn" onclick="settingsTab('plan',this)">\uD83D\uDCB3 Plan</button>
         <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
     </div>
     <div id="settingsContent"></div>`;
@@ -10317,7 +10318,13 @@ function settingsTab(tab, btn) {
             <div style="font-size:0.78em;color:#94a3b8;margin-bottom:12px">Reports from avatar conversations + auto-detected friction events.</div>
             <div id="glFeedbackInbox" style="color:var(--text-dim);font-size:0.85em">Loading...</div>
         </div>`,
-        
+
+    plan: `
+        <div class="app-card">
+            <h3>\uD83D\uDCB3 Plan & Billing</h3>
+            <div id="glPlanDisplay" style="margin-bottom:16px">Loading...</div>
+        </div>`,
+
     about: `
         <div class="app-card"><h3>ℹ️ About GrooveLinx™</h3>
             <div style="text-align:center;padding:16px 0">
@@ -10348,9 +10355,65 @@ function settingsTab(tab, btn) {
     // Post-render hooks
     if (tab === 'notifications') _renderNotifSettings();
     if (tab === 'feedback') loadFeedbackHistory();
+    if (tab === 'plan') _renderPlanTab();
     if (tab === 'data') checkSyncStatus();
     if (tab === 'profile' || !tab) setTimeout(initSettingsAddressAutocomplete, 300);
 }
+
+function _renderPlanTab() {
+    var el = document.getElementById('glPlanDisplay');
+    if (!el) return;
+    var plan = 'free';
+    try { if (typeof GLPlans !== 'undefined' && GLPlans.getCurrentPlan) plan = GLPlans.getCurrentPlan(); } catch(e) {}
+    if (!plan) plan = localStorage.getItem('gl_plan') || 'free';
+
+    var planLabels = { founder: 'Founder Plan', trial: 'Free Trial', paid: 'Pro Plan', free: 'Free Plan' };
+    var planDesc = {
+        founder: 'Early access. You\'re helping shape GrooveLinx from the ground up.',
+        trial: 'You\'re on a free trial. Upgrade to unlock all features.',
+        paid: 'Full access to all GrooveLinx features.',
+        free: 'Basic access. Upgrade to unlock rehearsal insights, voice coach, and more.'
+    };
+
+    var isFounder = plan === 'founder';
+    var badgeColor = isFounder ? '#f59e0b' : plan === 'paid' ? '#22c55e' : '#6366f1';
+
+    var html = '<div style="text-align:center;padding:20px 0">';
+    html += '<div style="display:inline-block;padding:6px 16px;border-radius:8px;background:' + badgeColor + '20;border:1px solid ' + badgeColor + '40;color:' + badgeColor + ';font-weight:700;font-size:0.92em;margin-bottom:12px">' + (isFounder ? '\u2B50 ' : '') + (planLabels[plan] || 'Free Plan') + '</div>';
+    html += '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:20px;line-height:1.5">' + (planDesc[plan] || '') + '</div>';
+
+    if (isFounder) {
+        html += '<div style="padding:12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;font-size:0.82em;color:#fbbf24;line-height:1.4">You are on the <strong>Founder Plan</strong> — early access with all features unlocked. Thank you for being here from the start.</div>';
+    } else if (plan !== 'paid') {
+        html += '<div style="padding:12px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;margin-bottom:12px">';
+        html += '<div style="font-size:0.85em;font-weight:600;color:#a5b4fc;margin-bottom:6px">Upgrade to Pro</div>';
+        html += '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:10px">Unlock rehearsal intelligence, voice coach, advanced charts, and more.</div>';
+        html += '<button onclick="if(typeof showToast===\'function\')showToast(\'Coming soon — pricing not finalized yet\')" class="btn btn-primary" style="width:100%;padding:12px">Upgrade — $10-20/mo</button>';
+        html += '</div>';
+    }
+
+    // Founder code entry
+    html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">';
+    html += '<div style="font-size:0.78em;color:#64748b;margin-bottom:6px">Have a founder code?</div>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<input id="glFounderCodeInput" class="app-input" placeholder="Enter code" style="flex:1;padding:8px;font-size:0.82em">';
+    html += '<button onclick="_glActivateFounderCode()" class="btn btn-ghost" style="font-size:0.78em;padding:8px 12px">Activate</button>';
+    html += '</div></div>';
+
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+window._glActivateFounderCode = function() {
+    var input = document.getElementById('glFounderCodeInput');
+    if (!input || !input.value.trim()) return;
+    if (typeof GLPlans !== 'undefined' && GLPlans.activateFounderCode) {
+        var result = GLPlans.activateFounderCode(input.value.trim());
+        if (result) {
+            _renderPlanTab();
+        }
+    }
+};
 
 function _renderNotifSettings() {
     var el = document.getElementById('notifSettingsContent');
@@ -10571,6 +10634,17 @@ window._glShowFeedbackDetail = function(reportId) {
         html += '</div>';
     }
 
+    // Actions
+    html += '<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">';
+    html += '<button onclick="_glCreateAction(\'' + (r.clusterKey || '').replace(/'/g, '') + '\',\'bug\')" style="font-size:0.68em;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#f87171;font-weight:600">\uD83D\uDC1B Create Bug Fix</button>';
+    html += '<button onclick="_glCreateAction(\'' + (r.clusterKey || '').replace(/'/g, '') + '\',\'ux_fix\')" style="font-size:0.68em;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-weight:600">\uD83E\uDD14 Create UX Fix</button>';
+    html += '<button onclick="_glCreateAction(\'' + (r.clusterKey || '').replace(/'/g, '') + '\',\'feature\')" style="font-size:0.68em;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:600">\uD83D\uDCA1 Create Feature</button>';
+    html += '<button onclick="_glAnalyzeCluster(\'' + (r.clusterKey || '').replace(/'/g, '') + '\')" style="font-size:0.68em;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;font-weight:600">\uD83E\uDDE0 Analyze Root Cause</button>';
+    html += '</div>';
+
+    // Cluster insight (if available)
+    html += '<div id="glClusterInsight"></div>';
+
     // Notes
     html += '<div style="font-size:0.68em;font-weight:700;color:#475569;margin-bottom:4px">RESOLUTION NOTES</div>';
     html += '<textarea id="glFbNotes" style="width:100%;min-height:50px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:#e2e8f0;font-size:0.78em;font-family:inherit;box-sizing:border-box">' + (r.resolutionNotes || '') + '</textarea>';
@@ -10578,6 +10652,22 @@ window._glShowFeedbackDetail = function(reportId) {
 
     html += '</div>';
     el.innerHTML = html;
+
+    // Load cluster insight if exists
+    if (r.clusterKey && typeof firebaseDB !== 'undefined' && firebaseDB) {
+        var safeKey = r.clusterKey.replace(/[.#$/\[\]]/g, '_');
+        firebaseDB.ref('feedback_clusters/' + safeKey).once('value').then(function(snap) {
+            var insight = snap.val();
+            var insightEl = document.getElementById('glClusterInsight');
+            if (!insight || !insightEl) return;
+            insightEl.innerHTML = '<div style="padding:8px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.15);border-radius:6px;margin-bottom:10px">'
+                + '<div style="font-size:0.68em;font-weight:700;color:#fbbf24;margin-bottom:4px">ROOT CAUSE ANALYSIS' + (insight.aiEnriched ? ' (AI)' : '') + '</div>'
+                + '<div style="font-size:0.78em;color:#e2e8f0;margin-bottom:3px"><strong>Summary:</strong> ' + (insight.summary || '').replace(/</g, '&lt;') + '</div>'
+                + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:3px"><strong>Likely cause:</strong> ' + (insight.suspectedCause || '').replace(/</g, '&lt;') + '</div>'
+                + '<div style="font-size:0.78em;color:#86efac"><strong>Fix:</strong> ' + (insight.recommendedFix || '').replace(/</g, '&lt;') + '</div>'
+                + '</div>';
+        }).catch(function() {});
+    }
 };
 
 window._glUpdateFbStatus = async function(reportId, status) {
@@ -10597,6 +10687,34 @@ window._glSaveFbNotes = async function(reportId) {
     if (!ta || typeof GLFeedbackService === 'undefined') return;
     await GLFeedbackService.updateFeedbackStatus(reportId, { resolutionNotes: ta.value });
     if (typeof showToast === 'function') showToast('Notes saved');
+};
+
+window._glCreateAction = async function(clusterKey, actionType) {
+    if (typeof GLFeedbackService === 'undefined') return;
+    var reports = (window._glFeedbackReports || []).filter(function(r) { return r.clusterKey === clusterKey; });
+    if (!reports.length) reports = window._glFeedbackReports || [];
+    var action = await GLFeedbackService.createAction(clusterKey, actionType, reports);
+    if (action && typeof showToast === 'function') showToast('Action created: ' + action.title);
+};
+
+window._glAnalyzeCluster = async function(clusterKey) {
+    if (typeof GLFeedbackService === 'undefined') return;
+    var reports = (window._glFeedbackReports || []).filter(function(r) { return r.clusterKey === clusterKey; });
+    if (!reports.length) reports = window._glFeedbackReports || [];
+    if (typeof showToast === 'function') showToast('Analyzing...');
+    var insight = await GLFeedbackService.generateClusterInsight(clusterKey, reports);
+    if (insight) {
+        var insightEl = document.getElementById('glClusterInsight');
+        if (insightEl) {
+            insightEl.innerHTML = '<div style="padding:8px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.15);border-radius:6px;margin-bottom:10px">'
+                + '<div style="font-size:0.68em;font-weight:700;color:#fbbf24;margin-bottom:4px">ROOT CAUSE ANALYSIS' + (insight.aiEnriched ? ' (AI)' : '') + '</div>'
+                + '<div style="font-size:0.78em;color:#e2e8f0;margin-bottom:3px"><strong>Summary:</strong> ' + (insight.summary || '').replace(/</g, '&lt;') + '</div>'
+                + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:3px"><strong>Likely cause:</strong> ' + (insight.suspectedCause || '').replace(/</g, '&lt;') + '</div>'
+                + '<div style="font-size:0.78em;color:#86efac"><strong>Fix:</strong> ' + (insight.recommendedFix || '').replace(/</g, '&lt;') + '</div>'
+                + '</div>';
+        }
+        if (typeof showToast === 'function') showToast('Analysis complete');
+    }
 };
 
 function checkSyncStatus() {

@@ -57,14 +57,14 @@
     // Render errors are always high
     if (autoContext.autoType === 'bug' && autoContext.hasRenderError) severity = 'high';
 
-    var keyword = getPrimaryKeyword(msg);
+    var keyword = normalizeKeyword(getPrimaryKeyword(msg));
     var page = (autoContext && autoContext.page) || '';
 
     return {
       type: type, severity: severity,
       confidence: maxScore > 0 ? Math.min(maxScore / 3, 1) : 0.3,
       keyword: keyword,
-      clusterKey: type + '_' + (page || 'unknown') + '_' + (keyword || 'general')
+      clusterKey: type + '_' + (page || 'unknown') + '_' + keyword
     };
   }
 
@@ -77,14 +77,53 @@
     'drag','drop','picker','modal','toast','menu','tab','page','home','settings'
   ];
 
+  var SYNONYM_MAP = {
+    'saving': 'save', 'save button': 'save', 'saved': 'save',
+    'playlist': 'setlist', 'song list': 'setlist', 'set list': 'setlist', 'list': 'setlist',
+    'log in': 'login', 'sign-in': 'login', 'signin': 'login', 'sign up': 'login',
+    'loading': 'load', 'loads': 'load', 'loaded': 'load',
+    'searching': 'search', 'searched': 'search',
+    'creating': 'create', 'created': 'create',
+    'editing': 'edit', 'edited': 'edit',
+    'deleting': 'delete', 'deleted': 'delete', 'remove': 'delete', 'removing': 'delete',
+    'uploading': 'upload', 'uploaded': 'upload',
+    'navigating': 'navigate', 'navigation': 'navigate',
+    'scrolling': 'scroll',
+    'clicking': 'button', 'click': 'button', 'tap': 'button', 'tapping': 'button', 'press': 'button',
+    'band members': 'member', 'members': 'member', 'bandmate': 'member',
+    'songs': 'song', 'track': 'song', 'tracks': 'song',
+    'rehearsals': 'rehearsal', 'practice session': 'rehearsal',
+    'gigs': 'gig', 'show': 'gig', 'shows': 'gig', 'event': 'gig',
+    'notifications': 'notification', 'notif': 'notification', 'alert': 'notification',
+    'photos': 'photo', 'image': 'photo', 'images': 'photo', 'picture': 'photo'
+  };
+
+  var FILLER_WORDS = ['the','this','that','a','an','is','was','are','were','it','its','my','your','i','we','they','he','she','on','in','at','to','for','of','with','and','or','but','not','no','just','very','really','so','too','also','here','there'];
+
+  function normalizeKeyword(keyword) {
+    if (!keyword) return 'general';
+    var lower = keyword.toLowerCase().trim();
+    // Check synonym map first (multi-word)
+    if (SYNONYM_MAP[lower]) return SYNONYM_MAP[lower];
+    // Single word synonym
+    var words = lower.split(/\s+/).filter(function(w) { return FILLER_WORDS.indexOf(w) < 0 && w.length > 2; });
+    if (words.length === 0) return 'general';
+    var first = words[0];
+    return SYNONYM_MAP[first] || first;
+  }
+
   function getPrimaryKeyword(text) {
     var lower = (text || '').toLowerCase();
+    // Check multi-word synonyms first
+    var synKeys = Object.keys(SYNONYM_MAP);
+    for (var s = 0; s < synKeys.length; s++) {
+      if (lower.indexOf(synKeys[s]) >= 0) return SYNONYM_MAP[synKeys[s]];
+    }
     for (var i = 0; i < PRODUCT_KEYWORDS.length; i++) {
       if (lower.indexOf(PRODUCT_KEYWORDS[i]) >= 0) return PRODUCT_KEYWORDS[i];
     }
-    // Fallback: first noun-like word over 3 chars
-    var words = lower.replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w) { return w.length > 3; });
-    return words[0] || 'general';
+    var words = lower.replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w) { return w.length > 3 && FILLER_WORDS.indexOf(w) < 0; });
+    return normalizeKeyword(words[0] || 'general');
   }
 
   // ── Issue Scoring ───────────────────────────────────────────────────────
@@ -100,6 +139,6 @@
     return score;
   }
 
-  window.GLFeedbackClassifier = { classify: classify, getPrimaryKeyword: getPrimaryKeyword, scoreIssue: scoreIssue };
+  window.GLFeedbackClassifier = { classify: classify, getPrimaryKeyword: getPrimaryKeyword, normalizeKeyword: normalizeKeyword, scoreIssue: scoreIssue };
   console.log('\uD83D\uDCCA GLFeedbackClassifier loaded');
 })();
