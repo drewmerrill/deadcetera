@@ -96,6 +96,10 @@ window.GLAvatarUI = (function() {
         }
     }
 
+    // Load saved avatar folder preference
+    var _savedFolder = localStorage.getItem('gl_avatar_folder');
+    if (_savedFolder) _AVATAR_BASE = _savedFolder + '/';
+
     // ── Button ───────────────────────────────────────────────────────────────
 
     function _createButton() {
@@ -151,6 +155,7 @@ window.GLAvatarUI = (function() {
         html += '<div id="glAvPanelFace" style="flex-shrink:0">' + _buildAvatarImg(_currentExpression, 40) + '</div>';
         html += '<div style="flex:1"><div style="font-size:0.88em;font-weight:800;color:#e2e8f0">' + _AVATAR_NAME + '</div>';
         html += '<div style="font-size:0.65em;color:#64748b">' + (stageLabels[stage] || '') + '</div></div>';
+        html += '<button onclick="GLAvatarUI._openSettings()" title="Avatar settings" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:4px 6px">\u2699</button>';
         html += '<button onclick="GLAvatarUI.closePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px 8px">\u2715</button>';
         html += '</div>';
 
@@ -623,6 +628,98 @@ window.GLAvatarUI = (function() {
         setExpression('neutral');
     }
 
+    // ── Avatar Settings (Voice + Image) ─────────────────────────────────────
+
+    var _VOICE_OPTIONS = [
+        { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Rachel', desc: 'Warm, conversational female', gender: 'F' },
+        { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel (Alt)', desc: 'Calm, clear female', gender: 'F' },
+        { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', desc: 'Deep, confident male', gender: 'M' },
+        { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Friendly, warm male', gender: 'M' },
+        { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', desc: 'Strong, authoritative male', gender: 'M' },
+        { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', desc: 'Young, energetic male', gender: 'M' },
+        { id: 'ThT5KcBeYPX3keUQqHPh', name: 'Dorothy', desc: 'Warm, motherly female', gender: 'F' },
+        { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', desc: 'Bright, youthful female', gender: 'F' }
+    ];
+
+    var _AVATAR_OPTIONS = [
+        { id: 'default', name: 'Coach (Default)', folder: 'avatars' },
+        { id: 'female', name: 'Female Coach', folder: 'avatars-f' }
+    ];
+
+    function _openSettings() {
+        var msgArea = document.getElementById('glAvMessages');
+        if (!msgArea) return;
+
+        var currentVoice = localStorage.getItem('gl_avatar_voice_id') || 'EXAVITQu4vr4xnSDxMaL';
+        var currentAvatar = localStorage.getItem('gl_avatar_style') || 'default';
+
+        var html = '<div style="margin-bottom:16px">';
+        html += '<button onclick="GLAvatarUI._closeSettings()" style="font-size:0.72em;color:#818cf8;background:none;border:none;cursor:pointer;padding:0;margin-bottom:12px">\u2190 Back to chat</button>';
+
+        // Voice selection
+        html += '<div style="font-size:0.78em;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Voice</div>';
+        _VOICE_OPTIONS.forEach(function(v) {
+            var selected = v.id === currentVoice;
+            html += '<button onclick="GLAvatarUI._selectVoice(\'' + v.id + '\')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;margin-bottom:4px;border-radius:8px;font-size:0.78em;border:1px solid ' + (selected ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)') + ';background:' + (selected ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)') + ';color:' + (selected ? '#a5b4fc' : '#94a3b8') + ';cursor:pointer">'
+                + '<span style="font-size:1.1em">' + (v.gender === 'F' ? '\uD83D\uDC69' : '\uD83D\uDC68') + '</span>'
+                + '<span style="flex:1"><span style="font-weight:600;color:#e2e8f0">' + v.name + '</span><br><span style="font-size:0.85em;color:#64748b">' + v.desc + '</span></span>'
+                + (selected ? '<span style="color:#22c55e">\u2713</span>' : '')
+                + '</button>';
+        });
+
+        // Preview button
+        html += '<button onclick="GLAvatarUI._previewVoice()" style="margin-top:4px;margin-bottom:16px;padding:6px 14px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:0.72em;font-weight:600;cursor:pointer">\uD83D\uDD0A Preview voice</button>';
+
+        // Avatar image selection
+        html += '<div style="font-size:0.78em;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Avatar Look</div>';
+        html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+        _AVATAR_OPTIONS.forEach(function(a) {
+            var selected = a.id === currentAvatar;
+            html += '<button onclick="GLAvatarUI._selectAvatar(\'' + a.id + '\',\'' + a.folder + '\')" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border-radius:10px;border:1px solid ' + (selected ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)') + ';background:' + (selected ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)') + ';cursor:pointer">'
+                + '<img src="' + a.folder + '/neutral.png" style="width:48px;height:48px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'">'
+                + '<span style="font-size:0.72em;color:' + (selected ? '#a5b4fc' : '#94a3b8') + ';font-weight:600">' + a.name + '</span>'
+                + (selected ? '<span style="font-size:0.65em;color:#22c55e">\u2713 Active</span>' : '')
+                + '</button>';
+        });
+        html += '</div>';
+
+        html += '</div>';
+        msgArea.innerHTML = html;
+    }
+
+    function _closeSettings() {
+        _renderGuidance();
+    }
+
+    function _selectVoice(voiceId) {
+        localStorage.setItem('gl_avatar_voice_id', voiceId);
+        // Update the voice coach
+        if (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.setVoiceId) {
+            GLVoiceCoach.setVoiceId(voiceId);
+        }
+        var voiceName = (_VOICE_OPTIONS.find(function(v) { return v.id === voiceId; }) || {}).name || 'Unknown';
+        if (typeof showToast === 'function') showToast('Voice: ' + voiceName);
+        _openSettings(); // re-render to update selection
+    }
+
+    function _previewVoice() {
+        var voiceId = localStorage.getItem('gl_avatar_voice_id') || 'EXAVITQu4vr4xnSDxMaL';
+        var voiceName = (_VOICE_OPTIONS.find(function(v) { return v.id === voiceId; }) || {}).name || '';
+        if (typeof GLVoiceCoach !== 'undefined') {
+            GLVoiceCoach.speak("Hey, I'm " + voiceName + ". Let's make your band sound tighter.", { tone: 'energetic' });
+        }
+    }
+
+    function _selectAvatar(styleId, folder) {
+        localStorage.setItem('gl_avatar_style', styleId);
+        localStorage.setItem('gl_avatar_folder', folder);
+        _AVATAR_BASE = folder + '/';
+        // Refresh all avatar images
+        setExpression(_currentExpression);
+        if (typeof showToast === 'function') showToast('Avatar updated');
+        _openSettings(); // re-render
+    }
+
     return {
         openPanel: openPanel,
         closePanel: closePanel,
@@ -636,7 +733,12 @@ window.GLAvatarUI = (function() {
         _checkMagicMoment: _checkMagicMoment,
         _askSubmit: _askSubmit,
         _toggleVoice: _toggleVoice,
-        _micToggle: _micToggle
+        _micToggle: _micToggle,
+        _openSettings: _openSettings,
+        _closeSettings: _closeSettings,
+        _selectVoice: _selectVoice,
+        _previewVoice: _previewVoice,
+        _selectAvatar: _selectAvatar
     };
 
 })();

@@ -15,9 +15,9 @@
   var _voiceEnabled = localStorage.getItem('gl_voice_enabled') !== 'false'; // default ON
   var _lastResponse = null;
 
-  // ── ElevenLabs Voice ID (warm conversational) ──────────────────────────
-  // Rachel = warm, conversational female. Change ID for different voice.
-  var _ELEVENLABS_VOICE = 'EXAVITQu4vr4xnSDxMaL'; // Rachel
+  // ── ElevenLabs Voice ID ──────────────────────────────────────────────────
+  // Defaults to Rachel. User can change via avatar settings.
+  var _ELEVENLABS_VOICE = localStorage.getItem('gl_avatar_voice_id') || 'EXAVITQu4vr4xnSDxMaL';
   var _ELEVENLABS_MODEL = 'eleven_turbo_v2_5';
 
   // Tone → voice settings mapping
@@ -262,7 +262,9 @@
     speakOnboardingStep: speakOnboardingStep,
     ask: ask,
     askAndSpeak: askAndSpeak,
-    getLastResponse: function() { return _lastResponse; }
+    getLastResponse: function() { return _lastResponse; },
+    setVoiceId: function(id) { _ELEVENLABS_VOICE = id; localStorage.setItem('gl_avatar_voice_id', id); },
+    getVoiceId: function() { return _ELEVENLABS_VOICE; }
   };
 
   console.log('\uD83C\uDF99 GLVoiceCoach loaded');
