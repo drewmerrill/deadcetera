@@ -730,12 +730,48 @@ window.GLAvatarUI = (function() {
         var msgArea = document.getElementById('glAvMessages');
         setExpression('focused');
 
-        // Detect intent
+        // Detect intent via router
         var intent = GLActionRouter.detectIntent(text);
         if (!intent) { setExpression('neutral'); return; }
-        var plan = ACTION_PLANS[intent] || { steps: ['Execute'], needsConfirm: false, label: intent };
 
-        // PART 1: Show action plan
+        // Use TaskEngine if available (strict pipeline)
+        if (typeof GLTaskEngine !== 'undefined') {
+            var taskPlan = GLTaskEngine.plan(intent, text);
+            if (taskPlan) {
+                // Show plan
+                var planLabel = taskPlan.label || intent;
+                var planHtml = '<div style="margin-bottom:12px">';
+                planHtml += '<div style="font-size:0.68em;color:#475569;margin-bottom:6px">You asked: ' + _esc(text) + '</div>';
+                planHtml += '<div style="font-size:0.82em;font-weight:700;color:#a5b4fc;margin-bottom:6px">' + _esc(planLabel) + '</div>';
+                planHtml += '<div id="glActionSteps" style="font-size:0.75em;color:#94a3b8">';
+                taskPlan.steps.forEach(function(s, i) {
+                    planHtml += '<div id="glStep' + i + '" style="margin-bottom:3px;display:flex;align-items:center;gap:6px"><span style="color:#475569">\u25CB</span> ' + _esc(s.label) + '</div>';
+                });
+                planHtml += '</div>';
+
+                // Check if confirmation needed
+                if (GLTaskEngine.needsConfirmation(taskPlan)) {
+                    planHtml += '<div style="margin-top:10px;display:flex;gap:6px">';
+                    planHtml += '<button id="glActionConfirm" onclick="GLAvatarUI._executeTaskEngine()" style="flex:2;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.78em;cursor:pointer">\u2713 Do it</button>';
+                    planHtml += '<button onclick="GLAvatarUI._closeSettings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;font-size:0.78em;cursor:pointer">Cancel</button>';
+                    planHtml += '</div>';
+                    planHtml += '</div>';
+                    if (msgArea) msgArea.innerHTML = planHtml;
+                    window._glPendingTaskPlan = taskPlan;
+                    window._glPendingActionText = text;
+                    return;
+                }
+
+                planHtml += '</div>';
+                if (msgArea) msgArea.innerHTML = planHtml;
+
+                // Auto-execute (low risk + high confidence)
+                return _runTaskEngine(taskPlan, text, msgArea);
+            }
+        }
+
+        // Fallback: old plan-based execution
+        var plan = ACTION_PLANS[intent] || { steps: ['Execute'], needsConfirm: false, label: intent };
         if (msgArea) {
             var planHtml = '<div style="margin-bottom:12px">';
             planHtml += '<div style="font-size:0.68em;color:#475569;margin-bottom:6px">You asked: ' + _esc(text) + '</div>';
@@ -862,6 +898,75 @@ window.GLAvatarUI = (function() {
         // Track the action
         if (typeof GLFeedbackContext !== 'undefined') {
             GLFeedbackContext.trackAction('groovemate_action', result.action + ': ' + (result.message || '').substring(0, 80));
+        }
+    }
+
+    // ── Task Engine Execution ──────────────────────────────────────────────
+
+    async function _executeTaskEngine() {
+        var taskPlan = window._glPendingTaskPlan;
+        var text = window._glPendingActionText;
+        window._glPendingTaskPlan = null;
+        window._glPendingActionText = null;
+        if (!taskPlan) return;
+        var msgArea = document.getElementById('glAvMessages');
+        await _runTaskEngine(taskPlan, text, msgArea);
+    }
+
+    async function _runTaskEngine(taskPlan, text, msgArea) {
+        // Show progress
+        taskPlan.steps.forEach(function(s, i) {
+            var el = document.getElementById('glStep' + i);
+            if (el) { el.querySelector('span').textContent = '\u23F3'; el.style.color = '#818cf8'; }
+        });
+
+        // Execute via engine
+        var result = await GLTaskEngine.run(taskPlan.intent, text);
+
+        // Update step indicators
+        if (result.plan) {
+            result.plan.steps.forEach(function(s, i) {
+                var el = document.getElementById('glStep' + i);
+                if (!el) return;
+                el.querySelector('span').textContent = s.status === 'success' ? '\u2713' : '\u2717';
+                el.style.color = s.status === 'success' ? '#86efac' : '#f87171';
+            });
+        }
+
+        setExpression(result.success ? 'encouraging' : 'concerned');
+
+        // Show result
+        if (msgArea) {
+            var resHtml = '';
+            if (result.success || result.partial) {
+                resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:8px">';
+                resHtml += '<div style="font-size:0.82em;font-weight:600;color:#86efac;margin-bottom:4px">' + (result.success ? '\u2713' : '\u26A0') + ' ' + _esc(result.message) + '</div>';
+                if (result.explanation && result.explanation.next) {
+                    var n = result.explanation.next;
+                    if (n.action) resHtml += '<div style="margin-top:6px"><button onclick="GLAvatarUI._askWithText(\'' + n.action.replace(/_/g, ' ') + '\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 ' + _esc(n.label) + '</button></div>';
+                    else if (n.page) resHtml += '<div style="margin-top:6px"><button onclick="showPage(\'' + n.page + '\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">\u2192 ' + _esc(n.label) + '</button></div>';
+                }
+                resHtml += '</div>';
+            } else {
+                resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);border-radius:8px">';
+                resHtml += '<div style="font-size:0.82em;font-weight:600;color:#f87171">\u2717 ' + _esc(result.message) + '</div>';
+                resHtml += '</div>';
+            }
+            msgArea.insertAdjacentHTML('beforeend', resHtml);
+        }
+
+        // Speak
+        if (result.success && typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled()) {
+            GLVoiceCoach.speak(result.message, { tone: 'calm' });
+        }
+
+        // Record
+        _saveActionHistory(result);
+        if (typeof GLFeedbackContext !== 'undefined') {
+            GLFeedbackContext.trackAction('task_engine', taskPlan.intent + ': ' + (result.message || '').substring(0, 80));
+        }
+        if (typeof GLOrchestrator !== 'undefined') {
+            GLOrchestrator.recordAction(taskPlan.intent, (typeof currentPage !== 'undefined') ? currentPage : '');
         }
     }
 
@@ -1067,7 +1172,8 @@ window.GLAvatarUI = (function() {
         _reportIssue: _reportIssue,
         _submitReport: _submitReport,
         _askWithText: _askWithText,
-        _executeConfirmedAction: _executeConfirmedAction
+        _executeConfirmedAction: _executeConfirmedAction,
+        _executeTaskEngine: _executeTaskEngine
     };
 
 })();
