@@ -170,32 +170,116 @@
     };
   }
 
-  // ── Autopilot — execute when confidence is high enough ─────────────────
+  // ── User Memory (lightweight, localStorage) ─────────────────────────────
+
+  function _loadMemory() {
+    try { return JSON.parse(localStorage.getItem('gl_user_memory') || '{}'); } catch(e) { return {}; }
+  }
+  function _saveMemory(mem) {
+    try { localStorage.setItem('gl_user_memory', JSON.stringify(mem)); } catch(e) {}
+  }
+
+  function recordAction(action, page) {
+    var mem = _loadMemory();
+    if (!mem.actions) mem.actions = [];
+    mem.actions.push({ action: action, page: page, ts: Date.now() });
+    if (mem.actions.length > 30) mem.actions = mem.actions.slice(-30);
+    // Track page visit counts
+    if (!mem.pageVisits) mem.pageVisits = {};
+    mem.pageVisits[page] = (mem.pageVisits[page] || 0) + 1;
+    _saveMemory(mem);
+  }
+
+  function getUserMemory() { return _loadMemory(); }
+
+  // ── Loop Detection ─────────────────────────────────────────────────────
+  // Detect which experience loop the user is in.
+
+  function detectLoop(ctx) {
+    if (!ctx) ctx = _buildContext();
+
+    // First Experience Loop: no rehearsals completed
+    if (ctx.onboardStep >= 1) return 'first_experience';
+    if (!ctx.hasRehearsals) return 'first_experience';
+
+    // Check rehearsal count
+    var mem = _loadMemory();
+    var rehearsalCount = (mem.pageVisits && mem.pageVisits['rehearsal-mode']) || 0;
+    if (rehearsalCount < 3) return 'improvement'; // still building habits
+
+    return 'ongoing'; // established band
+  }
+
+  // ── Autopilot with Confidence Thresholds ──────────────────────────────
 
   var _autopilotExecuted = {};
+
+  // confidence: 0.9+ = auto-execute, 0.7+ = suggest, else = ask
+  function _getConfidence(next, ctx) {
+    if (!next || !next.action) return 0;
+    // High confidence: onboarding + clear next step
+    if (ctx.onboardStep >= 1 && ctx.onboardStep <= 3) return 0.95;
+    // Medium: has context, clear action
+    if (next.urgency === 'high') return 0.8;
+    if (next.urgency === 'medium') return 0.7;
+    return 0.5;
+  }
 
   function checkAutopilot() {
     var ctx = _buildContext();
     var next = getNextAction(ctx);
-    if (!next || !next.auto || next.urgency === 'none') return;
+    if (!next || next.urgency === 'none') return;
 
-    // Dedupe
     var key = next.action + '_' + ctx.page;
     if (_autopilotExecuted[key]) return;
 
-    var mode = ctx.mode || _getMode();
-    if (next.urgency === 'high' && mode.threshold <= 0.5) {
+    var confidence = _getConfidence(next, ctx);
+
+    if (confidence >= 0.9 && next.action) {
+      // Auto-execute: navigate or show dominant prompt
       _autopilotExecuted[key] = true;
-      // Show toast instead of auto-executing (safe autopilot)
-      if (typeof showToast === 'function' && next.message) {
-        showToast('GrooveMate: ' + next.message, 4000);
-      }
+      // For safety, show toast instead of silently executing
+      if (typeof showToast === 'function') showToast('GrooveMate: ' + next.message, 4000);
+    } else if (confidence >= 0.7) {
+      // Suggest: show inline next-action bar
+      _autopilotExecuted[key] = true;
+      _showNextActionBar(next, ctx);
     }
+    // Below 0.7: do nothing, wait for user to open avatar
+  }
+
+  // ── Next Action Bar (injected into page) ──────────────────────────────
+
+  function _showNextActionBar(next, ctx) {
+    // Remove any existing bar
+    var old = document.getElementById('glNextActionBar');
+    if (old) old.remove();
+
+    if (!next || !next.message) return;
+
+    var bar = document.createElement('div');
+    bar.id = 'glNextActionBar';
+    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:8500;padding:10px 16px;background:linear-gradient(to top,rgba(15,23,42,0.95),rgba(15,23,42,0.8));backdrop-filter:blur(8px);border-top:1px solid rgba(99,102,241,0.2);display:flex;align-items:center;gap:10px;animation:glFlowIn 0.2s ease';
+
+    var actionBtn = next.action
+      ? '<button onclick="GLAvatarUI.openPanel();GLAvatarUI._askWithText(\'' + (next.action || '').replace(/_/g, ' ') + '\');document.getElementById(\'glNextActionBar\').remove()" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.78em;cursor:pointer;flex-shrink:0;white-space:nowrap">\u2192 ' + next.message.split('.')[0] + '</button>'
+      : '';
+
+    bar.innerHTML = '<div style="flex:1;font-size:0.78em;color:#94a3b8">' + (next.message || '') + '</div>'
+      + actionBtn
+      + '<button onclick="document.getElementById(\'glNextActionBar\').remove()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.9em;flex-shrink:0">\u2715</button>';
+
+    document.body.appendChild(bar);
+
+    // Auto-dismiss after 8 seconds
+    setTimeout(function() { var el = document.getElementById('glNextActionBar'); if (el) el.remove(); }, 8000);
   }
 
   // ── Page Change Hook ───────────────────────────────────────────────────
 
-  window.addEventListener('gl:pagechange', function() {
+  window.addEventListener('gl:pagechange', function(e) {
+    var page = (e.detail && e.detail.page) || '';
+    recordAction('navigate', page);
     setTimeout(checkAutopilot, 2000);
   });
 
@@ -206,7 +290,10 @@
     shouldIntervene: shouldIntervene,
     getMessage: getMessage,
     checkAutopilot: checkAutopilot,
-    getMode: _getMode
+    getMode: _getMode,
+    detectLoop: detectLoop,
+    recordAction: recordAction,
+    getUserMemory: getUserMemory
   };
 
   console.log('\uD83C\uDFAF GLOrchestrator loaded');
