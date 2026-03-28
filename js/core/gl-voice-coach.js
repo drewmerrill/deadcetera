@@ -73,8 +73,9 @@
       return res.blob();
     }).then(function(blob) {
       var audio = new Audio(URL.createObjectURL(blob));
-      audio.onended = function() { _speaking = false; URL.revokeObjectURL(audio.src); };
-      audio.onerror = function() { _speaking = false; };
+      audio.onplay = function() { if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setTalking) GLAvatarUI.setTalking(true); };
+      audio.onended = function() { _speaking = false; URL.revokeObjectURL(audio.src); if (typeof GLAvatarUI !== 'undefined') { GLAvatarUI.setTalking(false); GLAvatarUI.setExpression('neutral'); } };
+      audio.onerror = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false); };
       audio.play();
     }).catch(function(e) {
       console.warn('[VoiceCoach] ElevenLabs failed, using Web Speech:', e.message);
@@ -94,9 +95,9 @@
     var voices = window.speechSynthesis.getVoices();
     var preferred = voices.find(function(v) { return v.name.indexOf('Samantha') >= 0 || v.name.indexOf('Google') >= 0 || v.name.indexOf('Natural') >= 0; });
     if (preferred) utterance.voice = preferred;
-    utterance.onstart = function() { _speaking = true; };
-    utterance.onend = function() { _speaking = false; };
-    utterance.onerror = function() { _speaking = false; };
+    utterance.onstart = function() { _speaking = true; if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setTalking) GLAvatarUI.setTalking(true); };
+    utterance.onend = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') { GLAvatarUI.setTalking(false); GLAvatarUI.setExpression('neutral'); } };
+    utterance.onerror = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false); };
     window.speechSynthesis.speak(utterance);
   }
 
@@ -122,10 +123,14 @@
     }
     var words = text.split(' ');
     if (words.length > 40) text = words.slice(0, 40).join(' ') + '...';
-    // Determine tone from insight content
+    // Determine tone + expression from insight content
     var tone = 'neutral';
-    if (insight.confidence && insight.confidence > 0.7) tone = 'energetic';
-    if (text.indexOf('needs work') >= 0 || text.indexOf('regression') >= 0) tone = 'calm';
+    var expression = 'neutral';
+    if (insight.confidence && insight.confidence > 0.7) { tone = 'energetic'; expression = 'celebratory'; }
+    if (text.indexOf('needs work') >= 0 || text.indexOf('regression') >= 0) { tone = 'calm'; expression = 'concerned'; }
+    if (text.indexOf('tighter') >= 0 || text.indexOf('improved') >= 0) { expression = 'encouraging'; }
+    // Set avatar expression during speech
+    if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setExpression) GLAvatarUI.setExpression(expression);
     speak(text, { tone: tone });
   }
 
@@ -138,7 +143,9 @@
       2: _pickOne(['Songs are in. Let\u2019s run through \u2019em.', 'Ready to rehearse? One tap.', 'Set\u2019s ready. Let\u2019s fire it up.']),
       3: _pickOne(['How\u2019d it feel? Quick rating.', 'Almost done... just rate it.', 'Last step \u2014 was it solid?'])
     };
-    if (messages[step]) speak(messages[step]);
+    // Set encouraging expression during onboarding
+    if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setExpression) GLAvatarUI.setExpression('encouraging');
+    if (messages[step]) speak(messages[step], { tone: 'energetic' });
   }
 
   // ── Build Context for Claude ──────────────────────────────────────────
