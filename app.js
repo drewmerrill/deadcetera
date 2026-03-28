@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-014349', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-014812', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -11223,9 +11223,150 @@ async function submitCreateBand() {
         document.getElementById('cbInviteLink').textContent = inviteUrl;
 
         showToast('Band created!');
+
+        // Seed starter songs + auto-create first setlist (non-blocking)
+        _seedBandStarterContent(slug, bandType, bandSubtypes, name).catch(function(e) {
+            console.warn('[BandCreate] Seeding failed:', e.message);
+        });
     } catch(err) {
         console.error('Error creating band:', err);
         showToast('Error creating band. Try again.');
+    }
+}
+
+// ── Starter Song Seeding + Auto Setlist ──────────────────────────────────────
+
+var _STARTER_SONGS = {
+    // Jam Band subtypes
+    GD: ['Bertha','Friend of the Devil','Scarlet Begonias','Fire on the Mountain','Eyes of the World','Sugar Magnolia','Casey Jones','Truckin\'','Althea','Jack Straw','Shakedown Street','Touch of Grey'],
+    JGB: ['After Midnight','Deal','Midnight Moonlight','Waiting for a Miracle','Dear Prudence','Tangled Up in Blue','Don\'t Let Go','That\'s What Love Will Make You Do','Mission in the Rain','Cats Under the Stars'],
+    Phish: ['Down with Disease','Tweezer','Bouncing Around the Room','Sample in a Jar','Chalk Dust Torture','You Enjoy Myself','Fluffhead','Divided Sky','Bathtub Gin','Stash','Harry Hood','Waste'],
+    WSP: ['Chilly Water','Ain\'t Life Grand','Porch Song','Barstools and Dreamers','Space Wrangler','Tall Boy','Fishwater','Climb to Safety','Pigeons','Papa\'s Home','Blue Indian','North'],
+    ABB: ['Whipping Post','Midnight Rider','Jessica','Ramblin\' Man','Melissa','Statesboro Blues','Blue Sky','In Memory of Elizabeth Reed','Soulshine','Revival'],
+    Goose: ['Rockdale','Hungersite','Arcadia','Turned Clouds','Tumble','Hot Tea','Empress of Organos','So Ready','Seekers on the Ridge','Madhuvan'],
+    DMB: ['Crash Into Me','Ants Marching','Satellite','Two Step','Warehouse','So Much to Say','What Would You Say','Grey Street','Don\'t Drink the Water','The Space Between'],
+    mixed_jam: ['Friend of the Devil','Tweezer','Whipping Post','Crash Into Me','Chilly Water','Rockdale','After Midnight','Sample in a Jar','Blue Sky','Barstools and Dreamers'],
+
+    // Cover Band decades
+    '60s': ['Twist and Shout','Respect','Satisfaction','My Girl','Brown Eyed Girl','Sittin\' on the Dock of the Bay','Proud Mary','I Heard It Through the Grapevine','Stand By Me','A Hard Day\'s Night'],
+    '70s': ['Bohemian Rhapsody','Hotel California','Stayin\' Alive','Dreams','Don\'t Stop Believin\'','Come Sail Away','September','Superstition','Free Bird','More Than a Feeling'],
+    '80s': ['Sweet Child O\' Mine','Livin\' on a Prayer','Don\'t Stop Believin\'','Take On Me','Every Breath You Take','With or Without You','Pour Some Sugar on Me','Jump','Under Pressure','Jessie\'s Girl'],
+    '90s': ['Smells Like Teen Spirit','Wonderwall','Under the Bridge','Creep','Black Hole Sun','Semi-Charmed Life','Mr. Jones','Glycerine','Alive','Santeria'],
+    '2000s': ['Mr. Brightside','Seven Nation Army','Hey Ya!','Use Somebody','Somebody That I Used to Know','Shut Up and Dance','Uptown Funk','Valerie','Sex on Fire','Crazy in Love'],
+    mixed_decades: ['Don\'t Stop Believin\'','Sweet Child O\' Mine','Mr. Brightside','Bohemian Rhapsody','Wonderwall','Brown Eyed Girl','Shut Up and Dance','Respect','Hotel California','Livin\' on a Prayer'],
+
+    // Tribute
+    beatles: ['Come Together','Let It Be','Hey Jude','Yesterday','Here Comes the Sun','Twist and Shout','I Want to Hold Your Hand','A Hard Day\'s Night','Eleanor Rigby','Blackbird','Norwegian Wood','While My Guitar Gently Weeps'],
+    dead: ['Bertha','Friend of the Devil','Scarlet Begonias','Fire on the Mountain','Eyes of the World','Sugar Magnolia','Casey Jones','Truckin\'','Althea','Jack Straw','Shakedown Street','Touch of Grey'],
+    billy_joel: ['Piano Man','Scenes from an Italian Restaurant','Vienna','Just the Way You Are','Movin\' Out','My Life','She\'s Always a Woman','Allentown','Only the Good Die Young','New York State of Mind'],
+    elton_john: ['Tiny Dancer','Rocket Man','Bennie and the Jets','Crocodile Rock','Your Song','Don\'t Let the Sun Go Down on Me','Saturday Night\'s Alright','I\'m Still Standing','Goodbye Yellow Brick Road','Candle in the Wind'],
+    taylor_swift: ['Love Story','Shake It Off','Blank Space','Anti-Hero','Cruel Summer','Cardigan','All Too Well','22','Style','You Belong with Me'],
+    fleetwood: ['The Chain','Dreams','Go Your Own Way','Rhiannon','Landslide','Everywhere','Little Lies','Sara','Gold Dust Woman','Don\'t Stop'],
+    led_zeppelin: ['Stairway to Heaven','Whole Lotta Love','Black Dog','Kashmir','Rock and Roll','Going to California','Ramble On','Immigrant Song','The Ocean','Since I\'ve Been Loving You'],
+
+    // Church / Worship
+    contemporary: ['Oceans','What a Beautiful Name','Good Good Father','10,000 Reasons','Reckless Love','Way Maker','Build My Life','Great Are You Lord','King of My Heart','Here I Am to Worship'],
+    gospel: ['Amazing Grace','How Great Thou Art','Oh Happy Day','Total Praise','I Need You to Survive','Order My Steps','Every Praise','Break Every Chain','Grateful','Never Would Have Made It'],
+    traditional: ['How Great Thou Art','Amazing Grace','Great Is Thy Faithfulness','Holy Holy Holy','Be Thou My Vision','It Is Well with My Soul','A Mighty Fortress','Joyful Joyful','Come Thou Fount','Blessed Assurance'],
+    mixed_worship: ['Oceans','Amazing Grace','How Great Thou Art','Good Good Father','Way Maker','10,000 Reasons','It Is Well with My Soul','Build My Life','What a Beautiful Name','Oh Happy Day'],
+
+    // Wedding / Event
+    dance_floor: ['Shout','September','I Gotta Feeling','Don\'t Stop Believin\'','Shut Up and Dance','Uptown Funk','Sweet Caroline','Dancing Queen','Twist and Shout','Celebration'],
+    cocktail: ['The Way You Look Tonight','Fly Me to the Moon','What a Wonderful World','At Last','Come Away with Me','Feeling Good','Moon River','La Vie en Rose','Dream a Little Dream','Cheek to Cheek'],
+    classics: ['At Last','Can\'t Help Falling in Love','Unchained Melody','Stand By Me','Wonderful Tonight','Your Song','I Don\'t Want to Miss a Thing','You Are the Sunshine of My Life','A Thousand Years','Crazy Love'],
+    modern_pop: ['Perfect','All of Me','Thinking Out Loud','Marry Me','A Thousand Years','Can\'t Help Falling in Love','Better Together','I\'m Yours','Make You Feel My Love','Ho Hey'],
+
+    // Campfire / Acoustic
+    singalong: ['Wagon Wheel','Country Roads','Brown Eyed Girl','Wish You Were Here','Redemption Song','Horse with No Name','Knockin\' on Heaven\'s Door','Free Fallin\'','Ring of Fire','Lean on Me'],
+    country: ['Wagon Wheel','Ring of Fire','Folsom Prison Blues','Jolene','Friends in Low Places','Country Roads','The Gambler','Tennessee Whiskey','Man of Constant Sorrow','Simple Man'],
+    classic_rock_acoustic: ['Wish You Were Here','Stairway to Heaven','Blackbird','Hotel California','Landslide','Dust in the Wind','More Than Words','Wonderwall','Free Fallin\'','Patience'],
+    easy_guitar: ['Knockin\' on Heaven\'s Door','Horse with No Name','Leaving on a Jet Plane','Brown Eyed Girl','Three Little Birds','Stand By Me','Redemption Song','Riptide','Hey Joe','Wild Thing'],
+
+    // Piano Songbook
+    billy_joel_p: ['Piano Man','Scenes from an Italian Restaurant','Vienna','Just the Way You Are','New York State of Mind','She\'s Always a Woman','Movin\' Out','My Life','Only the Good Die Young','Allentown'],
+    elton_john_p: ['Tiny Dancer','Your Song','Rocket Man','Bennie and the Jets','Crocodile Rock','Don\'t Let the Sun Go Down on Me','I\'m Still Standing','Goodbye Yellow Brick Road','Saturday Night\'s Alright','Candle in the Wind'],
+    singer_songwriter: ['Hallelujah','Fast Car','Skinny Love','The A Team','Someone Like You','Ho Hey','I Will Follow You into the Dark','Falling Slowly','Budapest','Let Her Go'],
+    standards: ['Fly Me to the Moon','The Way You Look Tonight','Autumn Leaves','Blue Moon','Georgia on My Mind','Summertime','My Funny Valentine','Night and Day','All of Me','Misty']
+};
+
+async function _seedBandStarterContent(slug, bandType, subtypes, bandName) {
+    if (!firebaseDB || !slug) return;
+
+    // Collect songs from selected subtypes
+    var songTitles = [];
+    var seen = {};
+    (subtypes || []).forEach(function(sub) {
+        var catalog = _STARTER_SONGS[sub] || [];
+        catalog.forEach(function(title) {
+            if (!seen[title]) { seen[title] = true; songTitles.push(title); }
+        });
+    });
+
+    // If no subtypes selected, try the band type as a key
+    if (songTitles.length === 0 && bandType) {
+        var typeCatalog = _STARTER_SONGS[bandType] || [];
+        typeCatalog.forEach(function(title) {
+            if (!seen[title]) { seen[title] = true; songTitles.push(title); }
+        });
+    }
+
+    // For "original" type or no songs found, skip seeding
+    if (songTitles.length === 0) {
+        console.log('[BandCreate] No starter songs for type:', bandType);
+        return;
+    }
+
+    // Cap at 15 songs
+    if (songTitles.length > 15) songTitles = songTitles.slice(0, 15);
+
+    // Seed songs into Firebase
+    var songUpdates = {};
+    songTitles.forEach(function(title) {
+        var songId = (typeof generateSongId === 'function') ? generateSongId(title) : title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_').substring(0, 80);
+        songUpdates[songId] = {
+            title: title,
+            songId: songId,
+            createdAt: Date.now(),
+            createdFrom: 'starter',
+            starter: true
+        };
+    });
+
+    try {
+        await firebaseDB.ref('bands/' + slug + '/song_library').update(songUpdates);
+        console.log('[BandCreate] Seeded ' + songTitles.length + ' starter songs');
+    } catch(e) {
+        console.warn('[BandCreate] Song seeding failed:', e.message);
+    }
+
+    // Auto-create first setlist with 8-10 songs
+    var setlistSongs = songTitles.slice(0, Math.min(10, songTitles.length)).map(function(title) {
+        return { title: title, segue: 'stop' };
+    });
+
+    var setlist = {
+        setlistId: (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36),
+        name: bandName + ' — First Set',
+        date: new Date().toISOString().split('T')[0],
+        sets: [{ name: 'All Songs', songs: setlistSongs }],
+        created: new Date().toISOString(),
+        notes: 'Auto-created with your starter songs. Edit anytime!'
+    };
+
+    try {
+        var existing = [];
+        try {
+            var snap = await firebaseDB.ref('bands/' + slug + '/setlists').once('value');
+            existing = snap.val() ? Object.values(snap.val()) : [];
+        } catch(e) {}
+        existing.push(setlist);
+        await firebaseDB.ref('bands/' + slug + '/setlists').set(existing);
+        console.log('[BandCreate] Auto-created first setlist: ' + setlist.name);
+
+        // Mark onboarding Step 1 as done (setlist exists)
+        localStorage.setItem('gl_onboard_setlist_done', Date.now().toString());
+    } catch(e) {
+        console.warn('[BandCreate] Auto-setlist failed:', e.message);
     }
 }
 
