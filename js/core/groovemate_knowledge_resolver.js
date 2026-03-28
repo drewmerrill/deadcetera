@@ -118,32 +118,108 @@
     return result;
   }
 
+  // ── Action Map (links intents to GrooveMate action labels) ──────────────
+
+  var ACTION_LABELS = {
+    create_setlist: 'I can create a setlist for you',
+    start_rehearsal: 'I can start a rehearsal now',
+    add_song: 'I can add that song',
+    import_artist_pack: 'I can import a starter pack',
+    add_chart_note: 'I can save a chart note',
+    update_chart_sections: 'I can add sections now',
+    attach_chart_source: 'I can attach a chart source',
+    save_rehearsal_note: 'I can save that as a rehearsal note'
+  };
+
+  var COMMON_MISTAKES = {
+    home: 'People sometimes look for songs on the Home page \u2014 go to Songs or Setlists instead.',
+    setlists: 'The Save button is sticky at the bottom. Songs are auto-created when you type them.',
+    rehearsal: 'You need a setlist before starting a rehearsal.',
+    songs: 'Songs come from setlists or imports \u2014 there\u2019s no pre-built catalog.',
+    reveal: 'Insights get richer after 2+ rehearsals.'
+  };
+
   /**
    * Get actionable help response for avatar display.
+   * Every response includes: explanation, what to do, what goes wrong, action offer.
    */
   function getHelpResponse(question, currentPage) {
     var resolved = resolve(question, currentPage);
 
-    if (resolved.confidence >= 0.7) {
-      return {
+    if (resolved.confidence >= 0.5) {
+      var actionLabel = resolved.action ? (ACTION_LABELS[resolved.action] || null) : null;
+      var mistake = COMMON_MISTAKES[currentPage] || '';
+
+      // Build structured response
+      var response = {
         text: resolved.answer,
         steps: resolved.steps,
-        canDoIt: resolved.action ? true : false,
+        whatGoesWrong: mistake,
+        canDoIt: !!actionLabel,
         action: resolved.action,
+        actionLabel: actionLabel,
         confidence: resolved.confidence,
-        source: resolved.source
+        source: resolved.source,
+        verifiedBuild: '20260328-140818'
       };
+
+      // Confidence-based behavior
+      if (resolved.confidence >= 0.8) {
+        response.tone = 'direct'; // high confidence: direct instruction
+      } else if (resolved.confidence >= 0.6) {
+        response.tone = 'suggestion'; // medium: instruction + fallback
+        response.fallback = 'If that doesn\u2019t help, try describing what you\u2019re trying to do.';
+      } else {
+        response.tone = 'exploratory'; // low: ask or navigate
+        response.fallback = 'I\u2019m not 100% sure about that. Want me to take you there so you can see?';
+      }
+
+      return response;
     }
 
-    // Low confidence — let Claude handle it, but flag it
     return null;
+  }
+
+  // ── Help Outcome Tracking ──────────────────────────────────────────────
+
+  function trackHelpOutcome(helpId, outcome) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) return;
+    var id = 'ho_' + Date.now().toString(36);
+    var record = {
+      id: id,
+      helpType: helpId || 'unknown',
+      page: (typeof currentPage !== 'undefined') ? currentPage : '',
+      outcome: outcome, // 'helpful', 'not_helpful', 'wrong', 'took_action'
+      timestamp: new Date().toISOString()
+    };
+    try { db.ref('help_outcomes/' + id).set(record); } catch(e) {}
+  }
+
+  // ── Founder Help Feedback ──────────────────────────────────────────────
+
+  function flagHelp(helpText, reason) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) return;
+    var id = 'hf_' + Date.now().toString(36);
+    var record = {
+      id: id,
+      helpText: (helpText || '').substring(0, 300),
+      reason: reason, // 'wrong', 'outdated', 'unhelpful'
+      page: (typeof currentPage !== 'undefined') ? currentPage : '',
+      user: (typeof GLUserIdentity !== 'undefined') ? GLUserIdentity.getContext().email : '',
+      timestamp: new Date().toISOString()
+    };
+    try { db.ref('help_feedback/' + id).set(record); } catch(e) {}
   }
 
   window.GLKnowledge = {
     resolve: resolve,
     getHelpResponse: getHelpResponse,
     getFeature: function(id) { return FEATURES[id] || null; },
-    getRecipe: function(id) { return RECIPES[id] || null; }
+    getRecipe: function(id) { return RECIPES[id] || null; },
+    trackHelpOutcome: trackHelpOutcome,
+    flagHelp: flagHelp
   };
 
   console.log('\uD83D\uDCD6 GLKnowledge loaded (' + Object.keys(FEATURES).length + ' features, ' + Object.keys(RECIPES).length + ' recipes)');

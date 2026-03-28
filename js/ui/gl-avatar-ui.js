@@ -528,23 +528,42 @@ window.GLAvatarUI = (function() {
 
         if (typeof GLKnowledge !== 'undefined') {
             var helpResult = GLKnowledge.getHelpResponse(question, currentPg);
-            if (helpResult && helpResult.confidence >= 0.7) {
-                setExpression('encouraging');
+            if (helpResult && helpResult.confidence >= 0.5) {
+                setExpression(helpResult.confidence >= 0.8 ? 'encouraging' : 'focused');
+                var _helpId = 'help_' + Date.now().toString(36);
                 var helpHtml = '<div style="margin-bottom:12px">';
                 helpHtml += '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(question) + '</div>';
                 helpHtml += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(helpResult.text) + '</div>';
 
-                // Show steps if available
+                // What usually goes wrong
+                if (helpResult.whatGoesWrong) {
+                    helpHtml += '<div style="margin-top:6px;font-size:0.75em;color:#fbbf24;line-height:1.4">\u26A0 Common issue: ' + _esc(helpResult.whatGoesWrong) + '</div>';
+                }
+
+                // Steps
                 if (helpResult.steps) {
                     helpHtml += '<div style="margin-top:8px;font-size:0.78em;color:#94a3b8">';
                     helpResult.steps.forEach(function(s, i) { helpHtml += '<div style="margin-bottom:3px">' + (i + 1) + '. ' + _esc(s) + '</div>'; });
                     helpHtml += '</div>';
                 }
 
-                // Offer action if available
-                if (helpResult.canDoIt && helpResult.action) {
-                    helpHtml += '<div style="margin-top:10px"><button onclick="GLAvatarUI._askWithText(\'' + helpResult.action.replace(/_/g, ' ') + '\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 I can do this for you</button></div>';
+                // Action offer (primary CTA)
+                if (helpResult.canDoIt && helpResult.actionLabel) {
+                    helpHtml += '<div style="margin-top:10px"><button onclick="GLKnowledge.trackHelpOutcome(\'' + _helpId + '\',\'took_action\');GLAvatarUI._askWithText(\'' + helpResult.action.replace(/_/g, ' ') + '\')" style="font-size:0.78em;padding:8px 14px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;cursor:pointer;font-weight:700">\u2192 ' + _esc(helpResult.actionLabel) + '</button></div>';
                 }
+
+                // Fallback for medium confidence
+                if (helpResult.fallback) {
+                    helpHtml += '<div style="margin-top:6px;font-size:0.68em;color:#64748b;font-style:italic">' + _esc(helpResult.fallback) + '</div>';
+                }
+
+                // Confidence indicator + feedback buttons
+                helpHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center">';
+                helpHtml += '<span style="font-size:0.6em;color:#475569">' + (helpResult.source === 'feature_registry' ? '\u2713 verified' : helpResult.source === 'recipe' ? '\u2713 recipe' : '\u2248 inferred') + '</span>';
+                helpHtml += '<button onclick="GLKnowledge.trackHelpOutcome(\'' + _helpId + '\',\'helpful\');this.parentElement.innerHTML=\'<span style=color:#86efac;font-size:0.65em>\u2713 Thanks!</span>\'" style="font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer">\uD83D\uDC4D Helpful</button>';
+                helpHtml += '<button onclick="GLKnowledge.trackHelpOutcome(\'' + _helpId + '\',\'not_helpful\');this.parentElement.innerHTML=\'<span style=color:#f87171;font-size:0.65em>Noted \u2014 I\\\'ll improve.</span>\'" style="font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(248,113,113,0.3);background:none;color:#f87171;cursor:pointer">\uD83D\uDC4E</button>';
+                helpHtml += '<button onclick="GLKnowledge.flagHelp(\'' + _esc(helpResult.text).replace(/'/g, '') + '\',\'wrong\');this.parentElement.innerHTML=\'<span style=color:#fbbf24;font-size:0.65em>Flagged for review</span>\'" style="font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);background:none;color:#fbbf24;cursor:pointer">\u26A0 Wrong</button>';
+                helpHtml += '</div>';
 
                 helpHtml += '</div>';
                 if (msgArea) msgArea.innerHTML = helpHtml;

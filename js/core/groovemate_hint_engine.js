@@ -63,6 +63,14 @@
   function getHint(currentPage) {
     if (_hintCount >= _MAX_HINTS_PER_SESSION) return null;
 
+    // Check feedback-cluster-driven hints first
+    var clusterHint = _getClusterHint(currentPage);
+    if (clusterHint && !_shownThisSession[clusterHint.id]) {
+      _shownThisSession[clusterHint.id] = true;
+      _hintCount++;
+      return clusterHint;
+    }
+
     for (var i = 0; i < HINTS.length; i++) {
       var h = HINTS[i];
       if (_shownThisSession[h.id]) continue;
@@ -79,6 +87,19 @@
     }
 
     return null;
+  }
+
+  // ── Cluster-Driven Hints (from feedback data) ──────────────────────────
+
+  function _getClusterHint(currentPage) {
+    try {
+      var cached = localStorage.getItem('gl_cluster_tips');
+      if (!cached) return null;
+      var tips = JSON.parse(cached);
+      var tip = tips[currentPage];
+      if (!tip) return null;
+      return { id: 'cluster_' + currentPage, type: 'rescue', text: tip, action: null };
+    } catch(e) { return null; }
   }
 
   window.GLHintEngine = {
