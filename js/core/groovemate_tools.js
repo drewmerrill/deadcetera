@@ -174,7 +174,7 @@
     if (typeof ensureBandSong === 'function') await ensureBandSong(title);
     // Add to most recent setlist
     var db = _db();
-    if (!db) return { success: false, message: 'Not connected.' };
+    if (!db) return { success: false, message: 'Not connected.', retryable: true };
     try {
       var snap = await db.ref(_bp('setlists')).once('value');
       var data = snap.val();
@@ -205,7 +205,7 @@
     else if (lower.match(/louder|softer|dynamics|feel|energy/)) noteType = 'performance';
 
     var db = _db();
-    if (!db) return { success: false, message: 'Not connected.' };
+    if (!db) return { success: false, message: 'Not connected.', retryable: true };
 
     try {
       var noteId = 'note_' + Date.now().toString(36);
@@ -252,7 +252,7 @@
     }
 
     var db = _db();
-    if (!db) return { success: false, message: 'Not connected.' };
+    if (!db) return { success: false, message: 'Not connected.', retryable: true };
 
     try {
       var songKey = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(songTitle) : songTitle.replace(/[.#$/\[\]]/g, '_');
@@ -271,7 +271,7 @@
     if (!url) return { success: false, message: 'What\'s the URL? Try: "attach https://..." ' };
 
     var db = _db();
-    if (!db) return { success: false, message: 'Not connected.' };
+    if (!db) return { success: false, message: 'Not connected.', retryable: true };
 
     // Detect source label from URL
     var label = 'Chart Source';
@@ -306,7 +306,7 @@
     if (!noteText) return { success: false, message: 'What should the rehearsal note say?' };
 
     var db = _db();
-    if (!db) return { success: false, message: 'Not connected.' };
+    if (!db) return { success: false, message: 'Not connected.', retryable: true };
 
     try {
       var noteId = 'rn_' + Date.now().toString(36);

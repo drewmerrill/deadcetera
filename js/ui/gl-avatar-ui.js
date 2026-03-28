@@ -698,64 +698,178 @@ window.GLAvatarUI = (function() {
 
     // ── Action Handling ──────────────────────────────────────────────────────
 
+    // ── Action Plan Definitions ─────────────────────────────────────────────
+    var ACTION_PLANS = {
+      import_artist_pack: { steps: ['Add songs to library', 'Create starter setlist', 'Add song sections'], needsConfirm: true, label: 'Import Artist Pack' },
+      bulk_add_songs: { steps: ['Add songs to library'], needsConfirm: true, label: 'Bulk Add Songs' },
+      create_setlist: { steps: ['Build setlist from library'], needsConfirm: false, label: 'Create Setlist' },
+      add_song: { steps: ['Add to library'], needsConfirm: false, label: 'Add Song' },
+      add_song_to_setlist: { steps: ['Add to current setlist'], needsConfirm: false, label: 'Add to Setlist' },
+      add_chart_note: { steps: ['Save note to chart'], needsConfirm: false, label: 'Add Chart Note' },
+      update_chart_sections: { steps: ['Set song structure'], needsConfirm: false, label: 'Add Sections' },
+      attach_chart_source: { steps: ['Attach source link'], needsConfirm: false, label: 'Attach Source' },
+      save_rehearsal_note: { steps: ['Save rehearsal note'], needsConfirm: false, label: 'Save Note' }
+    };
+
+    var _lastActionResult = null;
+
     async function _handleAction(text) {
         var msgArea = document.getElementById('glAvMessages');
         setExpression('focused');
+
+        // Detect intent
+        var intent = GLActionRouter.detectIntent(text);
+        if (!intent) { setExpression('neutral'); return; }
+        var plan = ACTION_PLANS[intent] || { steps: ['Execute'], needsConfirm: false, label: intent };
+
+        // PART 1: Show action plan
         if (msgArea) {
-            msgArea.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">'
-                + '<div style="font-size:0.82em;margin-bottom:6px">On it\u2026</div></div>';
-        }
+            var planHtml = '<div style="margin-bottom:12px">';
+            planHtml += '<div style="font-size:0.68em;color:#475569;margin-bottom:6px">You asked: ' + _esc(text) + '</div>';
+            planHtml += '<div style="font-size:0.82em;font-weight:700;color:#a5b4fc;margin-bottom:6px">' + plan.label + '</div>';
+            planHtml += '<div id="glActionSteps" style="font-size:0.75em;color:#94a3b8">';
+            plan.steps.forEach(function(s, i) {
+                planHtml += '<div id="glStep' + i + '" style="margin-bottom:3px;display:flex;align-items:center;gap:6px"><span style="color:#475569">\u25CB</span> ' + _esc(s) + '</div>';
+            });
+            planHtml += '</div>';
 
-        var result = await GLActionRouter.route(text);
-
-        if (!result) {
-            // Fell through — treat as normal question
-            setExpression('neutral');
-            return; // will be handled by Q&A path on retry
-        }
-
-        var firstName = (typeof GLUserIdentity !== 'undefined') ? GLUserIdentity.getFirstName() : '';
-        setExpression(result.success ? 'encouraging' : 'concerned');
-
-        if (msgArea) {
-            var html = '<div style="margin-bottom:12px">';
-            html += '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(text) + '</div>';
-
-            if (result.success) {
-                html += '<div style="font-size:0.88em;font-weight:600;color:#86efac;line-height:1.5">\u2713 ' + _esc(result.message) + '</div>';
-
-                // Show songs if applicable
-                if (result.songs && result.songs.length > 0 && result.songs.length <= 20) {
-                    html += '<div style="margin-top:8px;font-size:0.72em;color:#64748b;max-height:120px;overflow-y:auto">';
-                    result.songs.forEach(function(s) { html += '<div>\u266A ' + _esc(s) + '</div>'; });
-                    html += '</div>';
-                }
-
-                // Next action suggestion
-                if (result.action === 'import_artist_pack' || result.action === 'bulk_add_songs') {
-                    html += '<div style="margin-top:10px"><button onclick="GLAvatarUI._askWithText(\'create a setlist\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 Create a setlist from these</button></div>';
-                } else if (result.action === 'create_setlist') {
-                    html += '<div style="margin-top:10px"><button onclick="showPage(\'setlists\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">\u2192 View setlist</button></div>';
-                } else if (result.action === 'add_chart_note') {
-                    html += '<div style="margin-top:10px"><button onclick="showPage(\'songs\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 Open chart</button></div>';
-                }
-            } else {
-                html += '<div style="font-size:0.88em;font-weight:600;color:#f87171;line-height:1.5">' + _esc(result.message) + '</div>';
+            // PART 5: Preview for impactful actions
+            if (plan.needsConfirm) {
+                planHtml += '<div style="margin-top:10px;display:flex;gap:6px">';
+                planHtml += '<button id="glActionConfirm" onclick="GLAvatarUI._executeConfirmedAction()" style="flex:2;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.78em;cursor:pointer">\u2713 Do it</button>';
+                planHtml += '<button onclick="GLAvatarUI._closeSettings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;font-size:0.78em;cursor:pointer">Cancel</button>';
+                planHtml += '</div>';
+                planHtml += '</div>';
+                msgArea.innerHTML = planHtml;
+                window._glPendingAction = text;
+                return;
             }
 
-            html += '</div>';
-            msgArea.innerHTML = html;
+            planHtml += '</div>';
+            msgArea.innerHTML = planHtml;
         }
 
-        // Speak the result
+        // Execute immediately for non-confirm actions
+        await _executeAction(text, plan, msgArea);
+    }
+
+    async function _executeConfirmedAction() {
+        var text = window._glPendingAction;
+        if (!text) return;
+        window._glPendingAction = null;
+        var intent = GLActionRouter.detectIntent(text);
+        var plan = ACTION_PLANS[intent] || { steps: ['Execute'], label: intent };
+        var msgArea = document.getElementById('glAvMessages');
+        await _executeAction(text, plan, msgArea);
+    }
+
+    async function _executeAction(text, plan, msgArea) {
+        // PART 2: Step-by-step progress
+        plan.steps.forEach(function(s, i) {
+            var el = document.getElementById('glStep' + i);
+            if (el) el.querySelector('span').textContent = '\u23F3';
+            if (el) el.style.color = '#818cf8';
+        });
+
+        // Execute with retry (PART 4)
+        var result = await GLActionRouter.route(text);
+        var retried = false;
+        if (result && !result.success && result.retryable !== false) {
+            retried = true;
+            result = await GLActionRouter.route(text);
+        }
+
+        // Mark steps complete/failed
+        plan.steps.forEach(function(s, i) {
+            var el = document.getElementById('glStep' + i);
+            if (!el) return;
+            if (result && result.success) {
+                el.querySelector('span').textContent = '\u2713';
+                el.style.color = '#86efac';
+            } else {
+                el.querySelector('span').textContent = '\u2717';
+                el.style.color = '#f87171';
+            }
+        });
+
+        if (!result) { setExpression('neutral'); return; }
+
+        _lastActionResult = result;
+        setExpression(result.success ? 'encouraging' : 'concerned');
+
+        // PART 3: Result summary
+        if (msgArea) {
+            var resHtml = '';
+            if (result.success) {
+                resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:8px">';
+                resHtml += '<div style="font-size:0.82em;font-weight:600;color:#86efac;margin-bottom:4px">\u2713 ' + _esc(result.message) + '</div>';
+
+                // What was created
+                if (result.count) resHtml += '<div style="font-size:0.7em;color:#94a3b8">' + result.count + ' items ' + (result.action === 'import_artist_pack' ? '(songs + setlist + sections)' : 'processed') + '</div>';
+                if (result.songs && result.songs.length <= 15) {
+                    resHtml += '<div style="margin-top:4px;font-size:0.68em;color:#64748b;max-height:80px;overflow-y:auto">';
+                    result.songs.forEach(function(s) { resHtml += '\u266A ' + _esc(s) + ' '; });
+                    resHtml += '</div>';
+                }
+                resHtml += '</div>';
+
+                // Next suggested action
+                var nextActions = {
+                  import_artist_pack: { label: 'Create a setlist from these', cmd: 'create a setlist' },
+                  bulk_add_songs: { label: 'Create a setlist', cmd: 'create a setlist' },
+                  create_setlist: { label: 'View setlist', onclick: "showPage('setlists');GLAvatarUI.closePanel()" },
+                  add_chart_note: { label: 'Open chart', onclick: "showPage('songs');GLAvatarUI.closePanel()" },
+                  add_song: { label: 'Add another', cmd: 'add song' }
+                };
+                var next = nextActions[result.action];
+                if (next) {
+                    resHtml += '<div style="margin-top:8px">';
+                    if (next.cmd) resHtml += '<button onclick="GLAvatarUI._askWithText(\'' + next.cmd + '\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 ' + next.label + '</button>';
+                    else resHtml += '<button onclick="' + next.onclick + '" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">\u2192 ' + next.label + '</button>';
+                    resHtml += '</div>';
+                }
+            } else {
+                resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);border-radius:8px">';
+                resHtml += '<div style="font-size:0.82em;font-weight:600;color:#f87171">\u2717 ' + _esc(result.message) + '</div>';
+                if (retried) resHtml += '<div style="font-size:0.68em;color:#94a3b8;margin-top:2px">Retried once. The issue may need manual attention.</div>';
+                resHtml += '</div>';
+            }
+
+            msgArea.insertAdjacentHTML('beforeend', resHtml);
+        }
+
+        // Speak result
         if (result.success && typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled()) {
             GLVoiceCoach.speak(result.message, { tone: 'calm' });
         }
+
+        // PART 6: Save to action history
+        _saveActionHistory(result);
 
         // Track the action
         if (typeof GLFeedbackContext !== 'undefined') {
             GLFeedbackContext.trackAction('groovemate_action', result.action + ': ' + (result.message || '').substring(0, 80));
         }
+    }
+
+    // ── Action History ─────────────────────────────────────────────────────
+
+    function _saveActionHistory(result) {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || !result) return;
+        var bandId = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
+        if (!bandId) return;
+        var id = 'act_' + Date.now().toString(36);
+        try {
+            db.ref('avatar_actions/' + bandId + '/' + id).set({
+                id: id,
+                action: result.action || '',
+                message: (result.message || '').substring(0, 200),
+                success: !!result.success,
+                count: result.count || 0,
+                timestamp: new Date().toISOString()
+            });
+        } catch(e) {}
     }
 
     function _askWithText(text) {
@@ -939,7 +1053,8 @@ window.GLAvatarUI = (function() {
         _selectAvatar: _selectAvatar,
         _reportIssue: _reportIssue,
         _submitReport: _submitReport,
-        _askWithText: _askWithText
+        _askWithText: _askWithText,
+        _executeConfirmedAction: _executeConfirmedAction
     };
 
 })();
