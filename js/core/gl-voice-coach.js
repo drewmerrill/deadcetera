@@ -79,26 +79,63 @@
     });
   }
 
+  // ── Locked Web Speech Voice ──────────────────────────────────────────────
+  // Cache the selected voice so it never changes mid-session.
+  var _lockedVoice = null;
+  var _voicesLoaded = false;
+
+  function _findBestVoice() {
+    var voices = window.speechSynthesis.getVoices();
+    if (!voices || !voices.length) return null;
+
+    // Strict priority list — US English female voices only
+    var priorities = [
+      'Samantha',           // macOS default US female — most consistent
+      'Google US English',  // Chrome
+      'Samantha (Enhanced)',
+      'Karen',              // macOS AU — acceptable fallback
+      'Tessa',              // macOS ZA
+      'Fiona'               // macOS UK
+    ];
+
+    for (var p = 0; p < priorities.length; p++) {
+      var match = voices.find(function(v) { return v.name === priorities[p] || v.name.indexOf(priorities[p]) >= 0; });
+      if (match) return match;
+    }
+
+    // Last resort: first en-US voice
+    var enUS = voices.find(function(v) { return v.lang === 'en-US'; });
+    return enUS || null;
+  }
+
+  // Pre-load voices (they load async in Chrome)
+  if (window.speechSynthesis) {
+    window.speechSynthesis.getVoices(); // trigger load
+    window.speechSynthesis.onvoiceschanged = function() {
+      if (!_voicesLoaded) {
+        _lockedVoice = _findBestVoice();
+        _voicesLoaded = true;
+        if (_lockedVoice) console.log('[VoiceCoach] Locked Web Speech voice:', _lockedVoice.name);
+      }
+    };
+    // Immediate check (voices may already be loaded)
+    var _imm = _findBestVoice();
+    if (_imm) { _lockedVoice = _imm; _voicesLoaded = true; }
+  }
+
   function _speakWebSpeech(text, opts) {
     if (!window.speechSynthesis) return;
     opts = opts || {};
     window.speechSynthesis.cancel();
     var utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = opts.rate || 0.95; // slightly slower — more natural
-    utterance.pitch = opts.pitch || 0.95;
-    utterance.volume = opts.volume || 0.9;
-    // Pick the most natural-sounding voice available
-    var voices = window.speechSynthesis.getVoices();
-    var preferred = null;
-    // Priority: enhanced/premium voices first, then known good ones
-    var priorities = ['Zoe (Enhanced)', 'Karen (Enhanced)', 'Samantha (Enhanced)', 'Google UK English Female', 'Google US English', 'Samantha', 'Karen', 'Moira', 'Tessa', 'Fiona'];
-    for (var p = 0; p < priorities.length; p++) {
-      preferred = voices.find(function(v) { return v.name.indexOf(priorities[p]) >= 0; });
-      if (preferred) break;
-    }
-    // Fallback: any English female voice
-    if (!preferred) preferred = voices.find(function(v) { return v.lang && v.lang.startsWith('en') && v.name.match(/female|woman|zoe|karen|samantha|fiona|moira/i); });
-    if (preferred) utterance.voice = preferred;
+    utterance.rate = opts.rate || 0.95;
+    utterance.pitch = 1.0;
+    utterance.volume = 0.9;
+
+    // Use locked voice — never pick randomly
+    if (!_lockedVoice && !_voicesLoaded) _lockedVoice = _findBestVoice();
+    if (_lockedVoice) utterance.voice = _lockedVoice;
+
     utterance.onstart = function() { _speaking = true; if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setTalking) GLAvatarUI.setTalking(true); };
     utterance.onend = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') { GLAvatarUI.setTalking(false); GLAvatarUI.setExpression('neutral'); } };
     utterance.onerror = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false); };
