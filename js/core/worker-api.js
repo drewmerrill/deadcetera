@@ -63,14 +63,20 @@ var workerApi = window.workerApi = {
      * @returns {Promise<string>} Claude's text response
      */
     async claude(systemPrompt, userPrompt, maxTokens) {
+        // Send in Anthropic Messages API format (worker passes body directly)
         var res = await window.workerPost('/claude', {
+            model: 'claude-sonnet-4-20250514',
             system: systemPrompt,
-            prompt: userPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
             max_tokens: maxTokens || 1024
         });
-        if (!res.ok) throw new Error('Claude API error: ' + res.status);
+        if (!res.ok) {
+            var errText = '';
+            try { errText = await res.text(); } catch(e) {}
+            throw new Error('Claude API error ' + res.status + ': ' + errText.substring(0, 100));
+        }
         var data = await res.json();
-        // Worker returns { content: [{type:'text',text:'...'}] } (Anthropic shape)
+        // Anthropic returns { content: [{type:'text',text:'...'}] }
         return (data.content || []).map(function(b) { return b.text || ''; }).join('');
     },
 
