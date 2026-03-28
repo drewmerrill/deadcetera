@@ -43,8 +43,8 @@
 
     // Use the Cloudflare Worker /tts endpoint (key stored server-side)
     if (typeof workerPost !== 'function') {
-      // No worker available — skip voice entirely rather than use robotic browser TTS
-      console.warn('[VoiceCoach] Worker not loaded, skipping voice');
+      // Worker not loaded — use locked Web Speech fallback (Samantha)
+      _speakWebSpeech(text, { rate: settings.speed });
       return;
     }
 
@@ -76,9 +76,8 @@
       console.warn('[VoiceCoach] ElevenLabs failed:', e.message);
       _speaking = false;
       if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false);
-      // Do NOT fall back to Web Speech — silence is better than a robot.
-      // Show a small toast so user knows voice didn't work.
-      if (typeof showToast === 'function') showToast('Voice unavailable — check ElevenLabs key in Cloudflare', 3000);
+      // Fall back to locked Web Speech voice (Samantha — consistent, not random)
+      _speakWebSpeech(text, { rate: settings.speed });
     });
   }
 
