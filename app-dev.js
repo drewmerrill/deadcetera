@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260327-214246', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-013302', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -7661,27 +7661,9 @@ window.addEventListener('beforeunload', () => {
 // ============================================================================
 
 function injectAdminButton() {
+    // Floating button removed — Band Activity Dashboard accessible via Settings
+    // Panel function (showAdminPanel) still exists for direct access
     if (currentUserEmail !== OWNER_EMAIL) return;
-    
-    // Don't duplicate
-    if (document.getElementById('adminPanelBtn')) return;
-    
-    const btn = document.createElement('button');
-    btn.id = 'adminPanelBtn';
-    btn.innerHTML = '📊';
-    btn.title = 'Band Activity Dashboard';
-    btn.style.cssText = `
-        position: fixed; bottom: 20px; right: 20px; z-index: 9999;
-        width: 48px; height: 48px; border-radius: 50%;
-        background: #667eea; color: white; border: none;
-        font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        transition: transform 0.2s;
-    `;
-    btn.onmouseover = () => btn.style.transform = 'scale(1.1)';
-    btn.onmouseout = () => btn.style.transform = 'scale(1)';
-    btn.onclick = showAdminPanel;
-    document.body.appendChild(btn);
-
     checkUnreadFeedback();
 }
 
