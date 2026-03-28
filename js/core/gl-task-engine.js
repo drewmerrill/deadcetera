@@ -293,29 +293,151 @@
 
   // ── FULL PIPELINE ───────────────────────────────────────────────────────
 
+  // ── Dynamic Confidence (learns from history) ────────────────────────────
+
+  var _taskHistory = null;
+
+  function _loadHistory() {
+    if (_taskHistory) return _taskHistory;
+    try { _taskHistory = JSON.parse(localStorage.getItem('gl_task_history') || '{}'); } catch(e) { _taskHistory = {}; }
+    return _taskHistory;
+  }
+
+  function _saveHistory() {
+    try { localStorage.setItem('gl_task_history', JSON.stringify(_taskHistory || {})); } catch(e) {}
+  }
+
+  function _recordOutcome(intent, success, undone) {
+    var h = _loadHistory();
+    if (!h[intent]) h[intent] = { runs: 0, success: 0, failures: 0, undos: 0 };
+    h[intent].runs++;
+    if (success) h[intent].success++;
+    else h[intent].failures++;
+    if (undone) h[intent].undos++;
+    _saveHistory();
+  }
+
+  function getDynamicConfidence(intent) {
+    var template = PLAN_TEMPLATES[intent];
+    var base = template ? template.baseConfidence : 0.7;
+    var h = _loadHistory();
+    var stats = h[intent];
+    if (!stats || stats.runs < 3) return base; // Not enough data
+
+    var successRate = stats.success / stats.runs;
+    var undoRate = stats.undos / stats.runs;
+
+    // Adjust: high success → boost, high undo → reduce
+    var adjusted = base * 0.4 + successRate * 0.5 - undoRate * 0.3;
+    return Math.max(0.3, Math.min(0.98, adjusted));
+  }
+
+  // ── Undo System ─────────────────────────────────────────────────────────
+
+  var _lastSnapshot = null;
+  var _lastTask = null;
+
+  async function _snapshotBeforeTask(intent) {
+    // Lightweight snapshot: save current song count + setlist count
+    var snapshot = { intent: intent, ts: Date.now(), songCount: 0, setlistCount: 0 };
+    try { snapshot.songCount = (typeof allSongs !== 'undefined') ? allSongs.length : 0; } catch(e) {}
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        var snap = await db.ref(bandPath('setlists')).once('value');
+        var data = snap.val();
+        snapshot.setlistCount = data ? (Array.isArray(data) ? data.length : Object.keys(data).length) : 0;
+        snapshot.setlistData = data; // store for undo
+      }
+    } catch(e) {}
+
+    // Store songs added by this task (for undo removal)
+    snapshot.songsBeforeTask = (typeof allSongs !== 'undefined') ? allSongs.map(function(s) { return s.songId; }) : [];
+    _lastSnapshot = snapshot;
+    return snapshot;
+  }
+
+  async function undoLastTask() {
+    if (!_lastSnapshot || !_lastTask) return { success: false, message: 'Nothing to undo.' };
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) return { success: false, message: 'Not connected.' };
+
+    try {
+      // Restore setlists to pre-task state
+      if (_lastSnapshot.setlistData !== undefined) {
+        await db.ref(bandPath('setlists')).set(_lastSnapshot.setlistData);
+      }
+
+      // Remove songs that were added during the task
+      var currentSongs = (typeof allSongs !== 'undefined') ? allSongs.map(function(s) { return s.songId; }) : [];
+      var addedSongs = currentSongs.filter(function(id) { return _lastSnapshot.songsBeforeTask.indexOf(id) < 0; });
+
+      for (var i = 0; i < addedSongs.length; i++) {
+        try { await db.ref(bandPath('song_library/' + addedSongs[i])).remove(); } catch(e) {}
+      }
+
+      // Remove from allSongs in-memory
+      if (typeof allSongs !== 'undefined' && addedSongs.length) {
+        for (var j = allSongs.length - 1; j >= 0; j--) {
+          if (addedSongs.indexOf(allSongs[j].songId) >= 0) allSongs.splice(j, 1);
+        }
+      }
+
+      // Record undo
+      _recordOutcome(_lastTask.intent, false, true);
+
+      var count = addedSongs.length;
+      _lastSnapshot = null;
+      _lastTask = null;
+
+      // Refresh UI
+      if (typeof renderSongs === 'function') try { renderSongs(); } catch(e) {}
+
+      return { success: true, message: 'Undone. Removed ' + count + ' songs and restored setlists.', undone: true };
+    } catch(e) {
+      return { success: false, message: 'Undo failed: ' + e.message };
+    }
+  }
+
+  // ── Full Pipeline (with snapshot + learning) ────────────────────────────
+
   async function run(intent, input) {
-    // 1. Plan
+    // 1. Plan with dynamic confidence
     var taskPlan = plan(intent, input);
     if (!taskPlan) return { success: false, message: 'Unknown task type.', plan: null };
+    taskPlan.confidence = getDynamicConfidence(intent);
 
-    // 2. Execute
+    // 2. Snapshot for undo
+    await _snapshotBeforeTask(intent);
+
+    // 3. Execute
     taskPlan = await execute(taskPlan);
 
-    // 3. Verify
+    // 4. Verify
     await verify(taskPlan);
 
-    // 4. Explain
+    // 5. Explain
     var explanation = explain(taskPlan);
 
-    // 5. Log to Firebase
+    // 6. Record outcome for learning
+    _recordOutcome(intent, taskPlan.status === 'complete', false);
+
+    // 7. Store for undo
+    _lastTask = taskPlan;
+
+    // 8. Log to Firebase
     _logTask(taskPlan);
+
+    // 9. Check if undo should be offered
+    var offerUndo = taskPlan.status === 'complete' && (taskPlan.risk === 'medium' || taskPlan.risk === 'high');
 
     return {
       success: taskPlan.status === 'complete',
       partial: taskPlan.status === 'partial',
       message: explanation.summary,
       plan: taskPlan,
-      explanation: explanation
+      explanation: explanation,
+      canUndo: offerUndo
     };
   }
 
@@ -331,6 +453,7 @@
         intent: taskPlan.intent,
         label: taskPlan.label,
         status: taskPlan.status,
+        confidence: taskPlan.confidence || 0,
         stepCount: taskPlan.steps.length,
         successCount: taskPlan.steps.filter(function(s) { return s.status === 'success'; }).length,
         verified: taskPlan.verified || false,
@@ -348,7 +471,10 @@
     execute: execute,
     verify: verify,
     explain: explain,
-    run: run
+    run: run,
+    undoLastTask: undoLastTask,
+    getDynamicConfidence: getDynamicConfidence,
+    getTaskHistory: _loadHistory
   };
 
   console.log('\u2699\uFE0F GLTaskEngine loaded');

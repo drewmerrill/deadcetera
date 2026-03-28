@@ -941,11 +941,18 @@ window.GLAvatarUI = (function() {
             if (result.success || result.partial) {
                 resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:8px">';
                 resHtml += '<div style="font-size:0.82em;font-weight:600;color:#86efac;margin-bottom:4px">' + (result.success ? '\u2713' : '\u26A0') + ' ' + _esc(result.message) + '</div>';
+                // Next action + undo
+                var actionRow = '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">';
                 if (result.explanation && result.explanation.next) {
                     var n = result.explanation.next;
-                    if (n.action) resHtml += '<div style="margin-top:6px"><button onclick="GLAvatarUI._askWithText(\'' + n.action.replace(/_/g, ' ') + '\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 ' + _esc(n.label) + '</button></div>';
-                    else if (n.page) resHtml += '<div style="margin-top:6px"><button onclick="showPage(\'' + n.page + '\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">\u2192 ' + _esc(n.label) + '</button></div>';
+                    if (n.action) actionRow += '<button onclick="GLAvatarUI._askWithText(\'' + n.action.replace(/_/g, ' ') + '\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 ' + _esc(n.label) + '</button>';
+                    else if (n.page) actionRow += '<button onclick="showPage(\'' + n.page + '\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">\u2192 ' + _esc(n.label) + '</button>';
                 }
+                if (result.canUndo) {
+                    actionRow += '<button onclick="GLAvatarUI._undoLastTask()" style="font-size:0.7em;padding:5px 10px;border-radius:6px;border:1px solid rgba(248,113,113,0.3);background:none;color:#f87171;cursor:pointer;font-weight:600">\u21A9 Undo</button>';
+                }
+                actionRow += '</div>';
+                resHtml += actionRow;
                 resHtml += '</div>';
             } else {
                 resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);border-radius:8px">';
@@ -968,6 +975,22 @@ window.GLAvatarUI = (function() {
         if (typeof GLOrchestrator !== 'undefined') {
             GLOrchestrator.recordAction(taskPlan.intent, (typeof currentPage !== 'undefined') ? currentPage : '');
         }
+    }
+
+    // ── Undo ──────────────────────────────────────────────────────────────
+
+    async function _undoLastTask() {
+        if (typeof GLTaskEngine === 'undefined' || !GLTaskEngine.undoLastTask) return;
+        setExpression('focused');
+        var msgArea = document.getElementById('glAvMessages');
+        if (msgArea) msgArea.insertAdjacentHTML('beforeend', '<div style="font-size:0.75em;color:#fbbf24;margin-top:6px">Undoing...</div>');
+        var result = await GLTaskEngine.undoLastTask();
+        if (msgArea) {
+            var color = result.success ? '#86efac' : '#f87171';
+            msgArea.insertAdjacentHTML('beforeend', '<div style="font-size:0.78em;color:' + color + ';margin-top:4px">' + (result.success ? '\u21A9 ' : '\u2717 ') + _esc(result.message) + '</div>');
+        }
+        setExpression(result.success ? 'encouraging' : 'concerned');
+        if (result.success && typeof showToast === 'function') showToast('Undone');
     }
 
     // ── Action History ─────────────────────────────────────────────────────
@@ -1173,7 +1196,8 @@ window.GLAvatarUI = (function() {
         _submitReport: _submitReport,
         _askWithText: _askWithText,
         _executeConfirmedAction: _executeConfirmedAction,
-        _executeTaskEngine: _executeTaskEngine
+        _executeTaskEngine: _executeTaskEngine,
+        _undoLastTask: _undoLastTask
     };
 
 })();
