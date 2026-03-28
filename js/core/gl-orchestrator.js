@@ -275,12 +275,164 @@
     setTimeout(function() { var el = document.getElementById('glNextActionBar'); if (el) el.remove(); }, 8000);
   }
 
+  // ── Band DNA (persistent band profile) ──────────────────────────────────
+
+  function _loadBandDNA() {
+    try { return JSON.parse(localStorage.getItem('gl_band_dna') || '{}'); } catch(e) { return {}; }
+  }
+
+  function _saveBandDNA(dna) {
+    try { localStorage.setItem('gl_band_dna', JSON.stringify(dna)); } catch(e) {}
+    // Mirror to Firebase (best-effort)
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+      try { db.ref(bandPath('band_dna')).set(dna); } catch(e) {}
+    }
+  }
+
+  function updateBandDNA(rehearsalData) {
+    var dna = _loadBandDNA();
+    if (!dna.strengths) dna.strengths = [];
+    if (!dna.weaknesses) dna.weaknesses = [];
+    if (!dna.tendencies) dna.tendencies = [];
+    if (!dna.sessionCount) dna.sessionCount = 0;
+    if (!dna.ratings) dna.ratings = [];
+
+    dna.sessionCount++;
+    dna.lastUpdated = new Date().toISOString();
+
+    // Extract from rehearsal data if available
+    if (rehearsalData) {
+      if (rehearsalData.rating) {
+        dna.ratings.push(rehearsalData.rating);
+        if (dna.ratings.length > 20) dna.ratings = dna.ratings.slice(-20);
+      }
+      if (rehearsalData.strongSong && dna.strengths.indexOf(rehearsalData.strongSong) < 0) {
+        dna.strengths.push(rehearsalData.strongSong);
+        if (dna.strengths.length > 10) dna.strengths.shift();
+      }
+      if (rehearsalData.weakSong && dna.weaknesses.indexOf(rehearsalData.weakSong) < 0) {
+        dna.weaknesses.push(rehearsalData.weakSong);
+        if (dna.weaknesses.length > 10) dna.weaknesses.shift();
+      }
+    }
+
+    // Calculate improvement velocity
+    if (dna.ratings.length >= 3) {
+      var recent = dna.ratings.slice(-3);
+      var older = dna.ratings.slice(-6, -3);
+      if (older.length) {
+        var recentAvg = recent.reduce(function(a, b) { return a + b; }, 0) / recent.length;
+        var olderAvg = older.reduce(function(a, b) { return a + b; }, 0) / older.length;
+        dna.improvementVelocity = Math.round((recentAvg - olderAvg) * 100) / 100;
+      }
+    }
+
+    _saveBandDNA(dna);
+    return dna;
+  }
+
+  function getBandDNA() { return _loadBandDNA(); }
+
+  // ── Anticipation Engine ────────────────────────────────────────────────
+  // Acts BEFORE the user asks. Pre-creates next steps.
+
+  var _anticipationRan = {};
+
+  function checkAnticipation() {
+    var ctx = _buildContext();
+    var dna = _loadBandDNA();
+
+    // After rehearsal completion → auto-suggest next rehearsal date
+    if (ctx.page === 'home' && dna.sessionCount > 0 && !_anticipationRan['post_rehearsal_suggest']) {
+      var mem = _loadMemory();
+      var lastNav = (mem.actions || []).slice(-3);
+      var justFinishedRehearsal = lastNav.some(function(a) { return a.action === 'navigate' && a.detail === 'rehearsal-mode'; });
+      if (justFinishedRehearsal) {
+        _anticipationRan['post_rehearsal_suggest'] = true;
+        setTimeout(function() {
+          _showNextActionBar({
+            action: null,
+            message: 'Nice session. Want to schedule the next rehearsal?',
+            urgency: 'low'
+          }, ctx);
+        }, 5000);
+      }
+    }
+
+    // Empty setlists after songs exist → suggest creating one
+    if (ctx.hasSongs && !ctx.hasSetlists && !_anticipationRan['suggest_setlist']) {
+      _anticipationRan['suggest_setlist'] = true;
+      setTimeout(function() {
+        _showNextActionBar({
+          action: 'create_setlist',
+          message: 'You have songs but no setlist. Want me to build one?',
+          urgency: 'medium'
+        }, _buildContext());
+      }, 4000);
+    }
+
+    // Band improving → acknowledge
+    if (dna.improvementVelocity > 0.3 && !_anticipationRan['improving_ack']) {
+      _anticipationRan['improving_ack'] = true;
+      if (typeof showToast === 'function') {
+        showToast('GrooveMate: The band is getting tighter. Keep this rhythm going.', 5000);
+      }
+    }
+
+    // Band declining → offer focus suggestion
+    if (dna.improvementVelocity < -0.3 && dna.weaknesses.length > 0 && !_anticipationRan['decline_suggest']) {
+      _anticipationRan['decline_suggest'] = true;
+      var weakSong = dna.weaknesses[dna.weaknesses.length - 1];
+      setTimeout(function() {
+        _showNextActionBar({
+          action: null,
+          message: 'Scores are dipping. Focus on "' + weakSong + '" next rehearsal.',
+          urgency: 'medium'
+        }, _buildContext());
+      }, 6000);
+    }
+  }
+
+  // ── Auto Workflow (pre-create next steps) ──────────────────────────────
+
+  function _autoWorkflow() {
+    // Listen for rehearsal completion events
+    if (typeof GLStore !== 'undefined' && GLStore.on) {
+      GLStore.on('agendaSessionCompleted', function(data) {
+        // Update Band DNA with rehearsal data
+        var rehData = {};
+        if (data) {
+          rehData.rating = data.rating || 0;
+          if (data.strongestSong) rehData.strongSong = data.strongestSong;
+          if (data.weakestSong) rehData.weakSong = data.weakestSong;
+        }
+        updateBandDNA(rehData);
+
+        // Mark rehearsal flow complete
+        if (typeof GLFeedbackService !== 'undefined') GLFeedbackService.completeFlow('start_rehearsal');
+      });
+    }
+  }
+
+  // Boot anticipation + auto-workflow
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(_autoWorkflow, 5000);
+      setTimeout(checkAnticipation, 8000);
+    });
+  } else {
+    setTimeout(_autoWorkflow, 5000);
+    setTimeout(checkAnticipation, 8000);
+  }
+
   // ── Page Change Hook ───────────────────────────────────────────────────
 
   window.addEventListener('gl:pagechange', function(e) {
     var page = (e.detail && e.detail.page) || '';
     recordAction('navigate', page);
     setTimeout(checkAutopilot, 2000);
+    setTimeout(checkAnticipation, 3000);
   });
 
   // ── Public API ─────────────────────────────────────────────────────────
@@ -290,10 +442,13 @@
     shouldIntervene: shouldIntervene,
     getMessage: getMessage,
     checkAutopilot: checkAutopilot,
+    checkAnticipation: checkAnticipation,
     getMode: _getMode,
     detectLoop: detectLoop,
     recordAction: recordAction,
-    getUserMemory: getUserMemory
+    getUserMemory: getUserMemory,
+    getBandDNA: getBandDNA,
+    updateBandDNA: updateBandDNA
   };
 
   console.log('\uD83C\uDFAF GLOrchestrator loaded');
