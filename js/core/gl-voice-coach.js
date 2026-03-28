@@ -15,18 +15,82 @@
   var _voiceEnabled = localStorage.getItem('gl_voice_enabled') !== 'false'; // default ON
   var _lastResponse = null;
 
-  // ── Text-to-Speech ──────────────────────────────────────────────────────
+  // ── ElevenLabs Voice ID (warm conversational) ──────────────────────────
+  // Rachel = warm, conversational female. Change ID for different voice.
+  var _ELEVENLABS_VOICE = 'EXAVITQu4vr4xnSDxMaL'; // Rachel
+  var _ELEVENLABS_MODEL = 'eleven_turbo_v2_5';
+
+  // Tone → voice settings mapping
+  var _TONE_SETTINGS = {
+    calm:      { stability: 0.6, similarity: 0.8, style: 0.3, speed: 0.95 },
+    energetic: { stability: 0.4, similarity: 0.75, style: 0.6, speed: 1.1 },
+    neutral:   { stability: 0.5, similarity: 0.8, style: 0.4, speed: 1.0 }
+  };
+
+  // ── Text-to-Speech — ElevenLabs with Web Speech fallback ──────────────
 
   function speak(text, opts) {
-    if (!_voiceEnabled || !text || !window.speechSynthesis) return;
+    if (!_voiceEnabled || !text) return;
     opts = opts || {};
-    // Cancel any current speech
+    var tone = opts.tone || 'neutral';
+
+    // Try ElevenLabs first
+    if (typeof workerApi !== 'undefined' && workerApi) {
+      _speakElevenLabs(text, tone);
+    } else {
+      _speakWebSpeech(text, opts);
+    }
+  }
+
+  function _speakElevenLabs(text, tone) {
+    var settings = _TONE_SETTINGS[tone] || _TONE_SETTINGS.neutral;
+    var url = 'https://api.elevenlabs.io/v1/text-to-speech/' + _ELEVENLABS_VOICE;
+
+    // Check for API key in localStorage (set by user in settings)
+    var apiKey = localStorage.getItem('gl_elevenlabs_key') || '';
+    if (!apiKey) {
+      // No ElevenLabs key — fall back to Web Speech
+      _speakWebSpeech(text, { rate: settings.speed });
+      return;
+    }
+
+    _speaking = true;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
+      body: JSON.stringify({
+        text: text,
+        model_id: _ELEVENLABS_MODEL,
+        voice_settings: {
+          stability: settings.stability,
+          similarity_boost: settings.similarity,
+          style: settings.style,
+          use_speaker_boost: true
+        }
+      })
+    }).then(function(res) {
+      if (!res.ok) throw new Error('ElevenLabs ' + res.status);
+      return res.blob();
+    }).then(function(blob) {
+      var audio = new Audio(URL.createObjectURL(blob));
+      audio.onended = function() { _speaking = false; URL.revokeObjectURL(audio.src); };
+      audio.onerror = function() { _speaking = false; };
+      audio.play();
+    }).catch(function(e) {
+      console.warn('[VoiceCoach] ElevenLabs failed, using Web Speech:', e.message);
+      _speaking = false;
+      _speakWebSpeech(text, { rate: (_TONE_SETTINGS[tone] || {}).speed || 1.0 });
+    });
+  }
+
+  function _speakWebSpeech(text, opts) {
+    if (!window.speechSynthesis) return;
+    opts = opts || {};
     window.speechSynthesis.cancel();
     var utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = opts.rate || 1.05; // slightly fast — feels confident
+    utterance.rate = opts.rate || 1.05;
     utterance.pitch = opts.pitch || 1.0;
     utterance.volume = opts.volume || 0.85;
-    // Prefer a natural voice
     var voices = window.speechSynthesis.getVoices();
     var preferred = voices.find(function(v) { return v.name.indexOf('Samantha') >= 0 || v.name.indexOf('Google') >= 0 || v.name.indexOf('Natural') >= 0; });
     if (preferred) utterance.voice = preferred;
@@ -54,21 +118,25 @@
     if (!insight || insight._empty) return;
     var text = insight.headline || '';
     if (insight.narrative && insight.narrative.nextAction) {
-      text += '. Next time: ' + insight.narrative.nextAction;
+      text += '... Next time, ' + insight.narrative.nextAction;
     }
-    // Keep it under 15 seconds of speech (~40 words)
     var words = text.split(' ');
     if (words.length > 40) text = words.slice(0, 40).join(' ') + '...';
-    speak(text);
+    // Determine tone from insight content
+    var tone = 'neutral';
+    if (insight.confidence && insight.confidence > 0.7) tone = 'energetic';
+    if (text.indexOf('needs work') >= 0 || text.indexOf('regression') >= 0) tone = 'calm';
+    speak(text, { tone: tone });
   }
 
   // ── Speak Onboarding Step ──────────────────────────────────────────────
 
   function speakOnboardingStep(step) {
+    var _pickOne = function(arr) { return arr[Math.floor(Math.random() * arr.length)]; };
     var messages = {
-      1: 'Step one. Pick the songs you are playing.',
-      2: 'Setlist ready. Let\'s rehearse it.',
-      3: 'How did it go? One tap to confirm.'
+      1: _pickOne(['Hey, let\u2019s get your songs in.', 'First up... pick some songs.', 'Alright, let\u2019s build your set.']),
+      2: _pickOne(['Songs are in. Let\u2019s run through \u2019em.', 'Ready to rehearse? One tap.', 'Set\u2019s ready. Let\u2019s fire it up.']),
+      3: _pickOne(['How\u2019d it feel? Quick rating.', 'Almost done... just rate it.', 'Last step \u2014 was it solid?'])
     };
     if (messages[step]) speak(messages[step]);
   }
@@ -109,18 +177,19 @@
   // ── Stage-Based System Prompt ─────────────────────────────────────────
 
   function _getSystemPrompt(stage) {
-    var base = 'You are GrooveMate, a band rehearsal coach inside the GrooveLinx app. ';
-    base += 'Keep responses under 3 sentences. Be specific, actionable, and direct. ';
-    base += 'Reference real song names, restarts, and time data when available. ';
-    base += 'Never be generic. Never say "great job" without evidence. ';
+    var base = 'You are GrooveMate, a band\'s extra bandmate inside the GrooveLinx app. ';
+    base += 'Talk like a musician, not a system. Use contractions. Keep it under 3 sentences. ';
+    base += 'Reference specific songs, times, and data when you have it. ';
+    base += 'Never be generic or corporate. No "great job" without evidence. ';
+    base += 'Use "..." for natural pauses. Be real. ';
 
     if (stage === 'coach') {
-      return base + 'You are in Coach mode — be prescriptive and confident. Give specific instructions. Challenge the band to improve. You have earned their trust.';
+      return base + 'You\'ve been with this band a while. Be direct and prescriptive. Tell them exactly what to do. Challenge them \u2014 they trust you.';
     }
     if (stage === 'bandmate') {
-      return base + 'You are in Bandmate mode — be supportive but honest. Share observations. Suggest focus areas. You know the band well.';
+      return base + 'You know the band well. Be honest but supportive. Share what you notice. Suggest one clear thing to focus on.';
     }
-    return base + 'You are in Fan mode — be encouraging and helpful. Guide the band through basics. Keep it simple and positive.';
+    return base + 'This band is new. Be warm and encouraging. Keep instructions simple. One thing at a time.';
   }
 
   // ── Ask Anything ──────────────────────────────────────────────────────

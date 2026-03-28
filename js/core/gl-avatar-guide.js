@@ -87,90 +87,138 @@ window.GLAvatarGuide = (function() {
         if (window.GLAvatarUI && GLAvatarUI.checkForTips) GLAvatarUI.checkForTips();
     }
 
+    // ── Phrase Variation — pick one randomly each time ──────────────────────
+    function _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
     var GUIDANCE = [
         // ── ONBOARDING: 3-step first rehearsal experience ──
-        // These fire in sequence and take absolute priority over all other guidance.
-        // Each step has a localStorage flag that gates the next step.
 
         { id: 'onboard_create_setlist', stage: 'fan', trigger: 'onboard_step_1', page: 'any',
-          message: 'Step 1 of 3 \u2014 Pick the songs you\u2019re playing.',
-          coach: 'I\u2019ll create a setlist. Just tap to add songs.',
+          message: function() { return _pick([
+            'Hey! Let\u2019s get your songs in. Tap below to build a setlist.',
+            'First things first... pick the songs you\u2019re playing.',
+            'Alright, let\u2019s do this. Grab your songs and we\u2019ll set up a list.'
+          ]); },
+          coach: 'Just type song names \u2014 I\u2019ll handle the rest.',
           actions: [{ label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
-          cooldown: 0, dismissible: true, onboard: true },
+          cooldown: 0, dismissible: true, onboard: true, tone: 'energetic' },
 
         { id: 'onboard_start_rehearsal', stage: 'fan', trigger: 'onboard_step_2', page: 'any',
-          message: 'Step 2 of 3 \u2014 Run your first rehearsal.',
-          coach: 'I\u2019ll set it up. Just hit go.',
+          message: function() { return _pick([
+            'Nice, you\u2019ve got songs. Now let\u2019s run through \u2019em.',
+            'Setlist\u2019s ready. Time to hit it \u2014 one tap starts your rehearsal.',
+            'Looking good! Let\u2019s fire up a rehearsal and see how it goes.'
+          ]); },
+          coach: 'I\u2019ll track everything. You just play.',
           actions: [{ label: 'Start Rehearsal \u2192', onclick: "_glQuickStartRehearsal()" }],
-          cooldown: 0, dismissible: true, onboard: true },
+          cooldown: 0, dismissible: true, onboard: true, tone: 'energetic' },
 
         { id: 'onboard_review_outcome', stage: 'fan', trigger: 'onboard_step_3', page: 'any',
-          message: 'Step 3 of 3 \u2014 How\u2019d it go?',
-          coach: 'One tap confirms. That\u2019s it.',
-          actions: [{ label: 'See Rating \u2192', onclick: "showPage('rehearsal')" }],
-          cooldown: 0, dismissible: true, onboard: true },
+          message: function() { return _pick([
+            'How\u2019d it feel? Quick rating and you\u2019re done.',
+            'Almost there... one tap to lock in how that went.',
+            'Last step \u2014 just tell me if it was solid or needs work.'
+          ]); },
+          coach: 'Honest answers make the scorecard useful.',
+          actions: [{ label: 'Rate It \u2192', onclick: "showPage('rehearsal')" }],
+          cooldown: 0, dismissible: true, onboard: true, tone: 'calm' },
 
         { id: 'onboard_complete', stage: 'fan', trigger: 'onboard_done', page: 'any',
-          message: 'You\u2019re set up. Your scorecard tracks every rehearsal from here.',
-          coach: 'I\u2019ll check in before your next one.',
+          message: function() { return _pick([
+            'That\u2019s it! You\u2019re set up. Every rehearsal builds on the last one now.',
+            'Boom \u2014 you\u2019re rolling. I\u2019ll be here when you need me.',
+            'First one\u2019s in the books. It only gets better from here.'
+          ]); },
+          coach: 'I\u2019ll nudge you before the next one.',
           actions: [{ label: 'Got it', dismiss: true }],
-          cooldown: 0, dismissible: true, onboard: true },
+          cooldown: 0, dismissible: true, onboard: true, tone: 'calm' },
 
-        // ── FAN stage: welcoming, simple ──
+        // ── FAN stage ──
         { id: 'welcome', stage: 'fan', trigger: 'first_visit', page: 'home',
-          message: 'Welcome to GrooveLinx! I\u2019m here to help your band get tighter.',
-          coach: 'Let\u2019s start by adding a few songs.',
-          actions: [{ label: 'Add Songs', onclick: "showPage('songs')" }, { label: 'Later', dismiss: true }],
-          cooldown: 0, dismissible: true },
+          message: function() { return _pick([
+            'Hey, welcome in! I\u2019m here to help your band lock it down.',
+            'What\u2019s up! Let\u2019s get your songs loaded and start playing.',
+            'Welcome to GrooveLinx \u2014 think of me as your extra bandmate.'
+          ]); },
+          coach: 'Start by adding a few songs you\u2019re working on.',
+          actions: [{ label: 'Add Songs', onclick: "showPage('songs')" }, { label: 'Not yet', dismiss: true }],
+          cooldown: 0, dismissible: true, tone: 'energetic' },
 
         { id: 'empty_songs', stage: 'fan', trigger: 'no_songs', page: 'songs',
-          message: 'Your setbook is empty \u2014 add 3\u20135 songs to get started.',
-          coach: 'Start with songs you\u2019re playing at your next gig.',
-          actions: [{ label: 'Add Songs', onclick: "showPage('songs')" }, { label: 'Import Starter Pack', onclick: 'showStarterPackImport()' }],
+          message: function() { return _pick([
+            'No songs yet... throw in 3\u20135 and let\u2019s go.',
+            'Empty setbook! Start with whatever you\u2019re playing next.',
+            'First step \u2014 add the songs you\u2019re gigging on.'
+          ]); },
+          actions: [{ label: 'Add Songs', onclick: "showPage('songs')" }],
           cooldown: 86400000, dismissible: true },
 
         { id: 'first_songs_added', stage: 'fan', trigger: 'songs_added_first', page: 'home',
-          message: 'Nice \u2014 let\u2019s run one.',
-          coach: 'Listening through your set is the fastest way to tighten up.',
+          message: function() { return _pick([
+            'Nice \u2014 you\u2019ve got tunes. Let\u2019s hear \u2019em.',
+            'Songs are in! Wanna run through the set?',
+            'Alright, looking good. Let\u2019s do a quick run.'
+          ]); },
           actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
-          cooldown: 0, dismissible: true },
+          cooldown: 0, dismissible: true, tone: 'energetic' },
 
         { id: 'empty_setlist', stage: 'fan', trigger: 'no_setlists', page: 'setlists',
-          message: 'No setlists yet. Build one for your next gig or rehearsal.',
+          message: function() { return _pick([
+            'No setlists yet. Build one for your next gig.',
+            'Let\u2019s get a setlist going \u2014 even a rough one helps.',
+            'Start with whatever you\u2019d play if a gig was tomorrow.'
+          ]); },
           actions: [{ label: 'Create Setlist', onclick: 'createNewSetlist()' }],
           cooldown: 86400000, dismissible: true },
 
         { id: 'first_practice_done', stage: 'fan', trigger: 'first_practice_complete', page: 'home',
-          message: 'First set done. That\u2019s how bands get tighter.',
-          coach: 'Next: run a full rehearsal with timing.',
-          actions: [{ label: '\uD83C\uDFB8 Start Rehearsal', onclick: "showPage('rehearsal')" }],
-          cooldown: 0, dismissible: true },
+          message: function() { return _pick([
+            'First run done \u2014 that\u2019s how it starts.',
+            'Solid. One rep down. Now try a full rehearsal with timing.',
+            'Nice work! Ready to run a real rehearsal?'
+          ]); },
+          actions: [{ label: 'Start Rehearsal', onclick: "showPage('rehearsal')" }],
+          cooldown: 0, dismissible: true, tone: 'calm' },
 
         { id: 'practice_nudge', stage: 'fan', trigger: 'not_practiced_today', page: 'home',
-          message: 'No reps today yet. A quick run makes a difference.',
-          actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
+          message: function() { return _pick([
+            'Haven\u2019t played yet today... even 10 minutes helps.',
+            'Quick run? Keep the momentum going.',
+            'No reps yet \u2014 wanna knock a few out?'
+          ]); },
+          actions: [{ label: '\u25B6 Quick Run', onclick: "hdPlayBundle('focus')" }],
           cooldown: 43200000, dismissible: true },
 
-        // ── BANDMATE stage: context-aware ──
+        // ── BANDMATE stage ──
         { id: 'weak_songs_exist', stage: 'bandmate', trigger: 'has_weak_songs', page: 'home',
-          message: '{weakCount} songs still need reps.',
-          coach: 'Weakest ones first \u2014 biggest bang for your time.',
-          actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
+          message: function() { return _pick([
+            '{weakCount} songs still need love. Hit the weak ones first.',
+            'Got {weakCount} that could use more reps. Want to run \u2019em?',
+            '{weakCount} songs aren\u2019t there yet. Let\u2019s tighten those up.'
+          ]); },
+          actions: [{ label: '\u25B6 Focus on Weak Spots', onclick: "hdPlayBundle('focus')" }],
           cooldown: 43200000, dismissible: true },
 
         { id: 'gig_soon', stage: 'bandmate', trigger: 'gig_within_2_days', page: 'home',
-          message: 'Gig in {daysOut} day{s}. Run the set once more.',
+          message: function() { return _pick([
+            'Gig\u2019s in {daysOut} day{s}. One more run through the set?',
+            '{daysOut} day{s} out \u2014 let\u2019s polish it up.',
+            'Show time\u2019s close. Quick pass through the full set?'
+          ]); },
           actions: [{ label: 'Run the Set', onclick: "hdPlayBundle('gig')" }],
-          cooldown: 21600000, dismissible: true },
+          cooldown: 21600000, dismissible: true, tone: 'energetic' },
 
         { id: 'post_rehearsal', stage: 'bandmate', trigger: 'just_finished_rehearsal', page: 'home',
           message: function() {
-            // Use Product Brain insight if available for a smarter post-rehearsal message
             if (typeof GLProductBrain !== 'undefined') {
               var insight = GLProductBrain.getInsightFromSession('latest');
               if (insight && !insight._empty) return insight.headline;
             }
-            return 'Good session. Don\u2019t forget to add notes or attach the mixdown.';
+            return _pick([
+              'Good session. Anything worth noting while it\u2019s fresh?',
+              'How\u2019d that feel? Drop some notes if you want.',
+              'Solid work. Got a recording to attach?'
+            ]);
           },
           coach: function() {
             if (typeof GLProductBrain !== 'undefined') {
@@ -180,38 +228,61 @@ window.GLAvatarGuide = (function() {
             return '';
           },
           actions: [{ label: 'Add Notes', onclick: "showPage('rehearsal')" }],
-          cooldown: 0, dismissible: true },
+          cooldown: 0, dismissible: true, tone: 'calm' },
 
         { id: 'no_rehearsal_this_week', stage: 'bandmate', trigger: 'no_rehearsal_this_week', page: 'home',
-          message: 'No rehearsal this week. Time to schedule one.',
-          actions: [{ label: 'Open Calendar', onclick: "showPage('calendar')" }],
+          message: function() { return _pick([
+            'No rehearsal this week yet. Want to get one on the books?',
+            'Been a while since the band played together... schedule one?',
+            'Haven\u2019t rehearsed this week \u2014 let\u2019s fix that.'
+          ]); },
+          actions: [{ label: 'Schedule', onclick: "showPage('calendar')" }],
           cooldown: 86400000, dismissible: true },
 
         { id: 'scorecard_issue', stage: 'bandmate', trigger: 'scorecard_has_issues', page: 'home',
-          message: 'Scorecard flagged: {topIssue}',
-          coach: 'Focus here to see the biggest improvement.',
-          actions: [{ label: 'See Scorecard', onclick: "showPage('home')" }],
+          message: function() { return _pick([
+            'Heads up \u2014 scorecard flagged: {topIssue}',
+            'Something to work on: {topIssue}',
+            'Your scorecard\u2019s showing {topIssue} as a focus area.'
+          ]); },
+          coach: 'This is where you\u2019ll see the biggest jump.',
+          actions: [{ label: 'See Details', onclick: "showPage('home')" }],
           cooldown: 86400000, dismissible: true },
 
-        // ── COACH stage: insight-driven ──
+        // ── COACH stage ──
         { id: 'transitions_slow', stage: 'coach', trigger: 'sessions_running_long', page: 'home',
-          message: 'Recent rehearsals are running long. Transitions might need tightening.',
-          coach: 'Stricter time budgets per song will fix this.',
+          message: function() { return _pick([
+            'Rehearsals are dragging a bit. Transitions might be the culprit.',
+            'You\u2019re running long... tighter transitions will fix it.',
+            'Time between songs is eating your rehearsal. Let\u2019s plan it out.'
+          ]); },
+          coach: 'Set strict time limits per block. It works.',
           actions: [{ label: 'Plan Rehearsal', onclick: "showPage('rehearsal')" }],
           cooldown: 172800000, dismissible: true },
 
         { id: 'band_improving', stage: 'coach', trigger: 'trend_improving', page: 'home',
-          message: 'The band is getting tighter. Keep this rhythm going.',
-          cooldown: 172800000, dismissible: true },
+          message: function() { return _pick([
+            'You\u2019re getting tighter. Keep showing up like this.',
+            'The trend is up \u2014 whatever you\u2019re doing, keep doing it.',
+            'Band\u2019s sounding better every session. Don\u2019t lose this rhythm.'
+          ]); },
+          cooldown: 172800000, dismissible: true, tone: 'calm' },
 
         { id: 'keep_going', stage: 'coach', trigger: 'practiced_but_weak_remain', page: 'home',
-          message: 'Good work today. {weakCount} songs still need attention.',
-          coach: 'One more session this week could make a real difference.',
+          message: function() { return _pick([
+            'Good reps today. {weakCount} songs still need work though.',
+            'Solid session \u2014 but {weakCount} tunes could use one more pass.',
+            'Getting there. {weakCount} left that need attention this week.'
+          ]); },
           actions: [{ label: 'Keep Going', onclick: "hdPlayBundle('focus')" }],
           cooldown: 43200000, dismissible: true },
 
         { id: 'mixdown_reminder', stage: 'bandmate', trigger: 'recent_session_no_mixdown', page: 'rehearsal',
-          message: 'Last rehearsal has no recording attached. Got a mixdown to upload?',
+          message: function() { return _pick([
+            'Last rehearsal\u2019s got no recording. Got a mixdown to upload?',
+            'Hey, did you record that last one? Drop it in if so.',
+            'No recording from last time \u2014 worth adding if you\u2019ve got one.'
+          ]); },
           actions: [{ label: 'Add Mixdown', onclick: "showPage('rehearsal')" }],
           cooldown: 86400000, dismissible: true }
     ];
