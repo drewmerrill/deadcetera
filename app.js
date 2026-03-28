@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-131719', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-132707', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10433,35 +10433,72 @@ window._glRefreshFeedbackInbox = async function() {
 
     if (!reports.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">No feedback reports yet. Reports appear here when users interact with GrooveMate.</div>'; return; }
 
-    var typeIcons = { bug: '\uD83D\uDC1B', ux_confusion: '\uD83E\uDD14', feature_request: '\uD83D\uDCA1', copy_issue: '\u270F\uFE0F', performance_issue: '\u26A1', data_issue: '\uD83D\uDCC1', onboarding_friction: '\uD83D\uDEB6', praise: '\u2764\uFE0F', other: '\uD83D\uDCAC' };
+    var typeIcons = { bug: '\uD83D\uDC1B', ux_confusion: '\uD83E\uDD14', feature_request: '\uD83D\uDCA1', copy_issue: '\u270F\uFE0F', performance_issue: '\u26A1', data_issue: '\uD83D\uDCC1', onboarding_friction: '\uD83D\uDEB6', praise: '\u2764\uFE0F', flow_break: '\uD83D\uDEA7', other: '\uD83D\uDCAC' };
     var severityColors = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22c55e' };
-    var statusColors = { 'new': '#6366f1', reviewing: '#f59e0b', resolved: '#22c55e', ignored: '#64748b' };
 
-    var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+    // Group by clusterKey
+    var groups = {};
     reports.forEach(function(r) {
+        var key = r.clusterKey || r.reportId;
+        if (!groups[key]) groups[key] = { reports: [], latest: r, count: 0, totalScore: 0, hasFounder: false, hasNew: false };
+        groups[key].reports.push(r);
+        groups[key].count++;
+        groups[key].totalScore += (r.score || 1);
+        if (r.founder) groups[key].hasFounder = true;
+        if (r.status === 'new') groups[key].hasNew = true;
+        if ((r.createdAt || '') > (groups[key].latest.createdAt || '')) groups[key].latest = r;
+    });
+
+    // Score groups and sort
+    var sorted = Object.keys(groups).map(function(key) {
+        var g = groups[key];
+        var r = g.latest;
+        var page = (r.context && r.context.currentPage) || '';
+        // Recalculate score with frequency
+        if (typeof GLFeedbackClassifier !== 'undefined') {
+            g.totalScore = GLFeedbackClassifier.scoreIssue(r.type, page, g.count, g.hasFounder);
+        }
+        return { key: key, group: g };
+    });
+    sorted.sort(function(a, b) { return b.group.totalScore - a.group.totalScore; });
+
+    // Compute trend (count in last 24h vs previous 24h)
+    var now = Date.now();
+    var d24h = 86400000;
+
+    var html = '<div style="font-size:0.68em;color:#475569;margin-bottom:8px">' + sorted.length + ' issues from ' + reports.length + ' reports</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    sorted.forEach(function(item) {
+        var g = item.group;
+        var r = g.latest;
         var icon = typeIcons[r.type] || '\uD83D\uDCAC';
         var sevColor = severityColors[r.severity] || '#64748b';
-        var statColor = statusColors[r.status] || '#6366f1';
         var date = r.createdAt ? new Date(r.createdAt).toLocaleString() : '';
-        var user = (r.context && r.context.userName) ? r.context.userName : (r.context && r.context.userEmail) ? r.context.userEmail.split('@')[0] : 'unknown';
-        var band = (r.context && r.context.bandName) ? r.context.bandName : '';
-        var page = (r.context && r.context.currentPage) ? r.context.currentPage : '';
+        var page = (r.context && r.context.currentPage) || '';
 
-        html += '<div onclick="_glShowFeedbackDetail(\'' + r.reportId + '\')" style="padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;cursor:pointer;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.05)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.02)\'">';
-        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-        html += '<span style="font-size:1em">' + icon + '</span>';
+        // Trend
+        var recent = g.reports.filter(function(x) { return (now - new Date(x.createdAt).getTime()) < d24h; }).length;
+        var older = g.reports.filter(function(x) { var t = now - new Date(x.createdAt).getTime(); return t >= d24h && t < d24h * 2; }).length;
+        var trend = recent < older ? '\u2191' : recent > older ? '\u2193' : '\u2192';
+        var trendColor = recent < older ? '#22c55e' : recent > older ? '#ef4444' : '#64748b';
+
+        html += '<div onclick="_glShowFeedbackDetail(\'' + r.reportId + '\')" style="padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid ' + (g.hasNew ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';border-radius:8px;cursor:pointer;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.05)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.02)\'">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
+        html += '<span>' + icon + '</span>';
+        if (g.count > 1) html += '<span style="font-size:0.65em;padding:1px 5px;border-radius:4px;background:rgba(99,102,241,0.15);color:#a5b4fc;font-weight:700">' + g.count + 'x</span>';
         html += '<span style="flex:1;font-weight:600;font-size:0.82em;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.title || 'Untitled').replace(/</g, '&lt;') + '</span>';
-        html += '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:' + sevColor + '20;color:' + sevColor + ';font-weight:700;text-transform:uppercase">' + (r.severity || '') + '</span>';
-        html += '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:' + statColor + '20;color:' + statColor + ';font-weight:700">' + (r.status || 'new') + '</span>';
-        if (r.auto) html += '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#818cf8;font-weight:600">auto</span>';
+        html += '<span style="font-size:0.6em;padding:2px 5px;border-radius:4px;background:' + sevColor + '20;color:' + sevColor + ';font-weight:700">' + (r.severity || '').substring(0, 4) + '</span>';
+        html += '<span style="font-size:0.75em;color:' + trendColor + '" title="Trend">' + trend + '</span>';
+        html += '<span style="font-size:0.6em;color:#475569;font-weight:600" title="Score">' + g.totalScore + '</span>';
+        if (g.hasFounder) html += '<span style="font-size:0.65em" title="Founder report">\u2B50</span>';
+        if (r.auto) html += '<span style="font-size:0.55em;color:#818cf8">auto</span>';
         html += '</div>';
-        html += '<div style="font-size:0.68em;color:#64748b">' + user + (band ? ' \u00B7 ' + band : '') + (page ? ' \u00B7 ' + page : '') + ' \u00B7 ' + date + '</div>';
+        html += '<div style="font-size:0.65em;color:#64748b">' + page + ' \u00B7 ' + (r.keyword || '') + ' \u00B7 ' + date + '</div>';
         html += '</div>';
     });
     html += '</div>';
     el.innerHTML = html;
 
-    // Store reports for detail view
     window._glFeedbackReports = reports;
 };
 
@@ -10587,6 +10624,7 @@ function checkSyncStatus() {
 window._glQuickStartRehearsal = async function() {
     if (!requireSignIn()) return;
     if (!firebaseDB) { showToast('Not connected'); return; }
+    if (typeof GLFeedbackService !== 'undefined') GLFeedbackService.startFlow('start_rehearsal');
 
     var today = new Date().toISOString().split('T')[0];
     var id = 'rh_' + Date.now();

@@ -57,9 +57,49 @@
     // Render errors are always high
     if (autoContext.autoType === 'bug' && autoContext.hasRenderError) severity = 'high';
 
-    return { type: type, severity: severity, confidence: maxScore > 0 ? Math.min(maxScore / 3, 1) : 0.3 };
+    var keyword = getPrimaryKeyword(msg);
+    var page = (autoContext && autoContext.page) || '';
+
+    return {
+      type: type, severity: severity,
+      confidence: maxScore > 0 ? Math.min(maxScore / 3, 1) : 0.3,
+      keyword: keyword,
+      clusterKey: type + '_' + (page || 'unknown') + '_' + (keyword || 'general')
+    };
   }
 
-  window.GLFeedbackClassifier = { classify: classify };
+  // ── Keyword Extraction ──────────────────────────────────────────────────
+
+  var PRODUCT_KEYWORDS = [
+    'save','button','search','setlist','song','rehearsal','gig','calendar','login','sign in',
+    'avatar','voice','chart','member','band','feed','plan','playlist','practice','reveal',
+    'notification','upload','photo','delete','edit','create','load','navigate','scroll',
+    'drag','drop','picker','modal','toast','menu','tab','page','home','settings'
+  ];
+
+  function getPrimaryKeyword(text) {
+    var lower = (text || '').toLowerCase();
+    for (var i = 0; i < PRODUCT_KEYWORDS.length; i++) {
+      if (lower.indexOf(PRODUCT_KEYWORDS[i]) >= 0) return PRODUCT_KEYWORDS[i];
+    }
+    // Fallback: first noun-like word over 3 chars
+    var words = lower.replace(/[^a-z\s]/g, '').split(/\s+/).filter(function(w) { return w.length > 3; });
+    return words[0] || 'general';
+  }
+
+  // ── Issue Scoring ───────────────────────────────────────────────────────
+
+  var SEVERITY_SCORES = { bug: 3, ux_confusion: 2, data_issue: 3, performance_issue: 2, feature_request: 1, copy_issue: 1, onboarding_friction: 2, praise: 0, other: 1 };
+  var FLOW_CRITICALITY = { home: 2, setlists: 2, rehearsal: 3, 'rehearsal-mode': 3, songs: 1, gigs: 1, calendar: 1, admin: 1, feed: 1 };
+
+  function scoreIssue(type, page, frequency, isFounder) {
+    var sev = SEVERITY_SCORES[type] || 1;
+    var flow = FLOW_CRITICALITY[page] || 1;
+    var score = (frequency * 2) + sev + flow;
+    if (isFounder) score *= 2;
+    return score;
+  }
+
+  window.GLFeedbackClassifier = { classify: classify, getPrimaryKeyword: getPrimaryKeyword, scoreIssue: scoreIssue };
   console.log('\uD83D\uDCCA GLFeedbackClassifier loaded');
 })();

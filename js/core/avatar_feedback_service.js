@@ -21,8 +21,12 @@
     if (!userMessage || !userMessage.trim()) return null;
 
     var context = (typeof GLFeedbackContext !== 'undefined') ? GLFeedbackContext.collect() : { reportId: 'fb_' + Date.now() };
-    var classification = (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.classify(userMessage) : { type: 'other', severity: 'medium' };
+    var page = context.currentPage || '';
+    var classification = (typeof GLFeedbackClassifier !== 'undefined')
+      ? GLFeedbackClassifier.classify(userMessage, { page: page })
+      : { type: 'other', severity: 'medium', keyword: 'general', clusterKey: 'other_unknown_general' };
 
+    var isFounder = _checkFounder();
     var title = _generateTitle(userMessage, classification.type);
 
     var payload = {
@@ -37,7 +41,11 @@
       summary: userMessage.substring(0, 300),
       userMessageRaw: userMessage,
       context: context,
-      tags: [],
+      clusterKey: classification.clusterKey || '',
+      keyword: classification.keyword || '',
+      founder: isFounder,
+      score: (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.scoreIssue(classification.type, page, 1, isFounder) : 1,
+      tags: isFounder ? ['founder'] : [],
       assignedTo: '',
       resolutionNotes: ''
     };
@@ -79,6 +87,11 @@
 
     var context = (typeof GLFeedbackContext !== 'undefined') ? GLFeedbackContext.collect() : { reportId: 'fb_' + Date.now() };
 
+    var page = context.currentPage || '';
+    var isFounder = _checkFounder();
+    var keyword = (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.getPrimaryKeyword(detail || trigger) : 'general';
+    var clusterKey = type + '_' + (page || 'unknown') + '_' + keyword;
+
     var payload = {
       reportId: context.reportId,
       createdAt: context.timestamp || new Date().toISOString(),
@@ -88,14 +101,92 @@
       type: type,
       severity: severity,
       title: 'Auto: ' + trigger.replace(/_/g, ' '),
-      summary: 'Auto-detected: ' + (detail || trigger) + ' on page: ' + (context.currentPage || 'unknown'),
+      summary: 'Auto-detected: ' + (detail || trigger) + ' on page: ' + (page || 'unknown'),
       userMessageRaw: '',
-      context: context
+      context: context,
+      clusterKey: clusterKey,
+      keyword: keyword,
+      founder: isFounder,
+      score: (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.scoreIssue(type, page, 1, isFounder) : 1,
+      tags: isFounder ? ['founder', 'auto-detected'] : ['auto-detected']
     };
 
     _save(payload);
-    console.log('[Feedback] Auto-submitted:', trigger, 'on', context.currentPage);
+    console.log('[Feedback] Auto-submitted:', trigger, 'on', page);
   }
+
+  // ── Founder Detection ──────────────────────────────────────────────────
+
+  function _checkFounder() {
+    try {
+      if (typeof GLPlans !== 'undefined' && GLPlans.getCurrentPlan) {
+        return GLPlans.getCurrentPlan() === 'founder';
+      }
+      var plan = localStorage.getItem('gl_plan');
+      return plan === 'founder';
+    } catch(e) { return false; }
+  }
+
+  // ── Flow Break Detection ───────────────────────────────────────────────
+
+  var _activeFlows = {};
+  var _flowBreakSubmitted = {};
+
+  function startFlow(flowId) {
+    _activeFlows[flowId] = { started: Date.now(), step: 0 };
+  }
+
+  function advanceFlow(flowId) {
+    if (_activeFlows[flowId]) _activeFlows[flowId].step++;
+  }
+
+  function completeFlow(flowId) {
+    delete _activeFlows[flowId];
+  }
+
+  function _checkFlowBreaks() {
+    var now = Date.now();
+    Object.keys(_activeFlows).forEach(function(flowId) {
+      var flow = _activeFlows[flowId];
+      var elapsed = now - flow.started;
+      // Flow break: started > 60s ago, never completed
+      if (elapsed > 60000 && !_flowBreakSubmitted[flowId]) {
+        _flowBreakSubmitted[flowId] = true;
+        var context = (typeof GLFeedbackContext !== 'undefined') ? GLFeedbackContext.collect() : { reportId: 'fb_' + Date.now() };
+        var page = context.currentPage || '';
+        var isFounder = _checkFounder();
+
+        _save({
+          reportId: context.reportId,
+          createdAt: new Date().toISOString(),
+          status: 'new',
+          source: 'avatar',
+          auto: true,
+          type: 'flow_break',
+          severity: 'medium',
+          title: 'Flow break: ' + flowId + ' (step ' + flow.step + ')',
+          summary: 'User started ' + flowId + ' but did not complete. Spent ' + Math.round(elapsed / 1000) + 's, reached step ' + flow.step + '.',
+          userMessageRaw: '',
+          context: context,
+          clusterKey: 'flow_break_' + flowId + '_step' + flow.step,
+          keyword: flowId,
+          founder: isFounder,
+          score: (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.scoreIssue('flow_break', page, 1, isFounder) : 3,
+          tags: isFounder ? ['founder', 'flow-break'] : ['flow-break'],
+          flowData: { flowId: flowId, step: flow.step, timeSpentSec: Math.round(elapsed / 1000) }
+        });
+        delete _activeFlows[flowId];
+        console.log('[Feedback] Flow break:', flowId, 'step', flow.step);
+      }
+    });
+  }
+
+  // Check flow breaks every 30s
+  setInterval(_checkFlowBreaks, 30000);
+  // Also check on page change
+  window.addEventListener('gl:pagechange', function() {
+    setTimeout(_checkFlowBreaks, 2000);
+  });
 
   function _generateTitle(message, type) {
     var typeLabels = { bug: 'Bug', ux_confusion: 'UX Issue', feature_request: 'Feature Request', copy_issue: 'Copy Issue', performance_issue: 'Performance', data_issue: 'Data Issue', onboarding_friction: 'Onboarding', praise: 'Praise' };
@@ -175,7 +266,10 @@
     submitExplicit: submitExplicit,
     recordFriction: recordFriction,
     listProductFeedback: listProductFeedback,
-    updateFeedbackStatus: updateFeedbackStatus
+    updateFeedbackStatus: updateFeedbackStatus,
+    startFlow: startFlow,
+    advanceFlow: advanceFlow,
+    completeFlow: completeFlow
   };
 
   console.log('\uD83D\uDCE8 GLFeedbackService loaded');
