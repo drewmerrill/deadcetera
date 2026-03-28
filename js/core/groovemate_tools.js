@@ -108,14 +108,43 @@
     // Create a starter setlist
     var setlistResult = await _createSetlistFromSongs(pack.name, pack.songs.slice(0, 10));
 
+    // Add default sections to each song (non-blocking, best-effort)
+    var sectioned = 0;
+    var db = _db();
+    if (db) {
+      for (var s = 0; s < pack.songs.length; s++) {
+        try {
+          var songKey = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(pack.songs[s]) : pack.songs[s].replace(/[.#$/\[\]]/g, '_');
+          var existing = await db.ref(_bp('songs/' + songKey + '/metadata/structure')).once('value');
+          if (!existing.val()) {
+            await db.ref(_bp('songs/' + songKey + '/metadata/structure')).set({
+              sections: [{ label: 'Intro', order: 0 }, { label: 'Verse', order: 1 }, { label: 'Chorus', order: 2 }, { label: 'Verse', order: 3 }, { label: 'Chorus', order: 4 }, { label: 'Bridge', order: 5 }, { label: 'Chorus', order: 6 }, { label: 'Outro', order: 7 }],
+              updatedAt: new Date().toISOString(),
+              source: 'groovemate_auto'
+            });
+            sectioned++;
+          }
+        } catch(e) {}
+      }
+    }
+
+    // Mark onboarding step 1 done
+    try { localStorage.setItem('gl_onboard_setlist_done', Date.now().toString()); } catch(e) {}
+
+    var summary = 'Imported ' + added + ' songs from "' + pack.name + '"';
+    if (setlistResult) summary += ', built a starter setlist';
+    if (sectioned) summary += ', and added sections to ' + sectioned + ' songs';
+    summary += '.';
+
     return {
       success: true,
-      message: 'Imported ' + added + ' songs from "' + pack.name + '"' + (setlistResult ? ' and created a starter setlist.' : '.'),
+      message: summary,
       action: 'import_artist_pack',
       count: added,
       pack: pack.name,
       songs: pack.songs,
-      setlistCreated: !!setlistResult
+      setlistCreated: !!setlistResult,
+      sectionedCount: sectioned
     };
   }
 
@@ -325,6 +354,80 @@
     }
   }
 
+  // ── Rehearsal Co-Pilot ──────────────────────────────────────────────────
+  // Listens for rehearsal events and offers contextual suggestions.
+  // Does NOT modify rehearsal-mode.js — uses event-based hooks.
+
+  var _copilotShown = {};
+
+  function _initRehearsalCopilot() {
+    // Listen for rehearsal mode events
+    if (typeof GLStore !== 'undefined' && GLStore.on) {
+      GLStore.on('agendaSessionCompleted', function(data) {
+        // After rehearsal ends, suggest next action
+        if (!_copilotShown['post_rehearsal']) {
+          _copilotShown['post_rehearsal'] = true;
+          setTimeout(function() {
+            if (typeof showToast === 'function') showToast('GrooveMate: Got notes from that session? Tell me and I\'ll save them.', 5000);
+          }, 3000);
+        }
+      });
+    }
+
+    // Detect rehearsal page inactivity (co-pilot nudge)
+    window.addEventListener('gl:pagechange', function(e) {
+      var page = (e.detail && e.detail.page) || '';
+      if (page === 'rehearsal' && !_copilotShown['rehearsal_nudge']) {
+        // Check if there's a setlist but no rehearsal started
+        setTimeout(function() {
+          if (typeof currentPage !== 'undefined' && currentPage === 'rehearsal') {
+            var hasSetlist = window._cachedSetlists && window._cachedSetlists.length > 0;
+            if (hasSetlist && !_copilotShown['rehearsal_nudge']) {
+              _copilotShown['rehearsal_nudge'] = true;
+              // Don't toast if rehearsal mode is already active
+              if (!document.getElementById('rehearsal-mode-container')) {
+                if (typeof showToast === 'function') showToast('Ready to rehearse? I can start one for you — just ask.', 4000);
+              }
+            }
+          }
+        }, 8000);
+      }
+    });
+  }
+
+  // Boot co-pilot after DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(_initRehearsalCopilot, 3000); });
+  } else {
+    setTimeout(_initRehearsalCopilot, 3000);
+  }
+
+  // ── Band-Specific Learning ─────────────────────────────────────────────
+  // Track per-band performance patterns for coaching.
+
+  async function getBandInsights() {
+    var db = _db();
+    if (!db) return null;
+
+    try {
+      var sessSnap = await db.ref(_bp('rehearsal_sessions')).limitToLast(10).once('value');
+      var sessions = sessSnap.val() ? Object.values(sessSnap.val()) : [];
+      if (sessions.length < 2) return null;
+
+      // Analyze patterns
+      var ratings = sessions.map(function(s) { return s.rating || 0; }).filter(function(r) { return r > 0; });
+      var avgRating = ratings.length ? ratings.reduce(function(a, b) { return a + b; }, 0) / ratings.length : 0;
+      var trend = ratings.length >= 3 ? (ratings[ratings.length - 1] > ratings[0] ? 'improving' : ratings[ratings.length - 1] < ratings[0] ? 'declining' : 'steady') : 'new';
+
+      return {
+        sessionCount: sessions.length,
+        avgRating: Math.round(avgRating * 10) / 10,
+        trend: trend,
+        lastSession: sessions[sessions.length - 1]
+      };
+    } catch(e) { return null; }
+  }
+
   // ── Public API ───────────────────────────────────────────────────────────
 
   window.GLTools = {
@@ -337,6 +440,7 @@
     suggestSections: suggestSections,
     attachChartSource: attachChartSource,
     saveRehearsalNote: saveRehearsalNote,
+    getBandInsights: getBandInsights,
     getAvailablePacks: function() { return Object.keys(ARTIST_PACKS).map(function(k) { return { id: k, name: ARTIST_PACKS[k].name, count: ARTIST_PACKS[k].songs.length }; }); }
   };
 

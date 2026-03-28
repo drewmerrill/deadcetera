@@ -150,6 +150,13 @@
       var actionLabel = resolved.action ? (ACTION_LABELS[resolved.action] || null) : null;
       var mistake = COMMON_MISTAKES[currentPage] || '';
 
+      // Check staleness — reduce confidence if stale
+      var staleCheck = isStale(currentPage);
+      var adjustedConfidence = resolved.confidence;
+      if (staleCheck.stale) {
+        adjustedConfidence = Math.max(0.4, resolved.confidence - 0.2);
+      }
+
       // Build structured response
       var response = {
         text: resolved.answer,
@@ -158,9 +165,11 @@
         canDoIt: !!actionLabel,
         action: resolved.action,
         actionLabel: actionLabel,
-        confidence: resolved.confidence,
-        source: resolved.source,
-        verifiedBuild: '20260328-140818'
+        confidence: adjustedConfidence,
+        source: staleCheck.stale ? 'inferred' : resolved.source,
+        verifiedBuild: _VERIFIED_BUILD,
+        stale: staleCheck.stale,
+        staleReason: staleCheck.reason || null
       };
 
       // Confidence-based behavior
@@ -213,13 +222,70 @@
     try { db.ref('help_feedback/' + id).set(record); } catch(e) {}
   }
 
+  // ── Knowledge Self-Healing ──────────────────────────────────────────────
+
+  var _VERIFIED_BUILD = '20260328-141338';
+  var _helpEffectiveness = {}; // { featureId: { helpful: N, not_helpful: N, wrong: N } }
+
+  /**
+   * Check if knowledge is stale (build mismatch or low effectiveness).
+   */
+  function isStale(featureId) {
+    // Check build version
+    var currentBuild = '';
+    try {
+      var verEl = document.querySelector('script[src*="app.js"]');
+      if (verEl) { var m = (verEl.src || '').match(/v=(\d+[-]\d+)/); if (m) currentBuild = m[1]; }
+    } catch(e) {}
+    if (currentBuild && currentBuild !== _VERIFIED_BUILD) return { stale: true, reason: 'build_mismatch', current: currentBuild, verified: _VERIFIED_BUILD };
+
+    // Check effectiveness
+    var eff = _helpEffectiveness[featureId];
+    if (eff && (eff.wrong || 0) >= 3) return { stale: true, reason: 'flagged_wrong', count: eff.wrong };
+    if (eff && (eff.not_helpful || 0) >= 5 && (eff.helpful || 0) < (eff.not_helpful || 0)) return { stale: true, reason: 'low_effectiveness' };
+
+    return { stale: false };
+  }
+
+  /**
+   * Aggregate help outcomes to track effectiveness.
+   */
+  function _loadEffectiveness() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) return;
+    db.ref('help_outcomes').limitToLast(50).once('value').then(function(snap) {
+      var data = snap.val();
+      if (!data) return;
+      Object.values(data).forEach(function(o) {
+        var key = o.helpType || 'unknown';
+        if (!_helpEffectiveness[key]) _helpEffectiveness[key] = { helpful: 0, not_helpful: 0, wrong: 0, took_action: 0 };
+        if (o.outcome === 'helpful') _helpEffectiveness[key].helpful++;
+        else if (o.outcome === 'not_helpful') _helpEffectiveness[key].not_helpful++;
+        else if (o.outcome === 'wrong') _helpEffectiveness[key].wrong++;
+        else if (o.outcome === 'took_action') _helpEffectiveness[key].took_action++;
+      });
+    }).catch(function() {});
+  }
+
+  // Load effectiveness data after boot
+  setTimeout(_loadEffectiveness, 15000);
+
+  /**
+   * Get effectiveness stats for admin review.
+   */
+  function getEffectivenessReport() {
+    return _helpEffectiveness;
+  }
+
   window.GLKnowledge = {
     resolve: resolve,
     getHelpResponse: getHelpResponse,
     getFeature: function(id) { return FEATURES[id] || null; },
     getRecipe: function(id) { return RECIPES[id] || null; },
     trackHelpOutcome: trackHelpOutcome,
-    flagHelp: flagHelp
+    flagHelp: flagHelp,
+    isStale: isStale,
+    getEffectivenessReport: getEffectivenessReport
   };
 
   console.log('\uD83D\uDCD6 GLKnowledge loaded (' + Object.keys(FEATURES).length + ' features, ' + Object.keys(RECIPES).length + ' recipes)');
