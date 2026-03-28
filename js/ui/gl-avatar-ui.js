@@ -173,6 +173,7 @@ window.GLAvatarUI = (function() {
         html += '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">';
         html += '<button onclick="GLAvatarUI._toggleVoice()" id="glAvVoiceToggle" style="background:none;border:none;cursor:pointer;font-size:0.85em;padding:0;color:#64748b">' + (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled() ? '\uD83D\uDD0A' : '\uD83D\uDD07') + '</button>';
         html += '<span style="font-size:0.62em;color:#475569">Voice ' + (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled() ? 'on' : 'off') + '</span>';
+        html += '<button onclick="GLAvatarUI._reportIssue()" style="margin-left:auto;font-size:0.62em;color:#f87171;background:none;border:none;cursor:pointer;padding:0">\uD83D\uDC1B Report Issue</button>';
         html += '</div>';
         html += '</div>';
 
@@ -212,8 +213,10 @@ window.GLAvatarUI = (function() {
             G.markShown(tip.id);
             _currentTip = tip;
 
+            var _tipMsg = typeof tip.message === 'function' ? tip.message() : tip.message;
+            if (typeof GLUserIdentity !== 'undefined') _tipMsg = GLUserIdentity.personalize(_tipMsg);
             var html = '<div style="margin-bottom:16px">';
-            html += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5;margin-bottom:6px">' + _esc(tip.message) + '</div>';
+            html += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5;margin-bottom:6px">' + _esc(_tipMsg) + '</div>';
             if (tip.coach) html += '<div style="font-size:0.78em;color:#64748b;font-style:italic;line-height:1.4">' + _esc(tip.coach) + '</div>';
             html += '</div>';
 
@@ -495,11 +498,25 @@ window.GLAvatarUI = (function() {
 
     // ── Ask Anything Handler ────────────────────────────────────────────────
 
+    // Detect if user input is feedback vs a question
+    var _FEEDBACK_SIGNALS = ['bug','broken','not working','doesn\'t work','confus','crash','feature','wish','could you add','typo','slow','wrong','missing','lost data','stuck'];
+
+    function _isFeedback(text) {
+        var lower = text.toLowerCase();
+        return _FEEDBACK_SIGNALS.some(function(s) { return lower.indexOf(s) >= 0; });
+    }
+
     async function _askSubmit() {
         var input = document.getElementById('glAvAskInput');
         if (!input || !input.value.trim()) return;
         var question = input.value.trim();
         input.value = '';
+
+        // Check if this is feedback/bug report
+        if (_isFeedback(question) && typeof GLFeedbackService !== 'undefined') {
+            return _handleFeedbackSubmission(question);
+        }
+
         // Show thinking state
         setExpression('focused');
         var msgArea = document.getElementById('glAvMessages');
@@ -512,7 +529,6 @@ window.GLAvatarUI = (function() {
         var response = '';
         if (typeof GLVoiceCoach !== 'undefined') {
             response = await GLVoiceCoach.ask(question);
-            // Speak the response
             if (GLVoiceCoach.isVoiceEnabled()) GLVoiceCoach.speak(response);
         } else {
             response = 'Voice coach is loading. Try again in a moment.';
@@ -628,6 +644,68 @@ window.GLAvatarUI = (function() {
         setExpression('neutral');
     }
 
+    // ── Feedback Handling ─────────────────────────────────────────────────────
+
+    async function _handleFeedbackSubmission(message) {
+        var msgArea = document.getElementById('glAvMessages');
+        setExpression('focused');
+
+        // Classify
+        var classification = (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.classify(message) : { type: 'other' };
+        var typeLabels = { bug: 'bug report', ux_confusion: 'UX issue', feature_request: 'feature request', copy_issue: 'wording issue', performance_issue: 'performance issue', data_issue: 'data issue', praise: 'positive feedback' };
+        var typeLabel = typeLabels[classification.type] || 'feedback';
+
+        // Show acknowledgment immediately
+        var firstName = (typeof GLUserIdentity !== 'undefined') ? GLUserIdentity.getFirstName() : '';
+        var ack = _pick([
+            'Got it' + (firstName ? ', ' + firstName : '') + '. Sending this as a ' + typeLabel + ' with the current screen context.',
+            'Thanks' + (firstName ? ', ' + firstName : '') + ' \u2014 I\'m flagging this as a ' + typeLabel + '.',
+            'On it. Capturing this ' + typeLabel + ' with everything I can see on this page.'
+        ]);
+
+        if (msgArea) {
+            msgArea.innerHTML = '<div style="margin-bottom:12px">'
+                + '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You reported: ' + _esc(message) + '</div>'
+                + '<div style="font-size:0.88em;font-weight:600;color:#86efac;line-height:1.5">' + _esc(ack) + '</div>'
+                + '<div style="font-size:0.68em;color:#475569;margin-top:6px">\u2713 ' + classification.type.replace(/_/g, ' ') + ' \u00B7 ' + classification.severity + ' severity</div>'
+                + '</div>';
+        }
+
+        setExpression('encouraging');
+        if (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled()) GLVoiceCoach.speak(ack, { tone: 'calm' });
+
+        // Submit
+        try {
+            await GLFeedbackService.submitExplicit(message);
+        } catch(e) {
+            console.error('[Avatar] Feedback submit failed:', e);
+        }
+    }
+
+    function _reportIssue() {
+        var msgArea = document.getElementById('glAvMessages');
+        if (!msgArea) return;
+        var firstName = (typeof GLUserIdentity !== 'undefined') ? GLUserIdentity.getFirstName() : '';
+        msgArea.innerHTML = '<div style="margin-bottom:12px">'
+            + '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;margin-bottom:8px">'
+            + (firstName ? firstName + ', what' : 'What') + '\'s going on?</div>'
+            + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:12px;line-height:1.4">Describe the issue, confusion, or idea. I\'ll capture everything about where you are and what\'s happening on screen.</div>'
+            + '<textarea id="glAvFeedbackText" placeholder="e.g. The save button isn\'t working, I don\'t understand what this means, I wish I could..." style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#e2e8f0;font-size:0.82em;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'
+            + '<div style="display:flex;gap:6px;margin-top:8px">'
+            + '<button onclick="GLAvatarUI._closeSettings()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;font-size:0.78em;cursor:pointer">Cancel</button>'
+            + '<button onclick="GLAvatarUI._submitReport()" style="flex:2;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;font-weight:700;font-size:0.78em;cursor:pointer">\uD83D\uDCE8 Send Report</button>'
+            + '</div></div>';
+        setTimeout(function() { var ta = document.getElementById('glAvFeedbackText'); if (ta) ta.focus(); }, 100);
+    }
+
+    async function _submitReport() {
+        var ta = document.getElementById('glAvFeedbackText');
+        if (!ta || !ta.value.trim()) { if (typeof showToast === 'function') showToast('Please describe the issue'); return; }
+        await _handleFeedbackSubmission(ta.value.trim());
+    }
+
+    function _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
     // ── Avatar Settings (Voice + Image) ─────────────────────────────────────
 
     var _VOICE_OPTIONS = [
@@ -738,7 +816,9 @@ window.GLAvatarUI = (function() {
         _closeSettings: _closeSettings,
         _selectVoice: _selectVoice,
         _previewVoice: _previewVoice,
-        _selectAvatar: _selectAvatar
+        _selectAvatar: _selectAvatar,
+        _reportIssue: _reportIssue,
+        _submitReport: _submitReport
     };
 
 })();

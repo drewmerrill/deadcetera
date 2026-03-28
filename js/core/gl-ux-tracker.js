@@ -133,6 +133,13 @@
     if (_events.length > 100) _events.shift();
     console.warn('[UX] ' + type + ':', JSON.stringify(data));
 
+    // Feed into feedback friction system
+    if (typeof GLFeedbackService !== 'undefined') {
+      var frictionMap = { rage_click: 'repeated_failure', hesitation: 'hesitation', abandoned_flow: 'abandonment', dead_click: 'explicit_confusion', slow_render: 'render_error' };
+      var frictionType = frictionMap[type];
+      if (frictionType) GLFeedbackService.recordFriction(frictionType, type + ' on ' + (data.page || ''));
+    }
+
     // Optionally save to Firebase (best-effort, non-blocking)
     if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
       try {

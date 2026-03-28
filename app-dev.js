@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-125325', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-131003', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10309,18 +10309,14 @@ function settingsTab(tab, btn) {
         </div>`,
         
     feedback: `
-        <div class="app-card"><h3>🐛 Report Bug / Request Feature</h3>
-            <div class="form-row"><label class="form-label">Type</label>
-                <select class="app-select" id="fbType"><option value="bug">🐛 Bug Report</option><option value="feature">💡 Feature Request</option><option value="other">💬 General Feedback</option></select></div>
-            <div class="form-row"><label class="form-label">Priority</label>
-                <select class="app-select" id="fbPriority"><option value="low">🟢 Low</option><option value="medium">🟡 Medium</option><option value="high">🔴 High</option></select></div>
-            <div class="form-row"><label class="form-label">Description</label>
-                <textarea class="app-textarea" id="fbDesc" placeholder="Describe the issue or feature idea in detail..."></textarea></div>
-            <div class="form-row"><label class="form-label">Screenshot (optional)</label>
-                <input type="file" id="fbFile" accept="image/*" class="app-input" style="padding:8px"></div>
-            <button class="btn btn-primary" onclick="submitFeedback()">📤 Submit Feedback</button>
-        </div>
-        <div class="app-card"><h3>📋 Submitted Feedback</h3><div id="fbHistory" style="color:var(--text-dim);font-size:0.85em">Loading...</div></div>`,
+        <div class="app-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <h3 style="margin:0">📬 Product Feedback Inbox</h3>
+                <button onclick="_glRefreshFeedbackInbox()" class="btn btn-ghost btn-sm">Refresh</button>
+            </div>
+            <div style="font-size:0.78em;color:#94a3b8;margin-bottom:12px">Reports from avatar conversations + auto-detected friction events.</div>
+            <div id="glFeedbackInbox" style="color:var(--text-dim);font-size:0.85em">Loading...</div>
+        </div>`,
         
     about: `
         <div class="app-card"><h3>ℹ️ About GrooveLinx™</h3>
@@ -10423,20 +10419,148 @@ window._toggleNotifPref = function(key) {
     _renderNotifSettings();
 };
 
-async function loadFeedbackHistory() {
-    const el = document.getElementById('fbHistory');
+async function loadFeedbackHistory() { _glRefreshFeedbackInbox(); }
+
+window._glRefreshFeedbackInbox = async function() {
+    var el = document.getElementById('glFeedbackInbox');
     if (!el) return;
-    try {
-        const data = toArray(await loadBandDataFromDrive('_band','feedback') || []);
-        if (!data.length) { el.innerHTML = 'No feedback submitted yet.'; return; }
-        data.sort((a,b) => (b.date||'').localeCompare(a.date||''));
-        el.innerHTML = data.slice(0,10).map(f => `<div class="list-item" style="padding:8px 10px;font-size:0.85em">
-            <span style="min-width:20px">${f.type==='bug'?'🐛':f.type==='feature'?'💡':'💬'}</span>
-            <div style="flex:1"><div>${f.description?.substring(0,80)||'No description'}${f.description?.length>80?'...':''}</div>
-            <div style="font-size:0.75em;color:var(--text-dim)">${f.user||'anon'} · ${f.date?new Date(f.date).toLocaleDateString():''}</div></div>
-        </div>`).join('');
-    } catch(e) { el.innerHTML = 'Could not load feedback.'; }
-}
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">Loading reports...</div>';
+
+    var reports = [];
+    if (typeof GLFeedbackService !== 'undefined') {
+        reports = await GLFeedbackService.listProductFeedback();
+    }
+
+    if (!reports.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">No feedback reports yet. Reports appear here when users interact with GrooveMate.</div>'; return; }
+
+    var typeIcons = { bug: '\uD83D\uDC1B', ux_confusion: '\uD83E\uDD14', feature_request: '\uD83D\uDCA1', copy_issue: '\u270F\uFE0F', performance_issue: '\u26A1', data_issue: '\uD83D\uDCC1', onboarding_friction: '\uD83D\uDEB6', praise: '\u2764\uFE0F', other: '\uD83D\uDCAC' };
+    var severityColors = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22c55e' };
+    var statusColors = { 'new': '#6366f1', reviewing: '#f59e0b', resolved: '#22c55e', ignored: '#64748b' };
+
+    var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+    reports.forEach(function(r) {
+        var icon = typeIcons[r.type] || '\uD83D\uDCAC';
+        var sevColor = severityColors[r.severity] || '#64748b';
+        var statColor = statusColors[r.status] || '#6366f1';
+        var date = r.createdAt ? new Date(r.createdAt).toLocaleString() : '';
+        var user = (r.context && r.context.userName) ? r.context.userName : (r.context && r.context.userEmail) ? r.context.userEmail.split('@')[0] : 'unknown';
+        var band = (r.context && r.context.bandName) ? r.context.bandName : '';
+        var page = (r.context && r.context.currentPage) ? r.context.currentPage : '';
+
+        html += '<div onclick="_glShowFeedbackDetail(\'' + r.reportId + '\')" style="padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;cursor:pointer;transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.05)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.02)\'">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+        html += '<span style="font-size:1em">' + icon + '</span>';
+        html += '<span style="flex:1;font-weight:600;font-size:0.82em;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.title || 'Untitled').replace(/</g, '&lt;') + '</span>';
+        html += '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:' + sevColor + '20;color:' + sevColor + ';font-weight:700;text-transform:uppercase">' + (r.severity || '') + '</span>';
+        html += '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:' + statColor + '20;color:' + statColor + ';font-weight:700">' + (r.status || 'new') + '</span>';
+        if (r.auto) html += '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.1);color:#818cf8;font-weight:600">auto</span>';
+        html += '</div>';
+        html += '<div style="font-size:0.68em;color:#64748b">' + user + (band ? ' \u00B7 ' + band : '') + (page ? ' \u00B7 ' + page : '') + ' \u00B7 ' + date + '</div>';
+        html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+
+    // Store reports for detail view
+    window._glFeedbackReports = reports;
+};
+
+window._glShowFeedbackDetail = function(reportId) {
+    var reports = window._glFeedbackReports || [];
+    var r = reports.find(function(x) { return x.reportId === reportId; });
+    if (!r) return;
+
+    var el = document.getElementById('glFeedbackInbox');
+    if (!el) return;
+
+    var ctx = r.context || {};
+    var html = '<div>';
+    html += '<button onclick="_glRefreshFeedbackInbox()" style="font-size:0.72em;color:#818cf8;background:none;border:none;cursor:pointer;padding:0;margin-bottom:12px">\u2190 Back to list</button>';
+
+    // Header
+    html += '<div style="font-size:1em;font-weight:700;color:#e2e8f0;margin-bottom:8px">' + (r.title || '').replace(/</g, '&lt;') + '</div>';
+
+    // Status controls
+    html += '<div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">';
+    ['new','reviewing','resolved','ignored'].forEach(function(s) {
+        var active = r.status === s;
+        html += '<button onclick="_glUpdateFbStatus(\'' + reportId + '\',\'' + s + '\')" style="font-size:0.68em;font-weight:' + (active ? '700' : '500') + ';padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : '#94a3b8') + '">' + s + '</button>';
+    });
+    html += '</div>';
+
+    // User statement
+    if (r.userMessageRaw) {
+        html += '<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:10px">';
+        html += '<div style="font-size:0.68em;font-weight:700;color:#475569;margin-bottom:4px">USER SAID</div>';
+        html += '<div style="font-size:0.82em;color:#e2e8f0;line-height:1.5">' + r.userMessageRaw.replace(/</g, '&lt;') + '</div>';
+        html += '</div>';
+    }
+
+    // Context grid
+    var fields = [
+        ['Type', r.type], ['Severity', r.severity], ['Auto', r.auto ? 'Yes' : 'No'], ['Source', r.source],
+        ['User', ctx.userName || ctx.userEmail || ''], ['Band', ctx.bandName || ctx.bandId || ''],
+        ['Page', ctx.currentPage || ''], ['Mode', ctx.currentMode || ''], ['Route', ctx.routeHash || ''],
+        ['Build', ctx.buildVersion || ''], ['Onboarding Step', ctx.onboardingStep || '0'],
+        ['Avatar Stage', ctx.avatarState || ''],
+        ['Setlist', ctx.activeSetlist ? ctx.activeSetlist.name : ''],
+        ['Song', ctx.currentSongTitle || ''],
+        ['Device', ctx.device ? ctx.device.platform : ''], ['Viewport', ctx.device ? ctx.device.viewport : ''],
+        ['PWA', ctx.device ? (ctx.device.isPWA ? 'Yes' : 'No') : ''], ['Online', ctx.device ? (ctx.device.online ? 'Yes' : 'No') : '']
+    ];
+
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px">';
+    fields.forEach(function(f) {
+        if (!f[1] && f[1] !== 0) return;
+        html += '<div style="font-size:0.68em;padding:4px 6px;background:rgba(255,255,255,0.02);border-radius:4px"><span style="color:#475569">' + f[0] + ':</span> <span style="color:#94a3b8">' + String(f[1]).replace(/</g, '&lt;') + '</span></div>';
+    });
+    html += '</div>';
+
+    // Recent actions
+    if (ctx.lastActions && ctx.lastActions.length) {
+        html += '<div style="font-size:0.68em;font-weight:700;color:#475569;margin-bottom:4px">RECENT ACTIONS</div>';
+        html += '<div style="font-size:0.68em;color:#64748b;margin-bottom:10px;max-height:120px;overflow-y:auto">';
+        ctx.lastActions.forEach(function(a) {
+            html += '<div>' + a.action + (a.detail ? ': ' + a.detail : '') + '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Recent errors
+    if (ctx.recentErrors && ctx.recentErrors.length) {
+        html += '<div style="font-size:0.68em;font-weight:700;color:#f87171;margin-bottom:4px">RECENT ERRORS</div>';
+        html += '<div style="font-size:0.68em;color:#f87171;margin-bottom:10px;max-height:80px;overflow-y:auto">';
+        ctx.recentErrors.forEach(function(e) { html += '<div>' + String(e.message).replace(/</g, '&lt;').substring(0, 150) + '</div>'; });
+        html += '</div>';
+    }
+
+    // Notes
+    html += '<div style="font-size:0.68em;font-weight:700;color:#475569;margin-bottom:4px">RESOLUTION NOTES</div>';
+    html += '<textarea id="glFbNotes" style="width:100%;min-height:50px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:#e2e8f0;font-size:0.78em;font-family:inherit;box-sizing:border-box">' + (r.resolutionNotes || '') + '</textarea>';
+    html += '<button onclick="_glSaveFbNotes(\'' + reportId + '\')" class="btn btn-ghost btn-sm" style="margin-top:4px;font-size:0.72em">Save Notes</button>';
+
+    html += '</div>';
+    el.innerHTML = html;
+};
+
+window._glUpdateFbStatus = async function(reportId, status) {
+    if (typeof GLFeedbackService !== 'undefined') {
+        await GLFeedbackService.updateFeedbackStatus(reportId, { status: status });
+        // Update local cache
+        var reports = window._glFeedbackReports || [];
+        var r = reports.find(function(x) { return x.reportId === reportId; });
+        if (r) r.status = status;
+        _glShowFeedbackDetail(reportId);
+        if (typeof showToast === 'function') showToast('Status: ' + status);
+    }
+};
+
+window._glSaveFbNotes = async function(reportId) {
+    var ta = document.getElementById('glFbNotes');
+    if (!ta || typeof GLFeedbackService === 'undefined') return;
+    await GLFeedbackService.updateFeedbackStatus(reportId, { resolutionNotes: ta.value });
+    if (typeof showToast === 'function') showToast('Notes saved');
+};
 
 function checkSyncStatus() {
     const el = document.getElementById('syncStatus');
