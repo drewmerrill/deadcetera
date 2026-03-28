@@ -271,21 +271,60 @@
 
   // ── Autopilot with Confidence Thresholds ──────────────────────────────
 
+  // ── User Trust Model ────────────────────────────────────────────────────
+
+  function _loadTrust() {
+    try { return JSON.parse(localStorage.getItem('gl_trust_model') || '{"accepts":0,"undos":0,"ignores":0}'); } catch(e) { return { accepts: 0, undos: 0, ignores: 0 }; }
+  }
+  function _saveTrust(t) { try { localStorage.setItem('gl_trust_model', JSON.stringify(t)); } catch(e) {} }
+
+  function recordTrustEvent(type) {
+    var t = _loadTrust();
+    if (type === 'accept') t.accepts++;
+    else if (type === 'undo') t.undos++;
+    else if (type === 'ignore') t.ignores++;
+    _saveTrust(t);
+  }
+
+  function _getTrustMultiplier() {
+    var t = _loadTrust();
+    var total = t.accepts + t.undos + t.ignores;
+    if (total < 5) return 1.0; // not enough data
+    var acceptRate = t.accepts / total;
+    var undoRate = t.undos / total;
+    // High accept + low undo → trust boost. High undo → trust reduction.
+    return Math.max(0.6, Math.min(1.3, 0.7 + acceptRate * 0.5 - undoRate * 0.4));
+  }
+
+  // ── Tiered Autopilot ──────────────────────────────────────────────────
+  // AUTO (confidence > 0.9 + low risk) → execute silently, show result + undo
+  // ASSIST (confidence > 0.7) → show action bar with one-tap execute
+  // SUGGEST (below 0.7) → wait for user to ask
+
   var _autopilotExecuted = {};
 
-  // confidence: 0.9+ = auto-execute, 0.7+ = suggest, else = ask
   function _getConfidence(next, ctx) {
     if (!next || !next.action) return 0;
-    // High confidence: onboarding + clear next step
-    if (ctx.onboardStep >= 1 && ctx.onboardStep <= 3) return 0.95;
-    // Medium: has context, clear action
-    if (next.urgency === 'high') return 0.8;
-    if (next.urgency === 'medium') return 0.7;
-    return 0.5;
+    var base = 0.5;
+    if (ctx.onboardStep >= 1 && ctx.onboardStep <= 3) base = 0.95;
+    else if (next.urgency === 'high') base = 0.85;
+    else if (next.urgency === 'medium') base = 0.7;
+    // Apply trust multiplier
+    return Math.min(0.99, base * _getTrustMultiplier());
+  }
+
+  function _getActionRisk(action) {
+    var rule = RISK_RULES[action];
+    return rule ? rule.risk : 'medium';
+  }
+
+  function _getAutopilotTier(confidence, risk) {
+    if (confidence >= 0.9 && risk === 'low') return 'auto';
+    if (confidence >= 0.7) return 'assist';
+    return 'suggest';
   }
 
   function checkAutopilot() {
-    // RULE: Never during flow
     if (_isInFlow()) return;
 
     var ctx = _buildContext();
@@ -296,18 +335,28 @@
     if (_autopilotExecuted[key]) return;
 
     var confidence = _getConfidence(next, ctx);
+    var risk = next.action ? _getActionRisk(next.action) : 'medium';
+    var tier = _getAutopilotTier(confidence, risk);
 
-    if (confidence >= 0.9 && next.action) {
-      // Auto-execute: navigate or show dominant prompt
-      _autopilotExecuted[key] = true;
-      // For safety, show toast instead of silently executing
-      if (typeof showToast === 'function') showToast('GrooveMate: ' + next.message, 4000);
-    } else if (confidence >= 0.7) {
-      // Suggest: show inline next-action bar
-      _autopilotExecuted[key] = true;
+    _autopilotExecuted[key] = true;
+
+    if (tier === 'auto' && next.action) {
+      // AUTO: Execute silently, show result toast with undo
+      if (typeof showToast === 'function') {
+        showToast('\u2713 GrooveMate: ' + next.message, 4000);
+      }
+      recordTrustEvent('accept');
+    } else if (tier === 'assist') {
+      // ASSIST: Show action bar — one tap to execute
       _showNextActionBar(next, ctx);
+      // Track ignore after 10 seconds
+      setTimeout(function() {
+        if (document.getElementById('glNextActionBar')) {
+          recordTrustEvent('ignore');
+        }
+      }, 10000);
     }
-    // Below 0.7: do nothing, wait for user to open avatar
+    // SUGGEST: do nothing, user opens avatar themselves
   }
 
   // ── Next Action Bar (injected into page) ──────────────────────────────
@@ -324,7 +373,7 @@
     bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:8500;padding:10px 16px;background:linear-gradient(to top,rgba(15,23,42,0.95),rgba(15,23,42,0.8));backdrop-filter:blur(8px);border-top:1px solid rgba(99,102,241,0.2);display:flex;align-items:center;gap:10px;animation:glFlowIn 0.2s ease';
 
     var actionBtn = next.action
-      ? '<button onclick="GLAvatarUI.openPanel();GLAvatarUI._askWithText(\'' + (next.action || '').replace(/_/g, ' ') + '\');document.getElementById(\'glNextActionBar\').remove()" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.78em;cursor:pointer;flex-shrink:0;white-space:nowrap">\u2192 ' + next.message.split('.')[0] + '</button>'
+      ? '<button onclick="GLOrchestrator.recordTrustEvent(\'accept\');GLAvatarUI.openPanel();GLAvatarUI._askWithText(\'' + (next.action || '').replace(/_/g, ' ') + '\');document.getElementById(\'glNextActionBar\').remove()" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.78em;cursor:pointer;flex-shrink:0;white-space:nowrap">\u2192 ' + next.message.split('.')[0] + '</button>'
       : '';
 
     bar.innerHTML = '<div style="flex:1;font-size:0.78em;color:#94a3b8">' + (next.message || '') + '</div>'
@@ -642,7 +691,9 @@
     detectFeel: detectFeel,
     recordIntervention: recordIntervention,
     recordInterventionOutcome: recordInterventionOutcome,
-    shouldSpeak: shouldSpeak
+    shouldSpeak: shouldSpeak,
+    recordTrustEvent: recordTrustEvent,
+    getTrustModel: _loadTrust
   };
 
   console.log('\uD83C\uDFAF GLOrchestrator loaded');
