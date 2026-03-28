@@ -189,6 +189,7 @@ window.GLAvatarUI = (function() {
         html += '<div style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.04)">';
         html += '<div style="display:flex;gap:6px">';
         html += '<input id="glAvAskInput" placeholder="Ask me anything\u2026" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#e2e8f0;font-size:0.78em;font-family:inherit" onkeydown="if(event.key===\'Enter\')GLAvatarUI._askSubmit()">';
+        html += '<button id="glAvMicBtn" onclick="GLAvatarUI._micToggle()" title="Tap to speak" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#94a3b8;font-size:0.85em;cursor:pointer;flex-shrink:0;transition:all 0.2s">\uD83C\uDF99</button>';
         html += '<button onclick="GLAvatarUI._askSubmit()" style="padding:8px 12px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.75em;cursor:pointer;flex-shrink:0">Ask</button>';
         html += '</div>';
         // Voice toggle
@@ -523,6 +524,7 @@ window.GLAvatarUI = (function() {
         var question = input.value.trim();
         input.value = '';
         // Show thinking state
+        setExpression('focused');
         var msgArea = document.getElementById('glAvMessages');
         if (msgArea) {
             msgArea.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">'
@@ -557,6 +559,98 @@ window.GLAvatarUI = (function() {
         if (typeof showToast === 'function') showToast('Voice ' + (enabled ? 'enabled' : 'disabled'));
     }
 
+    // ── Voice Input (Speech-to-Text) ────────────────────────────────────────
+    var _recognition = null;
+    var _isListening = false;
+
+    function _micToggle() {
+        if (_isListening) {
+            _micStop();
+            return;
+        }
+
+        // Check browser support
+        var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            if (typeof showToast === 'function') showToast('Voice input not supported in this browser');
+            return;
+        }
+
+        _recognition = new SpeechRecognition();
+        _recognition.lang = 'en-US';
+        _recognition.continuous = false;
+        _recognition.interimResults = true;
+        _recognition.maxAlternatives = 1;
+
+        var micBtn = document.getElementById('glAvMicBtn');
+        var input = document.getElementById('glAvAskInput');
+
+        _recognition.onstart = function() {
+            _isListening = true;
+            if (micBtn) {
+                micBtn.style.background = 'rgba(239,68,68,0.2)';
+                micBtn.style.borderColor = 'rgba(239,68,68,0.5)';
+                micBtn.style.color = '#f87171';
+                micBtn.textContent = '\uD83D\uDD34';
+            }
+            if (input) input.placeholder = 'Listening\u2026';
+            // Set avatar to focused expression while listening
+            setExpression('focused');
+        };
+
+        _recognition.onresult = function(event) {
+            var transcript = '';
+            for (var i = event.resultIndex; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            if (input) input.value = transcript;
+
+            // If final result, auto-submit
+            if (event.results[event.results.length - 1].isFinal) {
+                _micStop();
+                setTimeout(function() { _askSubmit(); }, 200);
+            }
+        };
+
+        _recognition.onerror = function(event) {
+            console.warn('[VoiceInput] Error:', event.error);
+            _micStop();
+            if (event.error === 'not-allowed') {
+                if (typeof showToast === 'function') showToast('Mic access denied \u2014 check browser permissions');
+            } else if (event.error === 'no-speech') {
+                if (typeof showToast === 'function') showToast('No speech detected. Try again.');
+            }
+        };
+
+        _recognition.onend = function() {
+            _micStop();
+        };
+
+        try {
+            _recognition.start();
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Could not start voice input');
+        }
+    }
+
+    function _micStop() {
+        _isListening = false;
+        if (_recognition) {
+            try { _recognition.stop(); } catch(e) {}
+            _recognition = null;
+        }
+        var micBtn = document.getElementById('glAvMicBtn');
+        if (micBtn) {
+            micBtn.style.background = 'rgba(255,255,255,0.04)';
+            micBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+            micBtn.style.color = '#94a3b8';
+            micBtn.textContent = '\uD83C\uDF99';
+        }
+        var input = document.getElementById('glAvAskInput');
+        if (input && input.placeholder === 'Listening\u2026') input.placeholder = 'Ask me anything\u2026';
+        setExpression('neutral');
+    }
+
     return {
         openPanel: openPanel,
         closePanel: closePanel,
@@ -569,7 +663,8 @@ window.GLAvatarUI = (function() {
         _showAutoLaunchNudge: _showAutoLaunchNudge,
         _checkMagicMoment: _checkMagicMoment,
         _askSubmit: _askSubmit,
-        _toggleVoice: _toggleVoice
+        _toggleVoice: _toggleVoice,
+        _micToggle: _micToggle
     };
 
 })();
