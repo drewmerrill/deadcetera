@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-142418', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-143040', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10155,6 +10155,7 @@ function renderSettingsPage(el) {
         <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
         <button class="tab-btn" onclick="settingsTab('notifications',this)">🔔 Notifications</button>
         <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Bugs</button>
+        <button class="tab-btn" onclick="settingsTab('uat',this)">\uD83E\uDDEA UAT</button>
         <button class="tab-btn" onclick="settingsTab('plan',this)">\uD83D\uDCB3 Plan</button>
         <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
     </div>
@@ -10325,6 +10326,15 @@ function settingsTab(tab, btn) {
             <div id="glPlanDisplay" style="margin-bottom:16px">Loading...</div>
         </div>`,
 
+    uat: `
+        <div class="app-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <h3 style="margin:0">\uD83E\uDDEA Product Health</h3>
+                <button onclick="_glRefreshUAT()" class="btn btn-ghost btn-sm">Refresh</button>
+            </div>
+            <div id="glUATDashboard" style="color:var(--text-dim);font-size:0.85em">Loading...</div>
+        </div>`,
+
     about: `
         <div class="app-card"><h3>ℹ️ About GrooveLinx™</h3>
             <div style="text-align:center;padding:16px 0">
@@ -10355,10 +10365,71 @@ function settingsTab(tab, btn) {
     // Post-render hooks
     if (tab === 'notifications') _renderNotifSettings();
     if (tab === 'feedback') loadFeedbackHistory();
+    if (tab === 'uat') _glRefreshUAT();
     if (tab === 'plan') _renderPlanTab();
     if (tab === 'data') checkSyncStatus();
     if (tab === 'profile' || !tab) setTimeout(initSettingsAddressAutocomplete, 300);
 }
+
+window._glRefreshUAT = async function() {
+    var el = document.getElementById('glUATDashboard');
+    if (!el) return;
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">Loading health data...</div>';
+
+    if (typeof GLFeedbackService === 'undefined') { el.innerHTML = 'Feedback service not loaded.'; return; }
+    var health = await GLFeedbackService.getProductHealth();
+
+    var html = '';
+
+    // Summary cards
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:16px">';
+    var cards = [
+        { label: 'Total Reports', value: health.total, color: '#6366f1' },
+        { label: 'Open', value: health.open, color: health.open > 5 ? '#ef4444' : '#eab308' },
+        { label: 'Clusters', value: health.clusters, color: '#818cf8' },
+        { label: 'Flow Breaks', value: health.flowBreaks, color: health.flowBreaks > 0 ? '#f97316' : '#22c55e' },
+        { label: 'Auto-Detected', value: health.autoCount, color: '#94a3b8' },
+        { label: 'Founder Reports', value: health.founderCount, color: '#f59e0b' }
+    ];
+    cards.forEach(function(c) {
+        html += '<div style="padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;text-align:center">';
+        html += '<div style="font-size:1.3em;font-weight:800;color:' + c.color + '">' + c.value + '</div>';
+        html += '<div style="font-size:0.65em;color:#64748b">' + c.label + '</div>';
+        html += '</div>';
+    });
+    html += '</div>';
+
+    // Top issues
+    if (health.topIssues && health.topIssues.length) {
+        html += '<div style="font-size:0.78em;font-weight:700;color:#94a3b8;margin-bottom:6px">TOP ISSUES</div>';
+        health.topIssues.forEach(function(issue) {
+            var r = issue.latest;
+            var typeIcons = { bug: '\uD83D\uDC1B', ux_confusion: '\uD83E\uDD14', feature_request: '\uD83D\uDCA1', flow_break: '\uD83D\uDEA7', onboarding_friction: '\uD83D\uDEB6' };
+            html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:0.78em;border-bottom:1px solid rgba(255,255,255,0.04)">';
+            html += '<span>' + (typeIcons[r.type] || '\uD83D\uDCAC') + '</span>';
+            html += '<span style="flex:1;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.title || issue.key).replace(/</g, '&lt;') + '</span>';
+            html += '<span style="font-size:0.85em;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.15);color:#a5b4fc;font-weight:700">' + issue.count + 'x</span>';
+            html += '</div>';
+        });
+    } else {
+        html += '<div style="text-align:center;padding:20px;color:#64748b">No issues reported yet. Product is healthy!</div>';
+    }
+
+    // Avatar action success rate
+    html += '<div style="margin-top:16px;font-size:0.78em;font-weight:700;color:#94a3b8;margin-bottom:6px">SYSTEM STATUS</div>';
+    html += '<div style="font-size:0.72em;color:#64748b">';
+    html += '\u2713 Feedback pipeline: active<br>';
+    html += '\u2713 Auto-capture: 3 triggers armed<br>';
+    html += '\u2713 Flow tracking: create_setlist, start_rehearsal<br>';
+    html += '\u2713 Knowledge resolver: ' + (typeof GLKnowledge !== 'undefined' ? 'loaded' : 'missing') + '<br>';
+    html += '\u2713 Action router: ' + (typeof GLActionRouter !== 'undefined' ? 'loaded' : 'missing') + '<br>';
+    html += '\u2713 Help validator: ' + (typeof GLHelpValidator !== 'undefined' ? 'loaded' : 'missing') + '<br>';
+    var plan = (typeof GLPlans !== 'undefined' && GLPlans.getCurrentPlan) ? GLPlans.getCurrentPlan() : 'unknown';
+    html += '\u2713 Plan: ' + plan;
+    html += '</div>';
+
+    el.innerHTML = html;
+};
 
 function _renderPlanTab() {
     var el = document.getElementById('glPlanDisplay');

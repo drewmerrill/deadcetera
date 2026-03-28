@@ -342,8 +342,82 @@
     return 'same';
   }
 
+  /**
+   * Mark a cluster as fixed and snapshot current count for validation.
+   */
+  async function markClusterFixed(clusterKey, reports) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) return;
+    var safeKey = clusterKey.replace(/[.#$/\[\]]/g, '_');
+    try {
+      await db.ref('feedback_clusters/' + safeKey).update({
+        fixedAt: new Date().toISOString(),
+        countAtFix: reports ? reports.length : 0,
+        status: 'fixed'
+      });
+    } catch(e) {}
+  }
+
+  /**
+   * Validate a fix by comparing post-fix count to pre-fix count.
+   */
+  async function validateFix(clusterKey, currentReports) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) return null;
+    var safeKey = clusterKey.replace(/[.#$/\[\]]/g, '_');
+    try {
+      var snap = await db.ref('feedback_clusters/' + safeKey).once('value');
+      var cluster = snap.val();
+      if (!cluster || !cluster.fixedAt) return null;
+      var countAtFix = cluster.countAtFix || 0;
+      var now = Date.now();
+      var fixTime = new Date(cluster.fixedAt).getTime();
+      // Count reports AFTER the fix
+      var postFixCount = (currentReports || []).filter(function(r) {
+        return new Date(r.createdAt).getTime() > fixTime;
+      }).length;
+      var result = postFixCount < countAtFix ? 'resolved' : postFixCount === 0 ? 'resolved' : postFixCount <= countAtFix ? 'improving' : 'regressed';
+      // Store validation result
+      await db.ref('feedback_clusters/' + safeKey).update({ validationResult: result, lastValidated: new Date().toISOString(), postFixCount: postFixCount });
+      return result;
+    } catch(e) { return null; }
+  }
+
+  /**
+   * Get product health summary for UAT dashboard.
+   */
+  async function getProductHealth() {
+    var reports = await listProductFeedback();
+    if (!reports.length) return { total: 0, open: 0, clusters: 0, flowBreaks: 0, topIssues: [] };
+
+    var groups = {};
+    var open = 0;
+    var flowBreaks = 0;
+    reports.forEach(function(r) {
+      if (r.status === 'new' || r.status === 'reviewing') open++;
+      if (r.type === 'flow_break') flowBreaks++;
+      var key = r.clusterKey || r.reportId;
+      if (!groups[key]) groups[key] = { count: 0, latest: r };
+      groups[key].count++;
+      if ((r.createdAt || '') > (groups[key].latest.createdAt || '')) groups[key].latest = r;
+    });
+
+    var sorted = Object.keys(groups).map(function(k) { return { key: k, count: groups[k].count, latest: groups[k].latest }; });
+    sorted.sort(function(a, b) { return b.count - a.count; });
+
+    return {
+      total: reports.length,
+      open: open,
+      clusters: sorted.length,
+      flowBreaks: flowBreaks,
+      topIssues: sorted.slice(0, 5),
+      autoCount: reports.filter(function(r) { return r.auto; }).length,
+      founderCount: reports.filter(function(r) { return r.founder; }).length
+    };
+  }
+
   // Wire into existing friction detection systems
-  window.addEventListener('gl:pagechange', function() {}); // Keep event listener
+  window.addEventListener('gl:pagechange', function() {});
 
   window.GLFeedbackService = {
     submitExplicit: submitExplicit,
@@ -355,7 +429,10 @@
     getClusterTrend: getClusterTrend,
     startFlow: startFlow,
     advanceFlow: advanceFlow,
-    completeFlow: completeFlow
+    completeFlow: completeFlow,
+    markClusterFixed: markClusterFixed,
+    validateFix: validateFix,
+    getProductHealth: getProductHealth
   };
 
   console.log('\uD83D\uDCE8 GLFeedbackService loaded');
