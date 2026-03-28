@@ -146,47 +146,83 @@
   function getHelpResponse(question, currentPage) {
     var resolved = resolve(question, currentPage);
 
-    if (resolved.confidence >= 0.5) {
-      var actionLabel = resolved.action ? (ACTION_LABELS[resolved.action] || null) : null;
-      var mistake = COMMON_MISTAKES[currentPage] || '';
-
-      // Check staleness — reduce confidence if stale
-      var staleCheck = isStale(currentPage);
-      var adjustedConfidence = resolved.confidence;
-      if (staleCheck.stale) {
-        adjustedConfidence = Math.max(0.4, resolved.confidence - 0.2);
-      }
-
-      // Build structured response
-      var response = {
-        text: resolved.answer,
-        steps: resolved.steps,
-        whatGoesWrong: mistake,
-        canDoIt: !!actionLabel,
-        action: resolved.action,
-        actionLabel: actionLabel,
-        confidence: adjustedConfidence,
-        source: staleCheck.stale ? 'inferred' : resolved.source,
-        verifiedBuild: _VERIFIED_BUILD,
-        stale: staleCheck.stale,
-        staleReason: staleCheck.reason || null
-      };
-
-      // Confidence-based behavior
-      if (resolved.confidence >= 0.8) {
-        response.tone = 'direct'; // high confidence: direct instruction
-      } else if (resolved.confidence >= 0.6) {
-        response.tone = 'suggestion'; // medium: instruction + fallback
-        response.fallback = 'If that doesn\u2019t help, try describing what you\u2019re trying to do.';
-      } else {
-        response.tone = 'exploratory'; // low: ask or navigate
-        response.fallback = 'I\u2019m not 100% sure about that. Want me to take you there so you can see?';
-      }
-
-      return response;
+    // RULE: Avatar CANNOT answer outside registry
+    if (resolved.source === 'none' || !resolved.answer) {
+      return null; // Let Claude handle it, or stay silent
     }
 
-    return null;
+    var actionLabel = resolved.action ? (ACTION_LABELS[resolved.action] || null) : null;
+    var mistake = COMMON_MISTAKES[currentPage] || '';
+
+    // Check staleness
+    var staleCheck = isStale(currentPage);
+    var adjustedConfidence = resolved.confidence;
+
+    // RULE: If stale + confidence < 0.6 → disable help entirely
+    if (staleCheck.stale) {
+      adjustedConfidence = Math.max(0.3, resolved.confidence - 0.25);
+      if (adjustedConfidence < 0.6) {
+        // Return safe fallback instead of potentially wrong answer
+        return {
+          text: 'I\u2019m not confident about this right now. Let me take you there instead.',
+          steps: null,
+          whatGoesWrong: null,
+          canDoIt: false,
+          action: null,
+          actionLabel: null,
+          confidence: adjustedConfidence,
+          source: 'stale_fallback',
+          verifiedBuild: _VERIFIED_BUILD,
+          stale: true,
+          staleReason: staleCheck.reason,
+          tone: 'exploratory',
+          fallback: 'Try navigating to the page directly. I\u2019ll update my knowledge after you interact with it.'
+        };
+      }
+    }
+
+    // Factor in effectiveness history
+    var eff = _helpEffectiveness[currentPage] || _helpEffectiveness[resolved.source] || null;
+    if (eff) {
+      var total = (eff.helpful || 0) + (eff.not_helpful || 0) + (eff.wrong || 0);
+      if (total >= 5) {
+        var successRate = (eff.helpful || 0) / total;
+        // Blend: 60% registry confidence + 40% effectiveness
+        adjustedConfidence = adjustedConfidence * 0.6 + successRate * 0.4;
+      }
+    }
+
+    // Build response
+    var response = {
+      text: resolved.answer,
+      steps: resolved.steps,
+      whatGoesWrong: mistake,
+      canDoIt: !!actionLabel,
+      action: resolved.action,
+      actionLabel: actionLabel,
+      confidence: Math.round(adjustedConfidence * 100) / 100,
+      source: staleCheck.stale ? 'inferred' : resolved.source,
+      verifiedBuild: _VERIFIED_BUILD,
+      stale: staleCheck.stale || false,
+      staleReason: staleCheck.reason || null
+    };
+
+    // SHOW MODE: Prefer action over explanation
+    // If high confidence + action available → lead with "I can do this"
+    if (adjustedConfidence >= 0.85 && actionLabel) {
+      response.tone = 'show'; // execute via TaskEngine
+      response.text = actionLabel + '. Want me to?';
+    } else if (adjustedConfidence >= 0.7) {
+      response.tone = 'direct';
+    } else if (adjustedConfidence >= 0.5) {
+      response.tone = 'suggestion';
+      response.fallback = 'If that doesn\u2019t help, tell me what you\u2019re trying to do.';
+    } else {
+      response.tone = 'exploratory';
+      response.fallback = 'I\u2019m not sure about this. Want me to take you there?';
+    }
+
+    return response;
   }
 
   // ── Help Outcome Tracking ──────────────────────────────────────────────
@@ -277,6 +313,39 @@
     return _helpEffectiveness;
   }
 
+  // ── Feedback → Knowledge Pipeline ────────────────────────────────────────
+  // Detect knowledge gaps from feedback clusters and flag for improvement.
+
+  function detectKnowledgeGaps() {
+    var gaps = [];
+    // Check which pages have feedback clusters but no feature entry
+    try {
+      var cached = localStorage.getItem('gl_cluster_tips');
+      if (cached) {
+        var tips = JSON.parse(cached);
+        Object.keys(tips).forEach(function(page) {
+          if (!FEATURES[page]) {
+            gaps.push({ page: page, reason: 'feedback_cluster_no_feature', tip: tips[page] });
+          }
+        });
+      }
+    } catch(e) {}
+
+    // Check which features have low effectiveness
+    Object.keys(_helpEffectiveness).forEach(function(key) {
+      var eff = _helpEffectiveness[key];
+      var total = (eff.helpful || 0) + (eff.not_helpful || 0) + (eff.wrong || 0);
+      if (total >= 3 && (eff.wrong || 0) >= 2) {
+        gaps.push({ page: key, reason: 'frequently_wrong', wrongCount: eff.wrong, total: total });
+      }
+      if (total >= 5 && (eff.helpful || 0) / total < 0.4) {
+        gaps.push({ page: key, reason: 'low_effectiveness', successRate: Math.round((eff.helpful || 0) / total * 100) + '%' });
+      }
+    });
+
+    return gaps;
+  }
+
   window.GLKnowledge = {
     resolve: resolve,
     getHelpResponse: getHelpResponse,
@@ -285,7 +354,8 @@
     trackHelpOutcome: trackHelpOutcome,
     flagHelp: flagHelp,
     isStale: isStale,
-    getEffectivenessReport: getEffectivenessReport
+    getEffectivenessReport: getEffectivenessReport,
+    detectKnowledgeGaps: detectKnowledgeGaps
   };
 
   console.log('\uD83D\uDCD6 GLKnowledge loaded (' + Object.keys(FEATURES).length + ' features, ' + Object.keys(RECIPES).length + ' recipes)');

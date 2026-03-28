@@ -581,10 +581,21 @@ window.GLAvatarUI = (function() {
                 var _helpId = 'help_' + Date.now().toString(36);
                 var helpHtml = '<div style="margin-bottom:12px">';
                 helpHtml += '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(question) + '</div>';
-                helpHtml += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(helpResult.text) + '</div>';
+                // SHOW MODE: if tone is 'show', lead with action button
+                if (helpResult.tone === 'show' && helpResult.action) {
+                    helpHtml += '<div style="font-size:0.88em;font-weight:600;color:#86efac;line-height:1.5">' + _esc(helpResult.text) + '</div>';
+                    helpHtml += '<div style="margin-top:8px"><button onclick="GLKnowledge.trackHelpOutcome(\'' + _helpId + '\',\'took_action\');GLAvatarUI._askWithText(\'' + helpResult.action.replace(/_/g, ' ') + '\')" style="font-size:0.82em;padding:10px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;cursor:pointer;font-weight:700">\u2713 Do it</button> <button onclick="GLKnowledge.trackHelpOutcome(\'' + _helpId + '\',\'helpful\')" style="font-size:0.75em;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;cursor:pointer">No, just explain</button></div>';
+                } else {
+                    helpHtml += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(helpResult.text) + '</div>';
+                }
+
+                // Stale warning
+                if (helpResult.stale) {
+                    helpHtml += '<div style="margin-top:4px;font-size:0.65em;color:#f59e0b;font-style:italic">\u26A0 This guidance may be outdated.</div>';
+                }
 
                 // What usually goes wrong
-                if (helpResult.whatGoesWrong) {
+                if (helpResult.whatGoesWrong && helpResult.tone !== 'show') {
                     helpHtml += '<div style="margin-top:6px;font-size:0.75em;color:#fbbf24;line-height:1.4">\u26A0 Common issue: ' + _esc(helpResult.whatGoesWrong) + '</div>';
                 }
 
