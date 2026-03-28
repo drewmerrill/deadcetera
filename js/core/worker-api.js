@@ -65,7 +65,7 @@ var workerApi = window.workerApi = {
     async claude(systemPrompt, userPrompt, maxTokens) {
         // Send in Anthropic Messages API format (worker passes body directly)
         var res = await window.workerPost('/claude', {
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-haiku-4-5-20251001',
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }],
             max_tokens: maxTokens || 1024
