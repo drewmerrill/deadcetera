@@ -33,18 +33,11 @@ window.GLAvatarUI = (function() {
             + '@keyframes glAvSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}'
             + '@keyframes glAvSlideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}'
             + '@keyframes glAvIdle{0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.15),inset 0 0 6px rgba(99,102,241,0.05)}50%{box-shadow:0 0 14px rgba(99,102,241,0.25),inset 0 0 8px rgba(99,102,241,0.08)}}'
-            + '@keyframes glAvBreathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}'
-            + '@keyframes glAvBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(0.1)}}'
-            + '@keyframes glAvTalk{0%,100%{d:path("M18 26 Q22 28 26 26")}25%{d:path("M18 26 Q22 30 26 26")}50%{d:path("M18 26 Q22 27 26 26")}75%{d:path("M18 26 Q22 29 26 26")}}'
-            + '@keyframes glAvRingPulse{0%,100%{stroke-opacity:0.2;r:21}50%{stroke-opacity:0.5;r:23}}'
+            + '@keyframes glAvPulseRing{0%,100%{box-shadow:0 2px 12px rgba(99,102,241,0.2)}50%{box-shadow:0 2px 24px rgba(99,102,241,0.5)}}'
             // Button container
-            + '#glAvatarBtn{position:fixed;bottom:90px;right:16px;z-index:9000;width:52px;height:52px;border-radius:50%;border:none;background:none;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;transition:transform 0.25s ease}'
+            + '#glAvatarBtn{position:fixed;bottom:90px;right:16px;z-index:9000;width:56px;height:56px;border-radius:50%;border:none;background:none;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;transition:transform 0.25s ease}'
             + '#glAvatarBtn:hover{transform:scale(1.08)}'
-            + '#glAvatarBtn.has-tip .gl-av-ring{animation:glAvRingPulse 2s ease infinite}'
-            // Avatar SVG internals
-            + '.gl-av-face{animation:glAvBreathe 4s ease-in-out infinite}'
-            + '.gl-av-eyes{animation:glAvBlink 4s ease infinite}'
-            + '.gl-av-mouth-talk{animation:glAvTalk 0.35s ease infinite}'
+            + '#glAvatarBtn.has-tip img{animation:glAvPulseRing 2s ease infinite;border-color:rgba(99,102,241,0.6) !important}'
             // Panel
             + '#glAvatarPanel{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:85vw;z-index:9100;background:#0f172a;border-left:1px solid rgba(99,102,241,0.2);display:flex;flex-direction:column;animation:glAvSlideIn 0.25s ease;box-shadow:-4px 0 24px rgba(0,0,0,0.4)}'
             + '#glAvatarPanel.closing{animation:glAvSlideOut 0.2s ease forwards}'
@@ -52,75 +45,54 @@ window.GLAvatarUI = (function() {
         document.head.appendChild(s);
     }
 
-    // ── Avatar SVG Builder ──────────────────────────────────────────────────
-    // Stylized human face — warm, approachable, music-savvy
-    // 5 states: neutral, encouraging, focused, concerned, celebratory
+    // ── Avatar Portrait System ──────────────────────────────────────────────
+    // AI-generated photorealistic portraits — 5 expression states
+    // Images stored in /avatars/*.png, preloaded on init
 
     var _currentExpression = 'neutral';
+    var _AVATAR_BASE = 'avatars/';
+    var _EXPRESSIONS = ['neutral', 'encouraging', 'focused', 'concerned', 'celebratory'];
 
-    var _EXPRESSIONS = {
-        neutral:      { eyebrowY: 0, mouthD: 'M18 26 Q22 27.5 26 26', mouthColor: '#e2a68a', cheekOpacity: 0 },
-        encouraging:  { eyebrowY: -0.5, mouthD: 'M17 25 Q22 29 27 25', mouthColor: '#e2a68a', cheekOpacity: 0.3 },
-        focused:      { eyebrowY: -1, mouthD: 'M19 26 Q22 27 25 26', mouthColor: '#d4967a', cheekOpacity: 0 },
-        concerned:    { eyebrowY: 0.5, mouthD: 'M18 27 Q22 25.5 26 27', mouthColor: '#d4967a', cheekOpacity: 0 },
-        celebratory:  { eyebrowY: -1, mouthD: 'M16 24 Q22 30 28 24', mouthColor: '#e2a68a', cheekOpacity: 0.4 }
-    };
+    // Preload all expression images
+    _EXPRESSIONS.forEach(function(ex) {
+        var img = new Image();
+        img.src = _AVATAR_BASE + ex + '.png';
+    });
 
-    function _buildAvatarSVG(expression) {
-        var ex = _EXPRESSIONS[expression] || _EXPRESSIONS.neutral;
-        return '<svg viewBox="0 0 44 44" width="52" height="52" style="filter:drop-shadow(0 2px 8px rgba(99,102,241,0.3))">'
-            // Ring (pulses when has tip)
-            + '<circle class="gl-av-ring" cx="22" cy="22" r="21" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-opacity="0.25"/>'
-            // Head background
-            + '<circle cx="22" cy="20" r="14" fill="#1e293b"/>'
-            // Face group (breathes)
-            + '<g class="gl-av-face">'
-            // Skin
-            + '<ellipse cx="22" cy="21" rx="11" ry="12" fill="#d4a574"/>'
-            // Hair (dark, slightly tousled)
-            + '<path d="M11 18 Q11 9 22 8 Q33 9 33 18 Q33 14 28 12 Q22 10 16 12 Q11 14 11 18Z" fill="#2d1f14"/>'
-            + '<path d="M11 18 Q10 15 12 13" fill="none" stroke="#2d1f14" stroke-width="2" stroke-linecap="round"/>'
-            // Eyes (blink animation)
-            + '<g class="gl-av-eyes">'
-            + '<ellipse cx="18" cy="20" rx="1.8" ry="2" fill="#1e293b"/>'
-            + '<ellipse cx="26" cy="20" rx="1.8" ry="2" fill="#1e293b"/>'
-            // Eye shine
-            + '<circle cx="18.6" cy="19.3" r="0.6" fill="white" opacity="0.8"/>'
-            + '<circle cx="26.6" cy="19.3" r="0.6" fill="white" opacity="0.8"/>'
-            + '</g>'
-            // Eyebrows
-            + '<line x1="15.5" y1="' + (17 + ex.eyebrowY) + '" x2="20" y2="' + (16.5 + ex.eyebrowY) + '" stroke="#3d2a1a" stroke-width="0.8" stroke-linecap="round"/>'
-            + '<line x1="24" y1="' + (16.5 + ex.eyebrowY) + '" x2="28.5" y2="' + (17 + ex.eyebrowY) + '" stroke="#3d2a1a" stroke-width="0.8" stroke-linecap="round"/>'
-            // Nose
-            + '<path d="M22 21.5 Q21 24 21.5 24.5 Q22 25 22.5 24.5 Q23 24 22 21.5" fill="#c4956a" opacity="0.5"/>'
-            // Mouth
-            + '<path class="gl-av-mouth" d="' + ex.mouthD + '" fill="none" stroke="' + ex.mouthColor + '" stroke-width="1.2" stroke-linecap="round"/>'
-            // Cheek blush (shows on encouraging/celebratory)
-            + '<circle cx="15" cy="23" r="2.5" fill="#e8a090" opacity="' + ex.cheekOpacity + '"/>'
-            + '<circle cx="29" cy="23" r="2.5" fill="#e8a090" opacity="' + ex.cheekOpacity + '"/>'
-            // Neck + shoulders hint
-            + '<path d="M18 33 Q18 30 22 30 Q26 30 26 33" fill="#d4a574"/>'
-            + '<path d="M14 38 Q14 33 18 33 L26 33 Q30 33 30 38" fill="#334155"/>'
-            // Collar detail
-            + '<path d="M18 33 L22 35 L26 33" fill="none" stroke="#475569" stroke-width="0.6"/>'
-            + '</g>'
-            + '</svg>';
+    function _buildAvatarImg(expression, size) {
+        size = size || 52;
+        var src = _AVATAR_BASE + (expression || 'neutral') + '.png';
+        var ver = (typeof BUILD_VERSION !== 'undefined') ? BUILD_VERSION : '';
+        return '<img src="' + src + (ver ? '?v=' + ver : '') + '" alt="GrooveMate" '
+            + 'style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;'
+            + 'border:2px solid rgba(99,102,241,0.3);box-shadow:0 2px 12px rgba(99,102,241,0.2);'
+            + 'transition:opacity 0.3s ease" draggable="false">';
     }
 
     function setExpression(expression) {
-        if (!_EXPRESSIONS[expression]) expression = 'neutral';
+        if (_EXPRESSIONS.indexOf(expression) < 0) expression = 'neutral';
         _currentExpression = expression;
-        if (_btnEl) _btnEl.innerHTML = _buildAvatarSVG(expression);
+        // Update button image
+        if (_btnEl) {
+            var img = _btnEl.querySelector('img');
+            if (img) img.src = _AVATAR_BASE + expression + '.png';
+        }
         // Update panel avatar if visible
         var panelAvatar = document.getElementById('glAvPanelFace');
-        if (panelAvatar) panelAvatar.innerHTML = _buildAvatarSVG(expression);
+        if (panelAvatar) {
+            var pImg = panelAvatar.querySelector('img');
+            if (pImg) pImg.src = _AVATAR_BASE + expression + '.png';
+        }
     }
 
     function setTalking(isTalking) {
-        var mouth = document.querySelector('.gl-av-mouth');
-        if (mouth) {
-            if (isTalking) mouth.classList.add('gl-av-mouth-talk');
-            else mouth.classList.remove('gl-av-mouth-talk');
+        // Pulse the avatar border while speaking
+        if (_btnEl) {
+            var img = _btnEl.querySelector('img');
+            if (img) {
+                img.style.borderColor = isTalking ? 'rgba(99,102,241,0.7)' : 'rgba(99,102,241,0.3)';
+                img.style.boxShadow = isTalking ? '0 2px 20px rgba(99,102,241,0.5)' : '0 2px 12px rgba(99,102,241,0.2)';
+            }
         }
     }
 
@@ -133,7 +105,7 @@ window.GLAvatarUI = (function() {
         _btnEl.id = 'glAvatarBtn';
         _btnEl.setAttribute('data-testid', 'avatar-button');
         _btnEl.title = _AVATAR_NAME + ' \u2014 your band guide';
-        _btnEl.innerHTML = _buildAvatarSVG('neutral');
+        _btnEl.innerHTML = _buildAvatarImg('neutral', 52);
         _btnEl.onclick = function() { _isOpen ? closePanel() : openPanel(); };
         document.body.appendChild(_btnEl);
     }
@@ -176,7 +148,7 @@ window.GLAvatarUI = (function() {
         var html = '';
         // Header with avatar portrait
         html += '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">';
-        html += '<div id="glAvPanelFace" style="flex-shrink:0">' + _buildAvatarSVG(_currentExpression).replace('width="52" height="52"', 'width="40" height="40"') + '</div>';
+        html += '<div id="glAvPanelFace" style="flex-shrink:0">' + _buildAvatarImg(_currentExpression, 40) + '</div>';
         html += '<div style="flex:1"><div style="font-size:0.88em;font-weight:800;color:#e2e8f0">' + _AVATAR_NAME + '</div>';
         html += '<div style="font-size:0.65em;color:#64748b">' + (stageLabels[stage] || '') + '</div></div>';
         html += '<button onclick="GLAvatarUI.closePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px 8px">\u2715</button>';
