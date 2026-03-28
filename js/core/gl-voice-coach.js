@@ -43,7 +43,8 @@
 
     // Use the Cloudflare Worker /tts endpoint (key stored server-side)
     if (typeof workerPost !== 'function') {
-      _speakWebSpeech(text, { rate: settings.speed });
+      // No worker available — skip voice entirely rather than use robotic browser TTS
+      console.warn('[VoiceCoach] Worker not loaded, skipping voice');
       return;
     }
 
@@ -72,10 +73,12 @@
       };
       audio.play();
     }).catch(function(e) {
-      console.warn('[VoiceCoach] ElevenLabs unavailable, using Web Speech:', e.message);
+      console.warn('[VoiceCoach] ElevenLabs failed:', e.message);
       _speaking = false;
       if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false);
-      _speakWebSpeech(text, { rate: settings.speed });
+      // Do NOT fall back to Web Speech — silence is better than a robot.
+      // Show a small toast so user knows voice didn't work.
+      if (typeof showToast === 'function') showToast('Voice unavailable — check ElevenLabs key in Cloudflare', 3000);
     });
   }
 

@@ -536,6 +536,14 @@ window.GLAvatarUI = (function() {
         'sounds','looks','robot','robotic','ugly','bad','poor','quality'
     ];
 
+    // Voice/audio complaints — always route as bug, never as style feedback
+    var _VOICE_COMPLAINTS = ['voice','robotic','robot','sounds like','stiff','accent','australian','british','male voice','female voice','different voice','voice changed','voice changes','keeps changing','tts','text to speech','speaker','audio'];
+
+    function _isVoiceComplaint(text) {
+        var lower = text.toLowerCase();
+        return _VOICE_COMPLAINTS.some(function(s) { return lower.indexOf(s) >= 0; });
+    }
+
     function _isFeedback(text) {
         var lower = text.toLowerCase();
         return _FEEDBACK_SIGNALS.some(function(s) { return lower.indexOf(s) >= 0; });
@@ -546,6 +554,11 @@ window.GLAvatarUI = (function() {
         if (!input || !input.value.trim()) return;
         var question = input.value.trim();
         input.value = '';
+
+        // 0. Voice/audio complaints — always log as bug, never misinterpret
+        if (_isVoiceComplaint(question) && _isFeedback(question) && typeof GLFeedbackService !== 'undefined') {
+            return _handleFeedbackSubmission('Bug: ' + question);
+        }
 
         // 1. Check if this is an ACTION (add songs, import, create setlist, etc.)
         if (typeof GLActionRouter !== 'undefined' && GLActionRouter.detectIntent(question)) {
