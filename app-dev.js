@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-210645', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-211829', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -11563,22 +11563,18 @@ async function submitCreateBand() {
         await firebaseDB.ref('bands/' + slug + '/meta').set(bandMeta);
         console.log('Band created:', slug);
 
-        // Show success step
-        document.getElementById('cbStep1').style.display = 'none';
-        document.getElementById('cbStep2Sub').style.display = 'none';
-        document.getElementById('cbStep3Info').style.display = 'none';
-        document.getElementById('cbStep4').style.display = 'block';
-        document.getElementById('cbCreatedName').textContent = name;
-        document.getElementById('cbCreatedSlug').value = slug;
-        var inviteUrl = window.location.origin + window.location.pathname + '?join=' + inviteCode;
-        document.getElementById('cbInviteLink').textContent = inviteUrl;
+        showToast('\u2713 Band created! Setting up your songs...');
 
-        showToast('Band created!');
-
-        // Seed starter songs + auto-create first setlist (non-blocking)
+        // Seed starter songs + setlist + rehearsal (non-blocking, runs during switch)
         _seedBandStarterContent(slug, bandType, bandSubtypes, name).catch(function(e) {
             console.warn('[BandCreate] Seeding failed:', e.message);
         });
+
+        // Store band type for personality matching
+        localStorage.setItem('gl_band_type', bandType);
+
+        // Auto-switch to the new band — skip invite screen, go straight to Home
+        setTimeout(function() { switchToBand(slug); }, 1500);
     } catch(err) {
         console.error('Error creating band:', err);
         showToast('Error creating band. Try again.');
@@ -11716,6 +11712,24 @@ async function _seedBandStarterContent(slug, bandType, subtypes, bandName) {
 
         // Mark onboarding Step 1 as done (setlist exists)
         localStorage.setItem('gl_onboard_setlist_done', Date.now().toString());
+
+        // Auto-create rehearsal for tomorrow
+        var tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        var rehDate = tomorrow.toISOString().split('T')[0];
+        try {
+            await firebaseDB.ref('bands/' + slug + '/rehearsals/' + rehDate.replace(/-/g, '')).set({
+                date: rehDate,
+                createdAt: new Date().toISOString(),
+                createdBy: 'groovemate',
+                status: 'planned',
+                setlistId: setlist.setlistId,
+                setlistName: setlist.name
+            });
+            console.log('[BandCreate] Auto-created rehearsal for ' + rehDate);
+        } catch(e) {
+            console.warn('[BandCreate] Auto-rehearsal failed:', e.message);
+        }
     } catch(e) {
         console.warn('[BandCreate] Auto-setlist failed:', e.message);
     }

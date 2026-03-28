@@ -1258,7 +1258,40 @@ window.GLAvatarUI = (function() {
         _executeConfirmedAction: _executeConfirmedAction,
         _executeTaskEngine: _executeTaskEngine,
         _undoLastTask: _undoLastTask,
-        _logAsReport: _logAsReport
+        _logAsReport: _logAsReport,
+
+        // ── UI Action Dispatcher ─────────────────────────────────────────
+        // Avatar can control the UI directly: navigate, trigger flows, open features.
+        executeUIAction: function(action, args) {
+            args = args || {};
+            switch(action) {
+                case 'navigate':
+                    if (args.page && typeof showPage === 'function') showPage(args.page);
+                    break;
+                case 'openSetlistEditor':
+                    if (typeof showPage === 'function') showPage('setlists');
+                    setTimeout(function() { if (typeof createNewSetlist === 'function') createNewSetlist(); }, 400);
+                    break;
+                case 'startRehearsal':
+                    if (typeof _glQuickStartRehearsal === 'function') _glQuickStartRehearsal();
+                    break;
+                case 'openAvatar':
+                    openPanel();
+                    break;
+                case 'closeAvatar':
+                    closePanel();
+                    break;
+                case 'importPack':
+                    openPanel();
+                    setTimeout(function() { _askWithText('import ' + (args.pack || 'songs')); }, 500);
+                    break;
+                case 'showSongs':
+                    if (typeof showPage === 'function') showPage('songs');
+                    break;
+                default:
+                    console.warn('[AvatarUI] Unknown UI action:', action);
+            }
+        }
     };
 
 })();
