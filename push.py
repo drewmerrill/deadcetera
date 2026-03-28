@@ -69,10 +69,10 @@ def discover_deploy_files(repo_dir):
             # At repo root — prune non-runtime directories
             dirnames[:] = [d for d in dirnames
                            if d not in EXCLUDE_DIRS and not d.startswith('.')
-                           and d in ('js', 'css')]  # only descend into js/ and css/
+                           and d in ('js', 'css', 'avatars')]  # only descend into js/, css/, avatars/
         else:
             top_dir = rel_dir.split(os.sep)[0]
-            if top_dir not in ('js', 'css'):
+            if top_dir not in ('js', 'css', 'avatars'):
                 dirnames[:] = []
                 continue
 
