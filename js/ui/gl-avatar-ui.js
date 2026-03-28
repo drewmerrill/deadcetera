@@ -511,8 +511,30 @@ window.GLAvatarUI = (function() {
 
     // ── Ask Anything Handler ────────────────────────────────────────────────
 
-    // Detect if user input is feedback vs a question
-    var _FEEDBACK_SIGNALS = ['bug','broken','not working','doesn\'t work','confus','crash','feature','wish','could you add','typo','slow','wrong','missing','lost data','stuck'];
+    // Detect if user input is feedback vs a question — broad net, catch complaints
+    var _FEEDBACK_SIGNALS = [
+        // Bugs
+        'bug','broken','not working','doesn\'t work','crash','error','fails','failed',
+        'won\'t','can\'t','stuck','blank','freeze','glitch','messed up',
+        // Complaints / frustration
+        'wrong','missing','lost','annoying','frustrat','hate','terrible','awful',
+        'keeps','always','never','why does','why is','why won\'t','why can\'t',
+        'supposed to','should be','shouldn\'t','not right','off','weird','inconsistent',
+        'changes','changed','different','random','sometimes','keeps changing',
+        // Confusion
+        'confus','unclear','don\'t understand','what does','where is','can\'t find',
+        'not obvious','hard to','how do i','unintuitive','don\'t know',
+        // Feature requests
+        'feature','wish','could you add','should have','want','need','please add','suggestion',
+        // Copy / display
+        'typo','wording','text says','label','misspell',
+        // Performance
+        'slow','lag','loading','takes forever','sluggish',
+        // Data
+        'lost data','data gone','missing data','wrong data','old data','showing wrong',
+        // Quality
+        'sounds','looks','robot','robotic','ugly','bad','poor','quality'
+    ];
 
     function _isFeedback(text) {
         var lower = text.toLowerCase();
@@ -600,9 +622,15 @@ window.GLAvatarUI = (function() {
             response = 'Voice coach is loading. Try again in a moment.';
         }
         if (msgArea) {
+            var _safeQ = question.replace(/'/g, '').replace(/"/g, '').substring(0, 200);
             msgArea.innerHTML = '<div style="margin-bottom:12px">'
                 + '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(question) + '</div>'
                 + '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(response) + '</div>'
+                + '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.04);display:flex;gap:6px;align-items:center">'
+                + '<span style="font-size:0.62em;color:#475569">Was this about a problem?</span>'
+                + '<button onclick="GLAvatarUI._logAsReport(\'' + _safeQ + '\');this.parentElement.innerHTML=\'<span style=color:#86efac;font-size:0.65em>\u2713 Logged as feedback</span>\'" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(248,113,113,0.3);background:none;color:#f87171;cursor:pointer;font-weight:600">\uD83D\uDC1B Log as bug</button>'
+                + '<button onclick="this.parentElement.innerHTML=\'<span style=color:#64748b;font-size:0.65em>OK, no problem.</span>\'" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">No, just asking</button>'
+                + '</div>'
                 + '</div>';
         }
     }
@@ -977,6 +1005,14 @@ window.GLAvatarUI = (function() {
         }
     }
 
+    // ── Quick Log as Report ─────────────────────────────────────────────────
+
+    async function _logAsReport(text) {
+        if (typeof GLFeedbackService !== 'undefined' && text) {
+            await GLFeedbackService.submitExplicit(text);
+        }
+    }
+
     // ── Undo ──────────────────────────────────────────────────────────────
 
     async function _undoLastTask() {
@@ -1197,7 +1233,8 @@ window.GLAvatarUI = (function() {
         _askWithText: _askWithText,
         _executeConfirmedAction: _executeConfirmedAction,
         _executeTaskEngine: _executeTaskEngine,
-        _undoLastTask: _undoLastTask
+        _undoLastTask: _undoLastTask,
+        _logAsReport: _logAsReport
     };
 
 })();
