@@ -145,10 +145,11 @@
     var userPrompt = 'Context: ' + contextBlock + '\n\nUser asks: ' + question.trim();
 
     try {
-      if (typeof workerAPI === 'undefined' || !workerAPI.claude) {
-        return 'Voice coach requires an internet connection.';
+      var _api = (typeof workerApi !== 'undefined') ? workerApi : (typeof workerAPI !== 'undefined') ? workerAPI : null;
+      if (!_api || !_api.claude) {
+        return 'Voice coach is not available right now. Please try again later.';
       }
-      var response = await workerAPI.claude(systemPrompt, userPrompt, 200);
+      var response = await _api.claude(systemPrompt, userPrompt, 200);
       _lastResponse = response;
       return response;
     } catch(e) {
