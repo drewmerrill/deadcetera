@@ -295,11 +295,10 @@ async function createNewSetlist() {
     window._slSelectedVenueName = null;
     // Auto-generate name and date so user can focus on adding songs
     var _today = new Date().toISOString().split('T')[0];
-    var _autoName = 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
         <div style="margin-bottom:12px">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-                <div style="flex:2;min-width:150px"><label class="form-label">Name</label><input class="app-input" id="slName" value="${_autoName}" placeholder="e.g. Gig Name or Rehearsal Date" title="Tip: use the gig name or date so it's easy to find later"></div>
+                <div style="flex:2;min-width:150px"><label class="form-label">Name</label><input class="app-input" id="slName" value="" placeholder="e.g. GrizzFest 2026, Friday Rehearsal, Acoustic Set" title="Name your setlist by event, date, or theme"></div>
                 <div style="flex:1;min-width:120px"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${_today}" style="color-scheme:dark"></div>
             </div>
             <details style="font-size:0.82em;color:var(--text-dim)"><summary style="cursor:pointer;padding:4px 0">More options</summary>
@@ -644,7 +643,7 @@ async function slSaveSetlist() {
     const sl = {
         setlistId: generateShortId(12),
         gigId: null,
-        name: document.getElementById('slName')?.value || 'Untitled',
+        name: document.getElementById('slName')?.value || ('Setlist ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
         date: document.getElementById('slDate')?.value || '',
         venueId: window._slSelectedVenueId || null,
         venue: window._slSelectedVenueName || '',
@@ -1102,7 +1101,7 @@ async function slSaveSetlistEdit(idx) {
         ...prev,
         setlistId: prev.setlistId || generateShortId(12),
         gigId: prev.gigId || null,
-        name: document.getElementById('slName')?.value || 'Untitled',
+        name: document.getElementById('slName')?.value || ('Setlist ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
         date: document.getElementById('slDate')?.value || '',
         venueId: window._slVenueTouched ? (window._slSelectedVenueId || null) : (prev.venueId || null),
         venue: window._slVenueTouched ? (window._slSelectedVenueName || '') : (prev.venue || ''),
