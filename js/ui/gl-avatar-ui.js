@@ -512,12 +512,17 @@ window.GLAvatarUI = (function() {
         var question = input.value.trim();
         input.value = '';
 
-        // Check if this is feedback/bug report
+        // 1. Check if this is an ACTION (add songs, import, create setlist, etc.)
+        if (typeof GLActionRouter !== 'undefined' && GLActionRouter.detectIntent(question)) {
+            return _handleAction(question);
+        }
+
+        // 2. Check if this is feedback/bug report
         if (_isFeedback(question) && typeof GLFeedbackService !== 'undefined') {
             return _handleFeedbackSubmission(question);
         }
 
-        // Show thinking state
+        // 3. Normal Q&A via Claude
         setExpression('focused');
         var msgArea = document.getElementById('glAvMessages');
         if (msgArea) {
@@ -642,6 +647,74 @@ window.GLAvatarUI = (function() {
         var input = document.getElementById('glAvAskInput');
         if (input && input.placeholder === 'Listening\u2026') input.placeholder = 'Ask me anything\u2026';
         setExpression('neutral');
+    }
+
+    // ── Action Handling ──────────────────────────────────────────────────────
+
+    async function _handleAction(text) {
+        var msgArea = document.getElementById('glAvMessages');
+        setExpression('focused');
+        if (msgArea) {
+            msgArea.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">'
+                + '<div style="font-size:0.82em;margin-bottom:6px">On it\u2026</div></div>';
+        }
+
+        var result = await GLActionRouter.route(text);
+
+        if (!result) {
+            // Fell through — treat as normal question
+            setExpression('neutral');
+            return; // will be handled by Q&A path on retry
+        }
+
+        var firstName = (typeof GLUserIdentity !== 'undefined') ? GLUserIdentity.getFirstName() : '';
+        setExpression(result.success ? 'encouraging' : 'concerned');
+
+        if (msgArea) {
+            var html = '<div style="margin-bottom:12px">';
+            html += '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(text) + '</div>';
+
+            if (result.success) {
+                html += '<div style="font-size:0.88em;font-weight:600;color:#86efac;line-height:1.5">\u2713 ' + _esc(result.message) + '</div>';
+
+                // Show songs if applicable
+                if (result.songs && result.songs.length > 0 && result.songs.length <= 20) {
+                    html += '<div style="margin-top:8px;font-size:0.72em;color:#64748b;max-height:120px;overflow-y:auto">';
+                    result.songs.forEach(function(s) { html += '<div>\u266A ' + _esc(s) + '</div>'; });
+                    html += '</div>';
+                }
+
+                // Next action suggestion
+                if (result.action === 'import_artist_pack' || result.action === 'bulk_add_songs') {
+                    html += '<div style="margin-top:10px"><button onclick="GLAvatarUI._askWithText(\'create a setlist\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 Create a setlist from these</button></div>';
+                } else if (result.action === 'create_setlist') {
+                    html += '<div style="margin-top:10px"><button onclick="showPage(\'setlists\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-weight:600">\u2192 View setlist</button></div>';
+                } else if (result.action === 'add_chart_note') {
+                    html += '<div style="margin-top:10px"><button onclick="showPage(\'songs\');GLAvatarUI.closePanel()" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 Open chart</button></div>';
+                }
+            } else {
+                html += '<div style="font-size:0.88em;font-weight:600;color:#f87171;line-height:1.5">' + _esc(result.message) + '</div>';
+            }
+
+            html += '</div>';
+            msgArea.innerHTML = html;
+        }
+
+        // Speak the result
+        if (result.success && typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled()) {
+            GLVoiceCoach.speak(result.message, { tone: 'calm' });
+        }
+
+        // Track the action
+        if (typeof GLFeedbackContext !== 'undefined') {
+            GLFeedbackContext.trackAction('groovemate_action', result.action + ': ' + (result.message || '').substring(0, 80));
+        }
+    }
+
+    function _askWithText(text) {
+        var input = document.getElementById('glAvAskInput');
+        if (input) { input.value = text; }
+        _askSubmit();
     }
 
     // ── Feedback Handling ─────────────────────────────────────────────────────
@@ -818,7 +891,8 @@ window.GLAvatarUI = (function() {
         _previewVoice: _previewVoice,
         _selectAvatar: _selectAvatar,
         _reportIssue: _reportIssue,
-        _submitReport: _submitReport
+        _submitReport: _submitReport,
+        _askWithText: _askWithText
     };
 
 })();
