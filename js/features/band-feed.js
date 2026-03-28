@@ -408,8 +408,94 @@ window._feedCreateItem = function(type) {
     } else if (type === 'link') {
         _feedShowCreateForm('link', '\uD83D\uDD17 Share a Link', 'Title or description', 'URL');
     } else if (type === 'photo') {
-        _feedShowCreateForm('photo', '\uD83D\uDCF7 Share a Photo', 'Caption (optional)', 'Image URL or paste link');
+        _feedShowPhotoForm();
     }
+};
+
+function _feedShowPhotoForm() {
+    var bar = document.getElementById('feedCreateBar');
+    if (!bar) return;
+    bar.innerHTML = '<div style="padding:12px 14px;background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.2);border-radius:10px">'
+        + '<div style="font-size:0.85em;font-weight:700;color:#c7d2fe;margin-bottom:8px">\uD83D\uDCF7 Share a Photo</div>'
+        + '<input id="feedCreateInput1" type="text" placeholder="Caption (optional)" style="width:100%;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none;margin-bottom:6px;box-sizing:border-box">'
+        + '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">'
+        +   '<button onclick="document.getElementById(\'feedPhotoFileInput\').click()" style="flex:1;padding:10px;border-radius:6px;border:1px dashed rgba(99,102,241,0.4);background:rgba(99,102,241,0.05);color:#a5b4fc;font-weight:600;font-size:0.82em;cursor:pointer;text-align:center">\uD83D\uDCE4 Upload Photo</button>'
+        +   '<span style="font-size:0.72em;color:var(--text-dim)">or</span>'
+        +   '<input id="feedCreateInput2" type="text" placeholder="Paste image URL" style="flex:2;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none;box-sizing:border-box">'
+        + '</div>'
+        + '<input id="feedPhotoFileInput" type="file" accept="image/*" onchange="_feedPhotoFileSelected(this)" style="display:none">'
+        + '<div id="feedPhotoPreview" style="display:none;margin-bottom:8px;text-align:center"></div>'
+        + '<div style="margin-bottom:8px">'
+        +   '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Who needs to respond?</div>'
+        +   '<div style="display:flex;gap:4px">'
+        +     '<button id="feedTargetAll" onclick="_feedSetTarget(\'all\')" class="feedTargetBtn feedTargetBtn--active" style="font-size:0.75em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Everyone</button>'
+        +     '<button id="feedTargetSpecific" onclick="_feedSetTarget(\'specific\')" class="feedTargetBtn" style="font-size:0.75em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Specific people</button>'
+        +   '</div>'
+        +   '<div id="feedTargetMembers" style="display:none;margin-top:4px"></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px;justify-content:flex-end">'
+        +   '<button onclick="_feedCancelCreate()" style="font-size:0.78em;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Cancel</button>'
+        +   '<button onclick="_feedSubmitCreate(\'photo\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.1);color:#86efac">Post</button>'
+        + '</div></div>';
+    var inp = document.getElementById('feedCreateInput1');
+    if (inp) inp.focus();
+}
+
+window._feedPhotoUploadUrl = null;
+
+window._feedPhotoFileSelected = function(input) {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 10 * 1024 * 1024) { _feedShowToast('Max 10MB'); return; }
+
+    // Show preview
+    var preview = document.getElementById('feedPhotoPreview');
+    if (preview) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            preview.style.display = 'block';
+            preview.innerHTML = '<img src="' + e.target.result + '" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid rgba(255,255,255,0.1)">'
+                + '<div style="font-size:0.72em;color:#86efac;margin-top:4px">\u2713 ' + file.name + ' (' + Math.round(file.size/1024) + 'KB)</div>';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Upload to Firebase Storage
+    if (typeof firebaseStorage === 'undefined' || !firebaseStorage) {
+        _feedShowToast('Storage not ready — try pasting a URL instead');
+        return;
+    }
+    var safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    var path = bandPath('feed_photos/' + Date.now() + '_' + safeName);
+    var ref = firebaseStorage.ref(path);
+    var task = ref.put(file);
+
+    if (preview) {
+        preview.innerHTML += '<div id="feedPhotoProgress" style="font-size:0.72em;color:#818cf8;margin-top:2px">Uploading...</div>';
+    }
+
+    task.on('state_changed',
+        function(snapshot) {
+            var pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            var prog = document.getElementById('feedPhotoProgress');
+            if (prog) prog.textContent = 'Uploading... ' + pct + '%';
+        },
+        function(error) {
+            _feedShowToast('Upload failed: ' + error.message);
+            var prog = document.getElementById('feedPhotoProgress');
+            if (prog) prog.textContent = 'Upload failed';
+        },
+        function() {
+            task.snapshot.ref.getDownloadURL().then(function(url) {
+                window._feedPhotoUploadUrl = url;
+                var prog = document.getElementById('feedPhotoProgress');
+                if (prog) { prog.textContent = '\u2713 Uploaded'; prog.style.color = '#86efac'; }
+                // Also set the URL input so submit picks it up
+                var inp2 = document.getElementById('feedCreateInput2');
+                if (inp2) inp2.value = url;
+            });
+        }
+    );
 };
 
 function _feedShowCreateForm(type, title, placeholder1, placeholder2) {
