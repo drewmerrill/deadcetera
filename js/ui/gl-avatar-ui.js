@@ -522,15 +522,44 @@ window.GLAvatarUI = (function() {
             return _handleFeedbackSubmission(question);
         }
 
-        // 3. Normal Q&A via Claude
-        setExpression('focused');
+        // 3. Try knowledge resolver BEFORE Claude (instant, verified answers)
         var msgArea = document.getElementById('glAvMessages');
+        var currentPg = (typeof currentPage !== 'undefined') ? currentPage : '';
+
+        if (typeof GLKnowledge !== 'undefined') {
+            var helpResult = GLKnowledge.getHelpResponse(question, currentPg);
+            if (helpResult && helpResult.confidence >= 0.7) {
+                setExpression('encouraging');
+                var helpHtml = '<div style="margin-bottom:12px">';
+                helpHtml += '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(question) + '</div>';
+                helpHtml += '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(helpResult.text) + '</div>';
+
+                // Show steps if available
+                if (helpResult.steps) {
+                    helpHtml += '<div style="margin-top:8px;font-size:0.78em;color:#94a3b8">';
+                    helpResult.steps.forEach(function(s, i) { helpHtml += '<div style="margin-bottom:3px">' + (i + 1) + '. ' + _esc(s) + '</div>'; });
+                    helpHtml += '</div>';
+                }
+
+                // Offer action if available
+                if (helpResult.canDoIt && helpResult.action) {
+                    helpHtml += '<div style="margin-top:10px"><button onclick="GLAvatarUI._askWithText(\'' + helpResult.action.replace(/_/g, ' ') + '\')" style="font-size:0.75em;padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u2192 I can do this for you</button></div>';
+                }
+
+                helpHtml += '</div>';
+                if (msgArea) msgArea.innerHTML = helpHtml;
+                if (typeof GLVoiceCoach !== 'undefined' && GLVoiceCoach.isVoiceEnabled()) GLVoiceCoach.speak(helpResult.text, { tone: 'calm' });
+                return;
+            }
+        }
+
+        // 4. Claude Q&A fallback
+        setExpression('focused');
         if (msgArea) {
             msgArea.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">'
                 + '<div style="font-size:0.82em;margin-bottom:6px">Thinking\u2026</div>'
                 + '</div>';
         }
-        // Get response
         var response = '';
         if (typeof GLVoiceCoach !== 'undefined') {
             response = await GLVoiceCoach.ask(question);
@@ -538,7 +567,6 @@ window.GLAvatarUI = (function() {
         } else {
             response = 'Voice coach is loading. Try again in a moment.';
         }
-        // Display response
         if (msgArea) {
             msgArea.innerHTML = '<div style="margin-bottom:12px">'
                 + '<div style="font-size:0.68em;color:#475569;margin-bottom:4px">You asked: ' + _esc(question) + '</div>'
