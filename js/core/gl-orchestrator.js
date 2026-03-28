@@ -77,46 +77,105 @@
     return ctx;
   }
 
-  // ── Next Action Engine ─────────────────────────────────────────────────
+  // ── Interruption Rules ──────────────────────────────────────────────────
+  // Avatar must NEVER interrupt during active rehearsal (song playing).
+  // Speak only at natural breaks. Keep messages under 10 words in rehearsal mode.
+
+  function _isInFlow() {
+    // Check if rehearsal mode is active
+    if (document.getElementById('rehearsal-mode-container')) return true;
+    // Check if a song is actively playing
+    try { if (typeof GLPlayerEngine !== 'undefined' && GLPlayerEngine.isPlaying && GLPlayerEngine.isPlaying()) return true; } catch(e) {}
+    return false;
+  }
+
+  function _isRehearsalMode() {
+    return !!document.getElementById('rehearsal-mode-container');
+  }
+
+  // ── Action Thresholds ─────────────────────────────────────────────────
+  // Only act when: pattern detected (not single event), confidence > 0.8, user not in flow
+
+  var RISK_RULES = {
+    add_song:            { risk: 'low',    autoOk: true },
+    add_chart_note:      { risk: 'low',    autoOk: true },
+    save_rehearsal_note: { risk: 'low',    autoOk: true },
+    attach_chart_source: { risk: 'low',    autoOk: true },
+    create_setlist:      { risk: 'medium', autoOk: false },
+    start_rehearsal:     { risk: 'medium', autoOk: false },
+    import_artist_pack:  { risk: 'medium', autoOk: false },
+    bulk_add_songs:      { risk: 'medium', autoOk: false },
+    view_reveal:         { risk: 'low',    autoOk: true }
+  };
+
+  function _canAutoAct(action, confidence) {
+    if (_isInFlow()) return false; // never during flow
+    var rule = RISK_RULES[action] || { risk: 'medium', autoOk: false };
+    if (rule.risk === 'high') return false; // never auto for high risk
+    if (rule.risk === 'low' && confidence >= 0.8) return true;
+    return false;
+  }
+
+  // ── Moment Map ────────────────────────────────────────────────────────
+  // Key moments in the user journey with trigger conditions + tone + action.
+
+  var MOMENTS = {
+    arrival:          { trigger: 'page_home_first',     tone: 'warm',    maxWords: 0 },  // 0 = don't speak, just show
+    first_song_added: { trigger: 'song_count_1',        tone: 'excited', maxWords: 8 },
+    setlist_saved:    { trigger: 'setlist_saved',        tone: 'calm',    maxWords: 8 },
+    rehearsal_start:  { trigger: 'rehearsal_mode_enter', tone: 'focused', maxWords: 6 },
+    mid_rehearsal:    { trigger: 'rehearsal_active_3m',  tone: 'quiet',   maxWords: 0 },  // don't interrupt
+    rehearsal_end:    { trigger: 'rehearsal_mode_exit',  tone: 'warm',    maxWords: 10 },
+    reveal_shown:     { trigger: 'reveal_visible',       tone: 'proud',   maxWords: 10 },
+    pattern_detected: { trigger: 'dna_velocity_change',  tone: 'coach',   maxWords: 10 },
+    idle_long:        { trigger: 'idle_120s',            tone: 'gentle',  maxWords: 8 }
+  };
+
+  // ── Next Action Engine (with interruption + flow awareness) ────────────
 
   function getNextAction(ctx) {
     if (!ctx) ctx = _buildContext();
+
+    // RULE: Never suggest during active flow (rehearsal playing)
+    if (_isInFlow()) {
+      return { action: null, message: null, urgency: 'none', auto: false };
+    }
 
     // Onboarding takes absolute priority
     if (ctx.onboardStep === 1) {
       return { action: 'create_setlist', message: 'Let\u2019s get your songs in.', urgency: 'high', auto: false };
     }
     if (ctx.onboardStep === 2) {
-      return { action: 'start_rehearsal', message: 'Your setlist\u2019s ready. Let\u2019s rehearse.', urgency: 'high', auto: false };
+      return { action: 'start_rehearsal', message: 'Setlist\u2019s ready. Let\u2019s rehearse.', urgency: 'high', auto: false };
     }
     if (ctx.onboardStep === 3) {
-      return { action: 'view_reveal', message: 'Quick rating and you\u2019re done.', urgency: 'high', auto: false };
+      return { action: 'view_reveal', message: 'Quick rating. You\u2019re done.', urgency: 'high', auto: false };
     }
 
     // Empty library
     if (!ctx.hasSongs) {
-      return { action: 'import_artist_pack', message: 'No songs yet. Want me to import a starter pack?', urgency: 'medium', auto: false };
+      return { action: 'import_artist_pack', message: 'Import a starter pack?', urgency: 'medium', auto: false };
     }
 
     // Has songs but no setlists
     if (ctx.hasSongs && !ctx.hasSetlists) {
-      return { action: 'create_setlist', message: 'You\u2019ve got songs. Let\u2019s build a setlist.', urgency: 'medium', auto: false };
+      return { action: 'create_setlist', message: 'Build a setlist.', urgency: 'medium', auto: false };
     }
 
     // Has setlists, on home, hasn't rehearsed
     if (ctx.hasSetlists && !ctx.hasRehearsals && ctx.page === 'home') {
-      return { action: 'start_rehearsal', message: 'Ready to run through the set?', urgency: 'low', auto: false };
+      return { action: 'start_rehearsal', message: 'Run through the set?', urgency: 'low', auto: false };
     }
 
-    // Page-specific suggestions
+    // Page-specific — short messages only
     if (ctx.page === 'setlists') {
-      return { action: null, message: 'Edit your setlist or create a new one.', urgency: 'low', auto: false };
+      return { action: null, message: null, urgency: 'none', auto: false }; // don't nag on setlists
     }
-    if (ctx.page === 'songs') {
-      return { action: 'add_song', message: 'Add songs or import a pack.', urgency: 'low', auto: false };
+    if (ctx.page === 'songs' && !ctx.hasSongs) {
+      return { action: 'add_song', message: 'Add songs.', urgency: 'low', auto: false };
     }
     if (ctx.page === 'rehearsal') {
-      return { action: 'start_rehearsal', message: 'Ready to rehearse?', urgency: 'low', auto: false };
+      return { action: null, message: null, urgency: 'none', auto: false }; // rehearsal page manages itself
     }
 
     return { action: null, message: null, urgency: 'none', auto: false };
@@ -226,11 +285,14 @@
   }
 
   function checkAutopilot() {
+    // RULE: Never during flow
+    if (_isInFlow()) return;
+
     var ctx = _buildContext();
     var next = getNextAction(ctx);
-    if (!next || next.urgency === 'none') return;
+    if (!next || !next.message || next.urgency === 'none') return;
 
-    var key = next.action + '_' + ctx.page;
+    var key = (next.action || 'none') + '_' + ctx.page;
     if (_autopilotExecuted[key]) return;
 
     var confidence = _getConfidence(next, ctx);
@@ -340,6 +402,9 @@
   var _anticipationRan = {};
 
   function checkAnticipation() {
+    // RULE: Never during flow
+    if (_isInFlow()) return;
+
     var ctx = _buildContext();
     var dna = _loadBandDNA();
 
