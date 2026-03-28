@@ -352,6 +352,129 @@
     }
   }
 
+  // ── Performance Models (what good looks like per band type) ──────────────
+
+  var PERFORMANCE_BENCHMARKS = {
+    jam:       { transitionSec: 30, tempoDriftPct: 8,  minEfficiency: 0.5, energyPattern: 'build' },
+    cover:     { transitionSec: 15, tempoDriftPct: 3,  minEfficiency: 0.7, energyPattern: 'consistent' },
+    tribute:   { transitionSec: 10, tempoDriftPct: 2,  minEfficiency: 0.8, energyPattern: 'authentic' },
+    church:    { transitionSec: 8,  tempoDriftPct: 2,  minEfficiency: 0.8, energyPattern: 'flowing' },
+    wedding:   { transitionSec: 5,  tempoDriftPct: 3,  minEfficiency: 0.85, energyPattern: 'high' },
+    campfire:  { transitionSec: 20, tempoDriftPct: 10, minEfficiency: 0.4, energyPattern: 'relaxed' },
+    piano:     { transitionSec: 10, tempoDriftPct: 3,  minEfficiency: 0.7, energyPattern: 'dynamic' },
+    original:  { transitionSec: 20, tempoDriftPct: 5,  minEfficiency: 0.5, energyPattern: 'variable' }
+  };
+
+  // ── Band Personality (avatar tone matching) ────────────────────────────
+
+  var BAND_PERSONALITIES = {
+    jam:       { style: 'jam_loose',   tone: 'casual' },
+    cover:     { style: 'structured',  tone: 'direct' },
+    tribute:   { style: 'performance', tone: 'technical' },
+    church:    { style: 'structured',  tone: 'casual' },
+    wedding:   { style: 'performance', tone: 'direct' },
+    campfire:  { style: 'jam_loose',   tone: 'casual' },
+    piano:     { style: 'structured',  tone: 'casual' },
+    original:  { style: 'jam_loose',   tone: 'casual' }
+  };
+
+  function _getBandType() {
+    try {
+      var meta = localStorage.getItem('gl_band_type');
+      if (meta) return meta;
+      // Fallback: check Firebase meta
+      return 'cover'; // default
+    } catch(e) { return 'cover'; }
+  }
+
+  function getBenchmarks() {
+    return PERFORMANCE_BENCHMARKS[_getBandType()] || PERFORMANCE_BENCHMARKS.cover;
+  }
+
+  function getBandPersonality() {
+    return BAND_PERSONALITIES[_getBandType()] || BAND_PERSONALITIES.cover;
+  }
+
+  // ── Feel Detection (translate signals → human-readable) ────────────────
+
+  function detectFeel(rehearsalData) {
+    if (!rehearsalData) return [];
+    var benchmarks = getBenchmarks();
+    var personality = getBandPersonality();
+    var insights = [];
+
+    // Stuck sections
+    if (rehearsalData.restartCount && rehearsalData.restartCount > 2) {
+      var msg = personality.tone === 'casual'
+        ? 'You\u2019re getting tripped up on the same spot. Slow it down.'
+        : 'Multiple restarts detected. Isolate the problem section.';
+      insights.push({ type: 'stuck', severity: 'medium', message: msg });
+    }
+
+    // Dragging transitions
+    if (rehearsalData.avgTransitionSec && rehearsalData.avgTransitionSec > benchmarks.transitionSec * 1.5) {
+      var msg2 = personality.tone === 'casual'
+        ? 'Transitions are dragging. Tighten the gaps.'
+        : 'Average transition time exceeds benchmark by ' + Math.round((rehearsalData.avgTransitionSec / benchmarks.transitionSec - 1) * 100) + '%.';
+      insights.push({ type: 'transitions', severity: 'low', message: msg2 });
+    }
+
+    // Low efficiency
+    if (rehearsalData.efficiency && rehearsalData.efficiency < benchmarks.minEfficiency) {
+      var msg3 = personality.tone === 'casual'
+        ? 'Lot of time between songs. More playing, less talking.'
+        : 'Rehearsal efficiency below target. Reduce dead time between songs.';
+      insights.push({ type: 'efficiency', severity: 'medium', message: msg3 });
+    }
+
+    return insights;
+  }
+
+  // ── Cause/Effect Learning ──────────────────────────────────────────────
+
+  function recordIntervention(type, context) {
+    var dna = _loadBandDNA();
+    if (!dna.interventions) dna.interventions = [];
+    dna.interventions.push({
+      type: type,
+      context: (context || '').substring(0, 100),
+      ts: Date.now(),
+      outcomeRecorded: false
+    });
+    if (dna.interventions.length > 30) dna.interventions = dna.interventions.slice(-30);
+    _saveBandDNA(dna);
+  }
+
+  function recordInterventionOutcome(improved) {
+    var dna = _loadBandDNA();
+    if (!dna.interventions || !dna.interventions.length) return;
+    // Mark the most recent unrecorded intervention
+    for (var i = dna.interventions.length - 1; i >= 0; i--) {
+      if (!dna.interventions[i].outcomeRecorded) {
+        dna.interventions[i].outcomeRecorded = true;
+        dna.interventions[i].improved = improved;
+        break;
+      }
+    }
+    // Calculate intervention success rate
+    var recorded = dna.interventions.filter(function(iv) { return iv.outcomeRecorded; });
+    var improved_count = recorded.filter(function(iv) { return iv.improved; }).length;
+    dna.interventionSuccessRate = recorded.length > 0 ? Math.round((improved_count / recorded.length) * 100) / 100 : 0;
+    _saveBandDNA(dna);
+  }
+
+  // ── Restraint Engine ───────────────────────────────────────────────────
+  // Avatar must NOT act if confidence < 0.7, user in flow, or no pattern detected.
+
+  function shouldSpeak(confidence) {
+    if (_isInFlow()) return false;
+    if (confidence < 0.7) return false;
+    // Check if we have a pattern (not just a single event)
+    var dna = _loadBandDNA();
+    if (dna.sessionCount && dna.sessionCount < 2) return false; // need data before coaching
+    return true;
+  }
+
   function updateBandDNA(rehearsalData) {
     var dna = _loadBandDNA();
     if (!dna.strengths) dna.strengths = [];
@@ -513,7 +636,13 @@
     recordAction: recordAction,
     getUserMemory: getUserMemory,
     getBandDNA: getBandDNA,
-    updateBandDNA: updateBandDNA
+    updateBandDNA: updateBandDNA,
+    getBenchmarks: getBenchmarks,
+    getBandPersonality: getBandPersonality,
+    detectFeel: detectFeel,
+    recordIntervention: recordIntervention,
+    recordInterventionOutcome: recordInterventionOutcome,
+    shouldSpeak: shouldSpeak
   };
 
   console.log('\uD83C\uDFAF GLOrchestrator loaded');

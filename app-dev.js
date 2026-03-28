@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260328-195245', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260328-200657', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -11794,6 +11794,15 @@ async function switchToBand(slug) {
 
     // Default to Lock In mode (band-focused, not personal practice)
     localStorage.setItem('gl_product_mode', 'lockin');
+
+    // Store band type for personality matching
+    if (firebaseDB) {
+      try {
+        firebaseDB.ref('bands/' + slug + '/meta/bandType').once('value').then(function(s) {
+          if (s.val()) localStorage.setItem('gl_band_type', s.val());
+        });
+      } catch(e) {}
+    }
 
     // Clear rehearsal planner data (not band-scoped in localStorage)
     localStorage.removeItem('glPlannerQueue');
