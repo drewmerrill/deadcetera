@@ -3837,6 +3837,12 @@
     markReady:         markReady,
     isReady:           isReady,
 
+    // Product Feedback (delegates to GLFeedbackService)
+    saveProductFeedback: function(payload) {
+      if (typeof GLFeedbackService !== 'undefined') return GLFeedbackService.submitExplicit(payload.userMessageRaw || payload.summary || '');
+      return Promise.resolve(null);
+    },
+
     // Song Intelligence (Milestone 2)
     getSongIntelligence:    getSongIntelligence,
     getCatalogIntelligence: getCatalogIntelligence,

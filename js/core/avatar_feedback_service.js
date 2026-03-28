@@ -10,24 +10,9 @@
 (function() {
   'use strict';
 
-  // Auto-friction scoring
-  var _frictionScore = 0;
+  // Auto-capture: max 1 per type per session, only 3 triggers
   var _autoSubmittedThisSession = {};
-  var _autoSubmitsToday = 0;
-  var _MAX_AUTO_PER_DAY = 5;
-  var _AUTO_THRESHOLD = 3;
-  var _AUTO_DEDUP_KEY_PREFIX = 'gl_fb_dedup_';
-
-  // Friction event weights
-  var FRICTION_WEIGHTS = {
-    hesitation: 1,
-    repeated_failure: 2,
-    abandonment: 2,
-    explicit_confusion: 2,
-    render_error: 4,
-    repeated_no_results: 1,
-    save_failure: 2
-  };
+  var _failureCounts = {}; // track repeated failures per action
 
   /**
    * Submit explicit feedback from user via avatar.
@@ -62,48 +47,37 @@
   }
 
   /**
-   * Record a friction event. Auto-submits when threshold is reached.
+   * Record a friction event. Auto-submits only for 3 specific triggers:
+   * 1. Render failure (immediate)
+   * 2. Same action fails 3x
+   * 3. Onboarding stall (>20s no progress)
+   * Max 1 auto-report per type per session.
    */
   function recordFriction(eventType, detail) {
-    var weight = FRICTION_WEIGHTS[eventType] || 1;
-    _frictionScore += weight;
-
-    // Track the action
     if (typeof GLFeedbackContext !== 'undefined') {
       GLFeedbackContext.trackAction('friction:' + eventType, detail || '');
     }
 
-    // Check threshold
-    if (_frictionScore >= _AUTO_THRESHOLD) {
-      _maybeAutoSubmit(eventType, detail);
-      _frictionScore = 0; // Reset after submission attempt
+    if (eventType === 'render_error') {
+      _autoSubmit('render_error', 'bug', 'high', detail);
+    } else if (eventType === 'repeated_failure') {
+      var key = detail || 'unknown_action';
+      _failureCounts[key] = (_failureCounts[key] || 0) + 1;
+      if (_failureCounts[key] >= 3) {
+        _autoSubmit('repeated_failure', 'bug', 'medium', key + ' failed 3x');
+        _failureCounts[key] = 0;
+      }
+    } else if (eventType === 'onboarding_stall') {
+      _autoSubmit('onboarding_stall', 'onboarding_friction', 'medium', detail);
     }
   }
 
-  async function _maybeAutoSubmit(triggerEvent, detail) {
-    // Dedupe: same event type only once per session
-    var dedupKey = triggerEvent + '_' + ((typeof currentPage !== 'undefined') ? currentPage : '');
-    if (_autoSubmittedThisSession[dedupKey]) return;
-
-    // Daily cap
-    if (_autoSubmitsToday >= _MAX_AUTO_PER_DAY) return;
-
-    // Session dedupe via localStorage (don't repeat within 1 hour)
-    var lsKey = _AUTO_DEDUP_KEY_PREFIX + dedupKey;
-    var lastSubmit = parseInt(localStorage.getItem(lsKey) || '0');
-    if (Date.now() - lastSubmit < 3600000) return;
-
-    _autoSubmittedThisSession[dedupKey] = true;
-    _autoSubmitsToday++;
-    localStorage.setItem(lsKey, Date.now().toString());
+  function _autoSubmit(trigger, type, severity, detail) {
+    // Dedupe: max 1 per type per session
+    if (_autoSubmittedThisSession[trigger]) return;
+    _autoSubmittedThisSession[trigger] = true;
 
     var context = (typeof GLFeedbackContext !== 'undefined') ? GLFeedbackContext.collect() : { reportId: 'fb_' + Date.now() };
-    var hasRenderError = context.recentErrors && context.recentErrors.length > 0;
-
-    var autoContext = { auto: true, autoType: _mapFrictionToType(triggerEvent), hasRenderError: hasRenderError };
-    var classification = (typeof GLFeedbackClassifier !== 'undefined') ? GLFeedbackClassifier.classify(detail || triggerEvent, autoContext) : { type: 'other', severity: 'low' };
-
-    var summary = 'Auto-detected: ' + triggerEvent + (detail ? ' — ' + detail : '') + ' on page: ' + (context.currentPage || 'unknown');
 
     var payload = {
       reportId: context.reportId,
@@ -111,32 +85,16 @@
       status: 'new',
       source: 'avatar',
       auto: true,
-      type: classification.type,
-      severity: classification.severity,
-      title: 'Auto: ' + triggerEvent.replace(/_/g, ' '),
-      summary: summary,
+      type: type,
+      severity: severity,
+      title: 'Auto: ' + trigger.replace(/_/g, ' '),
+      summary: 'Auto-detected: ' + (detail || trigger) + ' on page: ' + (context.currentPage || 'unknown'),
       userMessageRaw: '',
-      context: context,
-      tags: ['auto-detected'],
-      assignedTo: '',
-      resolutionNotes: ''
+      context: context
     };
 
-    await _save(payload);
-    console.log('[Feedback] Auto-submitted:', triggerEvent, 'on', context.currentPage);
-  }
-
-  function _mapFrictionToType(event) {
-    var map = {
-      hesitation: 'ux_confusion',
-      repeated_failure: 'bug',
-      abandonment: 'onboarding_friction',
-      explicit_confusion: 'ux_confusion',
-      render_error: 'bug',
-      repeated_no_results: 'ux_confusion',
-      save_failure: 'bug'
-    };
-    return map[event] || 'other';
+    _save(payload);
+    console.log('[Feedback] Auto-submitted:', trigger, 'on', context.currentPage);
   }
 
   function _generateTitle(message, type) {

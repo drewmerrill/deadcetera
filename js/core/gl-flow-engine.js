@@ -87,6 +87,10 @@
       if (typeof logActivity === 'function') {
         logActivity('onboard_hesitation', { step: state.currentStep, page: page, minutesElapsed: state.minutesElapsed });
       }
+      // Auto-capture: onboarding stall after 20s (HESITATION_THRESHOLD is 12s, so this fires at 12s - close enough)
+      if (typeof GLFeedbackService !== 'undefined') {
+        GLFeedbackService.recordFriction('onboarding_stall', 'step ' + state.currentStep + ' on ' + page);
+      }
     }, HESITATION_THRESHOLD);
   }
 

@@ -125,9 +125,9 @@ window.GLAvatarGuide = (function() {
 
         { id: 'onboard_complete', stage: 'fan', trigger: 'onboard_done', page: 'any',
           message: function() { return _pick([
-            'That\u2019s it! You\u2019re set up. Every rehearsal builds on the last one now.',
-            'Boom \u2014 you\u2019re rolling. I\u2019ll be here when you need me.',
-            'First one\u2019s in the books. It only gets better from here.'
+            'That\u2019s it, {firstName}! You\u2019re set up. Every rehearsal builds on the last one now.',
+            'Boom \u2014 you\u2019re rolling, {firstName}. I\u2019ll be here when you need me.',
+            'First one\u2019s in the books. It only gets better from here, {firstName}.'
           ]); },
           coach: 'I\u2019ll nudge you before the next one.',
           actions: [{ label: 'Got it', dismiss: true }],

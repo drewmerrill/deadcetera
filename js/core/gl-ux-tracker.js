@@ -133,11 +133,13 @@
     if (_events.length > 100) _events.shift();
     console.warn('[UX] ' + type + ':', JSON.stringify(data));
 
-    // Feed into feedback friction system
+    // Feed into feedback friction system (only 3 auto-capture triggers)
     if (typeof GLFeedbackService !== 'undefined') {
-      var frictionMap = { rage_click: 'repeated_failure', hesitation: 'hesitation', abandoned_flow: 'abandonment', dead_click: 'explicit_confusion', slow_render: 'render_error' };
-      var frictionType = frictionMap[type];
-      if (frictionType) GLFeedbackService.recordFriction(frictionType, type + ' on ' + (data.page || ''));
+      if (type === 'slow_render' || type === 'render_error') {
+        GLFeedbackService.recordFriction('render_error', type + ' on ' + (data.page || ''));
+      } else if (type === 'rage_click') {
+        GLFeedbackService.recordFriction('repeated_failure', 'rage_click on ' + (data.element || data.page || ''));
+      }
     }
 
     // Optionally save to Firebase (best-effort, non-blocking)
