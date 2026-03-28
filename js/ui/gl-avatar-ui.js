@@ -209,6 +209,19 @@ window.GLAvatarUI = (function() {
         var ctx = G.buildContext(_getPage());
         var tip = G.evaluate(ctx);
 
+        // If no tip from guidance, try orchestrator for next action
+        if (!tip && typeof GLOrchestrator !== 'undefined') {
+            var orchMsg = GLOrchestrator.getMessage();
+            if (orchMsg && orchMsg.text) {
+                tip = {
+                    id: 'orchestrator_' + Date.now(),
+                    message: orchMsg.text,
+                    coach: '',
+                    actions: orchMsg.action ? [{ label: '\u2192 ' + orchMsg.text.split('.')[0], onclick: "GLAvatarUI._askWithText('" + (orchMsg.action || '').replace(/_/g, ' ') + "')" }] : []
+                };
+            }
+        }
+
         if (tip) {
             G.markShown(tip.id);
             _currentTip = tip;
