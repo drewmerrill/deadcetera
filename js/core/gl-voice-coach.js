@@ -34,53 +34,48 @@
     opts = opts || {};
     var tone = opts.tone || 'neutral';
 
-    // Try ElevenLabs first
-    if (typeof workerApi !== 'undefined' && workerApi) {
-      _speakElevenLabs(text, tone);
-    } else {
-      _speakWebSpeech(text, opts);
-    }
+    // Try ElevenLabs via Worker proxy first, fall back to Web Speech
+    _speakViaWorker(text, tone);
   }
 
-  function _speakElevenLabs(text, tone) {
+  function _speakViaWorker(text, tone) {
     var settings = _TONE_SETTINGS[tone] || _TONE_SETTINGS.neutral;
-    var url = 'https://api.elevenlabs.io/v1/text-to-speech/' + _ELEVENLABS_VOICE;
 
-    // Check for API key in localStorage (set by user in settings)
-    var apiKey = localStorage.getItem('gl_elevenlabs_key') || '';
-    if (!apiKey) {
-      // No ElevenLabs key — fall back to Web Speech
+    // Use the Cloudflare Worker /tts endpoint (key stored server-side)
+    if (typeof workerPost !== 'function') {
       _speakWebSpeech(text, { rate: settings.speed });
       return;
     }
 
     _speaking = true;
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
-      body: JSON.stringify({
-        text: text,
-        model_id: _ELEVENLABS_MODEL,
-        voice_settings: {
-          stability: settings.stability,
-          similarity_boost: settings.similarity,
-          style: settings.style,
-          use_speaker_boost: true
-        }
-      })
+    if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setTalking) GLAvatarUI.setTalking(true);
+
+    workerPost('/tts', {
+      text: text,
+      voice_id: _ELEVENLABS_VOICE,
+      stability: settings.stability,
+      similarity_boost: settings.similarity,
+      style: settings.style
     }).then(function(res) {
-      if (!res.ok) throw new Error('ElevenLabs ' + res.status);
+      if (!res.ok) throw new Error('TTS ' + res.status);
       return res.blob();
     }).then(function(blob) {
       var audio = new Audio(URL.createObjectURL(blob));
-      audio.onplay = function() { if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setTalking) GLAvatarUI.setTalking(true); };
-      audio.onended = function() { _speaking = false; URL.revokeObjectURL(audio.src); if (typeof GLAvatarUI !== 'undefined') { GLAvatarUI.setTalking(false); GLAvatarUI.setExpression('neutral'); } };
-      audio.onerror = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false); };
+      audio.onended = function() {
+        _speaking = false;
+        URL.revokeObjectURL(audio.src);
+        if (typeof GLAvatarUI !== 'undefined') { GLAvatarUI.setTalking(false); GLAvatarUI.setExpression('neutral'); }
+      };
+      audio.onerror = function() {
+        _speaking = false;
+        if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false);
+      };
       audio.play();
     }).catch(function(e) {
-      console.warn('[VoiceCoach] ElevenLabs failed, using Web Speech:', e.message);
+      console.warn('[VoiceCoach] ElevenLabs unavailable, using Web Speech:', e.message);
       _speaking = false;
-      _speakWebSpeech(text, { rate: (_TONE_SETTINGS[tone] || {}).speed || 1.0 });
+      if (typeof GLAvatarUI !== 'undefined') GLAvatarUI.setTalking(false);
+      _speakWebSpeech(text, { rate: settings.speed });
     });
   }
 
@@ -89,11 +84,20 @@
     opts = opts || {};
     window.speechSynthesis.cancel();
     var utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = opts.rate || 1.05;
-    utterance.pitch = opts.pitch || 1.0;
-    utterance.volume = opts.volume || 0.85;
+    utterance.rate = opts.rate || 0.95; // slightly slower — more natural
+    utterance.pitch = opts.pitch || 0.95;
+    utterance.volume = opts.volume || 0.9;
+    // Pick the most natural-sounding voice available
     var voices = window.speechSynthesis.getVoices();
-    var preferred = voices.find(function(v) { return v.name.indexOf('Samantha') >= 0 || v.name.indexOf('Google') >= 0 || v.name.indexOf('Natural') >= 0; });
+    var preferred = null;
+    // Priority: enhanced/premium voices first, then known good ones
+    var priorities = ['Zoe (Enhanced)', 'Karen (Enhanced)', 'Samantha (Enhanced)', 'Google UK English Female', 'Google US English', 'Samantha', 'Karen', 'Moira', 'Tessa', 'Fiona'];
+    for (var p = 0; p < priorities.length; p++) {
+      preferred = voices.find(function(v) { return v.name.indexOf(priorities[p]) >= 0; });
+      if (preferred) break;
+    }
+    // Fallback: any English female voice
+    if (!preferred) preferred = voices.find(function(v) { return v.lang && v.lang.startsWith('en') && v.name.match(/female|woman|zoe|karen|samantha|fiona|moira/i); });
     if (preferred) utterance.voice = preferred;
     utterance.onstart = function() { _speaking = true; if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.setTalking) GLAvatarUI.setTalking(true); };
     utterance.onend = function() { _speaking = false; if (typeof GLAvatarUI !== 'undefined') { GLAvatarUI.setTalking(false); GLAvatarUI.setExpression('neutral'); } };

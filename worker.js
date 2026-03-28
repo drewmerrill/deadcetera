@@ -62,6 +62,8 @@ export default {
       return handleFadrDiag(request, env);
     if (path.startsWith('/ical/') && request.method === 'GET')
       return handleICalFeed(request, env, path);
+    if (path === '/tts' && request.method === 'POST')
+      return handleTTS(request, env);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -77,6 +79,45 @@ function cors(response) {
 }
 function jsonResp(data, status = 200) {
   return cors(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }));
+}
+
+// ── ElevenLabs TTS Proxy ─────────────────────────────────────────────────────
+async function handleTTS(request, env) {
+  try {
+    const apiKey = env.ELEVENLABS_API_KEY;
+    if (!apiKey) return jsonResp({ error: 'TTS not configured — add ELEVENLABS_API_KEY to Worker secrets' }, 503);
+
+    const body = await request.json();
+    const text = body.text || '';
+    const voiceId = body.voice_id || 'EXAVITQu4vr4xnSDxMaL'; // Rachel — warm conversational
+    const stability = body.stability ?? 0.5;
+    const similarity = body.similarity_boost ?? 0.8;
+    const style = body.style ?? 0.4;
+
+    const res = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
+      body: JSON.stringify({
+        text: text,
+        model_id: 'eleven_turbo_v2_5',
+        voice_settings: { stability, similarity_boost: similarity, style, use_speaker_boost: true }
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResp({ error: 'ElevenLabs error: ' + res.status, detail: errText.substring(0, 200) }, res.status);
+    }
+
+    const audioData = await res.arrayBuffer();
+    const headers = new Headers();
+    headers.set('Content-Type', 'audio/mpeg');
+    headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('Cache-Control', 'public, max-age=3600');
+    return new Response(audioData, { status: 200, headers });
+  } catch (e) {
+    return jsonResp({ error: e.message }, 500);
+  }
 }
 
 // ── Claude API Proxy ────────────────────────────────────────────────────────
