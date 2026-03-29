@@ -406,7 +406,7 @@ function _renderIntentSection() {
     var _practiceClick = '';
     if (_weakForPractice.length && _weakForPractice[0].title) {
         var _sw = _weakForPractice[0].title.replace(/'/g, "\\'");
-        _practiceClick = "showPage('songdetail');if(typeof renderSongDetail==='function')renderSongDetail('" + _sw + "')";
+        _practiceClick = "showPage('songs');setTimeout(function(){if(typeof selectSong==='function')selectSong('" + _sw + "');},300)";
     } else {
         _practiceClick = "showPage('songs');setTimeout(function(){if(typeof GLAvatarUI!=='undefined'&&GLAvatarUI.show)GLAvatarUI.show('Let\\u2019s tighten your part before the next rehearsal.');},600)";
     }
@@ -490,7 +490,7 @@ function _renderNextActionCard(bundle, wf) {
         var _safeWeak = firstWeakTitle ? firstWeakTitle.replace(/'/g, "\\'") : '';
         _weakNote = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px">'
             + '<span style="font-size:0.82em;color:#fbbf24;font-weight:600;flex:1">' + weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work</span>'
-            + '<button onclick="' + (firstWeakTitle ? "showPage('songdetail');if(typeof renderSongDetail==='function')renderSongDetail('" + _safeWeak + "')" : "showPage('songs')") + '" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Get Better</button>'
+            + '<button onclick="showPage(\'songs\');setTimeout(function(){if(typeof selectSong===\'function\')selectSong(\'' + _safeWeak + '\');},300)" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Get Better</button>'
             + '</div>';
     }
 
