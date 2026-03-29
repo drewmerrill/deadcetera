@@ -298,12 +298,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             }
         }
     } catch(e) {}
-    // Top practice attention songs
+    // Focus songs — single source of truth
+    var _focusData = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
     var _topGaps = {};
-    try {
-        var _pr = (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention) ? GLStore.getPracticeAttention({ limit: 5 }) : [];
-        if (_pr) _pr.forEach(function(p) { _topGaps[p.songId] = true; });
-    } catch(e) {}
+    _focusData.list.forEach(function(f) { _topGaps[f.title] = true; });
 
     // ── MODE TOGGLE + SORT INDICATOR ──
     var _isCleanup = !!window._sqTriageFilter;
@@ -422,6 +420,23 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             + '</div></div>';
     }
 
+    // Focus mode: when entering from "Get Better", show focus list prominently
+    if (window._glFocusMode && _focusData.list.length > 0) {
+        var _focusTitles = {};
+        _focusData.list.forEach(function(f) { _focusTitles[f.title] = true; });
+        // Filter to focus songs only
+        filtered = filtered.filter(function(s) { return _focusTitles[s.title]; });
+        // Build focus banner
+        _suggestHTML = '<div style="padding:12px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:12px;border-left:4px solid #22c55e;margin-bottom:8px">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+            + '<div style="font-size:0.72em;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#86efac">What to work on right now</div>'
+            + '<button onclick="window._glFocusMode=false;renderSongs()" style="font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Show All</button>'
+            + '</div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim)">' + (_focusData.reason || 'These songs need the most attention.') + '</div>'
+            + '</div>';
+        window._glFocusMode = false; // clear after rendering (one-shot)
+    }
+
     // Render recommendation ABOVE search (in separate container)
     var _recEl = document.getElementById('songRecommendation');
     if (_recEl) _recEl.innerHTML = _isCleanup ? _cleanupCard : _suggestHTML;
@@ -462,8 +477,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             }
         }
         } // end if(false) derived/focus chips
-        // 2. One clear signal — "Needs work" or "On setlist"
-        if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">\u26A0\uFE0F Needs work</span>');
+        // 2. One clear signal — focus engine drives "Needs work"
+        if (_topGaps[song.title]) chips.push('<span class="song-chip song-chip--warn">\u26A0\uFE0F Needs work</span>');
         if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">\uD83C\uDFAF Setlist</span>');
 
         var needsWork = chips.some(function(c) { return c.indexOf('warn') > -1; });

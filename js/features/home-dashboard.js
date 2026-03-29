@@ -401,15 +401,8 @@ function _renderNextUpCard(msg, sub, cta) {
 
 // ── Secondary Actions — 3 distinct journeys (no overlap) ─────────────────────
 function _renderIntentSection() {
-    // "Get Better" routes to focus song (single source of truth)
-    var _focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { primary: null };
-    var _practiceClick = '';
-    if (_focus.primary && _focus.primary.title) {
-        var _sw = _focus.primary.title.replace(/'/g, "\\'");
-        _practiceClick = "showPage('songs');setTimeout(function(){if(typeof selectSong==='function')selectSong('" + _sw + "');},300)";
-    } else {
-        _practiceClick = "showPage('songs')";
-    }
+    // "Get Better" activates focus mode on Songs page
+    var _practiceClick = "window._glFocusMode=true;showPage('songs')";
 
     var _secBtn = 'flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;text-align:center;font-size:0.78em;font-weight:600';
     return '<div style="display:flex;gap:8px;margin-bottom:12px">'
@@ -491,7 +484,7 @@ function _renderNextActionCard(bundle, wf) {
         var _safeWeak = firstWeakTitle ? firstWeakTitle.replace(/'/g, "\\'") : '';
         _weakNote = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px">'
             + '<span style="font-size:0.82em;color:#fbbf24;font-weight:600;flex:1">' + weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work</span>'
-            + '<button onclick="showPage(\'songs\');setTimeout(function(){if(typeof selectSong===\'function\')selectSong(\'' + _safeWeak + '\');},300)" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Get Better</button>'
+            + '<button onclick="window._glFocusMode=true;showPage(\'songs\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Get Better</button>'
             + '</div>';
     }
 
@@ -692,7 +685,7 @@ function _renderTopSongsToWork(bundle) {
     var html = '<div class="app-card" style="padding:12px 14px;margin-bottom:12px">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
     html += '<div style="font-size:0.78em;font-weight:800;color:var(--text)">These need work</div>';
-    html += '<button onclick="hdPlayBundle(\'focus\')" style="font-size:0.72em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:none;background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Practice These</button>';
+    html += '<button onclick="window._glFocusMode=true;showPage(\'songs\')" style="font-size:0.72em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:none;background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Practice These</button>';
     html += '</div>';
 
     songs.forEach(function(s, i) {
