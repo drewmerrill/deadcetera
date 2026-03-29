@@ -1149,4 +1149,62 @@
   };
 
   console.log('\uD83C\uDFAF GLOrchestrator loaded (NBA engine)');
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── GrooveMate — Unified Public Interface ──────────────────────────────
+  // The ONLY API the UI should reference. Wraps all internal systems.
+  // 4 verbs: decide, act, explain, learn.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  window.GrooveMate = {
+    /**
+     * What should happen next?
+     * Returns: { mode, action, message, score, targetSongs, why }
+     */
+    decide: function() {
+      return getNextBestAction();
+    },
+
+    /**
+     * Run the full band cycle (Plan → Execute → Reveal → Improve).
+     * Single entry point for all band activity.
+     */
+    act: function() {
+      return runBandCycle();
+    },
+
+    /**
+     * Why did GrooveMate do that?
+     * Returns: { reason, signals, confidence, mode }
+     */
+    explain: function() {
+      return getDecisionExplanation();
+    },
+
+    /**
+     * What did the system learn from the last session?
+     * Returns accountability message + band DNA summary.
+     */
+    learn: function(sessionData) {
+      var msg = getAccountabilityMessage(sessionData);
+      var dna = getBandDNA();
+      return {
+        message: msg,
+        sessionCount: dna.sessionCount || 0,
+        velocity: dna.improvementVelocity || 0,
+        strengths: (dna.strengths || []).slice(0, 3),
+        weaknesses: (dna.weaknesses || []).slice(0, 3),
+        preferences: dna.preferences || {}
+      };
+    },
+
+    // Shortcuts
+    shouldAct: shouldAct,
+    getSession: function() { return GLSession; },
+    getUserLevel: getUserLevel,
+    getBandDNA: getBandDNA,
+    getTimeline: getTimeline
+  };
+
+  console.log('\uD83E\uDD16 GrooveMate ready');
 })();
