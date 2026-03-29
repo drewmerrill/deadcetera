@@ -116,8 +116,8 @@ window.GLAvatarUI = (function() {
 
     function _updateButtonState() {
         if (!_btnEl) return;
-        // Only show avatar button when it has something useful to say
-        _btnEl.style.opacity = _hasUnread ? '1' : '0.3';
+        // Only show avatar when it has actionable guidance
+        _btnEl.style.display = _hasUnread ? '' : 'none';
         if (_hasUnread) {
             _btnEl.classList.add('has-tip');
             if (!_btnEl.querySelector('.gl-av-dot')) {

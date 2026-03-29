@@ -183,31 +183,11 @@ window._hdViewSetlist = function(setlistName) {
 };
 
 // ── Rehearsal preview modal ──────────────────────────────────────────────────
+// Zero-friction rehearsal start — no intermediate modal
 window._hdShowRehearsalPreview = function() {
-    var existing = document.getElementById('hdRehearsalPreview');
-    if (existing) existing.remove();
-    // Get song count from setlists if available
-    var _songCount = 0, _duration = '';
-    try {
-        var _sl = (typeof GLStore !== 'undefined' && GLStore.getSetlistCache) ? GLStore.getSetlistCache() : (window._glCachedSetlists || []);
-        if (_sl && _sl.length) {
-            _songCount = (_sl[0].sets || []).reduce(function(n, s) { return n + (s.songs || []).length; }, 0);
-            _duration = _songCount > 0 ? '~' + Math.round(_songCount * 6) + ' min' : '';
-        }
-    } catch(e) {}
-    var _meta = _songCount > 0 ? '<div style="font-size:0.78em;color:#a5b4fc;margin-bottom:12px">' + _songCount + ' songs' + (_duration ? ' \u00B7 ' + _duration : '') + '</div>' : '';
-    var ov = document.createElement('div');
-    ov.id = 'hdRehearsalPreview';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-    ov.innerHTML = '<div style="max-width:380px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);animation:rmRevealIn 0.2s ease;text-align:center">'
-        + '<div style="font-size:1.15em;font-weight:800;color:#f1f5f9;margin-bottom:6px">You\u2019re about to run your set</div>'
-        + _meta
-        + '<div style="font-size:0.82em;color:#94a3b8;line-height:1.5;margin-bottom:20px">We\u2019ll show you what to fix after.</div>'
-        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();if(typeof GLOrchestrator!==\'undefined\'&&GLOrchestrator.runBandCycle)GLOrchestrator.runBandCycle();else if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3);margin-bottom:8px">\u25B6 Start Band Rehearsal</button>'
-        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();showPage(\'rehearsal\')" style="width:100%;padding:10px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">View rehearsal plan first</button>'
-        + '</div>';
-    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
-    document.body.appendChild(ov);
+    if (typeof _glQuickStartRehearsal === 'function') _glQuickStartRehearsal();
+    else if (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.runBandCycle) GLOrchestrator.runBandCycle();
+    else showPage('rehearsal');
 };
 
 // ── Data loading ─────────────────────────────────────────────────────────────
@@ -422,8 +402,7 @@ function _renderNextUpCard(msg, sub, cta) {
 // ── Intent Section — Practice / Rehearse / Play Live ─────────────────────────
 function _renderIntentSection() {
     var _ibtn = 'flex:1;padding:14px 10px 10px;border-radius:12px;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px';
-    return '<div style="padding:16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
-        + '<div style="font-size:0.82em;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-align:center">What do you want to do right now?</div>'
+    return '<div style="padding:12px 16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
         + '<div style="display:flex;gap:8px">'
         + '<button onclick="showPage(\'songs\')" style="' + _ibtn + ';border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06)">'
         + '<span style="font-size:1.1em">\uD83C\uDFB8</span>'
@@ -443,80 +422,51 @@ function _renderIntentSection() {
         + '</div></div>';
 }
 
-// ── Next Action Card — "What should I do next?" ─────────────────────────────
+// ── Next Action Card — single dominant CTA based on state ────────────────────
 function _renderNextActionCard(bundle, wf) {
-    // ── First-time user: "Run Your First Rehearsal" launcher ──
-    var onboardStep = (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.getOnboardStep) ? GLAvatarGuide.getOnboardStep() : 0;
-    if (onboardStep >= 1 && onboardStep <= 3) {
-        var stepCtas = {
-            1: { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" },
-            2: { label: '\u25B6 Start Band Rehearsal', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal()" },
-            3: { label: 'See Results \u2192', onclick: "showPage('rehearsal')" }
-        };
-        var cta = stepCtas[onboardStep] || stepCtas[1];
-        // Dynamic "Next up" message
-        var _nextUpMsg = onboardStep === 1 ? 'Pick a few songs to start your set' : onboardStep === 2 ? 'Run your first rehearsal' : 'See what to fix next';
-        var _nextUpSub = onboardStep === 1 ? 'I\u2019ll shape them into a rehearsal set.' : onboardStep === 2 ? 'We\u2019ll track everything and show you what broke.' : 'One tap to confirm. That\u2019s it.';
-        return _renderNextUpCard(_nextUpMsg, _nextUpSub, cta)
-            + _renderIntentSection();
-    }
-
-    // ── "Run My Band" Primary Card (post-onboarding) ──────────────────────
-    // When onboarding is complete, show one dominant CTA + band progress.
-
-    var dna = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getBandDNA) ? GLOrchestrator.getBandDNA() : {};
-    var sessionCount = dna.sessionCount || 0;
-    var velocity = dna.improvementVelocity || 0;
-    var userLevel = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getUserLevel) ? GLOrchestrator.getUserLevel() : 'beginner';
-
-    // Build progress indicators from Band DNA
-    var progressHtml = '';
-    if (sessionCount > 0) {
-        var trendIcon = velocity > 0.2 ? '\u2191' : velocity < -0.2 ? '\u2193' : '\u2192';
-        var trendColor = velocity > 0.2 ? '#22c55e' : velocity < -0.2 ? '#ef4444' : '#94a3b8';
-        var trendLabel = velocity > 0.2 ? 'Getting Tighter' : velocity < -0.2 ? 'Needs Work' : 'Steady';
-        progressHtml = '<div style="display:flex;gap:12px;margin-bottom:14px;justify-content:center">'
-            + '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#a5b4fc">' + sessionCount + '</div><div style="font-size:0.62em;color:#475569">Sessions</div></div>'
-            + '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:' + trendColor + '">' + trendIcon + '</div><div style="font-size:0.62em;color:#475569">' + trendLabel + '</div></div>';
-        if (dna.weaknesses && dna.weaknesses.length) {
-            progressHtml += '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#f59e0b">' + dna.weaknesses.length + '</div><div style="font-size:0.62em;color:#475569">Songs to tighten</div></div>';
-        }
-        progressHtml += '</div>';
-    }
-
-    // Avatar memory message
-    var memoryMsg = '';
-    if (sessionCount >= 3 && velocity > 0.2) memoryMsg = 'You\u2019re getting tighter. Let\u2019s keep it going.';
-    else if (sessionCount >= 3 && velocity < -0.2 && dna.weaknesses && dna.weaknesses.length) memoryMsg = '"' + dna.weaknesses[dna.weaknesses.length - 1] + '" needs some love. I\u2019ll build the plan around it.';
-    else if (sessionCount >= 1) memoryMsg = 'Session ' + (sessionCount + 1) + '. I\u2019ve got a plan.';
-    else memoryMsg = 'Let\u2019s hear what you\u2019ve got.';
-
-    // ── Dynamic "Next up for your band" ──
-    var weakCount = _countWeakSongs(bundle);
+    var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
+    var hasSetlist = bundle.setlists && bundle.setlists.length > 0;
+    var weakSongs = _getWeakSongs(bundle, 5);
+    var weakCount = weakSongs.length;
+    var firstWeakTitle = weakCount > 0 ? weakSongs[0].title : null;
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
-    var _nextMsg = '', _nextSub = '', _nextCta = { label: '\u25B6 Start Band Rehearsal', onclick: "showPage('rehearsal')" };
+    var dna = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getBandDNA) ? GLOrchestrator.getBandDNA() : {};
+    var sessionCount = dna.sessionCount || 0;
 
-    if (daysOut <= 3 && daysOut >= 0) {
-        _nextMsg = 'Get ready to play';
-        _nextSub = (nextGig.venue || 'Gig') + ' in ' + (daysOut === 0 ? 'today' : daysOut + ' day' + (daysOut > 1 ? 's' : '')) + '. Run the set and tighten the weak spots.';
-        _nextCta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
-    } else if (weakCount > 0) {
-        _nextMsg = 'Tighten these songs';
-        _nextSub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need' + (weakCount === 1 ? 's' : '') + ' work before your next rehearsal.';
-    } else if (sessionCount === 0) {
-        _nextMsg = 'Run your first rehearsal';
-        _nextSub = 'We\u2019ll track everything and show you what to fix after.';
+    // ── State detection: ONE primary action ──
+    var _msg = '', _sub = '', _cta = null;
+
+    if (!hasSongs && !hasSetlist) {
+        // Brand new — no songs at all
+        _msg = 'Pick a few songs to get started';
+        _sub = 'I\u2019ll shape them into a rehearsal set.';
+        _cta = { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" };
+    } else if (daysOut <= 3 && daysOut >= 0) {
+        // Gig imminent — go live
+        _msg = 'Get ready to play';
+        _sub = (nextGig.venue || 'Gig') + (daysOut === 0 ? ' is today.' : ' in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + '.');
+        _cta = { label: '\u25B6 Play Set', onclick: "hdPlayBundle('gig')" };
+    } else if (weakCount > 0 && firstWeakTitle) {
+        // Weak songs — practice
+        _msg = weakCount === 1 ? '\u2019' + firstWeakTitle + '\u2019 needs work' : weakCount + ' songs need work';
+        _sub = 'You haven\u2019t rehearsed ' + (weakCount === 1 ? 'this one' : 'these') + ' enough yet.';
+        var _safeWeak = firstWeakTitle.replace(/'/g, "\\'");
+        _cta = { label: '\u25B6 Practice Weak Songs', onclick: "showPage('songdetail');if(typeof renderSongDetail==='function')renderSongDetail('" + _safeWeak + "')" };
+    } else if (hasSetlist) {
+        // Has a set, ready to rehearse
+        _msg = 'Your set is ready';
+        _sub = sessionCount === 0 ? 'You haven\u2019t rehearsed this set yet.' : 'Keep it tight. We\u2019ll show you what matters after.';
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal();else showPage('rehearsal')" };
     } else {
-        _nextMsg = 'Your next rehearsal starts here';
-        _nextSub = 'Keep it tight. We\u2019ll show you what matters after.';
+        // Has songs but no setlist
+        _msg = 'Build your set';
+        _sub = 'You\u2019ve got songs. Let\u2019s turn them into a rehearsal set.';
+        _cta = { label: 'Build Set \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" };
     }
 
-    var runMyBandCard = progressHtml
-        + _renderNextUpCard(_nextMsg, _nextSub, _nextCta)
+    return _renderNextUpCard(_msg, _sub, _cta)
         + _renderIntentSection();
-
-    return runMyBandCard;
 
     // ── Below: retained for gig-day override (not shown by default) ──────
     if (false) { // gig-day logic preserved but disabled — can re-enable later
