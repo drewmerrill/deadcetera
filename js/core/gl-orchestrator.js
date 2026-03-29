@@ -333,20 +333,16 @@
   }
 
   function checkAutopilot() {
-    if (_isInFlow()) return;
+    // Route through NBA V2
+    var nba = getNextBestAction();
+    if (!nba || nba.mode === 'silent') return;
 
-    var ctx = _buildContext();
-    var next = getNextAction(ctx);
-    if (!next || !next.message || next.urgency === 'none') return;
-
-    var key = (next.action || 'none') + '_' + ctx.page;
+    var key = (nba.actionId || nba.action || 'none') + '_' + (_buildContext().page || '');
     if (_autopilotExecuted[key]) return;
-
-    var confidence = _getConfidence(next, ctx);
-    var risk = next.action ? _getActionRisk(next.action) : 'medium';
-    var tier = _getAutopilotTier(confidence, risk);
-
     _autopilotExecuted[key] = true;
+
+    var tier = nba.mode;
+    var next = { action: nba.action, message: nba.message, urgency: nba.score > 0.6 ? 'high' : 'medium' };
 
     if (tier === 'auto' && next.action) {
       // AUTO: Execute silently, show result toast with undo
@@ -688,81 +684,138 @@
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── NEXT BEST ACTION (NBA) — Unified Decision Function ─────────────────
-  // All avatar behavior routes through this. Combines all signals into one
-  // decision: AUTO, ASSIST, or SILENT.
+  // ── NEXT BEST ACTION (NBA) V2 — Weighted Ranking Engine ────────────────
+  // Single entry point for ALL avatar behavior. Returns one ranked action
+  // with explicit weighted scoring. Allowed to return SILENT.
   // ══════════════════════════════════════════════════════════════════════════
 
+  // Signal weights (must sum to ~1.0)
+  var NBA_WEIGHTS = {
+    flowUrgency:      0.30,  // onboarding step, empty states
+    songPriority:     0.20,  // love × readiness gap
+    bandDNAWeakness:  0.15,  // declining velocity, known weaknesses
+    contextFit:       0.15,  // action matches current page
+    userCapability:   0.10,  // beginner vs power
+    trust:            0.10   // accept/undo/ignore history
+  };
+
+  var NBA_THRESHOLD = 0.35; // below this → SILENT
+  var _lastNBAFired = 0;
+  var _NBA_COOLDOWN = 10000; // 10s between NBA outputs
+
   function getNextBestAction() {
-    // 1. Gather all context
+    // ── Hard Suppression Rules ──────────────────────────────────────────
+    if (_isInFlow()) return _nbaResult('silent', null, null, [], 0, 'in_flow');
+    if (Date.now() - _lastNBAFired < _NBA_COOLDOWN) return _nbaResult('silent', null, null, [], 0, 'cooldown');
+
+    // ── Gather context ──────────────────────────────────────────────────
     var ctx = _buildContext();
     var dna = _loadBandDNA();
-    var trust = _loadTrust();
     var userLevel = getUserLevel();
     var personality = getBandPersonality();
 
-    // 2. SILENT during flow — absolute rule
-    if (_isInFlow()) return { tier: 'silent', action: null, message: null, reason: 'in_flow' };
+    // ── Build candidates ────────────────────────────────────────────────
+    var candidates = [];
 
-    // 3. Get base next action
-    var next = getNextAction(ctx);
-    if (!next || !next.action) {
-      // Check song value signals — suggest high-priority song if available
-      var topSong = null;
-      try {
-        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalPriorities) {
-          var priorities = GLStore.getRehearsalPriorities(1);
-          if (priorities.length && priorities[0].priority >= 3) topSong = priorities[0];
+    // Candidate 1: Flow/onboarding action
+    var flowAction = getNextAction(ctx);
+    if (flowAction && flowAction.message) {
+      var flowScore = 0;
+      // flowUrgency signal
+      if (ctx.onboardStep >= 1 && ctx.onboardStep <= 3) flowScore += NBA_WEIGHTS.flowUrgency * 1.0;
+      else if (flowAction.urgency === 'high') flowScore += NBA_WEIGHTS.flowUrgency * 0.8;
+      else if (flowAction.urgency === 'medium') flowScore += NBA_WEIGHTS.flowUrgency * 0.5;
+      else flowScore += NBA_WEIGHTS.flowUrgency * 0.2;
+      // contextFit signal
+      var fitMap = { home: ['start_rehearsal','create_setlist','import_artist_pack'], setlists: ['create_setlist'], songs: ['add_song','import_artist_pack'], rehearsal: ['start_rehearsal'] };
+      var fits = fitMap[ctx.page] || [];
+      if (flowAction.action && fits.indexOf(flowAction.action) >= 0) flowScore += NBA_WEIGHTS.contextFit * 1.0;
+      else flowScore += NBA_WEIGHTS.contextFit * 0.3;
+      // trust signal
+      flowScore += NBA_WEIGHTS.trust * _getTrustMultiplier() * 0.5;
+      // capability signal
+      flowScore += NBA_WEIGHTS.userCapability * (userLevel === 'power' ? 0.8 : userLevel === 'intermediate' ? 0.5 : 0.3);
+
+      candidates.push({ id: 'flow_' + (flowAction.action || 'guide'), action: flowAction.action, message: flowAction.message, score: flowScore, why: ['Flow: ' + (flowAction.urgency || 'low')], targetSongs: [], targetFlow: flowAction.action });
+    }
+
+    // Candidate 2: Song value recommendation
+    try {
+      if (typeof GLStore !== 'undefined' && GLStore.getRehearsalPriorities) {
+        var priorities = GLStore.getRehearsalPriorities(3);
+        if (priorities.length) {
+          var top = priorities[0];
+          var songScore = 0;
+          // songPriority signal (normalized to 0-1 from 0-5 scale)
+          songScore += NBA_WEIGHTS.songPriority * Math.min(top.priority / 5, 1.0);
+          // bandDNA weakness signal
+          if (dna.weaknesses && dna.weaknesses.indexOf(top.title) >= 0) songScore += NBA_WEIGHTS.bandDNAWeakness * 0.8;
+          else if (top.signals.gap > 1) songScore += NBA_WEIGHTS.bandDNAWeakness * 0.5;
+          // contextFit (song suggestions fit on home/rehearsal pages)
+          if (ctx.page === 'home' || ctx.page === 'rehearsal' || ctx.page === 'songs') songScore += NBA_WEIGHTS.contextFit * 0.6;
+          // trust + capability
+          songScore += NBA_WEIGHTS.trust * _getTrustMultiplier() * 0.3;
+          songScore += NBA_WEIGHTS.userCapability * (userLevel === 'beginner' ? 0.2 : 0.5);
+
+          var songMsg = top.signals.gap > 1
+            ? '"' + top.title + '" \u2014 you love it but it needs work.'
+            : '"' + top.title + '" \u2014 high priority for rehearsal.';
+
+          candidates.push({ id: 'song_' + top.title.replace(/\s/g, '_').substring(0, 20), action: null, message: songMsg, score: songScore, why: ['Priority: ' + top.priority.toFixed(1), 'Gap: ' + top.signals.gap.toFixed(1)], targetSongs: priorities.slice(0, 3).map(function(p) { return p.title; }), targetFlow: 'rehearsal' });
         }
-      } catch(e) {}
-
-      if (topSong && topSong.signals.gap > 1) {
-        next = { action: null, message: '"' + topSong.title + '" \u2014 you love it but it needs work. Worth a run.', urgency: 'low' };
-      } else if (dna.improvementVelocity < -0.3 && dna.weaknesses.length) {
-        next = { action: null, message: 'Focus on "' + dna.weaknesses[dna.weaknesses.length - 1] + '" next rehearsal.', urgency: 'low' };
-      } else {
-        return { tier: 'silent', action: null, message: null, reason: 'no_action' };
       }
+    } catch(e) {}
+
+    // Candidate 3: Band DNA insight
+    if (dna.improvementVelocity && Math.abs(dna.improvementVelocity) > 0.2) {
+      var dnaScore = NBA_WEIGHTS.bandDNAWeakness * (Math.abs(dna.improvementVelocity) > 0.5 ? 0.9 : 0.5);
+      dnaScore += NBA_WEIGHTS.contextFit * (ctx.page === 'home' ? 0.5 : 0.1);
+      var dnaMsg = dna.improvementVelocity > 0
+        ? 'Band\u2019s getting tighter. Keep this rhythm.'
+        : 'Scores are slipping. Focus on weak spots.';
+      candidates.push({ id: 'dna_velocity', action: null, message: dnaMsg, score: dnaScore, why: ['Velocity: ' + dna.improvementVelocity.toFixed(2)], targetSongs: (dna.weaknesses || []).slice(0, 3), targetFlow: null });
     }
 
-    // 4. Calculate confidence (blends all signals)
-    var confidence = _getConfidence(next, ctx);
+    // ── Rank and select ─────────────────────────────────────────────────
+    if (!candidates.length) return _nbaResult('silent', null, null, [], 0, 'no_candidates');
 
-    // 5. Adjust for user level
-    if (userLevel === 'beginner') confidence = Math.min(confidence, 0.85); // don't auto-execute for beginners
-    if (userLevel === 'power') confidence = Math.min(confidence * 1.1, 0.99); // trust power users more
+    candidates.sort(function(a, b) { return b.score - a.score; });
+    var winner = candidates[0];
 
-    // 6. Determine tier
-    var risk = next.action ? _getActionRisk(next.action) : 'medium';
-    var tier = _getAutopilotTier(confidence, risk);
+    // Threshold check
+    if (winner.score < NBA_THRESHOLD) return _nbaResult('silent', null, null, [], winner.score, 'below_threshold');
 
-    // 7. Verify UI contract (if action targets a page element)
-    if (next.action && typeof GLHelpValidator !== 'undefined') {
-      var pageIssues = GLHelpValidator.validatePage(ctx.page);
-      if (pageIssues.length > 0) {
-        confidence = Math.max(0.4, confidence - 0.15);
-        tier = 'assist'; // never auto if UI contract violated
-      }
-    }
+    // Determine mode
+    var risk = winner.action ? _getActionRisk(winner.action) : 'low';
+    var mode = _getAutopilotTier(winner.score, risk);
 
-    // 8. Apply personality to message
-    var msg = next.message || '';
-    if (personality.tone === 'casual' && msg.length > 0) {
-      // Already casual — keep as-is
-    } else if (personality.tone === 'technical' && msg.length > 0) {
-      msg = msg.replace(/Want me to/, 'Shall I').replace(/Let\u2019s/, 'Ready to');
-    }
+    // Beginner cap
+    if (userLevel === 'beginner' && mode === 'auto') mode = 'assist';
+
+    // Apply personality
+    var msg = winner.message;
+    if (personality.tone === 'technical') msg = msg.replace(/Want me to/, 'Shall I');
+
+    _lastNBAFired = Date.now();
 
     return {
-      tier: tier,
-      action: next.action,
+      actionId: winner.id,
+      mode: mode,
+      action: winner.action,
       message: msg,
-      confidence: Math.round(confidence * 100) / 100,
-      risk: risk,
+      score: Math.round(winner.score * 1000) / 1000,
+      why: winner.why,
+      targetSongs: winner.targetSongs || [],
+      targetFlow: winner.targetFlow || null,
       userLevel: userLevel,
       personality: personality.tone,
-      reason: tier === 'silent' ? 'low_confidence' : tier === 'auto' ? 'high_confidence_low_risk' : 'standard'
+      expiresAt: Date.now() + 30000, // 30s TTL
+      candidateCount: candidates.length
     };
+  }
+
+  function _nbaResult(mode, action, message, why, score, reason) {
+    return { actionId: null, mode: mode, action: action, message: message, score: score, why: why || [], targetSongs: [], targetFlow: null, reason: reason };
   }
 
   // ── User Capability Model ──────────────────────────────────────────────

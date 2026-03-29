@@ -216,11 +216,14 @@ window.GLAvatarUI = (function() {
         // If no tip from guidance, try NBA (Next Best Action)
         if (!tip && typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getNextBestAction) {
             var nba = GLOrchestrator.getNextBestAction();
-            if (nba && nba.tier !== 'silent' && nba.message) {
+            if (nba && nba.mode !== 'silent' && nba.message) {
+                var nbaCoach = '';
+                if (nba.userLevel === 'beginner') nbaCoach = 'I\u2019m here if you need help.';
+                if (nba.targetSongs && nba.targetSongs.length) nbaCoach = 'Focus: ' + nba.targetSongs.slice(0, 2).join(', ');
                 tip = {
-                    id: 'nba_' + Date.now(),
+                    id: nba.actionId || ('nba_' + Date.now()),
                     message: nba.message,
-                    coach: nba.userLevel === 'beginner' ? 'I\u2019m here if you need help.' : '',
+                    coach: nbaCoach,
                     actions: nba.action ? [{ label: '\u2192 ' + nba.message.split('.')[0], onclick: "GLAvatarUI._askWithText('" + (nba.action || '').replace(/_/g, ' ') + "')" }] : []
                 };
             }
