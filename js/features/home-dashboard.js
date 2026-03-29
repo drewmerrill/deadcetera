@@ -428,6 +428,14 @@ function _renderNextActionCard(bundle, wf) {
             + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + stepLabels[onboardStep] + '</div>'
             + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + stepSubs[onboardStep] + '</div>'
             + '<button onclick="' + cta.onclick + '" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(99,102,241,0.3)">' + cta.label + '</button>'
+            + '</div></div>'
+        // Intent section — always visible, even during onboarding
+            + '<div style="padding:16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
+            + '<div style="font-size:0.82em;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-align:center">What do you want to do right now?</div>'
+            + '<div style="display:flex;gap:8px">'
+            + '<button onclick="showPage(\'songs\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFB8 Practice</button>'
+            + '<button onclick="showPage(\'rehearsal\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83E\uDD41 Rehearse</button>'
+            + '<button onclick="showPage(\'setlists\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFA4 Play Live</button>'
             + '</div></div>';
     }
 
