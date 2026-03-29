@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-200546', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-201314', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10754,7 +10754,8 @@ window._glShowFeedbackDetail = function(reportId) {
     // Load cluster insight if exists
     if (r.clusterKey && typeof firebaseDB !== 'undefined' && firebaseDB) {
         var safeKey = r.clusterKey.replace(/[.#$/\[\]]/g, '_');
-        firebaseDB.ref('feedback_clusters/' + safeKey).once('value').then(function(snap) {
+        var _fbBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
+        firebaseDB.ref('bands/' + _fbBand + '/feedback_clusters/' + safeKey).once('value').then(function(snap) {
             var insight = snap.val();
             var insightEl = document.getElementById('glClusterInsight');
             if (!insight || !insightEl) return;

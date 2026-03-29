@@ -312,7 +312,8 @@ window.GLAvatarGuide = (function() {
     // Refresh cluster tips every 5 minutes (lightweight)
     function _refreshClusterTips() {
       if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
-      firebaseDB.ref('feedback_clusters').limitToLast(20).once('value').then(function(snap) {
+      var _agBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
+      firebaseDB.ref('bands/' + _agBand + '/feedback_clusters').limitToLast(20).once('value').then(function(snap) {
         var data = snap.val();
         if (!data) return;
         var tips = {};

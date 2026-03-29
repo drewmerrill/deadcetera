@@ -10,6 +10,12 @@
 (function() {
   'use strict';
 
+  // Band-scoped path helper — all feedback data lives under /bands/{slug}/
+  function _bandRef(db, subpath) {
+    var bandId = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
+    return db.ref('bands/' + bandId + '/' + subpath);
+  }
+
   // Auto-capture: max 1 per type per session, only 3 triggers
   var _autoSubmittedThisSession = {};
   var _failureCounts = {}; // track repeated failures per action
@@ -217,7 +223,7 @@
 
     try {
       // Primary: band-scoped path (has write permission via $other catch-all rule)
-      await db.ref('bands/' + bandId + '/feedback_reports/' + payload.reportId).set(payload);
+      await _bandRef(db, 'feedback_reports/' + payload.reportId).set(payload);
     } catch(e) {
       console.warn('[Feedback] Save failed:', e.message);
       _saveLocal(payload);
@@ -241,7 +247,7 @@
     var bandId = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
     try {
       // Read from band path (has permission)
-      var snap = await db.ref('bands/' + bandId + '/feedback_reports').orderByChild('createdAt').limitToLast(100).once('value');
+      var snap = await _bandRef(db, 'feedback_reports').orderByChild('createdAt').limitToLast(100).once('value');
       var data = snap.val();
       if (!data) return [];
       return Object.values(data).sort(function(a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); });
@@ -253,7 +259,7 @@
     if (!db || !reportId) return;
     var bandId = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
     try {
-      await db.ref('bands/' + bandId + '/feedback_reports/' + reportId).update(patch);
+      await _bandRef(db, 'feedback_reports/' + reportId).update(patch);
     } catch(e) { console.warn('[Feedback] Update failed:', e.message); }
   }
 
@@ -293,7 +299,7 @@
 
     // Store to Firebase
     if (db) {
-      try { await db.ref('feedback_clusters/' + clusterKey.replace(/[.#$/\[\]]/g, '_')).set(localInsight); } catch(e) {}
+      try { await _bandRef(db, 'feedback_clusters/' + clusterKey.replace(/[.#$/\[\]]/g, '_')).set(localInsight); } catch(e) {}
     }
     return localInsight;
   }
@@ -323,7 +329,7 @@
       countAtCreation: reports.length
     };
 
-    try { await db.ref('product_actions/' + id).set(action); } catch(e) {}
+    try { await _bandRef(db, 'product_actions/' + id).set(action); } catch(e) {}
     return action;
   }
 
@@ -348,7 +354,7 @@
     if (!db) return;
     var safeKey = clusterKey.replace(/[.#$/\[\]]/g, '_');
     try {
-      await db.ref('feedback_clusters/' + safeKey).update({
+      await _bandRef(db, 'feedback_clusters/' + safeKey).update({
         fixedAt: new Date().toISOString(),
         countAtFix: reports ? reports.length : 0,
         status: 'fixed'
@@ -364,7 +370,7 @@
     if (!db) return null;
     var safeKey = clusterKey.replace(/[.#$/\[\]]/g, '_');
     try {
-      var snap = await db.ref('feedback_clusters/' + safeKey).once('value');
+      var snap = await _bandRef(db, 'feedback_clusters/' + safeKey).once('value');
       var cluster = snap.val();
       if (!cluster || !cluster.fixedAt) return null;
       var countAtFix = cluster.countAtFix || 0;
@@ -376,7 +382,7 @@
       }).length;
       var result = postFixCount < countAtFix ? 'resolved' : postFixCount === 0 ? 'resolved' : postFixCount <= countAtFix ? 'improving' : 'regressed';
       // Store validation result
-      await db.ref('feedback_clusters/' + safeKey).update({ validationResult: result, lastValidated: new Date().toISOString(), postFixCount: postFixCount });
+      await _bandRef(db, 'feedback_clusters/' + safeKey).update({ validationResult: result, lastValidated: new Date().toISOString(), postFixCount: postFixCount });
       return result;
     } catch(e) { return null; }
   }

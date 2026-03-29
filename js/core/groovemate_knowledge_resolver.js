@@ -236,7 +236,8 @@
       outcome: outcome, // 'helpful', 'not_helpful', 'wrong', 'took_action'
       timestamp: new Date().toISOString()
     };
-    try { db.ref('help_outcomes/' + id).set(record); } catch(e) {}
+    var _hoBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
+    try { db.ref('bands/' + _hoBand + '/help_outcomes/' + id).set(record); } catch(e) {}
   }
 
   // ── Founder Help Feedback ──────────────────────────────────────────────
@@ -253,7 +254,8 @@
       user: (typeof GLUserIdentity !== 'undefined') ? GLUserIdentity.getContext().email : '',
       timestamp: new Date().toISOString()
     };
-    try { db.ref('help_feedback/' + id).set(record); } catch(e) {}
+    var _hfBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
+    try { db.ref('bands/' + _hfBand + '/help_feedback/' + id).set(record); } catch(e) {}
   }
 
   // ── Knowledge Self-Healing ──────────────────────────────────────────────
@@ -329,7 +331,8 @@
   function _loadEffectiveness() {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db) return;
-    db.ref('help_outcomes').limitToLast(50).once('value').then(function(snap) {
+    var _efBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
+    db.ref('bands/' + _efBand + '/help_outcomes').limitToLast(50).once('value').then(function(snap) {
       var data = snap.val();
       if (!data) return;
       Object.values(data).forEach(function(o) {
