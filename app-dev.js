@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-165345', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-170200', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';

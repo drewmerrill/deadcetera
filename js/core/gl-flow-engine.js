@@ -105,18 +105,9 @@
   // Shows a visible countdown bar. User can cancel. Then executes action.
 
   function _showSoftAdvance(label, action) {
-    _cancelCountdown(); // clear any existing
-
-    var bar = document.createElement('div');
-    bar.id = 'glFlowCountdown';
-    bar.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:9500;background:#1e293b;border:1px solid rgba(99,102,241,0.4);border-radius:12px;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;width:90%;animation:glFlowIn 0.2s ease';
-
-    var secs = COUNTDOWN_SECONDS;
-    bar.innerHTML = '<div style="flex:1">'
-      + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0">' + label + '</div>'
-      + '<div id="glFlowTimer" style="font-size:0.72em;color:#818cf8;margin-top:2px">Starting in ' + secs + 's\u2026</div>'
-      + '</div>'
-      + '<button onclick="GLFlow.cancelCountdown()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:none;color:#94a3b8;cursor:pointer;font-weight:600;font-size:0.78em">Cancel</button>';
+    // Disabled: auto-countdown popup removed to reduce cognitive overload.
+    // The flow engine still tracks state — just no auto-launching popups.
+    return;
 
     // Inject animation style
     if (!document.getElementById('glFlowStyles')) {

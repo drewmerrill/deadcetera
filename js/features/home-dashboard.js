@@ -408,7 +408,8 @@ function _renderNextActionCard(bundle, wf) {
     // ── First-time user: "Run Your First Rehearsal" launcher ──
     var onboardStep = (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.getOnboardStep) ? GLAvatarGuide.getOnboardStep() : 0;
     if (onboardStep >= 1 && onboardStep <= 3) {
-        var stepLabels = { 1: 'Create a setlist', 2: 'Start a rehearsal', 3: 'Review your session' };
+        var stepLabels = { 1: 'Let\u2019s build your first set', 2: 'Start a rehearsal', 3: 'Review your session' };
+        var stepSubs = { 1: 'Start with a few songs \u2014 I\u2019ll shape the rest for rehearsal.', 2: 'One tap. We\u2019ll track everything.', 3: 'One tap to confirm. That\u2019s it.' };
         var stepCtas = {
             1: { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" },
             2: { label: 'Start Rehearsal \u2192', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal()" },
@@ -425,9 +426,8 @@ function _renderNextActionCard(bundle, wf) {
             + '<div style="font-size:0.72em;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step ' + onboardStep + ' of 3</div>'
             + '<div style="display:flex;gap:6px;justify-content:center;margin-bottom:10px">' + dots + '</div>'
             + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + stepLabels[onboardStep] + '</div>'
-            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + (onboardStep === 1 ? 'Pick 5\u201310 songs. You can always change them later.' : onboardStep === 2 ? 'One tap. We\u2019ll track everything.' : 'One tap to confirm. That\u2019s it.') + '</div>'
+            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + stepSubs[onboardStep] + '</div>'
             + '<button onclick="' + cta.onclick + '" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(99,102,241,0.3)">' + cta.label + '</button>'
-            + (onboardStep === 1 ? '<div style="font-size:0.72em;color:#475569;margin-top:12px;font-style:italic">This gets smarter as you rehearse. Just start playing \u2014 we\u2019ll handle the rest.</div>' : '')
             + '</div></div>';
     }
 
@@ -482,16 +482,16 @@ function _renderNextActionCard(bundle, wf) {
     // GrooveMate line
         + '<div style="padding:0 4px 8px;font-size:0.82em;color:#64748b;font-style:italic">' + memoryMsg + '</div>';
 
-    // For beginners: return ONLY the Run My Band card
-    if (userLevel === 'beginner') return runMyBandCard;
+    // Return ONLY the primary card — no competing CTAs
+    return runMyBandCard;
 
-    // For everyone else: Run My Band card + existing actions below
+    // ── Below: retained for gig-day override (not shown by default) ──────
+    if (false) { // gig-day logic preserved but disabled — can re-enable later
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
     var practiced = _didPracticeToday();
     var action = null;
 
-    // Override with gig-related actions only
     if (!action) {
         if (daysOut === 0) {
             action = { icon: '\uD83C\uDFA4', title: 'Showtime', sub: nextGig.venue || 'Today', cta: 'Go Live', onclick: 'homeGoLive(\'' + _escHtml(nextGig.name || nextGig.venue || '') + '\')' };
@@ -532,6 +532,7 @@ function _renderNextActionCard(bundle, wf) {
 
     // Prepend Run My Band card for non-beginners
     return runMyBandCard + html;
+    } // end if(false) gig-day block
 }
 
 // ── Progression + Band Activity Signals ──────────────────────────────────────
@@ -1209,7 +1210,9 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         '<div style="font-size:0.78em;color:var(--text-dim);padding:0 4px 8px">' + dateStr + '</div>',
+        // ── Above the fold: ONE primary action ──
         _renderNextActionCard(bundle, wf),
+        // ── Below the fold: supporting intelligence ──
         _renderTopSongsToWork(bundle),
         _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
         _renderBandScorecard(bundle),
