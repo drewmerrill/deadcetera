@@ -283,13 +283,17 @@ async function _rhRenderCommandFlow(el) {
     html += '<div style="margin-bottom:12px">';
     html += '<div style="display:flex;align-items:center;gap:10px">';
     html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0">Rehearsal Plan</h1>';
-    html += '<span style="font-size:0.62em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8">Draft</span>';
+    html += '<span style="font-size:0.62em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8">Draft (Not Locked)</span>';
     html += '</div>';
-    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">This is your next rehearsal. We\u2019ll track it and show you what to fix.</div>';
-    // Focus from engine
+    // Context line with focus count
     var _rhFocusPrimary = weakSongs.length > 0 ? weakSongs[0].title : null;
-    var _rhFocusMore = weakSongs.length > 1 ? ' (+' + (weakSongs.length - 1) + ' more)' : '';
-    if (_rhFocusPrimary) html += '<div style="font-size:0.78em;color:#fbbf24;font-weight:600;margin-top:4px">Focus for this rehearsal: <strong>' + _rhFocusPrimary + '</strong>' + _rhFocusMore + '</div>';
+    var _rhFocusCount = weakSongs.length;
+    if (_rhFocusCount > 0) {
+        html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">This plan focuses on ' + _rhFocusCount + ' priority song' + (_rhFocusCount > 1 ? 's' : '') + ' based on your upcoming rehearsal.</div>';
+        html += '<div style="font-size:0.78em;color:#fbbf24;font-weight:600;margin-top:4px">Focus: <strong>' + _rhFocusPrimary + '</strong>' + (_rhFocusCount > 1 ? ' (+' + (_rhFocusCount - 1) + ' more)' : '') + '</div>';
+    } else {
+        html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">This is your next rehearsal. We\u2019ll track it and show you what to fix.</div>';
+    }
     html += '</div>';
 
     // ── SECTION 1: Context ──
@@ -334,7 +338,7 @@ async function _rhRenderCommandFlow(el) {
     if (hasSavedPlan) {
         var savedUnits = _rhGetUnits();
         var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
-        console.log('[Planner] Rendering saved plan:', savedUnits.length, 'units,', songCount, 'songs', savedUnits);
+        console.log('[Planner] Rendering saved plan:', songCount, 'songs,', savedUnits.length, 'blocks');
 
         var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name
             : (localStorage.getItem('glSavedPlanName') || (typeof practicePlanActiveDate !== 'undefined' && practicePlanActiveDate
@@ -353,10 +357,9 @@ async function _rhRenderCommandFlow(el) {
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<span onclick="_rhEditPlanName()" style="font-size:0.78em;font-weight:800;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">✅ ' + escHtml(planName) + '</span>'
             + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
-            + '<span style="font-size:0.65em;color:var(--text-dim)">' + savedUnits.length + ' units · ' + songCount + ' songs</span>'
-            + '<span style="font-size:0.65em;font-weight:700;color:#a5b4fc;padding:1px 6px;border-radius:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">\u23F1 ' + _preTotalLabel + '</span>'
+            + '<span style="font-size:0.65em;color:var(--text-dim)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>'
             + '<button onclick="_rhRunWalkthrough()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;cursor:pointer" title="Show guided tour">?</button>'
-            + '<button onclick="_rhClearSavedPlan()" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
+            + '<button onclick="_rhClearSavedPlan()" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer" title="Remove all songs from this plan">Clear All Songs</button>'
             + '</div>';
 
         // ── Rehearsal time budgeting ──────────────────────────────────────
@@ -591,13 +594,13 @@ async function _rhRenderCommandFlow(el) {
             + '<div><span style="color:#60a5fa;font-weight:700">▬ RUN-THROUGH</span></div>'
             + '<div style="padding-left:12px">🎵 Full set run <span style="color:var(--text-dim)">45m</span></div>'
             + '</div>'
-            + '<div style="font-size:0.9em;color:var(--text-dim);font-style:italic">Use sections to organize, templates to add fast, and drag to reorder. Tap the time on any block to adjust.</div>'
+            + '<div style="font-size:0.9em;color:var(--text-dim);font-style:italic">Use a template to build your plan faster. Drag to reorder. Tap the time to adjust.</div>'
             + '</div></details>';
 
         // Plan actions (edit-level, not rehearsal-start)
         html += '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer">+ Schedule Date</button>'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">\u270F\uFE0F Edit Plan</button>'
+            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer">Schedule Rehearsal Date</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer" title="Rebuild plan structure from scratch">\u270F\uFE0F Edit Structure</button>'
             + '</div>'
             + '<div id="rhSnapshots"></div>';
     } else {
@@ -611,8 +614,9 @@ async function _rhRenderCommandFlow(el) {
 
     // ── Rehearsal History (collapsed by default) ──
     html += '<details style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
-    html += '<summary style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 0">'
-        + '<span style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">\uD83D\uDCCB Rehearsal History</span>'
+    html += '<summary style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0">'
+        + '<span style="font-size:0.72em;color:var(--text-dim);transition:transform 0.2s">\u25B6</span>'
+        + '<span style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">Rehearsal History</span>'
         + '</summary>';
     html += '<div style="margin-top:8px">';
     html += '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>';
@@ -1138,7 +1142,7 @@ async function _rhRenderSnapshots() {
             + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(label) + '</div>'
             + '<div style="font-size:0.82em;color:var(--text-dim)">' + dateStr + ' ' + timeStr + ' \u00B7 ' + songCount + ' songs</div>'
             + '</div>'
-            + '<button onclick="_rhRestoreSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">Load</button>'
+            + '<button onclick="_rhRestoreSnapshot(\'' + s.snapshotId + '\')" title="Replace your current plan with this version" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">Load</button>'
             + '<button onclick="_rhDeleteSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-size:0.78em;flex-shrink:0">\u2715</button>'
             + '</div>';
     });
@@ -1553,7 +1557,7 @@ window._rhRunWalkthrough = function() {
 
 window._rhEditPlanName = function() {
     var current = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Next Rehearsal';
-    var newName = prompt('Rehearsal plan name:', current);
+    var newName = prompt('Rehearsal plan name (e.g., Apr 1 \u2013 Avon Prep):', current);
     if (newName === null || newName.trim() === current) return;
     if (!_rhPlanCache) _rhPlanCache = { planId: _rhGenPlanId(), units: _rhGetUnits() };
     _rhPlanCache.name = newName.trim() || 'Next Rehearsal';
