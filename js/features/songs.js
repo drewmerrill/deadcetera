@@ -154,10 +154,13 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 if (_dc && _dc.lead_singer && _dc.lead_singer.singer) return false;
             }
             if (tf === 'needs_work') {
-                var _nwScores = (typeof readinessCache !== 'undefined' && readinessCache[song.title]) || {};
-                var _nwVals = Object.values(_nwScores).filter(function(v) { return typeof v === 'number' && v > 0; });
-                var _nwAvg = _nwVals.length ? _nwVals.reduce(function(a,b){return a+b;},0) / _nwVals.length : 0;
-                if (_nwAvg === 0 || _nwAvg >= 3) return false;
+                // Use focus engine — matches the "Needs work" chip exactly
+                var _nwFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+                var _nwMatch = false;
+                for (var _nwi = 0; _nwi < _nwFocus.list.length; _nwi++) {
+                    if (_nwFocus.list[_nwi].title === song.title) { _nwMatch = true; break; }
+                }
+                if (!_nwMatch) return false;
             }
             if (tf === 'not_rotation') {
                 var _nrStatus = (typeof statusCache !== 'undefined') ? statusCache[song.title] : '';
@@ -400,24 +403,34 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // ── CLEANUP QUEUE CARD (shown instead of suggestion when cleanup active) ──
     var _cleanupCard = '';
     if (_isCleanup && filtered.length > 0) {
-        var _cSong = filtered[0];
-        var _cSafe = _cSong.title.replace(/'/g, "\\'");
         var _cFilter = window._sqTriageFilter;
-        var _cLabel = { no_key:'Missing Key', no_bpm:'Missing BPM', no_status:'No Status', no_lead:'No Lead', needs_work:'Needs Work', not_rotation:'Not in Rotation' }[_cFilter] || 'Missing data';
-        var _cTotal = filtered.length + (window._sqTriageDone || 0);
-        var _cDone = window._sqTriageDone || 0;
-        var _cPct = _cTotal > 0 ? Math.round(_cDone / _cTotal * 100) : 0;
-        _cleanupCard = '<div style="padding:10px 14px;margin-bottom:8px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:10px;border-left:4px solid #fbbf24">'
-            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-            + '<span style="font-size:0.65em;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#fbbf24">Cleanup Queue · ' + _cLabel + ' · ' + _cDone + ' of ' + _cTotal + ' fixed</span>'
-            + '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.62em;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Exit</button>'
-            + '</div>'
-            + '<div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + _cPct + '%;background:#fbbf24;border-radius:2px;transition:width 0.3s"></div></div>'
-            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">Next: ' + _cSong.title + '</div>'
-            + '<div style="display:flex;gap:6px">'
-            + '<button onclick="selectSong(\'' + _cSafe + '\')" style="font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24">Open & Edit →</button>'
-            + '<button onclick="window._sqTriageDone++;renderSongs()" style="font-size:0.72em;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim)">Skip</button>'
-            + '</div></div>';
+        var _cLabel = { no_key:'Missing Key', no_bpm:'Missing BPM', no_status:'No Status', no_lead:'No Lead', needs_work:'Needs Work', not_rotation:'Not in Rotation', no_structure:'No Structure' }[_cFilter] || 'Filtered';
+
+        if (_cFilter === 'needs_work') {
+            // Needs Work: show as filter breadcrumb, not triage workflow
+            _cleanupCard = '<div style="padding:8px 14px;margin-bottom:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px;display:flex;align-items:center;gap:8px">'
+                + '<span style="font-size:0.78em;color:#fbbf24;font-weight:600">\u26A0\uFE0F Showing ' + filtered.length + ' songs that need work</span>'
+                + '<button onclick="sqTriageSet(null)" style="margin-left:auto;font-size:0.65em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Show All</button>'
+                + '</div>';
+        } else {
+            // Other triage filters: keep cleanup workflow
+            var _cSong = filtered[0];
+            var _cSafe = _cSong.title.replace(/'/g, "\\'");
+            var _cTotal = filtered.length + (window._sqTriageDone || 0);
+            var _cDone = window._sqTriageDone || 0;
+            var _cPct = _cTotal > 0 ? Math.round(_cDone / _cTotal * 100) : 0;
+            _cleanupCard = '<div style="padding:10px 14px;margin-bottom:8px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:10px;border-left:4px solid #fbbf24">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+                + '<span style="font-size:0.65em;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#fbbf24">Cleanup Queue \u00B7 ' + _cLabel + ' \u00B7 ' + _cDone + ' of ' + _cTotal + ' fixed</span>'
+                + '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.62em;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer">Exit</button>'
+                + '</div>'
+                + '<div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + _cPct + '%;background:#fbbf24;border-radius:2px;transition:width 0.3s"></div></div>'
+                + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">Next: ' + _cSong.title + '</div>'
+                + '<div style="display:flex;gap:6px">'
+                + '<button onclick="selectSong(\'' + _cSafe + '\')" style="font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.1);color:#fbbf24">Open & Edit \u2192</button>'
+                + '<button onclick="window._sqTriageDone++;renderSongs()" style="font-size:0.72em;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim)">Skip</button>'
+                + '</div></div>';
+        }
     }
 
     // Focus mode: when entering from "Get Better", show focus list prominently
@@ -814,6 +827,8 @@ window.sqTriageSet = function(filter) {
     window._sqTriageFilter = (window._sqTriageFilter === filter) ? null : filter;
     window._sqTriageDone = 0;
     window._sqTriageIndex = -1;
+    // Clear focus mode when entering triage — they don't stack
+    window._glFocusMode = false;
     // Toggle triage focus mode on body
     if (window._sqTriageFilter) document.body.classList.add('gl-triage-active');
     else document.body.classList.remove('gl-triage-active');
