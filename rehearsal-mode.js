@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-191715', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-192128', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1520,7 +1520,13 @@ function _rmShowRevealScreen() {
     html += '</div>';
 
     // ── 4. CONFIDENCE CLOSE ──
-    var _revealClose = hasIssue ? 'Fix this and the whole set will feel tighter.' : (progressSignal && progressSignal.type === 'improvement' ? 'The work is paying off. Keep showing up.' : 'You\u2019re getting closer.');
+    var _revealClose = 'You\u2019re getting closer.';
+    if (hasIssue) {
+        var _closePhrases = ['Fix this and the whole set will feel tighter.', 'This is fixable fast.', 'One focused rep and this is gone.'];
+        _revealClose = _closePhrases[Math.floor(Math.random() * _closePhrases.length)];
+    } else if (progressSignal && progressSignal.type === 'improvement') {
+        _revealClose = 'The work is paying off. Keep showing up.';
+    }
     html += '<div style="padding:0 24px 24px;text-align:center">';
     html += '<div style="font-size:0.82em;color:#64748b;font-style:italic;line-height:1.4">' + _rmEsc(_revealClose) + '</div>';
     html += '</div>';
@@ -1551,9 +1557,17 @@ function _rmShowRevealScreen() {
         html += '</div></div>';
     }
 
-    // ── Primary CTA ──
+    // ── Primary CTA — contextual label ──
     var _revealPracticeSong = _revealProbSong || null;
-    var _revealPracticeLabel = _revealPracticeSong ? 'Practice That Next' : 'Done';
+    var _revealPracticeLabel = 'Done';
+    if (_revealPracticeSong) {
+        // Pick a contextual CTA based on the issue
+        var _issueText = (tc.biggestIssue || '').toLowerCase();
+        if (_issueText.indexOf('transition') !== -1) _revealPracticeLabel = 'Run That Transition Again';
+        else if (_issueText.indexOf('ending') !== -1) _revealPracticeLabel = 'Practice That Ending';
+        else if (_issueText.indexOf('tempo') !== -1 || _issueText.indexOf('rush') !== -1) _revealPracticeLabel = 'Lock In the Tempo';
+        else _revealPracticeLabel = 'Practice That Next';
+    }
     var _revealPracticeAction = _revealPracticeSong
         ? "document.getElementById('rmRevealOverlay').remove();if(typeof renderSongDetail==='function'){showPage('songdetail');renderSongDetail('" + (_revealPracticeSong||'').replace(/'/g,"\\'") + "');}else showPage('songs');"
         : "document.getElementById('rmRevealOverlay').remove();if(typeof showPage==='function')showPage('home');setTimeout(function(){if(typeof GLPlans!=='undefined'&&GLPlans.shouldShowValueSignal())GLPlans.showValueSignalPrompt();},2000)";
