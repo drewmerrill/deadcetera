@@ -269,10 +269,9 @@ async function _rhRenderCommandFlow(el) {
     var gigDaysAway = nextGig ? glDaysAway(nextGig.date) : null;
     var gigLabel = nextGig ? (nextGig.venue || 'Upcoming Gig') : null;
 
-    // Focus songs (active only)
-    var weakSongs = focusSongs.filter(function(s) {
-        return typeof isSongActive === 'function' && isSongActive(s.title);
-    }).slice(0, 5);
+    // Focus songs — use unified focus engine (single source of truth)
+    var _rhFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var weakSongs = _rhFocus.list;
 
     // Confidence level
     var ci = (typeof GLStore !== 'undefined' && GLStore.getCatalogIntelligence) ? GLStore.getCatalogIntelligence() : null;

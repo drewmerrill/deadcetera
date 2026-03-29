@@ -611,8 +611,8 @@ function _renderProgressionSignal(bundle) {
     } catch(e) {}
 
     // ── Milestones ──
-    var weakCount = _countWeakSongs(bundle);
-    if (weakCount === 0) milestones.push({ icon: '\uD83D\uDD12', text: 'All songs locked in \u2014 band is ready', color: '#22c55e' });
+    var _focusMilestone = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { count: 0 };
+    if (_focusMilestone.count === 0) milestones.push({ icon: '\uD83D\uDD12', text: 'All songs locked in \u2014 band is ready', color: '#22c55e' });
 
     // All members rated above threshold
     try {

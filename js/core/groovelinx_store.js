@@ -931,6 +931,7 @@
 
     _focusCache = { primary: primary, list: list, reason: reason, count: candidates.length };
     _focusCacheTime = Date.now();
+    console.log('[FocusEngine] Top 5:', list.map(function(s) { return s.title + ' (' + s.focusScore.toFixed(1) + ', avg=' + s.avg.toFixed(1) + (s.inSetlist ? ', setlist' : '') + ')'; }).join(' | '));
     return _focusCache;
   }
 
