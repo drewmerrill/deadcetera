@@ -456,6 +456,10 @@ async function _rhRenderCommandFlow(el) {
                 '.rh-row-controls{display:flex;align-items:center;gap:3px;flex-shrink:0;margin-left:auto}';
             document.head.appendChild(_rfix);
         }
+        // Focus song lookup for highlighting
+        var _rhFocusTitles = {};
+        _rhFocus.list.forEach(function(f) { _rhFocusTitles[f.title] = true; });
+
         html += '<div id="rhUnitList">';
         savedUnits.forEach(function(unit, idx) {
             var bt = unit.type || 'single';
@@ -513,7 +517,12 @@ async function _rhRenderCommandFlow(el) {
                 ? '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#fbbf24;cursor:pointer;padding:1px 4px;border-radius:3px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.15)" title="' + escHtml(noteText) + '">📝</span>'
                 : '<span onclick="_rhEditBlockNote(' + idx + ')" style="font-size:0.6em;color:#475569;cursor:pointer;padding:1px 4px;border-radius:3px;border:1px dashed rgba(255,255,255,0.06)" title="Add note">📝</span>';
 
-            html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + '">'
+            // Highlight focus songs
+            var _isFocusSong = isPlayable && (unit.title && _rhFocusTitles[unit.title]);
+            if (!_isFocusSong && unit.songs && unit.songs.length) { for (var _fi = 0; _fi < unit.songs.length; _fi++) { if (_rhFocusTitles[unit.songs[_fi].title]) { _isFocusSong = true; break; } } }
+            var _focusBorder = _isFocusSong ? 'border-left:3px solid #fbbf24;' : '';
+
+            html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + _focusBorder + '">'
                 + '<div>'
                 + dragHandle
                 + '<span style="width:18px;flex-shrink:0;text-align:center;font-size:0.78em;font-weight:700;color:var(--text-dim)">' + unitNum + '</span>'
@@ -528,6 +537,24 @@ async function _rhRenderCommandFlow(el) {
                 + '</div>';
         });
         html += '</div>';
+
+        // Focus songs not in plan — recommend adding
+        var _planTitles = {};
+        savedUnits.forEach(function(u) {
+            if (u.title) _planTitles[u.title] = true;
+            if (u.songs) u.songs.forEach(function(s) { if (s.title) _planTitles[s.title] = true; });
+        });
+        var _missingFocus = _rhFocus.list.filter(function(f) { return !_planTitles[f.title]; });
+        if (_missingFocus.length > 0) {
+            html += '<div style="margin:8px 0;padding:8px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px">';
+            html += '<div style="font-size:0.68em;font-weight:700;color:#fbbf24;margin-bottom:4px">Focus songs not in this plan:</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+            _missingFocus.forEach(function(f) {
+                var _mfSafe = f.title.replace(/'/g, "\\'");
+                html += '<button onclick="_rhAddBlock(\'song\',\'' + _mfSafe + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer">+ ' + escHtml(f.title) + '</button>';
+            });
+            html += '</div></div>';
+        }
 
         // Add Block picker
         html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'
@@ -635,7 +662,7 @@ async function _rhRenderCommandFlow(el) {
         // When plan exists, show a collapsed AI suggestions section
         var tabEl = document.getElementById('rhTabContent');
         if (tabEl) {
-            tabEl.innerHTML = '<details style="margin-top:4px"><summary style="font-size:0.68em;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">AI Suggestions & Readiness</summary><div id="rhAISuggestions"></div></details>';
+            tabEl.innerHTML = '<details style="margin-top:4px"><summary style="font-size:0.68em;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">Broader Analysis (not current focus)</summary><div id="rhAISuggestions"></div></details>';
             _rhRenderTonightTab_inner(document.getElementById('rhAISuggestions'));
         }
     } else {
