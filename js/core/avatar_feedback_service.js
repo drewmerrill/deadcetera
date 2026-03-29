@@ -81,9 +81,18 @@
   }
 
   function _autoSubmit(trigger, type, severity, detail) {
-    // Dedupe: max 1 per type per session
+    // Auto-submit disabled — Firebase /product_feedback/ has no write permissions.
+    // Save locally only for later review if needed.
     if (_autoSubmittedThisSession[trigger]) return;
     _autoSubmittedThisSession[trigger] = true;
+    console.log('[Feedback] Auto-detected:', trigger, '(saved locally only)');
+    try {
+      var local = JSON.parse(localStorage.getItem('gl_pending_feedback') || '[]');
+      local.push({ trigger: trigger, type: type, severity: severity, detail: detail, ts: new Date().toISOString() });
+      if (local.length > 20) local = local.slice(-20);
+      localStorage.setItem('gl_pending_feedback', JSON.stringify(local));
+    } catch(e) {}
+    return;
 
     var context = (typeof GLFeedbackContext !== 'undefined') ? GLFeedbackContext.collect() : { reportId: 'fb_' + Date.now() };
 
