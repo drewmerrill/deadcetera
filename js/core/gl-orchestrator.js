@@ -858,11 +858,26 @@
     interventionsTriggered: 0
   };
 
-  async function runBandSession() {
+  // runBandSession kept for backward compat
+  async function runBandSession() { return runBandCycle(); }
+
+  /**
+   * runBandCycle() — Full "Run My Band" loop.
+   * 1. Analyze → 2. Decide → 3. Build → 4. Execute → 5. Review → 6. Learn → 7. Continue
+   */
+  async function runBandCycle() {
     GLSession.phase = 'planning';
     GLSession.startedAt = Date.now();
 
-    // 1. PLANNING — Use Band Leader Mode to build smart rehearsal
+    // 1. ANALYZE — Band state
+    var dna = _loadBandDNA();
+    var prefs = (typeof GLStore !== 'undefined' && GLStore.getBandPreferences) ? GLStore.getBandPreferences() : {};
+    var sessionCount = dna.sessionCount || 0;
+
+    // 2. DECIDE — What kind of session (NBA)
+    // For now: always rehearsal. Future: could be practice, gig prep, etc.
+
+    // 3. BUILD — Smart rehearsal plan
     if (typeof GLTools === 'undefined' || !GLTools.runMyRehearsal) {
       return { success: false, message: 'Session tools not loaded.' };
     }
@@ -874,30 +889,65 @@
     GLSession.blocks = plan.blocks || [];
     GLSession.focusAreas = (plan.blocks || []).filter(function(b) { return b.type === 'focus'; }).map(function(b) { return b.focus; });
 
-    // 2. Show plan + auto-start option
+    // 4. LOG TO TIMELINE
+    _addTimelineEvent('rehearsal_planned', {
+      songCount: plan.songs.length,
+      totalMinutes: plan.totalMinutes,
+      focusAreas: GLSession.focusAreas,
+      sessionNumber: sessionCount + 1
+    });
+
+    // 5. EXECUTE — Show plan + auto-start
     GLSession.phase = 'rehearsal';
 
-    // Toast the plan
     if (typeof showToast === 'function') {
-      showToast('\u2713 Rehearsal planned: ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min', 4000);
+      var personality = getBandPersonality();
+      var msg = personality.tone === 'casual'
+        ? '\u2713 Let\u2019s go! ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min'
+        : '\u2713 Rehearsal planned: ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min';
+      showToast(msg, 4000);
     }
 
-    // Navigate to home and show the plan
     if (typeof showPage === 'function') showPage('home');
-
-    // Auto-start after brief delay (give user a moment to see the plan)
     setTimeout(function() {
-      if (typeof _glQuickStartRehearsal === 'function') {
-        _glQuickStartRehearsal();
-      }
+      if (typeof _glQuickStartRehearsal === 'function') _glQuickStartRehearsal();
     }, 3000);
 
     return {
       success: true,
-      message: 'Session started: ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min. Focus: ' + GLSession.focusAreas.join(' '),
+      message: 'Session #' + (sessionCount + 1) + ': ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min.' + (GLSession.focusAreas.length ? ' Focus: ' + GLSession.focusAreas[0] : ''),
+      action: 'run_band_cycle',
       phase: 'rehearsal',
       plan: plan
     };
+  }
+
+  // ── Band Timeline ──────────────────────────────────────────────────────
+  // Persistent event log: rehearsals, gigs, milestones.
+
+  function _addTimelineEvent(type, data) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var id = 'tl_' + Date.now().toString(36);
+    try {
+      db.ref(bandPath('timeline/' + id)).set({
+        id: id,
+        type: type,
+        data: data || {},
+        timestamp: new Date().toISOString()
+      });
+    } catch(e) {}
+  }
+
+  async function getTimeline(limit) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+      var snap = await db.ref(bandPath('timeline')).limitToLast(limit || 20).once('value');
+      var data = snap.val();
+      if (!data) return [];
+      return Object.values(data).sort(function(a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
+    } catch(e) { return []; }
   }
 
   // ── Session Lifecycle Hooks ────────────────────────────────────────────
@@ -916,6 +966,22 @@
             if (data.weakestSong) rehData.weakSong = data.weakestSong;
           }
           updateBandDNA(rehData);
+
+          // Log to timeline
+          _addTimelineEvent('rehearsal_completed', {
+            rating: rehData.rating,
+            strongSong: rehData.strongSong,
+            weakSong: rehData.weakSong,
+            songCount: GLSession.songs.length,
+            durationSec: Math.round((Date.now() - (GLSession.startedAt || Date.now())) / 1000)
+          });
+
+          // Check for milestones
+          var dna = _loadBandDNA();
+          if (dna.sessionCount === 1) _addTimelineEvent('milestone', { label: 'First rehearsal completed' });
+          if (dna.sessionCount === 5) _addTimelineEvent('milestone', { label: '5 rehearsals — building momentum' });
+          if (dna.sessionCount === 10) _addTimelineEvent('milestone', { label: '10 rehearsals — serious band' });
+          if (dna.improvementVelocity > 0.5) _addTimelineEvent('milestone', { label: 'Band is getting tighter' });
 
           // After review, prepare for continuation
           setTimeout(function() {
@@ -964,8 +1030,11 @@
   window.GLOrchestrator = {
     // Unified NBA
     getNextBestAction: getNextBestAction,
-    runBandSession: runBandSession,
+    runBandCycle: runBandCycle,
+    runBandSession: runBandSession, // backward compat
     getSession: function() { return GLSession; },
+    getTimeline: getTimeline,
+    addTimelineEvent: _addTimelineEvent,
     getUserLevel: getUserLevel,
 
     // Legacy (still used by avatar UI)
