@@ -390,6 +390,7 @@ function slAddSongToSet(setIdx, title) {
     if (typeof ensureBandSong === 'function') ensureBandSong(title);
     if (typeof _slMarkDirty === 'function') _slMarkDirty();
     slRenderSetSongs(setIdx);
+    slRenderReadinessMeter(); // keep master list in sync
     document.getElementById('slAddSong' + setIdx).value = '';
     document.getElementById('slSongResults' + setIdx).innerHTML = '';
     // Inline assist after 3 songs
@@ -480,6 +481,7 @@ function slRenderSetSongs(setIdx) {
             const [moved]=songs.splice(from,1); songs.splice(to,0,moved);
             if (typeof _slMarkDirty === 'function') _slMarkDirty();
             slRenderSetSongs(setIdx);
+            slRenderReadinessMeter(); // keep master list in sync
         });
     });
     _slUpdateShowTotal();
@@ -635,6 +637,7 @@ function slToggleTransition(setIdx, songIdx) {
 function slRemoveSong(setIdx, songIdx) {
     window._slSets[setIdx]?.songs.splice(songIdx, 1);
     slRenderSetSongs(setIdx);
+    slRenderReadinessMeter(); // keep master list in sync
 }
 
 let _slSetCount = 1;
@@ -1399,6 +1402,7 @@ function _slReRenderSets() {
     // Render songs for each set
     window._slSets.forEach(function(set, si) { slRenderSetSongs(si); });
     _slUpdateShowTotal();
+    slRenderReadinessMeter(); // keep master list in sync
 }
 
 function _slUpdateShowTotal() {
