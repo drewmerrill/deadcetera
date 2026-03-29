@@ -29,6 +29,7 @@ window.glSpotlight = (function() {
     var _current = 0;
     var _key = '';
     var _registry = {};
+    var _prevValid = 0; // tracks the last successfully shown step index
 
     // Escape key dismisses the spotlight
     function _escHandler(e) {
@@ -108,8 +109,15 @@ window.glSpotlight = (function() {
         setTimeout(function() {
             var target = _resolveTarget(step);
 
-            // Skip missing targets gracefully (forward only)
-            if (!target) { _show(stepIdx + 1); return; }
+            // Skip missing targets gracefully — direction-aware
+            if (!target) {
+                var dir = stepIdx > _prevValid ? 1 : -1;
+                var next = stepIdx + dir;
+                if (next >= 0 && next < _steps.length) { _show(next); }
+                else { _markDone(_key); _cleanup(); }
+                return;
+            }
+            _prevValid = stepIdx;
 
             // Scroll target into view — use native scrollIntoView which handles nested containers
             try {
