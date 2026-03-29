@@ -319,6 +319,14 @@
   }
 
   function _getAutopilotTier(confidence, risk) {
+    // Respect user preference
+    var userPref = localStorage.getItem('gl_autopilot_level') || 'auto';
+    if (userPref === 'suggest') return 'suggest'; // never auto or assist
+    if (userPref === 'assist') {
+      if (confidence >= 0.7) return 'assist';
+      return 'suggest';
+    }
+    // Default: full autopilot
     if (confidence >= 0.9 && risk === 'low') return 'auto';
     if (confidence >= 0.7) return 'assist';
     return 'suggest';

@@ -180,11 +180,15 @@ window.GLAvatarUI = (function() {
         // Quick actions footer
         html += '<div id="glAvActions" style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0"></div>';
 
+        // Recent actions bar
+        html += '<div id="glAvRecentActions" style="padding:6px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;max-height:100px;overflow-y:auto"></div>';
+
         _panelEl.innerHTML = html;
         document.body.appendChild(_panelEl);
 
-        // Populate with current guidance
+        // Populate with current guidance + recent actions
         _renderGuidance();
+        _renderRecentActions();
     }
 
     function closePanel() {
@@ -1053,11 +1057,67 @@ window.GLAvatarUI = (function() {
         if (result.success && typeof showToast === 'function') showToast('Undone');
     }
 
-    // ── Action History ─────────────────────────────────────────────────────
+    // ── Recent Actions Display ─────────────────────────────────────────────
+
+    function _renderRecentActions() {
+        var el = document.getElementById('glAvRecentActions');
+        if (!el) return;
+        var history = _getLocalActionHistory();
+        if (!history.length) { el.style.display = 'none'; return; }
+
+        var html = '<div style="font-size:0.6em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Recent</div>';
+        history.slice(0, 3).forEach(function(item) {
+            html += '<div style="display:flex;align-items:center;gap:6px;font-size:0.68em;margin-bottom:3px;color:#64748b">';
+            html += '<span style="color:' + (item.success ? '#86efac' : '#f87171') + '">' + (item.success ? '\u2713' : '\u2717') + '</span>';
+            html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (item.message || item.action || '').substring(0, 50) + '</span>';
+            if (item.why) html += '<button onclick="showToast(\'' + item.why.replace(/'/g, '') + '\',3000)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.9em;padding:0" title="Why">?</button>';
+            html += '</div>';
+        });
+        el.innerHTML = html;
+    }
+
+    function _getLocalActionHistory() {
+        try { return JSON.parse(localStorage.getItem('gl_action_history') || '[]'); } catch(e) { return []; }
+    }
+
+    function _pushLocalActionHistory(item) {
+        var h = _getLocalActionHistory();
+        h.unshift(item);
+        if (h.length > 10) h = h.slice(0, 10);
+        try { localStorage.setItem('gl_action_history', JSON.stringify(h)); } catch(e) {}
+    }
+
+    // ── Action History (Firebase) ────────────────────────────────────────
 
     function _saveActionHistory(result) {
+        if (!result) return;
+
+        // Generate "why" explanation
+        var ACTION_WHYS = {
+            import_artist_pack: 'You asked to import songs. This adds them to your library and builds a setlist.',
+            create_setlist: 'You needed a setlist. This creates one from your library.',
+            add_song: 'You asked to add a song. It is now in your library.',
+            add_chart_note: 'You asked to save a note to the chart.',
+            attach_chart_source: 'You asked to attach a chart link.',
+            start_rehearsal: 'You started a rehearsal session.'
+        };
+        var why = ACTION_WHYS[result.action] || 'You asked GrooveMate to do this.';
+
+        // Save to local history (for panel display)
+        _pushLocalActionHistory({
+            action: result.action || '',
+            message: (result.message || '').substring(0, 80),
+            success: !!result.success,
+            why: why,
+            ts: Date.now()
+        });
+
+        // Update panel if open
+        _renderRecentActions();
+
+        // Save to Firebase
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-        if (!db || !result) return;
+        if (!db) return;
         var bandId = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
         if (!bandId) return;
         var id = 'act_' + Date.now().toString(36);
@@ -1068,6 +1128,7 @@ window.GLAvatarUI = (function() {
                 message: (result.message || '').substring(0, 200),
                 success: !!result.success,
                 count: result.count || 0,
+                why: why,
                 timestamp: new Date().toISOString()
             });
         } catch(e) {}
