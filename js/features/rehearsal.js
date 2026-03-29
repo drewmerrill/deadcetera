@@ -100,19 +100,23 @@ window._rhConfirmStartRehearsal = function() {
     document.body.appendChild(ov);
 };
 
-// Open charts for practice only — no session created
+// Open charts for practice only — full plan queue, no session created
 window._rhOpenChartsOnly = function() {
-    // Get first song from the plan
     var units = _rhGetUnits ? _rhGetUnits() : [];
-    var firstSong = null;
+    // Build a full queue from plan songs (same as rehearsal, but no session)
+    var queue = [];
     for (var i = 0; i < units.length; i++) {
-        if (units[i].type === 'single' || units[i].type === 'song' || units[i].type === 'linked') {
-            firstSong = units[i].title || (units[i].songs && units[i].songs[0] ? units[i].songs[0].title : null);
-            if (firstSong) break;
+        var u = units[i];
+        if (u.type === 'linked' && u.songs && u.songs.length) {
+            u.songs.forEach(function(s) { if (s.title) queue.push({ title: s.title, band: s.band || '' }); });
+        } else if (u.type === 'single' || u.type === 'song' || u.type === 'multi_song') {
+            if (u.title) queue.push({ title: u.title, band: '' });
         }
     }
-    if (firstSong && typeof openRehearsalMode === 'function') {
-        openRehearsalMode(firstSong); // Single-song mode — no session created
+    if (queue.length > 0 && typeof openRehearsalModePractice === 'function') {
+        openRehearsalModePractice(queue);
+    } else if (queue.length > 0 && typeof openRehearsalMode === 'function') {
+        openRehearsalMode(queue[0].title); // fallback single-song
     } else {
         showPage('songs');
     }

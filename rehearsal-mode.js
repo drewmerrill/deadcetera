@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-231105', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-232916', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -80,6 +80,18 @@ function openRehearsalMode(songTitle, mode) {
     rmShow();
     if (mode === 'paste') { setTimeout(function(){ if (typeof rmStartEdit === 'function') rmStartEdit(); }, 400); }
 }
+
+// Entry: practice mode — full queue navigation, NO session tracking
+window.openRehearsalModePractice = function(queue) {
+    if (!queue || !queue.length) return;
+    rmQueue = queue;
+    rmIndex = 0;
+    // Explicitly do NOT set _rmSessionStart — no session will be saved
+    _rmSessionStart = 0;
+    _rmBlockStartTime = 0;
+    _rmBlockTimings = [];
+    rmShow();
+};
 
 // Entry: from rehearsal planner — full queue with block metadata
 window.openRehearsalModeWithQueue = function(queue) {
