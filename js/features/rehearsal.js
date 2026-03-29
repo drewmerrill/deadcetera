@@ -83,6 +83,111 @@ if (typeof glSpotlight !== 'undefined') {
     ]);
 }
 
+// ── Rehearsal start guardrail ──────────────────────────────────────────────
+window._rhConfirmStartRehearsal = function() {
+    var existing = document.getElementById('rhStartConfirm');
+    if (existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'rhStartConfirm';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+    ov.innerHTML = '<div style="max-width:360px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(34,197,94,0.2);text-align:center">'
+        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Start a real band rehearsal?</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:20px;line-height:1.4">This will create a dated rehearsal session in your band history.</div>'
+        + '<button onclick="document.getElementById(\'rhStartConfirm\').remove();_rhLaunchSavedPlan()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer;margin-bottom:8px">\u25B6 Start Rehearsal</button>'
+        + '<button onclick="document.getElementById(\'rhStartConfirm\').remove();_rhOpenChartsOnly()" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;font-weight:600;font-size:0.82em;cursor:pointer">Just Practice Instead</button>'
+        + '</div>';
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+};
+
+// Open charts for practice only — no session created
+window._rhOpenChartsOnly = function() {
+    // Get first song from the plan
+    var units = _rhGetUnits ? _rhGetUnits() : [];
+    var firstSong = null;
+    for (var i = 0; i < units.length; i++) {
+        if (units[i].type === 'single' || units[i].type === 'song' || units[i].type === 'linked') {
+            firstSong = units[i].title || (units[i].songs && units[i].songs[0] ? units[i].songs[0].title : null);
+            if (firstSong) break;
+        }
+    }
+    if (firstSong && typeof openRehearsalMode === 'function') {
+        openRehearsalMode(firstSong); // Single-song mode — no session created
+    } else {
+        showPage('songs');
+    }
+};
+
+// ── Recreate session from recording ──────────────────────────────────────────
+window._rhRecreateFromRecording = function() {
+    var existing = document.getElementById('rhRecreateModal');
+    if (existing) existing.remove();
+    var today = new Date().toISOString().split('T')[0];
+    var ov = document.createElement('div');
+    ov.id = 'rhRecreateModal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+    ov.innerHTML = '<div style="max-width:420px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:90vh;overflow-y:auto">'
+        + '<div style="font-size:1em;font-weight:800;color:#f1f5f9;margin-bottom:4px">Recreate from Recording</div>'
+        + '<div style="font-size:0.78em;color:#64748b;margin-bottom:16px">Recover a past rehearsal that wasn\u2019t tracked.</div>'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Date</label>'
+        + '<input type="date" id="rhRecDate" value="' + today + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px;color-scheme:dark">'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Recording (URL or paste link)</label>'
+        + '<input type="text" id="rhRecUrl" placeholder="Google Drive, Dropbox, or direct URL" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px">'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Songs worked on</label>'
+        + '<input type="text" id="rhRecSongs" placeholder="Song 1, Song 2, Song 3" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px">'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Notes (optional)</label>'
+        + '<textarea id="rhRecNotes" rows="2" placeholder="How did it go?" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:16px;resize:vertical"></textarea>'
+        + '<button onclick="_rhSaveRecreatedSession()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Save Recovered Rehearsal</button>'
+        + '<button onclick="document.getElementById(\'rhRecreateModal\').remove()" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">Cancel</button>'
+        + '</div>';
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+};
+
+window._rhSaveRecreatedSession = async function() {
+    var date = (document.getElementById('rhRecDate') || {}).value || new Date().toISOString().split('T')[0];
+    var url = (document.getElementById('rhRecUrl') || {}).value || '';
+    var songStr = (document.getElementById('rhRecSongs') || {}).value || '';
+    var notes = (document.getElementById('rhRecNotes') || {}).value || '';
+    var songs = songStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+    var session = {
+        sessionId: 'rsess_rec_' + Date.now().toString(36),
+        date: new Date(date + 'T12:00:00').toISOString(),
+        start_time: new Date(date + 'T19:00:00').toISOString(),
+        end_time: new Date(date + 'T21:00:00').toISOString(),
+        totalBudgetMin: 0,
+        totalActualMin: 120,
+        blocksCompleted: songs.length,
+        totalBlocks: songs.length,
+        songsWorked: songs,
+        notes: notes,
+        mixdown_id: null,
+        recording_url: url,
+        recovered: true,
+        recoveredLabel: 'Recovered from recording',
+        blocks: songs.map(function(s) { return { title: s, budgetMin: 0, actualMin: 0 }; })
+    };
+
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        try {
+            await db.ref(bandPath('rehearsal_sessions') + '/' + session.sessionId).set(session);
+            if (typeof showToast === 'function') showToast('\u2705 Recovered rehearsal saved');
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Save failed \u2014 check connection');
+        }
+    }
+
+    var modal = document.getElementById('rhRecreateModal');
+    if (modal) modal.remove();
+    // Try to generate Reveal insights if Product Brain is available
+    if (typeof GLProductBrain !== 'undefined' && GLProductBrain.getInsightFromSession) {
+        try { GLProductBrain.getInsightFromSession(session.sessionId); } catch(e) {}
+    }
+    _rhRenderSessionHistory();
+};
+
 var rhCurrentEventId = null; // which event is open in detail view
 
 // ── Page entry point ──────────────────────────────────────────────────────────
@@ -189,11 +294,13 @@ async function _rhRenderCommandFlow(el) {
         _rhPageTitle = 'Next Rehearsal \u2014 ' + _rhEventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     }
     html += '<div style="margin-bottom:12px">';
-    html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0 0 4px">Rehearsal Plan</h1>';
-    // Top summary
+    html += '<div style="display:flex;align-items:center;gap:10px">';
+    html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0">Rehearsal Plan</h1>';
+    html += '<span style="font-size:0.62em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8">Draft</span>';
+    html += '</div>';
+    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">Draft plan for your next band rehearsal</div>';
     var _rhTopFocus = weakSongs.length > 0 ? weakSongs[0].title : null;
-    html += '<div style="font-size:0.85em;color:var(--text-dim);line-height:1.4">Warm up, tighten one weak spot, then run the set.</div>';
-    html += '<div style="font-size:0.82em;color:#fbbf24;font-weight:600;margin-top:4px">Main focus: ' + (_rhTopFocus ? '<strong>' + _rhTopFocus + '</strong>' : 'getting the whole set tighter') + '</div>';
+    if (_rhTopFocus) html += '<div style="font-size:0.78em;color:#fbbf24;font-weight:600;margin-top:4px">Focus: <strong>' + _rhTopFocus + '</strong></div>';
     html += '</div>';
 
     // ── SECTION 1: Context ──
@@ -224,11 +331,13 @@ async function _rhRenderCommandFlow(el) {
     var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
     if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
 
-    // ── Primary CTA — always visible above plan details ──
+    // ── Primary + Secondary CTAs — always visible above plan details ──
     if (hasSavedPlan) {
         html += '<div style="margin-bottom:12px">'
-            + '<button onclick="_rhLaunchSavedPlan()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Start Band Rehearsal</button>'
-            + '<div style="font-size:0.72em;color:var(--text-dim);text-align:center;margin-top:6px">GrooveMate will show you what mattered after.</div>'
+            + '<button onclick="_rhConfirmStartRehearsal()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Start Band Rehearsal</button>'
+            + '<div style="font-size:0.68em;color:var(--text-dim);text-align:center;margin-top:4px">Use this when the band is actually rehearsing together.</div>'
+            + '<button onclick="_rhOpenChartsOnly()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;font-weight:600;font-size:0.85em;cursor:pointer">\uD83D\uDCDD Open Charts to Practice</button>'
+            + '<div style="font-size:0.65em;color:#475569;text-align:center;margin-top:3px">No rehearsal will be created.</div>'
             + '</div>';
     }
 
@@ -469,16 +578,10 @@ async function _rhRenderCommandFlow(el) {
             + '<div style="font-size:0.9em;color:var(--text-dim);font-style:italic">Use sections to organize, templates to add fast, and drag to reorder. Tap the time on any block to adjust.</div>'
             + '</div></details>';
 
-        // Actions
-        html += '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Start Band Rehearsal</button>'
-            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.82em;cursor:pointer;min-height:48px">+ New Date</button>'
-            + '</div>'
-            + '<div style="font-size:0.72em;color:var(--text-dim);text-align:center;margin-bottom:10px">GrooveMate will show you what mattered after.</div>'
-            + '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer" title="Generate a fresh plan from scratch">\uD83D\uDD04 Regenerate</button>'
-            + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer" title="Save a backup copy of this plan">\uD83D\uDCF8 Save Copy</button>'
-            + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">Past Rehearsals</button>'
+        // Plan actions (edit-level, not rehearsal-start)
+        html += '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">'
+            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer">+ Schedule Date</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">\u270F\uFE0F Edit Plan</button>'
             + '</div>'
             + '<div id="rhSnapshots"></div>';
     } else {
@@ -490,7 +593,13 @@ async function _rhRenderCommandFlow(el) {
             + '<div id="rhSnapshots"></div>';
     }
 
-    // ── Session review + history ──
+    // ── Clear separator between draft and history ──
+    html += '<div style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        + '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">\uD83D\uDCCB Saved Rehearsals</div>'
+        + '<button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button>'
+        + '</div>';
+    html += '</div>';
     html += '<div id="rhSessionReview"></div>';
     html += '<div id="rhSessionHistory"></div>';
 

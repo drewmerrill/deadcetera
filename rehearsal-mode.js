@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-184726', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-185427', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -100,6 +100,10 @@ window.openRehearsalModeWithQueue = function(queue) {
     // Check for chart notes from last rehearsal — nudge before starting
     _rmCheckChartNotes(queue);
     rmShow();
+    // GrooveMate message at rehearsal start
+    setTimeout(function() {
+        if (typeof showToast === 'function') showToast('GrooveMate will listen and show you what mattered after.', 4000);
+    }, 1500);
 };
 
 // Nudge: show chart notes banner before rehearsal starts (unmissable)
@@ -1218,7 +1222,7 @@ function _rmShowSessionSummary(summary) {
     // Completion header
     html += '<div style="text-align:center;margin-bottom:20px">';
     html += '<div style="width:56px;height:56px;margin:0 auto 10px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(99,102,241,0.2));display:flex;align-items:center;justify-content:center;animation:rmCheckIn 0.5s ease 0.2s both"><span style="font-size:1.6em">\u2705</span></div>';
-    html += '<div style="font-size:1.2em;font-weight:800;letter-spacing:-0.01em">Rehearsal Complete</div>';
+    html += '<div style="font-size:1.2em;font-weight:800;letter-spacing:-0.01em">Rehearsal saved.</div>';
     html += '<div style="font-size:0.75em;color:#64748b;margin-top:3px">' + new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + '</div>';
     html += '</div>';
 
