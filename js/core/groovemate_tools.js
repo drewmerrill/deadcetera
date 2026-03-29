@@ -354,6 +354,105 @@
     }
   }
 
+  // ── TOOL: Run My Rehearsal (Band Leader Mode) ──────────────────────────
+  // One command: "run this rehearsal" — system builds + starts everything.
+
+  async function runMyRehearsal(durationMinutes) {
+    durationMinutes = parseInt(durationMinutes) || 60;
+
+    // 1. Get prioritized songs
+    var priorities = (typeof GLStore !== 'undefined' && GLStore.getRehearsalPriorities) ? GLStore.getRehearsalPriorities(15) : [];
+    if (!priorities.length) {
+      // Fallback: use all songs
+      var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+      if (!songs.length) return { success: false, message: 'No songs in your library. Import some first.' };
+      priorities = songs.slice(0, 10).map(function(s) { return { title: s.title, priority: 1, signals: { bandLove: 0, readiness: 0, gap: 0, isFocus: false } }; });
+    }
+
+    // 2. Intelligent sequencing: alternate energy levels
+    // Core Songs (warm-up/confidence) → Worth the Work (focus) → Core (cooldown)
+    var core = priorities.filter(function(p) { return p.signals && p.signals.derivedStatus && p.signals.derivedStatus.status === 'core'; });
+    var focus = priorities.filter(function(p) { return p.signals && p.signals.isFocus; });
+    var others = priorities.filter(function(p) {
+      return (!p.signals || !p.signals.derivedStatus || (p.signals.derivedStatus.status !== 'core' && !p.signals.isFocus));
+    });
+
+    var sequence = [];
+    // Open with 1-2 core songs (warm-up)
+    sequence = sequence.concat(core.slice(0, 2));
+    // Focus block: high-priority songs that need work
+    sequence = sequence.concat(focus.slice(0, 4));
+    // Fill with others
+    sequence = sequence.concat(others.slice(0, 3));
+    // Close with a core song (end strong)
+    if (core.length > 2) sequence.push(core[2]);
+
+    // Cap by duration (~6 min per song)
+    var maxSongs = Math.floor(durationMinutes / 6);
+    sequence = sequence.slice(0, maxSongs);
+
+    if (!sequence.length) return { success: false, message: 'Not enough songs to build a rehearsal plan.' };
+
+    // 3. Build rehearsal plan blocks
+    var blocks = [];
+    // Warm-up block
+    var warmupSongs = sequence.slice(0, Math.min(2, sequence.length));
+    blocks.push({ type: 'warmup', label: 'Warm-Up', songs: warmupSongs.map(function(s) { return s.title; }), minutes: warmupSongs.length * 6, focus: 'Get loose. Play through without stopping.' });
+
+    // Focus block
+    var focusSongs = sequence.slice(2, Math.min(6, sequence.length));
+    if (focusSongs.length) {
+      var focusNotes = focusSongs.filter(function(s) { return s.signals && s.signals.gap > 1; }).map(function(s) { return s.title + ' (gap: ' + s.signals.gap.toFixed(1) + ')'; });
+      blocks.push({ type: 'focus', label: 'Song Work', songs: focusSongs.map(function(s) { return s.title; }), minutes: focusSongs.length * 8, focus: focusNotes.length ? 'Focus on: ' + focusNotes.join(', ') : 'Tighten these up.' });
+    }
+
+    // Closing block
+    var closeSongs = sequence.slice(6);
+    if (closeSongs.length) {
+      blocks.push({ type: 'close', label: 'Run-Through', songs: closeSongs.map(function(s) { return s.title; }), minutes: closeSongs.length * 6, focus: 'Full energy. Play like it\'s the gig.' });
+    }
+
+    var totalMinutes = blocks.reduce(function(sum, b) { return sum + b.minutes; }, 0);
+
+    // 4. Create setlist from sequence
+    var setlistName = 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    var setlistResult = await _createSetlistFromSongs(setlistName, sequence.map(function(s) { return s.title; }));
+
+    // 5. Create rehearsal event
+    var db = _db();
+    var today = new Date().toISOString().split('T')[0];
+    if (db) {
+      try {
+        await db.ref(_bp('rehearsals/' + today.replace(/-/g, ''))).set({
+          date: today,
+          createdAt: new Date().toISOString(),
+          createdBy: 'groovemate_band_leader',
+          status: 'planned',
+          setlistName: setlistName,
+          blocks: blocks,
+          targetMinutes: totalMinutes
+        });
+      } catch(e) {}
+    }
+
+    var summary = 'Built a ' + totalMinutes + '-minute rehearsal: ' + sequence.length + ' songs in ' + blocks.length + ' blocks.';
+    if (focusSongs && focusSongs.length) {
+      var topFocus = focusSongs.filter(function(s) { return s.signals && s.signals.gap > 1; }).slice(0, 2).map(function(s) { return s.title; });
+      if (topFocus.length) summary += ' Focus: ' + topFocus.join(', ') + '.';
+    }
+
+    return {
+      success: true,
+      message: summary,
+      action: 'run_rehearsal',
+      count: sequence.length,
+      songs: sequence.map(function(s) { return s.title; }),
+      blocks: blocks,
+      totalMinutes: totalMinutes,
+      setlistCreated: !!setlistResult
+    };
+  }
+
   // ── Rehearsal Co-Pilot ──────────────────────────────────────────────────
   // Listens for rehearsal events and offers contextual suggestions.
   // Does NOT modify rehearsal-mode.js — uses event-based hooks.
@@ -440,6 +539,7 @@
     suggestSections: suggestSections,
     attachChartSource: attachChartSource,
     saveRehearsalNote: saveRehearsalNote,
+    runMyRehearsal: runMyRehearsal,
     getBandInsights: getBandInsights,
     getAvailablePacks: function() { return Object.keys(ARTIST_PACKS).map(function(k) { return { id: k, name: ARTIST_PACKS[k].name, count: ARTIST_PACKS[k].songs.length }; }); }
   };

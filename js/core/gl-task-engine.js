@@ -18,6 +18,14 @@
   // Maps intents to multi-step plans with risk assessment.
 
   var PLAN_TEMPLATES = {
+    run_rehearsal: {
+      label: 'Run My Rehearsal',
+      steps: [
+        { action: 'runMyRehearsal', label: 'Build smart rehearsal plan + create setlist' }
+      ],
+      risk: 'medium',
+      baseConfidence: 0.85
+    },
     import_artist_pack: {
       label: 'Import Artist Pack',
       steps: [
@@ -194,6 +202,10 @@
     var text = (typeof input === 'string') ? input : (input && input.text) || '';
 
     switch(toolName) {
+      case 'runMyRehearsal':
+        var durMatch = text.match(/(\d+)\s*min/);
+        return tools.runMyRehearsal(durMatch ? durMatch[1] : 60);
+
       case 'importArtistPack':
         var packId = (typeof GLActionRouter !== 'undefined') ? GLActionRouter.detectIntent(text) : null;
         // Extract pack from text directly

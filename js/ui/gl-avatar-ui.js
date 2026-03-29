@@ -1000,6 +1000,23 @@ window.GLAvatarUI = (function() {
             if (result.success || result.partial) {
                 resHtml += '<div style="margin-top:10px;padding:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:8px">';
                 resHtml += '<div style="font-size:0.82em;font-weight:600;color:#86efac;margin-bottom:4px">' + (result.success ? '\u2713' : '\u26A0') + ' ' + _esc(result.message) + '</div>';
+
+                // Show rehearsal blocks if available
+                if (result.plan && result.plan.steps && result.plan.steps[0] && result.plan.steps[0].result && result.plan.steps[0].result.blocks) {
+                    var blocks = result.plan.steps[0].result.blocks;
+                    resHtml += '<div style="margin-top:6px;font-size:0.72em">';
+                    blocks.forEach(function(b) {
+                        var blockColor = b.type === 'warmup' ? '#818cf8' : b.type === 'focus' ? '#f59e0b' : '#86efac';
+                        resHtml += '<div style="display:flex;gap:6px;align-items:baseline;margin-bottom:3px;color:' + blockColor + '">';
+                        resHtml += '<span style="font-weight:700;min-width:70px">' + b.label + '</span>';
+                        resHtml += '<span style="color:#94a3b8">' + b.songs.join(', ') + ' (' + b.minutes + 'min)</span>';
+                        resHtml += '</div>';
+                        if (b.focus) resHtml += '<div style="font-size:0.9em;color:#64748b;margin-left:76px;margin-bottom:4px;font-style:italic">' + b.focus + '</div>';
+                    });
+                    resHtml += '</div>';
+                    resHtml += '<div style="margin-top:6px"><button onclick="if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal();GLAvatarUI.closePanel()" style="font-size:0.78em;padding:8px 14px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-weight:700">\u25B6 Start Rehearsal Now</button></div>';
+                }
+
                 // Next action + undo
                 var actionRow = '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">';
                 if (result.explanation && result.explanation.next) {
