@@ -150,6 +150,25 @@ function _sdSkeleton() {
            '</div>';
 }
 
+// ── Band Chart (primary display) ──────────────────────────────────────────────
+function _sdRenderBandChart(title, safeSong, chartText) {
+    if (!chartText) {
+        return '<div class="sd-card" style="text-align:center;padding:24px;border-color:rgba(99,102,241,0.12)">'
+            + '<div style="font-size:1.4em;margin-bottom:8px">\uD83D\uDCDD</div>'
+            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">No band chart yet</div>'
+            + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Paste or type a chart in rehearsal mode</div>'
+            + '<button class="sd-pm-btn" onclick="openRehearsalMode(\'' + safeSong + '\')">\uD83D\uDCDD Add Chart</button>'
+            + '</div>';
+    }
+    return '<div class="sd-card" style="padding:16px;border-color:rgba(34,197,94,0.2);background:rgba(34,197,94,0.02)">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        + '<div class="sd-card-title" style="margin:0">\uD83C\uDFBC Your Band Chart</div>'
+        + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u270F\uFE0F Edit</button>'
+        + '</div>'
+        + '<pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:13px;line-height:1.7;color:#e2e8f0;margin:0;letter-spacing:0.01em;max-height:400px;overflow-y:auto">' + _sdEsc(chartText) + '</pre>'
+        + '</div>';
+}
+
 // ── Practice This Song section ────────────────────────────────────────────────
 function _sdRenderPracticeSection(title, safeSong, ytQuery) {
     var _opts = _sdGetMode() === 'play' ? '' : '';
@@ -292,6 +311,8 @@ async function _sdPopulateBandLens(title) {
     if (mode === 'sharpen') {
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
+            // ── Band Chart (primary — always first if exists) ──
+            _sdRenderBandChart(title, safeSong, chartText)+
             // Practice workflow — 3-step guided flow
             '<div class="sd-card" style="border-color:rgba(99,102,241,0.15)">'+
             '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Your Practice Session</div>'+
@@ -350,6 +371,8 @@ async function _sdPopulateBandLens(title) {
 
     panel.innerHTML =
         '<div class="sd-panel-inner">'+
+        // ── Band Chart (primary — always first if exists) ──
+        _sdRenderBandChart(title, safeSong, chartText)+
         // ── Recent band activity signal ──
         (_recentSignal ? '<div style="padding:8px 12px;margin-bottom:10px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.1);border-radius:8px;font-size:0.78em;color:#a5b4fc">' + _recentSignal + '</div>' : '') +
         // ── TODAY'S REHEARSAL PLAN ──
@@ -409,7 +432,6 @@ async function _sdPopulateBandLens(title) {
         '</div></div></details>'+
         '<details class="sd-details"><summary class="sd-details-summary">\uD83D\uDCE6 Assets & Practice <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
         '<div style="padding:12px 0">'+
-        (chartText?'<div class="sd-card"><div class="sd-card-title">\uD83E\uDDE0 Practice Mode</div><pre style="white-space:pre-wrap;font-family:monospace;font-size:11px;color:#64748b;line-height:1.4;max-height:72px;overflow:hidden;margin:0 0 10px">'+_sdEsc(chartText.split('\n').slice(0,4).join('\n'))+'</pre><button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">📖 View Chart</button></div>':'')+
         '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:8px">\uD83D\uDCE6 Song Assets</div><div id="sd-assets" style="display:flex;flex-wrap:wrap;gap:6px;font-size:0.75em"><span style="color:var(--text-dim)">Loading...</span></div></div>'+
         '</div></details>'+
         '</div>';
@@ -1658,21 +1680,31 @@ async function _sdPopulateLearnLens(title) {
             + '</div>';
     }
 
+    // Load band chart for display at top of Learn lens
+    var _learnChart = null;
+    try { var _lc = await loadBandDataFromDrive(title, 'chart').catch(function(){ return null; }); _learnChart = (_lc && _lc.text && _lc.text.trim()) ? _lc.text : null; } catch(e) {}
+
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
+        // ── Band Chart (primary) ──
+        _sdRenderBandChart(title, safeSong, _learnChart)+
         lessonsHtml+
-        '<div class="sd-card"><div class="sd-card-title">🎧 Practice Tracks</div>'+
-            _sdLinkList(tracks,'🎧','')+
+        // ── References (external links — secondary) ──
+        '<div style="font-size:0.68em;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;padding:12px 0 6px">\uD83D\uDD17 References</div>'+
+        '<div class="sd-card"><div class="sd-card-title">\uD83C\uDFA7 Practice Tracks</div>'+
+            _sdLinkList(tracks,'\uD83C\uDFA7','')+
             ((!tracks||!tracks.length)?_sdEmptyAdd('No practice tracks yet','_sdAddTrackForm',''+safeSong+''):'')+
             '<div id="sd-learn-track-form"></div>'+
         '</div>'+
-        '<div class="sd-card"><div class="sd-card-title">📄 Tabs &amp; Charts</div>'+
-            _sdLinkList(tabs,'📄','')+
-            ((!tabs||!tabs.length)?_sdEmptyAdd('No tabs or charts yet','_sdAddTabForm',''+safeSong+''):'')+
+        '<div class="sd-card"><div class="sd-card-title">\uD83D\uDCCE Tabs &amp; Charts</div>'+
+            _sdLinkList(tabs,'\uD83D\uDCCE','')+
+            ((!tabs||!tabs.length)?_sdEmptyAdd('No external tabs yet','_sdAddTabForm',''+safeSong+''):'')+
             '<div id="sd-learn-tab-form"></div>'+
+            // "Use as band chart" CTA for each external tab
+            ((tabs && tabs.length) ? '<button onclick="_sdImportTabAsChart(\'' + safeSong + '\')" style="margin-top:6px;width:100%;padding:8px;border-radius:8px;border:1px dashed rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer;font-size:0.72em;font-weight:600">Use this as your band chart</button>' : '') +
         '</div>'+
-        '<div class="sd-card"><div class="sd-card-title">🎵 Cover Versions to Study</div>'+
-            _sdLinkList(covers,'🎵','')+
+        '<div class="sd-card"><div class="sd-card-title">\uD83C\uDFB5 Cover Versions to Study</div>'+
+            _sdLinkList(covers,'\uD83C\uDFB5','')+
             ((!covers||!covers.length)?_sdEmptyAdd('No cover versions yet','_sdAddCoverForm',''+safeSong+''):'')+
             '<div id="sd-learn-cover-form"></div>'+
         '</div>'+
@@ -1685,6 +1717,16 @@ function _sdEmptyAdd(msg, fn, safeSong) {
         + '<button onclick="' + fn + '(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.75em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;white-space:nowrap">+ Add</button>'
         + '</div>';
 }
+
+// Import external tab URL into band chart — opens rehearsal mode to paste
+window._sdImportTabAsChart = function(songTitle) {
+    if (typeof openRehearsalMode === 'function') {
+        openRehearsalMode(songTitle);
+        setTimeout(function() {
+            if (typeof showToast === 'function') showToast('Open the tab link, copy the chart, and paste it here', 5000);
+        }, 800);
+    }
+};
 
 // Remove a per-user lesson (bridge to Practice Mode lessons)
 window._sdRemoveMyLesson = async function(songTitle, idx) {
