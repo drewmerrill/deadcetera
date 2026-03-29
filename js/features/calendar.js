@@ -137,8 +137,120 @@ function _generateOccurrenceDates(baseDate, frequency, interval, rangeStart, ran
 }
 
 function renderCalendarPage(el) {
-    el.innerHTML = `<div class="page-header"><h1>📆 Calendar</h1><p>Band schedule and availability</p></div><div id="calendarInner"></div>`;
+    el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCC5 Schedule</h1><p>Rehearsals, gigs, and band availability</p></div>'
+        + '<div id="calNextUpSection"></div>'
+        + '<div id="calendarInner"></div>';
+    _calRenderNextUp();
     renderCalendarInner();
+}
+
+// ── "Next Up" section — upcoming rehearsal + gig with availability/readiness ──
+async function _calRenderNextUp() {
+    var el = document.getElementById('calNextUpSection');
+    if (!el) return;
+    var today = new Date().toISOString().split('T')[0];
+    var events = [];
+    try { events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
+    var futureEnd = new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0];
+    var expanded = expandRecurringEvents(events, today, futureEnd);
+    var upcoming = expanded.filter(function(e) { return (e.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+
+    var nextRehearsal = upcoming.find(function(e) { return e.type === 'rehearsal'; }) || null;
+    var nextGig = upcoming.find(function(e) { return e.type === 'gig'; }) || null;
+    if (!nextRehearsal && !nextGig) {
+        el.innerHTML = '<div style="padding:14px 16px;margin-bottom:12px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);font-size:0.85em;color:var(--text-dim)">No upcoming events. <button onclick="calAddEvent()" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-weight:600;padding:0">Add one \u2192</button></div>';
+        return;
+    }
+
+    // Load members + gigs for availability
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var gigs = [];
+    try { gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []); } catch(e) {}
+
+    var html = '<div style="margin-bottom:12px">';
+    html += '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Next Up</div>';
+
+    // Render each upcoming event card
+    [nextRehearsal, nextGig].forEach(function(ev) {
+        if (!ev) return;
+        var icon = ev.type === 'rehearsal' ? '\uD83C\uDFB8' : '\uD83C\uDFA4';
+        var label = ev.type === 'rehearsal' ? 'Rehearsal' : 'Gig';
+        var dateFmt = (typeof glFormatDate === 'function') ? glFormatDate(ev.date, true) : ev.date;
+        var daysAway = (typeof glDaysAway === 'function') ? glDaysAway(ev.date) : null;
+        var daysLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : (daysAway !== null ? daysAway + ' days' : '');
+
+        // Availability warnings
+        var warnings = [];
+        var matchGig = gigs.find(function(g) { return g.date === ev.date; });
+        if (matchGig && matchGig.availability && members.length > 0) {
+            var confirmed = 0, missing = 0;
+            members.forEach(function(ref) {
+                var k = (typeof ref === 'object') ? ref.key : ref;
+                var a = matchGig.availability[k];
+                if (a && a.status === 'yes') confirmed++;
+                else missing++;
+            });
+            if (missing > 0) warnings.push('\u26A0\uFE0F ' + missing + ' not confirmed');
+        } else if (members.length > 1) {
+            warnings.push('\u26A0\uFE0F No availability responses yet');
+        }
+
+        // Readiness (setlist-based)
+        if (ev.type === 'gig') {
+            var setlists = (typeof GLStore !== 'undefined' && GLStore.getSetlistCache) ? GLStore.getSetlistCache() : (window._glCachedSetlists || []);
+            if (!setlists || !setlists.length) warnings.push('\u26A0\uFE0F No setlist linked');
+        }
+
+        // Risk indicator
+        var isRisk = warnings.length >= 2;
+
+        // Action button
+        var actionBtn = '';
+        if (ev.type === 'rehearsal') {
+            actionBtn = '<button onclick="practicePlanActiveDate=\'' + ev.date + '\';showPage(\'rehearsal\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.78em;cursor:pointer">Open Rehearsal Plan</button>';
+        } else {
+            actionBtn = '<button onclick="showPage(\'setlists\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">View Setlist</button>';
+        }
+
+        html += '<div style="padding:14px 16px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid ' + (isRisk ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.06)') + '">';
+        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">';
+        html += '<span style="font-size:1.1em">' + icon + '</span>';
+        html += '<div style="flex:1"><div style="font-weight:700;font-size:0.92em;color:var(--text)">' + (ev.title || label) + '</div>';
+        html += '<div style="font-size:0.75em;color:var(--text-dim)">' + dateFmt + (daysLabel ? ' \u00B7 ' + daysLabel : '') + (ev.time ? ' \u00B7 ' + ev.time : '') + '</div></div>';
+        if (isRisk) html += '<span style="font-size:0.68em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);color:#fbbf24">\u26A0\uFE0F At risk</span>';
+        html += '</div>';
+
+        // Warnings
+        if (warnings.length) {
+            html += '<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px">';
+            warnings.forEach(function(w) {
+                html += '<div style="font-size:0.75em;color:#fbbf24">' + w + '</div>';
+            });
+            html += '</div>';
+        }
+
+        // Who's in (if availability data exists)
+        if (matchGig && matchGig.availability && members.length > 0) {
+            html += '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">Who\u2019s in:</div>';
+            html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+            members.forEach(function(ref) {
+                var k = (typeof ref === 'object') ? ref.key : ref;
+                var name = bm[k] ? (bm[k].name || k).split(' ')[0] : k;
+                var a = matchGig.availability[k];
+                var status = a ? a.status : null;
+                var icon2 = status === 'yes' ? '\u2705' : status === 'maybe' ? '\u2753' : status === 'no' ? '\u274C' : '\u23F3';
+                html += '<span style="font-size:0.78em;color:var(--text-dim)">' + name + ' ' + icon2 + '</span>';
+            });
+            html += '</div>';
+        }
+
+        html += actionBtn;
+        html += '</div>';
+    });
+
+    html += '</div>';
+    el.innerHTML = html;
 }
 
 function renderCalendarInner() {
@@ -180,8 +292,8 @@ function renderCalendarInner() {
         <button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||'deadcetera')" style="color:var(--accent-light)" title="Subscribe to band calendar in Google/Apple Calendar">📅 Subscribe</button>
     </div>
     <div class="app-card" id="calEventFormArea"></div>
-    <div class="app-card"><h3>📌 Upcoming Events</h3>
-        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading…</div></div>
+    <div class="app-card"><h3>\uD83D\uDCC5 Upcoming Events</h3>
+        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading\u2026</div></div>
     </div>
     <div class="app-card"><h3>📊 Availability Matrix</h3>
         <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">See when the band is free to rehearse. Click a column to see conflicts.</div>
