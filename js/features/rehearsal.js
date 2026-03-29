@@ -189,10 +189,10 @@ async function _rhRenderCommandFlow(el) {
         _rhPageTitle = 'Next Rehearsal \u2014 ' + _rhEventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     }
     html += '<div style="margin-bottom:12px">';
-    html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0 0 4px">' + _rhPageTitle + '</h1>';
+    html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0 0 4px">Rehearsal Plan</h1>';
     // Top summary
     var _rhTopFocus = weakSongs.length > 0 ? weakSongs[0].title : null;
-    html += '<div style="font-size:0.85em;color:var(--text-dim);line-height:1.4">We\u2019re warming up, tightening one weak spot, then running the set.</div>';
+    html += '<div style="font-size:0.85em;color:var(--text-dim);line-height:1.4">Warm up, tighten one weak spot, then run the set.</div>';
     html += '<div style="font-size:0.82em;color:#fbbf24;font-weight:600;margin-top:4px">Main focus: ' + (_rhTopFocus ? '<strong>' + _rhTopFocus + '</strong>' : 'getting the whole set tighter') + '</div>';
     html += '</div>';
 
@@ -224,7 +224,15 @@ async function _rhRenderCommandFlow(el) {
     var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
     if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
 
-    // ── SECTION 2: Saved Plan (PRIMARY when exists) ──
+    // ── Primary CTA — always visible above plan details ──
+    if (hasSavedPlan) {
+        html += '<div style="margin-bottom:12px">'
+            + '<button onclick="_rhLaunchSavedPlan()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Start Band Rehearsal</button>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);text-align:center;margin-top:6px">GrooveMate will show you what mattered after.</div>'
+            + '</div>';
+    }
+
+    // ── SECTION 2: Saved Plan details ──
     if (hasSavedPlan) {
         var savedUnits = _rhGetUnits();
         var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
@@ -463,7 +471,7 @@ async function _rhRenderCommandFlow(el) {
 
         // Actions
         html += '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Start Rehearsal</button>'
+            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Start Band Rehearsal</button>'
             + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.82em;cursor:pointer;min-height:48px">+ New Date</button>'
             + '</div>'
             + '<div style="font-size:0.72em;color:var(--text-dim);text-align:center;margin-bottom:10px">GrooveMate will show you what mattered after.</div>'

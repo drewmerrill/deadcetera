@@ -403,6 +403,30 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
     ].join('');
 }
 
+// ── Intent Section — Practice / Rehearse / Play Live ─────────────────────────
+function _renderIntentSection() {
+    var _ibtn = 'flex:1;padding:14px 10px 10px;border-radius:12px;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px';
+    return '<div style="padding:16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
+        + '<div style="font-size:0.82em;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-align:center">What do you want to do right now?</div>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="showPage(\'songs\')" style="' + _ibtn + ';border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06)">'
+        + '<span style="font-size:1.1em">\uD83C\uDFB8</span>'
+        + '<span style="font-weight:700;font-size:0.85em;color:#a5b4fc">Practice Solo</span>'
+        + '<span style="font-size:0.65em;color:#64748b;line-height:1.3">Work on your parts \u2014 nothing is saved</span>'
+        + '</button>'
+        + '<button onclick="showPage(\'rehearsal\')" style="' + _ibtn + ';border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06)">'
+        + '<span style="font-size:1.1em">\uD83E\uDD41</span>'
+        + '<span style="font-weight:700;font-size:0.85em;color:#86efac">Start Band Rehearsal</span>'
+        + '<span style="font-size:0.65em;color:#64748b;line-height:1.3">Run a full rehearsal \u2014 this will be tracked</span>'
+        + '</button>'
+        + '<button onclick="showPage(\'setlists\')" style="' + _ibtn + ';border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06)">'
+        + '<span style="font-size:1.1em">\uD83C\uDFA4</span>'
+        + '<span style="font-weight:700;font-size:0.85em;color:#fbbf24">Play a Gig</span>'
+        + '<span style="font-size:0.65em;color:#64748b;line-height:1.3">Use your setlist in live mode</span>'
+        + '</button>'
+        + '</div></div>';
+}
+
 // ── Next Action Card — "What should I do next?" ─────────────────────────────
 function _renderNextActionCard(bundle, wf) {
     // ── First-time user: "Run Your First Rehearsal" launcher ──
@@ -430,13 +454,7 @@ function _renderNextActionCard(bundle, wf) {
             + '<button onclick="' + cta.onclick + '" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(99,102,241,0.3)">' + cta.label + '</button>'
             + '</div></div>'
         // Intent section — always visible, even during onboarding
-            + '<div style="padding:16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
-            + '<div style="font-size:0.82em;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-align:center">What do you want to do right now?</div>'
-            + '<div style="display:flex;gap:8px">'
-            + '<button onclick="showPage(\'songs\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFB8 Practice</button>'
-            + '<button onclick="showPage(\'rehearsal\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83E\uDD41 Rehearse</button>'
-            + '<button onclick="showPage(\'setlists\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFA4 Play Live</button>'
-            + '</div></div>';
+            + _renderIntentSection();
     }
 
     // ── "Run My Band" Primary Card (post-onboarding) ──────────────────────
@@ -479,14 +497,8 @@ function _renderNextActionCard(bundle, wf) {
         + '<div style="font-size:0.72em;color:#475569;margin-top:8px">Takes about 10 minutes</div>'
         + (sessionCount > 0 ? '<div style="margin-top:8px"><button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.75em;text-decoration:underline">View last session</button></div>' : '')
         + '</div></div>'
-    // ── Intent section: "What do you want to do right now?" ──
-        + '<div style="padding:16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
-        + '<div style="font-size:0.82em;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-align:center">What do you want to do right now?</div>'
-        + '<div style="display:flex;gap:8px">'
-        + '<button onclick="showPage(\'songs\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFB8 Practice</button>'
-        + '<button onclick="showPage(\'rehearsal\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83E\uDD41 Rehearse</button>'
-        + '<button onclick="showPage(\'setlists\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFA4 Play Live</button>'
-        + '</div></div>'
+    // ── Intent section ──
+        + _renderIntentSection()
     // GrooveMate line
         + '<div style="padding:0 4px 8px;font-size:0.82em;color:#64748b;font-style:italic">' + memoryMsg + '</div>';
 
