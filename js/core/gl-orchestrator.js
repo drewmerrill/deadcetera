@@ -680,9 +680,103 @@
     setTimeout(checkAnticipation, 3000);
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── NEXT BEST ACTION (NBA) — Unified Decision Function ─────────────────
+  // All avatar behavior routes through this. Combines all signals into one
+  // decision: AUTO, ASSIST, or SILENT.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  function getNextBestAction() {
+    // 1. Gather all context
+    var ctx = _buildContext();
+    var dna = _loadBandDNA();
+    var trust = _loadTrust();
+    var userLevel = getUserLevel();
+    var personality = getBandPersonality();
+
+    // 2. SILENT during flow — absolute rule
+    if (_isInFlow()) return { tier: 'silent', action: null, message: null, reason: 'in_flow' };
+
+    // 3. Get base next action
+    var next = getNextAction(ctx);
+    if (!next || !next.action) {
+      // Check anticipation signals
+      if (dna.improvementVelocity < -0.3 && dna.weaknesses.length) {
+        next = { action: null, message: 'Focus on "' + dna.weaknesses[dna.weaknesses.length - 1] + '" next rehearsal.', urgency: 'low' };
+      } else {
+        return { tier: 'silent', action: null, message: null, reason: 'no_action' };
+      }
+    }
+
+    // 4. Calculate confidence (blends all signals)
+    var confidence = _getConfidence(next, ctx);
+
+    // 5. Adjust for user level
+    if (userLevel === 'beginner') confidence = Math.min(confidence, 0.85); // don't auto-execute for beginners
+    if (userLevel === 'power') confidence = Math.min(confidence * 1.1, 0.99); // trust power users more
+
+    // 6. Determine tier
+    var risk = next.action ? _getActionRisk(next.action) : 'medium';
+    var tier = _getAutopilotTier(confidence, risk);
+
+    // 7. Verify UI contract (if action targets a page element)
+    if (next.action && typeof GLHelpValidator !== 'undefined') {
+      var pageIssues = GLHelpValidator.validatePage(ctx.page);
+      if (pageIssues.length > 0) {
+        confidence = Math.max(0.4, confidence - 0.15);
+        tier = 'assist'; // never auto if UI contract violated
+      }
+    }
+
+    // 8. Apply personality to message
+    var msg = next.message || '';
+    if (personality.tone === 'casual' && msg.length > 0) {
+      // Already casual — keep as-is
+    } else if (personality.tone === 'technical' && msg.length > 0) {
+      msg = msg.replace(/Want me to/, 'Shall I').replace(/Let\u2019s/, 'Ready to');
+    }
+
+    return {
+      tier: tier,
+      action: next.action,
+      message: msg,
+      confidence: Math.round(confidence * 100) / 100,
+      risk: risk,
+      userLevel: userLevel,
+      personality: personality.tone,
+      reason: tier === 'silent' ? 'low_confidence' : tier === 'auto' ? 'high_confidence_low_risk' : 'standard'
+    };
+  }
+
+  // ── User Capability Model ──────────────────────────────────────────────
+  // Tracks beginner / intermediate / power based on behavior signals.
+
+  function getUserLevel() {
+    var mem = _loadMemory();
+    var pageVisits = mem.pageVisits || {};
+    var totalVisits = Object.values(pageVisits).reduce(function(a, b) { return a + b; }, 0);
+    var actionCount = (mem.actions || []).length;
+    var dna = _loadBandDNA();
+    var sessionCount = dna.sessionCount || 0;
+
+    // Power user: 50+ visits, 3+ rehearsals, uses multiple features
+    var uniquePages = Object.keys(pageVisits).length;
+    if (totalVisits >= 50 && sessionCount >= 3 && uniquePages >= 5) return 'power';
+
+    // Intermediate: 15+ visits or 1+ rehearsal
+    if (totalVisits >= 15 || sessionCount >= 1) return 'intermediate';
+
+    return 'beginner';
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────
 
   window.GLOrchestrator = {
+    // Unified NBA
+    getNextBestAction: getNextBestAction,
+    getUserLevel: getUserLevel,
+
+    // Legacy (still used by avatar UI)
     getNextAction: getNextAction,
     shouldIntervene: shouldIntervene,
     getMessage: getMessage,
@@ -704,5 +798,5 @@
     getTrustModel: _loadTrust
   };
 
-  console.log('\uD83C\uDFAF GLOrchestrator loaded');
+  console.log('\uD83C\uDFAF GLOrchestrator loaded (NBA engine)');
 })();

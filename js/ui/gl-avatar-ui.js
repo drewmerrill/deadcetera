@@ -213,15 +213,15 @@ window.GLAvatarUI = (function() {
         var ctx = G.buildContext(_getPage());
         var tip = G.evaluate(ctx);
 
-        // If no tip from guidance, try orchestrator for next action
-        if (!tip && typeof GLOrchestrator !== 'undefined') {
-            var orchMsg = GLOrchestrator.getMessage();
-            if (orchMsg && orchMsg.text) {
+        // If no tip from guidance, try NBA (Next Best Action)
+        if (!tip && typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getNextBestAction) {
+            var nba = GLOrchestrator.getNextBestAction();
+            if (nba && nba.tier !== 'silent' && nba.message) {
                 tip = {
-                    id: 'orchestrator_' + Date.now(),
-                    message: orchMsg.text,
-                    coach: '',
-                    actions: orchMsg.action ? [{ label: '\u2192 ' + orchMsg.text.split('.')[0], onclick: "GLAvatarUI._askWithText('" + (orchMsg.action || '').replace(/_/g, ' ') + "')" }] : []
+                    id: 'nba_' + Date.now(),
+                    message: nba.message,
+                    coach: nba.userLevel === 'beginner' ? 'I\u2019m here if you need help.' : '',
+                    actions: nba.action ? [{ label: '\u2192 ' + nba.message.split('.')[0], onclick: "GLAvatarUI._askWithText('" + (nba.action || '').replace(/_/g, ' ') + "')" }] : []
                 };
             }
         }
