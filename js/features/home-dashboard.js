@@ -478,18 +478,8 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
-    // Weak songs shown as secondary inline note (not primary CTA)
-    var _weakNote = '';
-    if (weakCount > 0 && hasSetlist && daysOut > 3) {
-        var _safeWeak = firstWeakTitle ? firstWeakTitle.replace(/'/g, "\\'") : '';
-        _weakNote = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px">'
-            + '<span style="font-size:0.82em;color:#fbbf24;font-weight:600;flex:1">' + weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work</span>'
-            + '<button onclick="window._glFocusMode=true;showPage(\'songs\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Get Better</button>'
-            + '</div>';
-    }
-
+    // No separate weak note — focus section below handles it
     return _renderNextUpCard(_msg, _sub, _cta)
-        + _weakNote
         + _renderIntentSection();
 
     // ── Below: retained for gig-day override (not shown by default) ──────
@@ -1220,8 +1210,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         '<div style="font-size:0.78em;color:var(--text-dim);padding:0 4px 8px">' + dateStr + '</div>',
         // ── Above the fold: ONE primary action only ──
         _renderNextActionCard(bundle, wf),
-        // ── Below the fold ──
-        _renderTopSongsToWork(bundle),
+        // ── Single focus section (replaces duplicate weak songs + session plan) ──
         _renderSessionPlan(bundle),
         // ── Collapsed sections ──
         '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Your Band Right Now</summary>',
@@ -1452,46 +1441,29 @@ function _hdEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;
 
 // ── Session-level rehearsal plan from PracticeAttention engine ───────────────
 function _renderSessionPlan(bundle) {
-    // Use focus engine — single source of truth
-    var _spFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
-    var items = _spFocus.list.map(function(f) { return { songId: f.title, avg: f.avg, focusScore: f.focusScore, topReason: _spFocus.reason, score: f.focusScore }; });
+    // Single focus section — same source as rehearsal page header and Get Better
+    var _spFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [], reason: '' };
+    var focusList = _spFocus.list;
+
+    if (!focusList.length) return '';
 
     var html = '<div class="app-card home-anim-cards" style="border-color:rgba(245,158,11,0.15);background:linear-gradient(135deg,rgba(245,158,11,0.03),rgba(239,68,68,0.02))">';
-    html += '<h3 style="margin:0 0 4px;color:#fbbf24;font-size:1em">\uD83C\uDFAF Next Rehearsal Plan</h3>';
-    html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:12px">Focus songs for your next rehearsal</div>';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<h3 style="margin:0;color:#fbbf24;font-size:1em">\uD83C\uDFAF Focus for your next rehearsal</h3>';
+    html += '<button onclick="window._glFocusMode=true;showPage(\'songs\')" style="font-size:0.72em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:none;background:rgba(245,158,11,0.12);color:#fbbf24">\u25B6 Practice These</button>';
+    html += '</div>';
 
-    if (!items || items.length === 0) {
-        html += '<div style="font-size:0.88em;color:var(--text-dim);padding:8px 0">No songs need attention right now. Add some to your rotation to get going.</div>';
-        html += '</div>';
-        return html;
-    }
-
-    items.slice(0, 5).forEach(function(item, i) {
-        var title = item.songId;
-        var avg = item.avg || 0;
-        var color = avg >= 4 ? '#22c55e' : avg >= 3 ? '#f59e0b' : avg > 0 ? '#ef4444' : '#475569';
-        var reason = item.topReason || '';
-        var time = item.score >= 15 ? '12 min' : item.score >= 8 ? '8 min' : '5 min';
-        var safeSong = _hdEsc(title).replace(/'/g, "\\'");
-
-        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;' + (i < Math.min(items.length, 5) - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.04)' : '') + ';cursor:pointer" onclick="if(typeof selectSong===\'function\')selectSong(\'' + safeSong + '\')">';
-        html += '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;font-size:0.75em;font-weight:800;color:#fbbf24;flex-shrink:0">' + (i + 1) + '</div>';
-        html += '<div style="flex:1;min-width:0">';
-        html += '<div style="font-weight:600;font-size:0.9em;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _hdEsc(title) + '</div>';
-        html += '<div style="font-size:0.75em;color:var(--text-dim);margin-top:1px">' + _hdEsc(reason) + '</div>';
-        html += '</div>';
-        html += '<div style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0" title="' + avg.toFixed(1) + '/5"></div>';
-        html += '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim);flex-shrink:0;min-width:40px;text-align:right">' + time + '</span>';
+    focusList.slice(0, 5).forEach(function(song, i) {
+        var color = song.avg < 2 ? '#ef4444' : song.avg < 3 ? '#fbbf24' : '#94a3b8';
+        var safeSong = song.title.replace(/'/g, "\\'");
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer' + (i < focusList.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,0.04)' : '') + '" onclick="showPage(\'songs\');setTimeout(function(){if(typeof selectSong===\'function\')selectSong(\'' + safeSong + '\');},300)">';
+        html += '<span style="width:6px;height:6px;border-radius:50%;background:' + color + ';flex-shrink:0"></span>';
+        html += '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(song.title) + '</span>';
+        html += (song.inSetlist ? '<span style="font-size:0.6em;color:#818cf8;flex-shrink:0">setlist</span>' : '');
         html += '</div>';
     });
 
-    var totalMin = items.slice(0, 5).reduce(function(sum, item) {
-        return sum + (item.score >= 15 ? 12 : item.score >= 8 ? 8 : 5);
-    }, 0);
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)">';
-    html += '<span style="font-size:0.78em;color:var(--text-dim)">' + Math.min(items.length, 5) + ' songs \xb7 ~' + totalMin + ' min</span>';
-    html += '<button class="btn btn-primary" style="font-size:0.82em;padding:8px 16px" onclick="showPage(\'rehearsal\')">Start Rehearsal</button>';
-    html += '</div></div>';
+    html += '</div>';
     return html;
 }
 
