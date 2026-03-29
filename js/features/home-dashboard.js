@@ -399,9 +399,9 @@ function _renderNextUpCard(msg, sub, cta) {
         + '</div>';
 }
 
-// ── Intent Section — Practice / Rehearse / Play Live ─────────────────────────
+// ── Secondary Actions — 3 distinct journeys (no overlap) ─────────────────────
 function _renderIntentSection() {
-    // Weak song detection for Practice Solo routing
+    // "Get Better" routes to first weak song or songs page
     var _weakForPractice = _homeBundle ? _getWeakSongs(_homeBundle, 1) : [];
     var _practiceClick = '';
     if (_weakForPractice.length && _weakForPractice[0].title) {
@@ -413,8 +413,8 @@ function _renderIntentSection() {
 
     var _secBtn = 'flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;text-align:center;font-size:0.78em;font-weight:600';
     return '<div style="display:flex;gap:8px;margin-bottom:12px">'
-        + '<button onclick="' + _practiceClick + '" style="' + _secBtn + ';border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.04);color:#818cf8">\uD83C\uDFB8 Practice Solo</button>'
-        + '<button onclick="if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal();else showPage(\'rehearsal\')" style="' + _secBtn + ';border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac">\uD83E\uDD41 Rehearse</button>'
+        + '<button onclick="' + _practiceClick + '" style="' + _secBtn + ';border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.04);color:#818cf8">\uD83C\uDFB8 Get Better</button>'
+        + '<button onclick="showPage(\'rehearsal\')" style="' + _secBtn + ';border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac">\uD83E\uDD41 Start Rehearsal</button>'
         + '<button onclick="if(typeof gigLaunchLinkedSetlist===\'function\'){var sl=(window._glCachedSetlists||[]);if(sl.length)gigLaunchLinkedSetlist(sl[0].name);else showPage(\'gigs\');}else showPage(\'gigs\')" style="' + _secBtn + ';border:1px solid rgba(245,158,11,0.15);background:rgba(245,158,11,0.04);color:#fbbf24">\uD83C\uDFA4 Play a Gig</button>'
         + '</div>';
 }
@@ -431,8 +431,18 @@ function _renderNextActionCard(bundle, wf) {
     var dna = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getBandDNA) ? GLOrchestrator.getBandDNA() : {};
     var sessionCount = dna.sessionCount || 0;
 
-    // ── State detection: rehearsal is ALWAYS primary when set exists ──
+    // ── State detection: schedule urgency → rehearsal → setup ──
     var _msg = '', _sub = '', _cta = null;
+
+    // Load upcoming rehearsal event for schedule-aware messaging
+    var _upcomingRehearsal = null;
+    try {
+        var _calEvents = (typeof GLStore !== 'undefined' && GLStore.getCalendarEvents) ? GLStore.getCalendarEvents() : [];
+        if (!_calEvents.length && bundle._calEvents) _calEvents = bundle._calEvents;
+        var _today = _todayStr();
+        _upcomingRehearsal = _calEvents.filter(function(e) { return e.type === 'rehearsal' && (e.date || '') >= _today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0] || null;
+    } catch(e) {}
+    var _rehearsalDays = _upcomingRehearsal ? _dayDiff(_todayStr(), _upcomingRehearsal.date) : 999;
 
     if (!hasSongs && !hasSetlist) {
         _msg = 'Pick a few songs to get started';
@@ -442,24 +452,45 @@ function _renderNextActionCard(bundle, wf) {
         _msg = 'Build your set';
         _sub = 'You\u2019ve got songs. Let\u2019s turn them into a rehearsal set.';
         _cta = { label: 'Build Set \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" };
-    } else if (daysOut <= 3 && daysOut >= 0) {
-        _msg = 'Get ready to play';
-        _sub = (nextGig.venue || 'Gig') + (daysOut === 0 ? ' is today.' : ' in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + '.');
+    } else if (daysOut === 0) {
+        // Gig TODAY — play is primary
+        _msg = 'Showtime';
+        _sub = (nextGig.venue || 'Gig') + ' is today. You\u2019re ready.';
         _cta = { label: '\u25B6 Play Set', onclick: "hdPlayBundle('gig')" };
+    } else if (daysOut <= 3 && daysOut > 0 && weakCount > 0) {
+        // Gig soon + weak songs — tighten
+        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 tighten these songs';
+        _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work before ' + (nextGig.venue || 'the gig') + '.';
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+    } else if (daysOut <= 3 && daysOut > 0) {
+        // Gig soon, no weak songs — run the set
+        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 run your set';
+        _sub = (nextGig.venue || 'Gig') + '. Run it once more.';
+        _cta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
+    } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0 && weakCount > 0) {
+        // Rehearsal soon + weak songs
+        _msg = 'Rehearsal in ' + (_rehearsalDays === 0 ? 'today' : _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten these songs';
+        _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work.';
+        _cta = { label: '\u25B6 Get Better', onclick: "showPage('songs')" };
+    } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
+        // Rehearsal soon, set is tight
+        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : ''));
+        _sub = 'Your set is ready. Run it.';
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     } else {
-        // Has setlist — rehearsal is ALWAYS the primary action
+        // Default: has setlist, rehearsal is primary
         _msg = 'Your set is ready';
         _sub = sessionCount === 0 ? 'You haven\u2019t rehearsed this set yet.' : 'Keep it tight. We\u2019ll show you what matters after.';
-        _cta = { label: '\u25B6 Start Rehearsal', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal();else showPage('rehearsal')" };
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
     // Weak songs shown as secondary inline note (not primary CTA)
     var _weakNote = '';
-    if (weakCount > 0 && hasSetlist) {
+    if (weakCount > 0 && hasSetlist && daysOut > 3) {
         var _safeWeak = firstWeakTitle ? firstWeakTitle.replace(/'/g, "\\'") : '';
         _weakNote = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:10px">'
             + '<span style="font-size:0.82em;color:#fbbf24;font-weight:600;flex:1">' + weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work</span>'
-            + '<button onclick="' + (firstWeakTitle ? "showPage('songdetail');if(typeof renderSongDetail==='function')renderSongDetail('" + _safeWeak + "')" : "showPage('songs')") + '" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Practice These</button>'
+            + '<button onclick="' + (firstWeakTitle ? "showPage('songdetail');if(typeof renderSongDetail==='function')renderSongDetail('" + _safeWeak + "')" : "showPage('songs')") + '" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u25B6 Get Better</button>'
             + '</div>';
     }
 

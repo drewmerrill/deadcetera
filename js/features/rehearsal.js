@@ -91,8 +91,8 @@ window._rhConfirmStartRehearsal = function() {
     ov.id = 'rhStartConfirm';
     ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
     ov.innerHTML = '<div style="max-width:360px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(34,197,94,0.2);text-align:center">'
-        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Start a real band rehearsal?</div>'
-        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:20px;line-height:1.4">This will create a dated rehearsal session in your band history.</div>'
+        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Start a band rehearsal?</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:20px;line-height:1.4">Nothing is saved until you finish. You can discard it later if needed.</div>'
         + '<button onclick="document.getElementById(\'rhStartConfirm\').remove();_rhLaunchSavedPlan()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer;margin-bottom:8px">\u25B6 Start Rehearsal</button>'
         + '<button onclick="document.getElementById(\'rhStartConfirm\').remove();_rhOpenChartsOnly()" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;font-weight:600;font-size:0.82em;cursor:pointer">Just Practice Instead</button>'
         + '</div>';

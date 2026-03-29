@@ -155,14 +155,14 @@ function _sdRenderBandChart(title, safeSong, chartText) {
     if (!chartText) {
         return '<div class="sd-card" style="text-align:center;padding:24px;border-color:rgba(99,102,241,0.12)">'
             + '<div style="font-size:1.4em;margin-bottom:8px">\uD83D\uDCDD</div>'
-            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">No band chart yet</div>'
+            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">No chart yet</div>'
             + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Paste or type a chart in rehearsal mode</div>'
             + '<button class="sd-pm-btn" onclick="openRehearsalMode(\'' + safeSong + '\')">\uD83D\uDCDD Add Chart</button>'
             + '</div>';
     }
     return '<div class="sd-card" style="padding:16px;border-color:rgba(34,197,94,0.2);background:rgba(34,197,94,0.02)">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-        + '<div class="sd-card-title" style="margin:0">\uD83C\uDFBC Your Band Chart</div>'
+        + '<div class="sd-card-title" style="margin:0">\uD83C\uDFBC Your Chart</div>'
         + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u270F\uFE0F Edit</button>'
         + '</div>'
         + '<pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:13px;line-height:1.7;color:#e2e8f0;margin:0;letter-spacing:0.01em;max-height:400px;overflow-y:auto">' + _sdEsc(chartText) + '</pre>'
@@ -1701,7 +1701,7 @@ async function _sdPopulateLearnLens(title) {
             ((!tabs||!tabs.length)?_sdEmptyAdd('No external tabs yet','_sdAddTabForm',''+safeSong+''):'')+
             '<div id="sd-learn-tab-form"></div>'+
             // "Use as band chart" CTA for each external tab
-            ((tabs && tabs.length) ? '<button onclick="_sdImportTabAsChart(\'' + safeSong + '\')" style="margin-top:6px;width:100%;padding:8px;border-radius:8px;border:1px dashed rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer;font-size:0.72em;font-weight:600">Use this as your band chart</button>' : '') +
+            ((tabs && tabs.length) ? '<button onclick="_sdImportTabAsChart(\'' + safeSong + '\')" style="margin-top:6px;width:100%;padding:8px;border-radius:8px;border:1px dashed rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer;font-size:0.72em;font-weight:600">Make this your chart</button>' : '') +
         '</div>'+
         '<div class="sd-card"><div class="sd-card-title">\uD83C\uDFB5 Cover Versions to Study</div>'+
             _sdLinkList(covers,'\uD83C\uDFB5','')+
