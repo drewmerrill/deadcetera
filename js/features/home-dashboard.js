@@ -410,22 +410,56 @@ function _renderNextActionCard(bundle, wf) {
             + '</div></div>';
     }
 
+    // ── "Run My Band" Primary Card (post-onboarding) ──────────────────────
+    // When onboarding is complete, show one dominant CTA + band progress.
+
+    var dna = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getBandDNA) ? GLOrchestrator.getBandDNA() : {};
+    var sessionCount = dna.sessionCount || 0;
+    var velocity = dna.improvementVelocity || 0;
+    var userLevel = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getUserLevel) ? GLOrchestrator.getUserLevel() : 'beginner';
+
+    // Build progress indicators from Band DNA
+    var progressHtml = '';
+    if (sessionCount > 0) {
+        var trendIcon = velocity > 0.2 ? '\u2191' : velocity < -0.2 ? '\u2193' : '\u2192';
+        var trendColor = velocity > 0.2 ? '#22c55e' : velocity < -0.2 ? '#ef4444' : '#94a3b8';
+        var trendLabel = velocity > 0.2 ? 'Improving' : velocity < -0.2 ? 'Needs focus' : 'Steady';
+        progressHtml = '<div style="display:flex;gap:12px;margin-bottom:14px;justify-content:center">'
+            + '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#a5b4fc">' + sessionCount + '</div><div style="font-size:0.62em;color:#475569">Sessions</div></div>'
+            + '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:' + trendColor + '">' + trendIcon + '</div><div style="font-size:0.62em;color:#475569">' + trendLabel + '</div></div>';
+        if (dna.weaknesses && dna.weaknesses.length) {
+            progressHtml += '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#f59e0b">' + dna.weaknesses.length + '</div><div style="font-size:0.62em;color:#475569">Focus songs</div></div>';
+        }
+        progressHtml += '</div>';
+    }
+
+    // Avatar memory message
+    var memoryMsg = '';
+    if (sessionCount >= 3 && velocity > 0.2) memoryMsg = 'You\u2019re getting tighter every session.';
+    else if (sessionCount >= 3 && velocity < -0.2 && dna.weaknesses && dna.weaknesses.length) memoryMsg = '"' + dna.weaknesses[dna.weaknesses.length - 1] + '" still needs work.';
+    else if (sessionCount >= 1) memoryMsg = 'Ready for session #' + (sessionCount + 1) + '.';
+    else memoryMsg = 'Your first session is waiting.';
+
+    // For beginners: show ONLY the Run My Band card (minimal UI)
+    var runMyBandCard = '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
+        + '<div style="text-align:center">'
+        + progressHtml
+        + '<div style="font-size:1.4em;font-weight:900;color:#f1f5f9;margin-bottom:6px">Run My Band</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + memoryMsg + '</div>'
+        + '<button onclick="if(typeof GLOrchestrator!==\'undefined\'&&GLOrchestrator.runBandCycle)GLOrchestrator.runBandCycle();else if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal()" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Run My Band</button>'
+        + (sessionCount > 0 ? '<div style="margin-top:10px"><button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.75em;text-decoration:underline">View last session</button></div>' : '')
+        + '</div></div>';
+
+    // For beginners: return ONLY the Run My Band card
+    if (userLevel === 'beginner') return runMyBandCard;
+
+    // For everyone else: Run My Band card + existing actions below
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
     var practiced = _didPracticeToday();
     var action = null;
 
-    // If already practiced today, acknowledge it first
-    if (practiced && daysOut > 2) {
-        var weakCount = _countWeakSongs(bundle);
-        if (weakCount > 0) {
-            action = { icon: '\u2705', title: 'Practiced today', sub: weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' still need attention', cta: 'Keep Going', onclick: 'hdPlayBundle(\'focus\')', completed: true };
-        } else {
-            action = { icon: '\u2705', title: 'Practiced today \u2014 you\'re locked in', sub: 'Everything\u2019s in good shape', cta: 'Run the Set', onclick: 'hdPlayBundle(\'gig\')', completed: true };
-        }
-    }
-
-    // Override with time-sensitive actions
+    // Override with gig-related actions only
     if (!action) {
         if (daysOut === 0) {
             action = { icon: '\uD83C\uDFA4', title: 'Showtime', sub: nextGig.venue || 'Today', cta: 'Go Live', onclick: 'homeGoLive(\'' + _escHtml(nextGig.name || nextGig.venue || '') + '\')' };
@@ -443,7 +477,7 @@ function _renderNextActionCard(bundle, wf) {
         }
     }
 
-    if (!action) return '';
+    if (!action) return runMyBandCard;
 
     var borderColor = action.completed ? 'rgba(34,197,94,0.3)' : 'rgba(99,102,241,0.25)';
     var bgGradient = action.completed ? 'linear-gradient(135deg,rgba(34,197,94,0.06),rgba(16,185,129,0.04))' : 'linear-gradient(135deg,rgba(99,102,241,0.06),rgba(139,92,246,0.04))';
@@ -464,7 +498,8 @@ function _renderNextActionCard(bundle, wf) {
     // Progression indicator
     html += _renderProgressionSignal(bundle);
 
-    return html;
+    // Prepend Run My Band card for non-beginners
+    return runMyBandCard + html;
 }
 
 // ── Progression + Band Activity Signals ──────────────────────────────────────
