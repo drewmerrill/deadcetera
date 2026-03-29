@@ -1452,11 +1452,13 @@ function _hdEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;
 
 // ── Session-level rehearsal plan from PracticeAttention engine ───────────────
 function _renderSessionPlan(bundle) {
-    var items = (typeof GLStore !== 'undefined' && GLStore.getPracticeAttention)
-        ? GLStore.getPracticeAttention({ limit: 5 }) : null;
+    // Use focus engine — single source of truth
+    var _spFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var items = _spFocus.list.map(function(f) { return { songId: f.title, avg: f.avg, focusScore: f.focusScore, topReason: _spFocus.reason, score: f.focusScore }; });
 
     var html = '<div class="app-card home-anim-cards" style="border-color:rgba(245,158,11,0.15);background:linear-gradient(135deg,rgba(245,158,11,0.03),rgba(239,68,68,0.02))">';
-    html += '<h3 style="margin:0 0 14px;color:#fbbf24;font-size:1em">\uD83C\uDFAF Today\'s Session Plan</h3>';
+    html += '<h3 style="margin:0 0 4px;color:#fbbf24;font-size:1em">\uD83C\uDFAF Next Rehearsal Plan</h3>';
+    html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:12px">Focus songs for your next rehearsal</div>';
 
     if (!items || items.length === 0) {
         html += '<div style="font-size:0.88em;color:var(--text-dim);padding:8px 0">No songs need attention right now. Add some to your rotation to get going.</div>';

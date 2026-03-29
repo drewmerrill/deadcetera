@@ -297,9 +297,11 @@ async function _rhRenderCommandFlow(el) {
     html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0">Rehearsal Plan</h1>';
     html += '<span style="font-size:0.62em;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#818cf8">Draft</span>';
     html += '</div>';
-    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">Draft plan for your next band rehearsal</div>';
-    var _rhTopFocus = weakSongs.length > 0 ? weakSongs[0].title : null;
-    if (_rhTopFocus) html += '<div style="font-size:0.78em;color:#fbbf24;font-weight:600;margin-top:4px">Focus: <strong>' + _rhTopFocus + '</strong></div>';
+    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:4px">This is your next rehearsal. We\u2019ll track it and show you what to fix.</div>';
+    // Focus from engine
+    var _rhFocusPrimary = weakSongs.length > 0 ? weakSongs[0].title : null;
+    var _rhFocusMore = weakSongs.length > 1 ? ' (+' + (weakSongs.length - 1) + ' more)' : '';
+    if (_rhFocusPrimary) html += '<div style="font-size:0.78em;color:#fbbf24;font-weight:600;margin-top:4px">Focus for this rehearsal: <strong>' + _rhFocusPrimary + '</strong>' + _rhFocusMore + '</div>';
     html += '</div>';
 
     // ── SECTION 1: Context ──
@@ -335,8 +337,8 @@ async function _rhRenderCommandFlow(el) {
         html += '<div style="margin-bottom:12px">'
             + '<button onclick="_rhConfirmStartRehearsal()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Start Band Rehearsal</button>'
             + '<div style="font-size:0.68em;color:var(--text-dim);text-align:center;margin-top:4px">Use this when the band is actually rehearsing together.</div>'
-            + '<button onclick="_rhOpenChartsOnly()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;font-weight:600;font-size:0.85em;cursor:pointer">\uD83D\uDCDD Open Charts to Practice</button>'
-            + '<div style="font-size:0.65em;color:#475569;text-align:center;margin-top:3px">No rehearsal will be created.</div>'
+            + '<button onclick="_rhOpenChartsOnly()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;font-weight:600;font-size:0.85em;cursor:pointer">\uD83D\uDCDD Practice Without Starting a Rehearsal</button>'
+            + '<div style="font-size:0.65em;color:#475569;text-align:center;margin-top:3px">No session will be saved.</div>'
             + '</div>';
     }
 
@@ -592,20 +594,19 @@ async function _rhRenderCommandFlow(el) {
             + '<div id="rhSnapshots"></div>';
     }
 
-    // ── Clear separator between draft and history ──
-    html += '<div style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-        + '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">\uD83D\uDCCB Saved Rehearsals</div>'
-        + '<button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button>'
-        + '</div>';
-    html += '</div>';
+    // ── Rehearsal History (collapsed by default) ──
+    html += '<details style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
+    html += '<summary style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 0">'
+        + '<span style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">\uD83D\uDCCB Rehearsal History</span>'
+        + '</summary>';
+    html += '<div style="margin-top:8px">';
+    html += '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>';
     html += '<div id="rhSessionReview"></div>';
     html += '<div id="rhSessionHistory"></div>';
+    html += '<div id="rhMixdownsContainer" style="margin-top:12px"></div>';
+    html += '</div></details>';
 
-    // ── Rehearsal Mixdowns ──
-    html += '<div id="rhMixdownsContainer" style="margin-top:16px"></div>';
-
-    // ── SECTION 3: Tab content area (AI suggestions — secondary to saved plan) ──
+    // ── Tab content area (AI suggestions) ──
     html += '<div id="rhTabContent"></div>';
 
     main.innerHTML = html;
