@@ -181,16 +181,8 @@
       }
     }
 
-    // Factor in effectiveness history
-    var eff = _helpEffectiveness[currentPage] || _helpEffectiveness[resolved.source] || null;
-    if (eff) {
-      var total = (eff.helpful || 0) + (eff.not_helpful || 0) + (eff.wrong || 0);
-      if (total >= 5) {
-        var successRate = (eff.helpful || 0) / total;
-        // Blend: 60% registry confidence + 40% effectiveness
-        adjustedConfidence = adjustedConfidence * 0.6 + successRate * 0.4;
-      }
-    }
+    // Apply confidence decay (successRate × recency × feedbackScore)
+    adjustedConfidence = getDecayedConfidence(currentPage, adjustedConfidence);
 
     // Build response
     var response = {
@@ -280,7 +272,49 @@
     if (eff && (eff.wrong || 0) >= 3) return { stale: true, reason: 'flagged_wrong', count: eff.wrong };
     if (eff && (eff.not_helpful || 0) >= 5 && (eff.helpful || 0) < (eff.not_helpful || 0)) return { stale: true, reason: 'low_effectiveness' };
 
+    // Check friction/confusion from product health
+    if (typeof GLProductHealth !== 'undefined') {
+      var confusion = GLProductHealth.getConfusionScore(featureId);
+      if (confusion >= 5) return { stale: true, reason: 'high_confusion', count: confusion };
+    }
+
     return { stale: false };
+  }
+
+  /**
+   * Confidence decay: recalculates knowledge confidence from multiple signals.
+   * confidence = base × successRate × recency × feedbackScore
+   * Disables content below 0.6.
+   */
+  function getDecayedConfidence(featureId, baseConfidence) {
+    var base = baseConfidence || 0.8;
+
+    // Success rate from effectiveness tracking
+    var successRate = 1.0;
+    var eff = _helpEffectiveness[featureId];
+    if (eff) {
+      var total = (eff.helpful || 0) + (eff.not_helpful || 0) + (eff.wrong || 0);
+      if (total >= 3) successRate = Math.max(0.3, (eff.helpful || 0) / total);
+    }
+
+    // Recency: how old is the verified build?
+    var recency = 1.0;
+    try {
+      var currentBuild = '';
+      var verEl = document.querySelector('script[src*="app.js"]');
+      if (verEl) { var m = (verEl.src || '').match(/v=(\d+[-]\d+)/); if (m) currentBuild = m[1]; }
+      if (currentBuild && currentBuild !== _VERIFIED_BUILD) recency = 0.7; // older = less confident
+    } catch(e) {}
+
+    // Feedback score: reduce if confusion clusters exist for this feature
+    var feedbackScore = 1.0;
+    if (typeof GLProductHealth !== 'undefined') {
+      var confusion = GLProductHealth.getConfusionScore(featureId);
+      if (confusion >= 3) feedbackScore = Math.max(0.5, 1.0 - confusion * 0.1);
+    }
+
+    var decayed = base * successRate * recency * feedbackScore;
+    return Math.round(Math.max(0.1, Math.min(1.0, decayed)) * 100) / 100;
   }
 
   /**
@@ -355,7 +389,8 @@
     flagHelp: flagHelp,
     isStale: isStale,
     getEffectivenessReport: getEffectivenessReport,
-    detectKnowledgeGaps: detectKnowledgeGaps
+    detectKnowledgeGaps: detectKnowledgeGaps,
+    getDecayedConfidence: getDecayedConfidence
   };
 
   console.log('\uD83D\uDCD6 GLKnowledge loaded (' + Object.keys(FEATURES).length + ' features, ' + Object.keys(RECIPES).length + ' recipes)');

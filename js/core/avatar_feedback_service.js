@@ -416,8 +416,82 @@
     };
   }
 
-  // Wire into existing friction detection systems
-  window.addEventListener('gl:pagechange', function() {});
+  // ── GLProductHealth — Unified Product Intelligence API ──────────────────
+
+  var _healthCache = null;
+  var _healthCacheTs = 0;
+
+  window.GLProductHealth = {
+
+    getOverview: async function() {
+      // Cache for 60s
+      if (_healthCache && Date.now() - _healthCacheTs < 60000) return _healthCache;
+      var health = await getProductHealth();
+
+      // Compute friction + confusion scores per feature
+      var featureScores = {};
+      (health.topIssues || []).forEach(function(issue) {
+        var r = issue.latest;
+        var page = (r.context && r.context.currentPage) || 'unknown';
+        if (!featureScores[page]) featureScores[page] = { friction: 0, confusion: 0, failures: 0 };
+        if (r.type === 'bug' || r.type === 'flow_break') featureScores[page].friction += issue.count;
+        if (r.type === 'ux_confusion' || r.type === 'onboarding_friction') featureScores[page].confusion += issue.count;
+        featureScores[page].failures += issue.count;
+      });
+
+      // Build fix queue from high-count clusters
+      var fixQueue = (health.topIssues || []).filter(function(i) { return i.count >= 3; }).map(function(i) {
+        var r = i.latest;
+        return {
+          clusterKey: i.key,
+          count: i.count,
+          type: r.type,
+          severity: r.severity,
+          page: (r.context && r.context.currentPage) || '',
+          title: r.title || i.key,
+          confidence: Math.min(i.count / 10, 1.0)
+        };
+      });
+
+      // Trust trends
+      var trustModel = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getTrustModel) ? GLOrchestrator.getTrustModel() : {};
+
+      _healthCache = {
+        total: health.total,
+        open: health.open,
+        clusters: health.clusters,
+        flowBreaks: health.flowBreaks,
+        topIssues: health.topIssues,
+        featureScores: featureScores,
+        fixQueue: fixQueue,
+        trustTrends: trustModel,
+        autoCount: health.autoCount,
+        founderCount: health.founderCount,
+        generatedAt: new Date().toISOString()
+      };
+      _healthCacheTs = Date.now();
+      return _healthCache;
+    },
+
+    getFrictionScore: function(featureId) {
+      if (!_healthCache || !_healthCache.featureScores) return 0;
+      var s = _healthCache.featureScores[featureId];
+      return s ? s.friction : 0;
+    },
+
+    getConfusionScore: function(featureId) {
+      if (!_healthCache || !_healthCache.featureScores) return 0;
+      var s = _healthCache.featureScores[featureId];
+      return s ? s.confusion : 0;
+    },
+
+    getFixQueue: function() {
+      return (_healthCache && _healthCache.fixQueue) ? _healthCache.fixQueue : [];
+    }
+  };
+
+  // Pre-warm health cache after boot
+  setTimeout(function() { window.GLProductHealth.getOverview(); }, 15000);
 
   window.GLFeedbackService = {
     submitExplicit: submitExplicit,

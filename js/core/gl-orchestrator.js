@@ -736,7 +736,11 @@
       // capability signal
       flowScore += NBA_WEIGHTS.userCapability * (userLevel === 'power' ? 0.8 : userLevel === 'intermediate' ? 0.5 : 0.3);
 
-      candidates.push({ id: 'flow_' + (flowAction.action || 'guide'), action: flowAction.action, message: flowAction.message, score: flowScore, why: ['Flow: ' + (flowAction.urgency || 'low')], targetSongs: [], targetFlow: flowAction.action });
+      // friction signal — boost if page has known issues (user may need help)
+      var pageFriction = (typeof GLProductHealth !== 'undefined') ? GLProductHealth.getFrictionScore(ctx.page) : 0;
+      if (pageFriction > 0) flowScore += Math.min(pageFriction * 0.02, 0.1); // small boost, capped
+
+      candidates.push({ id: 'flow_' + (flowAction.action || 'guide'), action: flowAction.action, message: flowAction.message, score: flowScore, why: ['Flow: ' + (flowAction.urgency || 'low') + (pageFriction > 0 ? ', friction: ' + pageFriction : '')], targetSongs: [], targetFlow: flowAction.action });
     }
 
     // Candidate 2: Song value recommendation
