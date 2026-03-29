@@ -673,7 +673,7 @@ async function _rhRenderCommandFlow(el) {
 // Clear saved rehearsal plan (explicit user action — auto-snapshots first)
 window._rhClearSavedPlan = async function() {
     if (!confirm('Clear your saved rehearsal plan? A snapshot will be saved automatically.')) return;
-    await _rhSaveSnapshot('Auto-save before clear');
+    await _rhSaveSnapshot('Before clearing plan');
     try {
         localStorage.removeItem('glPlannerQueue');
         localStorage.removeItem('glPlannerGuidance');
@@ -687,30 +687,56 @@ window._rhClearSavedPlan = async function() {
 
 // ── Rehearsal plan snapshots ──────────────────────────────────────────────────
 
+var _rhLastSnapshotTime = 0; // dedupe: no more than 1 snapshot per 2 min
+
 async function _rhSaveSnapshot(nameOverride) {
     var units = _rhGetUnits();
     if (!units.length) return null;
+    // Dedupe: skip if a snapshot was created within 2 minutes
+    var now = Date.now();
+    if (now - _rhLastSnapshotTime < 120000) {
+        console.log('[RhSnap] Skipped — too recent (' + Math.round((now - _rhLastSnapshotTime) / 1000) + 's ago)');
+        return null;
+    }
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return null;
-    var now = new Date();
     var planName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : 'Rehearsal Plan';
-    var dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    var songCount = units.reduce(function(n, u) { return n + (u.type === 'linked' ? (u.songs || []).length : 1); }, 0);
     var snap = {
-        snapshotId: 'rs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
-        name: nameOverride || (planName + ' — ' + dateLabel),
-        savedAt: now.toISOString(),
+        snapshotId: 'rs_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        name: nameOverride || ('Before editing plan'),
+        savedAt: new Date(now).toISOString(),
         savedBy: (typeof currentUserName !== 'undefined' && currentUserName) ? currentUserName : '',
         units: units,
+        songCount: songCount,
         sourcePlanName: planName
     };
     try {
         await db.ref(bandPath('rehearsal_history/' + snap.snapshotId)).set(snap);
-        if (typeof showToast === 'function') showToast('Snapshot saved');
+        _rhLastSnapshotTime = now;
+        // Auto-prune: keep only latest 5
+        _rhPruneSnapshots(5);
         return snap;
     } catch(e) {
         console.warn('[RhSnap] Save failed:', e.message);
         return null;
     }
+}
+
+async function _rhPruneSnapshots(keepCount) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        var snap = await db.ref(bandPath('rehearsal_history')).once('value');
+        var val = snap.val();
+        if (!val) return;
+        var all = Object.values(val).sort(function(a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); });
+        if (all.length <= keepCount) return;
+        var toDelete = all.slice(keepCount);
+        for (var i = 0; i < toDelete.length; i++) {
+            await db.ref(bandPath('rehearsal_history/' + toDelete[i].snapshotId)).remove();
+        }
+    } catch(e) {}
 }
 
 async function _rhLoadSnapshots(limit) {
@@ -736,16 +762,34 @@ window._rhRestoreSnapshot = function(snapshotId) {
     _rhLoadSnapshots(20).then(function(snaps) {
         var snap = snaps.find(function(s) { return s.snapshotId === snapshotId; });
         if (!snap || !snap.units) return;
-        if (!confirm('Load "' + (snap.name || 'snapshot') + '"? This replaces your current plan.')) return;
-        // Save current plan as auto-snapshot first
-        _rhSaveSnapshot('Auto-save before restore').then(function() {
-            _rhPlanCache = _rhPlanCache || {};
-            _rhPlanCache.units = snap.units;
-            _rhPlanCache.name = snap.sourcePlanName || snap.name || 'Restored Plan';
-            _rhSaveUnits(snap.units);
-            _rhReRender();
-            if (typeof showToast === 'function') showToast('Plan restored');
-        });
+        // Show confirmation modal
+        var existing = document.getElementById('rhLoadConfirm');
+        if (existing) existing.remove();
+        var ov = document.createElement('div');
+        ov.id = 'rhLoadConfirm';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+        ov.innerHTML = '<div style="max-width:360px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);text-align:center">'
+            + '<div style="font-size:1em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Load this plan?</div>'
+            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:6px">' + (snap.name || 'Saved plan') + '</div>'
+            + '<div style="font-size:0.72em;color:#64748b;margin-bottom:16px">This will replace your current rehearsal plan.</div>'
+            + '<button onclick="document.getElementById(\'rhLoadConfirm\').remove();window._rhDoRestore(\'' + snapshotId + '\')" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;margin-bottom:6px">Load Plan</button>'
+            + '<button onclick="document.getElementById(\'rhLoadConfirm\').remove()" style="width:100%;padding:8px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">Cancel</button>'
+            + '</div>';
+        ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+    });
+};
+
+window._rhDoRestore = function(snapshotId) {
+    _rhLoadSnapshots(20).then(function(snaps) {
+        var snap = snaps.find(function(s) { return s.snapshotId === snapshotId; });
+        if (!snap || !snap.units) return;
+        _rhPlanCache = _rhPlanCache || {};
+        _rhPlanCache.units = snap.units;
+        _rhPlanCache.name = snap.sourcePlanName || snap.name || 'Restored Plan';
+        _rhSaveUnits(snap.units);
+        _rhReRender();
+        if (typeof showToast === 'function') showToast('Plan loaded');
     });
 };
 
@@ -1093,20 +1137,21 @@ async function _rhRenderSnapshots() {
     if (!el) return;
     var snaps = await _rhLoadSnapshots(5);
     if (!snaps.length) { el.innerHTML = ''; return; }
-    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">📸 Saved Plans (' + snaps.length + ')</summary>'
+    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCC2 Plan History (' + snaps.length + ')</summary>'
         + '<div style="margin-top:6px">';
     snaps.forEach(function(s) {
         var d = s.savedAt ? new Date(s.savedAt) : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
         var timeStr = d ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
-        var unitCount = s.units ? s.units.length : 0;
+        var songCount = s.songCount || (s.units ? s.units.length : 0);
+        var label = s.name || 'Before editing plan';
         html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.78em">'
             + '<div style="flex:1;min-width:0">'
-            + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.name || 'Untitled') + '</div>'
-            + '<div style="font-size:0.82em;color:var(--text-dim)">' + dateStr + ' ' + timeStr + (s.savedBy ? ' · ' + s.savedBy.split(' ')[0] : '') + ' · ' + unitCount + ' blocks</div>'
+            + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(label) + '</div>'
+            + '<div style="font-size:0.82em;color:var(--text-dim)">' + dateStr + ' ' + timeStr + ' \u00B7 ' + songCount + ' songs</div>'
             + '</div>'
             + '<button onclick="_rhRestoreSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">Load</button>'
-            + '<button onclick="_rhDeleteSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-size:0.78em;flex-shrink:0">✕</button>'
+            + '<button onclick="_rhDeleteSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-size:0.78em;flex-shrink:0">\u2715</button>'
             + '</div>';
     });
     html += '</div></details>';
@@ -2621,10 +2666,10 @@ var _rpState = {
 };
 
 window.renderRehearsalPlanner = async function() {
-    // Auto-snapshot current plan before rebuilding
+    // Snapshot current plan before rebuilding (dedupe will skip if too recent)
     var currentUnits = _rhGetUnits();
     if (currentUnits.length > 0) {
-        await _rhSaveSnapshot('Auto-save before rebuild');
+        await _rhSaveSnapshot('Before rebuilding plan');
     }
     _rpState.step = 0;
     var container = document.getElementById('rhTabContent');
