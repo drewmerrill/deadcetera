@@ -100,7 +100,7 @@ window.GLAvatarGuide = (function() {
             'Alright, let\u2019s do this. Grab your songs and we\u2019ll set up a list.'
           ]); },
           coach: 'Just type song names \u2014 I\u2019ll handle the rest.',
-          actions: [{ label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
+          actions: [],
           cooldown: 0, dismissible: true, onboard: true, tone: 'energetic' },
 
         { id: 'onboard_start_rehearsal', stage: 'fan', trigger: 'onboard_step_2', page: 'any',
@@ -159,7 +159,7 @@ window.GLAvatarGuide = (function() {
             'Songs are in! Wanna run through the set?',
             'Alright, looking good. Let\u2019s do a quick run.'
           ]); },
-          actions: [{ label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
+          actions: [],
           cooldown: 0, dismissible: true, tone: 'energetic' },
 
         { id: 'empty_setlist', stage: 'fan', trigger: 'no_setlists', page: 'setlists',
@@ -561,7 +561,7 @@ window.GLAvatarGuide = (function() {
             return { intent: intent, message: 'Add a few songs to get started.', primaryAction: { label: 'Add Songs', onclick: "showPage('songs')" }, secondaryActions: [{ label: 'Import Starter Pack', onclick: 'showStarterPackImport()' }] };
         }
         if (intent === INTENT.FIRST_RUN) {
-            return { intent: intent, message: 'Pick a few songs and I\u2019ll shape a set for you.', primaryAction: { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }, secondaryActions: [] };
+            return { intent: intent, message: 'Pick a few songs or jump into practice or rehearsal.', primaryAction: null, secondaryActions: [] };
         }
         if (intent === INTENT.PREPARE) {
             return { intent: intent, message: 'Gig in ' + (ctx.daysToGig || '?') + ' day' + ((ctx.daysToGig || 0) !== 1 ? 's' : '') + '. Run the set.', primaryAction: { label: 'Run the Set', onclick: "hdPlayBundle('gig')" }, secondaryActions: [{ label: 'Go Live', onclick: "homeGoLive()" }] };

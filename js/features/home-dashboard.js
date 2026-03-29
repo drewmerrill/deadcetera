@@ -462,7 +462,6 @@ function _renderNextActionCard(bundle, wf) {
     else memoryMsg = 'Let\u2019s hear what you\u2019ve got.';
 
     // ── Primary CTA card ──
-    var _secBtnStyle = 'padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:var(--text);font-weight:600;font-size:0.85em;cursor:pointer';
     var runMyBandCard = '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
         + '<div style="text-align:center">'
         + progressHtml
@@ -472,17 +471,17 @@ function _renderNextActionCard(bundle, wf) {
         + '<div style="font-size:0.72em;color:#475569;margin-top:8px">Takes about 10 minutes</div>'
         + (sessionCount > 0 ? '<div style="margin-top:8px"><button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.75em;text-decoration:underline">View last session</button></div>' : '')
         + '</div></div>'
-    // Secondary actions
-        + '<div style="padding:14px 16px;margin-bottom:12px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        + '<button onclick="showPage(\'songs\');setTimeout(function(){if(typeof GLAvatarUI!==\'undefined\')GLAvatarUI.show(\'Let\\u2019s tighten your part before the next rehearsal.\');},600)" style="' + _secBtnStyle + '">\uD83C\uDFB8 Practice My Songs</button>'
-        + '<button onclick="showPage(\'songs\');setTimeout(function(){if(typeof GLAvatarUI!==\'undefined\')GLAvatarUI.show(\'Let\\u2019s tighten your part before the next rehearsal.\');},600)" style="' + _secBtnStyle + '">\uD83C\uDFA4 Work on Harmonies</button>'
-        + '<button onclick="showPage(\'calendar\')" style="' + _secBtnStyle + '">\uD83D\uDCC5 Check Schedule</button>'
+    // ── Intent section: "What do you want to do right now?" ──
+        + '<div style="padding:16px;margin-bottom:12px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
+        + '<div style="font-size:0.82em;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-align:center">What do you want to do right now?</div>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="showPage(\'songs\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFB8 Practice</button>'
+        + '<button onclick="showPage(\'rehearsal\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83E\uDD41 Rehearse</button>'
+        + '<button onclick="showPage(\'setlists\')" style="flex:1;padding:14px 8px;border-radius:12px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;font-weight:700;font-size:0.88em;cursor:pointer;text-align:center">\uD83C\uDFA4 Play Live</button>'
         + '</div></div>'
     // GrooveMate line
         + '<div style="padding:0 4px 8px;font-size:0.82em;color:#64748b;font-style:italic">' + memoryMsg + '</div>';
 
-    // Return ONLY the primary card — no competing CTAs
     return runMyBandCard;
 
     // ── Below: retained for gig-day override (not shown by default) ──────
