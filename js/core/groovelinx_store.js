@@ -758,6 +758,89 @@
   // Auto-preload after readiness loads
   setTimeout(_preloadBandLove, 8000);
 
+  // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
+
+  function _avgReadiness(songId) {
+    try {
+      var scores = getReadiness(songId);
+      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+      return vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+    } catch(e) { return 0; }
+  }
+
+  /**
+   * Priority score: identifies highest-value rehearsal targets.
+   * High love + low readiness = highest priority.
+   * priorityScore = (bandLove * 0.6) + ((5 - readiness) * 0.4)
+   */
+  function getSongPriority(songId) {
+    var love = _bandLoveCache[songId] || 0;
+    var readiness = _avgReadiness(songId);
+    if (love === 0) return 0; // unrated songs have no priority
+    return Math.round((love * 0.6 + (5 - readiness) * 0.4) * 100) / 100;
+  }
+
+  /**
+   * Emotional gap: love minus readiness.
+   * Positive = loved but needs work. Negative = technically fine but low energy.
+   */
+  function getSongGap(songId) {
+    var love = _bandLoveCache[songId] || 0;
+    var readiness = _avgReadiness(songId);
+    if (love === 0 && readiness === 0) return 0;
+    return Math.round((love - readiness) * 100) / 100;
+  }
+
+  /**
+   * Full song signals for NBA engine + avatar insights.
+   */
+  function getSongSignals(songId) {
+    var love = _bandLoveCache[songId] || 0;
+    var readiness = _avgReadiness(songId);
+    return {
+      bandLove: love,
+      readiness: Math.round(readiness * 10) / 10,
+      priorityScore: getSongPriority(songId),
+      derivedStatus: deriveSongStatus(songId),
+      gap: getSongGap(songId),
+      isFocus: getSongPriority(songId) >= 3.5 // high enough to flag
+    };
+  }
+
+  /**
+   * Get top songs ranked by priority score (for rehearsal planning).
+   */
+  function getRehearsalPriorities(limit) {
+    limit = limit || 10;
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    return songs.map(function(s) {
+      return { title: s.title, songId: s.songId, priority: getSongPriority(s.title), signals: getSongSignals(s.title) };
+    }).filter(function(s) { return s.priority > 0; })
+      .sort(function(a, b) { return b.priority - a.priority; })
+      .slice(0, limit);
+  }
+
+  /**
+   * Get band preferences for DNA integration.
+   */
+  function getBandPreferences() {
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var all = songs.map(function(s) {
+      return { title: s.title, love: _bandLoveCache[s.title] || 0, readiness: _avgReadiness(s.title), gap: getSongGap(s.title), priority: getSongPriority(s.title) };
+    }).filter(function(s) { return s.love > 0; });
+
+    all.sort(function(a, b) { return b.love - a.love; });
+    var lovedSongs = all.slice(0, 5).map(function(s) { return s.title; });
+
+    all.sort(function(a, b) { return a.love - b.love; });
+    var lowEnergySongs = all.filter(function(s) { return s.love > 0 && s.love <= 2; }).slice(0, 5).map(function(s) { return s.title; });
+
+    all.sort(function(a, b) { return b.gap - a.gap; });
+    var growthSongs = all.filter(function(s) { return s.gap > 1; }).slice(0, 5).map(function(s) { return s.title; });
+
+    return { lovedSongs: lovedSongs, lowEnergySongs: lowEnergySongs, growthSongs: growthSongs };
+  }
+
   // ── Rehearsals ────────────────────────────────────────────────────────────
 
   /**
@@ -3885,6 +3968,11 @@
     getBandLove:       getBandLove,
     getAllBandLove:     getAllBandLove,
     deriveSongStatus:  deriveSongStatus,
+    getSongPriority:   getSongPriority,
+    getSongGap:        getSongGap,
+    getSongSignals:    getSongSignals,
+    getRehearsalPriorities: getRehearsalPriorities,
+    getBandPreferences: getBandPreferences,
 
     // Rehearsals
     loadRehearsal:     loadRehearsal,

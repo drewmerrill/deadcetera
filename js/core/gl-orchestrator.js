@@ -570,6 +570,13 @@
       }
     }
 
+    // Update preferences from song value model
+    try {
+      if (typeof GLStore !== 'undefined' && GLStore.getBandPreferences) {
+        dna.preferences = GLStore.getBandPreferences();
+      }
+    } catch(e) {}
+
     _saveBandDNA(dna);
     return dna;
   }
@@ -700,8 +707,18 @@
     // 3. Get base next action
     var next = getNextAction(ctx);
     if (!next || !next.action) {
-      // Check anticipation signals
-      if (dna.improvementVelocity < -0.3 && dna.weaknesses.length) {
+      // Check song value signals — suggest high-priority song if available
+      var topSong = null;
+      try {
+        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalPriorities) {
+          var priorities = GLStore.getRehearsalPriorities(1);
+          if (priorities.length && priorities[0].priority >= 3) topSong = priorities[0];
+        }
+      } catch(e) {}
+
+      if (topSong && topSong.signals.gap > 1) {
+        next = { action: null, message: '"' + topSong.title + '" \u2014 you love it but it needs work. Worth a run.', urgency: 'low' };
+      } else if (dna.improvementVelocity < -0.3 && dna.weaknesses.length) {
         next = { action: null, message: 'Focus on "' + dna.weaknesses[dna.weaknesses.length - 1] + '" next rehearsal.', urgency: 'low' };
       } else {
         return { tier: 'silent', action: null, message: null, reason: 'no_action' };
