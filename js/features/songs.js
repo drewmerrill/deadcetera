@@ -364,38 +364,37 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
           + '</tr></thead><tbody>';
 
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
+    // Focus engine — single source of truth for recommendation
     var _suggestHTML = '';
     if (!_isCleanup && filtered.length > 0) {
-        // Find best suggestion: low readiness + has some data + not recently selected
-        var _bestSuggest = null;
-        for (var _si = 0; _si < filtered.length && !_bestSuggest; _si++) {
-            var _ss = filtered[_si];
-            var _sScores = _rc[_ss.title] || {};
-            var _sVals = Object.values(_sScores).filter(function(v) { return typeof v === 'number' && v > 0; });
-            var _sAvg = _sVals.length ? _sVals.reduce(function(a,b){return a+b;},0) / _sVals.length : 0;
-            if (_sAvg > 0 && _sAvg < 3.5) { _bestSuggest = { title: _ss.title, avg: _sAvg, status: _sc[_ss.title] || '' }; }
-        }
-        if (_bestSuggest) {
-            var _sgSafe = _bestSuggest.title.replace(/'/g, "\\'");
-            var _sgStatus = _statusDisplay[_bestSuggest.status] || '';
-            // Human-readable reason (not raw data)
-            var _sgReason = _bestSuggest.avg < 2 ? 'Low readiness · Good use of rehearsal time'
-                          : _bestSuggest.avg < 3 ? 'Needs tightening · Almost there'
-                          : 'Could be stronger · Worth a run-through';
-            // What to fix
-            var _fixItems = [];
-            if (_bestSuggest.avg < 2) _fixItems.push('Run it start to finish');
-            if (_bestSuggest.avg < 3) _fixItems.push('Tighten the transitions');
-            _fixItems.push('Lock in the ending');
-            var _fixHtml = _fixItems.length ? '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">What to fix: ' + _fixItems.slice(0,2).join(' \u00B7 ') + '</div>' : '';
+        var _focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { primary: null, list: [], reason: '' };
+        if (_focus.primary) {
+            var _sgSafe = _focus.primary.title.replace(/'/g, "\\'");
 
-            _suggestHTML = '<div style="display:flex;align-items:center;gap:14px;padding:12px 18px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:12px;border-left:4px solid #22c55e;box-shadow:0 2px 12px rgba(34,197,94,0.06)">'
+            // "Up Next" list (focus.list minus primary)
+            var _upNextHtml = '';
+            if (_focus.list.length > 1) {
+                _upNextHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.04)">';
+                _upNextHtml += '<div style="font-size:0.6em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Up next</div>';
+                _focus.list.slice(1, 4).forEach(function(s) {
+                    var _nSafe = s.title.replace(/'/g, "\\'");
+                    _upNextHtml += '<div onclick="selectSong(\'' + _nSafe + '\')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:0.78em;color:var(--text-dim)">'
+                        + '<span style="width:5px;height:5px;border-radius:50%;background:' + (s.avg < 2 ? '#ef4444' : s.avg < 3 ? '#fbbf24' : '#94a3b8') + ';flex-shrink:0"></span>'
+                        + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.title + '</span></div>';
+                });
+                _upNextHtml += '</div>';
+            }
+
+            _suggestHTML = '<div style="padding:12px 18px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:12px;border-left:4px solid #22c55e;box-shadow:0 2px 12px rgba(34,197,94,0.06)">'
+                + '<div style="display:flex;align-items:center;gap:14px">'
                 + '<div style="flex:1;min-width:0">'
                 + '<div style="font-size:0.58em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#86efac;margin-bottom:4px">Work on this next</div>'
-                + '<div style="font-size:0.95em;font-weight:700;color:var(--text)">' + _bestSuggest.title + '</div>'
-                + _fixHtml
+                + '<div style="font-size:0.95em;font-weight:700;color:var(--text)">' + _focus.primary.title + '</div>'
+                + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">' + (_focus.reason || '') + '</div>'
                 + '</div>'
                 + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;white-space:nowrap">\u25B6 Practice Now</button>'
+                + '</div>'
+                + _upNextHtml
                 + '</div>';
         }
     }

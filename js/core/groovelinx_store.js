@@ -854,6 +854,86 @@
     return { lovedSongs: lovedSongs, lowEnergySongs: lowEnergySongs, growthSongs: growthSongs };
   }
 
+  // ── Focus Engine — single source of truth for "what to work on" ──────────
+  //
+  // GLStore.getNowFocus() → { primary, list, reason }
+  //
+  // Unifies: low readiness, upcoming gig/rehearsal urgency, setlist membership,
+  // and recent rehearsal insights into ONE ordered list.
+  // ALL UI surfaces (Home, Songs, Rehearsal, Song Detail) must use ONLY this.
+
+  var _focusCache = null;
+  var _focusCacheTime = 0;
+
+  function getNowFocus() {
+    // Cache for 30s to avoid re-computing on every render
+    if (_focusCache && (Date.now() - _focusCacheTime < 30000)) return _focusCache;
+
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+
+    // Setlist songs (current set)
+    var setlistSongs = {};
+    var setlists = _setlistCache || [];
+    if (setlists.length) {
+      (setlists[0].sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+          var t = typeof item === 'string' ? item : (item.title || '');
+          if (t) setlistSongs[t] = true;
+        });
+      });
+    }
+
+    // Upcoming urgency
+    var gigs = _gigsCache || [];
+    var today = new Date().toISOString().split('T')[0];
+    var nextGig = gigs.filter(function(g) { return (g.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0] || null;
+    var gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
+
+    // Score each active song
+    var candidates = [];
+    songs.forEach(function(s) {
+      var st = (typeof statusCache !== 'undefined' && statusCache[s.title]) ? statusCache[s.title] : '';
+      if (!activeStatuses[st]) return;
+      var scores = rc[s.title] || {};
+      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+      var avg = vals.length ? vals.reduce(function(a,b) { return a + b; }, 0) / vals.length : 0;
+      if (avg === 0) return; // unrated — skip
+
+      // Composite focus score: lower readiness = higher focus
+      var focusScore = (5 - avg) * 2; // 0-10 scale based on readiness gap
+      // Setlist membership boost
+      if (setlistSongs[s.title]) focusScore += 3;
+      // Gig urgency boost
+      if (gigDays <= 7 && setlistSongs[s.title]) focusScore += (8 - gigDays);
+      // Priority boost (love × gap)
+      var pri = getSongPriority(s.title);
+      if (pri > 0) focusScore += pri * 0.5;
+
+      if (avg < 4) { // only include songs that actually need work
+        candidates.push({ title: s.title, avg: avg, focusScore: focusScore, inSetlist: !!setlistSongs[s.title] });
+      }
+    });
+
+    candidates.sort(function(a, b) { return b.focusScore - a.focusScore; });
+    var list = candidates.slice(0, 5);
+    var primary = list[0] || null;
+
+    // Generate reason
+    var reason = '';
+    if (primary) {
+      if (gigDays <= 3 && primary.inSetlist) reason = 'Gig soon \u2014 this needs work before you play.';
+      else if (primary.avg < 2) reason = 'Low readiness. Run it start to finish.';
+      else if (primary.avg < 3) reason = 'Almost there. Tighten the weak spots.';
+      else reason = 'Could be stronger. Worth a run-through.';
+    }
+
+    _focusCache = { primary: primary, list: list, reason: reason, count: candidates.length };
+    _focusCacheTime = Date.now();
+    return _focusCache;
+  }
+
   // ── Rehearsals ────────────────────────────────────────────────────────────
 
   /**
@@ -3986,6 +4066,9 @@
     getSongSignals:    getSongSignals,
     getRehearsalPriorities: getRehearsalPriorities,
     getBandPreferences: getBandPreferences,
+
+    // Focus Engine — single source of truth for "what to work on"
+    getNowFocus:       getNowFocus,
 
     // Rehearsals
     loadRehearsal:     loadRehearsal,

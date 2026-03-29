@@ -401,14 +401,14 @@ function _renderNextUpCard(msg, sub, cta) {
 
 // ── Secondary Actions — 3 distinct journeys (no overlap) ─────────────────────
 function _renderIntentSection() {
-    // "Get Better" routes to first weak song or songs page
-    var _weakForPractice = _homeBundle ? _getWeakSongs(_homeBundle, 1) : [];
+    // "Get Better" routes to focus song (single source of truth)
+    var _focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { primary: null };
     var _practiceClick = '';
-    if (_weakForPractice.length && _weakForPractice[0].title) {
-        var _sw = _weakForPractice[0].title.replace(/'/g, "\\'");
+    if (_focus.primary && _focus.primary.title) {
+        var _sw = _focus.primary.title.replace(/'/g, "\\'");
         _practiceClick = "showPage('songs');setTimeout(function(){if(typeof selectSong==='function')selectSong('" + _sw + "');},300)";
     } else {
-        _practiceClick = "showPage('songs');setTimeout(function(){if(typeof GLAvatarUI!=='undefined'&&GLAvatarUI.show)GLAvatarUI.show('Let\\u2019s tighten your part before the next rehearsal.');},600)";
+        _practiceClick = "showPage('songs')";
     }
 
     var _secBtn = 'flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;text-align:center;font-size:0.78em;font-weight:600';
@@ -423,9 +423,10 @@ function _renderIntentSection() {
 function _renderNextActionCard(bundle, wf) {
     var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
     var hasSetlist = bundle.setlists && bundle.setlists.length > 0;
-    var weakSongs = _getWeakSongs(bundle, 5);
-    var weakCount = weakSongs.length;
-    var firstWeakTitle = weakCount > 0 ? weakSongs[0].title : null;
+    // Single source of truth for focus songs
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { primary: null, list: [], reason: '', count: 0 };
+    var weakCount = focus.count;
+    var firstWeakTitle = focus.primary ? focus.primary.title : null;
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
     var dna = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getBandDNA) ? GLOrchestrator.getBandDNA() : {};
@@ -683,7 +684,9 @@ function _getPracticeStreak() {
 
 // ── Top Songs to Work ────────────────────────────────────────────────────────
 function _renderTopSongsToWork(bundle) {
-    var songs = _getWeakSongs(bundle, 3);
+    // Use focus engine — single source of truth
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var songs = focus.list.slice(0, 3);
     if (!songs.length) return '';
 
     var html = '<div class="app-card" style="padding:12px 14px;margin-bottom:12px">';
