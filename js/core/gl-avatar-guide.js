@@ -159,7 +159,7 @@ window.GLAvatarGuide = (function() {
             'Songs are in! Wanna run through the set?',
             'Alright, looking good. Let\u2019s do a quick run.'
           ]); },
-          actions: [{ label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }],
+          actions: [{ label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }],
           cooldown: 0, dismissible: true, tone: 'energetic' },
 
         { id: 'empty_setlist', stage: 'fan', trigger: 'no_setlists', page: 'setlists',
@@ -561,20 +561,20 @@ window.GLAvatarGuide = (function() {
             return { intent: intent, message: 'Add a few songs to get started.', primaryAction: { label: 'Add Songs', onclick: "showPage('songs')" }, secondaryActions: [{ label: 'Import Starter Pack', onclick: 'showStarterPackImport()' }] };
         }
         if (intent === INTENT.FIRST_RUN) {
-            return { intent: intent, message: 'Let\u2019s run one. Hit play.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }, secondaryActions: [] };
+            return { intent: intent, message: 'Pick a few songs and I\u2019ll shape a set for you.', primaryAction: { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" }, secondaryActions: [] };
         }
         if (intent === INTENT.PREPARE) {
-            return { intent: intent, message: 'Gig in ' + (ctx.daysToGig || '?') + ' day' + ((ctx.daysToGig || 0) !== 1 ? 's' : '') + '. Run the set.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('gig')" }, secondaryActions: [{ label: 'Go Live', onclick: "homeGoLive()" }] };
+            return { intent: intent, message: 'Gig in ' + (ctx.daysToGig || '?') + ' day' + ((ctx.daysToGig || 0) !== 1 ? 's' : '') + '. Run the set.', primaryAction: { label: 'Run the Set', onclick: "hdPlayBundle('gig')" }, secondaryActions: [{ label: 'Go Live', onclick: "homeGoLive()" }] };
         }
         if (intent === INTENT.REHEARSE) {
             return { intent: intent, message: 'Good session. Log notes or attach the mixdown.', primaryAction: { label: 'Add Notes', onclick: "showPage('rehearsal')" }, secondaryActions: [] };
         }
         if (intent === INTENT.IMPROVE) {
             var wc = ctx.weakCount || 0;
-            if (wc > 0) return { intent: intent, message: wc + ' song' + (wc > 1 ? 's' : '') + ' need reps.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }, secondaryActions: [{ label: 'See Weak Songs', onclick: "showPage('home')" }] };
-            return { intent: intent, message: 'Keep it tight \u2014 run the set.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('gig')" }, secondaryActions: [] };
+            if (wc > 0) return { intent: intent, message: wc + ' song' + (wc > 1 ? 's' : '') + ' need reps.', primaryAction: { label: 'Practice Songs', onclick: "showPage('songs')" }, secondaryActions: [] };
+            return { intent: intent, message: 'Keep it tight \u2014 run the set.', primaryAction: { label: 'Run the Set', onclick: "hdPlayBundle('gig')" }, secondaryActions: [] };
         }
-        return { intent: intent, message: 'All good. Keep the rhythm going.', primaryAction: { label: '\u25B6 Run What Matters', onclick: "hdPlayBundle('focus')" }, secondaryActions: [] };
+        return { intent: intent, message: 'All good. Keep the rhythm going.', primaryAction: null, secondaryActions: [] };
     }
 
     // ── Tip Suppression ─────────────────────────────────────────────────────

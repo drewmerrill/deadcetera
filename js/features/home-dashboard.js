@@ -1210,17 +1210,19 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
         '<div style="font-size:0.78em;color:var(--text-dim);padding:0 4px 8px">' + dateStr + '</div>',
-        // ── Above the fold: ONE primary action ──
+        // ── Above the fold: ONE primary action only ──
         _renderNextActionCard(bundle, wf),
-        // ── Below the fold: supporting intelligence ──
+        // ── Below the fold ──
         _renderTopSongsToWork(bundle),
         _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
         _renderBandScorecard(bundle),
-        _renderActionOwedCard(),
-        _renderBandAlignmentCard(),
         _renderSessionPlan(bundle),
         _renderBandReadinessSnapshot(bundle),
-        _renderSetupGuidance(bundle, wf),
+        // ── Band Activity (collapsed) ──
+        '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Band Activity</summary>',
+        _renderActionOwedCard(),
+        _renderBandAlignmentCard(),
+        '</details>',
         '<div id="hdPollCard"></div>',
         '</div>'
     ].join('');

@@ -389,11 +389,9 @@ window.GLAvatarUI = (function() {
         ov.innerHTML = ''
             + '<div style="font-size:1.6em;margin-bottom:12px">\uD83C\uDFB8</div>'
             + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:#818cf8;text-transform:uppercase;margin-bottom:6px">GrooveMate</div>'
-            + '<div style="font-size:1.1em;font-weight:800;margin-bottom:4px">Nice \u2014 let\u2019s run one.</div>'
-            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px">Just hit play \u2014 I\u2019ve got the rest.</div>'
-            + '<button onclick="_glAvAutoLaunchPlay()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.95em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3)">\u25B6 Run What Matters</button>'
-            + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;text-align:center">We picked the best songs for you to work on right now</div>'
-            + '<button onclick="_glAvAutoLaunchDismiss()" style="width:100%;margin-top:10px;padding:6px;border-radius:6px;border:none;background:none;color:#334155;cursor:pointer;font-size:0.68em">Skip for now</button>';
+            + '<div style="font-size:1.1em;font-weight:800;margin-bottom:4px">Start by picking a few songs \u2014</div>'
+            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px">I\u2019ll take it from there.</div>'
+            + '<button onclick="_glAvAutoLaunchDismiss()" style="width:100%;padding:10px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">Got it</button>';
         document.body.appendChild(ov);
         // No auto-dismiss — only user action closes this
     }
