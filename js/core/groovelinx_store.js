@@ -875,7 +875,7 @@
 
     // Setlist songs (current set)
     var setlistSongs = {};
-    var setlists = _setlistCache || [];
+    var setlists = _store.setlistCache || [];
     if (setlists.length) {
       (setlists[0].sets || []).forEach(function(set) {
         (set.songs || []).forEach(function(item) {
@@ -886,7 +886,7 @@
     }
 
     // Upcoming urgency
-    var gigs = _gigsCache || [];
+    var gigs = _store.gigsCache || [];
     var today = new Date().toISOString().split('T')[0];
     var nextGig = gigs.filter(function(g) { return (g.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0] || null;
     var gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
