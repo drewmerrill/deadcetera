@@ -408,7 +408,7 @@ function _renderIntentSection() {
         var _sw = _weakForPractice[0].title.replace(/'/g, "\\'");
         _practiceClick = "showPage('songdetail');if(typeof renderSongDetail==='function')renderSongDetail('" + _sw + "')";
     } else {
-        _practiceClick = "showPage('songs')";
+        _practiceClick = "showPage('songs');setTimeout(function(){if(typeof GLAvatarUI!=='undefined'&&GLAvatarUI.show)GLAvatarUI.show('Let\\u2019s tighten your part before the next rehearsal.');},600)";
     }
 
     var _secBtn = 'flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;text-align:center;font-size:0.78em;font-weight:600';

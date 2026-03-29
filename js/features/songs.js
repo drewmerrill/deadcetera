@@ -382,13 +382,20 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             var _sgReason = _bestSuggest.avg < 2 ? 'Low readiness · Good use of rehearsal time'
                           : _bestSuggest.avg < 3 ? 'Needs tightening · Almost there'
                           : 'Could be stronger · Worth a run-through';
-            _suggestHTML = '<div style="display:flex;align-items:center;gap:14px;padding:12px 18px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;border-left:4px solid #667eea;box-shadow:0 2px 12px rgba(99,102,241,0.06)">'
+            // What to fix
+            var _fixItems = [];
+            if (_bestSuggest.avg < 2) _fixItems.push('Run it start to finish');
+            if (_bestSuggest.avg < 3) _fixItems.push('Tighten the transitions');
+            _fixItems.push('Lock in the ending');
+            var _fixHtml = _fixItems.length ? '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">What to fix: ' + _fixItems.slice(0,2).join(' \u00B7 ') + '</div>' : '';
+
+            _suggestHTML = '<div style="display:flex;align-items:center;gap:14px;padding:12px 18px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:12px;border-left:4px solid #22c55e;box-shadow:0 2px 12px rgba(34,197,94,0.06)">'
                 + '<div style="flex:1;min-width:0">'
-                + '<div style="font-size:0.58em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#818cf8;margin-bottom:4px">Play This Next</div>'
+                + '<div style="font-size:0.58em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#86efac;margin-bottom:4px">Work on this next</div>'
                 + '<div style="font-size:0.95em;font-weight:700;color:var(--text)">' + _bestSuggest.title + '</div>'
-                + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:3px">' + _sgReason + '</div>'
+                + _fixHtml
                 + '</div>'
-                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:linear-gradient(135deg,rgba(99,102,241,0.2),rgba(99,102,241,0.1));color:#a5b4fc;white-space:nowrap">Start Practice</button>'
+                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;white-space:nowrap">\u25B6 Practice Now</button>'
                 + '</div>';
         }
     }
@@ -441,12 +448,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var chips = [];
         // 1. Lifecycle status — what the song IS (primary identity)
         if (statusText) chips.push('<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>');
-        // 1b. Derived value status (love + readiness)
+        // Simplified: only show lifecycle status chip — no derived/focus noise
+        if (false) { // derived + focus chips disabled for clarity
         var _derived = (typeof GLStore !== 'undefined' && GLStore.deriveSongStatus) ? GLStore.deriveSongStatus(song.title) : null;
         if (_derived && _derived.status !== 'unrated') {
             chips.push('<span class="song-chip" style="color:' + _derived.color + ';border-color:' + _derived.color + '44;background:' + _derived.color + '15;font-size:0.65em">' + _derived.label + '</span>');
         }
-        // 1c. Focus level — simplified from priorityScore (no numbers exposed)
         if (typeof GLStore !== 'undefined' && GLStore.getSongPriority) {
             var _pri = GLStore.getSongPriority(song.title);
             if (_pri >= 3.5) {
@@ -455,12 +462,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 chips.push('<span class="song-chip" style="color:#818cf8;border-color:#818cf844;background:#818cf815;font-size:0.6em">Focus</span>');
             }
         }
-        // 2. Attention conditions — what to DO about it (secondary, muted)
-        if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">⚠️ Needs work</span>');
-        else if (avg >= 3 && avg < 3.8) chips.push('<span class="song-chip song-chip--warm">🔥 Keep warm</span>');
-        if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">🎯 Setlist</span>');
-        // 3. Unrated fallback
-        if (avg === 0 && !statusText) chips.push('<span class="song-chip song-chip--dim">Unrated</span>');
+        } // end if(false) derived/focus chips
+        // 2. One clear signal — "Needs work" or "On setlist"
+        if (_topGaps[song.title] || (avg > 0 && avg < 3)) chips.push('<span class="song-chip song-chip--warn">\u26A0\uFE0F Needs work</span>');
+        if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">\uD83C\uDFAF Setlist</span>');
 
         var needsWork = chips.some(function(c) { return c.indexOf('warn') > -1; });
         var chipHTML = chips.slice(0, 2).join(' ');
