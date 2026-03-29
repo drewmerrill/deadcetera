@@ -446,11 +446,13 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_derived && _derived.status !== 'unrated') {
             chips.push('<span class="song-chip" style="color:' + _derived.color + ';border-color:' + _derived.color + '44;background:' + _derived.color + '15;font-size:0.65em">' + _derived.label + '</span>');
         }
-        // 1c. Focus tag for high-priority rehearsal targets
-        if (typeof GLStore !== 'undefined' && GLStore.getSongSignals) {
-            var _sig = GLStore.getSongSignals(song.title);
-            if (_sig.isFocus) {
-                chips.push('<span class="song-chip" style="color:#f59e0b;border-color:#f59e0b44;background:#f59e0b15;font-size:0.6em;font-weight:800">\uD83C\uDFAF Focus</span>');
+        // 1c. Focus level — simplified from priorityScore (no numbers exposed)
+        if (typeof GLStore !== 'undefined' && GLStore.getSongPriority) {
+            var _pri = GLStore.getSongPriority(song.title);
+            if (_pri >= 3.5) {
+                chips.push('<span class="song-chip" style="color:#f59e0b;border-color:#f59e0b44;background:#f59e0b15;font-size:0.6em;font-weight:800">\uD83C\uDFAF High Focus</span>');
+            } else if (_pri >= 2.5) {
+                chips.push('<span class="song-chip" style="color:#818cf8;border-color:#818cf844;background:#818cf815;font-size:0.6em">Focus</span>');
             }
         }
         // 2. Attention conditions — what to DO about it (secondary, muted)

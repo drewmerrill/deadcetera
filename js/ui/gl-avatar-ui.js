@@ -154,7 +154,7 @@ window.GLAvatarUI = (function() {
         html += '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0">';
         html += '<div id="glAvPanelFace" style="flex-shrink:0">' + _buildAvatarImg(_currentExpression, 40) + '</div>';
         var _apLevel = localStorage.getItem('gl_autopilot_level') || 'auto';
-        var _apLabels = { auto: '\u2713 Auto', assist: '\u2261 Assist', suggest: '\u25CB Suggest' };
+        var _apLabels = { auto: 'Hands-off', assist: 'Balanced', suggest: 'Hands-on' };
         var _apColors = { auto: '#22c55e', assist: '#818cf8', suggest: '#94a3b8' };
         html += '<div style="flex:1"><div style="font-size:0.88em;font-weight:800;color:#e2e8f0">' + _AVATAR_NAME + ' <span style="font-size:0.6em;font-weight:600;color:' + (_apColors[_apLevel] || '#94a3b8') + ';vertical-align:middle">' + (_apLabels[_apLevel] || '') + '</span></div>';
         html += '<div style="font-size:0.65em;color:#64748b">' + (stageLabels[stage] || '') + '</div></div>';

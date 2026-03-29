@@ -842,10 +842,10 @@
 
     // Build human-readable reason
     var reason = '';
-    if (r.mode === 'silent') reason = 'I didn\u2019t act because confidence was too low or you were in the middle of something.';
-    else if (r.mode === 'auto') reason = 'I acted automatically because this was low-risk and I was confident it was the right call.';
-    else if (r.mode === 'assist') reason = 'I suggested this because the signals pointed here, but wanted your OK first.';
-    else reason = 'I flagged this as a possibility but left the decision to you.';
+    if (r.mode === 'silent') reason = 'I held off \u2014 didn\u2019t want to interrupt.';
+    else if (r.mode === 'auto') reason = 'I went ahead because it was safe and obvious.';
+    else if (r.mode === 'assist') reason = 'I thought this was right but wanted to check with you first.';
+    else reason = 'This seemed worth mentioning but I left it up to you.';
 
     return {
       reason: reason,
@@ -882,27 +882,26 @@
 
   function getAccountabilityMessage(sessionData) {
     var dna = _loadBandDNA();
-    var personality = getBandPersonality();
     var msgs = [];
 
     if (sessionData && sessionData.rating) {
       if (sessionData.rating >= 4) {
-        msgs.push('That was a strong session. I chose those songs because they needed tightening \u2014 and it worked.');
+        msgs.push('That clicked. The songs I picked needed tightening and they got tighter.');
       } else if (sessionData.rating >= 3) {
-        msgs.push('Solid run. We focused on the right areas. Next time I\u2019ll push harder on the weak spots.');
+        msgs.push('Solid. We hit the right stuff. Next time I\u2019ll push harder on the ones that aren\u2019t there yet.');
       } else {
-        msgs.push('That was rough. I\u2019ll adjust the plan next time \u2014 fewer new songs, more repetition on what\u2019s not clicking.');
+        msgs.push('That was a grind. I\u2019ll pull back next time \u2014 fewer new songs, more reps on what\u2019s not clicking.');
       }
     }
 
     if (dna.weaknesses && dna.weaknesses.length) {
-      msgs.push('I\u2019m tracking "' + dna.weaknesses[dna.weaknesses.length - 1] + '" as the biggest gap right now.');
+      msgs.push('"' + dna.weaknesses[dna.weaknesses.length - 1] + '" still needs work. I\u2019ll keep it in the rotation.');
     }
 
     if (dna.improvementVelocity > 0.3) {
-      msgs.push('The band is getting tighter. I\u2019ll keep this intensity.');
+      msgs.push('You\u2019re getting tighter. I\u2019ll keep this pace.');
     } else if (dna.improvementVelocity < -0.3) {
-      msgs.push('We\u2019re slipping. I\u2019ll dial back complexity and focus on fundamentals next session.');
+      msgs.push('Things are slipping. I\u2019ll simplify and focus on fundamentals next time.');
     }
 
     return msgs.length ? msgs.join(' ') : 'Ready when you are.';

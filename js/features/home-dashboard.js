@@ -435,10 +435,10 @@ function _renderNextActionCard(bundle, wf) {
 
     // Avatar memory message
     var memoryMsg = '';
-    if (sessionCount >= 3 && velocity > 0.2) memoryMsg = 'You\u2019re getting tighter every session.';
-    else if (sessionCount >= 3 && velocity < -0.2 && dna.weaknesses && dna.weaknesses.length) memoryMsg = '"' + dna.weaknesses[dna.weaknesses.length - 1] + '" still needs work.';
-    else if (sessionCount >= 1) memoryMsg = 'Ready for session #' + (sessionCount + 1) + '.';
-    else memoryMsg = 'Your first session is waiting.';
+    if (sessionCount >= 3 && velocity > 0.2) memoryMsg = 'You\u2019re getting tighter. Let\u2019s keep it going.';
+    else if (sessionCount >= 3 && velocity < -0.2 && dna.weaknesses && dna.weaknesses.length) memoryMsg = '"' + dna.weaknesses[dna.weaknesses.length - 1] + '" needs some love. I\u2019ll build the plan around it.';
+    else if (sessionCount >= 1) memoryMsg = 'Session ' + (sessionCount + 1) + '. I\u2019ve got a plan.';
+    else memoryMsg = 'Let\u2019s hear what you\u2019ve got.';
 
     // For beginners: show ONLY the Run My Band card (minimal UI)
     var runMyBandCard = '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'

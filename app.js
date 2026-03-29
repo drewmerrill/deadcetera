@@ -4,7 +4,7 @@
 // Last updated: 2026-02-26
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-045356', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-045756', 'color:#667eea;font-weight:bold;font-size:14px');
 // ── Version baseline — immutable client build stamp ───────────────────────────
 // Try meta tag first, then fall back to ?v= param on the app.js script tag.
 var BUILD_VERSION = (document.querySelector('meta[name="build-version"]') || {}).content || '';
@@ -10225,16 +10225,16 @@ function settingsTab(tab, btn) {
             </label>
         </div>
         <div class="app-card"><h3>\uD83E\uDD16 GrooveMate Behavior</h3>
-            <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:12px">Control how much GrooveMate does automatically.</div>
+            <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:12px">How hands-on do you want GrooveMate to be?</div>
             <div style="display:flex;flex-direction:column;gap:6px" id="glAutopilotControl">
                 <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:0.85em;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(255,255,255,0.02)" onclick="_glSetAutopilot('suggest')">
-                    <input type="radio" name="glAutopilot" value="suggest" style="accent-color:var(--accent)"> <div><strong>Suggest only</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate shows suggestions but never acts on its own</div></div>
+                    <input type="radio" name="glAutopilot" value="suggest" style="accent-color:var(--accent)"> <div><strong>Hands-on</strong><div style="font-size:0.8em;color:var(--text-dim)">You make all the decisions. GrooveMate just suggests.</div></div>
                 </label>
                 <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:0.85em;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(255,255,255,0.02)" onclick="_glSetAutopilot('assist')">
-                    <input type="radio" name="glAutopilot" value="assist" style="accent-color:var(--accent)"> <div><strong>Ask before acting</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate suggests actions and asks before executing</div></div>
+                    <input type="radio" name="glAutopilot" value="assist" style="accent-color:var(--accent)"> <div><strong>Balanced</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate helps but checks with you first.</div></div>
                 </label>
                 <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:0.85em;border:1px solid rgba(99,102,241,0.3);border-radius:8px;background:rgba(99,102,241,0.05)" onclick="_glSetAutopilot('auto')">
-                    <input type="radio" name="glAutopilot" value="auto" style="accent-color:var(--accent)" checked> <div><strong>Act automatically</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate acts on low-risk actions automatically (with undo)</div></div>
+                    <input type="radio" name="glAutopilot" value="auto" style="accent-color:var(--accent)" checked> <div><strong>Hands-off</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate runs things. You can always undo.</div></div>
                 </label>
             </div>
         </div>`,
@@ -10387,7 +10387,7 @@ function settingsTab(tab, btn) {
 
 window._glSetAutopilot = function(level) {
     localStorage.setItem('gl_autopilot_level', level);
-    if (typeof showToast === 'function') showToast('GrooveMate: ' + (level === 'auto' ? 'Full autopilot' : level === 'assist' ? 'Ask before acting' : 'Suggest only'));
+    if (typeof showToast === 'function') showToast('GrooveMate: ' + (level === 'auto' ? 'Hands-off mode' : level === 'assist' ? 'Balanced mode' : 'Hands-on mode'));
     // Update radio buttons
     document.querySelectorAll('input[name="glAutopilot"]').forEach(function(r) { r.checked = r.value === level; });
     var labels = document.querySelectorAll('#glAutopilotControl label');
