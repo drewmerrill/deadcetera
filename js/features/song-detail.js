@@ -335,6 +335,11 @@ async function _sdPopulateBandLens(title) {
         '<div style="margin-top:12px;display:flex;gap:8px">'+
         '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83D\uDCCB Run Through</button>'+
         '</div></div>'+
+        // ── Band Love ──
+        '<div class="sd-card" id="sd-love-card">'+
+        '<div class="sd-card-title">\u2764\uFE0F Love Playing</div>'+
+        _sdRenderBandLove(title, safeSong)+
+        '</div>'+
         // ── Readiness ──
         '<div class="sd-card" id="sd-readiness-card">'+
         '<div class="sd-card-title">📊 Band Readiness</div>'+
@@ -1876,5 +1881,41 @@ function _sdInjectStyles(){
     '@media(max-width:768px){.sd-mobile-bar{display:flex}.song-detail-page{padding-bottom:120px}}';
     document.head.appendChild(s);
 }
+
+// ── Band Love Rating ────────────────────────────────────────────────────────
+
+function _sdRenderBandLove(title, safeSong) {
+    var love = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(title) : 0;
+    var derived = (typeof GLStore !== 'undefined' && GLStore.deriveSongStatus) ? GLStore.deriveSongStatus(title) : { label: 'Unrated', color: '#64748b' };
+    var HEARTS = ['\u2764\uFE0F', '\uD83E\uDDE1', '\uD83D\uDC9B', '\uD83D\uDC9A', '\uD83D\uDC99'];
+    var labels = ['Not set', 'Meh', 'It\u2019s OK', 'Like it', 'Love it', 'LOVE IT'];
+
+    var html = '<div style="display:flex;align-items:center;gap:12px;padding:8px 0">';
+    html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);min-width:70px">Band Love</span>';
+    for (var i = 1; i <= 5; i++) {
+        var active = i <= love;
+        html += '<button onclick="sdSaveBandLove(\'' + safeSong + '\',\'' + title.replace(/'/g, '') + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
+    }
+    html += '<span style="font-size:0.75em;color:var(--text-dim);margin-left:auto">' + labels[love] + '</span>';
+    html += '</div>';
+
+    // Derived status badge
+    if (derived.status !== 'unrated') {
+        html += '<div style="display:inline-block;font-size:0.72em;font-weight:700;padding:3px 10px;border-radius:6px;background:' + derived.color + '20;color:' + derived.color + ';border:1px solid ' + derived.color + '30;margin-top:4px">' + derived.label + '</div>';
+    }
+
+    return html;
+}
+
+window.sdSaveBandLove = function(safeSong, title, value) {
+    if (typeof GLStore !== 'undefined' && GLStore.saveBandLove) {
+        GLStore.saveBandLove(title, value);
+        // Re-render the love card
+        var card = document.getElementById('sd-love-card');
+        if (card) {
+            card.innerHTML = '<div class="sd-card-title">\u2764\uFE0F Love Playing</div>' + _sdRenderBandLove(title, safeSong);
+        }
+    }
+};
 
 console.log('✅ song-detail.js loaded (Phase 2 — direct Firebase, no DOM mirroring)');

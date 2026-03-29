@@ -675,6 +675,89 @@
     return {};
   }
 
+  // ── Band Love (how much the band enjoys playing a song) ──────────────────
+  // Band-level rating (not per-member). Scale 1-5.
+
+  var _bandLoveCache = {};
+
+  async function saveBandLove(songId, value) {
+    var v = parseInt(value, 10);
+    if (isNaN(v) || v < 0 || v > 5) return;
+    var db = _db();
+    if (!db) return;
+    var k = _sanitize(songId);
+    try {
+      if (v === 0) {
+        await db.ref(_bp('songs/' + k + '/bandLove')).remove();
+        delete _bandLoveCache[songId];
+      } else {
+        await db.ref(_bp('songs/' + k + '/bandLove')).set({ score: v, updatedAt: new Date().toISOString() });
+        _bandLoveCache[songId] = v;
+      }
+      emit('bandLoveChanged', { songId: songId, value: v });
+      if (typeof showToast === 'function') showToast(v > 0 ? 'Love: ' + v + '/5' : 'Love cleared');
+    } catch(e) {
+      if (typeof showToast === 'function') showToast('Could not save');
+    }
+  }
+
+  function getBandLove(songId) {
+    return _bandLoveCache[songId] || 0;
+  }
+
+  function getAllBandLove() {
+    return _bandLoveCache;
+  }
+
+  /**
+   * Derive song status from love + readiness.
+   * Core Song = high love (4+) + high readiness (4+)
+   * Worth the Work = high love (4+) + low readiness (<3)
+   * Utility Song = low love (<3) + high readiness (4+)
+   * Shelve Candidate = low love (<3) + low readiness (<3)
+   */
+  function deriveSongStatus(songId) {
+    var love = _bandLoveCache[songId] || 0;
+    var readiness = 0;
+    try {
+      var scores = getReadiness(songId);
+      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
+      readiness = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+    } catch(e) {}
+
+    if (love === 0 && readiness === 0) return { status: 'unrated', label: 'Unrated', color: '#64748b' };
+    if (love >= 4 && readiness >= 4) return { status: 'core', label: 'Core Song', color: '#22c55e' };
+    if (love >= 4 && readiness < 3) return { status: 'worth_work', label: 'Worth the Work', color: '#f59e0b' };
+    if (love < 3 && readiness >= 4) return { status: 'utility', label: 'Utility', color: '#6366f1' };
+    if (love < 3 && readiness < 3) return { status: 'shelve', label: 'Shelve Candidate', color: '#ef4444' };
+    // Middle ground
+    if (love >= 3 && readiness >= 3) return { status: 'solid', label: 'Solid', color: '#86efac' };
+    if (love >= 3) return { status: 'growing', label: 'Growing', color: '#818cf8' };
+    return { status: 'developing', label: 'Developing', color: '#94a3b8' };
+  }
+
+  // Preload band love cache on boot
+  async function _preloadBandLove() {
+    var db = _db();
+    if (!db) return;
+    try {
+      var snap = await db.ref(_bp('songs')).once('value');
+      var data = snap.val();
+      if (!data) return;
+      Object.keys(data).forEach(function(key) {
+        if (data[key] && data[key].bandLove && data[key].bandLove.score) {
+          // Map sanitized key back to song title
+          var title = key.replace(/_/g, ' ');
+          _bandLoveCache[title] = data[key].bandLove.score;
+          _bandLoveCache[key] = data[key].bandLove.score; // keep both forms
+        }
+      });
+    } catch(e) {}
+  }
+
+  // Auto-preload after readiness loads
+  setTimeout(_preloadBandLove, 8000);
+
   // ── Rehearsals ────────────────────────────────────────────────────────────
 
   /**
@@ -3798,6 +3881,10 @@
     updateSongField:   updateSongField,
     saveReadiness:     saveReadiness,
     getReadiness:      getReadiness,
+    saveBandLove:      saveBandLove,
+    getBandLove:       getBandLove,
+    getAllBandLove:     getAllBandLove,
+    deriveSongStatus:  deriveSongStatus,
 
     // Rehearsals
     loadRehearsal:     loadRehearsal,
