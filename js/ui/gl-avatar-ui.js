@@ -243,15 +243,7 @@ window.GLAvatarUI = (function() {
             if (tip.coach) html += '<div style="font-size:0.78em;color:#64748b;font-style:italic;line-height:1.4">' + _esc(tip.coach) + '</div>';
             html += '</div>';
 
-            // Conversation-style history placeholder
-            html += '<div style="border-top:1px solid rgba(255,255,255,0.04);padding-top:12px">';
-            html += '<div style="font-size:0.68em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Quick Actions</div>';
-            // Common quick actions based on page
-            var quickActions = _getQuickActions(ctx);
-            quickActions.forEach(function(qa) {
-                html += '<button onclick="' + qa.onclick + ';GLAvatarUI.closePanel()" style="display:block;width:100%;text-align:left;padding:8px 12px;margin-bottom:4px;border-radius:8px;font-size:0.78em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:#94a3b8;cursor:pointer">' + _esc(qa.label) + '</button>';
-            });
-            html += '</div>';
+            // No quick actions — avatar is guidance only
 
             msgArea.innerHTML = html;
 
@@ -285,37 +277,17 @@ window.GLAvatarUI = (function() {
                 pbHtml += '</div>';
                 msgArea.innerHTML = pbHtml;
             }
-            // Show Next Best Action from engine
+            // Context-aware guidance — text only, no CTAs
             var nba = G.getNextBestAction ? G.getNextBestAction(ctx) : null;
-            if (nba) {
-                msgArea.innerHTML = '<div style="margin-bottom:16px">'
-                    + '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5;margin-bottom:10px">' + _esc(nba.message) + '</div>'
-                    + '<button onclick="' + nba.primaryAction.onclick + ';GLAvatarUI.closePanel()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.88em;cursor:pointer;margin-bottom:6px">' + _esc(nba.primaryAction.label) + '</button>'
-                    + (nba.secondaryActions || []).map(function(a) {
-                        if (a.dismiss) return '';
-                        return '<button onclick="' + a.onclick + ';GLAvatarUI.closePanel()" style="width:100%;padding:8px;border-radius:8px;font-size:0.78em;font-weight:600;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer;margin-bottom:4px">' + _esc(a.label) + '</button>';
-                    }).join('')
+            if (nba && nba.message) {
+                msgArea.innerHTML = '<div style="padding:8px 0">'
+                    + '<div style="font-size:0.88em;font-weight:600;color:#e2e8f0;line-height:1.5">' + _esc(nba.message) + '</div>'
                     + '</div>';
-
-                // Spotify status if relevant
-                var spMsg = G.getSpotifyMessage ? G.getSpotifyMessage() : null;
-                if (spMsg) {
-                    var spColors = { success: '#1ed760', action: '#fbbf24', info: '#94a3b8', warning: '#f87171' };
-                    msgArea.innerHTML += '<div style="font-size:0.72em;color:' + (spColors[spMsg.type] || '#94a3b8') + ';padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-top:8px">' + _esc(spMsg.message) + '</div>';
-                }
             } else {
-                msgArea.innerHTML = '<div style="text-align:center;padding:20px">'
-                    + '<div style="font-size:1.2em;margin-bottom:8px">\uD83C\uDFB8</div>'
-                    + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0;margin-bottom:4px">All good</div>'
-                    + '<div style="font-size:0.78em;color:#64748b">No suggestions right now. Keep it up!</div>'
-                    + '</div>';
+                // Silent — no message needed
+                msgArea.innerHTML = '';
             }
-
-            var quickActions2 = _getQuickActions(ctx);
-            actArea.innerHTML = '<div style="font-size:0.68em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Quick Actions</div>'
-                + quickActions2.map(function(qa) {
-                    return '<button onclick="' + qa.onclick + ';GLAvatarUI.closePanel()" style="padding:6px 12px;margin-right:4px;margin-bottom:4px;border-radius:6px;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer">' + _esc(qa.label) + '</button>';
-                }).join('');
+            actArea.innerHTML = '';
         }
     }
 

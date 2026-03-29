@@ -557,24 +557,27 @@ window.GLAvatarGuide = (function() {
         if (!ctx) ctx = buildContext();
         var intent = getIntent(ctx);
 
+        // Context-aware text only — no CTAs (Home intent section handles actions)
         if (intent === INTENT.SETUP) {
-            return { intent: intent, message: 'Add a few songs to get started.', primaryAction: { label: 'Add Songs', onclick: "showPage('songs')" }, secondaryActions: [{ label: 'Import Starter Pack', onclick: 'showStarterPackImport()' }] };
+            return { intent: intent, message: 'You don\u2019t have a set yet. Start with a few songs \u2014 I\u2019ll build it out.' };
         }
         if (intent === INTENT.FIRST_RUN) {
-            return { intent: intent, message: 'Pick a few songs or jump into practice or rehearsal.', primaryAction: null, secondaryActions: [] };
+            return { intent: intent, message: 'You\u2019ve got songs. Let\u2019s run it once and see where it breaks.' };
         }
         if (intent === INTENT.PREPARE) {
-            return { intent: intent, message: 'Gig in ' + (ctx.daysToGig || '?') + ' day' + ((ctx.daysToGig || 0) !== 1 ? 's' : '') + '. Run the set.', primaryAction: { label: 'Run the Set', onclick: "hdPlayBundle('gig')" }, secondaryActions: [{ label: 'Go Live', onclick: "homeGoLive()" }] };
+            return { intent: intent, message: 'Gig in ' + (ctx.daysToGig || '?') + ' day' + ((ctx.daysToGig || 0) !== 1 ? 's' : '') + '. Run the set and tighten the weak spots.' };
         }
         if (intent === INTENT.REHEARSE) {
-            return { intent: intent, message: 'Good session. Log notes or attach the mixdown.', primaryAction: { label: 'Add Notes', onclick: "showPage('rehearsal')" }, secondaryActions: [] };
+            return { intent: intent, message: 'Good session. Log notes while it\u2019s fresh.' };
         }
         if (intent === INTENT.IMPROVE) {
             var wc = ctx.weakCount || 0;
-            if (wc > 0) return { intent: intent, message: wc + ' song' + (wc > 1 ? 's' : '') + ' need reps.', primaryAction: { label: 'Practice Songs', onclick: "showPage('songs')" }, secondaryActions: [] };
-            return { intent: intent, message: 'Keep it tight \u2014 run the set.', primaryAction: { label: 'Run the Set', onclick: "hdPlayBundle('gig')" }, secondaryActions: [] };
+            var weakName = (ctx.weakSongs && ctx.weakSongs.length) ? ctx.weakSongs[0] : null;
+            if (weakName) return { intent: intent, message: '\u2019' + weakName + '\u2019 needs work. Want to tighten it?' };
+            if (wc > 0) return { intent: intent, message: wc + ' song' + (wc > 1 ? 's' : '') + ' need reps.' };
+            return { intent: intent, message: 'You\u2019ve got a set. Let\u2019s run it once and see where it breaks.' };
         }
-        return { intent: intent, message: 'All good. Keep the rhythm going.', primaryAction: null, secondaryActions: [] };
+        return null; // Silent — no guidance needed
     }
 
     // ── Tip Suppression ─────────────────────────────────────────────────────

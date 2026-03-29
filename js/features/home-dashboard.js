@@ -445,11 +445,14 @@ function _renderNextActionCard(bundle, wf) {
         for (var d = 1; d <= 3; d++) {
             dots += '<span style="width:8px;height:8px;border-radius:50%;background:' + (d < onboardStep ? '#22c55e' : d === onboardStep ? '#6366f1' : 'rgba(255,255,255,0.15)') + ';display:inline-block"></span>';
         }
+        // Personalize headline
+        var _userName = (typeof GLUserIdentity !== 'undefined' && GLUserIdentity.getContext) ? GLUserIdentity.getContext().firstName : '';
+        var _personalLabel = stepLabels[onboardStep] + (_userName ? ', ' + _userName : '');
         return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(99,102,241,0.35);border-radius:16px;background:linear-gradient(160deg,rgba(99,102,241,0.1),rgba(139,92,246,0.05))">'
             + '<div style="text-align:center">'
             + '<div style="font-size:0.72em;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step ' + onboardStep + ' of 3</div>'
             + '<div style="display:flex;gap:6px;justify-content:center;margin-bottom:10px">' + dots + '</div>'
-            + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + stepLabels[onboardStep] + '</div>'
+            + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + _personalLabel + '</div>'
             + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + stepSubs[onboardStep] + '</div>'
             + '<button onclick="' + cta.onclick + '" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(99,102,241,0.3)">' + cta.label + '</button>'
             + '</div></div>'
@@ -1233,11 +1236,12 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         _renderNextActionCard(bundle, wf),
         // ── Below the fold ──
         _renderTopSongsToWork(bundle),
-        _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
-        _renderBandScorecard(bundle),
         _renderSessionPlan(bundle),
+        // ── Collapsed sections ──
+        '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Your Band Right Now</summary>',
+        _renderBandScorecard(bundle),
         _renderBandReadinessSnapshot(bundle),
-        // ── Band Activity (collapsed) ──
+        '</details>',
         '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Band Activity</summary>',
         _renderActionOwedCard(),
         _renderBandAlignmentCard(),
