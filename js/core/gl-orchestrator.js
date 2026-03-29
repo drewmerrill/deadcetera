@@ -802,7 +802,7 @@
 
     _lastNBAFired = Date.now();
 
-    return {
+    var result = {
       actionId: winner.id,
       mode: mode,
       action: winner.action,
@@ -816,10 +816,96 @@
       expiresAt: Date.now() + 30000, // 30s TTL
       candidateCount: candidates.length
     };
+    _lastNBAResult = result;
+    return result;
   }
 
   function _nbaResult(mode, action, message, why, score, reason) {
     return { actionId: null, mode: mode, action: action, message: message, score: score, why: why || [], targetSongs: [], targetFlow: null, reason: reason };
+  }
+
+  // ── Decision Explanation (Why Panel) ───────────────────────────────────
+  // Every action must be explainable.
+
+  var _lastNBAResult = null;
+
+  function getDecisionExplanation() {
+    if (!_lastNBAResult) return { reason: 'No recent decision.', signals: [], confidence: 0, mode: 'silent' };
+
+    var r = _lastNBAResult;
+    var signals = (r.why || []).slice();
+
+    // Add context signals
+    signals.push('User level: ' + (r.userLevel || 'unknown'));
+    signals.push('Mode: ' + (r.mode || 'silent'));
+    if (r.targetSongs && r.targetSongs.length) signals.push('Target songs: ' + r.targetSongs.slice(0, 3).join(', '));
+
+    // Build human-readable reason
+    var reason = '';
+    if (r.mode === 'silent') reason = 'I didn\u2019t act because confidence was too low or you were in the middle of something.';
+    else if (r.mode === 'auto') reason = 'I acted automatically because this was low-risk and I was confident it was the right call.';
+    else if (r.mode === 'assist') reason = 'I suggested this because the signals pointed here, but wanted your OK first.';
+    else reason = 'I flagged this as a possibility but left the decision to you.';
+
+    return {
+      reason: reason,
+      signals: signals,
+      confidence: r.score || 0,
+      mode: r.mode || 'silent',
+      actionId: r.actionId,
+      action: r.action,
+      candidateCount: r.candidateCount || 0
+    };
+  }
+
+  // ── Should Act (Predictability Engine) ─────────────────────────────────
+  // Prevents bad timing, low-confidence execution, interruptions.
+
+  function shouldAct() {
+    if (_isInFlow()) return { act: false, reason: 'User is in active flow (rehearsal/playback).' };
+    if (Date.now() - _lastNBAFired < _NBA_COOLDOWN) return { act: false, reason: 'Cooling down (' + Math.round((_NBA_COOLDOWN - (Date.now() - _lastNBAFired)) / 1000) + 's remaining).' };
+
+    var userPref = localStorage.getItem('gl_autopilot_level') || 'auto';
+    if (userPref === 'suggest') return { act: false, reason: 'User preference is suggest-only.' };
+
+    var nba = getNextBestAction();
+    _lastNBAResult = nba; // store for explanation
+
+    if (!nba || nba.mode === 'silent') return { act: false, reason: nba ? nba.reason : 'No action available.' };
+    if (nba.score < NBA_THRESHOLD) return { act: false, reason: 'Score ' + nba.score.toFixed(2) + ' below threshold ' + NBA_THRESHOLD + '.' };
+
+    return { act: true, mode: nba.mode, action: nba.action, score: nba.score, reason: 'Confidence ' + nba.score.toFixed(2) + ', risk acceptable.' };
+  }
+
+  // ── Avatar Accountability Language ─────────────────────────────────────
+  // Avatar speaks as owner: "I chose...", "We focused...", "Next time I'll..."
+
+  function getAccountabilityMessage(sessionData) {
+    var dna = _loadBandDNA();
+    var personality = getBandPersonality();
+    var msgs = [];
+
+    if (sessionData && sessionData.rating) {
+      if (sessionData.rating >= 4) {
+        msgs.push('That was a strong session. I chose those songs because they needed tightening \u2014 and it worked.');
+      } else if (sessionData.rating >= 3) {
+        msgs.push('Solid run. We focused on the right areas. Next time I\u2019ll push harder on the weak spots.');
+      } else {
+        msgs.push('That was rough. I\u2019ll adjust the plan next time \u2014 fewer new songs, more repetition on what\u2019s not clicking.');
+      }
+    }
+
+    if (dna.weaknesses && dna.weaknesses.length) {
+      msgs.push('I\u2019m tracking "' + dna.weaknesses[dna.weaknesses.length - 1] + '" as the biggest gap right now.');
+    }
+
+    if (dna.improvementVelocity > 0.3) {
+      msgs.push('The band is getting tighter. I\u2019ll keep this intensity.');
+    } else if (dna.improvementVelocity < -0.3) {
+      msgs.push('We\u2019re slipping. I\u2019ll dial back complexity and focus on fundamentals next session.');
+    }
+
+    return msgs.length ? msgs.join(' ') : 'Ready when you are.';
   }
 
   // ── User Capability Model ──────────────────────────────────────────────
@@ -1031,10 +1117,13 @@
     // Unified NBA
     getNextBestAction: getNextBestAction,
     runBandCycle: runBandCycle,
-    runBandSession: runBandSession, // backward compat
+    runBandSession: runBandSession,
     getSession: function() { return GLSession; },
     getTimeline: getTimeline,
     addTimelineEvent: _addTimelineEvent,
+    getDecisionExplanation: getDecisionExplanation,
+    shouldAct: shouldAct,
+    getAccountabilityMessage: getAccountabilityMessage,
     getUserLevel: getUserLevel,
 
     // Legacy (still used by avatar UI)
