@@ -14,6 +14,7 @@
   // ── Intent Detection ─────────────────────────────────────────────────────
 
   var INTENTS = [
+    { id: 'run_band_session',    keywords: ['run my band','run session','band session','run everything','full session'], priority: 12 },
     { id: 'run_rehearsal',       keywords: ['run rehearsal','run my rehearsal','start rehearsal','run this rehearsal','lead rehearsal','band leader','run through'], priority: 11 },
     { id: 'import_artist_pack',  keywords: ['import','pack','starter','essentials','add all','billy joel','elton john','grateful dead','phish','wedding','beatles'], priority: 10 },
     { id: 'bulk_add_songs',      keywords: ['add songs','add these songs','add the following','add a bunch'], priority: 9 },
@@ -68,6 +69,14 @@
     var result;
 
     switch (intent) {
+      case 'run_band_session':
+        if (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.runBandSession) {
+          result = await GLOrchestrator.runBandSession();
+        } else {
+          result = { success: false, message: 'Session engine not loaded.' };
+        }
+        break;
+
       case 'run_rehearsal':
         var durMatch = text.match(/(\d+)\s*min/);
         result = await tools.runMyRehearsal(durMatch ? durMatch[1] : 60);

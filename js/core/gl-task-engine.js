@@ -18,6 +18,14 @@
   // Maps intents to multi-step plans with risk assessment.
 
   var PLAN_TEMPLATES = {
+    run_band_session: {
+      label: 'Run Band Session',
+      steps: [
+        { action: 'runBandSession', label: 'Plan + build + start full rehearsal session' }
+      ],
+      risk: 'medium',
+      baseConfidence: 0.8
+    },
     run_rehearsal: {
       label: 'Run My Rehearsal',
       steps: [
@@ -202,6 +210,10 @@
     var text = (typeof input === 'string') ? input : (input && input.text) || '';
 
     switch(toolName) {
+      case 'runBandSession':
+        if (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.runBandSession) return GLOrchestrator.runBandSession();
+        return { success: false, message: 'Session engine not loaded.' };
+
       case 'runMyRehearsal':
         var durMatch = text.match(/(\d+)\s*min/);
         return tools.runMyRehearsal(durMatch ? durMatch[1] : 60);

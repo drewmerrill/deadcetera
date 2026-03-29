@@ -843,11 +843,129 @@
     return 'beginner';
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── RUN BAND SESSION — Single Entry Point ──────────────────────────────
+  // Collapses all capabilities into one "Run My Band" experience.
+  // Drives: planning → rehearsal → review → continuation.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  var GLSession = {
+    phase: 'idle', // idle | planning | rehearsal | review
+    startedAt: null,
+    songs: [],
+    blocks: [],
+    focusAreas: [],
+    interventionsTriggered: 0
+  };
+
+  async function runBandSession() {
+    GLSession.phase = 'planning';
+    GLSession.startedAt = Date.now();
+
+    // 1. PLANNING — Use Band Leader Mode to build smart rehearsal
+    if (typeof GLTools === 'undefined' || !GLTools.runMyRehearsal) {
+      return { success: false, message: 'Session tools not loaded.' };
+    }
+
+    var plan = await GLTools.runMyRehearsal(60);
+    if (!plan.success) return plan;
+
+    GLSession.songs = plan.songs || [];
+    GLSession.blocks = plan.blocks || [];
+    GLSession.focusAreas = (plan.blocks || []).filter(function(b) { return b.type === 'focus'; }).map(function(b) { return b.focus; });
+
+    // 2. Show plan + auto-start option
+    GLSession.phase = 'rehearsal';
+
+    // Toast the plan
+    if (typeof showToast === 'function') {
+      showToast('\u2713 Rehearsal planned: ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min', 4000);
+    }
+
+    // Navigate to home and show the plan
+    if (typeof showPage === 'function') showPage('home');
+
+    // Auto-start after brief delay (give user a moment to see the plan)
+    setTimeout(function() {
+      if (typeof _glQuickStartRehearsal === 'function') {
+        _glQuickStartRehearsal();
+      }
+    }, 3000);
+
+    return {
+      success: true,
+      message: 'Session started: ' + plan.songs.length + ' songs, ' + plan.totalMinutes + ' min. Focus: ' + GLSession.focusAreas.join(' '),
+      phase: 'rehearsal',
+      plan: plan
+    };
+  }
+
+  // ── Session Lifecycle Hooks ────────────────────────────────────────────
+
+  // Listen for rehearsal completion → auto-transition to review
+  setTimeout(function() {
+    if (typeof GLStore !== 'undefined' && GLStore.on) {
+      GLStore.on('agendaSessionCompleted', function(data) {
+        if (GLSession.phase === 'rehearsal') {
+          GLSession.phase = 'review';
+          // The Reveal screen handles itself — just update DNA
+          var rehData = {};
+          if (data) {
+            rehData.rating = data.rating || 0;
+            if (data.strongestSong) rehData.strongSong = data.strongestSong;
+            if (data.weakestSong) rehData.weakSong = data.weakestSong;
+          }
+          updateBandDNA(rehData);
+
+          // After review, prepare for continuation
+          setTimeout(function() {
+            GLSession.phase = 'idle';
+            // Proactive: suggest scheduling next rehearsal
+            if (typeof showToast === 'function') {
+              showToast('GrooveMate: Great session. Want to schedule the next one?', 5000);
+            }
+          }, 30000); // 30s after review
+        }
+      });
+    }
+  }, 6000);
+
+  // ── Demo Mode ──────────────────────────────────────────────────────────
+
+  function checkDemoMode() {
+    if (window.location.search.indexOf('demo=true') < 0) return;
+    console.log('[Demo] Starting demo mode...');
+
+    setTimeout(async function() {
+      // Auto-create band if none
+      var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
+      if (!hasSongs) {
+        // Import a starter pack
+        if (typeof GLTools !== 'undefined' && GLTools.importArtistPack) {
+          await GLTools.importArtistPack('grateful_dead');
+        }
+      }
+      // Wait for songs to load, then run session
+      setTimeout(function() {
+        runBandSession();
+      }, 3000);
+    }, 5000);
+  }
+
+  // Check demo mode on boot
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(checkDemoMode, 3000); });
+  } else {
+    setTimeout(checkDemoMode, 3000);
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────
 
   window.GLOrchestrator = {
     // Unified NBA
     getNextBestAction: getNextBestAction,
+    runBandSession: runBandSession,
+    getSession: function() { return GLSession; },
     getUserLevel: getUserLevel,
 
     // Legacy (still used by avatar UI)
