@@ -2,7 +2,7 @@
  * avatar_feedback_service.js — Centralized Feedback Submission + Auto-Friction Detection
  *
  * Handles both explicit user reports and automatic friction events.
- * Stores to Firebase /product_feedback/{reportId} + mirrors to band path.
+ * Stores to Firebase /bands/{bandId}/feedback_reports/{reportId} (band-scoped, has write permission).
  *
  * EXPOSES: window.GLFeedbackService
  */
@@ -81,18 +81,9 @@
   }
 
   function _autoSubmit(trigger, type, severity, detail) {
-    // Auto-submit disabled — Firebase /product_feedback/ has no write permissions.
-    // Save locally only for later review if needed.
+    // Dedupe: max 1 per type per session
     if (_autoSubmittedThisSession[trigger]) return;
     _autoSubmittedThisSession[trigger] = true;
-    console.log('[Feedback] Auto-detected:', trigger, '(saved locally only)');
-    try {
-      var local = JSON.parse(localStorage.getItem('gl_pending_feedback') || '[]');
-      local.push({ trigger: trigger, type: type, severity: severity, detail: detail, ts: new Date().toISOString() });
-      if (local.length > 20) local = local.slice(-20);
-      localStorage.setItem('gl_pending_feedback', JSON.stringify(local));
-    } catch(e) {}
-    return;
 
     var context = (typeof GLFeedbackContext !== 'undefined') ? GLFeedbackContext.collect() : { reportId: 'fb_' + Date.now() };
 
@@ -206,7 +197,8 @@
   }
 
   /**
-   * Save to Firebase — primary + band mirror.
+   * Save to Firebase — band path is the primary (has write permission).
+   * Root /product_feedback/ has no Firebase write rule — skipped to avoid PERMISSION_DENIED.
    */
   async function _save(payload) {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
@@ -216,24 +208,18 @@
       return;
     }
 
-    try {
-      // Primary: /product_feedback/{reportId}
-      await db.ref('product_feedback/' + payload.reportId).set(payload);
+    var bandId = (payload.context && payload.context.bandId) ? payload.context.bandId : (typeof window.currentBandSlug !== 'undefined' ? window.currentBandSlug : null);
+    if (!bandId) {
+      // No band context — fall back to localStorage
+      _saveLocal(payload);
+      return;
+    }
 
-      // Mirror to band path
-      if (payload.context && payload.context.bandId) {
-        await db.ref('bands/' + payload.context.bandId + '/feedback_reports/' + payload.reportId).set({
-          reportId: payload.reportId,
-          type: payload.type,
-          severity: payload.severity,
-          title: payload.title,
-          status: payload.status,
-          auto: payload.auto,
-          createdAt: payload.createdAt
-        });
-      }
+    try {
+      // Primary: band-scoped path (has write permission via $other catch-all rule)
+      await db.ref('bands/' + bandId + '/feedback_reports/' + payload.reportId).set(payload);
     } catch(e) {
-      console.error('[Feedback] Save failed:', e.message);
+      console.warn('[Feedback] Save failed:', e.message);
       _saveLocal(payload);
     }
   }
@@ -252,8 +238,10 @@
   async function listProductFeedback() {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db) return [];
+    var bandId = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
     try {
-      var snap = await db.ref('product_feedback').orderByChild('createdAt').limitToLast(100).once('value');
+      // Read from band path (has permission)
+      var snap = await db.ref('bands/' + bandId + '/feedback_reports').orderByChild('createdAt').limitToLast(100).once('value');
       var data = snap.val();
       if (!data) return [];
       return Object.values(data).sort(function(a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); });
@@ -263,9 +251,10 @@
   async function updateFeedbackStatus(reportId, patch) {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || !reportId) return;
+    var bandId = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
     try {
-      await db.ref('product_feedback/' + reportId).update(patch);
-    } catch(e) { console.error('[Feedback] Update failed:', e.message); }
+      await db.ref('bands/' + bandId + '/feedback_reports/' + reportId).update(patch);
+    } catch(e) { console.warn('[Feedback] Update failed:', e.message); }
   }
 
   // ── Root Cause Analysis (non-blocking Claude call) ──────────────────────
