@@ -182,6 +182,28 @@ window._hdViewSetlist = function(setlistName) {
     }
 };
 
+// ── Rehearsal preview modal ──────────────────────────────────────────────────
+window._hdShowRehearsalPreview = function() {
+    var existing = document.getElementById('hdRehearsalPreview');
+    if (existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'hdRehearsalPreview';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+    ov.innerHTML = '<div style="max-width:380px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);animation:rmRevealIn 0.2s ease">'
+        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:12px">Here\u2019s the plan.</div>'
+        + '<div style="font-size:0.88em;color:#94a3b8;line-height:1.6;margin-bottom:20px">'
+        + '\u2022 Warm up with your strongest song<br>'
+        + '\u2022 Focus on the part most likely to break<br>'
+        + '\u2022 End with a full run-through'
+        + '</div>'
+        + '<div style="display:flex;gap:10px">'
+        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();if(typeof GLOrchestrator!==\'undefined\'&&GLOrchestrator.runBandCycle)GLOrchestrator.runBandCycle();else if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal()" style="flex:1;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Start Now</button>'
+        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();showPage(\'setlists\')" style="flex:1;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);font-weight:600;font-size:0.92em;cursor:pointer">Adjust First</button>'
+        + '</div></div>';
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+};
+
 // ── Data loading ─────────────────────────────────────────────────────────────
 
 async function _homeDataLoad() {
@@ -360,10 +382,9 @@ function _renderDashboard(bundle, context) {
         ? GLStore.getDashboardWorkflowState()
         : { phaseState: {}, currentPhase: 'plan', nextActionLabel: 'Get started', nextActionDescription: '', nextActionTarget: '' };
 
-    // Mode-specific dashboard composition
-    if (mode === 'sharpen') return _renderSharpenDashboard(bundle, wf, isStoner);
-    if (mode === 'play') return _renderPlayDashboard(bundle, wf, isStoner);
-    // Default: Lock In (full command center)
+    // Unified dashboard — one entry point regardless of mode
+    // Mode still drives internal logic (readiness, focus songs, etc.) but
+    // the user sees one consistent Home screen.
     return _renderLockinDashboard(bundle, wf, isStoner);
 }
 
@@ -371,7 +392,7 @@ function _renderDashboard(bundle, context) {
 function _renderSharpenDashboard(bundle, wf, isStoner) {
     return [
         '<div class="home-dashboard hd-command-center">',
-        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Focus. Practice. Improve.'),
+        _renderModeHeader('\uD83D\uDD25', 'Sharpen', 'Your next rehearsal, handled.'),
         _renderNextActionCard(bundle, wf),
         _renderTopSongsToWork(bundle),
         _renderBandScorecard(bundle),
@@ -423,12 +444,12 @@ function _renderNextActionCard(bundle, wf) {
     if (sessionCount > 0) {
         var trendIcon = velocity > 0.2 ? '\u2191' : velocity < -0.2 ? '\u2193' : '\u2192';
         var trendColor = velocity > 0.2 ? '#22c55e' : velocity < -0.2 ? '#ef4444' : '#94a3b8';
-        var trendLabel = velocity > 0.2 ? 'Improving' : velocity < -0.2 ? 'Needs focus' : 'Steady';
+        var trendLabel = velocity > 0.2 ? 'Getting Tighter' : velocity < -0.2 ? 'Needs Work' : 'Steady';
         progressHtml = '<div style="display:flex;gap:12px;margin-bottom:14px;justify-content:center">'
             + '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#a5b4fc">' + sessionCount + '</div><div style="font-size:0.62em;color:#475569">Sessions</div></div>'
             + '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:' + trendColor + '">' + trendIcon + '</div><div style="font-size:0.62em;color:#475569">' + trendLabel + '</div></div>';
         if (dna.weaknesses && dna.weaknesses.length) {
-            progressHtml += '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#f59e0b">' + dna.weaknesses.length + '</div><div style="font-size:0.62em;color:#475569">Focus songs</div></div>';
+            progressHtml += '<div style="text-align:center"><div style="font-size:1.2em;font-weight:800;color:#f59e0b">' + dna.weaknesses.length + '</div><div style="font-size:0.62em;color:#475569">Songs to tighten</div></div>';
         }
         progressHtml += '</div>';
     }
@@ -440,15 +461,26 @@ function _renderNextActionCard(bundle, wf) {
     else if (sessionCount >= 1) memoryMsg = 'Session ' + (sessionCount + 1) + '. I\u2019ve got a plan.';
     else memoryMsg = 'Let\u2019s hear what you\u2019ve got.';
 
-    // For beginners: show ONLY the Run My Band card (minimal UI)
+    // ── Primary CTA card ──
+    var _secBtnStyle = 'padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:var(--text);font-weight:600;font-size:0.85em;cursor:pointer';
     var runMyBandCard = '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
         + '<div style="text-align:center">'
         + progressHtml
-        + '<div style="font-size:1.4em;font-weight:900;color:#f1f5f9;margin-bottom:6px">Run My Band</div>'
-        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + memoryMsg + '</div>'
-        + '<button onclick="if(typeof GLOrchestrator!==\'undefined\'&&GLOrchestrator.runBandCycle)GLOrchestrator.runBandCycle();else if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal()" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Run My Band</button>'
-        + (sessionCount > 0 ? '<div style="margin-top:10px"><button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.75em;text-decoration:underline">View last session</button></div>' : '')
-        + '</div></div>';
+        + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:4px">Your next rehearsal, handled.</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">GrooveMate will help you build the set, run the rehearsal, and show you what to fix next.</div>'
+        + '<button onclick="_hdShowRehearsalPreview()" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Run My Next Rehearsal</button>'
+        + '<div style="font-size:0.72em;color:#475569;margin-top:8px">Takes about 10 minutes</div>'
+        + (sessionCount > 0 ? '<div style="margin-top:8px"><button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.75em;text-decoration:underline">View last session</button></div>' : '')
+        + '</div></div>'
+    // Secondary actions
+        + '<div style="padding:14px 16px;margin-bottom:12px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        + '<button onclick="showPage(\'songs\');setTimeout(function(){if(typeof GLAvatarUI!==\'undefined\')GLAvatarUI.show(\'Let\\u2019s tighten your part before the next rehearsal.\');},600)" style="' + _secBtnStyle + '">\uD83C\uDFB8 Practice My Songs</button>'
+        + '<button onclick="showPage(\'songs\');setTimeout(function(){if(typeof GLAvatarUI!==\'undefined\')GLAvatarUI.show(\'Let\\u2019s tighten your part before the next rehearsal.\');},600)" style="' + _secBtnStyle + '">\uD83C\uDFA4 Work on Harmonies</button>'
+        + '<button onclick="showPage(\'calendar\')" style="' + _secBtnStyle + '">\uD83D\uDCC5 Check Schedule</button>'
+        + '</div></div>'
+    // GrooveMate line
+        + '<div style="padding:0 4px 8px;font-size:0.82em;color:#64748b;font-style:italic">' + memoryMsg + '</div>';
 
     // For beginners: return ONLY the Run My Band card
     if (userLevel === 'beginner') return runMyBandCard;
@@ -488,7 +520,7 @@ function _renderNextActionCard(bundle, wf) {
         + '<div style="display:flex;align-items:center;gap:12px">'
         + '<div style="width:44px;height:44px;border-radius:12px;background:' + (action.completed ? 'rgba(34,197,94,0.12)' : 'rgba(99,102,241,0.12)') + ';display:flex;align-items:center;justify-content:center;font-size:1.3em;flex-shrink:0">' + action.icon + '</div>'
         + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:' + labelColor + ';text-transform:uppercase;margin-bottom:2px">' + (action.completed ? 'Done Today' : 'Next Up') + '</div>'
+        + (action.completed ? '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.08em;color:' + labelColor + ';text-transform:uppercase;margin-bottom:2px">Done Today</div>' : '')
         + '<div style="font-size:1em;font-weight:800;color:var(--text)">' + _escHtml(action.title) + '</div>'
         + (action.sub ? '<div style="font-size:0.78em;color:var(--text-dim);margin-top:1px">' + _escHtml(action.sub) + '</div>' : '')
         + '</div>'
@@ -642,7 +674,7 @@ function _renderTopSongsToWork(bundle) {
 
     var html = '<div class="app-card" style="padding:12px 14px;margin-bottom:12px">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text)">\uD83C\uDFAF Top Songs to Work</div>';
+    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text)">\uD83C\uDFAF Songs to Tighten</div>';
     html += '<button onclick="hdPlayBundle(\'focus\')" style="font-size:0.68em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc">\u25B6 Practice All</button>';
     html += '</div>';
 
@@ -1128,7 +1160,7 @@ function _renderSharpenPracticeCard(bundle) {
 
 function _renderSharpenWeakSongs(bundle) {
     return '<div id="hdWeakSongsCard" class="app-card home-anim-cards">'
-        + '<h3 style="margin:0 0 8px">\uD83D\uDCC9 Needs Work</h3>'
+        + '<h3 style="margin:0 0 8px">\uD83C\uDFAF Songs to Tighten</h3>'
         + '<div style="color:var(--text-dim);font-size:0.82em">Loading weak songs...</div>'
         + '</div>';
 }
@@ -1173,14 +1205,16 @@ function _timeAgo(isoStr) {
 
 // ── LOCK IN dashboard: session-level rehearsal plan ───────────────────────────
 function _renderLockinDashboard(bundle, wf, isStoner) {
+    var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     return [
         '<div class="home-dashboard hd-command-center">',
-        _renderModeHeader('\uD83C\uDFAF', 'Lock In', 'Here\'s what the band should work on today.'),
+        '<div style="font-size:0.78em;color:var(--text-dim);padding:0 4px 8px">' + dateStr + '</div>',
         _renderNextActionCard(bundle, wf),
+        _renderTopSongsToWork(bundle),
+        _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
         _renderBandScorecard(bundle),
         _renderActionOwedCard(),
         _renderBandAlignmentCard(),
-        _renderListeningCard('rehearsal', '\uD83C\uDFA7 Rehearsal Prep', 'Listen to what we\u2019re working on'),
         _renderSessionPlan(bundle),
         _renderBandReadinessSnapshot(bundle),
         _renderSetupGuidance(bundle, wf),
@@ -1197,7 +1231,7 @@ function _renderBandScorecard(bundle) {
     var sc = _computeScorecard(bundle);
     if (!sc) return '';
 
-    var trendLabels = { improving: 'Getting Better', steady: 'Holding Steady', declining: 'Needs Focus' };
+    var trendLabels = { improving: 'Getting Tighter', steady: 'Holding Steady', declining: 'Needs Work' };
     var trendIcons = { improving: '\u2191', steady: '\u2192', declining: '\u2193' };
     var trendColors = { improving: '#22c55e', steady: '#94a3b8', declining: '#fbbf24' };
 
@@ -1209,7 +1243,7 @@ function _renderBandScorecard(bundle) {
 
     // Header row
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
-    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text);letter-spacing:-0.01em">\uD83D\uDCCA Band Scorecard</div>';
+    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text);letter-spacing:-0.01em">\uD83D\uDCCA Your Band Right Now</div>';
     if (sc.trend) html += '<div style="font-size:0.72em;font-weight:700;color:' + (trendColors[sc.trend] || '#94a3b8') + ';padding:3px 10px;border-radius:6px;background:' + (trendColors[sc.trend] || '#94a3b8') + '15">' + (trendIcons[sc.trend] || '') + ' ' + (trendLabels[sc.trend] || '') + '</div>';
     html += '</div>';
 
@@ -2852,7 +2886,7 @@ function _renderHdHeroGig(gig, bundle, isStoner) {
         var _nbaIcon = (_hasScope && !riskEntry) ? '✅' : '👉';
         _nba = '<div style="margin:8px 0;padding:10px 14px;background:' + _nbaColor + ';border:1px solid ' + _nbaBorder + ';border-radius:10px;display:flex;align-items:center;gap:10px">'
             + '<span style="font-size:1.1em">' + _nbaIcon + '</span>'
-            + '<div style="flex:1"><div style="font-size:0.6em;font-weight:800;letter-spacing:0.08em;color:var(--accent-light);text-transform:uppercase;margin-bottom:3px">Do This Next</div>'
+            + '<div style="flex:1">'
             + '<div style="font-size:0.92em;font-weight:700;color:var(--text)">' + _escHtml(_nbaLabel) + '</div>'
             + (_nbaSecondary ? '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + _escHtml(_nbaSecondary) + '</div>' : '')
             + '</div>'
@@ -4816,7 +4850,7 @@ async function _fillWeakSongs(bundle) {
     el.innerHTML = [
         '<div class="home-weak home-anim-feed">',
         '  <div class="home-weak__header">',
-        '    <span class="home-weak__title-label">' + (hasGigSongs ? '\uD83C\uDFA4 Needs Work Before Next Gig' : '\u26a0\ufe0f Needs Work') + '</span>',
+        '    <span class="home-weak__title-label">' + (hasGigSongs ? '\uD83C\uDFA4 Tighten Before Next Gig' : '\uD83C\uDFAF Songs to Tighten') + '</span>',
         '    <span class="home-weak__count">' + totalWeak + ' below readiness threshold</span>',
         '  </div>',
         '  <div class="home-weak__list">' + rows + '</div>',

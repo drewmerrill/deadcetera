@@ -134,6 +134,7 @@
   function markReady(dep) {
     _readyFlags[dep] = true;
     console.log('[GLStore] Ready:', dep);
+    _checkAppReady();
     // Check all waiters
     _readyWaiters = _readyWaiters.filter(function(w) {
       var allReady = w.deps.every(function(d) { return _readyFlags[d]; });
@@ -144,6 +145,18 @@
 
   function isReady(dep) {
     return !!_readyFlags[dep];
+  }
+
+  /** True when all core boot dependencies have resolved (firebase + songs + members). */
+  function isBootReady() {
+    return !!_readyFlags.firebase && !!_readyFlags.songs && !!_readyFlags.members;
+  }
+
+  // Set deterministic app-ready flag for E2E tests
+  function _checkAppReady() {
+    if (!window.GL_APP_READY && _readyFlags.firebase && _readyFlags.songs && _readyFlags.members) {
+      window.GL_APP_READY = true;
+    }
   }
 
   /**
@@ -4011,6 +4024,7 @@
     ready:             ready,
     markReady:         markReady,
     isReady:           isReady,
+    isBootReady:       isBootReady,
 
     // Product Feedback (delegates to GLFeedbackService)
     saveProductFeedback: function(payload) {

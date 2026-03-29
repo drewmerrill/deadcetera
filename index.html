@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260329-045851">
+    <meta name="build-version" content="20260329-165345">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>GrooveLinx™ — Where Bands Lock In</title>
@@ -16,18 +16,18 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GrooveLinx">
-    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=20260329-045851">
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png?v=20260329-045851">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=20260325-143951">
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png?v=20260325-143951">
 
     <!-- Android / Chrome -->
     <meta name="theme-color" content="#6366f1">
     <meta name="mobile-web-app-capable" content="yes">
 
     <!-- Favicon -->
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260329-045851">
-    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=20260329-045851">
-    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png?v=20260329-045851">
-    <link rel="shortcut icon" href="favicon.ico?v=20260329-045851">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260325-143951">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=20260325-143951">
+    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png?v=20260325-143951">
+    <link rel="shortcut icon" href="favicon.ico?v=20260325-143951">
 
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -107,36 +107,31 @@
         });
         </script>
         <!-- Mode Switcher (mobile) -->
-        <div id="glMobileModeSwitcher" style="display:flex;gap:4px;padding:8px 12px 4px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08));margin-bottom:4px">
-            <button class="gl-mobile-mode-btn" data-mode="sharpen" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('sharpen')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🔥 Sharpen</button>
-            <button class="gl-mobile-mode-btn" data-mode="lockin" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('lockin')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🎯 Lock In</button>
-            <button class="gl-mobile-mode-btn" data-mode="play" onclick="if(typeof GLStore!=='undefined')GLStore.setProductMode('play')" style="flex:1;padding:8px 4px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.75em;font-weight:700;text-align:center">🎤 Play</button>
-        </div>
         <div class="menu-section">
-            <div class="menu-section-title">Music</div>
             <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
             <button class="menu-item" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Songs</button>
-            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
-            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
             <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">🎸</span> Rehearsal</button>
-            <button class="menu-item" data-page="ideas" onclick="showPage('ideas')"><span class="menu-icon">💬</span> Band Room</button>
-            <button class="menu-item" data-page="feed" onclick="showPage('feed')"><span class="menu-icon">📡</span> Feed</button>
-        </div>
-        <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">Gigs</div>
-            <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
-            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
-            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
-            <button class="menu-item" data-page="stageplot" onclick="showPage('stageplot')"><span class="menu-icon">🎭</span> Stage Plot</button>
+            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📅</span> Schedule</button>
+            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
             <div class="menu-section-title">Tools</div>
+            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
             <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
             <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎚️</span> Pocket Meter</button>
-            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🔱</span> Guitar Tuner</button>
+            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🔱</span> Tuner</button>
             <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+            <div class="menu-section-title">Band</div>
+            <button class="menu-item" data-page="ideas" onclick="showPage('ideas')"><span class="menu-icon">💬</span> Band Room</button>
+            <button class="menu-item" data-page="feed" onclick="showPage('feed')"><span class="menu-icon">📡</span> Feed</button>
+            <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
+            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues</button>
+            <button class="menu-item" data-page="stageplot" onclick="showPage('stageplot')"><span class="menu-icon">🎭</span> Stage Plot</button>
+            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
@@ -147,9 +142,8 @@
             <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
             <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
             <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
-            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
             <div class="menu-divider"></div>
-            <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help & Guide</button>
+            <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help</button>
         </div>
     </nav>
 
@@ -671,56 +665,56 @@
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
-<script src="js/core/utils.js?v=20260329-045851"></script>
-    <script src="js/core/firebase-service.js?v=20260329-045851"></script>
-    <script src="js/core/song-intelligence.js?v=20260329-045851"></script>
-    <script src="js/core/rehearsal_agenda_engine.js?v=20260329-045851"></script>
-    <script src="js/core/rehearsal_scorecard_engine.js?v=20260329-045851"></script>
-    <script src="js/core/rehearsal_segmentation_engine.js?v=20260329-045851"></script>
-    <script src="js/core/rehearsal_story_engine.js?v=20260329-045851"></script>
-    <script src="js/core/groovelinx_store.js?v=20260329-045851"></script>
-    <script src="js/core/groovelinx_product_brain.js?v=20260329-045851"></script>
-    <script src="js/core/gl-voice-coach.js?v=20260329-045851"></script>
-    <script src="js/core/gl-plans.js?v=20260329-045851"></script>
-    <script src="js/core/feed-action-state.js?v=20260329-045851"></script>
-    <script src="js/core/feed-metrics.js?v=20260329-045851"></script>
-    <script src="js/core/listening-bundles.js?v=20260329-045851"></script>
-    <script src="js/core/gl-source-resolver.js?v=20260329-045851"></script>
-    <script src="js/core/gl-player-engine.js?v=20260329-045851"></script>
-    <script src="js/core/gl-spotify-player.js?v=20260329-045851"></script>
-    <script src="js/core/playback-session.js?v=20260329-045851"></script>
-    <script src="js/core/worker-api.js?v=20260329-045851"></script>
-    <script src="js/core/wake-lock.js?v=20260329-045851"></script>
-    <script src="js/core/gl_render_state.js?v=20260329-045851"></script>
-    <script src="js/core/gl-ux-tracker.js?v=20260329-045851"></script>
-    <script src="js/core/gl-user-identity.js?v=20260329-045851"></script>
-    <script src="js/core/avatar_feedback_classifier.js?v=20260329-045851"></script>
-    <script src="js/core/avatar_feedback_context.js?v=20260329-045851"></script>
-    <script src="js/core/avatar_feedback_service.js?v=20260329-045851"></script>
-    <script src="js/core/avatar_feedback_summarizer.js?v=20260329-045851"></script>
-    <script src="js/core/groovemate_tools.js?v=20260329-045851"></script>
-    <script src="js/core/groovemate_action_router.js?v=20260329-045851"></script>
-    <script src="js/core/groovemate_knowledge_resolver.js?v=20260329-045851"></script>
-    <script src="js/core/groovemate_hint_engine.js?v=20260329-045851"></script>
-    <script src="js/core/groovemate_help_validator.js?v=20260329-045851"></script>
-    <script src="js/core/gl-orchestrator.js?v=20260329-045851"></script>
-    <script src="js/core/gl-task-engine.js?v=20260329-045851"></script>
-    <script src="js/ui/navigation.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-right-panel.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-left-rail.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-now-playing.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-context-bar.js?v=20260329-045851"></script><!-- Navigation stability: persistent context bar -->
-    <script src="js/ui/gl-entity-picker.js?v=20260329-045851"></script><!-- Phase 1: venue picker + entity combobox -->
-    <script src="js/ui/gl-inline-help.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-spotlight.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-player-ui.js?v=20260329-045851"></script>
-    <script src="js/core/gl-guidance-engine.js?v=20260329-045851"></script>
-    <script src="js/core/gl-avatar-guide.js?v=20260329-045851"></script>
-    <script src="js/core/gl-flow-engine.js?v=20260329-045851"></script>
-    <script src="js/ui/gl-avatar-ui.js?v=20260329-045851"></script>
-    <script src="js/features/songs.js?v=20260329-045851"></script>
-    <script src="data.js?v=20260329-045851"></script>
-    <script src="data/starter_packs.js?v=20260329-045851"></script>
+<script src="js/core/utils.js?v=20260325-143951"></script>
+    <script src="js/core/firebase-service.js?v=20260325-143951"></script>
+    <script src="js/core/song-intelligence.js?v=20260325-143951"></script>
+    <script src="js/core/rehearsal_agenda_engine.js?v=20260325-143951"></script>
+    <script src="js/core/rehearsal_scorecard_engine.js?v=20260325-143951"></script>
+    <script src="js/core/rehearsal_segmentation_engine.js?v=20260325-143951"></script>
+    <script src="js/core/rehearsal_story_engine.js?v=20260325-143951"></script>
+    <script src="js/core/groovelinx_store.js?v=20260325-143951"></script>
+    <script src="js/core/groovelinx_product_brain.js?v=20260325-143951"></script>
+    <script src="js/core/gl-voice-coach.js?v=20260325-143951"></script>
+    <script src="js/core/gl-plans.js?v=20260325-143951"></script>
+    <script src="js/core/feed-action-state.js?v=20260325-143951"></script>
+    <script src="js/core/feed-metrics.js?v=20260325-143951"></script>
+    <script src="js/core/listening-bundles.js?v=20260325-143951"></script>
+    <script src="js/core/gl-source-resolver.js?v=20260325-143951"></script>
+    <script src="js/core/gl-player-engine.js?v=20260325-143951"></script>
+    <script src="js/core/gl-spotify-player.js?v=20260325-143951"></script>
+    <script src="js/core/playback-session.js?v=20260325-143951"></script>
+    <script src="js/core/worker-api.js?v=20260325-143951"></script>
+    <script src="js/core/wake-lock.js?v=20260325-143951"></script>
+    <script src="js/core/gl_render_state.js?v=20260325-143951"></script>
+    <script src="js/core/gl-ux-tracker.js?v=20260325-143951"></script>
+    <script src="js/core/gl-user-identity.js?v=20260325-143951"></script>
+    <script src="js/core/avatar_feedback_classifier.js?v=20260325-143951"></script>
+    <script src="js/core/avatar_feedback_context.js?v=20260325-143951"></script>
+    <script src="js/core/avatar_feedback_service.js?v=20260325-143951"></script>
+    <script src="js/core/avatar_feedback_summarizer.js?v=20260325-143951"></script>
+    <script src="js/core/groovemate_tools.js?v=20260325-143951"></script>
+    <script src="js/core/groovemate_action_router.js?v=20260325-143951"></script>
+    <script src="js/core/groovemate_knowledge_resolver.js?v=20260325-143951"></script>
+    <script src="js/core/groovemate_hint_engine.js?v=20260325-143951"></script>
+    <script src="js/core/groovemate_help_validator.js?v=20260325-143951"></script>
+    <script src="js/core/gl-orchestrator.js?v=20260325-143951"></script>
+    <script src="js/core/gl-task-engine.js?v=20260325-143951"></script>
+    <script src="js/ui/navigation.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-right-panel.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-left-rail.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-now-playing.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-context-bar.js?v=20260325-143951"></script><!-- Navigation stability: persistent context bar -->
+    <script src="js/ui/gl-entity-picker.js?v=20260325-143951"></script><!-- Phase 1: venue picker + entity combobox -->
+    <script src="js/ui/gl-inline-help.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-spotlight.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-player-ui.js?v=20260325-143951"></script>
+    <script src="js/core/gl-guidance-engine.js?v=20260325-143951"></script>
+    <script src="js/core/gl-avatar-guide.js?v=20260325-143951"></script>
+    <script src="js/core/gl-flow-engine.js?v=20260325-143951"></script>
+    <script src="js/ui/gl-avatar-ui.js?v=20260325-143951"></script>
+    <script src="js/features/songs.js?v=20260325-143951"></script>
+    <script src="data.js?v=20260325-143951"></script>
+    <script src="data/starter_packs.js?v=20260325-143951"></script>
     <!-- ── LAZY-LOADED: These scripts load on-demand via glLazy() when their page is navigated to ── -->
     <!-- Removed from boot: rehearsal.js (262KB), gigs.js (83KB), bestshot.js (137KB), band-feed.js (94KB), -->
     <!-- calendar.js (72KB), notifications.js (75KB), stage-plot.js (49KB), finances.js (9KB), social.js (20KB), -->
@@ -728,18 +722,18 @@
     <!-- help.js (64KB), gl-help-v2.js (9KB) = ~967KB removed from boot -->
 
     <!-- ── KEPT AT BOOT: needed for home/songs/setlists ── -->
-    <script src="js/features/setlists.js?v=20260329-045851"></script>
+    <script src="js/features/setlists.js?v=20260325-143951"></script>
     <!-- live-gig (31KB), practice (38KB) deferred to lazy loading -->
-    <script src="js/features/home-dashboard.js?v=20260329-045851"></script>
-    <script src="js/features/song-detail.js?v=20260329-045851"></script>
-    <script src="js/features/song-drawer.js?v=20260329-045851"></script>
-    <script src="js/features/home-dashboard-cc.js?v=20260329-045851"></script>
-    <script src="js/features/bulk-import.js?v=20260329-045851"></script>
-    <script src="js/features/setlist-player.js?v=20260329-045851"></script>
-    <script src="js/features/charts.js?v=20260329-045851"></script>
+    <script src="js/features/home-dashboard.js?v=20260325-143951"></script>
+    <script src="js/features/song-detail.js?v=20260325-143951"></script>
+    <script src="js/features/song-drawer.js?v=20260325-143951"></script>
+    <script src="js/features/home-dashboard-cc.js?v=20260325-143951"></script>
+    <script src="js/features/bulk-import.js?v=20260325-143951"></script>
+    <script src="js/features/setlist-player.js?v=20260325-143951"></script>
+    <script src="js/features/charts.js?v=20260325-143951"></script>
     <script src="groovelinx_test_env.js"></script>
-    <script src="app.js?v=20260329-045851"></script>
-    <script src="rehearsal-mode.js?v=20260329-045851"></script>
+    <script src="app.js?v=20260325-143951"></script>
+    <script src="rehearsal-mode.js?v=20260325-143951"></script>
     <!-- pocket-meter.js (116KB) deferred — loaded on pocketmeter page -->
 
     <script>

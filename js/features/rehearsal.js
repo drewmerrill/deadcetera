@@ -101,6 +101,7 @@ function _renderTransitionConfBadge(confidence) {
 
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
+    window.GL_REHEARSAL_READY = false;
     el.innerHTML = '<div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
     _rhActiveTab = 'tonight';
     _rhRenderCommandFlow(el);
@@ -124,6 +125,11 @@ async function _rhRenderCommandFlow(el) {
     try { gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []); } catch(e) {}
     var today = new Date().toISOString().split('T')[0];
     var nextGig = gigs.filter(function(g) { return g.date >= today; }).sort(function(a,b) { return a.date.localeCompare(b.date); })[0] || null;
+
+    // Next rehearsal event for page title
+    var _rhEvents = [];
+    try { _rhEvents = toArray(await loadBandDataFromDrive('_band', 'rehearsals') || []); } catch(e) {}
+    var _rhNextEvent = _rhEvents.filter(function(r) { return r && r.date && r.date >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0] || null;
 
     // Availability for next gig
     var availHtml = '';
@@ -176,20 +182,32 @@ async function _rhRenderCommandFlow(el) {
 
     var html = '';
 
+    // ── Page title ──
+    var _rhPageTitle = 'Tonight\u2019s Rehearsal';
+    if (_rhNextEvent && _rhNextEvent.date && _rhNextEvent.date !== today) {
+        var _rhEventDate = new Date(_rhNextEvent.date + 'T12:00:00');
+        _rhPageTitle = 'Next Rehearsal \u2014 ' + _rhEventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+    html += '<div style="margin-bottom:12px">';
+    html += '<h1 style="font-size:1.3em;font-weight:900;color:var(--text);margin:0 0 4px">' + _rhPageTitle + '</h1>';
+    // Top summary
+    var _rhTopFocus = weakSongs.length > 0 ? weakSongs[0].title : null;
+    html += '<div style="font-size:0.85em;color:var(--text-dim);line-height:1.4">We\u2019re warming up, tightening one weak spot, then running the set.</div>';
+    html += '<div style="font-size:0.82em;color:#fbbf24;font-weight:600;margin-top:4px">Main focus: ' + (_rhTopFocus ? '<strong>' + _rhTopFocus + '</strong>' : 'getting the whole set tighter') + '</div>';
+    html += '</div>';
+
     // ── SECTION 1: Context ──
     html += '<div style="margin-bottom:16px">';
     if (nextGig) {
         html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15)">'
             + '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:rgba(99,102,241,0.6);text-transform:uppercase;margin-bottom:4px">Preparing for</div>'
-            + '<div style="font-size:1.1em;font-weight:800;color:var(--text)">' + gigLabel + ' <span style="font-weight:500;font-size:0.72em;color:var(--text-dim)">· ' + (gigDaysAway === 0 ? 'Today' : gigDaysAway === 1 ? 'Tomorrow' : gigDaysAway + ' days') + '</span></div>'
-            + '<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px">Confidence: <strong style="color:' + confColor + '">' + confLabel + '</strong>'
-            + (weakSongs.length > 0 ? ' · Focus on <strong>' + weakSongs[0].title + '</strong>' + (weakSongs.length > 1 ? ' + ' + (weakSongs.length - 1) + ' more' : '') : '')
-            + '</div>'
+            + '<div style="font-size:1.1em;font-weight:800;color:var(--text)">' + gigLabel + ' <span style="font-weight:500;font-size:0.72em;color:var(--text-dim)">\u00B7 ' + (gigDaysAway === 0 ? 'Today' : gigDaysAway === 1 ? 'Tomorrow' : gigDaysAway + ' days') + '</span></div>'
+            + (weakSongs.length > 0 ? '<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px">Focus on <strong>' + weakSongs[0].title + '</strong>' + (weakSongs.length > 1 ? ' + ' + (weakSongs.length - 1) + ' more' : '') + '</div>' : '')
             + (availHtml ? '<div style="margin-top:8px">' + availHtml + '</div>' : '')
             + '</div>';
     } else {
         html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
-            + '<div style="font-size:0.82em;color:var(--text-dim)">No upcoming gig scheduled. <button onclick="showPage(\'gigs\')" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-weight:600;padding:0">Add a gig →</button></div>'
+            + '<div style="font-size:0.82em;color:var(--text-dim)">No upcoming gig scheduled. <button onclick="showPage(\'gigs\')" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-weight:600;padding:0">Add a gig \u2192</button></div>'
             + '</div>';
     }
     html += '</div>';
@@ -444,11 +462,11 @@ async function _rhRenderCommandFlow(el) {
             + '</div></details>';
 
         // Actions
-        html += '<div style="font-size:0.6em;color:var(--text-dim);padding:2px 0 4px;font-style:italic">Tap minutes on any block to make the plan realistic. Total: ' + totalLabel + '</div>'
-            + '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Start This Rehearsal</button>'
+        html += '<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">'
+            + '<button onclick="_rhLaunchSavedPlan()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Start Rehearsal</button>'
             + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.82em;cursor:pointer;min-height:48px">+ New Date</button>'
             + '</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);text-align:center;margin-bottom:10px">GrooveMate will show you what mattered after.</div>'
             + '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
             + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer" title="Generate a fresh plan from scratch">\uD83D\uDD04 Regenerate</button>'
             + '<button onclick="_rhSaveSnapshotUI()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.25);background:rgba(251,191,36,0.05);color:#fbbf24;font-size:0.75em;font-weight:600;cursor:pointer" title="Save a backup copy of this plan">\uD83D\uDCF8 Save Copy</button>'
@@ -475,6 +493,7 @@ async function _rhRenderCommandFlow(el) {
     html += '<div id="rhTabContent"></div>';
 
     main.innerHTML = html;
+    window.GL_REHEARSAL_READY = true;
 
     // Render mixdowns section
     if (typeof RehearsalMixdowns !== 'undefined') RehearsalMixdowns.render('rhMixdownsContainer');

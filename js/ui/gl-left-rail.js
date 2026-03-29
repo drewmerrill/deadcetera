@@ -22,46 +22,42 @@
   var _rail = null;
   var _items = null; // NodeList of .gl-rail-item elements
 
-  // Nav structure — mirrors the slide-out menu sections
-  // Full navigation schema — matches the hamburger slide-out menu in index.html.
-  // Both surfaces must stay in sync. If you add a page here, add it to
-  // the slide-out menu too (and vice versa).
-  // Top-level item (above all sections)
-  var NAV_TOP = { page: 'home', icon: '🏠', label: 'Home', tip: 'See your band\'s current status and what to do next' };
+  // Nav structure — mirrors the slide-out menu sections in index.html.
+  // Both surfaces must stay in sync.
+  var NAV_TOP = { page: 'home', icon: '\uD83C\uDFE0', label: 'Home', tip: 'Your band dashboard \u2014 start here' };
 
-  // Intent-driven nav groups — every tip is action-oriented (verb + outcome)
+  // Primary nav: the 5 pages users need most
+  // Secondary: everything else, collapsed by default
   var NAV_SECTIONS = [
-    { title: 'Solo', items: [
-      { page: 'practice',  icon: '🎯', label: 'Practice', tip: 'Practice songs, improve readiness, and track progress' },
-    ]},
-    { title: 'Band', items: [
-      { page: 'songs',     icon: '🎵', label: 'Songs',     tip: 'Manage your song library, charts, and song details' },
-      { page: 'setlists',  icon: '📋', label: 'Setlists',  tip: 'Build and organize setlists for upcoming gigs' },
-      { page: 'rehearsal', icon: '🎸', label: 'Rehearsal',  tip: 'Plan and run a structured band rehearsal' },
-      { page: 'ideas',     icon: '💬', label: 'Band Room',  tip: 'Pitch songs, vote, and make band decisions' },
-      { page: 'feed',      icon: '\uD83D\uDCE1', label: 'Feed',       tip: 'See all band notes, ideas, and decisions in one place' },
-    ]},
-    { title: 'Gigs', items: [
-      { page: 'gigs',      icon: '🎤', label: 'Gigs',       tip: 'Manage gigs, link setlists, and track performance details' },
-      { page: 'calendar',  icon: '📆', label: 'Calendar',   tip: 'View and schedule gigs, rehearsals, and band events' },
-      { page: 'venues',    icon: '🏛️', label: 'Venues',     tip: 'Store venue details, notes, and logistics' },
-      { page: 'stageplot', icon: '🎭', label: 'Stage Plot',  tip: 'Design stage layouts and plan band setup' },
+    { title: '', primary: true, items: [
+      { page: 'songs',     icon: '\uD83C\uDFB5', label: 'Songs',     tip: 'Your song library, charts, and song details' },
+      { page: 'rehearsal', icon: '\uD83C\uDFB8', label: 'Rehearsal', tip: 'Plan and run your next rehearsal' },
+      { page: 'calendar',  icon: '\uD83D\uDCC5', label: 'Schedule',  tip: 'Gigs, rehearsals, and band events' },
+      { page: 'setlists',  icon: '\uD83D\uDCCB', label: 'Setlists',  tip: 'Build and organize setlists' },
     ]},
     { title: 'Tools', items: [
-      { page: 'playlists',   icon: '🎧', label: 'Playlists',    tip: 'Create playlists for practice, learning, and inspiration' },
-      { page: 'pocketmeter', icon: '🎚️', label: 'Pocket Meter', tip: 'Measure timing, groove, and band tightness' },
-      { page: 'tuner',       icon: '🔱', label: 'Tuner',         tip: 'Tune your instrument with a live pitch detector' },
-      { page: 'metronome',   icon: '🥁', label: 'Metronome',     tip: 'Set tempo and practice with a steady click' },
+      { page: 'practice',    icon: '\uD83C\uDFAF', label: 'Practice',     tip: 'Practice songs and track progress' },
+      { page: 'playlists',   icon: '\uD83C\uDFA7', label: 'Playlists',    tip: 'Playlists for practice and learning' },
+      { page: 'pocketmeter', icon: '\uD83C\uDF9A\uFE0F', label: 'Pocket Meter', tip: 'Measure timing and groove' },
+      { page: 'tuner',       icon: '\uD83D\uDD31', label: 'Tuner',        tip: 'Tune your instrument' },
+      { page: 'metronome',   icon: '\uD83E\uDD41', label: 'Metronome',    tip: 'Tempo and click track' },
     ]},
-    { title: 'Admin', items: [
-      { page: 'bestshot',      icon: '🏆', label: 'Best Shot',     tip: 'Capture and review your best performances' },
-      { page: 'social',        icon: '📣', label: 'Social Media',  tip: 'Manage posts and promote your band' },
-      { page: 'finances',      icon: '💰', label: 'Finances',      tip: 'Track band income, expenses, and payouts' },
-      { page: 'equipment',     icon: '🎛️', label: 'Equipment',    tip: 'Manage gear, setups, and equipment notes' },
-      { page: 'contacts',      icon: '👥', label: 'Contacts',      tip: 'Store and manage band and venue contacts' },
-      { page: 'notifications', icon: '🔔', label: 'Notifications', tip: 'View updates, alerts, and band activity' },
-      { page: 'admin',         icon: '⚙️', label: 'Settings',     tip: 'Customize your GrooveLinx experience' },
-      { page: 'help',          icon: '❓', label: 'Help',           tip: 'Get help and learn how to use GrooveLinx' },
+    { title: 'Band', items: [
+      { page: 'ideas',     icon: '\uD83D\uDCAC', label: 'Band Room',  tip: 'Pitch songs, vote, and make band decisions' },
+      { page: 'feed',      icon: '\uD83D\uDCE1', label: 'Feed',       tip: 'Band notes, ideas, and decisions' },
+      { page: 'gigs',      icon: '\uD83C\uDFA4', label: 'Gigs',       tip: 'Manage gigs and performances' },
+      { page: 'venues',    icon: '\uD83C\uDFDB\uFE0F', label: 'Venues', tip: 'Venue details and logistics' },
+      { page: 'stageplot', icon: '\uD83C\uDFAD', label: 'Stage Plot',  tip: 'Stage layouts and band setup' },
+      { page: 'admin',     icon: '\u2699\uFE0F', label: 'Settings',    tip: 'Band members, settings, and admin' },
+    ]},
+    { title: 'More', items: [
+      { page: 'bestshot',      icon: '\uD83C\uDFC6', label: 'Best Shot',     tip: 'Best performances' },
+      { page: 'social',        icon: '\uD83D\uDCE3', label: 'Social Media',  tip: 'Posts and promotion' },
+      { page: 'finances',      icon: '\uD83D\uDCB0', label: 'Finances',      tip: 'Income, expenses, payouts' },
+      { page: 'equipment',     icon: '\uD83C\uDF9B\uFE0F', label: 'Equipment', tip: 'Gear and setups' },
+      { page: 'contacts',      icon: '\uD83D\uDC65', label: 'Contacts',      tip: 'Band and venue contacts' },
+      { page: 'notifications', icon: '\uD83D\uDD14', label: 'Notifications', tip: 'Updates and alerts' },
+      { page: 'help',          icon: '\u2753', label: 'Help',                 tip: 'Help and guides' },
     ]},
   ];
 
@@ -153,6 +149,19 @@
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  function _renderNavItem(vitem) {
+    var tooltip = vitem.tip || vitem.label;
+    return '<button class="gl-rail-item" data-page="' + vitem.page + '"'
+      + ' onclick="showPage(\'' + vitem.page + '\')"'
+      + ' title="' + tooltip + '">'
+      + '<span class="gl-rail-icon" style="position:relative">' + vitem.icon
+      + (vitem.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#fbbf24;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
+      + (vitem.page === 'feed' ? '<span class="gl-rail-badge" id="glRailFeedBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#f59e0b;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
+      + '</span>'
+      + '<span class="gl-rail-label">' + vitem.label + '</span>'
+      + '</button>';
+  }
+
   function _renderNav() {
     if (!_rail || !_rail.isConnected) {
       _rail = document.getElementById('gl-left-rail');
@@ -169,59 +178,36 @@
       + '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
       + '</svg></button>';
 
-    // ── Mode Switcher ──────────────────────────────────────────────────────
-    var modes = [
-      { key: 'sharpen', icon: '\uD83D\uDD25', label: 'Sharpen' },
-      { key: 'lockin',  icon: '\uD83C\uDFAF', label: 'Lock In' },
-      { key: 'play',    icon: '\uD83C\uDFA4', label: 'Play' }
-    ];
-    html += '<div class="gl-mode-bar">';
-    for (var m = 0; m < modes.length; m++) {
-      var md = modes[m];
-      var active = (md.key === currentMode) ? ' gl-mode-btn--active' : '';
-      html += '<button class="gl-mode-btn' + active + '" data-mode="' + md.key + '"'
-        + ' onclick="GLStore.setProductMode(\'' + md.key + '\')" title="' + md.label + ' mode">'
-        + '<span class="gl-mode-icon">' + md.icon + '</span>'
-        + '<span class="gl-mode-label">' + md.label + '</span>'
-        + '</button>';
-    }
-    html += '</div>';
-
     // Home — top-level, above all sections
     html += '<button class="gl-rail-item gl-rail-item--home" data-page="' + NAV_TOP.page + '"'
       + ' onclick="showPage(\'' + NAV_TOP.page + '\')" title="' + (NAV_TOP.tip || NAV_TOP.label) + '">'
       + '<span class="gl-rail-icon">' + NAV_TOP.icon + '</span>'
       + '<span class="gl-rail-label">' + NAV_TOP.label + '</span></button>';
 
-    // Intent-based sections — filtered by current mode
+    // Sections: primary items always visible, secondary collapsed
     for (var s = 0; s < NAV_SECTIONS.length; s++) {
       var section = NAV_SECTIONS[s];
-      // Filter items to only those visible in current mode
-      var visibleItems = [];
-      for (var i = 0; i < section.items.length; i++) {
-        var item = section.items[i];
-        if (!modePages || modePages.indexOf(item.page) !== -1) {
-          visibleItems.push(item);
-        }
-      }
-      if (visibleItems.length === 0) continue; // skip empty sections
+      var visibleItems = section.items; // no mode filtering — all items available
 
-      html += '<div class="gl-rail-section">';
-      html += '<div class="gl-rail-section-title">' + section.title + '</div>';
-      for (var vi = 0; vi < visibleItems.length; vi++) {
-        var vitem = visibleItems[vi];
-        var tooltip = vitem.tip || vitem.label;
-        html += '<button class="gl-rail-item" data-page="' + vitem.page + '"'
-          + ' onclick="showPage(\'' + vitem.page + '\')"'
-          + ' title="' + tooltip + '">'
-          + '<span class="gl-rail-icon" style="position:relative">' + vitem.icon
-          + (vitem.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#fbbf24;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
-          + (vitem.page === 'feed' ? '<span class="gl-rail-badge" id="glRailFeedBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#f59e0b;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
-          + '</span>'
-          + '<span class="gl-rail-label">' + vitem.label + '</span>'
-          + '</button>';
+      if (visibleItems.length === 0) continue;
+
+      // Primary section: no title, always expanded
+      if (section.primary) {
+        html += '<div class="gl-rail-section">';
+        for (var pi = 0; pi < visibleItems.length; pi++) {
+          html += _renderNavItem(visibleItems[pi]);
+        }
+        html += '</div>';
+        continue;
       }
-      html += '</div>';
+
+      // Secondary sections: collapsible
+      html += '<details class="gl-rail-section gl-rail-section--collapsible">';
+      html += '<summary class="gl-rail-section-title" style="cursor:pointer;user-select:none">' + section.title + '</summary>';
+      for (var vi = 0; vi < visibleItems.length; vi++) {
+        html += _renderNavItem(visibleItems[vi]);
+      }
+      html += '</details>';
     }
 
     _rail.innerHTML = html;

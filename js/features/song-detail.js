@@ -150,6 +150,35 @@ function _sdSkeleton() {
            '</div>';
 }
 
+// ── Practice This Song section ────────────────────────────────────────────────
+function _sdRenderPracticeSection(title, safeSong, ytQuery) {
+    var _opts = _sdGetMode() === 'play' ? '' : '';
+    return '<div class="sd-card" style="border-color:rgba(34,197,94,0.15)">'+
+        '<div class="sd-card-title" style="margin-bottom:10px">\uD83C\uDFB8 Practice This Song</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px">'+
+        // Play Along
+        '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;cursor:pointer;text-align:left;width:100%">'+
+        '<span style="font-size:1.1em;flex-shrink:0">\u25B6</span>'+
+        '<div style="flex:1"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Play Along</div>'+
+        '<div style="font-size:0.72em;color:var(--text-dim)">Stay in time. Don\u2019t rush the chorus.</div></div></button>'+
+        // Learn the Parts
+        '<button onclick="switchLens(\'learn\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer;text-align:left;width:100%">'+
+        '<span style="font-size:1.1em;flex-shrink:0">\uD83E\uDDE0</span>'+
+        '<div style="flex:1"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Learn the Parts</div>'+
+        '<div style="font-size:0.72em;color:var(--text-dim)">Watch this version \u2014 it\u2019s closest to how you\u2019re playing it.</div></div></button>'+
+        // Practice Harmonies
+        '<button onclick="if(typeof switchLens===\'function\'&&SD_LENSES.find(function(l){return l.id===\'sing\'})){switchLens(\'sing\')}else{window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'+harmony\',\'_blank\')}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer;text-align:left;width:100%">'+
+        '<span style="font-size:1.1em;flex-shrink:0">\uD83C\uDFA4</span>'+
+        '<div style="flex:1"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Practice Harmonies</div>'+
+        '<div style="font-size:0.72em;color:var(--text-dim)">Take the high part. I\u2019ll give you the reference.</div></div></button>'+
+        // Learn the Lyrics
+        '<button onclick="window.open(\'https://www.google.com/search?q='+ytQuery+'+lyrics\',\'_blank\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer;text-align:left;width:100%">'+
+        '<span style="font-size:1.1em;flex-shrink:0">\uD83D\uDCDD</span>'+
+        '<div style="flex:1"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Learn the Lyrics</div>'+
+        '<div style="font-size:0.72em;color:var(--text-dim)">Know the words. Know what they mean. That\u2019s what makes it land.</div></div></button>'+
+        '</div></div>';
+}
+
 // ── Band Lens ─────────────────────────────────────────────────────────────────
 async function _sdPopulateBandLens(title) {
     var panel = (_sdContainer||document).querySelector('.sd-lens-panel[data-lens="band"]');
@@ -287,9 +316,11 @@ async function _sdPopulateBandLens(title) {
             '<span style="color:var(--text-dim);font-size:0.85em">↓</span>'+
             '</div>'+
             '</div></div>'+
+            // Practice This Song
+            _sdRenderPracticeSection(title, safeSong, ytQuery)+
             // Readiness + trend
             '<div class="sd-card" id="sd-readiness-card">'+
-            '<div class="sd-card-title">📊 Your Readiness</div>'+
+            '<div class="sd-card-title">\uD83D\uDCCA Your Readiness</div>'+
             _sdRenderReadinessBlock(title,safeSong)+
             _sdBuildReadinessTrend(title)+
             '</div>'+
@@ -335,6 +366,8 @@ async function _sdPopulateBandLens(title) {
         '<div style="margin-top:12px;display:flex;gap:8px">'+
         '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83D\uDCCB Run Through</button>'+
         '</div></div>'+
+        // Practice This Song
+        _sdRenderPracticeSection(title, safeSong, ytQuery)+
         // ── Band Love ──
         '<div class="sd-card" id="sd-love-card">'+
         '<div class="sd-card-title">\u2764\uFE0F Love Playing</div>'+

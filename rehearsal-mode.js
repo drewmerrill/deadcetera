@@ -14,7 +14,7 @@
 //             loadABCNotation, getCurrentMemberKey
 // ============================================================================
 
-console.log('%c🔗 GrooveLinx BUILD: 20260329-045756', 'color:#667eea;font-weight:bold;font-size:14px');
+console.log('%c🔗 GrooveLinx BUILD: 20260329-165345', 'color:#667eea;font-weight:bold;font-size:14px');
 // Build version logged once by app.js from <meta> tag
 // ── State ───────────────────────────────────────────────────────────────────
 let rmQueue   = [];
@@ -1448,9 +1448,10 @@ function _rmShowRevealScreen() {
         safeOv.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)';
         safeOv.innerHTML = '<div style="max-width:400px;width:100%;text-align:center;animation:rmRevealIn 0.25s ease">'
             + '<div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(99,102,241,0.2));display:flex;align-items:center;justify-content:center"><span style="font-size:1.6em">\u2705</span></div>'
-            + '<div style="font-size:1.3em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Session Saved</div>'
-            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:24px">Your scorecard is tracking this rehearsal.</div>'
-            + '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Done \u2192 Home</button>'
+            + '<div style="font-size:1.3em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Session saved.</div>'
+            + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:8px">Keep showing up. That\u2019s what makes a band tight.</div>'
+            + '<div style="font-size:0.82em;color:#64748b;margin-bottom:24px;font-style:italic">You\u2019re getting closer.</div>'
+            + '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Done</button>'
             + '</div>';
         document.body.appendChild(safeOv);
         if (typeof GLAvatarUI !== 'undefined' && GLAvatarUI.checkForTips) {
@@ -1477,70 +1478,48 @@ function _rmShowRevealScreen() {
         progressSignal = RehearsalStoryEngine.buildProgressSignal(insight.story);
     }
 
-    // Build HTML — headline, optional progress, ONE insight card, next action
+    // Build HTML — 4-block structure: HEADLINE, PROOF, DIRECTIVE, CONFIDENCE CLOSE
     var html = '<div style="max-width:440px;width:100%;animation:rmRevealIn 0.25s ease">';
 
-    // ── Headline ──
-    html += '<div style="text-align:center;padding:32px 24px ' + (progressSignal ? '10px' : '20px') + '">';
+    // ── 1. HEADLINE (large, emotional) ──
+    html += '<div style="text-align:center;padding:32px 24px 20px">';
     html += '<div style="font-size:1.6em;font-weight:900;color:#f1f5f9;line-height:1.2;letter-spacing:-0.02em">' + _rmEsc(tc.headline) + '</div>';
     html += '</div>';
 
-    // ── Attribution Signal (what changed + why) ──
-    if (progressSignal) {
-        var sigColors = { improvement: '#22c55e', regression: '#f87171', steady: '#94a3b8' };
-        var sigIcons = { improvement: '\u2191', regression: '\u2193', steady: '\u2192' };
-        var sigBg = { improvement: '34,197,94', regression: '248,113,113', steady: '148,163,184' };
-        var sc = sigColors[progressSignal.type] || '#94a3b8';
-        var si = sigIcons[progressSignal.type] || '\u2192';
-        var sb = sigBg[progressSignal.type] || '148,163,184';
-
-        html += '<div style="padding:0 24px 16px">';
-        html += '<div style="padding:10px 14px;background:rgba(' + sb + ',0.06);border:1px solid rgba(' + sb + ',0.15);border-radius:12px">';
-        // What changed
-        html += '<div style="font-size:0.85em;font-weight:700;color:' + sc + ';margin-bottom:4px">' + si + ' ' + _rmEsc(progressSignal.text) + '</div>';
-        // Why it changed
-        if (progressSignal.whyItChanged) {
-            html += '<div style="font-size:0.75em;color:#94a3b8;line-height:1.4">' + _rmEsc(progressSignal.whyItChanged) + '</div>';
-        }
-        html += '</div></div>';
-    }
-
-    // ── ONE insight card with "why this matters" ──
+    // ── 2. PROOF (one concrete observation) ──
     html += '<div style="padding:0 24px 20px">';
     if (hasIssue) {
         html += '<div style="padding:14px 16px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px">';
-        html += '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">';
-        html += '<span style="font-size:1.1em;flex-shrink:0">\u26A0\uFE0F</span>';
         html += '<div style="font-size:0.88em;color:#fbbf24;line-height:1.4;font-weight:600">' + _rmEsc(tc.biggestIssue) + '</div>';
-        html += '</div>';
-        html += '<div style="font-size:0.68em;color:#64748b;padding-left:28px">Why: fixing this one thing will save the most time next rehearsal.</div>';
         html += '</div>';
     } else if (tc.strongestMoment) {
         html += '<div style="padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:12px">';
-        html += '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">';
-        html += '<span style="font-size:1.1em;flex-shrink:0">\u2B50</span>';
         html += '<div style="font-size:0.88em;color:#86efac;line-height:1.4;font-weight:600">' + _rmEsc(tc.strongestMoment) + '</div>';
         html += '</div>';
-        html += '<div style="font-size:0.68em;color:#64748b;padding-left:28px">This is what gig-ready sounds like. Build on it.</div>';
+    } else if (progressSignal) {
+        var sigColors = { improvement: '#22c55e', regression: '#f87171', steady: '#94a3b8' };
+        var sigBg = { improvement: '34,197,94', regression: '248,113,113', steady: '148,163,184' };
+        var sc = sigColors[progressSignal.type] || '#94a3b8';
+        var sb = sigBg[progressSignal.type] || '148,163,184';
+        html += '<div style="padding:10px 14px;background:rgba(' + sb + ',0.06);border:1px solid rgba(' + sb + ',0.15);border-radius:12px">';
+        html += '<div style="font-size:0.85em;font-weight:700;color:' + sc + '">' + _rmEsc(progressSignal.text) + '</div>';
         html += '</div>';
-    }
-    // Confidence + data basis
-    var confLabel = insight.confidence && insight.confidence.segmentation === 'high' ? 'High confidence' : insight.confidence && insight.confidence.segmentation === 'medium' ? 'Moderate confidence' : '';
-    var dataMin = coaching.totalMinutes ? 'Based on ' + coaching.totalMinutes + ' min of data' : '';
-    if (confLabel || dataMin) {
-        html += '<div style="font-size:0.6em;color:#475569;text-align:right;margin-top:4px">' + [confLabel, dataMin].filter(Boolean).join(' \u00b7 ') + '</div>';
     }
     html += '</div>';
 
-    // ── Next Action ──
-    if (coaching.nextAction) {
-        html += '<div style="padding:0 24px 28px">';
-        html += '<div style="padding:14px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">';
-        html += '<div style="font-size:0.6em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Next Focus</div>';
-        html += '<div style="font-size:0.9em;font-weight:700;color:#a5b4fc;line-height:1.4">' + _rmEsc(coaching.nextAction) + '</div>';
-        html += '</div>';
-        html += '</div>';
-    }
+    // ── 3. DIRECTIVE (one action) ──
+    var _revealDirective = coaching.nextAction || (hasIssue ? 'Fix that next rehearsal.' : 'Run that set again before you play out.');
+    html += '<div style="padding:0 24px 20px">';
+    html += '<div style="padding:14px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">';
+    html += '<div style="font-size:0.92em;font-weight:700;color:#a5b4fc;line-height:1.4">' + _rmEsc(_revealDirective) + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // ── 4. CONFIDENCE CLOSE ──
+    var _revealClose = hasIssue ? 'Fix this and the whole set will feel tighter.' : (progressSignal && progressSignal.type === 'improvement' ? 'The work is paying off. Keep showing up.' : 'You\u2019re getting closer.');
+    html += '<div style="padding:0 24px 24px;text-align:center">';
+    html += '<div style="font-size:0.82em;color:#64748b;font-style:italic;line-height:1.4">' + _rmEsc(_revealClose) + '</div>';
+    html += '</div>';
 
     // ── Auto Chart Note (default YES — saved automatically, user can undo) ──
     var _revealProbSong = coaching.problematicSongs && coaching.problematicSongs.length ? coaching.problematicSongs[0].song : null;
@@ -1568,13 +1547,18 @@ function _rmShowRevealScreen() {
         html += '</div></div>';
     }
 
-    // ── Done + Next Rehearsal ──
+    // ── Primary CTA ──
+    var _revealPracticeSong = _revealProbSong || null;
+    var _revealPracticeLabel = _revealPracticeSong ? 'Practice That Next' : 'Done';
+    var _revealPracticeAction = _revealPracticeSong
+        ? "document.getElementById('rmRevealOverlay').remove();if(typeof renderSongDetail==='function'){showPage('songdetail');renderSongDetail('" + (_revealPracticeSong||'').replace(/'/g,"\\'") + "');}else showPage('songs');"
+        : "document.getElementById('rmRevealOverlay').remove();if(typeof showPage==='function')showPage('home');setTimeout(function(){if(typeof GLPlans!=='undefined'&&GLPlans.shouldShowValueSignal())GLPlans.showValueSignalPrompt();},2000)";
     html += '<div style="padding:0 24px 16px">';
-    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();if(typeof showPage===\'function\')showPage(\'home\');setTimeout(function(){if(typeof GLPlans!==\'undefined\'&&GLPlans.shouldShowValueSignal())GLPlans.showValueSignalPrompt();},2000)" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer">Done \u2192 Home</button>';
+    html += '<button onclick="' + _revealPracticeAction + '" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.95em;cursor:pointer">' + _revealPracticeLabel + '</button>';
     html += '</div>';
-    // Return loop — nudge to schedule next rehearsal
+    // Secondary: schedule next rehearsal
     html += '<div style="padding:0 24px 24px;text-align:center">';
-    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();showPage(\'rehearsal\');setTimeout(function(){if(typeof rhOpenCreateModal===\'function\')rhOpenCreateModal();},1200)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.78em;text-decoration:underline">Schedule next rehearsal \u2192</button>';
+    html += '<button onclick="document.getElementById(\'rmRevealOverlay\').remove();showPage(\'rehearsal\');setTimeout(function(){if(typeof rhOpenCreateModal===\'function\')rhOpenCreateModal();},1200)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.78em;text-decoration:underline">Schedule next rehearsal</button>';
     html += '</div>';
 
     html += '</div>';

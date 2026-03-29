@@ -24,9 +24,9 @@ function _slCountdownLabel(dateStr) { return (typeof glCountdownLabel === 'funct
 
 function renderSetlistsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
-    el.innerHTML = '<div class="page-header"><h1>📋 Setlists</h1><p>Build and manage setlists for gigs</p></div>'
+    el.innerHTML = '<div class="page-header"><h1>Build Your Set</h1><p>This is what you\u2019ll play. Keep it tight, clear, and fun.</p></div>'
         + '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">'
-        + '<button class="btn btn-primary" onclick="createNewSetlist()" style="font-size:0.85em">+ New Setlist</button>'
+        + '<button class="btn btn-primary" onclick="createNewSetlist()" style="font-size:0.85em">+ Build a New Set</button>'
         + '<div id="slFilterBar" style="display:flex;gap:4px;margin-left:auto"></div></div>'
         + '<div id="setlistsList"></div>';
     if (typeof loadGigHistory === 'function') loadGigHistory().then(function() { loadSetlists(); }); else loadSetlists();
@@ -57,7 +57,7 @@ async function loadSetlists() {
         }).join('');
     }
 
-    if (data.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"><div style="font-size:1.5em;margin-bottom:8px">\uD83D\uDCCB</div><div style="font-weight:600;margin-bottom:4px">No setlists yet</div><div style="font-size:0.85em;margin-bottom:12px">Build your first setlist for a rehearsal or gig.</div><button class="btn btn-primary" onclick="createNewSetlist()">+ Create Setlist</button></div>'; return; }
+    if (data.length === 0) { container.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"><div style="font-size:1.5em;margin-bottom:8px">\uD83C\uDFB5</div><div style="font-weight:600;margin-bottom:4px">Start your first set.</div><div style="font-size:0.85em;margin-bottom:12px">Add a few songs and GrooveMate can turn them into a real rehearsal set.</div><button class="btn btn-primary" onclick="createNewSetlist()">Build My First Set</button></div>'; return; }
 
     var today = new Date().toISOString().split('T')[0];
     var upcoming = data.filter(function(sl) { return (sl.date || '') >= today; }).sort(function(a,b) { return (a.date || '').localeCompare(b.date || ''); });
@@ -296,10 +296,10 @@ async function createNewSetlist() {
     window._slSelectedVenueName = null;
     // Auto-generate name and date so user can focus on adding songs
     var _today = new Date().toISOString().split('T')[0];
-    container.innerHTML = `<div class="app-card"><h3>New Setlist</h3>
+    container.innerHTML = `<div class="app-card"><h3>Build Your Set</h3>
         <div style="margin-bottom:12px">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-                <div style="flex:2;min-width:150px"><label class="form-label">Name</label><input class="app-input" id="slName" value="" placeholder="e.g. GrizzFest 2026, Friday Rehearsal, Acoustic Set" title="Name your setlist by event, date, or theme"></div>
+                <div style="flex:2;min-width:150px"><label class="form-label">Set Name</label><input class="app-input" id="slName" value="" placeholder="e.g. GrizzFest 2026, Friday Rehearsal, Acoustic Set" title="Name your setlist by event, date, or theme"></div>
                 <div style="flex:1;min-width:120px"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${_today}" style="color-scheme:dark"></div>
             </div>
             <details style="font-size:0.82em;color:var(--text-dim)"><summary style="cursor:pointer;padding:4px 0">More options</summary>
@@ -310,15 +310,15 @@ async function createNewSetlist() {
             </details>
         </div>
         <div id="slQuickFillSection" style="margin-bottom:12px;padding:14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center">
-            <div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:6px">Pick songs for your setlist</div>
-            <button onclick="slQuickFill()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,0.3)">🎵 Choose Songs</button>
+            <div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:6px">Start with 3 songs. GrooveMate can finish the rest.</div>
+            <button onclick="slQuickFill()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,0.3)">Fill This Out</button>
             <div style="font-size:0.72em;color:#475569;margin-top:6px">or type song names in the search below</div>
         </div>
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Type song name..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap" title="Toggle: show only gig-ready/active songs, or all songs">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
         <div style="height:60px"></div></div>
         <div id="slStickyFooter" style="position:sticky;bottom:0;z-index:100;padding:12px 16px;background:linear-gradient(to top,#0f172a 60%,transparent);display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3)">💾 Save Setlist</button>
+            <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\uD83D\uDD12 Lock This Set</button>
         </div>`;
     _slInitVenuePicker(await GLStore.getVenues(), null);
 }
@@ -369,7 +369,7 @@ function slSearchSong(input, setIdx) {
     var exactMatch = matches.some(s => s.title.toLowerCase() === q);
     if (!exactMatch && input.value.trim().length >= 2) {
         var safeVal = input.value.trim().replace(/"/g, '&quot;').replace(/</g, '&lt;');
-        html += '<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddNewSongToSet(' + setIdx + ')" ontouchstart="slAddNewSongToSet(' + setIdx + ')">+ Add &quot;' + safeVal + '&quot; as new song</div>';
+        html += '<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddNewSongToSet(' + setIdx + ')" ontouchstart="slAddNewSongToSet(' + setIdx + ')">+ Add &quot;' + safeVal + '&quot; to this band</div>';
     }
     results.innerHTML = html;
 }
@@ -392,6 +392,20 @@ function slAddSongToSet(setIdx, title) {
     slRenderSetSongs(setIdx);
     document.getElementById('slAddSong' + setIdx).value = '';
     document.getElementById('slSongResults' + setIdx).innerHTML = '';
+    // Inline assist after 3 songs
+    var _slSongCount = (window._slSets[setIdx].songs || []).length;
+    if (_slSongCount === 3 && !document.getElementById('slAssistPrompt')) {
+        var _assistEl = document.createElement('div');
+        _assistEl.id = 'slAssistPrompt';
+        _assistEl.style.cssText = 'margin:12px 0;padding:14px 16px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:center;animation:rmRevealIn 0.25s ease';
+        _assistEl.innerHTML = '<div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:8px">That\u2019s a solid start. Want me to round this into a full set?</div>'
+            + '<div style="display:flex;gap:8px;justify-content:center">'
+            + '<button onclick="if(typeof slQuickFill===\'function\')slQuickFill();var p=document.getElementById(\'slAssistPrompt\');if(p)p.remove()" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:700;font-size:0.82em;cursor:pointer">Finish My Set</button>'
+            + '<button onclick="var p=document.getElementById(\'slAssistPrompt\');if(p)p.remove()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);font-weight:600;font-size:0.82em;cursor:pointer">Keep Building</button>'
+            + '</div>';
+        var _slSetEl = document.getElementById('slSet' + setIdx + 'Songs');
+        if (_slSetEl && _slSetEl.parentNode) _slSetEl.parentNode.insertBefore(_assistEl, _slSetEl.nextSibling);
+    }
 }
 
 // Duration estimate: 6 min/song default
@@ -661,10 +675,7 @@ async function slSaveSetlist() {
         console.log('[Setlist] Save error:', e.message || e);
     }
     if (saved === false) {
-        // Data is in localStorage via saveBandDataToDrive's first line — show soft warning
-        showToast('⚠️ Saved locally — will sync when connected');
-    } else {
-        showToast('✅ Setlist saved');
+        showToast('\u26A0\uFE0F Saved locally \u2014 will sync when connected');
     }
     if (typeof GLUXTracker !== 'undefined') GLUXTracker.completeFlow('create_setlist');
     if (typeof GLFeedbackService !== 'undefined') GLFeedbackService.completeFlow('create_setlist');
@@ -676,7 +687,18 @@ async function slSaveSetlist() {
     if (_wasOnboarding && typeof showPage === 'function') {
         setTimeout(function() { showPage('home'); }, 800);
     } else {
-        loadSetlists();
+        // Show post-save confirmation inline
+        var container = document.getElementById('setlistsList');
+        if (container) {
+            container.innerHTML = '<div style="text-align:center;padding:40px 20px">'
+                + '<div style="font-size:1.3em;font-weight:800;color:#f1f5f9;margin-bottom:8px">Set locked. You\u2019re ready to rehearse.</div>'
+                + '<div style="display:flex;gap:10px;justify-content:center;margin-top:16px">'
+                + '<button onclick="if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal();else showPage(\'rehearsal\')" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Start Rehearsal</button>'
+                + '<button onclick="loadSetlists()" style="padding:12px 24px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);font-weight:600;font-size:0.92em;cursor:pointer">Done</button>'
+                + '</div></div>';
+        } else {
+            loadSetlists();
+        }
     }
 }
 
@@ -713,7 +735,7 @@ async function editSetlist(idx) {
         + '<div id="slStickyActions" style="position:sticky;top:0;z-index:10;background:#1e293b;padding:6px 0;margin:0 -14px;padding-left:14px;padding-right:14px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
         + '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">📤</button>'
         + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700;margin-left:auto">● Unsaved</span>'
-        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">💾 Save</button>'
+        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDD12 Lock This Set</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
         + '</div>'
         // Sets
@@ -738,7 +760,7 @@ async function editSetlist(idx) {
         + '<div id="slShowTotal" style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between"></div>'
         + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;gap:8px">'
         + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.82em">Cancel</button>'
-        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.88em;font-weight:700">💾 Save Changes</button>'
+        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.88em;font-weight:700">\uD83D\uDD12 Lock This Set</button>'
         + '</div>'
         + '</div>';
     // Show mobile save bar on small screens
@@ -1116,7 +1138,7 @@ async function slSaveSetlistEdit(idx) {
         showToast('❌ Save failed — check your connection or sign in');
         return;
     }
-    showToast('✅ Setlist saved to band');
+    showToast('\u2705 Set locked');
     // Onboarding: mark setlist step complete
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
