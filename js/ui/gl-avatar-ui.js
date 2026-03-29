@@ -1369,6 +1369,34 @@ window.GLAvatarUI = (function() {
                 case 'showSongs':
                     if (typeof showPage === 'function') showPage('songs');
                     break;
+                case 'createSetlist':
+                    if (typeof GLTools !== 'undefined') GLTools.createSetlist(args.name || '');
+                    break;
+                case 'addSongs':
+                    if (typeof GLTools !== 'undefined' && args.titles) GLTools.bulkAddSongs(args.titles);
+                    break;
+                case 'createRehearsal':
+                    if (typeof showPage === 'function') showPage('rehearsal');
+                    setTimeout(function() { if (typeof rhOpenCreateModal === 'function') rhOpenCreateModal(); }, 500);
+                    break;
+                case 'addNote':
+                    if (typeof GLTools !== 'undefined' && args.text) {
+                        var song = args.song || ((typeof GLStore !== 'undefined' && GLStore.getActiveSong) ? GLStore.getActiveSong() : '');
+                        GLTools.addChartNote(song, args.text);
+                    }
+                    break;
+                case 'importChart':
+                    if (typeof GLTools !== 'undefined' && args.url) {
+                        var chartSong = args.song || ((typeof GLStore !== 'undefined' && GLStore.getActiveSong) ? GLStore.getActiveSong() : '');
+                        GLTools.attachChartSource(chartSong, args.url);
+                    }
+                    break;
+                case 'insertSection':
+                    if (typeof GLTools !== 'undefined') GLTools.suggestSections(args.song || '', args.text || '');
+                    break;
+                case 'runBandCycle':
+                    if (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.runBandCycle) GLOrchestrator.runBandCycle();
+                    break;
                 default:
                     console.warn('[AvatarUI] Unknown UI action:', action);
             }

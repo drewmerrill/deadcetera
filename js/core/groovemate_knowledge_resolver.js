@@ -199,19 +199,25 @@
       staleReason: staleCheck.reason || null
     };
 
-    // SHOW MODE: Prefer action over explanation
-    // If high confidence + action available → lead with "I can do this"
-    if (adjustedConfidence >= 0.85 && actionLabel) {
-      response.tone = 'show'; // execute via TaskEngine
-      response.text = actionLabel + '. Want me to?';
+    // ACTION-FIRST: Always prefer doing over explaining.
+    // If action available → lead with execution offer, regardless of confidence.
+    if (actionLabel) {
+      if (adjustedConfidence >= 0.7) {
+        response.tone = 'show'; // execute via TaskEngine
+        response.text = actionLabel + '.';
+      } else {
+        response.tone = 'show';
+        response.text = actionLabel + '?';
+        response.fallback = resolved.answer; // keep explanation as fallback
+      }
     } else if (adjustedConfidence >= 0.7) {
       response.tone = 'direct';
     } else if (adjustedConfidence >= 0.5) {
       response.tone = 'suggestion';
-      response.fallback = 'If that doesn\u2019t help, tell me what you\u2019re trying to do.';
+      response.fallback = 'Tell me what you\u2019re trying to do and I\u2019ll do it.';
     } else {
       response.tone = 'exploratory';
-      response.fallback = 'I\u2019m not sure about this. Want me to take you there?';
+      response.fallback = 'Want me to take you there?';
     }
 
     return response;

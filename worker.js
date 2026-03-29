@@ -64,6 +64,8 @@ export default {
       return handleICalFeed(request, env, path);
     if (path === '/tts' && request.method === 'POST')
       return handleTTS(request, env);
+    if (path === '/fetch-chart' && request.method === 'POST')
+      return handleFetchChart(request);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -115,6 +117,35 @@ async function handleTTS(request, env) {
     headers.set('Access-Control-Allow-Origin', '*');
     headers.set('Cache-Control', 'public, max-age=3600');
     return new Response(audioData, { status: 200, headers });
+  } catch (e) {
+    return jsonResp({ error: e.message }, 500);
+  }
+}
+
+// ── Chart Fetch (extract text from external chart page) ──────────────────────
+async function handleFetchChart(request) {
+  try {
+    const { url } = await request.json();
+    if (!url) return jsonResp({ error: 'No URL provided' }, 400);
+
+    // Fetch the page (CORS bypass via worker)
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GrooveLinx/1.0)' }
+    });
+    if (!res.ok) return jsonResp({ error: 'Fetch failed: ' + res.status }, res.status);
+
+    const html = await res.text();
+
+    // Extract meaningful text (strip HTML tags, scripts, styles)
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      .substring(0, 5000); // cap at 5KB
+
+    return jsonResp({ url: url, text: text, length: text.length });
   } catch (e) {
     return jsonResp({ error: e.message }, 500);
   }
