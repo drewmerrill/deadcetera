@@ -116,12 +116,14 @@ window.GLAvatarUI = (function() {
 
     function _updateButtonState() {
         if (!_btnEl) return;
+        // Only show avatar button when it has something useful to say
+        _btnEl.style.opacity = _hasUnread ? '1' : '0.3';
         if (_hasUnread) {
             _btnEl.classList.add('has-tip');
             if (!_btnEl.querySelector('.gl-av-dot')) {
                 var dot = document.createElement('div');
                 dot.className = 'gl-av-dot';
-                _btnEl.style.position = 'fixed'; // already fixed, but ensure
+                _btnEl.style.position = 'fixed';
                 _btnEl.appendChild(dot);
             }
         } else {

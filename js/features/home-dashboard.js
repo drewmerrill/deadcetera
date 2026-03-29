@@ -186,20 +186,26 @@ window._hdViewSetlist = function(setlistName) {
 window._hdShowRehearsalPreview = function() {
     var existing = document.getElementById('hdRehearsalPreview');
     if (existing) existing.remove();
+    // Get song count from setlists if available
+    var _songCount = 0, _duration = '';
+    try {
+        var _sl = (typeof GLStore !== 'undefined' && GLStore.getSetlistCache) ? GLStore.getSetlistCache() : (window._glCachedSetlists || []);
+        if (_sl && _sl.length) {
+            _songCount = (_sl[0].sets || []).reduce(function(n, s) { return n + (s.songs || []).length; }, 0);
+            _duration = _songCount > 0 ? '~' + Math.round(_songCount * 6) + ' min' : '';
+        }
+    } catch(e) {}
+    var _meta = _songCount > 0 ? '<div style="font-size:0.78em;color:#a5b4fc;margin-bottom:12px">' + _songCount + ' songs' + (_duration ? ' \u00B7 ' + _duration : '') + '</div>' : '';
     var ov = document.createElement('div');
     ov.id = 'hdRehearsalPreview';
     ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-    ov.innerHTML = '<div style="max-width:380px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);animation:rmRevealIn 0.2s ease">'
-        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:12px">Here\u2019s the plan.</div>'
-        + '<div style="font-size:0.88em;color:#94a3b8;line-height:1.6;margin-bottom:20px">'
-        + '\u2022 Warm up with your strongest song<br>'
-        + '\u2022 Focus on the part most likely to break<br>'
-        + '\u2022 End with a full run-through'
-        + '</div>'
-        + '<div style="display:flex;gap:10px">'
-        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();if(typeof GLOrchestrator!==\'undefined\'&&GLOrchestrator.runBandCycle)GLOrchestrator.runBandCycle();else if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal()" style="flex:1;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Start Now</button>'
-        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();showPage(\'setlists\')" style="flex:1;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);font-weight:600;font-size:0.92em;cursor:pointer">Adjust First</button>'
-        + '</div></div>';
+    ov.innerHTML = '<div style="max-width:380px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);animation:rmRevealIn 0.2s ease;text-align:center">'
+        + '<div style="font-size:1.15em;font-weight:800;color:#f1f5f9;margin-bottom:6px">You\u2019re about to run your set</div>'
+        + _meta
+        + '<div style="font-size:0.82em;color:#94a3b8;line-height:1.5;margin-bottom:20px">We\u2019ll show you what to fix after.</div>'
+        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();if(typeof GLOrchestrator!==\'undefined\'&&GLOrchestrator.runBandCycle)GLOrchestrator.runBandCycle();else if(typeof _glQuickStartRehearsal===\'function\')_glQuickStartRehearsal()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3);margin-bottom:8px">\u25B6 Start Band Rehearsal</button>'
+        + '<button onclick="document.getElementById(\'hdRehearsalPreview\').remove();showPage(\'rehearsal\')" style="width:100%;padding:10px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">View rehearsal plan first</button>'
+        + '</div>';
     ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
 };
@@ -403,6 +409,16 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
     ].join('');
 }
 
+// ── Next Up Card — dynamic primary action ────────────────────────────────────
+function _renderNextUpCard(msg, sub, cta) {
+    return '<div style="padding:20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
+        + '<div style="font-size:0.68em;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Next up for your band</div>'
+        + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:4px">' + _escHtml(msg) + '</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>'
+        + '<button onclick="' + cta.onclick + '" style="padding:14px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
+        + '</div>';
+}
+
 // ── Intent Section — Practice / Rehearse / Play Live ─────────────────────────
 function _renderIntentSection() {
     var _ibtn = 'flex:1;padding:14px 10px 10px;border-radius:12px;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px';
@@ -422,7 +438,7 @@ function _renderIntentSection() {
         + '<button onclick="showPage(\'setlists\')" style="' + _ibtn + ';border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06)">'
         + '<span style="font-size:1.1em">\uD83C\uDFA4</span>'
         + '<span style="font-weight:700;font-size:0.85em;color:#fbbf24">Play a Gig</span>'
-        + '<span style="font-size:0.65em;color:#64748b;line-height:1.3">Use your setlist in live mode</span>'
+        + '<span style="font-size:0.65em;color:#64748b;line-height:1.3">Big charts \u00B7 no distractions \u00B7 hands-free</span>'
         + '</button>'
         + '</div></div>';
 }
@@ -432,31 +448,16 @@ function _renderNextActionCard(bundle, wf) {
     // ── First-time user: "Run Your First Rehearsal" launcher ──
     var onboardStep = (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.getOnboardStep) ? GLAvatarGuide.getOnboardStep() : 0;
     if (onboardStep >= 1 && onboardStep <= 3) {
-        var stepLabels = { 1: 'Let\u2019s build your first set', 2: 'Start a rehearsal', 3: 'Review your session' };
-        var stepSubs = { 1: 'Start with a few songs \u2014 I\u2019ll shape the rest for rehearsal.', 2: 'One tap. We\u2019ll track everything.', 3: 'One tap to confirm. That\u2019s it.' };
         var stepCtas = {
             1: { label: 'Pick Songs \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" },
-            2: { label: 'Start Rehearsal \u2192', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal()" },
+            2: { label: '\u25B6 Start Band Rehearsal', onclick: "if(typeof _glQuickStartRehearsal==='function')_glQuickStartRehearsal()" },
             3: { label: 'See Results \u2192', onclick: "showPage('rehearsal')" }
         };
         var cta = stepCtas[onboardStep] || stepCtas[1];
-        // Progress dots
-        var dots = '';
-        for (var d = 1; d <= 3; d++) {
-            dots += '<span style="width:8px;height:8px;border-radius:50%;background:' + (d < onboardStep ? '#22c55e' : d === onboardStep ? '#6366f1' : 'rgba(255,255,255,0.15)') + ';display:inline-block"></span>';
-        }
-        // Personalize headline
-        var _userName = (typeof GLUserIdentity !== 'undefined' && GLUserIdentity.getContext) ? GLUserIdentity.getContext().firstName : '';
-        var _personalLabel = stepLabels[onboardStep] + (_userName ? ', ' + _userName : '');
-        return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(99,102,241,0.35);border-radius:16px;background:linear-gradient(160deg,rgba(99,102,241,0.1),rgba(139,92,246,0.05))">'
-            + '<div style="text-align:center">'
-            + '<div style="font-size:0.72em;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Step ' + onboardStep + ' of 3</div>'
-            + '<div style="display:flex;gap:6px;justify-content:center;margin-bottom:10px">' + dots + '</div>'
-            + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:6px">' + _personalLabel + '</div>'
-            + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + stepSubs[onboardStep] + '</div>'
-            + '<button onclick="' + cta.onclick + '" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(99,102,241,0.3)">' + cta.label + '</button>'
-            + '</div></div>'
-        // Intent section — always visible, even during onboarding
+        // Dynamic "Next up" message
+        var _nextUpMsg = onboardStep === 1 ? 'Pick a few songs to start your set' : onboardStep === 2 ? 'Run your first rehearsal' : 'See what to fix next';
+        var _nextUpSub = onboardStep === 1 ? 'I\u2019ll shape them into a rehearsal set.' : onboardStep === 2 ? 'We\u2019ll track everything and show you what broke.' : 'One tap to confirm. That\u2019s it.';
+        return _renderNextUpCard(_nextUpMsg, _nextUpSub, cta)
             + _renderIntentSection();
     }
 
@@ -490,20 +491,30 @@ function _renderNextActionCard(bundle, wf) {
     else if (sessionCount >= 1) memoryMsg = 'Session ' + (sessionCount + 1) + '. I\u2019ve got a plan.';
     else memoryMsg = 'Let\u2019s hear what you\u2019ve got.';
 
-    // ── Primary CTA card ──
-    var runMyBandCard = '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + '<div style="text-align:center">'
-        + progressHtml
-        + '<div style="font-size:1.3em;font-weight:900;color:#f1f5f9;margin-bottom:4px">Your next rehearsal, handled.</div>'
-        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">GrooveMate will help you build the set, run the rehearsal, and show you what to fix next.</div>'
-        + '<button onclick="_hdShowRehearsalPreview()" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Run My Next Rehearsal</button>'
-        + '<div style="font-size:0.72em;color:#475569;margin-top:8px">Takes about 10 minutes</div>'
-        + (sessionCount > 0 ? '<div style="margin-top:8px"><button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.75em;text-decoration:underline">View last session</button></div>' : '')
-        + '</div></div>'
-    // ── Intent section ──
-        + _renderIntentSection()
-    // GrooveMate line
-        + '<div style="padding:0 4px 8px;font-size:0.82em;color:#64748b;font-style:italic">' + memoryMsg + '</div>';
+    // ── Dynamic "Next up for your band" ──
+    var weakCount = _countWeakSongs(bundle);
+    var nextGig = bundle.gigs && bundle.gigs[0];
+    var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
+    var _nextMsg = '', _nextSub = '', _nextCta = { label: '\u25B6 Start Band Rehearsal', onclick: "showPage('rehearsal')" };
+
+    if (daysOut <= 3 && daysOut >= 0) {
+        _nextMsg = 'Get ready to play';
+        _nextSub = (nextGig.venue || 'Gig') + ' in ' + (daysOut === 0 ? 'today' : daysOut + ' day' + (daysOut > 1 ? 's' : '')) + '. Run the set and tighten the weak spots.';
+        _nextCta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
+    } else if (weakCount > 0) {
+        _nextMsg = 'Tighten these songs';
+        _nextSub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need' + (weakCount === 1 ? 's' : '') + ' work before your next rehearsal.';
+    } else if (sessionCount === 0) {
+        _nextMsg = 'Run your first rehearsal';
+        _nextSub = 'We\u2019ll track everything and show you what to fix after.';
+    } else {
+        _nextMsg = 'Your next rehearsal starts here';
+        _nextSub = 'Keep it tight. We\u2019ll show you what matters after.';
+    }
+
+    var runMyBandCard = progressHtml
+        + _renderNextUpCard(_nextMsg, _nextSub, _nextCta)
+        + _renderIntentSection();
 
     return runMyBandCard;
 
@@ -697,16 +708,15 @@ function _renderTopSongsToWork(bundle) {
 
     var html = '<div class="app-card" style="padding:12px 14px;margin-bottom:12px">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text)">\uD83C\uDFAF Songs to Tighten</div>';
-    html += '<button onclick="hdPlayBundle(\'focus\')" style="font-size:0.68em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc">\u25B6 Practice All</button>';
+    html += '<div style="font-size:0.78em;font-weight:800;color:var(--text)">These need work</div>';
+    html += '<button onclick="hdPlayBundle(\'focus\')" style="font-size:0.72em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:none;background:rgba(99,102,241,0.12);color:#a5b4fc">\u25B6 Practice These</button>';
     html += '</div>';
 
     songs.forEach(function(s, i) {
         var urgency = s.avg <= 2 ? '#ef4444' : s.avg <= 3 ? '#fbbf24' : '#94a3b8';
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
-        html += '<span style="font-size:0.72em;font-weight:700;color:' + urgency + ';width:18px;text-align:center">' + (i + 1) + '</span>';
-        html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(s.title) + '</span>';
-        html += '<span style="font-size:0.68em;font-weight:700;color:' + urgency + '">' + (s.avg ? s.avg.toFixed(1) : '?') + '/5</span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
+        html += '<span style="width:6px;height:6px;border-radius:50%;background:' + urgency + ';flex-shrink:0"></span>';
+        html += '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(s.title) + '</span>';
         html += '</div>';
     });
 
