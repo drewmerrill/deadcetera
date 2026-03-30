@@ -33,8 +33,9 @@ async function calShowEvent(idx, occDate) {
         ${ev.time ? `<span>\u23F0 ${ev.time}</span>` : ''}
         <span style="text-transform:capitalize">\uD83D\uDCC2 ${ev.type||'other'}</span>
         ${ev.location ? `<span>\uD83D\uDCCD ${ev.location}</span>` : ''}
+        ${ev.locationAddress ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(ev.locationAddress)}" target="_blank" style="color:var(--accent-light);text-decoration:none;font-size:0.82em">\uD83D\uDDFA\uFE0F Directions</a>` : ''}
         ${ev.venue ? `<span>\uD83C\uDFDB\uFE0F ${ev.venue}</span>` : ''}
-        ${ev.meetingLink ? `<a href="${ev.meetingLink}" target="_blank" style="color:var(--accent-light);text-decoration:none">\uD83D\uDD17 Meeting Link</a>` : ''}
+        ${ev.meetingLink ? `<a href="${ev.meetingLink}" target="_blank" style="color:var(--accent-light);text-decoration:none">\uD83D\uDD17 Join Meeting</a>` : ''}
         ${repeatLbl ? `<span style="color:var(--accent-light)">\uD83D\uDD04 ${repeatLbl}</span>` : ''}
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
@@ -329,13 +330,17 @@ function renderCalendarInner() {
             // For each event show icon + truncated name
             const eventPills = hasEvent
                 ? dayEvents.slice(0,2).map((ev,ei) => {
-                    const icon = {rehearsal:'\uD83C\uDFB8',gig:'\uD83C\uDFA4',meeting:'\uD83D\uDC65',other:'\uD83D\uDCCC'}[ev.type||'other']||'\uD83D\uDCCC';
-                    const _pillBg = {rehearsal:'rgba(34,197,94,0.3)',gig:'rgba(245,158,11,0.35)',meeting:'rgba(99,102,241,0.25)',other:'rgba(148,163,184,0.2)'}[ev.type||'other']||'rgba(102,126,234,0.25)';
-                    const name = (ev.title||'').substring(0,10) + ((ev.title||'').length > 10 ? '\u2026' : '');
+                    // Accessible pills: prefix + icon + border style + color (redundant cues)
+                    var _pillCfg = {
+                        rehearsal: { prefix:'REH', icon:'\uD83C\uDFB8', bg:'rgba(34,197,94,0.2)', border:'1px solid rgba(34,197,94,0.5)', radius:'3px' },
+                        gig:       { prefix:'GIG', icon:'\uD83C\uDFA4', bg:'rgba(245,158,11,0.2)', border:'2px solid rgba(245,158,11,0.6)', radius:'8px' },
+                        meeting:   { prefix:'MTG', icon:'\uD83D\uDC65', bg:'rgba(99,102,241,0.15)', border:'1px dashed rgba(99,102,241,0.4)', radius:'3px' },
+                        other:     { prefix:'EVT', icon:'\uD83D\uDCCC', bg:'rgba(148,163,184,0.1)', border:'1px solid rgba(148,163,184,0.3)', radius:'3px' }
+                    };
+                    var _pc = _pillCfg[ev.type||'other'] || _pillCfg.other;
                     const evIdx = ev._idx !== undefined ? ev._idx : ei;
-                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:${_pillBg};border-radius:3px;padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
-                        <span style="font-size:0.75em;flex-shrink:0">${icon}</span>
-                        <span style="font-size:0.6em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white">${name}</span>
+                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:${_pc.bg};border:${_pc.border};border-radius:${_pc.radius};padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
+                        <span style="font-size:0.5em;font-weight:800;letter-spacing:0.04em;color:white;flex-shrink:0">${_pc.prefix}</span>
                     </div>`;
                 }).join('')
                 : '';
@@ -347,8 +352,8 @@ function renderCalendarInner() {
                     const blockId = b._block ? b._block.blockId : null;
                     // Always use _calEditScheduleBlock — it handles both legacy and new-model blocks
                     const editAction = blockId ? `_calEditScheduleBlock('${blockId}')` : `_calEditScheduleBlock('')`;
-                    return `<div ondblclick="event.stopPropagation();${editAction}" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.7);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden;cursor:pointer" title="🖱️ Dbl-click to edit | ${b.person||''}: ${b.reason||''}">
-                    <span style="font-size:0.55em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">🚫 ${(b.person||'').split(' ')[0]}</span>
+                    return `<div ondblclick="event.stopPropagation();${editAction}" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.7);border:2px dashed rgba(239,68,68,0.9);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden;cursor:pointer" title="Dbl-click to edit | ${b.person||''}: ${b.reason||''}">
+                    <span style="font-size:0.5em;font-weight:800;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">\uD83D\uDEAB OUT</span>
                 </div>`;
                 }).join('');
             const isBlocked = blockedRanges.some(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
@@ -406,17 +411,22 @@ async function loadCalendarEvents() {
             // Stamp event onto window now (at render time) so onclick can safely reference it
             // Cannot reference `upcoming` inside onclick — it's out of scope once innerHTML is set
             var wk = '_calEv_' + i; window[wk] = e;
-            const typeIcon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[e.type]||'📌';
+            const typeIcon = {rehearsal:'\uD83C\uDFB8',gig:'\uD83C\uDFA4',meeting:'\uD83D\uDC65',other:'\uD83D\uDCCC'}[e.type]||'\uD83D\uDCCC';
+            var _typePrefix = {rehearsal:'REH',gig:'GIG',meeting:'MTG',other:'EVT'}[e.type]||'EVT';
             const isRehearsal = e.type === 'rehearsal';
             var repeatLbl = _calRepeatLabel(e.repeatRule);
             var evtId = e._baseEventId || e.id || '';
+            var _evLocLine = e.location ? '\uD83D\uDCCD ' + e.location : (e.venue ? '\uD83C\uDFDB\uFE0F ' + e.venue : '');
+            var _evDirLink = e.locationAddress ? ' <a href="https://www.google.com/maps/search/' + encodeURIComponent(e.locationAddress) + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none;font-size:0.9em">\uD83D\uDDFA\uFE0F</a>' : '';
+            var _evMeetLink = e.meetingLink ? ' <a href="' + e.meetingLink + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none;font-size:0.9em">\uD83D\uDD17</a>' : '';
             return `<div class="list-item" style="padding:10px 12px;gap:10px">
+                <span style="font-size:0.65em;font-weight:800;letter-spacing:0.04em;color:var(--text-dim);min-width:32px;text-align:center;flex-shrink:0">${_typePrefix}</span>
                 <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
                 <div style="flex:1;min-width:0">
                     <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${typeIcon} ${e.title||'Untitled'}</div>
-                    ${e.venue?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📍 ${e.venue}</div>`:''}
-                    ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📋 ${e.linkedSetlist}</div>`:''}
-                    ${repeatLbl?`<div style="font-size:0.68em;color:var(--accent-light);margin-top:1px">🔄 ${repeatLbl}</div>`:''}
+                    ${_evLocLine?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_evLocLine}${_evDirLink}${_evMeetLink}</div>`:''}
+                    ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\uD83D\uDCCB ${e.linkedSetlist}</div>`:''}
+                    ${repeatLbl?`<div style="font-size:0.68em;color:var(--accent-light);margin-top:1px">\uD83D\uDD04 ${repeatLbl}</div>`:''}
                 </div>
                 ${e.time?`<span style="font-size:0.75em;color:var(--text-muted);flex-shrink:0">${e.time}</span>`:''}
                 <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:nowrap;align-items:center">
@@ -1023,8 +1033,13 @@ async function calAddEvent(date, editIdx, existing) {
     var repeatVal = _calRepeatRuleToValue(ev.repeatRule);
     window._calEditEventId = isEdit ? (ev.id || null) : null;
     var isRecurringEdit = isEdit && ev.repeatRule && ev.repeatRule.frequency;
-    // Title placeholder based on type
     var _titlePlaceholder = (ev.type === 'gig') ? 'e.g. HighTower Drinks' : 'e.g. DeadCetera Rehearsal';
+    // Load saved rehearsal locations
+    var rehLocs = [];
+    try { rehLocs = await GLStore.getRehearsalLocations(); } catch(e) {}
+    var _locOpts = rehLocs.map(function(l) {
+        return '<option value="' + (l.locationId||'') + '"' + (ev.locationId === l.locationId ? ' selected' : '') + '>' + (l.isVirtual ? '\uD83D\uDCBB ' : '\uD83D\uDCCD ') + (l.name||'Untitled') + '</option>';
+    }).join('');
     area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
     ${isRecurringEdit ? '<div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:0.82em;color:var(--accent-light)">\uD83D\uDD04 Editing this recurring event updates all future occurrences.</div>' : ''}
     <div class="form-grid">
@@ -1043,10 +1058,18 @@ async function calAddEvent(date, editIdx, existing) {
             <div id="calVenuePicker"></div>
         </div>
         <div class="form-row calRehearsalOnly" id="calLocationRow" style="${showLocation?'':'display:none'}">
-            <label class="form-label">Location</label>
-            <input class="app-input" id="calLocation" placeholder="e.g. Drew's garage, studio, virtual" value="${ev.location||''}">
-            <div style="display:flex;gap:6px;margin-top:4px">
-                <button onclick="document.getElementById('calLocation').value='Virtual';document.getElementById('calVirtualRow').style.display=''" type="button" style="font-size:0.68em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer">Virtual</button>
+            <label class="form-label">Rehearsal Location</label>
+            <select class="app-select" id="calLocationSelect" onchange="_calLocationChanged(this)">
+                <option value="">-- Select Location --</option>
+                ${_locOpts}
+                <option value="_virtual">\uD83D\uDCBB Virtual</option>
+                <option value="_new">+ Add New Location</option>
+            </select>
+            <div id="calNewLocForm" style="display:none;margin-top:6px;padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">
+                <input class="app-input" id="calNewLocName" placeholder="Location name" style="margin-bottom:4px">
+                <input class="app-input" id="calNewLocAddress" placeholder="Address (for directions)" style="margin-bottom:4px">
+                <input class="app-input" id="calNewLocNotes" placeholder="Notes (optional)" style="margin-bottom:6px">
+                <button onclick="_calSaveNewLocation()" style="font-size:0.78em;padding:4px 12px;border-radius:6px;border:none;background:rgba(34,197,94,0.12);color:#86efac;cursor:pointer;font-weight:600">Save Location</button>
             </div>
         </div>
         <div class="form-row" id="calVirtualRow" style="${ev.meetingLink?'':'display:none'}">
@@ -1079,6 +1102,51 @@ async function calAddEvent(date, editIdx, existing) {
     _calInitVenuePicker(venues, calPreselected);
     area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+// ── Rehearsal location handlers ──────────────────────────────────────────────
+window._calLocationChanged = function(sel) {
+    var newLocForm = document.getElementById('calNewLocForm');
+    var virtualRow = document.getElementById('calVirtualRow');
+    if (sel.value === '_new') {
+        if (newLocForm) newLocForm.style.display = '';
+        if (virtualRow) virtualRow.style.display = 'none';
+    } else if (sel.value === '_virtual') {
+        if (newLocForm) newLocForm.style.display = 'none';
+        if (virtualRow) virtualRow.style.display = '';
+    } else {
+        if (newLocForm) newLocForm.style.display = 'none';
+        // Show virtual row if selected location has a meeting link
+        GLStore.getRehearsalLocations().then(function(locs) {
+            var loc = locs.find(function(l) { return l.locationId === sel.value; });
+            if (loc && loc.meetingLink && virtualRow) {
+                document.getElementById('calMeetingLink').value = loc.meetingLink;
+                virtualRow.style.display = '';
+            } else if (virtualRow) {
+                virtualRow.style.display = 'none';
+            }
+        });
+    }
+};
+
+window._calSaveNewLocation = async function() {
+    var name = (document.getElementById('calNewLocName') || {}).value || '';
+    var address = (document.getElementById('calNewLocAddress') || {}).value || '';
+    var notes = (document.getElementById('calNewLocNotes') || {}).value || '';
+    if (!name.trim()) { if (typeof showToast === 'function') showToast('Location name required'); return; }
+    var loc = await GLStore.createRehearsalLocation({ name: name, address: address, notes: notes });
+    if (typeof showToast === 'function') showToast('\u2705 Location saved');
+    // Add to dropdown and select it
+    var sel = document.getElementById('calLocationSelect');
+    if (sel) {
+        var opt = document.createElement('option');
+        opt.value = loc.locationId;
+        opt.textContent = '\uD83D\uDCCD ' + loc.name;
+        opt.selected = true;
+        sel.insertBefore(opt, sel.querySelector('[value="_virtual"]'));
+    }
+    var newLocForm = document.getElementById('calNewLocForm');
+    if (newLocForm) newLocForm.style.display = 'none';
+};
 
 function calTypeChanged(sel) {
     // If user selects "Conflict / Blocked", switch to the conflict form
@@ -1214,9 +1282,28 @@ async function calSaveEvent(editIdx) {
         linkedSetlist: document.getElementById('calLinkedSetlist')?.value || null,
         venueId: window._calSelectedVenueId || null,
         venue: window._calSelectedVenueName || null,
-        location: (document.getElementById('calLocation') || {}).value || null,
+        locationId: null,
+        location: null,
+        locationAddress: null,
         meetingLink: (document.getElementById('calMeetingLink') || {}).value || null,
     };
+    // Resolve rehearsal location from dropdown
+    var _locSel = (document.getElementById('calLocationSelect') || {}).value || '';
+    if (_locSel && _locSel !== '_new' && _locSel !== '_virtual') {
+        ev.locationId = _locSel;
+        try {
+            var _locs = await GLStore.getRehearsalLocations();
+            var _loc = _locs.find(function(l) { return l.locationId === _locSel; });
+            if (_loc) {
+                ev.location = _loc.name;
+                ev.locationAddress = _loc.address || null;
+                if (_loc.meetingLink) ev.meetingLink = ev.meetingLink || _loc.meetingLink;
+            }
+        } catch(e) {}
+    } else if (_locSel === '_virtual') {
+        ev.location = 'Virtual';
+        ev.locationId = null;
+    }
     // Recurrence rule
     var repeatVal = (document.getElementById('calRepeat') || {}).value || 'none';
     if (repeatVal === 'weekly') ev.repeatRule = { frequency: 'weekly', interval: 1, endsAt: null };

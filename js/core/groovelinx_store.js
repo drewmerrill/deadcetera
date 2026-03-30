@@ -4240,6 +4240,8 @@
     // Venues (Phase 1: Canonical Entity Selection)
     getVenues:             getVenues,
     createVenue:           createVenue,
+    getRehearsalLocations: getRehearsalLocations,
+    createRehearsalLocation: createRehearsalLocation,
     findDuplicateVenues:   findDuplicateVenues,
     getVenueById:          getVenueById,
 
@@ -4614,6 +4616,45 @@
     _venueCacheTime = Date.now();
     emit('venueCreated', { venue: venue });
     return venue;
+  }
+
+  // ── Rehearsal Locations ─────────────────────────────────────────────────────
+  var _rehLocCache = null;
+  var _rehLocCacheTime = 0;
+
+  async function getRehearsalLocations() {
+    var now = Date.now();
+    if (_rehLocCache && (now - _rehLocCacheTime) < 60000) return _rehLocCache;
+    var locs = (typeof toArray !== 'undefined' ? toArray : function(x){return Array.isArray(x)?x:[];})(
+      await _lbdf('_band', 'rehearsal_locations') || []
+    );
+    locs.forEach(function(l) {
+      if (!l.locationId) {
+        l.locationId = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      }
+    });
+    _rehLocCache = locs;
+    _rehLocCacheTime = now;
+    return locs;
+  }
+
+  async function createRehearsalLocation(data) {
+    var loc = {
+      locationId: (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      name: (data.name || '').trim(),
+      address: (data.address || '').trim(),
+      notes: (data.notes || '').trim(),
+      meetingLink: (data.meetingLink || '').trim(),
+      isVirtual: !!data.isVirtual,
+      created: _now()
+    };
+    var locs = await getRehearsalLocations();
+    locs.push(loc);
+    locs.sort(function(a,b) { return (a.name||'').localeCompare(b.name||''); });
+    await _sbdf('_band', 'rehearsal_locations', locs);
+    _rehLocCache = locs;
+    _rehLocCacheTime = Date.now();
+    return loc;
   }
 
   /**
