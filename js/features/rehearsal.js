@@ -696,7 +696,7 @@ async function _rhSaveSnapshot(nameOverride) {
     var songCount = units.reduce(function(n, u) { return n + (u.type === 'linked' ? (u.songs || []).length : 1); }, 0);
     var snap = {
         snapshotId: 'rs_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 6),
-        name: nameOverride || ('Before editing plan'),
+        name: nameOverride || ('Previous version'),
         savedAt: new Date(now).toISOString(),
         savedBy: (typeof currentUserName !== 'undefined' && currentUserName) ? currentUserName : '',
         units: units,
@@ -748,6 +748,44 @@ window._rhSaveSnapshotUI = function() {
     var name = prompt('Snapshot name:', planName + ' — ' + dateLabel);
     if (name === null) return;
     _rhSaveSnapshot(name.trim() || undefined).then(function() { _rhReRender(); });
+};
+
+window._rhPreviewSnapshot = function(snapshotId) {
+    _rhLoadSnapshots(20).then(function(snaps) {
+        var snap = snaps.find(function(s) { return s.snapshotId === snapshotId; });
+        if (!snap || !snap.units) return;
+        var songCount = snap.songCount || snap.units.length;
+        var songs = [];
+        snap.units.forEach(function(u) {
+            if (u.type === 'linked' && u.songs) u.songs.forEach(function(s) { if (s.title) songs.push(s.title); });
+            else if (u.title && u.type !== 'section' && u.type !== 'note' && u.type !== 'business' && u.type !== 'exercise' && u.type !== 'jam') songs.push(u.title);
+        });
+        // Current plan summary
+        var currentUnits = _rhGetUnits();
+        var currentSongCount = currentUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? (u.songs || []).length : 1); }, 0);
+
+        var existing = document.getElementById('rhPreviewModal');
+        if (existing) existing.remove();
+        var ov = document.createElement('div');
+        ov.id = 'rhPreviewModal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+        var html = '<div style="max-width:400px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:80vh;overflow-y:auto">';
+        html += '<div style="font-size:1em;font-weight:800;color:#f1f5f9;margin-bottom:12px">Preview: ' + escHtml(snap.name || 'Plan version') + '</div>';
+        html += '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:10px">' + songCount + ' songs</div>';
+        if (songs.length) {
+            html += '<div style="margin-bottom:12px;padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;max-height:150px;overflow-y:auto">';
+            songs.slice(0, 15).forEach(function(t, i) { html += '<div style="font-size:0.78em;color:var(--text);padding:2px 0">' + (i + 1) + '. ' + escHtml(t) + '</div>'; });
+            if (songs.length > 15) html += '<div style="font-size:0.72em;color:var(--text-dim);padding:2px 0">+' + (songs.length - 15) + ' more</div>';
+            html += '</div>';
+        }
+        html += '<div style="font-size:0.72em;color:#64748b;margin-bottom:16px">Current plan: ' + currentSongCount + ' songs. Loading this version will replace it.</div>';
+        html += '<button onclick="document.getElementById(\'rhPreviewModal\').remove();window._rhDoRestore(\'' + snapshotId + '\')" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer;margin-bottom:6px">Replace Current Plan</button>';
+        html += '<button onclick="document.getElementById(\'rhPreviewModal\').remove()" style="width:100%;padding:8px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">Cancel</button>';
+        html += '</div>';
+        ov.innerHTML = html;
+        ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+    });
 };
 
 window._rhRestoreSnapshot = function(snapshotId) {
@@ -986,7 +1024,7 @@ async function _rhRenderSessionHistory() {
         // Actions
         html += '<div style="display:flex;gap:6px;align-items:center">';
         if (isLatest) html += '<span style="font-size:0.6em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
-        html += '<button onclick="var d=document.getElementById(\'rhSessDetail_' + s.sessionId + '\');if(d)d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Details</button>';
+        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">View Report</button>';
         if (s.mixdown_id) {
             html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
             // Mixdown tag
@@ -1026,6 +1064,89 @@ async function _rhRenderSessionHistory() {
     html += '</div>';
     el.innerHTML = html;
 }
+
+// ── Session Report Modal ─────────────────────────────────────────────────────
+window._rhShowSessionReport = function(sessionId) {
+    _rhLoadSessions().then(function(sessions) {
+        var s = sessions.find(function(x) { return x.sessionId === sessionId; });
+        if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
+
+        var dateStr = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
+        var durMin = s.totalActualMin || 0;
+        var durLabel = durMin >= 60 ? Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm' : durMin + 'm';
+        var songList = (s.songsWorked || []).length ? s.songsWorked : (s.blocks || []).map(function(b) { return b.title; }).filter(Boolean);
+        var ratingLabels = { great: 'Great', solid: 'Solid', needs_work: 'Needs Work' };
+        var isRecovered = s.recovered;
+
+        var html = '<div style="max-width:440px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:85vh;overflow-y:auto">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
+        html += '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9">Rehearsal Report</div>';
+        html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
+        html += '</div>';
+
+        // Meta
+        html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:12px">' + dateStr + ' \u00B7 ' + durLabel + (s.rating ? ' \u00B7 ' + (ratingLabels[s.rating] || s.rating) : '') + '</div>';
+        if (isRecovered) html += '<div style="font-size:0.68em;color:#fbbf24;margin-bottom:8px;font-style:italic">Recovered from recording</div>';
+
+        // Songs played
+        if (songList.length) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Songs Played</div>';
+            songList.forEach(function(title, i) {
+                html += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03)">' + (i + 1) + '. ' + escHtml(title) + '</div>';
+            });
+            html += '<div style="height:12px"></div>';
+        }
+
+        // Blocks detail
+        if (s.blocks && s.blocks.length) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Time Breakdown</div>';
+            s.blocks.forEach(function(b) {
+                if (!b.title) return;
+                html += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em;padding:3px 0">'
+                    + '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(b.title) + '</span>'
+                    + '<span style="color:var(--text-dim);flex-shrink:0">' + (b.actualMin || 0) + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : '') + '</span>'
+                    + '</div>';
+            });
+            html += '<div style="height:12px"></div>';
+        }
+
+        // Recording
+        if (s.recording_url) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Recording</div>';
+            html += '<a href="' + escHtml(s.recording_url) + '" target="_blank" style="font-size:0.82em;color:#a5b4fc;text-decoration:none">\uD83C\uDFA4 Open Recording \u2192</a>';
+            html += '<div style="height:12px"></div>';
+        }
+        if (s.mixdown_id) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Recording</div>';
+            html += '<button onclick="document.getElementById(\'rhReportModal\').remove();_rhToggleMixdownPlayer(\'' + sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.82em;color:#fbbf24;background:none;border:none;cursor:pointer">\uD83C\uDFA4 Play Recording</button>';
+            html += '<div style="height:12px"></div>';
+        }
+
+        // Notes
+        if (s.notes) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Notes</div>';
+            html += '<div style="font-size:0.82em;color:#94a3b8;line-height:1.4">' + escHtml(s.notes) + '</div>';
+            html += '<div style="height:12px"></div>';
+        }
+
+        // Empty state
+        if (!songList.length && !s.blocks && !s.notes && !s.recording_url && !s.mixdown_id) {
+            html += '<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em">No data captured for this rehearsal yet.</div>';
+        }
+
+        html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
+        html += '</div>';
+
+        var existing = document.getElementById('rhReportModal');
+        if (existing) existing.remove();
+        var ov = document.createElement('div');
+        ov.id = 'rhReportModal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+        ov.innerHTML = html;
+        ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+    });
+};
 
 // ── Headline Insight ────────────────────────────────────────────────────────
 function _rhGetHeadline(session, idx, allSessions) {
@@ -1129,20 +1250,24 @@ async function _rhRenderSnapshots() {
     if (!el) return;
     var snaps = await _rhLoadSnapshots(5);
     if (!snaps.length) { el.innerHTML = ''; return; }
-    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCC2 Plan History (' + snaps.length + ')</summary>'
+    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCC2 Plan Versions (' + snaps.length + ')</summary>'
         + '<div style="margin-top:6px">';
     snaps.forEach(function(s) {
         var d = s.savedAt ? new Date(s.savedAt) : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-        var timeStr = d ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
         var songCount = s.songCount || (s.units ? s.units.length : 0);
-        var label = s.name || 'Before editing plan';
+        // Compute duration from units
+        var _snapDur = 0;
+        var _snapNonSong = { exercise: 10, business: 15, jam: 10, note: 5, section: 0 };
+        (s.units || []).forEach(function(u) { _snapDur += (u.durationMinOverride > 0) ? u.durationMinOverride : (_snapNonSong[u.type] !== undefined ? _snapNonSong[u.type] : 9); });
+        var _snapDurLabel = _snapDur >= 60 ? Math.floor(_snapDur / 60) + 'h ' + (_snapDur % 60) + 'm' : _snapDur + 'm';
+        var label = s.name || 'Previous version';
         html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.78em">'
             + '<div style="flex:1;min-width:0">'
             + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(label) + '</div>'
-            + '<div style="font-size:0.82em;color:var(--text-dim)">' + dateStr + ' ' + timeStr + ' \u00B7 ' + songCount + ' songs</div>'
+            + '<div style="font-size:0.82em;color:var(--text-dim)">' + dateStr + ' \u00B7 ' + songCount + ' songs \u00B7 ' + _snapDurLabel + '</div>'
             + '</div>'
-            + '<button onclick="_rhRestoreSnapshot(\'' + s.snapshotId + '\')" title="Replace your current plan with this version" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">Load</button>'
+            + '<button onclick="_rhPreviewSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">Preview</button>'
             + '<button onclick="_rhDeleteSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-size:0.78em;flex-shrink:0">\u2715</button>'
             + '</div>';
     });

@@ -53,8 +53,8 @@ window.RehearsalMixdowns = (function() {
         var items = await _load();
 
         var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-            + '<div style="font-weight:700;font-size:0.95em">\uD83C\uDFA4 Rehearsal Mixdowns</div>'
-            + '<button onclick="RehearsalMixdowns.showAddForm()" class="btn btn-primary btn-sm" style="font-size:0.78em">+ Add Mixdown</button>'
+            + '<div style="font-weight:700;font-size:0.95em">\uD83C\uDFA4 Recordings</div>'
+            + '<button onclick="RehearsalMixdowns.showAddForm()" class="btn btn-primary btn-sm" style="font-size:0.78em">+ Add Recording</button>'
             + '</div>';
 
         html += '<div id="rmAddFormArea"></div>';
@@ -62,8 +62,8 @@ window.RehearsalMixdowns = (function() {
         if (!items.length) {
             html += '<div style="text-align:center;color:var(--text-dim);padding:30px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px">'
                 + '<div style="font-size:1.5em;margin-bottom:6px">\uD83C\uDFA7</div>'
-                + '<div style="font-size:0.85em;margin-bottom:4px">No mixdowns yet</div>'
-                + '<div style="font-size:0.75em;color:#475569">Add your first full rehearsal recording</div>'
+                + '<div style="font-size:0.85em;margin-bottom:4px">No recordings yet</div>'
+                + '<div style="font-size:0.75em;color:#475569">Add your first rehearsal recording</div>'
                 + '</div>';
         } else {
             items.forEach(function(m) {
