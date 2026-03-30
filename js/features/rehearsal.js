@@ -298,6 +298,35 @@ async function _rhRenderCommandFlow(el) {
     }
     html += '</div>';
 
+    // ── "Fix What Broke" block from GLInsights ──
+    if (typeof GLInsights !== 'undefined' && GLInsights.getFixBlock) {
+        var fixBlock = GLInsights.getFixBlock(3);
+        if (fixBlock.length > 0) {
+            html += '<div style="margin-bottom:16px;padding:12px 14px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.15);border-radius:12px">';
+            html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">\uD83D\uDD27 Fix What Broke Last Time</div>';
+            fixBlock.forEach(function(plan) {
+                html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
+                html += '<div style="display:flex;align-items:center;gap:8px">';
+                html += '<span style="font-size:0.88em;font-weight:700;color:var(--text);flex:1">' + escHtml(plan.song) + '</span>';
+                html += '<span style="font-size:0.68em;color:#f87171;background:rgba(248,113,113,0.1);padding:2px 6px;border-radius:4px">' + escHtml(plan.problemType) + '</span>';
+                html += '</div>';
+                html += '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">' + escHtml(plan.recommendation) + '</div>';
+                if (plan.actionPlan && plan.actionPlan.length) {
+                    html += '<div style="margin-top:4px;padding-left:8px">';
+                    plan.actionPlan.forEach(function(step, i) {
+                        html += '<div style="font-size:0.72em;color:var(--text-dim);padding:1px 0">' + (i + 1) + '. ' + escHtml(step) + '</div>';
+                    });
+                    html += '</div>';
+                }
+                if (plan.estimatedTime) {
+                    html += '<div style="font-size:0.65em;color:var(--text-dim);margin-top:2px;font-style:italic">\u23F1 ~' + plan.estimatedTime + ' min</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+    }
+
     // ── SECTION 1: Context ──
     html += '<div style="margin-bottom:16px">';
     if (nextGig) {

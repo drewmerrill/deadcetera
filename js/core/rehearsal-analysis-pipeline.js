@@ -459,6 +459,15 @@
     // ── Step 9: Update issue index for feedback loop ──
     _updateIssueIndex(analysis);
 
+    // ── Step 9b: Persist to GLInsights (Firebase intelligence store) ──
+    if (typeof GLInsights !== 'undefined' && GLInsights.recordSessionIssues) {
+      try {
+        await GLInsights.recordSessionIssues(analysis);
+      } catch(e) {
+        console.warn('[RehearsalAnalysis] GLInsights persistence failed:', e);
+      }
+    }
+
     // ── Step 10: Invalidate focus cache (issues may change priorities) ──
     if (typeof GLStore !== 'undefined' && GLStore.invalidateFocusCache) {
       GLStore.invalidateFocusCache();

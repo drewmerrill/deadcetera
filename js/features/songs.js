@@ -359,6 +359,17 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
           + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
           + '</tr></thead><tbody>';
 
+    // ── Explainability helper ──
+    function _sgBuildExplanation(title) {
+      if (typeof GLInsights === 'undefined' || !GLInsights.getFocusExplanation) return '';
+      var exp = GLInsights.getFocusExplanation(title);
+      if (!exp || !exp.details || !exp.details.length) return '';
+      var items = exp.details.slice(0, 3).map(function(d) {
+        return '<span style="font-size:0.65em;color:var(--text-dim);display:inline-block;margin-right:8px">\u2022 ' + d + '</span>';
+      }).join('');
+      return '<div style="margin-top:4px;line-height:1.5">' + items + '</div>';
+    }
+
     // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
     // Focus engine — single source of truth for recommendation
     var _suggestHTML = '';
@@ -387,6 +398,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 + '<div style="font-size:0.58em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#86efac;margin-bottom:4px">Work on this next</div>'
                 + '<div style="font-size:0.95em;font-weight:700;color:var(--text)">' + _focus.primary.title + '</div>'
                 + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">' + (_focus.reason || '') + '</div>'
+                + _sgBuildExplanation(_focus.primary.title)
                 + '</div>'
                 + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;white-space:nowrap">\u25B6 Practice Now</button>'
                 + '</div>'

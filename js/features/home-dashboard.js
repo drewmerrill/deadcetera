@@ -1174,6 +1174,8 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         _renderNextActionCard(bundle, wf),
         // ── Single focus section (replaces duplicate weak songs + session plan) ──
         _renderSessionPlan(bundle),
+        // ── What To Do Next (from GLInsights) ──
+        _renderWhatToDoNext(),
         // ── Last rehearsal issues (from analysis pipeline) ──
         _renderLastRehearsalIssues(),
         // ── Collapsed sections ──
@@ -1397,6 +1399,41 @@ function _computeScorecard(bundle) {
 function _capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
 function _hdEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ── What To Do Next (from GLInsights action engine) ───────────────────────────
+function _renderWhatToDoNext() {
+  if (typeof GLInsights === 'undefined' || !GLInsights.getNextAction) return '';
+  var action = GLInsights.getNextAction();
+  if (!action) return '';
+
+  var html = '<div style="margin-bottom:12px;padding:14px 16px;background:rgba(165,180,252,0.08);border:1px solid rgba(165,180,252,0.2);border-radius:12px">';
+  html += '<div style="font-size:0.72em;font-weight:800;color:#a5b4fc;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">What To Do Next</div>';
+  html += '<div style="font-size:0.92em;font-weight:700;color:var(--text);margin-bottom:4px">' + _hdEsc(action.headline) + '</div>';
+  html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:8px">' + _hdEsc(action.detail) + '</div>';
+
+  // Show action plan steps if available
+  if (action.plan && action.plan.actionPlan && action.plan.actionPlan.length > 1) {
+    html += '<div id="hdActionPlanExpand" style="display:none;margin-bottom:8px">';
+    action.plan.actionPlan.forEach(function(step, i) {
+      html += '<div style="font-size:0.78em;color:var(--text-dim);padding:2px 0;padding-left:12px">' + (i + 1) + '. ' + _hdEsc(step) + '</div>';
+    });
+    if (action.plan.estimatedTime) {
+      html += '<div style="font-size:0.68em;color:var(--text-dim);padding-top:4px;font-style:italic">\u23F1 ~' + action.plan.estimatedTime + ' min</div>';
+    }
+    html += '</div>';
+    html += '<button onclick="var el=document.getElementById(\'hdActionPlanExpand\');if(el){el.style.display=el.style.display===\'none\'?\'\':\'none\';this.textContent=el.style.display===\'none\'?\'Show plan \u25BC\':\'Hide plan \u25B2\'}" style="font-size:0.72em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;margin-bottom:8px">Show plan \u25BC</button>';
+  }
+
+  // CTA button
+  if (action.cta === 'Start Practice' && action.song) {
+    html += '<button onclick="if(typeof selectSong===\'function\')selectSong(\'' + _hdEsc(action.song).replace(/'/g, "\\'") + '\')" style="padding:8px 16px;border-radius:8px;border:none;background:#a5b4fc;color:#0f172a;font-weight:700;font-size:0.82em;cursor:pointer">\u25B6 Practice Now</button>';
+  } else {
+    html += '<button onclick="showPage(\'rehearsal\')" style="padding:8px 16px;border-radius:8px;border:none;background:#a5b4fc;color:#0f172a;font-weight:700;font-size:0.82em;cursor:pointer">\uD83C\uDFB8 Build Rehearsal Plan</button>';
+  }
+
+  html += '</div>';
+  return html;
+}
 
 // ── Last Rehearsal Issues (from analysis pipeline) ────────────────────────────
 function _renderLastRehearsalIssues() {
